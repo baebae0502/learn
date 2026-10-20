@@ -8,6 +8,7 @@ import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
 const dbs: Db[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const db of dbs.splice(0)) db.close();
   cleanupTemp();
 });
@@ -146,19 +147,40 @@ describe('failures', () => {
 });
 
 describe('integrity branches', () => {
-  it('(a) rejects corrupt existing target without touching it', async () => {
+  it('(a) quarantines a corrupt target and places a verified copy', async () => {
     const { layout, repo, importer } = setup();
     const src = writePdf(tempDir('src'), 'a.pdf', 'x');
     const sha256 = await sha256File(src);
     const target = path.join(layout.root, ...managedRelativePath(sha256).split('/'));
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, 'wrong bytes');
-    const corruptBytes = fs.readFileSync(target);
     const out = await importer.importOne(src, { mode: 'managed' });
-    expect(out).toMatchObject({ status: 'failed', code: 'HASH_MISMATCH' });
-    expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
-    expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
-    expect(fs.readFileSync(target)).toEqual(corruptBytes);
+    expect(out.status).toBe('imported');
+    expect(await sha256File(target)).toBe(sha256);
+    const quarantined = fs.readdirSync(layout.stagingDir);
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0]).toMatch(new RegExp(`^corrupt-${sha256}-`));
+    expect(fs.readFileSync(path.join(layout.stagingDir, quarantined[0]!), 'utf8')).toBe('wrong bytes');
+    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+  });
+
+  it('(a2) reuse path quarantines a corrupted placed file and restores it', async () => {
+    const { layout, repo, importer } = setup();
+    const dir = tempDir('src');
+    const src = writePdf(dir, 'a.pdf', 'same');
+    const out1 = await importer.importOne(src, { mode: 'managed' });
+    if (out1.status !== 'imported') throw new Error(out1.status);
+    const sha256 = repo.getAsset(out1.item.assetId)!.sha256;
+    const target = path.join(layout.root, ...managedRelativePath(sha256).split('/'));
+    fs.writeFileSync(target, 'rotten');
+    const out2 = await importer.importOne(src, { mode: 'managed', allowDuplicate: true });
+    expect(out2.status).toBe('imported');
+    expect(await sha256File(target)).toBe(sha256);
+    const quarantined = fs.readdirSync(layout.stagingDir);
+    expect(quarantined).toHaveLength(1);
+    expect(quarantined[0]).toMatch(new RegExp(`^corrupt-${sha256}-`));
+    expect(fs.readFileSync(path.join(layout.stagingDir, quarantined[0]!), 'utf8')).toBe('rotten');
+    expect(repo.counts()).toEqual({ items: 2, assets: 1, revisions: 1 });
   });
 
   it('(b) detects source change mid-copy', async () => {
@@ -168,13 +190,10 @@ describe('integrity branches', () => {
       await fsp.writeFile(d as string, 'changed during copy');
     });
     const out = await importer.importOne(src, { mode: 'managed' });
-    if (spy.mock.calls.length > 0) {
-      expect(out).toMatchObject({ status: 'failed', code: 'HASH_MISMATCH' });
-      expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
-      expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
-    } else {
-      // vitest spy did not work on node builtin; skip this part
-    }
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(out).toMatchObject({ status: 'failed', code: 'HASH_MISMATCH' });
+    expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
+    expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
     vi.restoreAllMocks();
   });
 

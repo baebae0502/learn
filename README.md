@@ -14,7 +14,7 @@
     pnpm dev            # 개발 실행 (Vite HMR)
     pnpm build && pnpm --filter @learn/desktop start   # 빌드본 실행
 
-라이브러리 위치는 기본 `<userData>/Library`이다. 다른 폴더를 쓰려면 `LEARN_LIBRARY_DIR=/path/to/Library pnpm dev`.
+라이브러리 위치는 기본적으로 macOS `~/Library/Application Support/Learn/Library`, Linux `~/.config/Learn/Library`이다. 다른 폴더를 쓰려면 `LEARN_LIBRARY_DIR=/path/to/Library pnpm dev`.
 
 ## 검증
     pnpm typecheck

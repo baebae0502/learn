@@ -13,5 +13,12 @@ export function hardenApp(devOrigin: string | null): void {
       return { action: 'deny' };
     });
   });
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  // Only fullscreen (video viewer) is allowed, and only for our own pages. Everything else stays denied.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) =>
+    callback(permission === 'fullscreen' && isAllowedAppUrl(details.requestingUrl, devOrigin)),
+  );
+  session.defaultSession.setPermissionCheckHandler(
+    (_wc, permission, requestingOrigin, details) =>
+      permission === 'fullscreen' && isAllowedAppUrl(details.requestingUrl ?? requestingOrigin, devOrigin),
+  );
 }

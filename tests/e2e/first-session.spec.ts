@@ -75,6 +75,10 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   console.log('[measure] video seek', JSON.stringify(seek));
   expect(seek.width).toBe(1280);
   expect(seek.errorMs).toBeLessThanOrEqual(500);
+  // Fullscreen must be permitted for our own pages
+  await video.evaluate((v: HTMLVideoElement) => v.requestFullscreen());
+  expect(await video.evaluate((v: HTMLVideoElement) => document.fullscreenElement === v)).toBe(true);
+  await video.evaluate(() => document.exitFullscreen());
   await page.screenshot({ path: testInfo.outputPath('03-video.png') });
   await page.getByTestId('viewer-back').click();
 
@@ -85,7 +89,10 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   await page.getByTestId('viewer-back').click();
 
   // Crash and restart (AC06 partial: saved state survives a hard kill)
-  app.process().kill('SIGKILL');
+  const proc = app.process();
+  const exited = new Promise((r) => proc.once('exit', r));
+  proc.kill('SIGKILL');
+  await exited;
   ({ app, page } = await launch(lib, ud));
   await expect(page.getByTestId('item-row')).toHaveCount(4);
   await openItem(page, 'sample');

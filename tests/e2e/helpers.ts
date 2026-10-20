@@ -19,7 +19,7 @@ export interface Session {
 
 export async function launch(libraryDir: string, userDataDir: string): Promise<Session> {
   const app = await electron.launch({
-    args: [MAIN],
+    args: [path.join(ROOT, 'apps/desktop')],
     env: { ...process.env, LEARN_LIBRARY_DIR: libraryDir, LEARN_USER_DATA_DIR: userDataDir },
   });
   const page = await app.firstWindow();

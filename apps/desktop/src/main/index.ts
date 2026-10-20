@@ -9,6 +9,9 @@ import { hardenApp } from './security';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
+// Same app name (and thus userData path) whether launched via `electron .` or the built entry.
+app.setName('Learn');
+
 // E2E and multi-profile runs isolate userData (also scopes the single-instance lock).
 if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEARN_USER_DATA_DIR']);
 
@@ -41,6 +44,9 @@ function createWindow(): BrowserWindow {
     },
   });
   win.once('ready-to-show', () => win.show());
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
   void win.loadURL(devServerUrl ?? `${APP_SCHEME}://app/index.html`);
   return win;
 }
@@ -79,9 +85,6 @@ if (!app.requestSingleInstanceLock()) {
       devOrigin,
     });
     mainWindow = createWindow();
-    mainWindow.on('closed', () => {
-      mainWindow = null;
-    });
   });
 
   app.on('activate', () => {

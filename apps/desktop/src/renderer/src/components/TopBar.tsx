@@ -10,7 +10,7 @@ export function TopBar({ status }: { status: SaveStatus }) {
         <strong>{t.brand}</strong> / {t.brandSub}
       </div>
       <div className={`save-status save-${status}`} role="status" aria-live="polite">
-        LOCAL FIRST · {label}
+        {t.localFirst} · {label}
       </div>
     </header>
   );

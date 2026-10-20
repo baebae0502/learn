@@ -90,26 +90,15 @@ export class Importer {
     return { status: 'imported', path: src, item: saved };
   }
 
-  /**
-   * Verify a reused managed asset is intact. If the file exists, check its hash.
-   * If missing, restore it via place(). Trusted after this call.
-   */
+  /** Reused managed asset: make sure a verified file sits at the hash-addressed target. */
   private async ensurePlaced(src: string, sha256: string): Promise<void> {
-    const { layout } = this.deps;
-    const rel = managedRelativePath(sha256);
-    const target = path.join(layout.root, ...rel.split('/'));
-    if (await exists(target)) {
-      if ((await sha256File(target)) !== sha256) {
-        throw new LearnError('HASH_MISMATCH', '라이브러리에 있는 같은 이름의 파일이 손상되었습니다. 복구 안내를 확인하세요.');
-      }
-    } else {
-      await this.place(src, sha256);
-    }
+    await this.place(src, sha256);
   }
 
   /**
    * staging copy → verify hash → atomic rename into assets/. Returns the library-relative path.
-   * A file already at the target (left by an earlier interrupted import) is verified and reused.
+   * A target already present with the right hash is reused. A target with the wrong hash is
+   * quarantined into staging/ (never deleted) and replaced by the verified copy.
    */
   private async place(src: string, sha256: string): Promise<string> {
     const { layout, hooks } = this.deps;
@@ -124,8 +113,11 @@ export class Importer {
       await hooks?.afterStage?.(staging);
       await fs.mkdir(path.dirname(target), { recursive: true });
       if (await exists(target)) {
-        if ((await sha256File(target)) !== sha256) {
-          throw new LearnError('HASH_MISMATCH', '라이브러리에 있는 같은 이름의 파일이 손상되었습니다. 복구 안내를 확인하세요.');
+        if ((await sha256File(target)) === sha256) {
+          // intact: reuse
+        } else {
+          await fs.rename(target, path.join(layout.stagingDir, `corrupt-${sha256}-${newId()}`));
+          await fs.rename(staging, target);
         }
       } else {
         await fs.rename(staging, target);

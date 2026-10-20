@@ -1,5 +1,6 @@
 export const t = {
   brand: 'LEARN',
+  localFirst: '로컬 우선',
   brandSub: '개인 학습 라이브러리',
   statusSaved: '로컬 저장됨',
   statusBusy: '가져오는 중…',
@@ -30,7 +31,7 @@ export const t = {
   back: '← 라이브러리',
   missingNotice: '원본 파일을 찾을 수 없습니다.',
   missingLinkedHint: '외부 연결 자료입니다. 파일을 옮겼다면 “다시 연결”로 새 위치를 지정하세요.',
-  missingManagedHint: '라이브러리 안의 복사본이 사라졌습니다. 백업에서 복원하거나 원본을 다시 가져오세요.',
+  missingManagedHint: '라이브러리 안의 복사본이 사라졌습니다. 원본 파일을 다시 가져오고 "새 자료로 추가"를 고르면 복구됩니다.',
   relink: '다시 연결',
   tutorTitle: '개인 튜터',
   tutorPending: '튜터는 P3 단계에서 구현됩니다. 지금은 자료를 가져오고 여는 기능을 먼저 검증하고 있습니다.',

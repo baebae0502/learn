@@ -1,6 +1,7 @@
 {
   "name": "@learn/desktop",
   "version": "0.1.0",
+  "productName": "Learn",
   "private": true,
   "type": "module",
   "description": "Learn — local-first personal learning library",

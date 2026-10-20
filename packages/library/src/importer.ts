@@ -60,6 +60,13 @@ export class Importer {
     let asset: AssetRow;
     if (reusable) {
       asset = reusable;
+      // Verify reused managed asset is intact; restore file if missing.
+      if (opts.mode === 'managed') {
+        await this.ensurePlaced(src, sha256);
+        if (reusable.availability === 'missing') {
+          repo.setAvailability(reusable.id, 'available', now);
+        }
+      }
     } else {
       asset = {
         id: newId(), sha256, storageMode: opts.mode, relativePath: null, externalPath: null,
@@ -81,6 +88,23 @@ export class Importer {
     const saved = repo.getItem(item.id);
     if (!saved) throw new LearnError('INTERNAL', '가져온 항목을 다시 읽지 못했습니다.');
     return { status: 'imported', path: src, item: saved };
+  }
+
+  /**
+   * Verify a reused managed asset is intact. If the file exists, check its hash.
+   * If missing, restore it via place(). Trusted after this call.
+   */
+  private async ensurePlaced(src: string, sha256: string): Promise<void> {
+    const { layout } = this.deps;
+    const rel = managedRelativePath(sha256);
+    const target = path.join(layout.root, ...rel.split('/'));
+    if (await exists(target)) {
+      if ((await sha256File(target)) !== sha256) {
+        throw new LearnError('HASH_MISMATCH', '라이브러리에 있는 같은 이름의 파일이 손상되었습니다. 복구 안내를 확인하세요.');
+      }
+    } else {
+      await this.place(src, sha256);
+    }
   }
 
   /**

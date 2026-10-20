@@ -63,7 +63,7 @@ export async function platformFonts(page, selector) {
 /**
  * Render a list of mockups into `outDir` as `<name>.png`.
  * @param {{ renders: import('./manifest.mjs').Render[], outDir: string, scale?: number, log?: (s: string) => void }} opts
- * @returns {Promise<{ name: string, file: string, ms: number, pretendard: boolean, fonts: string[] }[]>}
+ * @returns {Promise<{ name: string, file: string, ms: number, pretendard: boolean, fonts: string[], milestones: { tagged: { ms: string, label: string }[], missing: string[] } }[]>}
  */
 export async function renderMockups({ renders, outDir, scale = 2, log = () => {} }) {
   mkdirSync(outDir, { recursive: true });
@@ -89,11 +89,12 @@ export async function renderMockups({ renders, outDir, scale = 2, log = () => {}
       await page.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null)))));
       const pretendard = await page.evaluate(() => document.fonts.check('13px "Pretendard Variable"', '가'));
       if (errors.length) throw new Error(`${r.name}: page errors:\n${errors.join('\n')}`);
-      const fonts = await platformFonts(page, '.tab.is-active .title');
+      const fonts = await platformFonts(page, '.tab.is-active .title, .tb-title .title');
+      const milestones = await page.evaluate(() => window.__milestones ?? { tagged: [], missing: [] });
       const file = path.join(outDir, `${r.name}.png`);
       await page.screenshot({ path: file, type: 'png' });
       const ms = Date.now() - started;
-      results.push({ name: r.name, file, ms, pretendard, fonts });
+      results.push({ name: r.name, file, ms, pretendard, fonts, milestones });
       log(`  ${r.name}.png  ${ms} ms`);
     }
   } finally {

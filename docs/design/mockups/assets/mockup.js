@@ -1,11 +1,12 @@
 /*
- * Mockup kit core: query parameters, icons, window shell.
+ * Mockup kit core: query parameters, icons, window shell, milestone overlay.
  *   ?theme=light|dark   (default: follow the OS)
  *   ?layout=A|B         (default A)
  *   ?font=system|pretendard
  *   ?density=compact|regular|comfortable
- *   ?ms=1               show milestone badges on elements that ship after M3
- * Page-specific parameters (state, scene, page, menu, nav) are read by views.js.
+ *   ?ms=1               milestone overlay: every element tagged data-ms gets a dashed outline
+ *                       and a badge; untagged interactive elements are counted as missing
+ * Page-specific parameters (state, scene, page, menu, nav, part) are read by views.js.
  */
 window.Mockup = (() => {
   const params = new URLSearchParams(location.search);
@@ -20,6 +21,7 @@ window.Mockup = (() => {
   root.dataset.font = param('font', ['system', 'pretendard'], 'system');
   root.dataset.density = param('density', ['compact', 'regular', 'comfortable'], 'regular');
   const showMilestones = params.get('ms') === '1';
+  if (showMilestones) root.dataset.msMode = '1';
 
   const isDark = () =>
     root.dataset.theme === 'dark' || (!root.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
@@ -33,53 +35,65 @@ window.Mockup = (() => {
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
   const tagHex = (n) => `var(--tag-${n})`;
   const kbd = (...keys) => `<span class="kbd-group">${keys.map((k) => `<span class="kbd">${k}</span>`).join('')}</span>`;
+  /** `data-ms` attribute; the label is what the screen catalogue (design-spec 10) calls the element. */
+  const ms = (milestone, label) => `data-ms="${milestone}" data-ms-label="${esc(label)}"`;
 
-  /** Palette launcher: a field-shaped button (title bar in A, sidebar in B). */
+  /** Palette launcher: a field-shaped button. A: title bar right; B: sidebar y 52–80 (title bar right when collapsed). */
   const launcher = () => `
-    <div class="field launcher" role="button" aria-label="검색 및 명령" data-ms="M3">
+    <div class="field launcher" role="button" aria-label="검색 및 명령" ${ms('M3', '⌘K 실행기')}>
       ${icon('search', 'sm')}<span class="placeholder ellipsis">검색 및 명령</span><span class="spacer"></span>${kbd('⌘', 'K')}
     </div>`;
 
   function tab(t) {
     const cls = ['tab', t.active ? 'is-active' : '', t.home ? 'home' : '', t.hover ? 'is-hover' : ''].join(' ');
-    const close = t.home ? '' : `<span class="close">${icon('x', 'sm')}</span>`;
+    const close = t.home ? '' : `<span class="close" title="탭 닫기 ⌘W">${icon('x', 'sm')}</span>`;
     return `<div class="${cls}" role="tab" aria-selected="${!!t.active}" title="${esc(t.title)}">${icon(t.icon)}<span class="title ellipsis">${esc(t.title)}</span>${close}</div>`;
   }
 
+  const toggle = (cls) =>
+    `<div class="icon-btn ${cls}" title="사이드바 보기/숨기기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
+
   /**
    * Window shell. Same DOM for both layouts; CSS grid areas place the sidebar under the
-   * title bar (A) or beside it at full height (B).
+   * title bar (A) or beside it at full height (B). With a single tab (the library alone,
+   * M3–M6) there is no tab strip: the title bar becomes a unified toolbar (`unified`).
    */
-  function windowShell({ tabs, sidebar = '', sidebarWidth, main, inspector = null, overlays = '', windowClass = '' }) {
-    const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', windowClass].join(' ');
-    const style = sidebarWidth ? `style="--sidebar-w:${sidebarWidth}px"` : '';
+  function windowShell({ tabs, unified = null, sidebar = '', main, inspector = null, overlays = '', above = '', inactive = false }) {
+    const single = tabs.length <= 1;
+    const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', inactive ? 'is-inactive' : '', single ? 'single-tab' : ''].join(' ');
+    const middle =
+      single && unified
+        ? `<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
+           <div class="tb-actions">${unified.actions || ''}</div>`
+        : `<div class="tabs" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
     return `
-    <div class="${cls}" ${style}>
+    <div class="${cls}">
       <div class="traffic-lights" aria-hidden="true"><i class="close"></i><i class="min"></i><i class="zoom"></i></div>
       <header class="titlebar">
-        <div class="icon-btn a-only" title="사이드바 보기/숨기기 ⌃⌘S">${icon('panel-left')}</div>
-        <div class="tabs" role="tablist" data-ms="M7">${tabs.map(tab).join('')}</div>
-        <span class="spacer"></span>
-        ${launcher()}
+        ${toggle('tb-toggle')}
+        ${middle}
+        <div class="tb-launcher">${launcher()}</div>
       </header>
       <nav class="sidebar">
-        <div class="sidebar-top"><div class="icon-btn" title="사이드바 보기/숨기기 ⌃⌘S">${icon('panel-left')}</div></div>
+        <div class="sidebar-top">${toggle('')}</div>
+        <div class="launcher-wrap">${launcher()}</div>
         ${sidebar}
       </nav>
       <main class="main">${main}</main>
       ${inspector ? `<aside class="inspector">${inspector}</aside>` : ''}
       ${overlays}
       <div class="sim-badge" title="macOS 창 크롬(신호등·비브런시)은 시뮬레이션입니다">SIMULATED</div>
-    </div>`;
+    </div>${above}`;
   }
 
   /** Standard tab set; `active` is the id of the selected tab. */
-  function standardTabs(active) {
+  function standardTabs(active, extra = {}) {
     return [
       { id: 'library', title: '라이브러리', icon: 'library-big', home: true },
       { id: 'pdf', title: '분자생물학 6장 · 신호 전달', icon: 'file-text' },
       { id: 'video', title: '강의 04 · 세포 신호', icon: 'clapperboard' },
       { id: 'paper', title: 'G Protein–Coupled Receptor Dynamics in Live Cells', icon: 'file-text' },
+      ...(extra.more || []),
     ].map((t) => ({ ...t, active: t.id === active }));
   }
 
@@ -96,33 +110,61 @@ window.Mockup = (() => {
     }
   }
 
-  function placeMilestones() {
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  };
+
+  /** Interactive elements that must resolve to a milestone (own or ancestor `data-ms`). */
+  const INTERACTIVE = [
+    '.btn', '.icon-btn', '.field', '.seg', '.tab', '.chip', '.nav-row', '.table-row', '.th', '.thumb', '.cue',
+    '.zoom-btn', '.speed-btn', '.mi', '.p-item', '.switch', '.checkbox', '.theme-tile', '.scrubber', '.drop-mode',
+    '.collection-path', '.volume', '.toast',
+  ].join(',');
+
+  /**
+   * Milestone overlay and coverage. Writes `window.__milestones` = { tagged: [{ms,label}], missing: [...] }
+   * so the render report can be checked against the screen catalogue.
+   */
+  function milestones() {
+    const scope = document.querySelector('.window');
+    const tagged = [];
+    const missing = [];
+    if (scope) {
+      for (const el of document.querySelectorAll('[data-ms]')) {
+        if (visible(el)) tagged.push({ ms: el.dataset.ms, label: el.dataset.msLabel || el.textContent.trim().slice(0, 24) });
+      }
+      for (const el of document.querySelectorAll(INTERACTIVE)) {
+        if (!visible(el) || el.closest('[data-ms]')) continue;
+        missing.push(`${el.className} “${(el.getAttribute('title') || el.textContent).trim().slice(0, 24)}”`);
+      }
+    }
+    window.__milestones = { tagged, missing };
+    if (missing.length) console.warn(`milestone coverage: ${missing.length} untagged`, missing);
     if (!showMilestones) return;
     for (const el of document.querySelectorAll('[data-ms]')) {
+      if (!visible(el)) continue;
       const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue;
       const badge = document.createElement('span');
       badge.className = 'ms-badge';
       badge.textContent = el.dataset.ms;
-      badge.style.left = `${Math.round(Math.min(r.right - 12, innerWidth - 26))}px`;
-      badge.style.top = `${Math.round(Math.max(r.top - 6, 2))}px`;
       document.body.appendChild(badge);
+      const w = badge.offsetWidth;
+      // Inside the element's top-right corner; left of a trailing count so numbers stay readable.
+      const count = el.querySelector(':scope > .count');
+      const right = count && visible(count) ? count.getBoundingClientRect().left - 4 : r.right - 2;
+      badge.style.left = `${Math.round(Math.max(2, Math.min(right - w, innerWidth - w - 2)))}px`;
+      badge.style.top = `${Math.round(Math.max(2, r.top + 2))}px`;
     }
   }
 
   async function mount(html) {
     document.body.innerHTML = html;
-    // Hide the layout-A-only title-bar toggle in B (B keeps it in the sidebar top).
-    // B keeps the sidebar toggle inside the sidebar; when the sidebar is collapsed the
-    // title bar takes over the traffic-light inset and the toggle (same as A).
-    if (root.dataset.layout === 'B' && !document.querySelector('.window.no-sidebar')) {
-      document.querySelectorAll('.a-only').forEach((el) => el.remove());
-    }
     await document.fonts.ready;
     placeMenus();
-    placeMilestones();
+    milestones();
     root.dataset.ready = '1';
   }
 
-  return { params, icon, esc, tagHex, kbd, launcher, windowShell, standardTabs, mount, isDark, showMilestones };
+  return { params, icon, esc, tagHex, kbd, ms, launcher, windowShell, standardTabs, mount, isDark, showMilestones };
 })();

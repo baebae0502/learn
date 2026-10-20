@@ -47,6 +47,13 @@ console.log(`rendered ${results.length} in ${((Date.now() - t0) / 1000).toFixed(
 const fontSets = [...new Set(results.map((r) => r.fonts.join(', ')))];
 console.log(`platform fonts for UI text: ${fontSets.join(' | ')}`);
 writeFileSync(path.join(outDir, 'report.json'), JSON.stringify({ platform: process.platform, scale, results }, null, 2));
+// Milestone coverage: every interactive element must sit inside a data-ms (design-spec 10, rubric 8).
+const uncovered = results.filter((r) => r.milestones.missing.length);
+for (const r of uncovered) console.warn(`milestone coverage: ${r.name}: ${r.milestones.missing.length} untagged → ${r.milestones.missing.slice(0, 5).join('; ')}`);
+const catalogue = new Map();
+for (const r of results) for (const t of r.milestones.tagged) catalogue.set(`${t.ms} ${t.label}`, t);
+writeFileSync(path.join(outDir, 'milestones.txt'), [...catalogue.keys()].sort().join('\n') + '\n');
+console.log(`milestones: ${catalogue.size} tagged elements (docs/design/renders/milestones.txt), ${uncovered.length} renders with untagged controls`);
 
 const complete = !only && renders === ALL;
 if (complete || args.includes('--sheets')) {

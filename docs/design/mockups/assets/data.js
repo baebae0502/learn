@@ -25,17 +25,18 @@ window.MockupData = (() => {
     { id: 'methods', name: '연구 방법', count: 22 },
     { id: 'journal', name: '논문 읽기 모임', count: 15 },
     { id: 'english', name: '영어 원서', count: 7 },
+    { id: 'conf', name: '학회 준비', count: 0 },
   ];
 
   // kind: pdf | video. progress: 0–100 or null (never opened). flags: linked, missing.
   const items = [
-    { id: 1, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: 62, added: '오늘 오전 9:12', tags: [1, 2] },
-    { id: 2, kind: 'video', title: '강의 04 · 세포 신호', authors: '윤재하', year: 2025, progress: 35, added: '오늘 오전 9:10', tags: [2] },
+    { id: 1, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: 62, added: '어제 오후 8:40', tags: [1, 2] },
+    { id: 2, kind: 'video', title: '강의 04 · 세포 신호', authors: '윤재하', year: 2025, progress: 35, added: '어제 오후 8:38', tags: [2] },
     { id: 3, kind: 'pdf', title: 'G Protein–Coupled Receptor Dynamics in Live Cells', authors: 'Okafor, Lindqvist', year: 2023, progress: 18, added: '어제 오후 4:41', tags: [4] },
     { id: 4, kind: 'pdf', title: '신호 증폭의 정량 모델', authors: '배유나', year: 2022, progress: null, added: '어제 오후 4:40', tags: [] },
     { id: 5, kind: 'video', title: '강의 05 · 2차 전령', authors: '윤재하', year: 2025, progress: null, added: '2026. 10. 17.', tags: [] },
     { id: 6, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: 100, added: '2026. 10. 16.', tags: [] },
-    { id: 7, kind: 'video', title: '수용체 탈감작 세미나 녹화', authors: '정민호', year: 2026, progress: 12, added: '2026. 10. 15.', tags: [5], linked: true },
+    { id: 7, kind: 'video', title: '수용체 탈감작 세미나 녹화', authors: '정민호', year: 2026, progress: null, added: '2026. 10. 15.', tags: [5], linked: true, unplayable: true },
     { id: 8, kind: 'pdf', title: 'Calcium Signaling Revisited', authors: 'Ishikawa, Petrov', year: 2024, progress: null, added: '2026. 10. 14.', tags: [], linked: true, missing: true },
     { id: 9, kind: 'pdf', title: '분자생물학 7장 · 세포 주기', authors: '한서진 외', year: 2024, progress: 8, added: '2026. 10. 12.', tags: [] },
     { id: 10, kind: 'video', title: '강의 06 · 세포 주기 조절', authors: '윤재하', year: 2025, progress: null, added: '2026. 10. 12.', tags: [] },
@@ -75,8 +76,8 @@ window.MockupData = (() => {
       ['판', '3판'],
       ['쪽수', '68쪽'],
       ['언어', '한국어'],
-      ['추가일', '2026. 10. 20. 오전 9:12'],
-      ['수정일', '2026. 10. 20. 오전 9:30'],
+      ['추가일', '2026. 10. 20. 오후 8:40'],
+      ['수정일', '2026. 10. 21. 오전 9:30'],
     ],
     reading: { page: 42, pages: 68, percent: 62, opened: '오늘 오전 9:24' },
     file: [
@@ -84,20 +85,23 @@ window.MockupData = (() => {
       ['크기', '4.2 MB'],
       ['원래 이름', 'molbio_ch06_signaling.pdf'],
     ],
-    sha: '9c41 7a2e … 51d8 e07b',
+    sha: '9c417a2e…',
+    shaFull: '9c417a2e5d0b7f13c8e4a96d2b1f07e3a5c86d49f0e2b7a13c5d8e6f051d8e07b',
     tags: [1, 2],
     plainTags: ['수용체', 'G 단백질', '2차 전령'],
     collections: [['분자생물학'], ['분자생물학', '6장 · 신호 전달']],
   };
 
   const outline = [
-    { t: '6.1 세포 신호의 종류', p: 3, lvl: 0 },
-    { t: '6.2 신호 증폭', p: 41, lvl: 0, open: true },
+    { t: '6.1 세포 신호의 종류', p: 2, lvl: 0 },
+    { t: '6.2 수용체의 구조', p: 14, lvl: 0 },
+    { t: '6.3 G 단백질 연결 수용체', p: 27, lvl: 0 },
+    { t: '6.4 신호 증폭', p: 41, lvl: 0, open: true },
     { t: '연쇄 반응과 증폭 배율', p: 42, lvl: 1, current: true },
     { t: '2차 전령의 역할', p: 44, lvl: 1 },
     { t: '신호의 종료', p: 46, lvl: 1 },
-    { t: '6.3 수용체 타이로신 인산화효소', p: 49, lvl: 0 },
-    { t: '6.4 신호 통합과 교차 대화', p: 57, lvl: 0 },
+    { t: '6.5 수용체 타이로신 인산화효소', p: 49, lvl: 0 },
+    { t: '6.6 신호 통합과 교차 대화', p: 57, lvl: 0 },
     { t: '6장 정리', p: 64, lvl: 0 },
     { t: '연습 문제', p: 66, lvl: 0 },
   ];

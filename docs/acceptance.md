@@ -3,16 +3,16 @@
 - 갱신: 2026-10-20(M0 Mac 증거 반영) · 기준: `docs/spec.html` 14절 · 최종 완료 판정은 P6에서 한다. R1 완료를 전체 완료로 보고하지 않는다.
 - 상태 범례: `통과`(이번 세션 자동 검증) · `부분`(일부만 자동 검증) · `미착수`. 근거 열의 테스트는 모두 현재 저장소에 존재한다. 상태 판정은 Linux/Xvfb 자동 검증 기준이다.
 - 검증(M0 시점): vitest 9개 파일 72개 테스트, Playwright E2E 6개(Linux) 통과.
-- **Mac 증거** 열: GitHub macOS 러너(M1 VM, `macos-15`/`macos-26`)에서 얻은 근거. 실행·수치는 [`mac-verification.md`](mac-verification.md). VM 값은 참고값이며 AC16 등 성능 판정은 기준 장비에서 한다. 기능 E2E는 run 39442173392(macOS 15)·39444862608(macOS 26)에서 6개 중 5개 통과 — `first-session.spec.ts`는 전체 화면 해제 멈춤으로 시간 초과.
+- **Mac 증거** 열: GitHub macOS 러너(M1 VM, `macos-15`/`macos-26`)에서 얻은 근거. 실행·수치는 [`mac-verification.md`](mac-verification.md). VM 값은 참고값이며 AC16 등 성능 판정은 기준 장비에서 한다. 기능 E2E는 run 39442173392(macOS 15)·39444862608(macOS 26)에서 6개 중 5개 통과(`first-session.spec.ts`가 전체 화면 해제 멈춤으로 시간 초과), 테스트 수정 후 run 39451895620(macOS 15)에서 6/6 통과 + darwin 전용 특성 테스트 1개 예상 실패.
 
 | ID | 요약 | 상태 | 근거 / 남은 일 | Mac 증거 |
 |---|---|---|---|---|
-| AC01 | 복사 가져오기 후 원래 경로 이동해도 열림, linked는 missing·재연결 | 부분 | `importer.test.ts` "keeps working after the original file is moved away (AC01)", `recovery.test.ts` "marks a moved linked file missing, then relinks only to identical content", `library.spec.ts` "import, duplicate prompt, missing linked file and relink" · 남은 일: MP4 linked E2E | `library.spec.ts` macOS 15·26 통과(run 39442173392, 39444862608) |
+| AC01 | 복사 가져오기 후 원래 경로 이동해도 열림, linked는 missing·재연결 | 부분 | `importer.test.ts` "keeps working after the original file is moved away (AC01)", `recovery.test.ts` "marks a moved linked file missing, then relinks only to identical content", `library.spec.ts` "import, duplicate prompt, missing linked file and relink" · 남은 일: MP4 linked E2E | `library.spec.ts` macOS 15·26 통과(run 39442173392, 39444862608, 39451895620) |
 | AC02 | 중복 선택 UI, 원본 삭제 없음 | 통과 | `importer.test.ts` "duplicates (AC02)"(원본 유지·내용 기준 중복·`allowDuplicate`), `library.spec.ts` 중복 다이얼로그(취소·추가·열기) | `library.spec.ts` 중복 다이얼로그 macOS 15·26 통과(같은 run) |
 | AC03 | PDF 회전·배율에서 필기 위치 유지(2pt) | 미착수 | P2 필기. 좌표 규칙은 ADR-0002, 배율·회전 렌더는 `first-session.spec.ts` "PDF zoom levels keep rendering"·"rapid page and zoom changes never surface a render error" | 배율·빠른 전환 렌더 E2E 2개 macOS 15·26 통과(같은 run). 필기는 P2 |
 | AC04 | 영상 letterbox·창 크기 변경 후 정지 프레임 필기 위치(0.5%) | 미착수 | P2 | — |
 | AC05 | 시간 메모 클릭 → seek 오차 ≤ 500ms | 부분 | `first-session.spec.ts` seek 측정: 오차 0.46ms, seek 195.7ms (p0-verification #4). 시간 메모는 P2 | seek 오차 중앙값 0.3ms·최대 0.5ms(macOS 15 run 39443464837), 최대 0.8ms(macOS 26 run 39444862608) — [mac-verification](mac-verification.md#기준선-실측) |
-| AC06 | 저장 완료 필기·위치가 강제 종료 후 복원, undo/redo | 부분 | `first-session.spec.ts` "…survive SIGKILL"(강제 종료 후 라이브러리·PDF 열기 유지). 필기·위치·undo는 P2 | macOS 미확인: `first-session.spec.ts`가 SIGKILL 단계 전 전체 화면 해제에서 멈춤([mac-verification](mac-verification.md#추가-발견-html-전체-화면-해제-멈춤-macos-전용)) |
+| AC06 | 저장 완료 필기·위치가 강제 종료 후 복원, undo/redo | 부분 | `first-session.spec.ts` "…survive SIGKILL"(강제 종료 후 라이브러리·PDF 열기 유지). 필기·위치·undo는 P2 | `first-session.spec.ts`(SIGKILL 후 재실행·라이브러리 유지) macOS 15 통과(run 39451895620). 이전 run은 전체 화면 해제 멈춤으로 그 단계 전에 실패([mac-verification](mac-verification.md#추가-발견-html-전체-화면-해제-멈춤-macos-전용)) |
 | AC07 | EPUB 글꼴/폭 변경 후 하이라이트 유지 | 미착수 | P5 | — |
 | AC08 | PPTX 변환·실패 안내·원본 보존 | 미착수 | P5 (LibreOffice 미설치 서버, Mac 확인) | — |
 | AC09 | 웹 스냅샷 offline·스크립트 차단 | 미착수 | P5 | — |

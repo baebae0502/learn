@@ -8,3 +8,5 @@ fixtures/generated/
 *.log
 .DS_Store
 .env*
+apps/desktop/src/renderer/public/pdfjs/
+*.tsbuildinfo

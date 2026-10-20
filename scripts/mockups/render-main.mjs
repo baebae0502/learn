@@ -1,9 +1,10 @@
 // Render-only Electron main for the design mockups. It is NOT the app: no preload, no
 // IPC, no app protocol, no CSP. It opens one frameless 1440×900 window that the render
 // script drives with Playwright (`page.goto(file://…)`), so mockups render with the same
-// Chromium as the app (Electron 44 / Chromium 152). The 1440×900 @2x viewport is set by
-// the render script through CDP device-metrics emulation, so the physical screen size
-// (1440×900 xvfb, a CI Mac display) does not clamp it.
+// Chromium as the app (Electron 44 / Chromium 152). @2x comes from
+// --force-device-scale-factor (Linux: a 2880×1800 xvfb screen). A 1x macOS display (CI
+// runners are 1024×768) ignores that switch, so render.mjs then emulates the scale through
+// CDP device metrics; enableLargerThanScreen keeps the 1440×900 window unclamped.
 import { app, BrowserWindow } from 'electron';
 
 app.commandLine.appendSwitch('force-device-scale-factor', process.env.MOCKUP_SCALE ?? '2');

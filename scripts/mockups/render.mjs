@@ -28,7 +28,15 @@ export async function launch({ scale = 2, width = 1440, height = 900 } = {}) {
     env: { ...process.env, MOCKUP_SCALE: String(scale), MOCKUP_WIDTH: String(width), MOCKUP_HEIGHT: String(height) },
   });
   const page = await app.firstWindow();
-  const size = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
+  let size = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
+  if (size[0] === width && size[1] === height && size[2] !== scale) {
+    // macOS ignores --force-device-scale-factor on a 1x display (CI runners are 1024×768 @1x),
+    // so emulate the Retina scale through CDP. The session stays attached for the app's lifetime
+    // so the override survives every page.goto.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile: false });
+    size = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
+  }
   if (size[0] !== width || size[1] !== height || size[2] !== scale) {
     await app.close();
     throw new Error(

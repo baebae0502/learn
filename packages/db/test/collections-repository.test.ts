@@ -134,7 +134,10 @@ describe('CollectionsRepository: soft delete / restore', () => {
     expectLearnError(() => repo.restore(newId()), 'NOT_FOUND', '컬렉션을 찾을 수 없습니다.');
     expectLearnError(() => repo.rename(a, 'x'), 'NOT_FOUND');
     expect(repo.restore(a).id).toBe(a);
+    const child = repo.create({ name: 'child', parentId: a }).id;
+    repo.softDelete(child);
     expect(repo.restore(a).id).toBe(a); // restoring a live collection is a no-op
+    expect(deletedAt(child)).not.toBeNull();
   });
 });
 

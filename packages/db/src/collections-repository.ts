@@ -91,7 +91,7 @@ export class CollectionsRepository {
     })();
   }
 
-  /** Soft-deletes the collection and its whole subtree; items and memberships are untouched. */
+  /** Soft-deletes the collection and its whole subtree; items and memberships are untouched (updated_at too). */
   softDelete(id: string): void {
     this.db.transaction(() => {
       if (!this.isLive(id)) throw notFound();
@@ -100,13 +100,16 @@ export class CollectionsRepository {
     })();
   }
 
-  /** Restores the collection's subtree and any deleted ancestors (so it has a live place in the tree). No-op if already live. */
+  /**
+   * Restores a soft-deleted collection with its whole subtree and any deleted ancestors (so it has a live place
+   * in the tree). A live collection is returned unchanged (its separately deleted descendants stay deleted).
+   */
   restore(id: string): Collection {
     return this.db.transaction(() => {
       if (!this.db.prepare('SELECT 1 FROM collections WHERE id = ?').get(id)) throw notFound();
-      const now = nowIso();
-      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = NULL, updated_at = @now WHERE id IN (SELECT id FROM sub) AND deleted_at IS NOT NULL`).run({ id, now });
-      this.db.prepare(`${ANCESTORS} UPDATE collections SET deleted_at = NULL, updated_at = @now WHERE id IN (SELECT id FROM anc) AND deleted_at IS NOT NULL`).run({ id, now });
+      if (this.isLive(id)) return this.get(id)!;
+      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM sub) AND deleted_at IS NOT NULL`).run({ id });
+      this.db.prepare(`${ANCESTORS} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM anc) AND deleted_at IS NOT NULL`).run({ id });
       return this.get(id)!;
     })();
   }

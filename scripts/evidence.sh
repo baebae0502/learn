@@ -83,6 +83,7 @@ download() { # name subdir -> prints "bytes seconds" (bytes = artifact zip size 
   local name=$1 sub=$2 size t0 t1
   size=$(python3 -I -c 'import json,sys; a=[x for x in json.load(open(sys.argv[1]))["artifacts"] if x["name"]==sys.argv[2]]; print(a[0]["size_in_bytes"] if a else "")' "$DEST/artifacts.json" "$name")
   [[ -n $size ]] || { echo "- -"; return 0; }
+  rm -rf "${DEST:?}/$sub" # re-download from scratch (gh refuses to overwrite)
   t0=$(date +%s.%N)
   gh run download "$RUN_ID" -R "$REPO" -n "$name" -D "$DEST/$sub" >/dev/null
   t1=$(date +%s.%N)
@@ -128,6 +129,14 @@ def find(name):
     for root, _, files in os.walk(os.path.join(dest, "evidence")):
         if name in files: return os.path.relpath(os.path.join(root, name), dest)
     return None
+def stats(name):
+    rel = find(name)
+    if not rel: return None
+    try:
+        st = json.load(open(os.path.join(dest, rel))).get("stats", {})
+        return {k: st.get(k) for k in ("expected", "unexpected", "skipped", "flaky")}
+    except (OSError, ValueError):
+        return None
 summary = {
     "runId": int(run_id), "url": url, "branch": branch, "suite": suite, "label": label, "runner": runner,
     "packaged": packaged == "true", "conclusion": conclusion, "headSha": view.get("headSha"),
@@ -136,9 +145,11 @@ summary = {
     "download": {"evidence": speed(ev_b, ev_s), "demo": speed(demo_b, demo_s)},
     "pngCount": len(pngs), "fullScreenPngs": sorted(p for p in pngs if p.endswith(".screen.png")),
     "envJson": find("env.json"), "baselineJson": find("baseline.json"), "spikesJson": find("spikes.json"),
+    "evidenceTests": stats("report.json"), "functionalE2E": stats("e2e-report.json"),
 }
 json.dump(summary, open(os.path.join(dest, "run.json"), "w"), indent=2)
-print(json.dumps({k: summary[k] for k in ("runId", "conclusion", "jobs", "macMinutes", "download", "pngCount", "envJson", "baselineJson", "spikesJson")}, indent=2))
+print(json.dumps({k: summary[k] for k in ("runId", "conclusion", "jobs", "macMinutes", "download", "pngCount",
+                                         "envJson", "baselineJson", "spikesJson", "evidenceTests", "functionalE2E")}, indent=2))
 print(f"evidence downloaded to {dest}")
 PY
 

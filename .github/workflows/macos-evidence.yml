@@ -161,9 +161,9 @@ jobs:
             pnpm exec playwright test -c playwright.evidence.config.ts --pass-with-no-tests --grep "@${SUITE}"
           fi
 
-      # The functional E2E suite on Apple Silicon (unpackaged app), part of the baseline.
+      # The functional E2E suite (tests/e2e, unpackaged app) on Apple Silicon: suites e2e and all.
       - name: Functional E2E
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["baseline","e2e","all"]'), inputs.suite) }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["e2e","all"]'), inputs.suite) }}
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
         run: pnpm exec playwright test --reporter=list,json
@@ -181,6 +181,8 @@ jobs:
             !evidence-results/**/*.webm
             !evidence-results/**/*.frames/**
             !test-results/**/*.webm
+            !test-results/**/library/**
+            !test-results/**/userdata/**
           retention-days: 14
           if-no-files-found: warn
 

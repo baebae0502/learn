@@ -196,6 +196,63 @@ test('spike 3+4: native context menu and menu bar capture', TAG, async () => {
   }
 });
 
+// Not one of the six planned spikes: run 39442173392 (macos-15) hung in tests/e2e/first-session.spec.ts at
+// `document.exitFullscreen()` right after `requestFullscreen()`. Characterise it without touching the app.
+test('extra: HTML video fullscreen enter/exit', TAG, async () => {
+  const s = await freshSession();
+  const within = async (fn: () => Promise<unknown>, ms: number) => {
+    const t0 = Date.now();
+    const outcome = await Promise.race([
+      fn().then(
+        () => 'resolved',
+        (e: Error) => `rejected: ${e.message.split('\n')[0]}`,
+      ),
+      sleep(ms).then(() => 'timeout'),
+    ]);
+    return { outcome, ms: Date.now() - t0 };
+  };
+  const winState = () =>
+    s.app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows()[0]!;
+      return { isFullScreen: w.isFullScreen(), bounds: w.getBounds() };
+    });
+  const docFullscreen = async () => {
+    const r = await Promise.race([s.page.evaluate(() => document.fullscreenElement !== null), sleep(5000).then(() => 'timeout')]);
+    return r;
+  };
+  try {
+    await openItem(s.page, 'sample-h264-aac');
+    const video = s.page.getByTestId('video');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2);
+    const attempts: Array<Record<string, unknown>> = [];
+    // First with a pause between enter and exit (as a user would), then immediately (as the E2E does).
+    for (const pauseMs of [2500, 0]) {
+      const enter = await within(() => video.evaluate((v: HTMLVideoElement) => v.requestFullscreen()), 15_000);
+      const afterEnter = { window: await winState(), documentFullscreen: await docFullscreen() };
+      await sleep(pauseMs);
+      const shot = pauseMs ? await fullScreenShot('spikeX-fullscreen-video', 'HTML fullscreen video (native macOS full screen)') : null;
+      const exit = await within(() => s.page.evaluate(() => document.exitFullscreen()), 15_000);
+      await sleep(1000);
+      const afterExit = { window: await winState(), documentFullscreen: await docFullscreen() };
+      let recovery: Record<string, unknown> | null = null;
+      if (exit.outcome !== 'resolved' || afterExit.window.isFullScreen) {
+        await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setFullScreen(false));
+        await sleep(3000);
+        recovery = { via: 'BrowserWindow.setFullScreen(false)', window: await winState(), documentFullscreen: await docFullscreen() };
+      }
+      attempts.push({ pauseMs, enter, afterEnter, shot: shot?.file ?? null, exit, afterExit, recovery });
+    }
+    const after = await fullScreenShot('spikeX-fullscreen-after', 'after both fullscreen attempts');
+    saveSpike('x-html-fullscreen', {
+      result: attempts.every((a) => (a['exit'] as { outcome: string }).outcome === 'resolved') ? 'exit resolves' : 'exitFullscreen did not resolve (see attempts)',
+      attempts,
+      after: after.file,
+    });
+  } finally {
+    await closeSession(s);
+  }
+});
+
 test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, async () => {
   test.skip(!PACKAGED, 'set LEARN_PACKAGED_APP to the packaged executable (workflow input packaged=true)');
   const errors: string[] = [];

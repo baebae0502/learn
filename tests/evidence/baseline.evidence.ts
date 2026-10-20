@@ -234,10 +234,26 @@ test('HEVC: record behaviour (not a pass/fail criterion)', TAG, async () => {
       decodingInfo,
     };
   });
+  // Canvas read-back of the decoded frame, right after opening and again after a short play
+  // (run 39442173392: the HEVC frame was visible on screen but read back black right after opening).
   const frame = state.readyState >= 2 ? await frameStats(page) : null;
+  let frameAfterPlay = null;
+  if (state.readyState >= 2) {
+    await video.evaluate(async (v: HTMLVideoElement) => {
+      v.muted = true;
+      await v.play();
+      await new Promise((r) => setTimeout(r, 700));
+      v.pause();
+      await new Promise<void>((r) => {
+        if ('requestVideoFrameCallback' in v) v.requestVideoFrameCallback(() => r());
+        setTimeout(r, 300);
+      });
+    });
+    frameAfterPlay = await frameStats(page);
+  }
   const uiError = (await page.getByTestId('video-error').count()) ? await page.getByTestId('video-error').innerText() : null;
   await allShots(app, page, '05-hevc', `HEVC (hvc1) fixture: readyState ${state.readyState}`);
-  saveBaseline({ hevc: { ...state, frame, uiError, note: 'recorded only; runner VM results are not authoritative' } });
+  saveBaseline({ hevc: { ...state, frame, frameAfterPlay, uiError, note: 'recorded only; runner VM results are not authoritative' } });
 });
 
 test('unsupported codec notice (MPEG-4 Part 2)', TAG, async () => {

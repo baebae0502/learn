@@ -30,6 +30,7 @@
     --accent-text: light-dark(oklch(49% 0.082 190), oklch(78% 0.1 190));
     --accent-soft: light-dark(oklch(53% 0.088 190 / 0.11), oklch(72% 0.1 190 / 0.16));
     --focus: light-dark(oklch(57% 0.096 190), oklch(72% 0.11 190));
+    --meter: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));
     --danger: light-dark(oklch(56% 0.19 27), oklch(64% 0.18 25));
     --danger-text: light-dark(oklch(51% 0.18 27), oklch(76% 0.13 25));
     --danger-soft: light-dark(oklch(56% 0.19 27 / 0.1), oklch(64% 0.18 25 / 0.18));

@@ -80,6 +80,10 @@ describe('colour tokens', () => {
           }
         });
 
+        it('meter fills (progress, spinner, scrubber) ≥ 3:1 against the track on every surface', () => {
+          for (const s of SURFACES) expectContrast(`meter/track@${s}`, c('meter'), on(c, 'bgTrack', s), 3);
+        });
+
         it('focus ring and strong borders ≥ 3:1 against the surfaces they sit on', () => {
           for (const s of SURFACES) {
             expectContrast(`focus/${s}`, c('focus'), c(s), 3);

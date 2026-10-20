@@ -84,6 +84,9 @@ export const colors = {
   accentText: { light: 'oklch(49% 0.082 190)', dark: 'oklch(78% 0.1 190)' },
   accentSoft: { light: 'oklch(53% 0.088 190 / 0.11)', dark: 'oklch(72% 0.1 190 / 0.16)' },
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
+  /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
+      (the dark accent fill is too dark for that; it is tuned for white text on it). */
+  meter: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
 
   // ── Semantic ────────────────────────────────────────────────────────────────
   danger: { light: 'oklch(56% 0.19 27)', dark: 'oklch(64% 0.18 25)' },

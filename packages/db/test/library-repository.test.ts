@@ -103,4 +103,29 @@ describe('LibraryRepository', () => {
     expect(repo.markRunningJobsInterrupted(nowIso())).toBe(1);
     expect((db.prepare('SELECT state FROM jobs').get() as { state: string }).state).toBe('interrupted');
   });
+
+  it('rejects non-dedupe job constraint violations (e.g. id collision)', () => {
+    const jobId = newId();
+    const a1 = asset(SHA_A, 'managed');
+    const rec1 = { ...record(a1), job: { id: jobId, kind: 'extract', dedupeKey: `extract:${SHA_A}:text-v0`, payload: { sha256: SHA_A } } };
+    repo.insertImported(rec1);
+
+    const a2 = asset(SHA_B, 'managed');
+    const rec2 = { ...record(a2), job: { id: jobId, kind: 'extract', dedupeKey: `extract:${SHA_B}:text-v0`, payload: { sha256: SHA_B } } };
+    expect(() => repo.insertImported(rec2)).toThrow(); // id collision, different dedupeKey
+    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 }); // rec2 rolled back
+    expect(repo.findAssetsBySha(SHA_B)).toEqual([]);
+  });
+
+  it('setAvailability throws on unknown asset', () => {
+    expect(() => repo.setAvailability('unknown-id', 'missing', nowIso())).toThrow(/setAvailability: no asset/);
+  });
+
+  it('setExternalPath throws when asset is not linked', () => {
+    const a = asset(SHA_A, 'managed');
+    repo.insertImported(record(a));
+    expect(() => repo.setExternalPath(a.id, '/path.pdf', nowIso())).toThrow(/setExternalPath: no linked asset/);
+    // verify row unchanged
+    expect(repo.getAsset(a.id)).toMatchObject({ externalPath: null, storageMode: 'managed' });
+  });
 });

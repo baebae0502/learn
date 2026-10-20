@@ -112,8 +112,9 @@ export class LibraryRepository {
       }
       if (rec.job) {
         this.db
-          .prepare(`INSERT OR IGNORE INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at)
-                    VALUES (?, ?, ?, 'queued', 0, ?, ?, ?)`)
+          .prepare(`INSERT INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at)
+                    VALUES (?, ?, ?, 'queued', 0, ?, ?, ?)
+                    ON CONFLICT(dedupe_key) DO NOTHING`)
           .run(rec.job.id, rec.job.kind, rec.job.dedupeKey, JSON.stringify(rec.job.payload), rec.item.createdAt, rec.item.createdAt);
       }
     })();
@@ -129,13 +130,15 @@ export class LibraryRepository {
   }
 
   setAvailability(assetId: string, availability: Availability, checkedAt: string): void {
-    this.db.prepare('UPDATE assets SET availability = ?, checked_at = ? WHERE id = ?').run(availability, checkedAt, assetId);
+    const result = this.db.prepare('UPDATE assets SET availability = ?, checked_at = ? WHERE id = ?').run(availability, checkedAt, assetId);
+    if (result.changes === 0) throw new Error(`setAvailability: no asset ${assetId}`);
   }
 
   setExternalPath(assetId: string, externalPath: string, checkedAt: string): void {
-    this.db
+    const result = this.db
       .prepare(`UPDATE assets SET external_path = ?, availability = 'available', checked_at = ? WHERE id = ? AND storage_mode = 'linked'`)
       .run(externalPath, checkedAt, assetId);
+    if (result.changes === 0) throw new Error(`setExternalPath: no linked asset ${assetId}`);
   }
 
   markRunningJobsInterrupted(now: string): number {

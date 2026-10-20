@@ -180,6 +180,45 @@ export function startRecording(seconds: number, name: string, description: strin
   return { file, done };
 }
 
+export interface Screencast {
+  stop(): Promise<ManifestEntry>;
+}
+
+/**
+ * Renderer-only fallback recording through CDP Page.startScreencast: JPEG frames plus frames.json
+ * (timestamps) in evidence-results/<label>/<name>.frames/. Assemble on the server with ffmpeg.
+ * Works on every platform. (Playwright `recordVideo` is not usable here: with Playwright 1.64.1 and
+ * Electron 44 the first window stays paused before navigation, see docs/mac-verification.md.)
+ */
+export async function startScreencast(page: Page, name: string, description: string): Promise<Screencast> {
+  const { abs: dir, rel } = outFile(`${name}.frames`);
+  fs.mkdirSync(dir, { recursive: true });
+  const cdp = await page.context().newCDPSession(page);
+  const frames: Array<{ file: string; timestamp: number | undefined }> = [];
+  cdp.on('Page.screencastFrame', (f) => {
+    const file = `${String(frames.length).padStart(5, '0')}.jpg`;
+    fs.writeFileSync(path.join(dir, file), Buffer.from(f.data, 'base64'));
+    frames.push({ file, timestamp: f.metadata.timestamp });
+    void cdp.send('Page.screencastFrameAck', { sessionId: f.sessionId }).catch(() => {});
+  });
+  await cdp.send('Page.startScreencast', { format: 'jpeg', quality: 70, everyNthFrame: 1 });
+  return {
+    async stop() {
+      await cdp.send('Page.stopScreencast').catch(() => {});
+      await cdp.detach().catch(() => {});
+      const ts = frames.map((f) => f.timestamp).filter((t): t is number => typeof t === 'number');
+      const seconds = ts.length > 1 ? ts.at(-1)! - ts[0]! : 0;
+      fs.writeFileSync(path.join(dir, 'frames.json'), `${JSON.stringify({ seconds, frames }, null, 2)}\n`);
+      return record({
+        file: frames.length ? rel : null,
+        kind: 'recording',
+        description: `${description} (CDP screencast, ${frames.length} frames over ${seconds.toFixed(1)}s)`,
+        ...(frames.length ? {} : { error: 'no screencast frames received' }),
+      });
+    },
+  };
+}
+
 export interface PlatformFont {
   familyName: string;
   postScriptName?: string;

@@ -20,7 +20,10 @@ export interface Session {
 export interface LaunchOptions {
   /** Extra environment variables, applied after the library/userData variables. */
   env?: Record<string, string>;
-  /** Passed through to Playwright (records every window of the app). */
+  /**
+   * Passed through to Playwright. Caution: with Playwright 1.64.1 + Electron 44 the first window stays
+   * paused before navigation when this is set (M0 spike, docs/mac-verification.md).
+   */
   recordVideo?: { dir: string; size?: { width: number; height: number } };
   /** Electron/Chromium switches, placed before the app path. */
   args?: string[];
@@ -46,9 +49,14 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),
     ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
   });
-  const page = await app.firstWindow();
-  await expect(page.getByTestId('app-ready')).toBeAttached();
-  return { app, page };
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByTestId('app-ready')).toBeAttached();
+    return { app, page };
+  } catch (e) {
+    await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
+    throw e;
+  }
 }
 
 /** Replace the native file dialog in the main process for the next calls. */

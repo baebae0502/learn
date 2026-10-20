@@ -206,12 +206,12 @@
     </div>`;
   }
 
-  function inspectorNone() {
+  function inspectorNone({ stats = true } = {}) {
     return `<div class="pane-empty" ${ms('M4', '선택 없음 항목 패널')}>
       ${icon('mouse-pointer-2')}
       <div class="pe-title">선택한 자료 없음</div>
       <div class="pe-text">표에서 자료를 고르면 정보와 읽기 진행이 여기에 보입니다.</div>
-      <div class="pe-text c-tertiary" style="margin-top:12px">분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB</div>
+      ${stats ? `<div class="pe-text c-tertiary" style="margin-top:12px">분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB</div>` : ''}
     </div>`;
   }
 
@@ -236,9 +236,6 @@
         ${sectionHead('컬렉션')}
         <div class="collection-path">${icon('folder', 'sm')}분자생물학</div>
       </section>
-      <section class="section" ${ms('M6', '휴지통으로 이동')}>
-        <div style="padding-top:12px"><div class="btn plain danger-text leading" title="휴지통으로 이동 ⌘⌫">${icon('trash-2', 'sm')}휴지통으로 이동</div></div>
-      </section>
     </div>`;
   }
 
@@ -260,7 +257,7 @@
         body: `<div class="pane-empty top" ${ms('M4', '검색 결과 없음')}>
           ${icon('search-x')}
           <div class="pe-title">‘효소 억제제’와 일치하는 자료가 없습니다</div>
-          <div class="pe-text">이 컬렉션의 제목·저자·태그에서 찾았습니다. 본문 검색은 아직 지원하지 않습니다.</div>
+          <div class="pe-text">이&nbsp;컬렉션의 제목·저자·태그에서 찾았습니다.</div>
           <div class="row gap-8" style="margin-top:8px"><div class="btn">검색어 지우기</div><div class="btn">내 라이브러리 전체에서 찾기</div></div>
         </div>`,
       });
@@ -270,16 +267,16 @@
       table = libraryTable({
         body: `<div class="pane-empty top" ${ms('M4', '불러오는 중')}><div class="loading"><span class="spinner"></span>불러오는 중…</div></div>`,
       });
-      insp = inspectorNone();
+      insp = inspectorNone({ stats: false });
     } else if (st === 'empty-collection') {
       header = libraryHeader({ title: '학회 준비', count: '0개' });
-      sidebar = librarySidebar({ selected: 'conf', focused: false });
+      sidebar = librarySidebar({ selected: 'conf', focused: true });
       table = libraryTable({
         body: `<div class="pane-empty top" ${ms('M5', '빈 컬렉션')}>
           ${icon('folder-open')}
-          <div class="pe-title">이 컬렉션은 비어 있습니다</div>
-          <div class="pe-text">표에서 자료를 이 컬렉션으로 끌어다 놓거나, 파일을 바로 이 컬렉션으로 가져오세요.</div>
-          <div class="btn" style="margin-top:8px">이 컬렉션으로 가져오기…</div>
+          <div class="pe-title">이&nbsp;컬렉션은 비어 있습니다</div>
+          <div class="pe-text">다른&nbsp;컬렉션의 자료를 사이드바의 ‘학회 준비’로 끌어&nbsp;놓거나, 파일을 바로 이&nbsp;컬렉션으로 가져오세요.</div>
+          <div class="btn" style="margin-top:8px">이&nbsp;컬렉션으로 가져오기…</div>
         </div>`,
       });
       insp = `<div class="pane-empty" ${ms('M5', '빈 컬렉션 항목 패널')}>${icon('folder')}<div class="pe-title">학회 준비</div><div class="pe-text">자료 0개 · 2026. 10. 21. 만듦</div></div>`;
@@ -303,7 +300,7 @@
     const main = `<div class="empty-state" ${ms('M3', '빈 라이브러리 안내')}>
         <div class="glyph">${icon('library-big', 'xl')}</div>
         <h1>아직 자료가 없습니다</h1>
-        <p>PDF나 동영상을 이 창에 끌어다 놓거나 가져올 파일을 선택하세요.<br>원본은 그대로 두고 라이브러리에 사본을 만듭니다.</p>
+        <p>PDF나 동영상을 이&nbsp;창에 끌어다 놓거나 가져올 파일을 선택하세요.<br>원본은 그대로 두고 라이브러리에 사본을 만듭니다.</p>
         <div class="actions">
           <div class="btn primary large" title="⌘O">파일 가져오기…</div>
           <div class="btn large" title="⌥⌘O">외부 파일 연결…</div>
@@ -420,19 +417,16 @@
 
   function pdfSidebar(nav, { mode = 'normal' } = {}) {
     const seg = (id, label, tag) => `<span class="seg ${nav === id ? 'is-on' : ''}" ${tag ? ms(tag[0], tag[1]) : ''}>${label}</span>`;
-    const noPages = mode === 'error' || mode === 'missing';
     const head = `<div class="reader-nav-head">
-        <div class="segmented fill ${noPages ? 'is-disabled' : ''}" ${ms('M7', '썸네일·목차 전환')}>${seg('thumbs', '썸네일')}${seg('outline', '목차')}${seg('notes', '필기', ['M9', '필기 칸'])}</div>
+        <div class="segmented fill ${mode === 'loading' ? 'is-disabled' : ''}" ${ms('M7', '썸네일·목차 전환')}>${seg('thumbs', '썸네일')}${seg('outline', '목차')}${seg('notes', '필기', ['M9', '필기 칸'])}</div>
       </div>`;
     if (mode === 'nooutline') {
-      return `${head}<div class="pane-empty top" ${ms('M7', '목차 없음')}>${icon('list-tree')}<div class="pe-title">이 PDF에는 목차가 없습니다</div><div class="pe-text">썸네일에서 쪽을 고르거나 ⌥⌘G로 쪽 번호를 입력하세요.</div></div>`;
-    }
-    if (mode === 'error' || mode === 'missing') {
-      return `${head}<div class="pane-empty top" ${ms('M7', '쪽 없음')}>${icon('file-x')}<div class="pe-title">쪽을 표시할 수 없습니다</div></div>`;
+      return `${head}<div class="pane-empty top" ${ms('M7', '목차 없음')}>${icon('list-tree')}<div class="pe-title">이&nbsp;PDF에는 목차가 없습니다</div><div class="pe-text">썸네일에서 쪽을 고르거나 ${kbd('⌥', '⌘', 'G')}로 쪽&nbsp;번호를 입력하세요.</div></div>`;
     }
     if (mode === 'loading') {
-      return `${head}<div class="thumbs" ${ms('M7', '썸네일 불러오는 중')}><div class="thumbs-inner">${[1, 2, 3, 4]
-        .map((n) => `<div class="thumb"><div class="thumb-page placeholder"></div><span class="lbl">${n}</span></div>`)
+      // Reading position is being restored to p. 42: placeholders around it, current ring on 42.
+      return `${head}<div class="thumbs" ${ms('M7', '썸네일 불러오는 중')}><div class="thumbs-inner" style="transform:translateY(-104px)">${[40, 41, 42, 43, 44]
+        .map((n) => `<div class="thumb ${n === 42 ? 'is-current' : ''}"><div class="thumb-page placeholder"></div><span class="lbl">${n}</span></div>`)
         .join('')}</div></div>`;
     }
     const search =
@@ -553,33 +547,50 @@
     const page = ['original', 'sepia', 'dark'].includes(pageParam) ? pageParam : M.isDark() ? 'dark' : 'original';
     document.documentElement.dataset.page = page;
 
-    if (state === 'loading' || state === 'error' || state === 'missing') {
-      const tabsFor = {
-        loading: ['pdf', '분자생물학 6장 · 신호 전달'],
-        error: ['broken', 'Ion Channels in Excitable Membranes'],
-        missing: ['missing', 'Calcium Signaling Revisited'],
+    // Transient states keep the reader toolbar (disabled); final states replace it with a title
+    // row, like the unplayable-video screen (rubric 8: transient = disabled, final = hidden).
+    if (state === 'loading') {
+      const main = `${pdfToolbar({ find: false, disabled: true })}
+        <div class="reader-body"><div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>42쪽을 여는 중…</div></div></div></div></div></div>`;
+      return M.windowShell({ tabs: M.standardTabs('pdf'), sidebar: pdfSidebar('thumbs', { mode: 'loading' }), main });
+    }
+    if (state === 'error' || state === 'missing' || state === 'locked') {
+      const doc = {
+        error: { id: 'broken', title: 'Ion Channels in Excitable Membranes', meta: 'Lindqvist · 2018 · PDF' },
+        missing: { id: 'missing', title: 'Calcium Signaling Revisited', meta: 'Ishikawa, Petrov · 2024 · 외부 연결' },
+        locked: { id: 'locked', title: 'Receptor Tyrosine Kinases: Structure and Function', meta: 'Brennan, Osei · 2019 · PDF' },
       }[state];
-      const tabs = M.standardTabs(tabsFor[0], { more: state === 'loading' ? [] : [{ id: tabsFor[0], title: tabsFor[1], icon: 'file-text' }] });
+      const tabs = M.standardTabs(doc.id, { more: [{ id: doc.id, title: doc.title, icon: 'file-text' }] });
       const stage = {
-        loading: `<div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>여는 중…</div></div></div></div>`,
-        error: `<div class="stage-center"><div class="notice" role="alert" ${ms('M7', 'PDF 열기 실패')}>
+        error: `<div class="notice" role="alert" ${ms('M7', 'PDF 열기 실패(손상)')}>
             <div class="glyph">${icon('file-x', 'xl')}</div>
-            <h2>이 PDF를 열 수 없습니다</h2>
-            <p>파일이 손상되었거나 암호로 보호되어 있습니다. 원본 파일은 그대로 보관됩니다.</p>
+            <h2>이&nbsp;PDF를 열 수 없습니다</h2>
+            <p>파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본 파일은 그대로 보관됩니다. 다른&nbsp;사본이 있으면 다시 가져오세요.</p>
             <div class="file">ion-channels-excitable.pdf · 2.3 MB</div>
             <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
-          </div></div>`,
-        missing: `<div class="stage-center"><div class="notice" role="alert" ${ms('M3', '원본 없음(다시 연결)')}>
+          </div>`,
+        locked: `<div class="notice" role="alert" ${ms('M7', '암호로 보호된 PDF(암호 입력)')}>
+            <div class="glyph">${icon('lock', 'xl')}</div>
+            <h2>암호로 보호된 PDF입니다</h2>
+            <p>암호를 입력하면 이&nbsp;탭에서 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.</p>
+            <div class="file">receptor-tyrosine-kinases.pdf · 5.6 MB</div>
+            <div class="actions"><div class="btn primary" title="↩">암호 입력…</div><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div></div>
+          </div>`,
+        missing: `<div class="notice" role="alert" ${ms('M3', '원본 없음(다시 연결)')}>
             <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
             <h2>원본 파일을 찾을 수 없습니다</h2>
-            <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새 위치를 지정하세요. 필기와 태그는 그대로 남아 있습니다.</p>
+            <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
             <div class="file" title="/Users/seojin/Downloads/papers/calcium-signaling.pdf">~/Downloads/papers/calcium-signaling.pdf</div>
             <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리에서 보기</div></div>
-          </div></div>`,
+          </div>`,
       }[state];
-      const main = `${pdfToolbar({ find: false, disabled: true, page: state === 'loading' ? '42' : '—', pages: state === 'loading' ? '68' : '—' })}
-        <div class="reader-body"><div class="pdf-stage">${stage}</div></div>`;
-      return M.windowShell({ tabs, sidebar: pdfSidebar('thumbs', { mode: state }), main });
+      const main = `<div class="reader-toolbar"><span class="t-headline ellipsis media-title">${esc(doc.title)}</span><span class="c-tertiary t-footnote ellipsis">${doc.meta}</span></div>
+        <div class="reader-body"><div class="pdf-stage"><div class="stage-center">${stage}</div></div></div>`;
+      const sidebar =
+        state === 'locked'
+          ? `<div class="pane-empty top" ${ms('M7', '쪽 없음')}>${icon('lock')}<div class="pe-title">암호를 입력하면 쪽이 보입니다</div></div>`
+          : `<div class="pane-empty top" ${ms('M7', '쪽 없음')}>${icon('file-x')}<div class="pe-title">표시할 쪽이 없습니다</div></div>`;
+      return M.windowShell({ tabs, sidebar, main });
     }
 
     if (state === 'nooutline') {
@@ -653,7 +664,7 @@
       return `${head}<div class="pane-empty top" ${ms('M8', '자막 없음')}>
         ${icon('captions-off')}
         <div class="pe-title">자막이 없습니다</div>
-        <div class="pe-text">SRT나 VTT 자막 파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그 시간으로 이동할 수 있습니다.</div>
+        <div class="pe-text">SRT나 VTT 자막 파일을 추가하면 대본이 여기에 표시되고, 문장을 눌러 그&nbsp;시간으로 이동할 수 있습니다.</div>
         <div class="btn">자막 파일 추가…</div>
       </div>`;
     }
@@ -662,8 +673,8 @@
     if (mode === 'nomatch') {
       return `${head}${field}<div class="pane-empty top" ${ms('M8', '대본 검색 결과 없음')}>
         ${icon('search-x')}
-        <div class="pe-title">‘칼슘 펌프’가 나오는 대사가 없습니다</div>
-        <div class="pe-text">자막 파일의 글자에서만 찾습니다. 다른 낱말로 찾아보세요.</div>
+        <div class="pe-title">‘칼슘 펌프’가 나오는 문장이 없습니다</div>
+        <div class="pe-text">자막 파일의 글자에서만 찾습니다. 다른&nbsp;낱말로 찾아보세요.</div>
       </div>`;
     }
     const currentIndex = D.cues.findIndex((c) => c[2] === 'current');
@@ -719,8 +730,8 @@
       return `${head}<div class="video-stage">
         <div class="codec-notice" role="alert" ${ms('M3', '재생 불가 안내(Finder에서 보기·기본 앱으로 열기)')}>
           <div class="glyph">${icon('video-off', 'xl')}</div>
-          <h2>이 동영상은 재생할 수 없습니다</h2>
-          <p>Learn의 재생 엔진이 이 파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본 파일은 그대로 보관됩니다.</p>
+          <h2>이&nbsp;동영상은 재생할 수 없습니다</h2>
+          <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본 파일은 그대로 보관됩니다.</p>
           <div class="file mono">seminar-0915.avi · 1.3 GB</div>
           <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
         </div>
@@ -757,7 +768,7 @@
     if (state === 'none') {
       return `<div class="scrim" style="opacity:0.55"></div>
       <div class="palette" role="dialog" aria-label="명령 팔레트" ${ms('M3', '명령 팔레트')}>
-        <div class="p-input">${icon('search')}<span>효소 억제제</span><span class="caret"></span><span class="p-scope">${kbd('esc')}</span></div>
+        <div class="p-input">${icon('search')}<span>효소 억제제</span><span class="caret"></span></div>
         <div class="p-empty" ${ms('M3', '팔레트 결과 없음')}>
           <div class="pe-title">‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다</div>
           <div class="pe-text">초성(ㅎㅅ)이나 영어 제목으로도 찾을 수 있습니다.</div>
@@ -841,7 +852,7 @@
           <div class="group-label">라이브러리</div>
           <div class="form-group">
             <div class="form-row stacked">
-              <span class="fr-label">위치<span class="hint">자료 사본과 데이터베이스가 있는 폴더입니다. 다른 폴더를 고르면 Learn을 다시 시작하고 그 폴더의 라이브러리를 엽니다.</span></span>
+              <span class="fr-label">위치<span class="hint">자료 사본과 데이터베이스가 있는 폴더입니다. 다른&nbsp;폴더를 고르면 Learn을 다시 시작하고 그&nbsp;폴더의 라이브러리를 엽니다.</span></span>
               <div class="path-box" title="/Users/seojin/Library/Application Support/Learn/Library">${icon('folder', 'sm')}<span class="ellipsis">~/Library/Application Support/Learn/Library</span></div>
               <div class="row gap-8"><div class="btn has-icon">${icon('folder-search')}Finder에서 보기</div><div class="btn">다른 폴더 선택…</div></div>
             </div>
@@ -899,17 +910,18 @@
   }
 
   function recoverySheet() {
-    const ci = (ic, cls, title, text, meta, metaTitle, action) =>
-      `<div class="check-item"><span class="status-dot ${cls}">${icon(ic)}</span><div><div class="ci-title">${title}</div><div class="ci-text">${text}</div>${meta ? `<div class="ci-meta ellipsis" title="${metaTitle}">${meta}</div>` : ''}</div><div class="ci-action">${action}</div></div>`;
+    // Meta line: footnote with tabular figures; paths only in mono (design-spec 4, 6).
+    const ci = (ic, cls, title, text, meta, metaTitle, action, metaMono = false) =>
+      `<div class="check-item"><span class="status-dot ${cls}">${icon(ic)}</span><div><div class="ci-title">${title}</div><div class="ci-text">${text}</div>${meta ? `<div class="ci-meta ellipsis ${metaMono ? 'mono' : ''}" title="${metaTitle}">${meta}</div>` : ''}</div><div class="ci-action">${action}</div></div>`;
     return `<div class="dialog wide" role="dialog" aria-label="라이브러리 점검" ${ms('M6', '라이브러리 점검 시트')}>
       <div class="d-body" style="padding-bottom:12px">
         <div class="d-title" style="align-items:flex-start"><span class="badge-icon warning">${icon('stethoscope')}</span><div><h2 style="margin-top:5px">라이브러리 점검</h2>
-          <p class="d-text" style="margin-top:4px">지난번에 Learn이 정상적으로 종료되지 않아 라이브러리를 확인했습니다. 자동으로 지운&nbsp;것은 없습니다.</p></div></div>
+          <p class="d-text" style="margin-top:4px">지난번에 Learn이 정상적으로 종료되지 않아 라이브러리를 확인했습니다. 자동으로&nbsp;지운&nbsp;것은 없습니다.</p></div></div>
       </div>
       <div class="card checklist" style="margin:0 20px">
         ${ci('circle-check', 'c-success', '자료와 필기', '모두 그대로입니다. 자료 128개와 필기를 확인했습니다.', '', '', '')}
-        ${ci('triangle-alert', 'c-warning', '가져오다 멈춘 임시 파일 2개', '라이브러리에는 추가되지 않았습니다. 정리하면 디스크 공간을 돌려받습니다.', '412 MB', '', '<div class="btn small">임시 파일 정리</div>')}
-        ${ci('triangle-alert', 'c-warning', '원본을 찾을 수 없는 외부 연결 1개', 'Calcium Signaling Revisited — 파일을 옮겼다면 새&nbsp;위치를 지정하세요.', '~/Downloads/papers/calcium-signaling.pdf', '/Users/seojin/Downloads/papers/calcium-signaling.pdf', '<div class="btn small">다시 연결…</div>')}
+        ${ci('triangle-alert', 'c-warning', '가져오다 멈춘 임시 파일 2개', '라이브러리에는 추가되지 않았습니다. 정리하면 디스크&nbsp;공간을 돌려받습니다.', '412 MB', '', '<div class="btn small">임시 파일 정리</div>')}
+        ${ci('triangle-alert', 'c-warning', '원본을 찾을 수 없는 외부 연결 1개', 'Calcium Signaling Revisited — 파일을 옮겼다면 새&nbsp;위치를 지정하세요.', '~/Downloads/papers/calcium-signaling.pdf', '/Users/seojin/Downloads/papers/calcium-signaling.pdf', '<div class="btn small">다시 연결…</div>', true)}
         ${ci('info', 'c-secondary', '따로 보관한 손상된 사본 1개', '내용이 손상되어 라이브러리에서 뺀 사본입니다. 확인한 뒤 직접 지울 수 있습니다.', '분자생물학 6장 · 신호 전달 · 4.2 MB', '', '<div class="btn small">Finder에서 보기</div>')}
       </div>
       <div class="d-foot" style="padding-top:16px"><span class="t-footnote c-tertiary">언제든 메뉴 막대의 파일 › 라이브러리 점검에서 다시 할 수 있습니다.</span><span class="spacer"></span><div class="btn primary" title="↩">완료</div></div>
@@ -996,7 +1008,7 @@
             <div class="toast static"><span class="spinner"></span><div><div class="t-title">가져오는 중 · <span class="num">7 / 12</span></div><div class="t-body ellipsis">강의 08 · 효소 조절.mp4</div></div><div class="t-actions"><div class="btn small">취소</div></div><div class="t-progress"><span class="progress wide"><i style="width:58%"></i></span><span class="pct t-footnote c-secondary">58%</span></div></div>
             <div class="toast static"><span class="c-success">${icon('circle-check')}</span><div><div class="t-title">12개 중 11개를 가져왔습니다</div><div class="t-body">1개는 이미 있는 자료라 건너뛰었습니다.</div></div><div class="t-actions"><div class="btn small plain link">보기</div></div></div>
           </div>
-          <div class="toast static"><span class="c-danger">${icon('circle-alert')}</span><div><div class="t-title">필기를 저장하지 못했습니다</div><div class="t-body">디스크 공간이 부족합니다. 공간을 확보한 뒤 다시 시도하세요.</div></div><div class="t-actions"><div class="btn small">다시 시도</div></div></div>
+          <div class="toast static"><span class="c-danger">${icon('circle-alert')}</span><div><div class="t-title">필기를 저장하지 못했습니다</div><div class="t-body">디스크&nbsp;공간이 부족합니다. 공간을 확보한 뒤 다시 시도하세요.</div></div><div class="t-actions"><div class="btn small">다시 시도</div></div></div>
         </div>
       </div>`;
     }
@@ -1046,6 +1058,7 @@
                 ['is-hover', '호버', 41],
                 ['is-current', '현재 쪽', 42],
                 ['is-focus', '포커스', 43],
+                ['is-current is-focus', '현재 쪽 + 포커스', 42],
               ]
                 .map(([c, l, n]) => `<div class="state-col"><div class="thumb ${c}" style="zoom:.62"><div class="thumb-page"><div class="pdf-page">${pageBody(n, { find: false })}</div></div><span class="lbl">${n}</span></div><span class="t-caption c-tertiary">${l}</span></div>`)
                 .join('')}
@@ -1054,7 +1067,7 @@
           <section class="panel" style="grid-column:span 3">
             <h3>스크러버</h3>
             ${row('기본', `<div class="scrubber" style="width:420px"><div class="track"><span class="buffered" style="width:58%"></span><span class="played" style="width:35%"></span><span class="knob" style="left:35%"></span></div></div>`)}
-            ${row('호버', `<div class="scrubber is-hover" style="width:420px;margin-top:20px"><div class="track"><span class="buffered" style="width:58%"></span><span class="played" style="width:35%"></span><span class="knob" style="left:35%"></span></div><span class="hover-time" style="left:52%">27:08</span></div>`)}
+            ${row('호버', `<div class="scrubber is-hover" style="width:420px;margin-top:20px"><div class="track"><span class="buffered" style="width:58%"></span><span class="played" style="width:35%"></span><span class="hover-pos" style="left:52%"></span><span class="knob" style="left:35%"></span></div><span class="hover-time" style="left:52%">27:08</span></div>`)}
             ${row('끌기', `<div class="scrubber is-dragging" style="width:420px;margin-top:20px"><div class="track"><span class="buffered" style="width:58%"></span><span class="played" style="width:44%"></span><span class="knob" style="left:44%"></span></div><span class="hover-time" style="left:44%">22:57</span></div>`)}
           </section>
         </div>
@@ -1084,7 +1097,7 @@
           ${type('title2', '이미 라이브러리에 있는 파일입니다')}
           ${type('title3', '분자생물학 6장 · 신호 전달')}
           ${type('callout', 'PDF나 동영상을 이 창에 끌어다 놓으세요.')}
-          ${type('body', '하나의 활성 수용체는 수백 개의 G 단백질을 활성화한다.')}
+          ${type('body', '하나의 활성 수용체는 수백 개의 G&nbsp;단백질을 활성화한다.')}
           ${type('headline', '가져오는 중 · 7 / 12')}
           ${type('paragraph', '외부 연결 자료 7개는 파일 없이 위치만 기록했습니다.')}
           ${type('footnote', '42 / 68쪽에서 멈춤 · 오늘 오전 9:24')}

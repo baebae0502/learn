@@ -53,6 +53,10 @@ for (const r of uncovered) console.warn(`milestone coverage: ${r.name}: ${r.mile
 const catalogue = new Map();
 for (const r of results) for (const t of r.milestones.tagged) catalogue.set(`${t.ms} ${t.label}`, t);
 writeFileSync(path.join(outDir, 'milestones.txt'), [...catalogue.keys()].sort().join('\n') + '\n');
+// Korean copy lint: determiner + noun and listed compounds must be bound with U+00A0.
+const lint = results.filter((r) => r.copyLint.length);
+for (const r of lint) console.warn(`copy lint: ${r.name}: ${r.copyLint.join('; ')}`);
+console.log(`copy lint: ${lint.length} renders with unbound Korean groups`);
 console.log(`milestones: ${catalogue.size} tagged elements (docs/design/renders/milestones.txt), ${uncovered.length} renders with untagged controls`);
 
 const complete = !only && renders === ALL;

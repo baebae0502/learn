@@ -91,10 +91,11 @@ export async function renderMockups({ renders, outDir, scale = 2, log = () => {}
       if (errors.length) throw new Error(`${r.name}: page errors:\n${errors.join('\n')}`);
       const fonts = await platformFonts(page, '.tab.is-active .title, .tb-title .title');
       const milestones = await page.evaluate(() => window.__milestones ?? { tagged: [], missing: [] });
+      const copyLint = await page.evaluate(() => window.__copyLint ?? []);
       const file = path.join(outDir, `${r.name}.png`);
       await page.screenshot({ path: file, type: 'png' });
       const ms = Date.now() - started;
-      results.push({ name: r.name, file, ms, pretendard, fonts, milestones });
+      results.push({ name: r.name, file, ms, pretendard, fonts, milestones, copyLint });
       log(`  ${r.name}.png  ${ms} ms`);
     }
   } finally {

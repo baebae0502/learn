@@ -150,12 +150,31 @@ window.Mockup = (() => {
       badge.textContent = el.dataset.ms;
       document.body.appendChild(badge);
       const w = badge.offsetWidth;
-      // Inside the element's top-right corner; left of a trailing count so numbers stay readable.
-      const count = el.querySelector(':scope > .count');
-      const right = count && visible(count) ? count.getBoundingClientRect().left - 4 : r.right - 2;
-      badge.style.left = `${Math.round(Math.max(2, Math.min(right - w, innerWidth - w - 2)))}px`;
-      badge.style.top = `${Math.round(Math.max(2, r.top + 2))}px`;
+      const h = badge.offsetHeight;
+      // A tag on the outline: straddles the element's top edge at its right end, so it never
+      // covers the element's own glyphs, counts or dots.
+      badge.style.left = `${Math.round(Math.max(2, Math.min(r.right - w - 4, innerWidth - w - 2)))}px`;
+      // Small targets (dots, short rows of glyphs) get the tag fully above them.
+      badge.style.top = `${Math.round(Math.max(1, r.height < 20 ? r.top - h - 2 : r.top - h / 2))}px`;
     }
+  }
+
+  /**
+   * Copy lint for Korean UI text we write: a determiner (이·그·저·새·다른·각·모든·어느) and its noun,
+   * and listed short compounds, must be bound with U+00A0 so a line never splits them.
+   * User/document text (titles, subtitles, PDF pages) is out of scope.
+   */
+  const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files';
+  const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽'];
+  function copyLint() {
+    const issues = [];
+    for (const el of document.querySelectorAll(COPY)) {
+      const t = el.textContent;
+      for (const m of t.matchAll(/(?:^|[\s(‘“])(이|그|저|새|다른|각|모든|어느) (?=[가-힣])/g)) issues.push(`“${m[0].trim()} …” in ${el.className}`);
+      for (const c of COMPOUNDS) if (t.includes(c)) issues.push(`“${c}” in ${el.className}`);
+    }
+    window.__copyLint = issues;
+    if (issues.length) console.warn(`copy lint: ${issues.length}`, issues);
   }
 
   async function mount(html) {
@@ -163,6 +182,7 @@ window.Mockup = (() => {
     await document.fonts.ready;
     placeMenus();
     milestones();
+    copyLint();
     root.dataset.ready = '1';
   }
 

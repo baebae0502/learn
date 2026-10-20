@@ -63,6 +63,7 @@ export const VARIANTS = [
   variant('reader-pdf', 'light', 'A', { state: 'loading' }, 'loading', 'PDF 여는 중'),
   variant('reader-pdf', 'dark', 'B', { state: 'error' }, 'error', 'PDF 열기 실패'),
   variant('reader-pdf', 'light', 'B', { state: 'missing' }, 'missing', '원본 파일 없음(다시 연결)'),
+  variant('reader-pdf', 'light', 'A', { state: 'locked' }, 'locked', '암호로 보호된 PDF'),
   variant('reader-pdf', 'light', 'A', { state: 'nooutline', nav: 'outline' }, 'nooutline', 'PDF 목차 없음'),
   variant('reader-video', 'light', 'B', { state: 'nosubs' }, 'nosubs', '동영상 자막 없음'),
   variant('reader-video', 'dark', 'A', { state: 'nomatch' }, 'nomatch', '대본 검색 결과 없음'),

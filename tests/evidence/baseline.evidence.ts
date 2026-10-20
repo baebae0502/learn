@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { FIXTURES, launch, stubOpenDialog } from '../e2e/helpers';
-import { IS_MAC, allShots, platformFonts, writeJson, EVIDENCE_ROOT } from './capture';
+import { IS_MAC, allShots as captureAll, platformFonts, writeJson, EVIDENCE_ROOT, type ManifestEntry } from './capture';
 import { writeEnv } from './env';
 
 const TAG = { tag: '@baseline' };
@@ -102,6 +102,16 @@ async function backToLibrary(page: Page): Promise<void> {
   await expect(page.getByTestId('library-table')).toBeVisible();
 }
 
+/** page + window + full-screen captures; on macOS the native window and full-screen files must exist. */
+async function allShots(app: ElectronApplication, page: Page, name: string, description: string): Promise<ManifestEntry[]> {
+  const shots = await captureAll(app, page, name, description);
+  expect(shots[0]!.file, `${name}: page screenshot`).not.toBeNull();
+  if (IS_MAC) {
+    for (const s of shots.slice(1)) expect(s.file, `${name}: ${s.kind} capture failed: ${s.error ?? s.skipped ?? ''}`).not.toBeNull();
+  }
+  return shots;
+}
+
 let app: ElectronApplication;
 let page: Page;
 let tmp: string;
@@ -139,7 +149,7 @@ test('library screen and fonts', TAG, async () => {
     fonts.push(await platformFonts(page, sel).catch((e: Error) => ({ selector: sel, error: e.message })));
   }
   saveBaseline({ fonts });
-  expect(shots[0]!.file).not.toBeNull();
+  expect(shots).toHaveLength(3);
 });
 
 test('PDF: time to first rendered page', TAG, async () => {

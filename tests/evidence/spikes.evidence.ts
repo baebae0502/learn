@@ -62,7 +62,8 @@ async function captureOpenMenu(app: ElectronApplication, processName: string, in
   const runningAfterDelay = child.exitCode === null && child.signalCode === null;
   const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
   child.kill('SIGTERM');
-  const unblock = await tryExec('killall', ['System Events']); // a pending AXPress keeps System Events busy
+  // A pending AXPress keeps System Events busy; restart it only on throwaway CI machines.
+  const unblock = process.env['CI'] ? await tryExec('killall', ['System Events']) : { ok: false, skipped: 'not CI' };
   await sleep(800);
   await pressEscape();
   await sleep(300);
@@ -71,7 +72,7 @@ async function captureOpenMenu(app: ElectronApplication, processName: string, in
     osascriptStillRunningAfter1500ms: runningAfterDelay,
     osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
     stderr: stderr.trim(),
-    killallSystemEvents: unblock.ok,
+    killallSystemEvents: 'skipped' in unblock ? unblock.skipped : unblock.ok,
   };
 
   await focusApp(app);

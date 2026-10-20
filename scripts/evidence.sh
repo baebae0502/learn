@@ -11,10 +11,11 @@
 #
 # Output: evidence/<label>/<run_id>/{evidence,demo}/ plus run.json (timings, download speed).
 # EVIDENCE_RUN_ID=<id> skips the dispatch and attaches to (or re-downloads) an existing run.
+# Exit status: the run's (gh run watch --exit-status); 3 if the run passed but its evidence could not be downloaded.
 # Every macOS run costs billed minutes (x10 on a private repo): log it in docs/mac-verification.md.
 set -euo pipefail
 
-usage() { sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 [[ $# -ge 3 && $# -le 5 ]] || usage
 BRANCH=$1 SUITE=$2 LABEL=$3 RUNNER=${4:-macos-15} PACKAGED=${5:-false}
@@ -84,19 +85,24 @@ mkdir -p "$DEST"
 gh run view "$RUN_ID" -R "$REPO" --json jobs,createdAt,updatedAt,conclusion,headSha,headBranch > "$DEST/run-view.json"
 gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" > "$DEST/artifacts.json"
 
-download() { # name subdir -> prints "bytes seconds" (bytes = artifact zip size reported by the API)
+download() { # name subdir -> prints "bytes seconds"; returns 2 if the run has no such artifact, 1 if the download failed
   local name=$1 sub=$2 size t0 t1
   size=$(python3 -I -c 'import json,sys; a=[x for x in json.load(open(sys.argv[1]))["artifacts"] if x["name"]==sys.argv[2]]; print(a[0]["size_in_bytes"] if a else "")' "$DEST/artifacts.json" "$name")
-  [[ -n $size ]] || { echo "- -"; return 0; }
+  [[ -n $size ]] || { echo "- -"; return 2; }
   rm -rf "${DEST:?}/$sub" # re-download from scratch (gh refuses to overwrite)
   t0=$(date +%s.%N)
-  gh run download "$RUN_ID" -R "$REPO" -n "$name" -D "$DEST/$sub" >/dev/null
+  if ! gh run download "$RUN_ID" -R "$REPO" -n "$name" -D "$DEST/$sub" >/dev/null; then echo "- -"; return 1; fi
   t1=$(date +%s.%N)
   echo "$size $(python3 -I -c 'import sys; print(f"{float(sys.argv[2])-float(sys.argv[1]):.2f}")' "$t0" "$t1")"
 }
 
-read -r EV_BYTES EV_SECS < <(download "evidence-$LABEL-$RUN_ID" evidence) || true
-read -r DEMO_BYTES DEMO_SECS < <(download "demo-$LABEL-$RUN_ID" demo) || true
+DOWNLOAD_ERRORS=()
+rc=0; got=$(download "evidence-$LABEL-$RUN_ID" evidence) || rc=$?
+read -r EV_BYTES EV_SECS <<<"$got"
+case $rc in 0) ;; 2) DOWNLOAD_ERRORS+=("evidence-$LABEL-$RUN_ID: no such artifact") ;; *) DOWNLOAD_ERRORS+=("evidence-$LABEL-$RUN_ID: download failed") ;; esac
+rc=0; got=$(download "demo-$LABEL-$RUN_ID" demo) || rc=$?
+read -r DEMO_BYTES DEMO_SECS <<<"$got"
+[[ $rc -ne 1 ]] || DOWNLOAD_ERRORS+=("demo-$LABEL-$RUN_ID: download failed") # no recordings is fine
 
 # Renderer screencast frames (CDP fallback) → mp4, when ffmpeg is available here.
 if command -v ffmpeg >/dev/null && [[ -d $DEST/demo ]]; then
@@ -158,4 +164,8 @@ print(json.dumps({k: summary[k] for k in ("runId", "conclusion", "jobs", "macMin
 print(f"evidence downloaded to {dest}")
 PY
 
+if [[ ${#DOWNLOAD_ERRORS[@]} -gt 0 ]]; then
+  printf 'download error: %s\n' "${DOWNLOAD_ERRORS[@]}" >&2
+  [[ $STATUS -ne 0 ]] || STATUS=3 # a green run without its evidence is not a success
+fi
 exit "$STATUS"

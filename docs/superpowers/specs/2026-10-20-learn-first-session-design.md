@@ -108,7 +108,7 @@ docs/              # spec.html, decisions/, acceptance.md, p0-verification.md
 2. better-sqlite3가 Electron ABI로 로드되고 WAL·FTS5(`CREATE VIRTUAL TABLE ... USING fts5`)·`backup()`이 동작한다. 같은 바이너리로 `ELECTRON_RUN_AS_NODE=1` vitest가 동작한다.
 3. pdf.js가 sandbox 렌더러 + CSP 하에서 워커로 렌더한다(캔버스 비어 있지 않음).
 4. H.264/AAC MP4가 `learn-asset://`로 재생되고 Range 요청이 발생한다. seek 목표 대비 `currentTime` 오차를 기록(AC05 목표 500ms).
-5. 미지원 코덱 파일(예: HEVC)에서 오류가 사용자에게 원인과 함께 표시된다. 결과는 "Linux Electron 기준"으로 명시하고 Mac에서 재확인 항목으로 남긴다.
+5. 미지원 코덱 파일(MPEG-4 Part 2)에서 오류가 사용자에게 원인과 함께 표시된다. HEVC 재생 여부는 플랫폼 의존으로 기록만 한다. 결과는 "Linux Electron 기준"으로 명시하고 Mac에서 재확인 항목으로 남긴다.
 6. EPUB 렌더러 후보 비교표(라이선스, 유지보수, CFI 지원, 스크립트 차단 가능성): foliate-js, epub.js, Readium ts-toolkit. 구현 없음.
 7. PPTX: 서버에 LibreOffice 없음 → 변환 경로는 "미검증(Mac에서 확인)"으로 기록하고, 부재 시 "사용자 PDF 병행 가져오기" 대체 경로를 명시. 라이선스(MPL-2.0) 메모.
 8. 코덱·변환기·주요 의존성 라이선스 표.
@@ -143,7 +143,8 @@ docs/              # spec.html, decisions/, acceptance.md, p0-verification.md
 `fixtures/generate.mjs`가 생성한다(생성물은 gitignore, 스크립트와 출처 기록은 커밋). 모두 자체 생성이라 저작권 문제가 없다.
 
 - `sample-h264-aac.mp4`: ffmpeg testsrc2 + sine, 1280×720, 10초, H.264(High)/AAC, `+faststart`
-- `sample-hevc.mp4`: 같은 소스 HEVC(libx265 가능 시) — 미지원 코덱 검증용. 인코더가 없으면 생략하고 기록
+- `sample-mpeg4part2.mp4`: 같은 소스를 MPEG-4 Part 2(`mpeg4` 인코더)로 — Chromium이 디코드하지 않는 확정적 미지원 코덱 검증용
+- `sample-hevc.mp4`: libx265 HEVC — 플랫폼 의존 코덱(macOS는 하드웨어 디코드로 재생될 수 있음). 결과를 플랫폼별로 기록만 하고 판정 기준으로 쓰지 않는다
 - `sample.pdf`: 3쪽(2쪽째 90° 회전), 텍스트 포함 — pdf-lib로 생성
 - `한글 경로 (테스트) #1.pdf`: 경로 특수문자 검증용 복사본
 

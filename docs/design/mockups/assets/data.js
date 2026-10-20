@@ -56,6 +56,13 @@ window.MockupData = (() => {
     { id: 25, kind: 'pdf', title: '분자생물학 4장 · 단백질 구조', authors: '한서진 외', year: 2024, progress: 100, added: '2026. 9. 12.', tags: [] },
     { id: 26, kind: 'video', title: '실습 영상 · 피펫 사용법', authors: '연구실 공용', year: 2026, progress: 100, added: '2026. 9. 10.', tags: [] },
     { id: 27, kind: 'pdf', title: 'Signal Transduction Problem Set', authors: 'Okafor', year: 2023, progress: null, added: '2026. 9. 8.', tags: [] },
+    { id: 28, kind: 'pdf', title: '막 수용체 결합 실험 데이터', authors: '연구실 공용', year: 2026, progress: null, added: '2026. 9. 6.', tags: [] },
+    { id: 29, kind: 'video', title: '강의 07 · 세포 사멸', authors: '윤재하', year: 2025, progress: null, added: '2026. 9. 5.', tags: [] },
+    { id: 30, kind: 'pdf', title: 'Allosteric Regulation Revisited', authors: 'Sato', year: 2017, progress: 22, added: '2026. 9. 3.', tags: [] },
+    { id: 31, kind: 'pdf', title: '분자생물학 3장 · 효소', authors: '한서진 외', year: 2024, progress: 100, added: '2026. 9. 2.', tags: [] },
+    { id: 32, kind: 'video', title: '세미나 · 단일 세포 이미징', authors: '정민호', year: 2026, progress: 40, added: '2026. 8. 29.', tags: [4], linked: true },
+    { id: 33, kind: 'pdf', title: '기말 요약 노트 (작년)', authors: '김하린', year: 2025, progress: null, added: '2026. 8. 28.', tags: [] },
+    { id: 34, kind: 'pdf', title: 'Cell Signaling Glossary', authors: 'Varga', year: 2020, progress: 100, added: '2026. 8. 27.', tags: [] },
   ];
 
   const selectedItem = {

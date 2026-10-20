@@ -332,7 +332,7 @@
     const mi = (label, { check, shortcut, active, disabled } = {}) =>
       `<div class="mi ${active ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}"><span class="check">${check ? icon('check', 'sm') : ''}</span><span>${label}</span>${shortcut ? `<span class="shortcut">${shortcut}</span>` : ''}</div>`;
     return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu">
-      ${mi('자동 맞춤')}${mi('폭에 맞춤')}${mi('쪽에 맞춤', { shortcut: '⌘9' })}${mi('실제 크기', { shortcut: '⌘0' })}
+      ${mi('자동 맞춤')}${mi('폭에 맞춤')}${mi('쪽에 맞춤')}${mi('실제 크기', { shortcut: '⌘0' })}
       <div class="msep"></div>
       ${mi('75%')}${mi('100%', { check: true })}${mi('125%', { active: true })}${mi('150%')}${mi('200%')}
       <div class="msep"></div>
@@ -485,7 +485,7 @@
       <span class="c-tertiary t-footnote ellipsis">${codec ? '정민호 · 외부 연결' : '윤재하 · 2025 · 52분'}</span>
       <span class="spacer"></span>
       ${codec ? '' : `<span class="btn small plain has-icon has-menu" title="자막 선택" data-ms="M8">${icon('captions', 'sm')}한국어${icon('chevron-down', 'xs')}</span>
-      <span class="btn small plain has-icon" data-ms="M9" title="현재 시간에 메모 ⌘⇧M">${icon('message-square-plus', 'sm')}시간 메모</span>`}
+      <span class="btn small plain has-icon" data-ms="M9" title="현재 시간에 메모 ⇧⌘M">${icon('message-square-plus', 'sm')}시간 메모</span>`}
       <span class="icon-btn" title="더 보기">${icon('ellipsis')}</span>
     </div>`;
     if (codec) {
@@ -579,7 +579,7 @@
             </div>
             <div class="form-row">
               <span class="fr-label">글자 크기<span class="hint">앱 전체 글자 크기. 자료 본문은 리더에서 따로 확대합니다.</span></span>
-              <div class="segmented"><span class="seg" style="font-size:11px">가</span><span class="seg is-on" style="font-size:13px">가</span><span class="seg" style="font-size:15px">가</span><span class="seg" style="font-size:17px">가</span></div>
+              <div class="segmented" role="radiogroup" aria-label="글자 크기"><span class="seg" style="font-size:11px" title="작게" aria-label="작게">가</span><span class="seg is-on" style="font-size:13px" title="기본" aria-label="기본">가</span><span class="seg" style="font-size:15px" title="크게" aria-label="크게">가</span><span class="seg" style="font-size:17px" title="아주 크게" aria-label="아주 크게">가</span></div>
             </div>
           </div>
         </div>
@@ -615,7 +615,7 @@
     <div class="dialog" role="alertdialog" aria-label="중복 파일">
       <div class="d-body">
         <div class="d-title"><span class="badge-icon">${icon('copy')}</span><div><h2>이미 라이브러리에 있는 파일입니다</h2></div></div>
-        <p class="d-text"><b>molbio_ch06_signaling.pdf</b>는 아래 자료와 내용이 같습니다(SHA-256 일치). 어느 쪽을 골라도 원본 파일은 지우지 않습니다.</p>
+        <p class="d-text"><b>molbio_ch06_signaling.pdf</b>는 아래 자료와 내용이 같습니다(SHA-256&nbsp;일치). 어느 쪽을 골라도 원본 파일은 지우지 않습니다.</p>
         <div class="card item-card"><span class="thumb">${icon('file-text')}</span>
           <div style="min-width:0"><div class="t-headline ellipsis">분자생물학 6장 · 신호 전달</div><div class="t-footnote c-secondary ellipsis">분자생물학 · 4.2 MB · 2026. 10. 20. 추가</div></div></div>
         <label class="checkbox t-footnote"><span class="box is-on">${icon('check')}</span>남은 중복 파일 2개에도 같은 선택 적용</label>
@@ -666,6 +666,131 @@
     </div>`;
   }
 
+  // ── Component and token board ──────────────────────────────────────────────
+  function componentsBoard() {
+    const part = params.get('part') === '2' ? 2 : 1;
+    const row = (label, html) => `<div class="state-row"><span class="lbl">${label}</span>${html}</div>`;
+    const header = (title, sub) => `<header><h1>${title}</h1><p>${sub}</p></header>`;
+    if (part === 1) {
+      const btns = (cls, label, ic) =>
+        ['', 'is-hover', 'is-pressed', 'is-focus', 'is-disabled']
+          .map((st) => `<span class="btn ${cls} ${st} ${ic ? 'has-icon' : ''}">${ic ? icon(ic) : ''}${label}</span>`)
+          .join('');
+      return `<div class="board">${header('컴포넌트 상태', '기본 · 호버 · 누름 · 키보드 포커스 · 비활성. 모든 값은 tokens.css. 포커스 링은 2px --focus, 1px 띄움.')}
+        <div class="board-grid">
+          <section class="panel" style="grid-column:span 2">
+            <h3>버튼</h3>
+            ${row('기본', btns('primary', '열기'))}
+            ${row('보조', btns('', '가져오기', 'plus'))}
+            ${row('평면', btns('plain', '건너뛰기'))}
+            ${row('아이콘', ['', 'is-hover', 'is-on', 'is-accent', 'is-disabled'].map((st) => `<span class="icon-btn ${st}">${icon('panel-left')}</span>`).join(''))}
+            ${row('작게', `<span class="btn small">취소</span><span class="btn small primary">다시 연결…</span><span class="btn small plain has-icon has-menu">${icon('captions', 'sm')}한국어${icon('chevron-down', 'xs')}</span>`)}
+          </section>
+          <section class="panel">
+            <h3>메뉴</h3>
+            <div class="menu static-menu" role="menu">
+              <div class="mhead">정렬</div>
+              <div class="mi"><span class="check">${icon('check', 'sm')}</span><span>추가일</span></div>
+              <div class="mi is-active"><span class="check"></span><span>제목</span></div>
+              <div class="mi is-disabled"><span class="check"></span><span>진행 (자료를 연 뒤)</span></div>
+              <div class="msep"></div>
+              <div class="mi"><span class="check"></span><span>Finder에서 보기</span><span class="shortcut">⇧⌘R</span></div>
+              <div class="mi"><span class="check"></span><span>휴지통으로 이동</span><span class="shortcut">⌘⌫</span></div>
+            </div>
+          </section>
+          <section class="panel">
+            <h3>입력</h3>
+            ${row('기본', `<div class="field" style="width:220px">${icon('search', 'sm')}<span class="placeholder">제목, 저자, 태그 검색</span></div>`)}
+            ${row('포커스', `<div class="field is-focus" style="width:220px">${icon('search', 'sm')}<span class="value">신호</span><span class="caret"></span><span class="spacer"></span>${icon('circle-x', 'sm')}</div>`)}
+            ${row('비활성', `<div class="field is-disabled" style="width:220px;opacity:.5">${icon('search', 'sm')}<span class="placeholder">검색할 자료가 없습니다</span></div>`)}
+            ${row('작게', `<div class="field small" style="width:160px">${icon('search', 'sm')}<span class="placeholder">태그 필터</span></div><div class="page-field"><div class="field">42</div><span class="num">/ 68</span></div>`)}
+            ${row('세그먼트', `<div class="segmented"><span class="seg">촘촘하게</span><span class="seg is-on">보통</span><span class="seg">여유 있게</span></div>`)}
+            ${row('선택', `<label class="checkbox"><span class="box"></span>끔</label><label class="checkbox"><span class="box is-on">${icon('check')}</span>켬</label><span class="switch"></span><span class="switch is-on"></span>`)}
+          </section>
+          <section class="panel on-sidebar">
+            <h3>사이드바 행</h3>
+            ${navRow({ label: '기본', ic: 'folder', count: 31 })}
+            ${navRow({ label: '호버', ic: 'folder', count: 22, cls: 'is-hover' })}
+            ${navRow({ label: '선택 · 포커스 없음', ic: 'folder-open', count: 48, selected: true })}
+            ${navRow({ label: '선택 · 포커스', ic: 'folder', count: 14, selected: true, focused: true })}
+            ${navRow({ label: '드롭 대상 (⌘ 이동)', ic: 'folder', count: 9, cls: 'is-drop-target' })}
+          </section>
+          <section class="panel" style="padding-left:8px;padding-right:8px">
+            <h3 style="padding-left:8px">표 행</h3>
+            <div class="table" style="--cols:minmax(0,1fr) 48px 96px"><div class="table-body" style="padding-top:0">
+              ${[
+                ['기본', {}],
+                ['호버', { hover: true }],
+                ['선택 · 포커스 없음', { selected: true }],
+                ['선택 · 포커스', { selected: true, focused: true }],
+              ]
+                .map(([label, st], i) =>
+                  `<div class="table-row ${st.hover ? 'is-hover' : ''} ${st.selected ? 'is-selected' : ''} ${st.focused ? 'is-focused' : ''}" ${st.hover || st.selected ? '' : 'style="background:transparent"'}><div class="td">${icon('file-text')}<span class="title ellipsis">${label}</span><span class="tag-dots"><i style="background:var(--tag-1)"></i></span></div><div class="td num">2024</div><div class="td">${progressCell(i === 3 ? 62 : i === 1 ? 100 : 35)}</div></div>`,
+                )
+                .join('')}
+              <div class="table-row is-missing" style="background:transparent"><div class="td">${icon('file-text')}<span class="title ellipsis">파일 없음</span><span class="inline-flag c-warning">${icon('triangle-alert', 'sm')}</span></div><div class="td num">2024</div><div class="td">${progressCell(null)}</div></div>
+            </div></div>
+          </section>
+        </div>
+        <div class="board-grid">
+          <section class="panel">
+            <h3>칩 · 배지 · 진행</h3>
+            <div class="tag-cloud">${[1, 2, 4, 5].map((n) => tagChip(n)).join('')}<span class="chip">수용체</span><span class="chip is-on">시험 범위</span><span class="chip is-dim">회귀분석</span><span class="chip add">${icon('plus', 'sm')}태그 추가</span></div>
+            ${row('진행', `<span class="progress" style="width:120px"><i style="width:62%"></i></span><span class="spinner"></span>${progressCell(100)}`)}
+            ${row('키', `${kbd('⌘', 'K')}${kbd('⇧', '⌘', 'N')}${kbd('⌥')}${kbd('esc')}<span class="shortcut">⌃⌘S</span>`)}
+            ${row('의미', `<span class="inline-flag c-success">${icon('circle-check', 'sm')}완료</span><span class="inline-flag c-warning">${icon('triangle-alert', 'sm')}파일 없음</span><span class="inline-flag c-danger">${icon('circle-alert', 'sm')}저장 실패</span>`)}
+          </section>
+          <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="toast static"><span class="spinner"></span><div><div class="t-title">가져오는 중 · <span class="num">7 / 12</span></div><div class="t-body ellipsis">강의 05 · 2차 전령.mp4</div></div><div class="t-actions"><div class="btn small">취소</div></div><div class="t-progress"><span class="progress wide"><i style="width:58%"></i></span><span class="num t-footnote c-secondary">58%</span></div></div>
+          <div class="toast static"><span class="c-success">${icon('circle-check')}</span><div><div class="t-title">12개 중 11개를 가져왔습니다</div><div class="t-body">1개는 이미 있는 자료라 건너뛰었습니다.</div></div><div class="t-actions"><div class="btn small plain" style="color:var(--accent-text)">보기</div></div></div>
+          </div>
+          <div class="toast static"><span class="c-danger">${icon('circle-alert')}</span><div><div class="t-title">필기를 저장하지 못했습니다</div><div class="t-body">디스크 공간이 부족합니다. 공간을 확보한 뒤 다시 시도하세요.</div></div><div class="t-actions"><div class="btn small">다시 시도</div></div></div>
+        </div>
+      </div>`;
+    }
+    const sw = (name, note = '') => `<div class="swatch"><i style="background:var(--${name})"></i><span>${note || name}</span><code>--${name}</code></div>`;
+    const tsw = (n) => `<div class="swatch"><i style="background:var(--tag-${n})"></i><span>${n} · ${['노랑', '빨강', '초록', '파랑', '보라', '자홍', '주황', '회색'][n - 1]}</span><code>--tag-${n}</code></div>`;
+    const type = (role, sample) =>
+      `<div class="type-row"><span class="meta">${role}<br>${getComputedStyle(document.documentElement).getPropertyValue(`--text-${role}-size`).trim()} / ${getComputedStyle(document.documentElement).getPropertyValue(`--text-${role}-line`).trim()}</span><span class="t-${role}" style="font:var(--type-${role})">${sample}</span></div>`;
+    return `<div class="board">${header('토큰', '색은 OKLCH + light-dark(). 이 화면은 현재 테마의 값을 그대로 보여 줍니다. 대비는 tokens.test.ts가 검사합니다.')}
+      <div class="board-grid" style="grid-template-columns:1.2fr 1fr 1fr">
+        <section class="panel"><h3>면</h3><div class="swatches">
+          ${sw('bg-window', '창 크롬')}${sw('bg-sidebar', '사이드바')}${sw('bg-content', '내용')}${sw('bg-content-alt', '줄무늬')}
+          ${sw('bg-raised', '메뉴·대화상자')}${sw('bg-sunken', 'PDF 바탕')}${sw('fill-hover', '호버')}${sw('fill-selected', '선택(비포커스)')}
+          ${sw('separator', '구분선')}${sw('border', '테두리')}${sw('border-strong', '강한 테두리')}${sw('video-stage', '영상 바탕')}
+        </div></section>
+        <section class="panel"><h3>글자 · 강조</h3><div class="swatches" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+          ${sw('text-primary', '본문')}${sw('text-secondary', '보조')}${sw('text-tertiary', '3차')}
+          ${sw('accent', '강조 채움')}${sw('accent-text', '강조 글자')}${sw('focus', '포커스 링')}
+          ${sw('danger', '위험')}${sw('warning', '주의')}${sw('success', '성공')}
+        </div></section>
+        <section class="panel"><h3>태그 · 필기 8색</h3><div class="swatches">${[1, 2, 3, 4, 5, 6, 7, 8].map(tsw).join('')}</div></section>
+      </div>
+      <div class="board-grid" style="grid-template-columns:1.2fr 1fr">
+        <section class="panel"><h3>글자 역할</h3>
+          ${type('title1', '라이브러리가 비어 있습니다')}
+          ${type('title2', '분자생물학 6장 · 신호 전달')}
+          ${type('title3', '분자생물학 48개')}
+          ${type('callout', 'PDF나 동영상을 이 창에 끌어다 놓으세요.')}
+          ${type('body', '하나의 활성 수용체는 수백 개의 G 단백질을 활성화한다.')}
+          ${type('headline', '가져오는 중 · 7 / 12')}
+          ${type('paragraph', '외부 연결 자료 7개는 파일 없이 경로만 기록했습니다.')}
+          ${type('footnote', '42 / 68쪽에서 멈춤 · 오늘 오전 9:24')}
+          ${type('caption', '라이브러리 · 컬렉션 · 태그')}
+          ${type('mono', '9c41 7a2e … 51d8 e07b')}
+        </section>
+        <section class="panel"><h3>간격 · 반경 · 그림자</h3>
+          <div class="state-row">${[2, 4, 6, 8, 12, 16, 20, 24, 32, 40, 48].map((n) => `<span title="${n}" style="display:inline-block;width:${n}px;height:24px;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)"></span>`).join('')}</div>
+          <div class="state-row t-caption c-tertiary">2 · 4 · 6 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 48 px</div>
+          <div class="state-row" style="gap:16px">${['xs', 'sm', 'md', 'lg', 'xl'].map((r) => `<span style="display:grid;place-items:center;width:52px;height:40px;border-radius:var(--radius-${r});background:var(--fill-pressed);font:var(--type-caption);color:var(--text-secondary)">${r}</span>`).join('')}</div>
+          <div class="state-row" style="gap:20px;padding:8px 4px 4px">${['e0', 'e1', 'e2'].map((e) => `<span style="display:grid;place-items:center;width:96px;height:56px;border-radius:var(--radius-lg);background:var(--bg-raised);box-shadow:var(--shadow-${e});font:var(--type-caption);color:var(--text-secondary)">${e}</span>`).join('')}</div>
+          <div class="state-row">${row('행 높이', `<span class="t-footnote c-secondary num">24 촘촘하게 · 28 보통 · 32 여유 있게</span>`)}</div>
+          <div class="state-row">${row('아이콘', `${icon('library-big')}${icon('folder')}${icon('file-text')}${icon('clapperboard')}${icon('search')}${icon('panel-left')}${icon('highlighter')}<span class="t-footnote c-secondary">lucide 16px · stroke 1.5</span>`)}</div>
+        </section>
+      </div>
+    </div>`;
+  }
+
   // ── Render entry ───────────────────────────────────────────────────────────
   const screens = {
     library: () => libraryWindow({}),
@@ -682,6 +807,7 @@
     'reader-video': () => videoWindow(),
     palette: () => libraryWindow({ table: { focused: false }, overlays: palette() }),
     settings: () => libraryWindow({ table: { focused: false }, overlays: settingsSheet() }),
+    components: componentsBoard,
     dialogs: () => {
       const scene = params.get('scene') || 'duplicate';
       if (scene === 'codec') return videoWindow({ codec: true });

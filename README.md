@@ -22,6 +22,8 @@
     pnpm fixtures       # 테스트용 PDF·동영상 생성 (이미 있으면 건너뜀, 없는 동영상을 만들 때만 ffmpeg 필요)
     pnpm e2e            # Electron E2E (macOS/데스크톱)
     pnpm e2e:xvfb       # Electron E2E (헤드리스 Linux)
+    pnpm tokens         # 디자인 토큰 생성 (tokens.ts → tokens.css, tokens.generated.ts)
+    pnpm mockups:render # 디자인 목업 렌더 (docs/design/renders, 대조표 docs/design/contact-sheet-*.jpg)
 
 E2E 스크립트는 빌드 후 `pnpm fixtures`를 자동으로 실행한다. fixture를 다시 만들려면 `node fixtures/generate.mjs --force`. E2E 스크린샷과 trace는 `test-results/`에 남는다.
 
@@ -41,6 +43,7 @@ Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15
 ## 구조
 - `packages/domain` 타입·스키마·Result · `packages/db` SQLite·마이그레이션 · `packages/library` 가져오기·복구·백업
 - `apps/desktop` Electron(main/preload/renderer) · `docs/decisions` ADR · `docs/p0-verification.md` P0 기록
+- `docs/design` 디자인 명세·목업·비평 기준 · `apps/desktop/src/renderer/src/design` 토큰·글꼴(Pretendard, OFL)
 
 ## 문제 해결
 - Electron 44 npm 패키지에는 postinstall이 없다. `pnpm install`은 바이너리를 받지 않고, 첫 `require('electron')` 또는 첫 실행(`pnpm dev`, E2E) 때 지연 다운로드한다. GitHub 릴리스 연결이 느려 이 단계에서 멈추면 해당 버전 zip을 따로 받아 `electron` 패키지의 `checksums.json` sha256과 대조한 뒤 `@electron/get` 캐시(`~/.cache/electron/<sha256(릴리스 URL 디렉터리)>/`, macOS는 `~/Library/Caches/electron/…`)에 두고 다시 실행한다. 자세한 내용은 `docs/p0-verification.md` #10.

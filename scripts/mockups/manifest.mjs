@@ -49,6 +49,7 @@ export const VARIANTS = [
   variant('library', 'light', 'A', { ms: '1' }, 'milestones', '라이브러리 마일스톤 표시'),
   variant('reader-pdf', 'light', 'A', { ms: '1' }, 'milestones', 'PDF 마일스톤 표시'),
   variant('reader-video', 'light', 'A', { ms: '1' }, 'milestones', '동영상 마일스톤 표시'),
+  ...THEMES.flatMap((t) => [1, 2].map((part) => variant('components', t, 'A', { part: String(part) }, `part${part}`, part === 1 ? '컴포넌트 상태' : '토큰'))),
   ...['recovery', 'backup', 'codec'].flatMap((scene) => [
     variant('dialogs', 'light', 'A', { scene }, scene, `대화상자 ${scene}`),
     variant('dialogs', 'dark', 'B', { scene }, scene, `대화상자 ${scene}`),

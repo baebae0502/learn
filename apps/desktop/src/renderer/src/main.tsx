@@ -1,23 +1,13 @@
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AppInfo, LearnApi } from '@learn/domain';
+import { App } from './App';
+import './styles.css';
 
-declare global {
-  interface Window {
-    learn: LearnApi;
-  }
-}
+// Dropping a file outside the drop zone must never navigate the window.
+for (const type of ['dragover', 'drop'] as const) document.addEventListener(type, (e) => e.preventDefault());
 
-function Boot({ info }: { info: AppInfo }) {
-  return (
-    <main>
-      <h1>Learn</h1>
-      <p>스키마 v{info.schemaVersion}</p>
-      <div data-testid="app-ready" hidden />
-    </main>
-  );
-}
-
-void window.learn.appInfo().then((r) => {
-  if (!r.ok) throw new Error(r.message);
-  createRoot(document.getElementById('root')!).render(<Boot info={r.data} />);
-});
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);

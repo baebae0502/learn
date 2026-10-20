@@ -36,16 +36,18 @@ export function migrate(db: Db, opts: { dbFile: string | null; migrations?: read
     backupFile = `${opts.dbFile}.pre-v${pending[0]!.version}.bak`;
     snapshotDatabase(db, backupFile);
   }
+  let lastApplied = from;
   for (const m of pending) {
     try {
       db.transaction(() => {
         db.exec(m.sql);
         db.prepare('INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)').run(m.version, m.name, nowIso());
       })();
+      lastApplied = m.version;
     } catch (e) {
       throw new LearnError(
         'MIGRATION_FAILED',
-        `데이터베이스 업데이트(v${m.version} ${m.name})에 실패해 이전 상태로 되돌렸습니다.${backupFile ? ' 업데이트 전 백업이 있습니다.' : ''}`,
+        `v${m.version} 업데이트에 실패했습니다. 데이터베이스는 v${lastApplied} 상태이며, 업데이트 전 백업이 있습니다.`,
         { cause: e },
       );
     }

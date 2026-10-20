@@ -28,6 +28,11 @@ export interface LibraryCounts {
   items: number;
   assets: number;
   revisions: number;
+  collections?: number;
+  collectionItems?: number;
+  tags?: number;
+  itemTags?: number;
+  readingPositions?: number;
 }
 
 interface AssetDbRow {
@@ -152,6 +157,11 @@ export class LibraryRepository {
       items: n('SELECT COUNT(*) AS n FROM items WHERE deleted_at IS NULL'),
       assets: n('SELECT COUNT(*) AS n FROM assets'),
       revisions: n('SELECT COUNT(*) AS n FROM source_revisions'),
+      collections: n('SELECT COUNT(*) AS n FROM collections WHERE deleted_at IS NULL'),
+      collectionItems: n('SELECT COUNT(*) AS n FROM collection_items'),
+      tags: n('SELECT COUNT(*) AS n FROM tags'),
+      itemTags: n('SELECT COUNT(*) AS n FROM item_tags'),
+      readingPositions: n('SELECT COUNT(*) AS n FROM reading_positions'),
     };
   }
 }

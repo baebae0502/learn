@@ -43,7 +43,7 @@ describe('LibraryRepository', () => {
       storageMode: 'managed', availability: 'available', assetId: a.id, revisionId: rec.revision!.id, originalName: 'lecture.pdf',
     });
     expect(repo.listItems().map((i) => i.id)).toEqual([rec.item.id]);
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
   });
 
   it('rolls back everything when part of the insert fails', () => {
@@ -51,7 +51,7 @@ describe('LibraryRepository', () => {
     repo.insertImported(first);
     const clash = { ...record(asset(SHA_B, 'managed')), item: first.item }; // asset row goes in, then the item PK collides
     expect(() => repo.insertImported(clash)).toThrow();
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
     expect(repo.findAssetsBySha(SHA_B)).toEqual([]);
   });
 
@@ -113,7 +113,7 @@ describe('LibraryRepository', () => {
     const a2 = asset(SHA_B, 'managed');
     const rec2 = { ...record(a2), job: { id: jobId, kind: 'extract', dedupeKey: `extract:${SHA_B}:text-v0`, payload: { sha256: SHA_B } } };
     expect(() => repo.insertImported(rec2)).toThrow(); // id collision, different dedupeKey
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 }); // rec2 rolled back
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 }); // rec2 rolled back
     expect(repo.findAssetsBySha(SHA_B)).toEqual([]);
   });
 

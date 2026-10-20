@@ -54,6 +54,11 @@ const BackupManifestSchema = z.object({
     items: z.number().int().nonnegative(),
     assets: z.number().int().nonnegative(),
     revisions: z.number().int().nonnegative(),
+    collections: z.number().int().nonnegative().optional(),
+    collectionItems: z.number().int().nonnegative().optional(),
+    tags: z.number().int().nonnegative().optional(),
+    itemTags: z.number().int().nonnegative().optional(),
+    readingPositions: z.number().int().nonnegative().optional(),
   }),
   assets: z.array(BackupAssetEntrySchema),
 });
@@ -214,10 +219,10 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
       }
 
       const counts = repo.counts();
-      const countsMatch =
-        counts.items === validatedManifest.counts.items &&
-        counts.assets === validatedManifest.counts.assets &&
-        counts.revisions === validatedManifest.counts.revisions;
+      // Only compare fields present on both sides (older manifests lack the newer ones).
+      const expected = validatedManifest.counts as unknown as Record<string, number | undefined>;
+      const actual = counts as unknown as Record<string, number | undefined>;
+      const countsMatch = Object.keys(expected).every((k) => expected[k] === undefined || actual[k] === undefined || expected[k] === actual[k]);
 
       // Close DB before rename to ensure clean state
       db.close();

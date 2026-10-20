@@ -47,7 +47,7 @@ export function migrate(db: Db, opts: { dbFile: string | null; migrations?: read
     } catch (e) {
       throw new LearnError(
         'MIGRATION_FAILED',
-        `v${m.version} 업데이트에 실패했습니다. 데이터베이스는 v${lastApplied} 상태이며, 업데이트 전 백업이 있습니다.`,
+        `v${m.version} 업데이트에 실패했습니다. 데이터베이스는 v${lastApplied} 상태입니다.${backupFile ? ' 업데이트 전 백업이 있습니다.' : ''}`,
         { cause: e },
       );
     }

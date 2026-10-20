@@ -70,7 +70,7 @@ describe('migrate', () => {
     const snap = openDatabase(backup);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(LATEST_SCHEMA_VERSION);
-    expect(String((caught as LearnError).message)).toContain(`v${LATEST_SCHEMA_VERSION} 상태`);
+    expect(String((caught as LearnError).message)).toContain(`v${LATEST_SCHEMA_VERSION} 상태입니다. 업데이트 전 백업이 있습니다.`);
   });
 
   it('refuses a database created by a newer app', () => {
@@ -110,6 +110,37 @@ function seedItem(repo: LibraryRepository, n: number): { itemId: string; revisio
   });
   return { itemId, revisionId };
 }
+
+describe('migration failure reporting', () => {
+  it('omits the backup sentence when no backup was taken', () => {
+    const { db } = tempDb();
+    const broken = [{ version: 1, name: 'broken', sql: 'INSERT INTO no_such_table VALUES (1);' }];
+    expect(() => migrate(db, { dbFile: null, migrations: broken })).toThrow(/^v1 업데이트에 실패했습니다\. 데이터베이스는 v0 상태입니다\.$/);
+  });
+
+  it('reports how far a multi-step upgrade got', () => {
+    const { db, file } = tempDb();
+    const v1 = MIGRATIONS.filter((m) => m.version === 1);
+    migrate(db, { dbFile: file, migrations: v1 });
+    seedItem(new LibraryRepository(db), 1);
+    const list = [
+      ...v1,
+      { version: 2, name: 'ok', sql: 'CREATE TABLE step_two (a TEXT);' },
+      { version: 3, name: 'broken', sql: 'CREATE TABLE step_three (a TEXT); INSERT INTO no_such_table VALUES (1);' },
+    ];
+    let caught: unknown;
+    try { migrate(db, { dbFile: file, migrations: list }); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(LearnError);
+    expect((caught as LearnError).code).toBe('MIGRATION_FAILED');
+    expect((caught as LearnError).message).toBe('v3 업데이트에 실패했습니다. 데이터베이스는 v2 상태입니다. 업데이트 전 백업이 있습니다.');
+    expect(currentVersion(db)).toBe(2);
+    expect(tables(db)).toContain('step_two');
+    expect(tables(db)).not.toContain('step_three');
+    const snap = openDatabase(`${file}.pre-v2.bak`);
+    dbs.push(snap);
+    expect(currentVersion(snap)).toBe(1);
+  });
+});
 
 describe('migration v2 (organize)', () => {
   it('upgrades a real v1 database, preserving data and snapshotting v1', () => {

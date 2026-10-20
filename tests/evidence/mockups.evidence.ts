@@ -17,7 +17,9 @@ test('@mockups design mockups render on macOS with system fonts', async ({}, tes
   expect(results).toHaveLength(ALL.length);
   if (process.platform === 'darwin') {
     // `?font=system` (default) must resolve to the Apple system fonts, not the bundled fallback.
-    const systemRenders = results.filter((r) => !r.name.includes('pretendard'));
+    // Component boards have no tab or toolbar title to probe, so they report no fonts.
+    const systemRenders = results.filter((r) => !r.name.includes('pretendard') && !r.name.startsWith('components--'));
+    expect(systemRenders.length).toBeGreaterThan(50);
     for (const r of systemRenders) {
       expect(r.fonts.join(' '), r.name).toMatch(/SF|Apple SD Gothic Neo|System Font/i);
     }

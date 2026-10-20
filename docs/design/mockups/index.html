@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learn 목업</title>
+    <link rel="stylesheet" href="../../../apps/desktop/src/renderer/src/design/fonts.css" />
+    <link rel="stylesheet" href="../../../apps/desktop/src/renderer/src/design/tokens.css" />
+    <style>
+      body { margin: 0; padding: 32px 40px; font: var(--type-body); color: var(--text-primary); background: var(--bg-window); -webkit-font-smoothing: antialiased; word-break: keep-all; }
+      h1 { margin: 0 0 4px; font: var(--type-title1); }
+      p { margin: 0 0 24px; color: var(--text-secondary); font: var(--type-paragraph); max-width: 720px; }
+      table { border-collapse: collapse; background: var(--bg-content); border-radius: var(--radius-lg); box-shadow: inset 0 0 0 1px var(--separator); }
+      th, td { text-align: left; padding: 8px 16px; border-bottom: 1px solid var(--separator); }
+      th { font: var(--type-footnote); color: var(--text-secondary); }
+      tr:last-child td { border-bottom: 0; }
+      a { color: var(--accent-text); text-decoration: none; margin-right: 12px; }
+      a:hover { text-decoration: underline; }
+      code { font: var(--type-mono); }
+    </style>
+  </head>
+  <body>
+    <h1>Learn M1 목업</h1>
+    <p>
+      쿼리 파라미터: <code>theme=light|dark</code> · <code>layout=A|B</code> · <code>font=system|pretendard</code> ·
+      <code>density=compact|regular|comfortable</code> · <code>ms=1</code>(마일스톤 표시). 화면별 상태는 표의 링크를 보세요. 명세는
+      <code>docs/design/design-spec.md</code>.
+    </p>
+    <table id="t"><tr><th>화면</th><th>라이트</th><th>다크</th><th>상태</th></tr></table>
+    <script>
+      const screens = [
+        ['library', '라이브러리', [['촘촘하게', 'density=compact'], ['여유 있게', 'density=comfortable'], ['마일스톤', 'ms=1']]],
+        ['library-empty', '첫 실행', [['드롭 오버레이', 'state=drop']]],
+        ['reader-pdf', 'PDF 리더', [['세피아 + 보기 메뉴', 'page=sepia&menu=view'], ['확대 메뉴', 'menu=zoom'], ['목차', 'nav=outline'], ['마일스톤', 'ms=1']]],
+        ['reader-video', '동영상 리더', [['마일스톤', 'ms=1']]],
+        ['palette', '명령 팔레트', []],
+        ['settings', '설정', []],
+        ['dialogs', '대화상자', [['점검', 'scene=recovery'], ['백업', 'scene=backup'], ['코덱', 'scene=codec']]],
+      ];
+      const t = document.getElementById('t');
+      for (const [file, label, states] of screens) {
+        const link = (q, text) => `<a href="${file}.html?${q}">${text}</a>`;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${label}</td>
+          <td>${link('theme=light&layout=A', 'A')}${link('theme=light&layout=B', 'B')}</td>
+          <td>${link('theme=dark&layout=A', 'A')}${link('theme=dark&layout=B', 'B')}</td>
+          <td>${states.map(([n, q]) => link('theme=light&layout=A&' + q, n)).join('')}</td>`;
+        t.appendChild(tr);
+      }
+    </script>
+  </body>
+</html>

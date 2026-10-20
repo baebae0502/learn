@@ -13,3 +13,4 @@ fixtures/generated/
 apps/desktop/src/renderer/public/pdfjs/
 *.tsbuildinfo
 .worktrees/
+docs/design/renders/

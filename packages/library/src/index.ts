@@ -1,4 +1,5 @@
 export * from './availability';
+export * from './backup';
 export * from './hash';
 export * from './importer';
 export * from './layout';

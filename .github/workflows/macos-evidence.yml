@@ -140,7 +140,7 @@ jobs:
         if: inputs.packaged
         continue-on-error: true
         run: |
-          pnpm exec electron-builder --projectDir apps/desktop --dir --mac --arm64
+          pnpm exec electron-builder --projectDir apps/desktop --dir --mac --arm64 --publish never
           APP="$GITHUB_WORKSPACE/apps/desktop/release/mac-arm64/Learn.app"
           ls -la "$APP/Contents/MacOS"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleName' -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist"

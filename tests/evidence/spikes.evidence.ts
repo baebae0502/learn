@@ -1,6 +1,7 @@
 // M0 spikes (@evidence): what the macOS runner lets us capture, and the packaged app.
 // Each spike records its outcome in evidence-results/spikes.json; a failed capture is data, not a test failure,
 // unless the app itself misbehaves.
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,16 +42,51 @@ async function menuBarNames(processName: string) {
   return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
 }
 
-async function openMenuBarItem(processName: string, index: number) {
-  // `ignoring application responses`: a click on a menu bar item otherwise blocks until the menu closes.
-  return tryExec('osascript', [
-    '-e', 'ignoring application responses',
-    '-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`,
-    '-e', 'end ignoring',
-  ], 20_000);
+const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
+
+/**
+ * Open menu bar item `index` of `processName` two ways and capture the screen each time.
+ * Run 39443865113 showed that `click` under `ignoring application responses` returned at once but no
+ * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
+ * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
+ */
+async function captureOpenMenu(app: ElectronApplication, processName: string, index: number, prefix: string, what: string) {
+  await focusApp(app);
+  const child = spawn('osascript', ['-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  const exited = new Promise<string>((resolve) => child.on('exit', (code, signal) => resolve(`exit ${code ?? signal}`)));
+  await sleep(1500);
+  const runningAfterDelay = child.exitCode === null && child.signalCode === null;
+  const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
+  child.kill('SIGTERM');
+  const unblock = await tryExec('killall', ['System Events']); // a pending AXPress keeps System Events busy
+  await sleep(800);
+  await pressEscape();
+  await sleep(300);
+  const click = {
+    shot: clickShot.file,
+    osascriptStillRunningAfter1500ms: runningAfterDelay,
+    osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
+    stderr: stderr.trim(),
+    killallSystemEvents: unblock.ok,
+  };
+
+  await focusApp(app);
+  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
+  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
+  keys.push('key code 125', 'end tell');
+  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
+  await sleep(1200);
+  const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
+  await pressEscape();
+  await pressEscape();
+  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim() };
+  return { click, keyboard };
 }
 
-const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
 
 async function freshSession(opts: LaunchOptions = {}): Promise<Session & { tmp: string }> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-'));
@@ -177,17 +213,12 @@ test('spike 3+4: native context menu and menu bar capture', TAG, async () => {
     if (IS_MAC) {
       await focusApp(s.app);
       const names = await menuBarNames('Electron');
-      const click = await openMenuBarItem('Electron', 3);
-      await sleep(1200);
-      const shot = await fullScreenShot('spike4-menubar-open', 'menu bar item 3 (File) opened via System Events');
-      const esc = await pressEscape();
+      const opened = await captureOpenMenu(s.app, 'Electron', 3, 'spike4-menubar', 'menu bar item 3 (File)');
       menubar = {
-        result: click.ok && shot.file ? 'opened and captured (check PNG)' : `failed: ${click.stderr.trim()}`,
+        result: 'see PNGs: an open File menu means the strategy works',
         processName: 'Electron',
         menuBarItems: names.ok ? names.stdout.trim() : `error: ${names.stderr.trim()}`,
-        click,
-        shot: { ...shot, size: await pngSize(shot.file) },
-        escape: esc.ok,
+        ...opened,
       };
     }
     saveSpike('4-menu-bar', { ...menubar, menuJsonTopLevel: menu?.map((m) => m.label) ?? null });
@@ -289,11 +320,8 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
     let menubar: Record<string, unknown> | null = null;
     if (IS_MAC) {
       const names = await menuBarNames('Learn');
-      const click = await openMenuBarItem('Learn', 2);
-      await sleep(1200);
-      const shot = await fullScreenShot('spike5-packaged-appmenu-open', 'packaged app: app menu opened via System Events');
-      await pressEscape();
-      menubar = { menuBarItems: names.ok ? names.stdout.trim() : `error: ${names.stderr.trim()}`, click: click.ok, shot: shot.file };
+      const opened = await captureOpenMenu(s.app, 'Learn', 2, 'spike5-packaged-appmenu', 'packaged app menu (item 2)');
+      menubar = { menuBarItems: names.ok ? names.stdout.trim() : `error: ${names.stderr.trim()}`, ...opened };
     }
     saveSpike('5-packaged', {
       result: appState.isPackaged && info.ok ? 'pass' : 'fail',

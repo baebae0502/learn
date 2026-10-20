@@ -32,9 +32,32 @@ test('import, duplicate prompt, missing linked file and relink', async ({}, test
   await expect(page.getByTestId('duplicate-dialog')).toBeHidden();
   await expect(page.getByTestId('item-row')).toHaveCount(1);
 
+  await stubOpenDialog(app, [a]);
+  await page.getByTestId('import-managed').click();
+  await page.getByTestId('dup-add').click();
+  await expect(page.getByTestId('item-row')).toHaveCount(2);
+
+  await stubOpenDialog(app, [a]);
+  await page.getByTestId('import-managed').click();
+  await page.getByTestId('dup-open').click();
+  await expect(page.getByTestId('viewer-title')).toHaveText('Chapter 06');
+  await page.getByTestId('viewer-back').click();
+
+  const notes = path.join(src, 'notes.txt');
+  fs.writeFileSync(notes, 'plain text');
+  await stubOpenDialog(app, [notes]);
+  await page.getByTestId('import-managed').click();
+  await expect(page.getByTestId('import-failures')).toContainText('지원하지 않는 형식');
+
+  await page.getByTestId('tutor-close').click();
+  await expect(page.getByTestId('tutor-panel')).toBeHidden();
+  await expect(page.getByTestId('tutor-open')).toBeVisible();
+  await page.getByTestId('tutor-open').click();
+  await expect(page.getByTestId('tutor-panel')).toBeVisible();
+
   await stubOpenDialog(app, [b]);
   await page.getByTestId('import-linked').click();
-  await expect(page.getByTestId('item-row')).toHaveCount(2);
+  await expect(page.getByTestId('item-row')).toHaveCount(3);
   await app.close();
 
   const moved = path.join(src, 'moved.pdf');

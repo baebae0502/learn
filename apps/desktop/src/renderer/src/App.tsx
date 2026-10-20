@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AppInfo, ImportOutcome, LibraryItem, Result, StorageMode } from '@learn/domain';
-import { api, unwrap } from './api';
+import { ApiError, api, unwrap } from './api';
 import { DuplicateDialog } from './components/DuplicateDialog';
 import { FatalScreen } from './components/FatalScreen';
 import { LibraryView } from './components/LibraryView';
@@ -25,14 +25,30 @@ export function App() {
   const [failures, setFailures] = useState<Array<{ path: string; message: string }>>([]);
   const [status, setStatus] = useState<SaveStatus>('idle');
   const [tutorOpen, setTutorOpen] = useState(true);
+  const [bootError, setBootError] = useState<{ code: string; message: string } | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => setItems(await unwrap(api().listItems())), []);
 
+  const refreshSafe = useCallback(async () => {
+    try {
+      await refresh();
+      setListError(null);
+    } catch (e) {
+      setListError(t.listRefreshFailed((e as Error).message));
+      setStatus('error');
+    }
+  }, [refresh]);
+
   useEffect(() => {
     void (async () => {
-      const i = await unwrap(api().appInfo());
-      setInfo(i);
-      if (!i.libraryError) await refresh();
+      try {
+        const i = await unwrap(api().appInfo());
+        setInfo(i);
+        if (!i.libraryError) await refresh();
+      } catch (e) {
+        setBootError({ code: e instanceof ApiError ? e.code : 'INTERNAL', message: (e as Error).message });
+      }
       setReady(true);
     })();
   }, [refresh]);
@@ -40,25 +56,30 @@ export function App() {
   const runImport = useCallback(
     async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode) => {
       setStatus('busy');
+      let outcomes: ImportOutcome[];
       try {
-        const outcomes = await unwrap(request());
+        outcomes = await unwrap(request());
+      } catch (e) {
+        setFailures([{ path: '', message: (e as Error).message }]);
+        setStatus('error');
+        return;
+      }
+      {
         setDuplicates((q) => [
           ...q,
           ...outcomes.flatMap((o) => (o.status === 'duplicate' ? [{ path: o.path, existingItemId: o.existingItemId, mode }] : [])),
         ]);
         setFailures(outcomes.flatMap((o) => (o.status === 'failed' ? [{ path: o.path, message: o.message }] : [])));
-        await refresh();
         setStatus('idle');
-      } catch (e) {
-        setFailures([{ path: '', message: (e as Error).message }]);
-        setStatus('error');
+        await refreshSafe();
       }
     },
-    [refresh],
+    [refreshSafe],
   );
 
+  if (bootError) return <FatalScreen code={bootError.code} message={bootError.message} libraryRoot={info?.libraryRoot ?? null} />;
   if (!info) return null;
-  if (info.libraryError) return <FatalScreen info={info} />;
+  if (info.libraryError) return <FatalScreen code={info.libraryError.code} message={info.libraryError.message} libraryRoot={info.libraryRoot} />;
 
   const current = duplicates[0];
   const resolveDuplicate = (action: 'open' | 'add' | 'cancel') => {
@@ -73,8 +94,9 @@ export function App() {
       <TopBar status={status} />
       <Sidebar count={items.length} active={openId === null} onShowLibrary={() => setOpenId(null)} />
       <main className="center">
+        {listError && <p className="error" role="alert" data-testid="list-error">{listError}</p>}
         {openId ? (
-          <ViewerHost key={openId} itemId={openId} onBack={() => setOpenId(null)} onChanged={() => void refresh()} />
+          <ViewerHost key={openId} itemId={openId} onBack={() => setOpenId(null)} onChanged={() => void refreshSafe()} />
         ) : (
           <LibraryView
             items={items}

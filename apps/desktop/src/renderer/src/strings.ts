@@ -40,5 +40,6 @@ export const t = {
   fatalTitle: '라이브러리를 열 수 없습니다',
   fatalHint: '데이터는 삭제되지 않았습니다. 같은 폴더에 업데이트 전 백업(library.sqlite.pre-v*.bak)이 있으면 그 파일로 복구할 수 있습니다.',
   libraryPath: '라이브러리 위치',
+  listRefreshFailed: (message: string) => `목록을 새로 고치지 못했습니다: ${message}`,
   viewerPending: '이 자료의 뷰어를 준비하고 있습니다.',
 } as const;

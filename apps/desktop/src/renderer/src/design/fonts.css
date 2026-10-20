@@ -1,0 +1,13 @@
+/*
+ * Pretendard Variable — SIL Open Font License 1.1 (see fonts/Pretendard-LICENSE.txt).
+ * Used for Hangul and Latin where the macOS system fonts are unavailable (Linux CI),
+ * and everywhere if the owner picks "Pretendard 통일". Copied by scripts/copy-fonts.mjs.
+ */
+@font-face {
+  font-family: 'Pretendard Variable';
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: block;
+  src: url('./fonts/PretendardVariable.woff2') format('woff2-variations'),
+    url('./fonts/PretendardVariable.woff2') format('woff2');
+}

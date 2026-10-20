@@ -59,7 +59,7 @@ export const colors = {
   fillHover: { light: 'oklch(23% 0.01 250 / 0.05)', dark: 'oklch(100% 0 0 / 0.06)' },
   fillPressed: { light: 'oklch(23% 0.01 250 / 0.09)', dark: 'oklch(100% 0 0 / 0.1)' },
   /** Selection when the list does not have keyboard focus (neutral, macOS-style). */
-  fillSelected: { light: 'oklch(23% 0.01 250 / 0.09)', dark: 'oklch(100% 0 0 / 0.11)' },
+  fillSelected: { light: 'oklch(23% 0.01 250 / 0.13)', dark: 'oklch(100% 0 0 / 0.13)' },
 
   // ── Lines ───────────────────────────────────────────────────────────────────
   /** Hairlines between panes, table header rule. */
@@ -72,7 +72,7 @@ export const colors = {
   // ── Text ────────────────────────────────────────────────────────────────────
   textPrimary: { light: 'oklch(23% 0.008 250)', dark: 'oklch(94% 0.004 250)' },
   /** Secondary labels and icons. Body-text safe (≥ 4.5:1 on every surface). */
-  textSecondary: { light: 'oklch(46% 0.01 250)', dark: 'oklch(76.5% 0.008 250)' },
+  textSecondary: { light: 'oklch(46% 0.01 250)', dark: 'oklch(78% 0.008 250)' },
   /** Placeholders, counts, disabled. ≥ 3:1 — never for information-bearing body text. */
   textTertiary: { light: 'oklch(60% 0.008 250)', dark: 'oklch(58% 0.008 250)' },
   textOnAccent: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
@@ -112,7 +112,7 @@ export const colorsContrastMore = {
   border: { light: 'oklch(58% 0.008 250)', dark: 'oklch(64% 0.008 250)' },
   textSecondary: { light: 'oklch(36% 0.01 250)', dark: 'oklch(87% 0.006 250)' },
   textTertiary: { light: 'oklch(46% 0.01 250)', dark: 'oklch(74% 0.008 250)' },
-  fillSelected: { light: 'oklch(23% 0.01 250 / 0.16)', dark: 'oklch(100% 0 0 / 0.2)' },
+  fillSelected: { light: 'oklch(23% 0.01 250 / 0.19)', dark: 'oklch(100% 0 0 / 0.22)' },
   accentText: { light: 'oklch(42% 0.072 190)', dark: 'oklch(84% 0.09 190)' },
 } as const satisfies Partial<Record<ColorToken, ThemePair>>;
 

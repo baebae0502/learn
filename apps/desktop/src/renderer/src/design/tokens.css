@@ -16,12 +16,12 @@
     --bg-scrim: light-dark(oklch(20% 0.01 250 / 0.24), oklch(0% 0 0 / 0.5));
     --fill-hover: light-dark(oklch(23% 0.01 250 / 0.05), oklch(100% 0 0 / 0.06));
     --fill-pressed: light-dark(oklch(23% 0.01 250 / 0.09), oklch(100% 0 0 / 0.1));
-    --fill-selected: light-dark(oklch(23% 0.01 250 / 0.09), oklch(100% 0 0 / 0.11));
+    --fill-selected: light-dark(oklch(23% 0.01 250 / 0.13), oklch(100% 0 0 / 0.13));
     --separator: light-dark(oklch(89.5% 0.004 250), oklch(33% 0.005 250));
     --border: light-dark(oklch(86% 0.005 250), oklch(100% 0 0 / 0.12));
     --border-strong: light-dark(oklch(60% 0.008 250), oklch(62% 0.008 250));
     --text-primary: light-dark(oklch(23% 0.008 250), oklch(94% 0.004 250));
-    --text-secondary: light-dark(oklch(46% 0.01 250), oklch(76.5% 0.008 250));
+    --text-secondary: light-dark(oklch(46% 0.01 250), oklch(78% 0.008 250));
     --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(58% 0.008 250));
     --text-on-accent: light-dark(oklch(100% 0 0), oklch(100% 0 0));
     --accent: light-dark(oklch(53% 0.088 190), oklch(50% 0.084 190));
@@ -198,7 +198,7 @@
       --border: light-dark(oklch(58% 0.008 250), oklch(64% 0.008 250));
       --text-secondary: light-dark(oklch(36% 0.01 250), oklch(87% 0.006 250));
       --text-tertiary: light-dark(oklch(46% 0.01 250), oklch(74% 0.008 250));
-      --fill-selected: light-dark(oklch(23% 0.01 250 / 0.16), oklch(100% 0 0 / 0.2));
+      --fill-selected: light-dark(oklch(23% 0.01 250 / 0.19), oklch(100% 0 0 / 0.22));
       --accent-text: light-dark(oklch(42% 0.072 190), oklch(84% 0.09 190));
     }
   }

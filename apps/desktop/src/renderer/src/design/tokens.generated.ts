@@ -42,7 +42,7 @@ export const themeHex = {
     separator: '#333638',
     borderStrong: '#83878b',
     textPrimary: '#e9ebee',
-    textSecondary: '#afb3b8',
+    textSecondary: '#b4b8bc',
     textTertiary: '#777b7f',
     textOnAccent: '#ffffff',
     accent: '#0a726e',
@@ -66,7 +66,7 @@ export const windowBackground = { light: '#f6f7f8', dark: '#242527' } as const;
 /** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead). */
 export const titleBarOverlay = {
   light: { color: '#f6f7f8', symbolColor: '#54595e', height: 52 },
-  dark: { color: '#242527', symbolColor: '#afb3b8', height: 52 },
+  dark: { color: '#242527', symbolColor: '#b4b8bc', height: 52 },
 } as const;
 
 export const trafficLightPosition = { x: 18, y: 18 } as const;

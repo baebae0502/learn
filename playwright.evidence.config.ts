@@ -1,0 +1,14 @@
+import { defineConfig } from '@playwright/test';
+
+// Evidence suites (screenshots, recordings, timings). Not part of `pnpm e2e`: run with
+// `pnpm e2e:evidence` locally or via .github/workflows/macos-evidence.yml on macOS runners.
+export default defineConfig({
+  testDir: 'tests/evidence',
+  testMatch: '**/*.evidence.ts',
+  timeout: 180_000,
+  expect: { timeout: 15_000 },
+  workers: 1,
+  reporter: [['list'], ['json', { outputFile: 'evidence-results/report.json' }]],
+  outputDir: 'evidence-results',
+  use: { trace: 'retain-on-failure' },
+});

@@ -4,6 +4,8 @@ dist/
 release/
 test-results/
 playwright-report/
+/evidence/
+/evidence-results/
 fixtures/generated/
 *.log
 .DS_Store

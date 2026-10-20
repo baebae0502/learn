@@ -11,9 +11,11 @@ export interface LibraryViewProps {
   onPick(mode: StorageMode): void;
   onImportPaths(paths: string[], mode: StorageMode): void;
   onOpen(itemId: string): void;
+  /** Right-click on a row: native item context menu (client coordinates). */
+  onItemContextMenu(itemId: string, x: number, y: number): void;
 }
 
-export function LibraryView({ items, failures, busy, onPick, onImportPaths, onOpen }: LibraryViewProps) {
+export function LibraryView({ items, failures, busy, onPick, onImportPaths, onOpen, onItemContextMenu }: LibraryViewProps) {
   const [dragging, setDragging] = useState(false);
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -51,7 +53,14 @@ export function LibraryView({ items, failures, busy, onPick, onImportPaths, onOp
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} data-testid="item-row">
+              <tr
+                key={item.id}
+                data-testid="item-row"
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onItemContextMenu(item.id, e.clientX, e.clientY);
+                }}
+              >
                 <td>
                   <button className="link" data-testid="open-item" data-title={item.title} onClick={() => onOpen(item.id)}>{item.title}</button>
                 </td>

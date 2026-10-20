@@ -5,7 +5,8 @@ import { t } from '../strings';
 import { PdfViewer } from './PdfViewer';
 import { VideoViewer } from './VideoViewer';
 
-export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBack(): void; onChanged(): void }) {
+/** The library list refreshes itself on libraryChanged (pushed by main after a relink). */
+export function ViewerHost({ itemId, onBack }: { itemId: string; onBack(): void }) {
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +24,7 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
     setError(null);
     try {
       const updated = await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
-      if (updated) {
-        setItem(updated);
-        onChanged();
-      }
+      if (updated) setItem(updated);
     } catch (e) {
       setError((e as Error).message);
     }

@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppInfo, ImportOutcome, LibraryItem, Result, StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from './api';
+import { runCommand, type CommandEnv } from './commands/registry';
+import { useMenuCommands } from './commands/useMenuCommands';
 import { DuplicateDialog } from './components/DuplicateDialog';
 import { FatalScreen } from './components/FatalScreen';
 import { LibraryView } from './components/LibraryView';
 import { Sidebar } from './components/Sidebar';
 import { TopBar, type SaveStatus } from './components/TopBar';
 import { TutorPanel } from './components/TutorPanel';
+import { useLearnEvent } from './events';
 import { t } from './strings';
 import { ViewerHost } from './viewers/ViewerHost';
 
@@ -27,6 +30,7 @@ export function App() {
   const [tutorOpen, setTutorOpen] = useState(true);
   const [bootError, setBootError] = useState<{ code: string; message: string } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => setItems(await unwrap(api().library.list())), []);
 
@@ -53,6 +57,9 @@ export function App() {
     })();
   }, [refresh]);
 
+  // Every change made through main (import, relink, metadata, trash, organize) pushes libraryChanged.
+  useLearnEvent('libraryChanged', () => void refreshSafe());
+
   const runImport = useCallback(
     async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode) => {
       setStatus('busy');
@@ -71,11 +78,44 @@ export function App() {
         ]);
         setFailures(outcomes.flatMap((o) => (o.status === 'failed' ? [{ path: o.path, message: o.message }] : [])));
         setStatus('idle');
-        await refreshSafe();
       }
     },
-    [refreshSafe],
+    [],
   );
+
+  const relinkItem = useCallback(async (itemId: string) => {
+    try {
+      const item = await unwrap(api().library.get({ itemId }));
+      if (item.storageMode === 'linked') await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  }, []);
+
+  // Menu and context-menu commands; anything that doesn't apply right now is ignored by the registry.
+  const commandEnv: CommandEnv = {
+    view: openId ? 'viewer' : 'library',
+    blocked: !info || info.libraryError !== null || status === 'busy' || duplicates.length > 0,
+    importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
+    back: () => setOpenId(null),
+    open: (itemId) => setOpenId(itemId),
+    relink: (itemId) => void relinkItem(itemId),
+  };
+  useMenuCommands(commandEnv);
+  const commandEnvRef = useRef(commandEnv);
+  useEffect(() => {
+    commandEnvRef.current = commandEnv;
+  });
+
+  const showItemMenu = useCallback(async (itemId: string, x: number, y: number) => {
+    setActionError(null);
+    try {
+      const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [itemId], x, y }));
+      if (picked) runCommand(picked.commandId, commandEnvRef.current, { itemIds: [itemId] });
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  }, []);
 
   if (bootError) return <FatalScreen code={bootError.code} message={bootError.message} libraryRoot={info?.libraryRoot ?? null} />;
   if (!info) return null;
@@ -95,8 +135,9 @@ export function App() {
       <Sidebar count={items.length} active={openId === null} onShowLibrary={() => setOpenId(null)} />
       <main className="center">
         {listError && <p className="error" role="alert" data-testid="list-error">{listError}</p>}
+        {actionError && <p className="error" role="alert" data-testid="action-error">{actionError}</p>}
         {openId ? (
-          <ViewerHost key={openId} itemId={openId} onBack={() => setOpenId(null)} onChanged={() => void refreshSafe()} />
+          <ViewerHost key={openId} itemId={openId} onBack={() => setOpenId(null)} />
         ) : (
           <LibraryView
             items={items}
@@ -105,6 +146,7 @@ export function App() {
             onPick={(mode) => void runImport(() => api().library.pickAndImport({ mode }), mode)}
             onImportPaths={(paths, mode) => void runImport(() => api().library.import({ paths, mode }), mode)}
             onOpen={setOpenId}
+            onItemContextMenu={(itemId, x, y) => void showItemMenu(itemId, x, y)}
           />
         )}
       </main>

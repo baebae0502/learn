@@ -70,7 +70,12 @@ echo "[$(iso)] run $RUN_ID finished: $CONCLUSION (wall $(( t_done - t_dispatch )
 
 if [[ $STATUS -ne 0 ]]; then
   echo "---- failed step logs (tail) ----"
-  gh run view "$RUN_ID" -R "$REPO" --log-failed 2>/dev/null | tail -n 150 || true
+  for _ in 1 2 3; do # logs can take a few seconds to become available after completion
+    failed_log=$(gh run view "$RUN_ID" -R "$REPO" --log-failed 2>/dev/null | tail -n 150 || true)
+    [[ -n $failed_log ]] && break
+    sleep 10
+  done
+  printf '%s\n' "${failed_log:-(no failed-step log available)}"
   echo "---------------------------------"
 fi
 

@@ -1,6 +1,6 @@
 # Fixtures
 
-`pnpm fixtures` 가 `fixtures/generated/` 에 테스트 자료를 만든다(이미 있으면 건너뜀, `node fixtures/generate.mjs --force`로 재생성). 생성물은 커밋하지 않는다. `pnpm e2e`는 자동으로 먼저 실행한다.
+`pnpm fixtures` 가 `fixtures/generated/` 에 테스트 자료를 만든다(이미 있으면 건너뜀, `node fixtures/generate.mjs --force`로 재생성). ffmpeg는 없는 동영상 fixture를 만들 때만 찾으므로, 다른 곳에서 만든 fixture를 받아 둔 환경(macOS 증거 잡)에서는 ffmpeg 없이 통과한다. 생성물은 커밋하지 않는다. `pnpm e2e`는 자동으로 먼저 실행한다.
 모든 파일은 이 저장소의 스크립트가 직접 합성한 것이라 제3자 저작물이 없다.
 
 | 파일 | 출처 | 용도 |

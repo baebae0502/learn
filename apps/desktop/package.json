@@ -1,0 +1,32 @@
+{
+  "name": "@learn/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Learn — local-first personal learning library",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "node scripts/copy-pdfjs-assets.mjs && electron-vite dev",
+    "build": "node scripts/copy-pdfjs-assets.mjs && electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "13.0.3"
+  },
+  "devDependencies": {
+    "@learn/db": "workspace:*",
+    "@learn/domain": "workspace:*",
+    "@learn/library": "workspace:*",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "44.9.1",
+    "electron-vite": "6.0.0",
+    "pdfjs-dist": "6.4.299",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "vite": "8.3.4",
+    "zod": "4.6.7"
+  }
+}

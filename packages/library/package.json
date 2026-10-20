@@ -7,6 +7,7 @@
   "scripts": { "typecheck": "tsc -p tsconfig.json" },
   "dependencies": {
     "@learn/db": "workspace:*",
-    "@learn/domain": "workspace:*"
+    "@learn/domain": "workspace:*",
+    "zod": "4.6.7"
   }
 }

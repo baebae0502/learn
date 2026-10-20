@@ -10,3 +10,4 @@ fixtures/generated/
 .env*
 apps/desktop/src/renderer/public/pdfjs/
 *.tsbuildinfo
+.worktrees/

@@ -151,25 +151,39 @@ jobs:
           fi
           echo "LEARN_PACKAGED_APP=$APP/Contents/MacOS/Learn" >> "$GITHUB_ENV"
 
+      # A hang fails this step (Playwright globalTimeout 10 min inside, step limit 12) instead of cancelling the job.
+      # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 12
         run: |
           if [ "$SUITE" = all ]; then
-            pnpm exec playwright test -c playwright.evidence.config.ts --pass-with-no-tests
+            pnpm exec playwright test -c playwright.evidence.config.ts
+          elif [ "$SUITE" = e2e ]; then
+            echo "suite e2e: functional E2E only (next step)"
           else
-            pnpm exec playwright test -c playwright.evidence.config.ts --pass-with-no-tests --grep "@${SUITE}"
+            listing=$(pnpm exec playwright test -c playwright.evidence.config.ts --list --grep "@${SUITE}" 2>&1 || true)
+            count=$(sed -n 's/^Total: \([0-9][0-9]*\) tests\{0,1\} in .*/\1/p' <<<"$listing" | tail -n 1)
+            if [ "${count:-0}" -eq 0 ]; then
+              echo "$listing"
+              echo "::error::suite '${SUITE}' selects no evidence tests (tag @${SUITE})"
+              exit 1
+            fi
+            echo "suite ${SUITE}: ${count} evidence tests"
+            pnpm exec playwright test -c playwright.evidence.config.ts --grep "@${SUITE}"
           fi
 
       # The functional E2E suite (tests/e2e, unpackaged app) on Apple Silicon: suites e2e and all.
       - name: Functional E2E
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["e2e","all"]'), inputs.suite) }}
+        timeout-minutes: 8
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
-        run: pnpm exec playwright test --reporter=list,json
+        run: pnpm exec playwright test --reporter=list,json --global-timeout 420000
 
       - name: Upload evidence
-        if: ${{ !cancelled() }}
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: evidence-${{ inputs.label }}-${{ github.run_id }}
@@ -187,7 +201,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload recordings
-        if: ${{ !cancelled() }}
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: demo-${{ inputs.label }}-${{ github.run_id }}

@@ -10,7 +10,7 @@ test('learn:// protocol serves static pages, ranged assets and rejects bad paths
   fs.writeFileSync(file, body);
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    const imported = await page.evaluate((p) => window.learn.importPaths({ paths: [p], mode: 'managed' }), file);
+    const imported = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed' }), file);
     expect(imported.ok).toBe(true);
     const outcome = imported.ok ? imported.data[0] : undefined;
     expect(outcome?.status).toBe('imported');

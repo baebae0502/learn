@@ -1,12 +1,12 @@
-import type { ErrorCode, LegacyLearnApi, Result } from '@learn/domain';
+import type { ErrorCode, LearnApi, Result } from '@learn/domain';
 
 declare global {
   interface Window {
-    learn: LegacyLearnApi;
+    learn: LearnApi;
   }
 }
 
-export const api = (): LegacyLearnApi => window.learn;
+export const api = (): LearnApi => window.learn;
 
 export class ApiError extends Error {
   constructor(readonly code: ErrorCode, message: string, readonly retryable: boolean) {

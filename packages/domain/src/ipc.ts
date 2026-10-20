@@ -84,19 +84,6 @@ export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
 export type ShowContextMenuInput = z.input<typeof showContextMenuInput>;
 
-/** @deprecated removed in M2 Task 4 (flat predecessor of LearnApi). */
-export interface LegacyLearnApi {
-  appInfo(): Promise<Result<AppInfo>>;
-  pickAndImport(input: PickAndImportInput): Promise<Result<ImportOutcome[]>>;
-  importPaths(input: ImportPathsInput): Promise<Result<ImportOutcome[]>>;
-  listItems(): Promise<Result<LibraryItem[]>>;
-  getItem(input: { itemId: string }): Promise<Result<LibraryItem>>;
-  pickAndRelink(input: { assetId: string }): Promise<Result<LibraryItem | null>>;
-  recoveryReport(): Promise<Result<RecoveryReport>>;
-  /** Drag & drop: resolves a dropped File to its path via webUtils (sandbox-safe). */
-  pathForFile(file: File): string;
-}
-
 /** The only surface the renderer sees (window.learn). */
 export interface LearnApi {
   app: { info(): Promise<Result<AppInfo>> };

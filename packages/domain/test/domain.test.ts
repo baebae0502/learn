@@ -3,7 +3,6 @@ import {
   APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, fail, failureFrom, importPathsInput, newId, nowIso, ok,
   pickAndImportInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
-import { IpcChannels } from '../src/ipc-channels';
 
 describe('ids', () => {
   it('creates v4 UUIDs and UTC ISO timestamps', () => {
@@ -75,8 +74,5 @@ describe('ipc contract', () => {
     expect(updateMetadataInput.safeParse({ itemId, title: '   ' }).success).toBe(false);
     expect(createCollectionInput.safeParse({ name: 'n'.repeat(200) }).success).toBe(true);
     expect(createCollectionInput.safeParse({ name: 'n'.repeat(201) }).success).toBe(false);
-  });
-  it('uses namespaced channel names (legacy)', () => {
-    expect(Object.values(IpcChannels).every((c) => /^(app|library):[a-zA-Z]+$/.test(c))).toBe(true);
   });
 });

@@ -11,7 +11,7 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
 
   useEffect(() => {
     let cancelled = false;
-    unwrap(api().getItem({ itemId })).then(
+    unwrap(api().library.get({ itemId })).then(
       (i) => { if (!cancelled) setItem(i); },
       (e: Error) => { if (!cancelled) setError(e.message); },
     );
@@ -22,7 +22,7 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
     if (!item) return;
     setError(null);
     try {
-      const updated = await unwrap(api().pickAndRelink({ assetId: item.assetId }));
+      const updated = await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
       if (updated) {
         setItem(updated);
         onChanged();

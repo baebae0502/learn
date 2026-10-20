@@ -1,19 +1,7 @@
-/** Channel names only — kept free of zod so the sandboxed preload bundle stays tiny. */
-/** @deprecated removed in M2 Task 4 */
-export const IpcChannels = {
-  appInfo: 'app:info',
-  pickAndImport: 'library:pickAndImport',
-  importPaths: 'library:import',
-  listItems: 'library:list',
-  getItem: 'library:get',
-  pickAndRelink: 'library:pickAndRelink',
-  recoveryReport: 'library:recoveryReport',
-} as const;
-
-/** @deprecated removed in M2 Task 4 */
-export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels];
-
-/** Namespaced request channels: every value is `ns:verb`. */
+/**
+ * Namespaced request channels: every value is `ns:verb`.
+ * Names only — kept free of zod so the sandboxed preload bundle stays tiny.
+ */
 export const Channels = {
   app: { info: 'app:info' },
   library: {

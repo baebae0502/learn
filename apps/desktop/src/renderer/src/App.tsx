@@ -28,7 +28,7 @@ export function App() {
   const [bootError, setBootError] = useState<{ code: string; message: string } | null>(null);
   const [listError, setListError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => setItems(await unwrap(api().listItems())), []);
+  const refresh = useCallback(async () => setItems(await unwrap(api().library.list())), []);
 
   const refreshSafe = useCallback(async () => {
     try {
@@ -43,7 +43,7 @@ export function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const i = await unwrap(api().appInfo());
+        const i = await unwrap(api().app.info());
         setInfo(i);
         if (!i.libraryError) await refresh();
       } catch (e) {
@@ -86,7 +86,7 @@ export function App() {
     if (!current) return;
     setDuplicates((q) => q.slice(1));
     if (action === 'open') setOpenId(current.existingItemId);
-    if (action === 'add') void runImport(() => api().importPaths({ paths: [current.path], mode: current.mode, allowDuplicate: true }), current.mode);
+    if (action === 'add') void runImport(() => api().library.import({ paths: [current.path], mode: current.mode, allowDuplicate: true }), current.mode);
   };
 
   return (
@@ -102,8 +102,8 @@ export function App() {
             items={items}
             failures={failures}
             busy={status === 'busy'}
-            onPick={(mode) => void runImport(() => api().pickAndImport({ mode }), mode)}
-            onImportPaths={(paths, mode) => void runImport(() => api().importPaths({ paths, mode }), mode)}
+            onPick={(mode) => void runImport(() => api().library.pickAndImport({ mode }), mode)}
+            onImportPaths={(paths, mode) => void runImport(() => api().library.import({ paths, mode }), mode)}
             onOpen={setOpenId}
           />
         )}

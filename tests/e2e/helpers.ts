@@ -1,10 +1,10 @@
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
-import type { LegacyLearnApi } from '../../packages/domain/src/ipc';
+import type { LearnApi } from '../../packages/domain/src/ipc';
 
 declare global {
   interface Window {
-    learn: LegacyLearnApi;
+    learn: LearnApi;
   }
 }
 

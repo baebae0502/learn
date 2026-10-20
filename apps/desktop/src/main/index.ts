@@ -1,11 +1,22 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow } from 'electron';
-import { LearnError, toLearnError, type AppInfo, type ErrorCode } from '@learn/domain';
+import { app, BrowserWindow, Menu } from 'electron';
+import { COMMANDS, LearnError, toLearnError, type AppInfo, type CommandId, type ErrorCode } from '@learn/domain';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
-import { registerIpc } from './ipc';
+import { sendEvent } from './events';
+import { registerAppIpc } from './ipc/app';
+import { registerLibraryIpc } from './ipc/library';
+import { registerOrganizeIpc } from './ipc/organize';
+import { registerReaderIpc } from './ipc/reader';
+import { createHandle, type IpcDeps } from './ipc/register';
+import { registerSettingsIpc } from './ipc/settings';
+import { registerUiIpc } from './ipc/ui';
 import { openLibraryContext, type LibraryContext } from './library-context';
+import { buildAppMenu } from './menu/app-menu';
+import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
+import { applyTheme } from './theme';
+import { createMainWindow } from './window';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,7 +28,8 @@ if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEA
 
 const devServerUrl = !app.isPackaged ? (process.env['ELECTRON_RENDERER_URL'] ?? null) : null;
 const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
-const libraryRoot = (): string => process.env['LEARN_LIBRARY_DIR'] ?? path.join(app.getPath('userData'), 'Library');
+/** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
+const isDevBuild = !app.isPackaged && !process.env['LEARN_E2E'];
 
 registerAppScheme();
 
@@ -25,30 +37,21 @@ let ctx: LibraryContext | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow(): BrowserWindow {
-  const win = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 960,
-    minHeight: 600,
-    show: false,
-    title: 'Learn',
-    backgroundColor: '#eef2f6',
-    webPreferences: {
-      preload: path.join(here, '../preload/index.cjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      webSecurity: true,
-      spellcheck: false,
-    },
+function openMainWindow(): BrowserWindow {
+  const win = createMainWindow({
+    preload: path.join(here, '../preload/index.cjs'),
+    url: devServerUrl ?? `${APP_SCHEME}://app/index.html`,
   });
-  win.once('ready-to-show', () => win.show());
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
   });
-  void win.loadURL(devServerUrl ?? `${APP_SCHEME}://app/index.html`);
   return win;
+}
+
+/** Menu command → the focused window (accelerators and clicks), else the main window. */
+function dispatchMenuCommand(commandId: CommandId): void {
+  const target = BrowserWindow.getFocusedWindow() ?? mainWindow;
+  if (target && !target.isDestroyed()) sendEvent(target.webContents, 'menuCommand', { commandId });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -62,33 +65,45 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     hardenApp(devOrigin);
+    const prefs = openPrefsStore(app.getPath('userData'));
+    applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
+    const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
-      ctx = await openLibraryContext(libraryRoot());
+      ctx = await openLibraryContext(libraryRoot);
     } catch (e) {
       const le = toLearnError(e, '라이브러리를 여는 중 오류가 발생했습니다.');
       libraryError = { code: le.code, message: le.message };
       console.error(`[library] open failed: ${le.code}`);
     }
     handleAppProtocol({ getContext: () => ctx, rendererDir: path.join(here, '../renderer'), devOrigin });
-    registerIpc({
+
+    const deps: IpcDeps = {
       getContext: () => {
         if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? '라이브러리를 열 수 없습니다.');
         return ctx;
       },
       appInfo: (): AppInfo => ({
         version: app.getVersion(),
-        libraryRoot: libraryRoot(),
+        libraryRoot,
         schemaVersion: ctx?.schemaVersion ?? 0,
         platform: process.platform,
         libraryError,
       }),
-      devOrigin,
-    });
-    mainWindow = createWindow();
+      prefs,
+    };
+    const handle = createHandle(devOrigin);
+    for (const register of [registerAppIpc, registerLibraryIpc, registerOrganizeIpc, registerSettingsIpc, registerReaderIpc, registerUiIpc]) {
+      register(handle, deps);
+    }
+
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, onCommand: dispatchMenuCommand })),
+    );
+    mainWindow = openMainWindow();
   });
 
   app.on('activate', () => {
-    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
+    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) mainWindow = openMainWindow();
   });
 
   app.on('window-all-closed', () => {

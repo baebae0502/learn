@@ -1,0 +1,123 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import { newId } from '@learn/domain';
+import { TagsRepository, type Db } from '../src/index';
+import { expectLearnError, freshDb, seedItem } from './fixtures';
+
+let db: Db;
+let repo: TagsRepository;
+beforeEach(() => {
+  db = freshDb();
+  repo = new TagsRepository(db);
+});
+
+const itemsOf = (tagId: string) =>
+  (db.prepare('SELECT item_id FROM item_tags WHERE tag_id = ? ORDER BY item_id').all(tagId) as { item_id: string }[]).map((r) => r.item_id);
+const sorted = (xs: string[]) => [...xs].sort();
+
+describe('TagsRepository: create / list / rename', () => {
+  it('creates a tag, and reuses an existing one case-insensitively', () => {
+    const math = repo.create('  Math ');
+    expect(math).toEqual({ id: math.id, name: 'Math', color: null, position: null, itemCount: 0 });
+    expect(repo.create('math')).toEqual(math);
+    expect(repo.create('MATH').id).toBe(math.id);
+    expect(repo.list()).toEqual([math]);
+    expectLearnError(() => repo.create('  '), 'VALIDATION_FAILED', '태그 이름');
+    expectLearnError(() => repo.create('x'.repeat(201)), 'VALIDATION_FAILED', '태그 이름');
+  });
+
+  it('counts only non-trashed items and lists colored tags first by position', () => {
+    const plain = repo.create('plain');
+    const second = repo.create('second');
+    const first = repo.create('first');
+    repo.setColor(second.id, 'red', 2);
+    repo.setColor(first.id, 'yellow', 1);
+    const [i1, i2] = [seedItem(db).itemId, seedItem(db).itemId];
+    repo.assign(plain.id, [i1, i2]);
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run('2026-10-20T00:00:00.000Z', i2);
+    expect(repo.list().map((t) => [t.name, t.position, t.itemCount])).toEqual([['first', 1, 0], ['second', 2, 0], ['plain', null, 1]]);
+  });
+
+  it('renames, including a case-only change of the same tag', () => {
+    const t = repo.create('math');
+    expect(repo.rename(t.id, ' Linear Algebra ')).toMatchObject({ id: t.id, name: 'Linear Algebra' });
+    expect(repo.rename(t.id, 'linear algebra')).toMatchObject({ id: t.id, name: 'linear algebra' });
+    expect(repo.list()).toHaveLength(1);
+    expectLearnError(() => repo.rename(newId(), 'x'), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+    expectLearnError(() => repo.rename(t.id, ''), 'VALIDATION_FAILED', '태그 이름');
+  });
+
+  it('merges into the existing tag on a case-insensitive name clash, keeping every item once', () => {
+    const [i1, i2, i3] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    const a = repo.create('Calc');
+    const b = repo.create('Calculus');
+    repo.setColor(b.id, 'blue', 3);
+    repo.assign(a.id, [i1, i2]);
+    repo.assign(b.id, [i2, i3]);
+
+    const merged = repo.rename(a.id, 'calculus');
+    expect(merged).toEqual({ id: b.id, name: 'Calculus', color: 'blue', position: 3, itemCount: 3 });
+    expect(itemsOf(b.id)).toEqual(sorted([i1, i2, i3]));
+    expect(itemsOf(a.id)).toEqual([]);
+    expect(repo.list().map((t) => t.id)).toEqual([b.id]);
+  });
+});
+
+describe('TagsRepository: color and position', () => {
+  it('assigns color and position, moving a taken position off the other tag in one step', () => {
+    const a = repo.create('a');
+    const b = repo.create('b');
+    expect(repo.setColor(a.id, 'yellow', 1)).toMatchObject({ color: 'yellow', position: 1 });
+    expect(repo.setColor(b.id, 'red', 1)).toMatchObject({ id: b.id, color: 'red', position: 1 });
+    expect(repo.list().find((t) => t.id === a.id)).toMatchObject({ color: 'yellow', position: null });
+    expect(repo.setColor(b.id, 'red', 1)).toMatchObject({ position: 1 }); // re-assigning its own position is fine
+    expect(repo.setColor(b.id, null, null)).toMatchObject({ color: null, position: null });
+  });
+
+  it('rejects unknown colors, out-of-range positions and unknown tags', () => {
+    const a = repo.create('a');
+    expectLearnError(() => repo.setColor(a.id, 'pink' as never, null), 'VALIDATION_FAILED', '태그 색');
+    expectLearnError(() => repo.setColor(a.id, '#ff0000' as never, 1), 'VALIDATION_FAILED', '태그 색');
+    for (const p of [0, 9, 1.5]) expectLearnError(() => repo.setColor(a.id, 'red', p), 'VALIDATION_FAILED', '위치');
+    expectLearnError(() => repo.setColor(newId(), 'red', 1), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+    expect(repo.list()[0]).toMatchObject({ color: null, position: null });
+  });
+});
+
+describe('TagsRepository: items', () => {
+  it('assigns and unassigns, ignoring duplicates, unknown and trashed items', () => {
+    const t = repo.create('t');
+    const [i1, i2, trashed] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run('2026-10-20T00:00:00.000Z', trashed);
+    expect(repo.assign(t.id, [i1])).toBe(1);
+    expect(repo.assign(t.id, [i1, i2, trashed, newId()])).toBe(1);
+    expect(repo.tagsOf(i1).map((x) => x.id)).toEqual([t.id]);
+    expect(repo.unassign(t.id, [i1, newId()])).toBe(1);
+    expect(itemsOf(t.id)).toEqual([i2]);
+    expectLearnError(() => repo.assign(newId(), [i1]), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+    expectLearnError(() => repo.unassign(newId(), [i1]), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+  });
+
+  it('removes a tag and its assignments', () => {
+    const t = repo.create('t');
+    const { itemId } = seedItem(db);
+    repo.assign(t.id, [itemId]);
+    repo.remove(t.id);
+    expect(repo.list()).toEqual([]);
+    expect(itemsOf(t.id)).toEqual([]);
+    expectLearnError(() => repo.remove(t.id), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+  });
+
+  it('toggles the tag at a position: some -> all get it, all -> all lose it, empty position -> null', () => {
+    const t = repo.create('starred');
+    repo.setColor(t.id, 'orange', 4);
+    const [i1, i2, i3] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    repo.assign(t.id, [i1]);
+
+    expect(repo.togglePosition(4, [i1, i2, i3])).toEqual({ tagId: t.id, assigned: true });
+    expect(itemsOf(t.id)).toEqual(sorted([i1, i2, i3]));
+    expect(repo.togglePosition(4, [i1, i2])).toEqual({ tagId: t.id, assigned: false });
+    expect(itemsOf(t.id)).toEqual([i3]);
+    expect(repo.togglePosition(5, [i1])).toBeNull();
+    expectLearnError(() => repo.togglePosition(9, [i1]), 'VALIDATION_FAILED', '위치');
+  });
+});

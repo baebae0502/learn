@@ -1,0 +1,159 @@
+import { LearnError, TAG_COLORS, newId, nowIso, type Tag, type TagColorId } from '@learn/domain';
+import type { Db } from './connection';
+
+interface TagDbRow { id: string; name: string; color: string | null; position: number | null; item_count: number }
+
+const COLOR_IDS: ReadonlySet<string> = new Set(TAG_COLORS.map((c) => c.id));
+const isTagColor = (c: string | null): c is TagColorId => c !== null && COLOR_IDS.has(c);
+
+/** Every tag column the `Tag` type needs; `item_count` ignores trashed items. Callers add WHERE/ORDER. */
+export const TAG_SELECT = `
+SELECT t.id, t.name, t.color, t.position,
+       (SELECT COUNT(*) FROM item_tags it JOIN items i ON i.id = it.item_id
+         WHERE it.tag_id = t.id AND i.deleted_at IS NULL) AS item_count
+FROM tags t`;
+/** Colored (positioned) tags first by position, then the rest in creation order. */
+export const TAG_ORDER = 'ORDER BY t.position IS NULL, t.position, t.rowid';
+
+export const toTag = (r: TagDbRow): Tag => ({
+  id: r.id, name: r.name, color: isTagColor(r.color) ? r.color : null, position: r.position, itemCount: r.item_count,
+});
+
+const notFound = () => new LearnError('NOT_FOUND', '태그를 찾을 수 없습니다.');
+
+function cleanName(raw: unknown): string {
+  const name = typeof raw === 'string' ? raw.trim() : '';
+  if (name.length < 1 || name.length > 200) throw new LearnError('VALIDATION_FAILED', '태그 이름은 1–200자여야 합니다.');
+  return name;
+}
+function checkPosition(position: unknown): asserts position is number {
+  if (!Number.isInteger(position) || (position as number) < 1 || (position as number) > 8) {
+    throw new LearnError('VALIDATION_FAILED', '태그 위치는 1–8 사이의 정수여야 합니다.');
+  }
+}
+
+/** Tags (names unique case-insensitively), optional color + keyboard position 1–8, and item assignments. */
+export class TagsRepository {
+  constructor(private readonly db: Db) {}
+
+  list(): Tag[] {
+    return (this.db.prepare(`${TAG_SELECT} ${TAG_ORDER}`).all() as TagDbRow[]).map(toTag);
+  }
+
+  get(id: string): Tag | undefined {
+    const row = this.db.prepare(`${TAG_SELECT} WHERE t.id = ?`).get(id) as TagDbRow | undefined;
+    return row && toTag(row);
+  }
+
+  /** Tags assigned to the item. */
+  tagsOf(itemId: string): Tag[] {
+    return (this.db
+      .prepare(`${TAG_SELECT} WHERE t.id IN (SELECT tag_id FROM item_tags WHERE item_id = ?) ${TAG_ORDER}`)
+      .all(itemId) as TagDbRow[]).map(toTag);
+  }
+
+  /** Returns the existing tag when one with the same name (ignoring case) exists. */
+  create(rawName: string): Tag {
+    const name = cleanName(rawName);
+    return this.db.transaction(() => {
+      const existing = this.findByName(name);
+      if (existing) return this.get(existing)!;
+      const id = newId();
+      this.db.prepare('INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)').run(id, name, nowIso());
+      return this.get(id)!;
+    })();
+  }
+
+  /**
+   * Renames the tag. If another tag already has that name (ignoring case), the two are merged instead:
+   * the assignments move to the other tag (no duplicates), this tag is deleted, and the other tag
+   * (with its own name, color and position) is returned.
+   */
+  rename(id: string, rawName: string): Tag {
+    const name = cleanName(rawName);
+    return this.db.transaction(() => {
+      if (!this.get(id)) throw notFound();
+      const other = this.findByName(name, id);
+      if (!other) {
+        this.db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(name, id);
+        return this.get(id)!;
+      }
+      this.db.prepare('INSERT OR IGNORE INTO item_tags (item_id, tag_id) SELECT item_id, ? FROM item_tags WHERE tag_id = ?').run(other, id);
+      this.db.prepare('DELETE FROM tags WHERE id = ?').run(id); // cascades its item_tags
+      return this.get(other)!;
+    })();
+  }
+
+  /** Sets color and position; a position held by another tag is taken from it (that tag keeps its color). */
+  setColor(id: string, color: TagColorId | null, position: number | null): Tag {
+    if (color !== null && !isTagColor(color)) throw new LearnError('VALIDATION_FAILED', '지원하지 않는 태그 색입니다.');
+    if (position !== null) checkPosition(position);
+    return this.db.transaction(() => {
+      if (!this.get(id)) throw notFound();
+      if (position !== null) this.db.prepare('UPDATE tags SET position = NULL WHERE position = ? AND id <> ?').run(position, id);
+      this.db.prepare('UPDATE tags SET color = ?, position = ? WHERE id = ?').run(color, position, id);
+      return this.get(id)!;
+    })();
+  }
+
+  remove(id: string): void {
+    if (this.db.prepare('DELETE FROM tags WHERE id = ?').run(id).changes === 0) throw notFound();
+  }
+
+  /** Tags non-trashed items (duplicates and unknown ids are skipped). Returns how many assignments were created. */
+  assign(tagId: string, itemIds: readonly string[]): number {
+    return this.db.transaction(() => {
+      if (!this.get(tagId)) throw notFound();
+      return this.assignAll(tagId, itemIds);
+    })();
+  }
+
+  /** Returns how many assignments were removed. */
+  unassign(tagId: string, itemIds: readonly string[]): number {
+    return this.db.transaction(() => {
+      if (!this.get(tagId)) throw notFound();
+      return this.unassignAll(tagId, itemIds);
+    })();
+  }
+
+  /**
+   * Keyboard toggle of the tag at `position` (1–8): if every target item already has it, it is removed from all;
+   * otherwise it is added to all. Unknown/trashed ids are not targets. `null` when no tag holds that position.
+   */
+  togglePosition(position: number, itemIds: readonly string[]): { tagId: string; assigned: boolean } | null {
+    checkPosition(position);
+    return this.db.transaction(() => {
+      const tag = this.db.prepare('SELECT id FROM tags WHERE position = ?').get(position) as { id: string } | undefined;
+      if (!tag) return null;
+      const live = this.db.prepare('SELECT 1 FROM items WHERE id = ? AND deleted_at IS NULL');
+      const has = this.db.prepare('SELECT 1 FROM item_tags WHERE item_id = ? AND tag_id = ?');
+      const targets = [...new Set(itemIds)].filter((itemId) => live.get(itemId) !== undefined);
+      const allHave = targets.every((itemId) => has.get(itemId, tag.id) !== undefined);
+      if (allHave) this.unassignAll(tag.id, targets);
+      else this.assignAll(tag.id, targets);
+      return { tagId: tag.id, assigned: !allHave };
+    })();
+  }
+
+  private findByName(name: string, exceptId?: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT id FROM tags WHERE name = ? COLLATE NOCASE AND id IS NOT ?')
+      .get(name, exceptId ?? null) as { id: string } | undefined;
+    return row?.id;
+  }
+
+  private assignAll(tagId: string, itemIds: readonly string[]): number {
+    const ins = this.db.prepare(`INSERT OR IGNORE INTO item_tags (item_id, tag_id)
+                                 SELECT i.id, ? FROM items i WHERE i.id = ? AND i.deleted_at IS NULL`);
+    let n = 0;
+    for (const itemId of itemIds) n += ins.run(tagId, itemId).changes;
+    return n;
+  }
+
+  private unassignAll(tagId: string, itemIds: readonly string[]): number {
+    const del = this.db.prepare('DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?');
+    let n = 0;
+    for (const itemId of itemIds) n += del.run(itemId, tagId).changes;
+    return n;
+  }
+}

@@ -13,7 +13,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self'",
@@ -24,6 +24,9 @@ const CSP = [
   "base-uri 'none'",
   "frame-src 'none'",
 ].join('; ');
+
+/** Asset bytes are same-origin with the app; keep any document rendered from them inert (no scripts, opaque origin). */
+const ASSET_CSP = "sandbox; default-src 'none'";
 
 const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
@@ -72,7 +75,8 @@ async function serveAsset(ctx: LibraryContext | null, assetId: string, rangeHead
     return text(404, 'asset file missing');
   }
   const base: Record<string, string> = {
-    'Content-Type': asset.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...extra,
+    'Content-Type': asset.mime, 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': ASSET_CSP, ...extra,
   };
   const range = parseRange(rangeHeader, size);
   if (range === 'unsatisfiable') return new Response(null, { status: 416, headers: { ...base, 'Content-Range': `bytes */${size}` } });

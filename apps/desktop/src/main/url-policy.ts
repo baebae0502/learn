@@ -9,6 +9,7 @@ export function isAllowedAppUrl(rawUrl: string, devOrigin: string | null): boole
   } catch {
     return false;
   }
-  if (u.protocol === 'learn:' && u.host === 'app') return true;
+  // Asset bytes live under /asset/ on the app origin; they must never act as an app page (navigation or IPC caller).
+  if (u.protocol === 'learn:' && u.host === 'app') return !u.pathname.startsWith('/asset/');
   return devOrigin !== null && u.origin === devOrigin;
 }

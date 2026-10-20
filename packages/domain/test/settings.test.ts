@@ -34,3 +34,19 @@ describe('prefs', () => {
     expect(prefsSchema.safeParse({ libraryRoot: '' }).success).toBe(false);
   });
 });
+
+import { prefsSetInput } from '../src/ipc';
+
+describe('prefs patch input', () => {
+  it('keeps omitted keys omitted', () => {
+    expect(prefsSetInput.parse({ theme: 'dark' })).toEqual({ theme: 'dark' });
+    expect(prefsSetInput.parse({})).toEqual({});
+  });
+  it('rejects unknown keys and bad values', () => {
+    expect(prefsSetInput.safeParse({ nope: 1 }).success).toBe(false);
+    expect(prefsSetInput.safeParse({ theme: 'neon' }).success).toBe(false);
+  });
+  it('full prefs schema still defaults', () => {
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'comfortable', libraryRoot: null });
+  });
+});

@@ -21,9 +21,14 @@ export function parseSetting(key: string, value: unknown): unknown {
 }
 
 /** Per-device preferences (stored outside the library). */
+export const prefsFields = {
+  theme: z.enum(['system', 'light', 'dark']),
+  density: z.enum(['compact', 'comfortable']),
+  libraryRoot: z.string().min(1).nullable(),
+};
 export const prefsSchema = z.object({
-  theme: z.enum(['system', 'light', 'dark']).default('system'),
-  density: z.enum(['compact', 'comfortable']).default('comfortable'),
-  libraryRoot: z.string().min(1).nullable().default(null),
+  theme: prefsFields.theme.default('system'),
+  density: prefsFields.density.default('comfortable'),
+  libraryRoot: prefsFields.libraryRoot.default(null),
 });
 export type Prefs = z.infer<typeof prefsSchema>;

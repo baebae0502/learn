@@ -2,11 +2,11 @@ import { z } from 'zod';
 import type { CommandId } from './commands';
 import type { LearnEventMap } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, Tag } from './library';
-import { itemMetadataSchema, type ItemMetadata } from './metadata';
-import { readingLocatorSchema, type ReadingLocator, type ReadingPosition } from './reading';
+import { itemMetadataSchema } from './metadata';
+import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
-import { prefsSchema } from './settings';
+import { prefsFields } from './settings';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
@@ -43,7 +43,8 @@ export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid
 export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) });
 export const settingGetInput = z.object({ key: z.string().min(1).max(100) });
 export const settingSetInput = z.object({ key: z.string().min(1).max(100), value: z.unknown() });
-export const prefsSetInput = prefsSchema.partial();
+/** Patch input: built from default-free fields so omitted keys stay omitted. */
+export const prefsSetInput = z.object(prefsFields).partial().strict();
 export const savePositionInput = z.object({
   itemId: z.uuid(),
   revisionId: z.uuid(),
@@ -60,6 +61,22 @@ export const showContextMenuInput = z.object({
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
 
+export type ItemIdInput = z.input<typeof itemIdInput>;
+export type AssetIdInput = z.input<typeof assetIdInput>;
+export type ItemIdsInput = z.input<typeof itemIdsInput>;
+export type CollectionIdInput = z.input<typeof collectionIdInput>;
+export type RenameCollectionInput = z.input<typeof renameCollectionInput>;
+export type MoveCollectionInput = z.input<typeof moveCollectionInput>;
+export type CollectionItemsInput = z.input<typeof collectionItemsInput>;
+export type CreateTagInput = z.input<typeof createTagInput>;
+export type TagIdInput = z.input<typeof tagIdInput>;
+export type RenameTagInput = z.input<typeof renameTagInput>;
+export type SetTagColorInput = z.input<typeof setTagColorInput>;
+export type TagItemsInput = z.input<typeof tagItemsInput>;
+export type TogglePositionInput = z.input<typeof togglePositionInput>;
+export type SettingGetInput = z.input<typeof settingGetInput>;
+export type SettingSetInput = z.input<typeof settingSetInput>;
+export type PrefsSetInput = z.input<typeof prefsSetInput>;
 export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
@@ -85,50 +102,50 @@ export interface LearnApi {
     pickAndImport(input: PickAndImportInput): Promise<Result<ImportOutcome[]>>;
     import(input: ImportPathsInput): Promise<Result<ImportOutcome[]>>;
     list(): Promise<Result<LibraryItem[]>>;
-    get(input: { itemId: string }): Promise<Result<LibraryItem>>;
-    pickAndRelink(input: { assetId: string }): Promise<Result<LibraryItem | null>>;
+    get(input: ItemIdInput): Promise<Result<LibraryItem>>;
+    pickAndRelink(input: AssetIdInput): Promise<Result<LibraryItem | null>>;
     recoveryReport(): Promise<Result<RecoveryReport>>;
-    detail(input: { itemId: string }): Promise<Result<ItemDetail>>;
-    updateMetadata(input: { itemId: string; title?: string; metadata?: ItemMetadata }): Promise<Result<LibraryItem>>;
-    trash(input: { itemIds: string[] }): Promise<Result<number>>;
-    restore(input: { itemIds: string[] }): Promise<Result<number>>;
+    detail(input: ItemIdInput): Promise<Result<ItemDetail>>;
+    updateMetadata(input: UpdateMetadataInput): Promise<Result<LibraryItem>>;
+    trash(input: ItemIdsInput): Promise<Result<number>>;
+    restore(input: ItemIdsInput): Promise<Result<number>>;
     listTrash(): Promise<Result<LibraryItem[]>>;
     duplicateGroups(): Promise<Result<DuplicateGroup[]>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;
-    create(input: { name: string; parentId?: string | null }): Promise<Result<Collection>>;
-    rename(input: { collectionId: string; name: string }): Promise<Result<Collection>>;
-    move(input: { collectionId: string; parentId: string | null }): Promise<Result<Collection>>;
-    remove(input: { collectionId: string }): Promise<Result<void>>;
-    restore(input: { collectionId: string }): Promise<Result<Collection>>;
-    addItems(input: { collectionId: string; itemIds: string[] }): Promise<Result<number>>;
-    removeItems(input: { collectionId: string; itemIds: string[] }): Promise<Result<number>>;
+    create(input: CreateCollectionInput): Promise<Result<Collection>>;
+    rename(input: RenameCollectionInput): Promise<Result<Collection>>;
+    move(input: MoveCollectionInput): Promise<Result<Collection>>;
+    remove(input: CollectionIdInput): Promise<Result<void>>;
+    restore(input: CollectionIdInput): Promise<Result<Collection>>;
+    addItems(input: CollectionItemsInput): Promise<Result<number>>;
+    removeItems(input: CollectionItemsInput): Promise<Result<number>>;
   };
   tags: {
     list(): Promise<Result<Tag[]>>;
-    create(input: { name: string }): Promise<Result<Tag>>;
-    rename(input: { tagId: string; name: string }): Promise<Result<Tag>>;
-    setColor(input: { tagId: string; color: TagColorId | null; position: number | null }): Promise<Result<Tag>>;
-    remove(input: { tagId: string }): Promise<Result<void>>;
-    assign(input: { tagId: string; itemIds: string[] }): Promise<Result<number>>;
-    unassign(input: { tagId: string; itemIds: string[] }): Promise<Result<number>>;
-    togglePosition(input: { position: number; itemIds: string[] }): Promise<Result<number>>;
+    create(input: CreateTagInput): Promise<Result<Tag>>;
+    rename(input: RenameTagInput): Promise<Result<Tag>>;
+    setColor(input: SetTagColorInput): Promise<Result<Tag>>;
+    remove(input: TagIdInput): Promise<Result<void>>;
+    assign(input: TagItemsInput): Promise<Result<number>>;
+    unassign(input: TagItemsInput): Promise<Result<number>>;
+    togglePosition(input: TogglePositionInput): Promise<Result<number>>;
   };
   settings: {
-    get(input: { key: string }): Promise<Result<unknown>>;
-    set(input: { key: string; value: unknown }): Promise<Result<void>>;
+    get(input: SettingGetInput): Promise<Result<unknown>>;
+    set(input: SettingSetInput): Promise<Result<void>>;
   };
   prefs: {
     get(): Promise<Result<Prefs>>;
-    set(input: Partial<Prefs>): Promise<Result<Prefs>>;
+    set(input: PrefsSetInput): Promise<Result<Prefs>>;
   };
   reader: {
-    getPosition(input: { itemId: string }): Promise<Result<ReadingPosition | null>>;
-    savePosition(input: { itemId: string; revisionId: string; locator: ReadingLocator; progress: number | null }): Promise<Result<void>>;
+    getPosition(input: ItemIdInput): Promise<Result<ReadingPosition | null>>;
+    savePosition(input: SavePositionInput): Promise<Result<void>>;
   };
   ui: {
-    showContextMenu(input: { kind: 'item'; itemIds: string[]; x: number; y: number }): Promise<Result<{ commandId: CommandId } | null>>;
+    showContextMenu(input: ShowContextMenuInput): Promise<Result<{ commandId: CommandId } | null>>;
   };
   /** Subscribe to a main->renderer push event; returns an unsubscribe function. */
   on<K extends keyof LearnEventMap>(name: K, cb: (payload: LearnEventMap[K]) => void): () => void;

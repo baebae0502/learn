@@ -67,7 +67,7 @@ describe('ipc contract', () => {
     expect(APP_ORIGIN).toBe('learn://app');
     expect(assetUrl('abc')).toBe('learn://app/asset/abc');
   });
-  it('uses namespaced channel names', () => {
+  it('uses namespaced channel names (legacy)', () => {
     expect(Object.values(IpcChannels).every((c) => /^(app|library):[a-zA-Z]+$/.test(c))).toBe(true);
   });
 });

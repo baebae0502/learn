@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./ipc-channels": "./src/ipc-channels.ts"
+    "./ipc-channels": "./src/ipc-channels.ts",
+    "./event-channels": "./src/event-channels.ts",
+    "./commands": "./src/commands.ts"
   },
   "scripts": { "typecheck": "tsc -p tsconfig.json" },
   "dependencies": { "zod": "4.6.7" }

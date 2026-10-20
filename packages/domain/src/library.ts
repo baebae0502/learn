@@ -1,4 +1,6 @@
 import type { ErrorCode } from './errors';
+import type { ItemMetadata } from './metadata';
+import type { TagColorId } from './tag-colors';
 
 export type ItemType = 'pdf' | 'video';
 export type StorageMode = 'managed' | 'linked';
@@ -16,6 +18,50 @@ export interface LibraryItem {
   revisionId: string;
   originalName: string;
   createdAt: string;
+  updatedAt: string;
+  creators: string[];
+  year: number | null;
+  tagIds: string[];
+  progress: number | null;
+  openedAt: string | null;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  parentId: string | null;
+  itemCount: number;
+  createdAt: string;
+  updatedAt: string | null;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: TagColorId | null;
+  position: number | null;
+  itemCount: number;
+}
+
+export interface ItemDetail {
+  item: LibraryItem;
+  metadata: ItemMetadata;
+  file: {
+    originalName: string;
+    mime: string;
+    size: number;
+    storageMode: StorageMode;
+    externalPath: string | null;
+    sha256: string;
+    availability: Availability;
+  };
+  tags: Tag[];
+  collections: Collection[];
+}
+
+export interface DuplicateGroup {
+  sha256: string;
+  itemIds: string[];
 }
 
 export type ImportOutcome =

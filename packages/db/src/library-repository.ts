@@ -35,12 +35,12 @@ interface AssetDbRow {
   original_name: string; mime: string; size: number; availability: Availability; created_at: string; checked_at: string | null;
 }
 interface ItemDbRow {
-  id: string; title: string; type: ItemType; created_at: string; asset_id: string; mime: string; size: number;
+  id: string; title: string; type: ItemType; created_at: string; updated_at: string; asset_id: string; mime: string; size: number;
   storage_mode: StorageMode; availability: Availability; original_name: string; revision_id: string;
 }
 
 const ITEM_SELECT = `
-SELECT i.id, i.title, i.type, i.created_at,
+SELECT i.id, i.title, i.type, i.created_at, i.updated_at,
        a.id AS asset_id, a.mime, a.size, a.storage_mode, a.availability, a.original_name,
        (SELECT r.id FROM source_revisions r WHERE r.asset_id = a.id
          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS revision_id
@@ -57,6 +57,7 @@ const toAsset = (r: AssetDbRow): AssetRow => ({
 const toItem = (r: ItemDbRow): LibraryItem => ({
   id: r.id, title: r.title, type: r.type, mime: r.mime, size: r.size, storageMode: r.storage_mode,
   availability: r.availability, assetId: r.asset_id, revisionId: r.revision_id, originalName: r.original_name, createdAt: r.created_at,
+  updatedAt: r.updated_at, creators: [], year: null, tagIds: [], progress: null, openedAt: null,
 });
 
 export class LibraryRepository {

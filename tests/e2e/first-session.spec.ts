@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { FIXTURES, launch, openItem, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -11,6 +11,48 @@ const BAD = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 test.beforeAll(() => {
   for (const f of [PDF, KO_PDF, MP4, BAD]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
+
+const IS_MAC = process.platform === 'darwin';
+
+const windowIsFullScreen = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isFullScreen());
+
+/** Arm a main-process flag that flips when the window's 'enter-full-screen' fires (end of the macOS transition). */
+async function armEnterFullScreen(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ BrowserWindow }) => {
+    const g = globalThis as { __learnEnteredFullScreen?: boolean };
+    g.__learnEnteredFullScreen = false;
+    BrowserWindow.getAllWindows()[0]!.once('enter-full-screen', () => {
+      g.__learnEnteredFullScreen = true;
+    });
+  });
+}
+
+const enteredFullScreen = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as { __learnEnteredFullScreen?: boolean }).__learnEnteredFullScreen === true);
+
+/**
+ * Enter and leave HTML fullscreen on `video`. On macOS the window animates into its own Space; exiting
+ * during that transition never settles (see the darwin-only test below), so wait for it to finish first.
+ */
+async function toggleFullscreen(app: ElectronApplication, page: Page, video: Locator): Promise<void> {
+  await armEnterFullScreen(app);
+  await video.evaluate((v: HTMLVideoElement) => v.requestFullscreen());
+  await expect.poll(() => windowIsFullScreen(app)).toBe(true);
+  expect(await video.evaluate((v: HTMLVideoElement) => document.fullscreenElement === v)).toBe(true);
+  if (IS_MAC) {
+    const settled = await expect
+      .poll(() => enteredFullScreen(app), { timeout: 5_000 })
+      .toBe(true)
+      .then(() => true, () => false);
+    // 'enter-full-screen' marks the end of the transition; without it fall back to a bounded wait.
+    await page.waitForTimeout(settled ? 250 : 1_500);
+  }
+  const exiting = page.evaluate(() => document.exitFullscreen());
+  await expect.poll(() => windowIsFullScreen(app)).toBe(false);
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await exiting;
+}
 
 async function inkedPixels(page: Page): Promise<{ dark: number; white: number }> {
   return page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => {
@@ -75,10 +117,8 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   console.log('[measure] video seek', JSON.stringify(seek));
   expect(seek.width).toBe(1280);
   expect(seek.errorMs).toBeLessThanOrEqual(500);
-  // Fullscreen must be permitted for our own pages
-  await video.evaluate((v: HTMLVideoElement) => v.requestFullscreen());
-  expect(await video.evaluate((v: HTMLVideoElement) => document.fullscreenElement === v)).toBe(true);
-  await video.evaluate(() => document.exitFullscreen());
+  // Fullscreen must be permitted for our own pages (enter, then leave cleanly)
+  await toggleFullscreen(app, page, video);
   await page.screenshot({ path: testInfo.outputPath('03-video.png') });
   await page.getByTestId('viewer-back').click();
 
@@ -98,6 +138,31 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   await openItem(page, 'sample');
   await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await app.close();
+});
+
+// Characterisation, not the user journey: on macOS, exiting while the native fullscreen transition is still
+// running leaves document.exitFullscreen() unsettled and the page stuck in fullscreen (M0 runs 39442173392,
+// 39443865113, 39444862608). Expected to fail; when Electron fixes it this reports an unexpected pass.
+test('macOS: exiting fullscreen during the enter transition settles', async ({}, testInfo) => {
+  test.skip(!IS_MAC, 'native macOS fullscreen transition only');
+  test.fail(true, 'known Electron 44 / macOS race: exitFullscreen() during the enter transition never settles');
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await stubOpenDialog(app, [MP4]);
+    await page.getByTestId('import-managed').click();
+    await openItem(page, 'sample-h264-aac');
+    const video = page.getByTestId('video');
+    await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.readyState)).toBeGreaterThanOrEqual(2);
+    await video.evaluate((v: HTMLVideoElement) => v.requestFullscreen());
+    const outcome = await Promise.race([
+      page.evaluate(() => document.exitFullscreen()).then(() => 'settled'),
+      new Promise<string>((r) => setTimeout(() => r('unsettled after 10 s'), 10_000)),
+    ]);
+    expect(outcome).toBe('settled');
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement === null), { timeout: 5_000 }).toBe(true);
+  } finally {
+    await app.close().catch(() => {});
+  }
 });
 
 test('PDF zoom levels keep rendering', async ({}, testInfo) => {

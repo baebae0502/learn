@@ -41,5 +41,11 @@ export const t = {
   fatalHint: '데이터는 삭제되지 않았습니다. 같은 폴더에 업데이트 전 백업(library.sqlite.pre-v*.bak)이 있으면 그 파일로 복구할 수 있습니다.',
   libraryPath: '라이브러리 위치',
   listRefreshFailed: (message: string) => `목록을 새로 고치지 못했습니다: ${message}`,
-  viewerPending: '이 자료의 뷰어를 준비하고 있습니다.',
+  pdfPage: (n: number, total: number) => `${n} / ${total}쪽`,
+  pdfPrev: '이전 쪽',
+  pdfNext: '다음 쪽',
+  pdfZoom: '배율',
+  pdfError: 'PDF를 열 수 없습니다.',
+  videoUnsupported: '이 동영상의 코덱은 재생할 수 없습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본은 그대로 보관됩니다.',
+  videoError: '동영상을 재생할 수 없습니다.',
 } as const;

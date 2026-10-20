@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { LibraryItem } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { t } from '../strings';
+import { PdfViewer } from './PdfViewer';
+import { VideoViewer } from './VideoViewer';
 
 export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBack(): void; onChanged(): void }) {
   const [item, setItem] = useState<LibraryItem | null>(null);
@@ -51,5 +53,5 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
 }
 
 function ViewerBody({ item }: { item: LibraryItem }) {
-  return <p className="muted" data-testid="viewer-pending">{t.viewerPending} ({t.type[item.type]})</p>;
+  return item.type === 'pdf' ? <PdfViewer item={item} /> : <VideoViewer item={item} />;
 }

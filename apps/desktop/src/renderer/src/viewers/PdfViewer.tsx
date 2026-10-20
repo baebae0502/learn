@@ -13,6 +13,7 @@ const ZOOMS = [0.5, 1, 2] as const;
 
 export function PdfViewer({ item }: { item: LibraryItem }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastRender = useRef<RenderTask | null>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [pageNum, setPageNum] = useState(1);
   const [zoom, setZoom] = useState<number>(1);
@@ -47,27 +48,34 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     const canvas = canvasRef.current;
     if (!doc || !canvas) return;
     let cancelled = false;
-    let task: RenderTask | null = null;
     void (async () => {
-      const page = await doc.getPage(pageNum);
+      const prev = lastRender.current;
+      if (prev) {
+        prev.cancel();
+        await prev.promise.catch(() => {});
+      }
       if (cancelled) return;
-      const dpr = window.devicePixelRatio || 1;
-      const viewport = page.getViewport({ scale: zoom * dpr });
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
-      canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
-      task = page.render({ canvas, viewport });
       try {
+        const page = await doc.getPage(pageNum);
+        if (cancelled) return;
+        const dpr = window.devicePixelRatio || 1;
+        const viewport = page.getViewport({ scale: zoom * dpr });
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
+        canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
+        const task = page.render({ canvas, viewport });
+        lastRender.current = task;
         await task.promise;
         if (!cancelled) setRendered((n) => n + 1);
       } catch (e) {
-        if (!cancelled && (e as Error)?.name !== 'RenderingCancelledException') setError(`${t.pdfError} ${(e as Error).message}`);
+        if (cancelled || (e as Error)?.name === 'RenderingCancelledException') return;
+        setError(`${t.pdfError} ${(e as Error)?.message ?? ''}`);
       }
     })();
     return () => {
       cancelled = true;
-      task?.cancel();
+      lastRender.current?.cancel();
     };
   }, [doc, pageNum, zoom]);
 

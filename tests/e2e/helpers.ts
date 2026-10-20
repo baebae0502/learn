@@ -17,14 +17,46 @@ export interface Session {
   page: Page;
 }
 
-export async function launch(libraryDir: string, userDataDir: string): Promise<Session> {
+export interface LaunchOptions {
+  /** Extra environment variables, applied after the library/userData variables. */
+  env?: Record<string, string>;
+  /**
+   * Passed through to Playwright. Caution: with Playwright 1.64.1 + Electron 44 the first window stays
+   * paused before navigation when this is set (M0 spike, docs/mac-verification.md).
+   */
+  recordVideo?: { dir: string; size?: { width: number; height: number } };
+  /** Electron/Chromium switches, placed before the app path. */
+  args?: string[];
+  /** Packaged app executable. When set, the unpackaged `apps/desktop` path is not passed. */
+  executablePath?: string;
+}
+
+/**
+ * Launch the built app. `null` for a directory leaves that variable unset so the app uses its
+ * default location (only for disposable machines such as CI runners).
+ */
+export async function launch(libraryDir: string | null, userDataDir: string | null, opts: LaunchOptions = {}): Promise<Session> {
+  const env: Record<string, string> = {};
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
+  delete env['LEARN_LIBRARY_DIR'];
+  delete env['LEARN_USER_DATA_DIR'];
+  if (libraryDir !== null) env['LEARN_LIBRARY_DIR'] = libraryDir;
+  if (userDataDir !== null) env['LEARN_USER_DATA_DIR'] = userDataDir;
+  Object.assign(env, opts.env);
   const app = await electron.launch({
-    args: [path.join(ROOT, 'apps/desktop')],
-    env: { ...process.env, LEARN_LIBRARY_DIR: libraryDir, LEARN_USER_DATA_DIR: userDataDir },
+    args: opts.executablePath ? [...(opts.args ?? [])] : [...(opts.args ?? []), path.join(ROOT, 'apps/desktop')],
+    env,
+    ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),
+    ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
   });
-  const page = await app.firstWindow();
-  await expect(page.getByTestId('app-ready')).toBeAttached();
-  return { app, page };
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByTestId('app-ready')).toBeAttached();
+    return { app, page };
+  } catch (e) {
+    await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
+    throw e;
+  }
 }
 
 /** Replace the native file dialog in the main process for the next calls. */

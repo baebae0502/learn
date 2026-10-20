@@ -25,9 +25,19 @@
 
 ## Mac에서 확인할 것
 
-- Apple Silicon에서 `pnpm install && pnpm e2e`(fixture 생성에 ffmpeg 필요). seek 오차·첫 PDF/영상 표시 시간 기록(AC16 기준 장비).
-- HEVC 재생 여부 기록(`fixtures/generated/sample-hevc.mp4`).
-- 기본 라이브러리 위치 `~/Library/Application Support/Learn/Library` 확인.
-- `pnpm dev`(Vite dev server, CSP 없음 + dev 전용 CORS 경로)를 수동으로 한 번 실행해 기록 — 자동 테스트는 빌드본만 검증한다.
-- PPTX 변환(LibreOffice) 경로와 라이선스 확인(P5 준비).
-- 패키징(P6): electron-builder, 서명, Electron fuses, hardened runtime JIT 권한.
+M0에서 GitHub macOS 러너(M1 VM)로 확인한 항목은 [`mac-verification.md`](mac-verification.md)에 run id와 함께 기록했다(macOS 5회, 16분).
+
+- ~~Apple Silicon에서 `pnpm install && pnpm e2e`~~ → 러너에서 설치·빌드·기능 E2E 실행(fixture는 Linux 잡에서 생성). 처음엔 `first-session.spec.ts`가 전체 화면 진입 직후 해제에서 멈춰 5/6이었고, 테스트를 전환 완료 후 해제하도록 고친 뒤 6/6 통과(run 39451895620). 빠른 토글 경합 자체(앱/Electron)는 darwin 전용 `test.fail()` 특성 테스트로 남겼다 → **M8에서 처리**(재현 조건·스크린샷은 mac-verification "추가 발견"). seek 오차(중앙값 0.3ms)·첫 PDF/영상 시간은 VM 참고값만 있음 — **AC16 기준 장비 측정은 남음**.
+- ~~HEVC 재생 여부 기록~~ → 러너에서 재생됨(readyState 4, `canPlayType` probably). 열자마자 캔버스로 읽은 프레임이 검은 경우가 있어(4회 중 2회) 실기에서 확정.
+- ~~기본 라이브러리 위치 확인~~ → `~/Library/Application Support/Learn/Library` 확인(macOS 15·26).
+- `pnpm dev`(Vite dev server, CSP 없음 + dev 전용 CORS 경로)를 수동으로 한 번 실행해 기록 — 자동 테스트는 빌드본만 검증한다. (미확인)
+- PPTX 변환(LibreOffice) 경로와 라이선스 확인(P5 준비). (미확인)
+- 패키징(P6): 서명, Electron fuses, hardened runtime JIT 권한. M0에서 서명 없는 `electron-builder --dir` 앱이 ad-hoc 서명 상태로 실행되고 메뉴바에 "Learn"이 나오는 것까지 확인했다(`identity: null`만으로는 서명이 깨진 채로 남음).
+- 실기 대화형 점검(VoiceOver, 트랙패드, Finder 드래그, Retina @2x, 전체 화면 빠른 토글)은 Scaleway Mac mini 또는 사용자 Mac에서.
+
+## M0에서 나온 후속 입력
+
+- 러너 화면이 1024×768이라 창이 1024×684로 줄면 표 열의 한국어가 글자 단위로 줄바꿈된다 → M1 타입 규칙(`word-break: keep-all`)·M4 표 열 폭.
+- 미지원 코덱 안내의 기술 문자열이 상자 밖으로 넘친다 → M8.
+- Playwright 1.64.1 `recordVideo`는 Electron 44에서 첫 창을 멈추게 한다 → 데모 녹화는 macOS `screencapture -v`, 렌더러만은 CDP 화면 녹화(`startScreencast`)를 쓴다.
+- 데모용 커서·키 입력 오버레이(`LEARN_DEMO_OVERLAY`)는 아직 없다.

@@ -24,9 +24,21 @@ async function makePdf(file, label) {
   fs.writeFileSync(file, await doc.save());
 }
 
-const ffmpeg = (args) => execFileSync('ffmpeg', ['-v', 'error', '-y', ...args], { stdio: 'inherit' });
-const encoders = execFileSync('ffmpeg', ['-hide_banner', '-encoders'], { encoding: 'utf8' });
-const has = (name) => new RegExp(`\\s${name}\\s`).test(encoders);
+// ffmpeg is only touched when a video fixture is actually missing, so a warm fixture dir needs no ffmpeg.
+const runFfmpeg = (args, opts) => {
+  try {
+    return execFileSync('ffmpeg', args, opts);
+  } catch (e) {
+    if (e?.code === 'ENOENT') throw new Error('ffmpeg not found on PATH — needed to generate the missing video fixtures');
+    throw e;
+  }
+};
+const ffmpeg = (args) => runFfmpeg(['-v', 'error', '-y', ...args], { stdio: 'inherit' });
+let encoders;
+const has = (name) => {
+  encoders ??= runFfmpeg(['-hide_banner', '-encoders'], { encoding: 'utf8' });
+  return new RegExp(`\\s${name}\\s`).test(encoders);
+};
 
 if (need('sample.pdf')) await makePdf(path.join(out, 'sample.pdf'), 'Sample PDF');
 if (need('한글 경로 (테스트) #1.pdf')) await makePdf(path.join(out, '한글 경로 (테스트) #1.pdf'), 'Korean path PDF');

@@ -1,0 +1,24 @@
+# Unsigned directory package, used only as macOS evidence (real app name "Learn" in the menu bar).
+# Not a distribution build: no signing, notarization or installers yet (P6).
+# Build: pnpm build && pnpm exec electron-builder --projectDir apps/desktop --dir --mac --arm64 --publish never
+appId: app.learn.desktop
+productName: Learn
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+# better-sqlite3 ships N-API prebuilds; nothing to rebuild for Electron.
+npmRebuild: false
+asarUnpack:
+  - node_modules/better-sqlite3/**/*.node
+# identity: null skips signing, which leaves Electron's original signature invalid for the renamed bundle;
+# the macOS evidence workflow then applies an ad-hoc signature (codesign --sign -), no identity involved.
+mac:
+  target: dir
+  identity: null
+  category: public.app-category.education
+# Linux dir build is only used to smoke-test this config on the CI/dev server.
+linux:
+  target: dir
+  executableName: learn

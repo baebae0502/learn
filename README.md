@@ -19,11 +19,24 @@
 ## 검증
     pnpm typecheck
     pnpm test           # 단위·통합 (vitest)
-    pnpm fixtures       # 테스트용 PDF·동영상 생성 (ffmpeg 필요, 이미 있으면 건너뜀)
+    pnpm fixtures       # 테스트용 PDF·동영상 생성 (이미 있으면 건너뜀, 없는 동영상을 만들 때만 ffmpeg 필요)
     pnpm e2e            # Electron E2E (macOS/데스크톱)
     pnpm e2e:xvfb       # Electron E2E (헤드리스 Linux)
 
 E2E 스크립트는 빌드 후 `pnpm fixtures`를 자동으로 실행한다. fixture를 다시 만들려면 `node fixtures/generate.mjs --force`. E2E 스크린샷과 trace는 `test-results/`에 남는다.
+
+## macOS 증거 레인
+
+Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15`, M1 VM 3 vCPU / 7 GB)로 앱을 빌드·실행하고 스크린샷·녹화·측정값을 내려받는다. 결과와 실행 기록은 [`docs/mac-verification.md`](docs/mac-verification.md).
+
+    scripts/evidence.sh <branch> <suite> <label> [runner] [packaged]
+    scripts/evidence.sh m0-evidence baseline m0-baseline            # 예
+    scripts/evidence.sh m0-evidence evidence m0-spikes macos-15 true
+
+- 워크플로 `.github/workflows/macos-evidence.yml`은 수동 실행(`workflow_dispatch`)만 받는다. suite는 Playwright 태그(`@baseline`, `@evidence` …, `all`은 전체)이고, `e2e`와 `all`은 기능 E2E(`tests/e2e`)도 돌린다. 증거 테스트가 하나도 선택되지 않는 suite(`all`, `e2e` 제외)는 바로 실패한다. 각 단계에는 시간 제한(증거 12분, 기능 E2E 8분)이 있어 멈추면 그 단계만 실패하고 artifact는 항상 올라간다. `packaged=true`면 `electron-builder --dir` 앱(인증서 서명 없음, 워크플로가 ad-hoc 서명)도 만들어 실행한다.
+- 내려받은 결과는 `evidence/<label>/<run_id>/`(gitignore): `evidence/`(PNG, `env.json`, `baseline.json`, `spikes.json`, 리포트), `demo/`(녹화), `run.json`(잡별 소요 분, 다운로드 속도). `EVIDENCE_RUN_ID=<id>`를 주면 새로 실행하지 않고 기존 실행을 다시 내려받는다.
+- **분 예산 주의**: 비공개 저장소의 macOS 분은 10배로 차감된다. 디버깅은 이 서버의 xvfb(`pnpm e2e:evidence`를 `xvfb-run`으로)와 Linux CI(`ci.yml`, 증거 하네스도 실행)에서 먼저 끝내고, 실행할 때마다 `docs/mac-verification.md` 실행 기록 표에 run id·분·결과를 남긴다.
+- 증거 하네스: `playwright.evidence.config.ts`, `tests/evidence/`(`capture.ts` 페이지·창·전체 화면 캡처, 녹화, 실제 글꼴 조회 / `env.ts` 환경 보고). macOS 전용 캡처는 다른 OS에서 `skipped`로 기록된다.
 
 ## 구조
 - `packages/domain` 타입·스키마·Result · `packages/db` SQLite·마이그레이션 · `packages/library` 가져오기·복구·백업

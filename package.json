@@ -12,11 +12,13 @@
     "test": "vitest run",
     "fixtures": "node fixtures/generate.mjs",
     "e2e": "pnpm build && pnpm fixtures && playwright test",
-    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1440x900x24\" playwright test"
+    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1440x900x24\" playwright test",
+    "e2e:evidence": "pnpm build && pnpm fixtures && playwright test -c playwright.evidence.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
+    "electron-builder": "26.17.0",
     "pdf-lib": "1.17.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

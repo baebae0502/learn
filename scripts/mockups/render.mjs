@@ -29,12 +29,14 @@ export async function launch({ scale = 2, width = 1440, height = 900 } = {}) {
   });
   const page = await app.firstWindow();
   let size = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
+  /** @type {import('@playwright/test').CDPSession | null} */
+  let emulated = null;
   if (size[0] === width && size[1] === height && size[2] !== scale) {
     // macOS ignores --force-device-scale-factor on a 1x display (CI runners are 1024×768 @1x),
     // so emulate the Retina scale through CDP. The session stays attached for the app's lifetime
     // so the override survives every page.goto.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile: false });
+    emulated = await page.context().newCDPSession(page);
+    await emulated.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile: false });
     size = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
   }
   if (size[0] !== width || size[1] !== height || size[2] !== scale) {
@@ -44,7 +46,17 @@ export async function launch({ scale = 2, width = 1440, height = 900 } = {}) {
         `the display is too small (needs ${width * scale}×${height * scale} px). On Linux let the script start its own xvfb.`,
     );
   }
-  return { app, page };
+  /**
+   * Save the viewport as PNG at device pixels. Playwright's page.screenshot does not know about
+   * the CDP override and would save CSS pixels, so the emulated path captures through CDP.
+   * @param {string} file
+   */
+  async function screenshot(file) {
+    if (!emulated) return void (await page.screenshot({ path: file, type: 'png' }));
+    const { data } = await emulated.send('Page.captureScreenshot', { format: 'png' });
+    writeFileSync(file, Buffer.from(data, 'base64'));
+  }
+  return { app, page, screenshot };
 }
 
 /**
@@ -75,7 +87,7 @@ export async function platformFonts(page, selector) {
  */
 export async function renderMockups({ renders, outDir, scale = 2, log = () => {} }) {
   mkdirSync(outDir, { recursive: true });
-  const { app, page } = await launch({ scale });
+  const { app, page, screenshot } = await launch({ scale });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => {
@@ -101,7 +113,7 @@ export async function renderMockups({ renders, outDir, scale = 2, log = () => {}
       const milestones = await page.evaluate(() => window.__milestones ?? { tagged: [], missing: [] });
       const copyLint = await page.evaluate(() => window.__copyLint ?? []);
       const file = path.join(outDir, `${r.name}.png`);
-      await page.screenshot({ path: file, type: 'png' });
+      await screenshot(file);
       const ms = Date.now() - started;
       results.push({ name: r.name, file, ms, pretendard, fonts, milestones, copyLint });
       log(`  ${r.name}.png  ${ms} ms`);

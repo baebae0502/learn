@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, fail, failureFrom, importPathsInput, newId, nowIso, ok,
-  pickAndImportInput, sourceAnchor, toLearnError,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, fail, failureFrom, importPathsInput, newId, nowIso, ok,
+  pickAndImportInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 import { IpcChannels } from '../src/ipc-channels';
 
@@ -66,6 +66,15 @@ describe('ipc contract', () => {
   it('builds same-origin asset URLs', () => {
     expect(APP_ORIGIN).toBe('learn://app');
     expect(assetUrl('abc')).toBe('learn://app/asset/abc');
+  });
+  it('bounds item titles at 500 characters and collection names at 200', () => {
+    const itemId = newId();
+    expect(updateMetadataInput.parse({ itemId, title: `  ${'t'.repeat(300)}  ` }).title).toBe('t'.repeat(300));
+    expect(updateMetadataInput.safeParse({ itemId, title: 't'.repeat(500) }).success).toBe(true);
+    expect(updateMetadataInput.safeParse({ itemId, title: 't'.repeat(501) }).success).toBe(false);
+    expect(updateMetadataInput.safeParse({ itemId, title: '   ' }).success).toBe(false);
+    expect(createCollectionInput.safeParse({ name: 'n'.repeat(200) }).success).toBe(true);
+    expect(createCollectionInput.safeParse({ name: 'n'.repeat(201) }).success).toBe(false);
   });
   it('uses namespaced channel names (legacy)', () => {
     expect(Object.values(IpcChannels).every((c) => /^(app|library):[a-zA-Z]+$/.test(c))).toBe(true);

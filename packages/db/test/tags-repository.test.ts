@@ -120,4 +120,28 @@ describe('TagsRepository: items', () => {
     expect(repo.togglePosition(5, [i1])).toBeNull();
     expectLearnError(() => repo.togglePosition(9, [i1]), 'VALIDATION_FAILED', '위치');
   });
+
+  it('returns null and changes nothing when no target is a live item', () => {
+    const t = repo.create('starred');
+    repo.setColor(t.id, 'orange', 4);
+    const [kept, trashed] = [seedItem(db).itemId, seedItem(db).itemId];
+    repo.assign(t.id, [kept, trashed]);
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run('2026-10-20T00:00:00.000Z', trashed);
+    const before = itemsOf(t.id);
+    expect(repo.togglePosition(4, [trashed, newId(), trashed])).toBeNull();
+    expect(itemsOf(t.id)).toEqual(before);
+  });
+
+  it('handles duplicate ids in the input once', () => {
+    const t = repo.create('starred');
+    repo.setColor(t.id, 'orange', 4);
+    const [i1, i2] = [seedItem(db).itemId, seedItem(db).itemId];
+    repo.assign(t.id, [i1]);
+    // i1 listed twice and already tagged, i2 untagged: not all have it -> add to all, each once
+    expect(repo.togglePosition(4, [i1, i1, i2, i2])).toEqual({ tagId: t.id, assigned: true });
+    expect(itemsOf(t.id)).toEqual(sorted([i1, i2]));
+    // now every distinct target has it -> remove from all
+    expect(repo.togglePosition(4, [i2, i1, i2])).toEqual({ tagId: t.id, assigned: false });
+    expect(itemsOf(t.id)).toEqual([]);
+  });
 });

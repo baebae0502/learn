@@ -22,12 +22,14 @@ export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
 export const nameSchema = z.string().trim().min(1).max(200);
+/** Item titles allow more than collection/tag names. */
+export const titleSchema = z.string().trim().min(1).max(500);
 export const positionSchema = z.number().int().min(1).max(8);
 export const tagColorSchema = z.enum(TAG_COLORS.map((c) => c.id) as [TagColorId, ...TagColorId[]]);
 
 export const updateMetadataInput = z.object({
   itemId: z.uuid(),
-  title: nameSchema.optional(),
+  title: titleSchema.optional(),
   metadata: itemMetadataSchema.optional(),
 });
 export const collectionIdInput = z.object({ collectionId: z.uuid() });
@@ -130,7 +132,7 @@ export interface LearnApi {
     remove(input: TagIdInput): Promise<Result<void>>;
     assign(input: TagItemsInput): Promise<Result<number>>;
     unassign(input: TagItemsInput): Promise<Result<number>>;
-    togglePosition(input: TogglePositionInput): Promise<Result<number>>;
+    togglePosition(input: TogglePositionInput): Promise<Result<{ tagId: string; assigned: boolean } | null>>;
   };
   settings: {
     get(input: SettingGetInput): Promise<Result<unknown>>;

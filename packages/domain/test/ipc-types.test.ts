@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type * as Ipc from '../src/ipc';
 import type { LearnApi } from '../src/ipc';
+import type { Result } from '../src/result';
 
 type P<F> = F extends (i: infer I) => unknown ? I : never;
 
@@ -29,5 +30,9 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['reader']['getPosition']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['reader']['savePosition']>>().toEqualTypeOf<Ipc.SavePositionInput>();
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();
+  });
+  it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {
+    expectTypeOf<ReturnType<LearnApi['tags']['togglePosition']>>()
+      .toEqualTypeOf<Promise<Result<{ tagId: string; assigned: boolean } | null>>>();
   });
 });

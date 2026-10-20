@@ -118,7 +118,8 @@ export class TagsRepository {
 
   /**
    * Keyboard toggle of the tag at `position` (1–8): if every target item already has it, it is removed from all;
-   * otherwise it is added to all. Unknown/trashed ids are not targets. `null` when no tag holds that position.
+   * otherwise it is added to all. Unknown/trashed ids are not targets; duplicates count once.
+   * `null` (nothing changed) when no tag holds that position or no target remains.
    */
   togglePosition(position: number, itemIds: readonly string[]): { tagId: string; assigned: boolean } | null {
     checkPosition(position);
@@ -128,6 +129,7 @@ export class TagsRepository {
       const live = this.db.prepare('SELECT 1 FROM items WHERE id = ? AND deleted_at IS NULL');
       const has = this.db.prepare('SELECT 1 FROM item_tags WHERE item_id = ? AND tag_id = ?');
       const targets = [...new Set(itemIds)].filter((itemId) => live.get(itemId) !== undefined);
+      if (targets.length === 0) return null;
       const allHave = targets.every((itemId) => has.get(itemId, tag.id) !== undefined);
       if (allHave) this.unassignAll(tag.id, targets);
       else this.assignAll(tag.id, targets);

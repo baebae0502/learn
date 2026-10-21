@@ -24,6 +24,8 @@ export const sidebarHidden = (s: SidebarState, viewportWidth: number): boolean =
 
 export function toggledSidebar(s: SidebarState, viewportWidth: number): SidebarState {
   if (sidebarHidden(s, viewportWidth)) return { ...s, collapsed: false, forceShown: autoCollapses(viewportWidth, s.width) };
+  // Shown on demand in a narrow window: folding it again hands it back to the automatic fold, not a stored collapse (M-5).
+  if (s.forceShown) return { ...s, forceShown: false };
   return { ...s, collapsed: true, forceShown: false };
 }
 

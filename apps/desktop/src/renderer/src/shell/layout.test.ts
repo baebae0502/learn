@@ -22,6 +22,11 @@ describe('sidebar layout rules (design-spec 2.1)', () => {
     expect(toggledSidebar(s(), 1440)).toEqual(s({ collapsed: true }));
     expect(toggledSidebar(s({ collapsed: true }), 1440)).toEqual(s());
   });
+  it('folding a sidebar shown on demand only gives the fold back to the window width (not a user collapse, M-5)', () => {
+    expect(toggledSidebar(s({ forceShown: true }), 720)).toEqual(s());
+    expect(sidebarHidden(toggledSidebar(s({ forceShown: true }), 720), 720)).toBe(true);
+    expect(sidebarHidden(toggledSidebar(s({ forceShown: true }), 720), 1440)).toBe(false);
+  });
   it('forgets "shown on demand" once there is room again (automatic folding is never persisted)', () => {
     expect(afterViewportChange(s({ forceShown: true }), 1440)).toEqual(s());
     const same = s({ forceShown: true });

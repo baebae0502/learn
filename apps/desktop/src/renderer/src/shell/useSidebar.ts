@@ -9,10 +9,29 @@ export function useSidebarHidden(): boolean {
   return sidebarHidden(sidebar, useViewportWidth());
 }
 
+/** DOM ids of the two copies of the toggle (SidebarToggle): the one in the sidebar top and the one in the toolbar. */
+export const TOGGLE_IDS = { sidebar: 'sidebar-toggle', toolbar: 'toolbar-sidebar-toggle' } as const;
+
+/**
+ * Focus must not fall to <body> with the element that holds it: hiding makes the sidebar (and the separator) inert or
+ * gone, showing unmounts the toolbar's toggle. Read before the change; the copy that takes over gets the focus.
+ */
+export function keepFocusAcross(willHide: boolean): void {
+  const active = document.activeElement;
+  if (!active || active === document.body) return;
+  const leaving = willHide
+    ? Boolean(document.querySelector('.sidebar-inner')?.contains(active)) || active.closest('.pane-separator') !== null
+    : active.id === TOGGLE_IDS.toolbar;
+  if (leaving) requestAnimationFrame(() => document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar)?.focus());
+}
+
 export function useToggleSidebar(): () => void {
   return useCallback(() => {
     const { sidebar, setSidebar } = useShell.getState();
-    setSidebar(toggledSidebar(sidebar, innerWidth));
+    const next = toggledSidebar(sidebar, innerWidth);
+    const willHide = sidebarHidden(next, innerWidth);
+    if (willHide !== sidebarHidden(sidebar, innerWidth)) keepFocusAcross(willHide);
+    setSidebar(next);
   }, []);
 }
 

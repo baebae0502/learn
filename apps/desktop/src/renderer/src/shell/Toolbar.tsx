@@ -10,7 +10,7 @@ export function Toolbar(props: { title: string; count?: string; titleTestId?: st
   const hidden = useSidebarHidden();
   return (
     <header className="titlebar" data-testid="toolbar">
-      {hidden && <SidebarToggle testId="toolbar-sidebar-toggle" />}
+      {hidden && <SidebarToggle place="toolbar" />}
       {props.leading}
       <div className="tb-title">
         <h1 className="title ellipsis" title={props.title} data-testid={props.titleTestId ?? 'toolbar-title'}>

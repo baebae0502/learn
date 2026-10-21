@@ -3,31 +3,25 @@ import { commandById } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
-import { useSidebarHidden } from './useSidebar';
+import { TOGGLE_IDS, useSidebarHidden } from './useSidebar';
 
-type ToggleId = 'sidebar-toggle' | 'toolbar-sidebar-toggle';
-/** The copy that takes over when this one goes away (into the folded, inert sidebar, or out of the toolbar). */
-const OTHER: Record<ToggleId, ToggleId> = { 'sidebar-toggle': 'toolbar-sidebar-toggle', 'toolbar-sidebar-toggle': 'sidebar-toggle' };
-
-/** In the sidebar top while it is shown; in the toolbar (after the traffic-light inset) while it is hidden. */
-export function SidebarToggle({ testId }: { testId: ToggleId }) {
+/**
+ * In the sidebar top while it is shown; in the toolbar (after the traffic-light inset) while it is hidden. Both run the
+ * registry command, whose handler (useToggleSidebar) hands the focus to the copy that takes over.
+ */
+export function SidebarToggle({ place }: { place: keyof typeof TOGGLE_IDS }) {
   const hidden = useSidebarHidden();
   const { run } = useCommands();
-  const toggle = () => {
-    const hadFocus = document.activeElement?.id === testId;
-    // Focus must not fall to <body> with the button that had it: hand it to the other copy once it is there.
-    if (run('view.toggleSidebar') && hadFocus) requestAnimationFrame(() => document.getElementById(OTHER[testId])?.focus());
-  };
   return (
     <IconButton
-      id={testId}
+      id={TOGGLE_IDS[place]}
       icon={PanelLeft}
       label={t.shell.toggleSidebar}
       accelerator={commandById('view.toggleSidebar').accelerator}
-      onPress={toggle}
+      onPress={() => run('view.toggleSidebar')}
       aria-expanded={!hidden}
       aria-controls="sidebar"
-      testId={testId}
+      testId={TOGGLE_IDS[place]}
     />
   );
 }

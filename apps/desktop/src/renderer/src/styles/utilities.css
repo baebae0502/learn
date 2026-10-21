@@ -13,6 +13,34 @@
   [hidden] {
     display: none !important;
   }
+  /* Inactive window — not the key window (design-spec 2.1, 8.3; Task 8 critique R2-2, R2-3). As AppKit does: no
+     focus ring and no keyboard cursor anywhere (the focus stays put, so they return in place when the window is key
+     again), the toolbar title and glyphs dim, and sidebar row icons lose their accent. The selection is already the
+     neutral fill (components/list.css); the traffic lights are the system's. Real focus states only: the state board's
+     forced states ([data-force]) are left alone. */
+  :root[data-window-inactive] :is(:focus-visible, [data-focus-visible], .soft-disabled) {
+    outline: none;
+  }
+  :root[data-window-inactive] :is(.nav-row[data-focus-visible], .table-row:has(.row-open:focus-visible)) {
+    box-shadow: none;
+  }
+  :root[data-window-inactive] .field:is([data-focus-visible], [data-focus-within]),
+  :root[data-window-inactive] .field:has(> .field-input:focus) {
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  :root[data-window-inactive] .pane-separator:focus-visible::before {
+    content: none;
+  }
+  :root[data-window-inactive] .titlebar .tb-title .title {
+    color: var(--text-secondary);
+  }
+  :root[data-window-inactive] :is(.titlebar, .sidebar-top) .icon-btn {
+    color: var(--text-tertiary);
+  }
+  :root[data-window-inactive] .nav-row > .icon {
+    color: var(--text-secondary);
+  }
+
   /* Screenshots (LEARN_DETERMINISTIC=1): nothing moves, no caret. */
   :root[data-deterministic='1'] *,
   :root[data-deterministic='1'] *::before,

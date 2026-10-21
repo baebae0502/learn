@@ -441,3 +441,53 @@ test('an open tooltip closes when the window becomes inactive and does not come 
     await app.close();
   }
 });
+
+test('an inactive window draws no focus ring or keyboard cursor and dims its chrome; the ring returns in place (R2-2, R2-3)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const row = page.getByTestId('nav-library');
+  const looks = () =>
+    page.evaluate(() => {
+      const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
+      return {
+        cursor: css('[data-testid="nav-library"]').boxShadow,
+        title: css('[data-testid="toolbar-title"]').color,
+        toggle: css('[data-testid="sidebar-toggle"]').color,
+        rowIcon: css('[data-testid="nav-library"] > .icon').color,
+      };
+    });
+  const tokens = () =>
+    page.evaluate(() => {
+      const probe = document.createElement('span');
+      document.body.append(probe);
+      const read = (v: string) => ((probe.style.color = `var(${v})`), getComputedStyle(probe).color);
+      const out = { secondary: read('--text-secondary'), tertiary: read('--text-tertiary') };
+      probe.remove();
+      return out;
+    });
+  try {
+    await row.focus();
+    await page.keyboard.press('ArrowDown'); // keyboard cursor on the current row
+    const active = await looks();
+    expect(active.cursor).not.toBe('none');
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    const inactive = await looks();
+    const t = await tokens();
+    expect(inactive.cursor).toBe('none');
+    expect(inactive.title).toBe(t.secondary);
+    expect(inactive.toggle).toBe(t.tertiary);
+    expect(inactive.rowIcon).toBe(t.secondary);
+    await expect(row).toBeFocused(); // the focus stayed where it was
+    await app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(app)).evaluate((w) => w.focus());
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    expect(await looks()).toEqual(active); // ring, title and glyphs back as they were
+  } finally {
+    await app.close();
+  }
+});

@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Result } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
+import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
 
 export interface IpcDeps {
@@ -11,6 +12,8 @@ export interface IpcDeps {
   prefs: PrefsStore;
   /** The main window's renderer reports its command context; main derives menu availability from it. */
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
+  /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */
+  sheets: SheetHost;
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

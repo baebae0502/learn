@@ -78,12 +78,15 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
-    expect(COMMANDS.map((c) => c.id).sort()).toEqual(['file.importLinked', 'file.importManaged', 'item.open', 'item.relink', 'nav.back', 'view.toggleSidebar']);
+    expect(COMMANDS.map((c) => c.id).sort()).toEqual(['app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.relink', 'nav.back', 'view.toggleSidebar']);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
     expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
     expect(commandById('view.toggleSidebar')).toMatchObject({
       label: '사이드바 보기/숨기기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
+    });
+    expect(commandById('app.shortcuts')).toMatchObject({
+      label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     });
   });
 });
@@ -107,8 +110,8 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
   });
   it('lists the menu-bar commands of a view (never item commands)', () => {
-    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar']);
-    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar']);
+    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts']);
+    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {

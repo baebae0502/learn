@@ -13,6 +13,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   open: vi.fn(),
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
+  showShortcuts: vi.fn(),
   ...over,
 });
 
@@ -43,6 +44,16 @@ describe('renderer command registry', () => {
     const blocked = env({ blocked: true });
     expect(runCommand('view.toggleSidebar', blocked)).toBe(false);
     expect(blocked.toggleSidebar).not.toHaveBeenCalled();
+  });
+  it('⌘/ opens the shortcut sheet in every view, but not while the window is blocked (a sheet is already up)', () => {
+    for (const view of ['library', 'viewer'] as const) {
+      const e = env({ view });
+      expect(runCommand('app.shortcuts', e)).toBe(true);
+      expect(e.showShortcuts).toHaveBeenCalledTimes(1);
+    }
+    const blocked = env({ blocked: true });
+    expect(runCommand('app.shortcuts', blocked)).toBe(false);
+    expect(blocked.showShortcuts).not.toHaveBeenCalled();
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

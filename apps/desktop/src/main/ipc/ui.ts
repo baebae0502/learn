@@ -1,5 +1,6 @@
+import path from 'node:path';
 import { BrowserWindow } from 'electron';
-import { COMMANDS, Channels, LearnError, commandContextInput, emptyInput, showContextMenuInput, toLearnError, type LibraryItem } from '@learn/domain';
+import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
 import { windowStateOf } from '../window';
@@ -38,5 +39,22 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', '창을 찾을 수 없습니다.');
     return windowStateOf(window);
+  });
+
+  handle(Channels.ui.confirmDuplicate, confirmDuplicateInput, async ({ path: file, existingItemId }, event) => {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const existing = deps.getContext().repo.getItem(existingItemId);
+    if (!parent || !existing) return { choice: 'skip' as const };
+    const result = await deps.sheets.open(parent, {
+      kind: 'duplicate',
+      fileName: path.basename(file),
+      existing: { title: existing.title, type: existing.type, size: existing.size, createdAt: existing.createdAt, storageMode: existing.storageMode },
+    });
+    return { choice: result?.kind === 'duplicate' ? result.choice : ('skip' as const) };
+  });
+
+  handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
   });
 }

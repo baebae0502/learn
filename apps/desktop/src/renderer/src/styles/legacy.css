@@ -40,11 +40,6 @@
   .missing { background: var(--danger-soft); border-radius: 8px; padding: 14px; }
   .error { color: var(--danger); }
   
-  .modal-backdrop { position: fixed; inset: 0; background: rgb(24 40 64 / 0.35); display: grid; place-items: center; }
-  .modal { background: var(--panel); border-radius: 12px; padding: 20px 24px; width: min(480px, 90vw); }
-  .modal h2 { margin-top: 0; font-size: 17px; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-  
   .fatal { max-width: 640px; margin: 80px auto; background: var(--panel); border-radius: 12px; padding: 24px 28px; }
   
   .pdf-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--muted); }

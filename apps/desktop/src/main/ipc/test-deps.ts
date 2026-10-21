@@ -11,6 +11,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     },
     prefs: {} as IpcDeps['prefs'],
     uiContext: { report: () => {}, current: () => ({ view: 'library', blocked: false }) },
+    sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {} },
     ...over,
   };
 }

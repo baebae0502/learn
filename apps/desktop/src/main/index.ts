@@ -14,6 +14,7 @@ import { openLibraryContext, type LibraryContext } from './library-context';
 import { applyMenuEnabled, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
+import { createSheetHost } from './sheets';
 import { applyTheme } from './theme';
 import { createMainWindow } from './window';
 import { windowUrl } from './window-url';
@@ -34,6 +35,10 @@ const isDevBuild = !app.isPackaged && process.env['LEARN_E2E'] !== '1';
 const deterministic = isDeterministic(process.env);
 if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);
 
+/** Every window loads the same renderer; `?window=` picks what it shows (main, sheet, later settings). */
+const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
+const urlOptions = { platform: process.platform, deterministic, vibrancy: false, demo: false };
+
 registerAppScheme();
 
 let ctx: LibraryContext | null = null;
@@ -43,12 +48,7 @@ let mainWindow: BrowserWindow | null = null;
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
     preload: path.join(here, '../preload/index.cjs'),
-    url: windowUrl(devServerUrl ?? `${APP_SCHEME}://app/index.html`, 'main', {
-      platform: process.platform,
-      deterministic,
-      vibrancy: false, // Task 8
-      demo: false, // Task 13
-    }),
+    url: windowUrl(rendererBase, 'main', urlOptions),
   });
   win.on('closed', () => {
     if (mainWindow !== win) return;
@@ -153,6 +153,7 @@ if (!app.requestSingleInstanceLock()) {
         },
         current: () => uiContext,
       },
+      sheets: createSheetHost({ preload: path.join(here, '../preload/index.cjs'), url: () => windowUrl(rendererBase, 'sheet', urlOptions), platform: process.platform }),
     };
     registerAllIpc(createHandle(devOrigin), deps);
 

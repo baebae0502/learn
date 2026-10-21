@@ -1,9 +1,4 @@
 export const t = {
-  duplicateTitle: '이미 있는 자료입니다',
-  duplicateBody: (name: string) => `“${name}”과(와) 내용이 같은 자료가 라이브러리에 있습니다. 원본은 삭제되지 않습니다.`,
-  openExisting: '기존 자료 열기',
-  addAnyway: '새 자료로 추가',
-  cancel: '취소',
   back: '← 라이브러리',
   missingNotice: '원본 파일을 찾을 수 없습니다.',
   missingLinkedHint: '외부 연결 자료입니다. 파일을 옮겼다면 “다시 연결”로 새 위치를 지정하세요.',

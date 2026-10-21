@@ -71,7 +71,6 @@ describe('UI copy (design-spec 4, 9)', () => {
   });
   it('only the pre-M3 screens import strings/legacy (no new screen may; Task 7 deletes it)', () => {
     expect(sources().filter((f) => /from '(?:\.\.?\/)+strings\/legacy'/.test(read(f)))).toEqual([
-      'components/DuplicateDialog.tsx',
       'components/FatalScreen.tsx',
       'viewers/PdfViewer.tsx',
       'viewers/VideoViewer.tsx',

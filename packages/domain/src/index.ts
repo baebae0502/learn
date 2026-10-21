@@ -12,4 +12,5 @@ export * from './metadata';
 export * from './reading';
 export * from './result';
 export * from './settings';
+export * from './sheets';
 export * from './tag-colors';

@@ -6,6 +6,7 @@ import { itemMetadataSchema } from './metadata';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
+import type { DuplicateChoice, SheetPayload } from './sheets';
 import { LIBRARY_SORT_COLUMNS, prefsFields } from './settings';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
@@ -58,6 +59,14 @@ export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, .
 /** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
 export const commandContextInput = z.object({ view: z.enum(['library', 'viewer']), blocked: z.boolean() }).strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
+
+export const confirmDuplicateInput = z.object({ path: z.string().min(1).max(4096), existingItemId: z.uuid() });
+export const sheetResultInput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']) }),
+  z.object({ kind: z.literal('shortcuts') }),
+]);
+export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
+export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
 /** Native context menus by kind (ADR-0005 §4). M3 has item commands only; the other kinds get theirs in M4–M5. */
@@ -150,6 +159,15 @@ export interface LearnApi {
     windowState(): Promise<Result<WindowState>>;
     /** The main window's command context changed; main re-derives the menu bar from it (other windows are ignored). */
     reportContext(input: CommandContextInput): Promise<Result<void>>;
+    /** The duplicate sheet over the calling window; closing it without an answer is 'skip'. */
+    confirmDuplicate(input: ConfirmDuplicateInput): Promise<Result<{ choice: DuplicateChoice }>>;
+    /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */
+    showShortcuts(): Promise<Result<void>>;
+  };
+  /** Only callable from an open sheet window. */
+  sheet: {
+    payload(): Promise<Result<SheetPayload>>;
+    resolve(input: SheetResultInput): Promise<Result<void>>;
   };
   /** Subscribe to a main->renderer push event; returns an unsubscribe function. */
   on<K extends keyof LearnEventMap>(name: K, cb: (payload: LearnEventMap[K]) => void): () => void;

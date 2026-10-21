@@ -5,12 +5,10 @@ import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { DuplicateDialog } from '../components/DuplicateDialog';
 import { keys, useItem, useItems, useLibrarySync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
-import type { DuplicateChoice } from '../library/import-flow';
 import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryTable } from '../library/LibraryTable';
 import { ListFailed } from '../library/ListFailed';
@@ -44,14 +42,21 @@ export function MainWindow(_props: { info: AppInfo }) {
   const readyAt = useRef(0);
   if (readyAt.current === 0 && (items.isSuccess || items.isError)) readyAt.current = Date.now();
 
-  /** Task 5: the pre-M3 dialog, promise-based. Task 6 replaces it with the native duplicate sheet. */
-  const [asking, setAsking] = useState<{ path: string; resolve(choice: DuplicateChoice): void } | null>(null);
-  const confirm = useCallback((dup: { path: string; existingItemId: string }) => new Promise<DuplicateChoice>((resolve) => setAsking({ path: dup.path, resolve })), []);
-  const answer = (choice: DuplicateChoice) => {
-    asking?.resolve(choice);
-    setAsking(null);
-  };
+  /** Each duplicate is asked in the native duplicate sheet (main); the import waits for the answer. */
+  const confirm = useCallback(async (dup: { path: string; existingItemId: string }) => (await unwrap(api().ui.confirmDuplicate(dup))).choice, []);
   const runImport = useImport(confirm);
+  /** The ⌘/ sheet is modal: commands (and drops) stay disabled until it closes. */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const showShortcuts = useCallback(async () => {
+    setSheetOpen(true);
+    try {
+      await unwrap(api().ui.showShortcuts());
+    } catch (e) {
+      actionFailed(e);
+    } finally {
+      setSheetOpen(false);
+    }
+  }, []);
 
   const relink = useCallback(async (itemId: string) => {
     try {
@@ -75,7 +80,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     },
     [runImport],
   );
-  useWindowDrop(view.kind === 'library' && !importing, onDrop);
+  useWindowDrop(view.kind === 'library' && !importing && !sheetOpen, onDrop);
 
   // A failed refresh keeps the last list on screen and says so once (a StrictMode re-run sees the same error object).
   // A failed first read has no list to keep: the content column shows the list-failed notice instead (below).
@@ -99,14 +104,15 @@ export function MainWindow(_props: { info: AppInfo }) {
   const list = items.data ?? [];
   const env: CommandEnv = {
     view: view.kind === 'reader' ? 'viewer' : 'library',
-    // Duplicate questions wait inside the import, so `importing` covers them.
-    blocked: importing,
+    // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag.
+    blocked: importing || sheetOpen,
     targetsOf: (ids) => ids.flatMap((id) => list.find((i) => i.id === id) ?? []),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
     open: (itemId) => setView({ kind: 'reader', itemId }),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
+    showShortcuts: () => void showShortcuts(),
   };
   useMenuCommands(env);
   useReportContext(env);
@@ -163,7 +169,6 @@ export function MainWindow(_props: { info: AppInfo }) {
       <Shell sidebar={<LibrarySidebar count={count} />} toolbar={toolbar} overlays={<Toasts />}>
         {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} onBack={() => setView({ kind: 'library' })} /> : library}
       </Shell>
-      {asking && <DuplicateDialog path={asking.path} onOpenExisting={() => answer('open')} onAddAnyway={() => answer('add')} onCancel={() => answer('skip')} />}
       {(items.isSuccess || items.isError) && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
     </CommandProvider>
   );

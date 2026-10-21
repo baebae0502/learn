@@ -1,7 +1,7 @@
-import type { ImportOutcome, StorageMode } from '@learn/domain';
+import type { DuplicateChoice, ImportOutcome, StorageMode } from '@learn/domain';
 import { t } from '../strings';
 
-export type DuplicateChoice = 'open' | 'add' | 'skip';
+export type { DuplicateChoice } from '@learn/domain';
 
 export interface ImportReport {
   imported: number;
@@ -11,7 +11,7 @@ export interface ImportReport {
 }
 
 export interface ImportFlowDeps {
-  /** Ask about one duplicate: Task 5 in-window dialog, Task 6 native sheet. */
+  /** Ask about one duplicate (the native duplicate sheet, ui.confirmDuplicate). */
   confirm(dup: { path: string; existingItemId: string }): Promise<DuplicateChoice>;
   /** Import one path again with allowDuplicate (새 자료로 추가). */
   importAgain(path: string, mode: StorageMode): Promise<ImportOutcome[]>;

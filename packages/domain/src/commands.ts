@@ -6,7 +6,7 @@ import type { Availability, StorageMode } from './library';
  * shortcut sheet all render from it, and one predicate (isCommandAvailable) decides what can run.
  * No zod: the sandboxed preload imports this file (type imports only).
  */
-export type CommandId = 'file.importManaged' | 'file.importLinked' | 'nav.back' | 'item.open' | 'item.relink' | 'view.toggleSidebar';
+export type CommandId = 'file.importManaged' | 'file.importLinked' | 'nav.back' | 'item.open' | 'item.relink' | 'view.toggleSidebar' | 'app.shortcuts';
 /** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
@@ -56,6 +56,10 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/숨기기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     keywords: ['사이드바', '패널', '숨기기', '보기', 'sidebar'],
+  },
+  {
+    id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
+    keywords: ['단축키', '키보드', '도움말', 'shortcuts', 'keyboard'],
   },
 ];
 

@@ -2,6 +2,7 @@
 import { common } from './common';
 import { library } from './library';
 import { shell } from './shell';
+import { sheets } from './sheets';
 import { toast } from './toast';
 
-export const t = { common, shell, library, toast } as const;
+export const t = { common, shell, library, toast, sheets } as const;

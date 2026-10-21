@@ -67,9 +67,10 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
 const GO: Shape = {
   id: 'menu.go', label: '이동', submenu: [{ id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' }],
 };
+const HELP: Shape = { id: 'menu.help', label: '도움말', role: 'help', submenu: [{ id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/' }] };
 
 describe('buildAppMenu', () => {
-  it('macOS: Learn app menu + 파일/편집/보기/이동/윈도우, Korean labels', () => {
+  it('macOS: Learn app menu + 파일/편집/보기/이동/윈도우/도움말, Korean labels', () => {
     expect(shape(build('darwin'))).toEqual([
       {
         id: 'menu.app', label: 'Learn', submenu: [
@@ -96,6 +97,7 @@ describe('buildAppMenu', () => {
           { label: '모두 앞으로 가져오기', role: 'front' },
         ],
       },
+      HELP,
     ]);
   });
 
@@ -107,6 +109,7 @@ describe('buildAppMenu', () => {
         VIEW(platform),
         GO,
         { id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [{ label: '최소화', role: 'minimize' }] },
+        HELP,
       ]);
     }
   });

@@ -13,8 +13,15 @@
   .tooltip[data-entering] {
     animation: fade-in var(--duration-fast) var(--ease-standard);
   }
+  /* The name and shortcut never shrink or break mid-word; a long reason wraps inside its own column. */
+  .tooltip-label,
+  .tooltip-shortcut {
+    flex: none;
+    white-space: nowrap;
+  }
   /* Reason of an icon button disabled with one, in the shortcut's place (ui/Tooltip.tsx). */
   .tooltip-reason {
+    min-width: 0;
     color: var(--text-secondary);
   }
   .tooltip-shortcut {

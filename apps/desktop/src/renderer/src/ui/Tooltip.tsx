@@ -11,7 +11,7 @@ import { currentPlatform } from './platform';
 export function TooltipText({ label, accelerator, reason }: { label: string; accelerator?: string | undefined; reason?: string | undefined }) {
   return (
     <>
-      {label}
+      <span className="tooltip-label">{label}</span>
       {reason !== undefined ? (
         <span className="tooltip-reason">{reason}</span>
       ) : (

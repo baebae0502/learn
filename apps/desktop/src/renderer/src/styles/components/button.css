@@ -129,6 +129,8 @@
   .soft-disabled {
     display: inline-flex;
     flex: none;
+    width: fit-content; /* never stretched by a flex/grid parent: the ring hugs the button */
+    height: fit-content;
     border-radius: var(--radius-md);
   }
   .soft-disabled:has(> .btn-small) {

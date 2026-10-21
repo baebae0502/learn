@@ -1149,7 +1149,7 @@ h2,
   background: var(--separator);
 }
 .menu .mhead {
-  padding: var(--space-4) var(--space-8) 2px 24px;
+  padding: var(--space-4) var(--space-8) 2px 28px; /* local: lines up with item labels (4 + 16 check column + 8 gap) */
   color: var(--text-tertiary);
   font: var(--type-caption);
   font-weight: 600;

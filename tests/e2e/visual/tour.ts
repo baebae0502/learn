@@ -46,7 +46,9 @@ export async function settle(page: Page): Promise<void> {
 export async function shoot(page: Page, name: string, opts: { mask?: Locator[] } = {}): Promise<void> {
   if (TOUR_2X) await capture2x(page, name);
   await settle(page);
-  await expect(page).toHaveScreenshot(`${name}.png`, { animations: 'disabled', caret: 'hide', mask: opts.mask, maxDiffPixelRatio: 0.002 });
+  // Tight on purpose: at most 300 pixels may differ by more than the default per-pixel threshold (0.2), so a moved
+  // or recoloured 2 px focus ring fails while the Debian ↔ Ubuntu font raster noise passes (verified on CI, I2).
+  await expect(page).toHaveScreenshot(`${name}.png`, { animations: 'disabled', caret: 'hide', mask: opts.mask, maxDiffPixels: 300, threshold: 0.2 });
 }
 
 async function capture2x(page: Page, name: string): Promise<void> {

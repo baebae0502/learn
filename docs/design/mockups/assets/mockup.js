@@ -51,7 +51,7 @@ window.Mockup = (() => {
   }
 
   const toggle = (cls) =>
-    `<div class="icon-btn ${cls}" title="사이드바 보기/숨기기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
+    `<div class="icon-btn ${cls}" title="사이드바 가리기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
 
   /**
    * Window shell. Same DOM for both layouts; CSS grid areas place the sidebar under the

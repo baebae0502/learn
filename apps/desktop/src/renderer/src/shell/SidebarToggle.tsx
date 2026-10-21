@@ -1,8 +1,8 @@
 import { PanelLeft } from 'lucide-react';
-import { commandById } from '@learn/domain';
+import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
-import { t } from '../strings';
 import { IconButton } from '../ui/Button';
+import { currentPlatform } from '../ui/platform';
 import { TOGGLE_IDS, useSidebarHidden } from './useSidebar';
 
 /**
@@ -12,12 +12,14 @@ import { TOGGLE_IDS, useSidebarHidden } from './useSidebar';
 export function SidebarToggle({ place }: { place: keyof typeof TOGGLE_IDS }) {
   const hidden = useSidebarHidden();
   const { run } = useCommands();
+  const command = commandById('view.toggleSidebar');
   return (
     <IconButton
       id={TOGGLE_IDS[place]}
       icon={PanelLeft}
-      label={t.shell.toggleSidebar}
-      accelerator={commandById('view.toggleSidebar').accelerator}
+      // What a press does now, as the 보기 menu says it (design-spec 7.4): 사이드바 가리기 / 사이드바 보기.
+      label={commandLabel(command, currentPlatform(), { sidebar: hidden ? 'hidden' : 'shown' })}
+      accelerator={command.accelerator}
       onPress={() => run('view.toggleSidebar')}
       aria-expanded={!hidden}
       aria-controls="sidebar"

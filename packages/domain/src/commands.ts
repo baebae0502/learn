@@ -24,10 +24,21 @@ export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column'] as con
 /** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
+/** Whether the sidebar is shown (layout B) — what the sidebar command's label depends on. */
+export type SidebarState = 'shown' | 'hidden';
+
 export interface CommandSpec {
   id: CommandId;
-  /** Korean label exactly as menus show it ("…" when more input follows). */
+  /**
+   * Korean label exactly as menus show it ("…" when more input follows). For a command with `stateLabels` this is the
+   * neutral name, used where no state applies (the ⌘/ shortcut sheet, the key map).
+   */
   label: string;
+  /**
+   * Mac pattern for a toggle (design-spec 7.4): the menu, the tooltip and the palette name what the command does now —
+   * "사이드바 가리기" while the sidebar is shown, "사이드바 보기" while it is hidden. One command, one id, one shortcut.
+   */
+  stateLabels?: { sidebar: Readonly<Record<SidebarState, string>> };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
   /** Electron accelerator, owned by the native menu. */
@@ -67,8 +78,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   // It is a notice button only: the unplayable video (10.7) and the PDF that cannot be opened (C-1 as amended).
   { id: 'item.openExternally', label: '기본 앱으로 열기', contexts: ['item'] },
   {
-    id: 'view.toggleSidebar', label: '사이드바 보기/숨기기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
-    keywords: ['사이드바', '패널', '숨기기', '보기', 'sidebar'],
+    id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
+    stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
+    keywords: ['사이드바', '패널', '가리기', '숨기기', '보기', 'sidebar'],
   },
   {
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
@@ -83,7 +95,14 @@ export function commandById(id: CommandId): CommandSpec {
 }
 
 export const inPalette = (c: CommandSpec): boolean => c.palette ?? !c.contexts.includes('item');
-export const commandLabel = (c: CommandSpec, platform: string): string => (platform !== 'darwin' && c.labelOff ? c.labelOff : c.label);
+/**
+ * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
+ * is the reported context), else the platform label.
+ */
+export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
+  if (c.stateLabels && state.sidebar) return c.stateLabels.sidebar[state.sidebar];
+  return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
+}
 
 /** Commands main runs itself: always available, even before (or without) a renderer. */
 export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>([]);
@@ -93,6 +112,8 @@ export interface CommandContextState {
   view: 'library' | 'viewer';
   /** An import, a modal sheet or the fatal screen owns the window: nothing runs. */
   blocked: boolean;
+  /** For state labels only (not availability): absent where the window has no sidebar (the fatal screen). */
+  sidebar?: SidebarState;
 }
 
 /** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */

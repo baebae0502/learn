@@ -12,7 +12,7 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
-    expect(app.rows.find((r) => r.label === '사이드바 보기/숨기기')?.keys).toEqual(['Ctrl', 'Shift', 'S']);
+    expect(app.rows.find((r) => r.label === '사이드바 보기/가리기')?.keys).toEqual(['Ctrl', 'Shift', 'S']);
   });
   it('spells the dialog keys the way the platform does (↩ esc on macOS, Enter Esc elsewhere)', () => {
     const dialogKeys = (platform: string) => shortcutGroups(platform).at(-1)!.rows.map((r) => [r.label, r.keys, r.spoken]);

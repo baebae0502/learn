@@ -37,9 +37,9 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'app.shortcuts': (env) => env.showShortcuts(),
 };
 
-/** Just the context fields (what main needs for the menu bar). */
+/** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */
 export function contextOf(env: CommandEnv): CommandContextState {
-  return { view: env.view, blocked: env.blocked };
+  return { view: env.view, blocked: env.blocked, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
 }
 
 export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {

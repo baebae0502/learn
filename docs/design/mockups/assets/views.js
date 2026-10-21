@@ -156,7 +156,7 @@
       <span class="spacer"></span>
       ${importButton()}
       ${field}
-      <div class="icon-btn ${inspectorOn ? 'is-on' : ''}" title="항목 패널 보기/숨기기 ⌥⌘I" ${ms('M4', '항목 패널 토글')}>${icon('panel-right')}</div>
+      <div class="icon-btn ${inspectorOn ? 'is-on' : ''}" title="항목 패널 가리기 ⌥⌘I" ${ms('M4', '항목 패널 토글')}>${icon('panel-right')}</div>
     </div>`;
   }
 

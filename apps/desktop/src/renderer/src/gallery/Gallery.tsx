@@ -217,7 +217,7 @@ function Part2() {
         <div className="g-row">
           <Spinner />
           <span className="tooltip">
-            <TooltipText label="사이드바 보기/숨기기" accelerator="Ctrl+Cmd+S" />
+            <TooltipText label="사이드바 가리기" accelerator="Ctrl+Cmd+S" />
           </span>
         </div>
       </section>

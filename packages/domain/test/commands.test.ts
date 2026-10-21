@@ -85,7 +85,8 @@ describe('command registry', () => {
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
     expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
     expect(commandById('view.toggleSidebar')).toMatchObject({
-      label: '사이드바 보기/숨기기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
+      label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
+      stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
     });
     expect(commandById('app.shortcuts')).toMatchObject({
       label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
@@ -140,6 +141,20 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(sameCommandContext(LIB, { ...LIB, blocked: true })).toBe(false);
     // A field only one side has (a later task's field against an older report) is a difference.
     expect(sameCommandContext(LIB, { ...LIB, textSize: 13 } as CommandContextState)).toBe(false);
+    // The sidebar state is part of the report (it relabels the menu), so a change is a new context.
+    expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'shown' })).toBe(true);
+    expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'hidden' })).toBe(false);
+  });
+  it('a toggle is named by what it does now (Mac pattern, design-spec 7.4); the neutral name where no state applies', () => {
+    const c = commandById('view.toggleSidebar');
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(c, platform, { sidebar: 'shown' })).toBe('사이드바 가리기');
+      expect(commandLabel(c, platform, { sidebar: 'hidden' })).toBe('사이드바 보기');
+      expect(commandLabel(c, platform)).toBe('사이드바 보기/가리기');
+    }
+    // The sidebar state never decides availability.
+    expect(isCommandAvailable('view.toggleSidebar', { ...LIB, sidebar: 'hidden' })).toBe(true);
+    expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리로 돌아가기');
   });
   it('names macOS apps only on macOS', () => {
     const c = { ...commandById('file.importManaged'), labelOff: '다른 이름' };

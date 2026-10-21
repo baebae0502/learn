@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, importPaths, launch, mainWindow, openItem, runMenuCommand } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -55,15 +55,22 @@ test('layout B: full-height 240 px sidebar, 52 px bars, navigator from y 88', as
 
 test('⌃⌘S hides and shows the sidebar; the toolbar takes the toggle while it is hidden', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
+  const menuLabel = async () => (await menuSnapshot(app)).flatMap(function walk(n): MenuNode[] { return [n, ...(n.submenu ?? []).flatMap(walk)]; }).find((n) => n.id === 'view.toggleSidebar')?.label;
   try {
+    // Mac pattern (design-spec 7.4): the menu item and the toggle name what a press does now.
+    await expect.poll(menuLabel).toBe('사이드바 가리기');
+    await expect(page.getByTestId('sidebar-toggle')).toHaveAccessibleName('사이드바 가리기');
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect.poll(() => sidebarWidth(page)).toBe(0);
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     expect((await box(page, 'toolbar')).x).toBe(0);
+    await expect.poll(menuLabel).toBe('사이드바 보기');
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).toHaveAccessibleName('사이드바 보기');
     await page.getByTestId('toolbar-sidebar-toggle').click();
     await expect.poll(() => sidebarWidth(page)).toBe(240);
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toHaveCount(0);
     await expect(page.getByTestId('sidebar-toggle')).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(menuLabel).toBe('사이드바 가리기');
   } finally {
     await app.close();
   }

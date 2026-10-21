@@ -1,5 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron';
-import { COMMANDS, MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
+import { COMMANDS, MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
 export interface AppMenuOptions {
@@ -11,6 +11,8 @@ export interface AppMenuOptions {
   enabled: ReadonlySet<CommandId>;
   /** Registry item clicked (mouse or accelerator). */
   onCommand(id: CommandId): void;
+  /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
+  labels?: Pick<CommandContextState, 'sidebar'>;
 }
 
 type Item = MenuItemConstructorOptions;
@@ -37,7 +39,7 @@ function placement(c: CommandSpec, platform: NodeJS.Platform): { menu: MenuName;
 function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
   const enabled = isEnabled(c.id, opts.enabled);
   const click = () => opts.onCommand(c.id);
-  const label = commandLabel(c, opts.platform);
+  const label = commandLabel(c, opts.platform, opts.labels);
   const [id, ...twinIds] = menuItemIds(c);
   const item: Item = { id, label, enabled, click };
   if (c.accelerator) item.accelerator = platformAccelerator(c.accelerator, opts.platform);
@@ -115,9 +117,9 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
   return [...(mac ? [appMenu] : []), file, edit, view, go, windowMenu, help].filter((m) => Array.isArray(m.submenu) && m.submenu.length > 0);
 }
 
-/** What applyMenuEnabled needs from Electron's Menu (a plain lookup in unit tests). */
+/** What applyMenuEnabled / applyMenuLabels need from Electron's Menu (a plain lookup in unit tests). */
 export interface MenuItemLookup {
-  getMenuItemById(id: string): { enabled?: boolean } | null;
+  getMenuItemById(id: string): { enabled?: boolean; label?: string } | null;
 }
 
 /**
@@ -132,6 +134,26 @@ export function applyMenuEnabled(menu: MenuItemLookup, enabled: ReadonlySet<Comm
     for (const id of menuItemIds(c)) {
       const item = menu.getMenuItemById(id);
       if (item) item.enabled = on;
+    }
+  }
+}
+
+/**
+ * Relabels the items of commands with state labels in place (MenuItem.label is dynamic in Electron 44; macOS picks it
+ * up when the menu opens). Same ids, accelerators and enabled state: nothing is rebuilt.
+ */
+export function applyMenuLabels(
+  menu: MenuItemLookup,
+  platform: NodeJS.Platform,
+  state: Pick<CommandContextState, 'sidebar'>,
+  commands: readonly CommandSpec[] = COMMANDS,
+): void {
+  for (const c of commands) {
+    if (!c.menu || !c.stateLabels) continue;
+    const label = commandLabel(c, platform, state);
+    for (const id of menuItemIds(c)) {
+      const item = menu.getMenuItemById(id);
+      if (item) item.label = label;
     }
   }
 }

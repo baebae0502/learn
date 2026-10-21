@@ -57,7 +57,9 @@ export const savePositionInput = z.object({
 });
 export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
 /** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
-export const commandContextInput = z.object({ view: z.enum(['library', 'viewer']), blocked: z.boolean() }).strict() satisfies z.ZodType<CommandContextState>;
+export const commandContextInput = z
+  .object({ view: z.enum(['library', 'viewer']), blocked: z.boolean(), sidebar: z.enum(['shown', 'hidden']).optional() })
+  .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
 
 export const confirmDuplicateInput = z.object({ path: z.string().min(1).max(4096), existingItemId: z.uuid() });

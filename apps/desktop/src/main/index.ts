@@ -12,7 +12,7 @@ import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { applyMenuEnabled, buildAppMenu } from './menu/app-menu';
+import { applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
@@ -90,16 +90,26 @@ let appMenu: Menu | null = null;
  */
 function installAppMenu(): void {
   appMenu = Menu.buildFromTemplate(
-    buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, enabled: new Set(availableMenuCommands(uiContext)), onCommand: dispatchMenuCommand }),
+    buildAppMenu({
+      isDev: isDevBuild,
+      platform: process.platform,
+      commands: COMMANDS,
+      enabled: new Set(availableMenuCommands(uiContext)),
+      onCommand: dispatchMenuCommand,
+      labels: { ...(uiContext.sidebar ? { sidebar: uiContext.sidebar } : {}) },
+    }),
   );
   Menu.setApplicationMenu(appMenu);
 }
 
-/** Records the main window's context and toggles the registry items in place (no rebuild, open menus stay open). */
+/** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open). */
 function setUiContext(next: CommandContextState): void {
   if (sameCommandContext(uiContext, next)) return;
+  const relabel = next.sidebar !== uiContext.sidebar;
   uiContext = next;
-  if (appMenu) applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
+  if (!appMenu) return;
+  applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
+  if (relabel) applyMenuLabels(appMenu, process.platform, { ...(next.sidebar ? { sidebar: next.sidebar } : {}) });
 }
 
 /** The main window's renderer (sheets and the settings window are other windows). */

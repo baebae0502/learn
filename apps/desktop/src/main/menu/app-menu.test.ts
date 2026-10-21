@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, acceleratorLabel, commandById, platformAccelerator, type CommandId, type CommandSpec } from '@learn/domain';
-import { applyMenuEnabled, buildAppMenu, menuItemIds } from './app-menu';
+import { applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds } from './app-menu';
 
 interface Shape {
   label?: string;
@@ -59,7 +59,7 @@ const EDIT: Shape = {
 };
 const VIEW = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.view', label: '보기', submenu: [
-    { id: 'view.toggleSidebar', label: '사이드바 보기/숨기기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
+    { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
     SEP,
     { label: '전체 화면', role: 'togglefullscreen' },
   ],
@@ -221,6 +221,29 @@ describe('menu state and placement (M3)', () => {
     // A fixed command list: later tasks add 도움말 commands without touching this test.
     expect(shape(build('darwin', false, vi.fn(), ALL, [commandById('nav.back')])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '이동', '윈도우']);
     expect(shape(build('darwin', false, vi.fn(), ALL, [])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '윈도우']);
+  });
+});
+
+describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)', () => {
+  const sidebarItem = (menu: MenuItemConstructorOptions[]) => walk(menu).find((i) => i.id === 'view.toggleSidebar')!;
+  it('builds with the reported sidebar state, and the neutral name before the first report', () => {
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      const shown = buildAppMenu({ isDev: false, platform, commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown' } });
+      const hidden = buildAppMenu({ isDev: false, platform, commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'hidden' } });
+      expect(sidebarItem(shown).label, platform).toBe('사이드바 가리기');
+      expect(sidebarItem(hidden).label, platform).toBe('사이드바 보기');
+      expect(sidebarItem(build(platform)).label, platform).toBe('사이드바 보기/가리기');
+    }
+  });
+  it('relabels in place: same id, accelerator and enabled state; other items untouched', () => {
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown' } });
+    const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+    const before = walk(template).map((i) => ({ id: i.id, label: i.label, accelerator: i.accelerator, enabled: i.enabled }));
+    applyMenuLabels({ getMenuItemById: (id) => byId.get(id) ?? null }, 'darwin', { sidebar: 'hidden' });
+    const after = walk(template).map((i) => ({ id: i.id, label: i.label, accelerator: i.accelerator, enabled: i.enabled }));
+    expect(after).toEqual(before.map((i) => (i.id === 'view.toggleSidebar' ? { ...i, label: '사이드바 보기' } : i)));
+    applyMenuLabels({ getMenuItemById: (id) => byId.get(id) ?? null }, 'darwin', { sidebar: 'shown' });
+    expect(sidebarItem(template)).toMatchObject({ id: 'view.toggleSidebar', label: '사이드바 가리기', accelerator: 'Ctrl+Cmd+S' });
   });
 });
 

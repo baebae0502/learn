@@ -16,7 +16,7 @@ import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
-import { usePanePersistence, useToggleSidebar } from '../shell/useSidebar';
+import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowDrop } from '../shell/useWindowDrop';
 import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
@@ -40,6 +40,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);
   const toggleSidebar = useToggleSidebar();
+  const sidebarHidden = useSidebarHidden();
   // Cold-start mark (Task 13 perf): the first render in which the library list has settled, not the mount (R-18).
   const readyAt = useRef(0);
   if (readyAt.current === 0 && (items.isSuccess || items.isError)) readyAt.current = Date.now();
@@ -108,6 +109,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     view: view.kind === 'reader' ? 'viewer' : 'library',
     // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag.
     blocked: importing || sheetOpen,
+    // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
+    sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (ids) => freshTargets(queryClient, list, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),

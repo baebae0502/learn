@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { api } from '../api';
+import { lastInput } from '../ui/inputModality';
 import { useShell } from '../state/shell-store';
 import { serializePanes, sidebarHidden, toggledSidebar } from './layout';
 import { useViewportWidth } from './useViewportWidth';
@@ -14,15 +15,23 @@ export const TOGGLE_IDS = { sidebar: 'sidebar-toggle', toolbar: 'toolbar-sidebar
 
 /**
  * Focus must not fall to <body> with the element that holds it: hiding makes the sidebar (and the separator) inert or
- * gone, showing unmounts the toolbar's toggle. Read before the change; the copy that takes over gets the focus.
+ * gone, showing unmounts the toolbar's toggle. Read before the change; for a keyboard user the copy that takes over
+ * gets the focus (and its ring and tooltip). Otherwise — the pointer was last used, or nothing yet (focus that the
+ * window gave on activation) — the focus is let go: a menu or shortcut toggle never pops a ring or a tooltip on the
+ * toggle (Task 8 critique m1).
  */
 export function keepFocusAcross(willHide: boolean): void {
   const active = document.activeElement;
-  if (!active || active === document.body) return;
+  if (!(active instanceof HTMLElement) || active === document.body) return;
   const leaving = willHide
     ? Boolean(document.querySelector('.sidebar-inner')?.contains(active)) || active.closest('.pane-separator') !== null
     : active.id === TOGGLE_IDS.toolbar;
-  if (leaving) requestAnimationFrame(() => document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar)?.focus());
+  if (!leaving) return;
+  if (lastInput() !== 'keyboard') {
+    active.blur();
+    return;
+  }
+  requestAnimationFrame(() => document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar)?.focus());
 }
 
 export function useToggleSidebar(): () => void {

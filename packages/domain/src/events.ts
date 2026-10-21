@@ -22,4 +22,6 @@ export interface LearnEventMap {
   windowState: WindowState;
   settingsChanged: { keys: string[] };
   prefsChanged: { prefs: Prefs };
+  /** A menu-bar menu opened or closed (the window stays key on macOS): tooltips close while one is open. */
+  nativeMenu: { open: boolean };
 }

@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react';
 import type { LearnEventMap } from '@learn/domain';
 import { api } from '../api';
 import { useLearnEvent } from '../events';
+import { setTooltipBlock } from '../ui/tooltipGate';
 
 const apply = ({ fullscreen, focused }: LearnEventMap['windowState']) => {
   const root = document.documentElement;
   root.toggleAttribute('data-fullscreen', fullscreen); // no traffic lights → no 84 px inset
   root.toggleAttribute('data-window-inactive', !focused); // selections fall back to the neutral fill
+  setTooltipBlock('inactive', !focused); // a sheet, another app or window: open tooltips close
 };
 
 /**
@@ -30,4 +32,6 @@ export function useWindowState(): void {
     pushed.current = true;
     apply(state);
   });
+  // A menu-bar menu is open (macOS keeps the window key meanwhile): no tooltip under it.
+  useLearnEvent('nativeMenu', ({ open }) => setTooltipBlock('menu', open));
 }

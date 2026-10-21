@@ -6,11 +6,13 @@ import { App } from './App';
 import { queryClient } from './data/query-client';
 import { Gallery } from './gallery/Gallery';
 import { SheetApp } from './sheets/SheetApp';
+import { installInputModality } from './ui/inputModality';
 import { readWindowParams, type RendererWindow } from './ui/platform';
 import './styles';
 
 // Dropping a file outside a drop target must never navigate the window.
 for (const type of ['dragover', 'drop'] as const) document.addEventListener(type, (e) => e.preventDefault());
+installInputModality(document);
 
 const params = readWindowParams(location.search);
 const root = document.documentElement;

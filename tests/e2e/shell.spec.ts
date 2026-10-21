@@ -92,10 +92,11 @@ test('keyboard: the toggle that takes over keeps the focus; the resize handle is
   }
 });
 
-test('⌃⌘S with the focus inside the sidebar hands it to the toolbar toggle', async ({}, testInfo) => {
+test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar toggle', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await page.getByTestId('nav-library').focus();
+    await page.keyboard.press('ArrowDown'); // a keyboard user: the one row stays current
     await expect(page.getByTestId('nav-library')).toBeFocused();
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
@@ -371,6 +372,62 @@ test('vibrancy page (data-vibrancy=1): the sidebar and every ancestor are clear;
     });
     expect(seen.opaque).toEqual([]);
     expect(seen.content).not.toBe('rgba(0, 0, 0, 0)');
+  } finally {
+    await app.close();
+  }
+});
+
+const tooltip = (page: Page) => page.getByRole('tooltip');
+
+test('a menu toggle pops no tooltip or ring on the toggle unless the keyboard was in use (Task 8 critique m1)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    // Focus inside the sidebar without keyboard navigation (put there by code, as the Mac run found it): the toggle
+    // from the menu lets it go instead of rescuing it onto the toolbar toggle with a ring and an open tooltip.
+    await page.getByTestId('sidebar-toggle').focus();
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await page.waitForTimeout(300);
+    await expect(tooltip(page)).toHaveCount(0);
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).not.toBeFocused(); // let go: nothing to ring
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+    await page.waitForTimeout(300);
+    await expect(tooltip(page)).toHaveCount(0);
+
+    // After a click (pointer), the same: the focus is let go, not rescued.
+    await page.getByTestId('nav-library').click();
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).not.toBeFocused();
+    await expect(tooltip(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('an open tooltip closes when the window becomes inactive and does not come back', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await page.keyboard.press('Tab'); // keyboard focus on the first control, the sidebar toggle: its tooltip opens at once
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await expect(tooltip(page)).toHaveText(/사이드바 가리기/);
+    // Another window takes the focus (a sheet, another app): main's windowState push closes it.
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await expect(tooltip(page)).toHaveCount(0);
+    await app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(app)).evaluate((w) => w.focus());
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    await page.waitForTimeout(300);
+    await expect(tooltip(page)).toHaveCount(0);
   } finally {
     await app.close();
   }

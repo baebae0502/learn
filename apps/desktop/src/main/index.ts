@@ -100,6 +100,19 @@ function installAppMenu(): void {
     }),
   );
   Menu.setApplicationMenu(appMenu);
+  // macOS reports a menu opening on the application menu's root model; the submenus are watched too in case.
+  for (const m of [appMenu, ...appMenu.items.flatMap((i) => (i.submenu ? [i.submenu] : []))]) {
+    m.on('menu-will-show', () => setNativeMenuOpen(true));
+    m.on('menu-will-close', () => setNativeMenuOpen(false));
+  }
+}
+
+let nativeMenuOpen = false;
+/** Tells the main window's renderer a menu-bar menu is open, so no tooltip stays under it. */
+function setNativeMenuOpen(open: boolean): void {
+  if (open === nativeMenuOpen) return;
+  nativeMenuOpen = open;
+  if (mainWindow && !mainWindow.isDestroyed()) sendEvent(mainWindow.webContents, 'nativeMenu', { open });
 }
 
 /** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open). */

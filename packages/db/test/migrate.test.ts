@@ -3,7 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LearnError } from '@learn/domain';
-import { LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, currentVersion, migrate, openDatabase, type AssetRow, type Db } from '../src/index';
+import {
+  CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, MIGRATIONS, TagsRepository, currentVersion, migrate, openDatabase,
+  type AssetRow, type Db,
+} from '../src/index';
 import { newId, nowIso } from '@learn/domain';
 
 const dirs: string[] = [];
@@ -42,6 +45,7 @@ describe('migrate', () => {
     expect(idx).toEqual(expect.arrayContaining([
       'collections_parent', 'collection_items_item', 'tags_position', 'tags_name_nocase', 'item_tags_tag',
       'items_deleted_at', 'anchors_revision', 'annotations_anchor', 'jobs_state', 'reading_positions_revision',
+      'source_revisions_parent',
     ]));
     expect(tables(db)).toEqual(expect.arrayContaining([
       'items', 'assets', 'item_assets', 'source_revisions', 'collections', 'collection_items',
@@ -70,7 +74,10 @@ describe('migrate', () => {
     const snap = openDatabase(backup);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(LATEST_SCHEMA_VERSION);
-    expect(String((caught as LearnError).message)).toContain(`v${LATEST_SCHEMA_VERSION} 상태입니다. 업데이트 전 백업이 있습니다.`);
+    expect(String((caught as LearnError).message)).toBe(
+      `v${LATEST_SCHEMA_VERSION + 1} 업데이트에 실패했습니다. 데이터베이스는 v${LATEST_SCHEMA_VERSION} 상태입니다. ` +
+        `업데이트 전 백업(library.sqlite.pre-v${LATEST_SCHEMA_VERSION + 1}.bak)이 라이브러리 폴더에 있습니다. 앱을 다시 시작해 보세요.`,
+    );
   });
 
   it('refuses a database created by a newer app', () => {
@@ -112,10 +119,11 @@ function seedItem(repo: LibraryRepository, n: number): { itemId: string; revisio
 }
 
 describe('migration failure reporting', () => {
-  it('omits the backup sentence when no backup was taken', () => {
+  it('omits the backup sentence when no backup was taken, and still says what to do next', () => {
     const { db } = tempDb();
     const broken = [{ version: 1, name: 'broken', sql: 'INSERT INTO no_such_table VALUES (1);' }];
-    expect(() => migrate(db, { dbFile: null, migrations: broken })).toThrow(/^v1 업데이트에 실패했습니다\. 데이터베이스는 v0 상태입니다\.$/);
+    expect(() => migrate(db, { dbFile: null, migrations: broken }))
+      .toThrow(/^v1 업데이트에 실패했습니다\. 데이터베이스는 v0 상태입니다\. 앱을 다시 시작해 보세요\.$/);
   });
 
   it('reports how far a multi-step upgrade got', () => {
@@ -132,7 +140,10 @@ describe('migration failure reporting', () => {
     try { migrate(db, { dbFile: file, migrations: list }); } catch (e) { caught = e; }
     expect(caught).toBeInstanceOf(LearnError);
     expect((caught as LearnError).code).toBe('MIGRATION_FAILED');
-    expect((caught as LearnError).message).toBe('v3 업데이트에 실패했습니다. 데이터베이스는 v2 상태입니다. 업데이트 전 백업이 있습니다.');
+    expect((caught as LearnError).message).toBe(
+      'v3 업데이트에 실패했습니다. 데이터베이스는 v2 상태입니다. 업데이트 전 백업(library.sqlite.pre-v2.bak)이 라이브러리 폴더에 있습니다. ' +
+        '앱을 다시 시작해 보세요.',
+    );
     expect(currentVersion(db)).toBe(2);
     expect(tables(db)).toContain('step_two');
     expect(tables(db)).not.toContain('step_three');
@@ -158,6 +169,49 @@ describe('migration v2 (organize)', () => {
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(1);
     expect((snap.prepare('SELECT COUNT(*) AS n FROM items').get() as { n: number }).n).toBe(2);
+  });
+
+  it('merges v1 tags whose names differ only by case (oldest wins) and keeps collections and memberships', () => {
+    const { db, file } = tempDb();
+    migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version === 1) });
+    const repo = new LibraryRepository(db);
+    const i1 = seedItem(repo, 1).itemId;
+    const i2 = seedItem(repo, 2).itemId;
+    // v1's UNIQUE(name) is case-sensitive, so all of these could exist side by side.
+    const tag = db.prepare('INSERT INTO tags (id, name) VALUES (?, ?)');
+    for (const [id, name] of [['t1', 'Math'], ['t2', 'math'], ['t3', 'MATH'], ['t4', 'old']] as const) tag.run(id, name);
+    const it = db.prepare('INSERT INTO item_tags (item_id, tag_id) VALUES (?, ?)');
+    for (const [item, t] of [[i1, 't1'], [i1, 't2'], [i2, 't2'], [i2, 't3'], [i1, 't4']] as const) it.run(item, t);
+    db.prepare(`INSERT INTO collections (id, name, parent_id, created_at) VALUES ('c1', '강의', NULL, '2026-01-01T00:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO collections (id, name, parent_id, created_at) VALUES ('c2', '선형대수', 'c1', '2026-01-02T00:00:00.000Z')`).run();
+    db.prepare(`INSERT INTO collection_items (collection_id, item_id) VALUES ('c1', ?), ('c2', ?)`).run(i1, i2);
+
+    expect(migrate(db, { dbFile: file })).toMatchObject({ from: 1, to: 2 });
+
+    expect(db.prepare('SELECT id, name FROM tags ORDER BY rowid').all()).toEqual([{ id: 't1', name: 'Math' }, { id: 't4', name: 'old' }]);
+    const pairs = (db.prepare('SELECT item_id AS item, tag_id AS tag FROM item_tags').all() as { item: string; tag: string }[])
+      .map((r) => `${r.item === i1 ? 'i1' : 'i2'}:${r.tag}`).sort();
+    expect(pairs).toEqual(['i1:t1', 'i1:t4', 'i2:t1']);
+    expect(new TagsRepository(db).list().map((t) => [t.name, t.itemCount])).toEqual([['Math', 2], ['old', 1]]);
+
+    expect(db.prepare('SELECT id, name, parent_id, created_at, updated_at, deleted_at FROM collections ORDER BY rowid').all()).toEqual([
+      { id: 'c1', name: '강의', parent_id: null, created_at: '2026-01-01T00:00:00.000Z', updated_at: null, deleted_at: null },
+      { id: 'c2', name: '선형대수', parent_id: 'c1', created_at: '2026-01-02T00:00:00.000Z', updated_at: null, deleted_at: null },
+    ]);
+    expect(db.prepare('SELECT collection_id, item_id, added_at FROM collection_items ORDER BY collection_id').all()).toEqual([
+      { collection_id: 'c1', item_id: i1, added_at: null },
+      { collection_id: 'c2', item_id: i2, added_at: null },
+    ]);
+    const collections = new CollectionsRepository(db);
+    expect(collections.list().map((c) => [c.id, c.parentId, c.itemCount])).toEqual([['c1', null, 1], ['c2', 'c1', 1]]);
+    expect(collections.itemIds('c1', { includeSubcollections: true })).toEqual([i2, i1]);
+    expect(repo.counts()).toMatchObject({ tags: 2, itemTags: 3, collections: 2, collectionItems: 2 });
+
+    // The pre-v2 snapshot still has every v1 tag.
+    const snap = openDatabase(`${file}.pre-v2.bak`);
+    dbs.push(snap);
+    expect((snap.prepare('SELECT COUNT(*) AS n FROM tags').get() as { n: number }).n).toBe(4);
+    expect((snap.prepare('SELECT COUNT(*) AS n FROM item_tags').get() as { n: number }).n).toBe(5);
   });
 
   it('constrains tag position and name', () => {

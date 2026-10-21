@@ -13,6 +13,8 @@ export interface CommandEnv extends CommandContextState {
   toggleSidebar(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
+  /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
+  openPalette(): void;
   /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
   showInFolder(itemId: string): void;
   openExternally(itemId: string): void;
@@ -35,6 +37,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.relink': (env, [itemId]) => env.relink(itemId!),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'app.shortcuts': (env) => env.showShortcuts(),
+  'app.palette': (env) => env.openPalette(),
 };
 
 /** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */

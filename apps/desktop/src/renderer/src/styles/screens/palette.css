@@ -1,0 +1,172 @@
+@layer screens {
+  /* ⌘K launcher (shell/Launcher.tsx). Sidebar: x 8–231 like the row fills, its glyph on the row-icon column (x 24). */
+  .launcher-wrap .launcher {
+    width: 100%;
+    padding-left: var(--space-16);
+  }
+  /* Sidebar folded: the toolbar's right end (design-spec 2.3). */
+  .titlebar .launcher {
+    width: 232px; /* local: design-spec 2.3 */
+    flex: none;
+  }
+
+  /* ⌘K command palette (palette/Palette.tsx, palette.html). */
+  .palette-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: color-mix(in oklch, var(--bg-scrim) 55%, transparent);
+    /* The scrim covers the 52 px drag strips: a click there must close the palette, not move the window (R-23). */
+    -webkit-app-region: no-drag;
+  }
+  .palette-scrim[data-entering] {
+    animation: fade-in var(--duration-base) var(--ease-standard);
+  }
+  /* Centred by margins, not translate: pop-in animates translate. */
+  .palette-modal {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 112px; /* local: palette.html */
+    width: 640px; /* local: palette.html */
+    max-width: calc(100vw - var(--space-32));
+    margin-inline: auto;
+    outline: none;
+  }
+  .palette-modal[data-entering] {
+    animation: pop-in var(--duration-base) var(--ease-standard);
+  }
+  .palette {
+    border-radius: var(--radius-xl);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e2);
+    overflow: hidden;
+    outline: none;
+  }
+  /* Everything starts on the row-icon column: 8 (list inset) + 12 (row padding) = 20. */
+  .palette .p-input {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    height: var(--toolbar-height);
+    padding: 0 var(--space-16) 0 var(--space-20);
+    border-bottom: 1px solid var(--separator);
+    color: var(--text-secondary);
+  }
+  .palette .p-input > .icon {
+    width: 18px; /* local: palette.html magnifier */
+    height: 18px;
+    flex: none;
+  }
+  .palette .p-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--text-primary);
+    font: var(--type-title3);
+    font-weight: 400;
+    caret-color: var(--accent);
+  }
+  .palette .p-field::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+  .palette .p-scope {
+    margin-left: auto;
+    display: flex;
+    gap: var(--space-4);
+  }
+  .palette .p-list {
+    max-height: 360px; /* local: 9 rows + header */
+    overflow-y: auto;
+    padding: var(--space-8);
+    outline: none;
+  }
+  .palette .p-group {
+    padding: var(--space-8) var(--space-12) var(--space-4);
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+    font-weight: var(--weight-semibold);
+  }
+  .palette .p-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    height: 36px; /* local: palette row */
+    padding: 0 var(--space-8) 0 var(--space-12);
+    border-radius: var(--radius-md);
+    outline: none;
+    cursor: default;
+  }
+  .palette .p-item > .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
+  .palette .p-item .p-title {
+    flex: 0 1 auto;
+  }
+  .palette .p-item .p-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+    white-space: nowrap;
+  }
+  .palette .p-item mark {
+    background: none;
+    color: var(--accent-text);
+    font-weight: var(--weight-semibold);
+  }
+  /* The list cursor (RAC virtual focus): the one accent selection on screen while the palette is up (3.1). Not the
+     key window: a neutral selection like every other one, the row keeping its own colours (3.1, 8.3). */
+  :root:not([data-window-inactive]) .palette .p-item[data-focused] {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  :root:not([data-window-inactive]) .palette .p-item[data-focused] :is(.icon, .p-meta, mark) {
+    color: var(--text-on-accent);
+  }
+  :root:not([data-window-inactive]) .palette .p-item[data-focused] .kbd {
+    background: oklch(100% 0 0 / 0.18); /* local: keycap on the accent fill */
+    box-shadow: none;
+    color: var(--text-on-accent);
+  }
+  :root[data-window-inactive] .palette .p-item[data-focused] {
+    background: var(--fill-selected);
+  }
+  /* Inside the list's 8 px inset: 24 below the input row, text on the 20 column, 16 above the footer (palette.html). */
+  .palette .p-empty {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-16) var(--space-12) var(--space-8);
+  }
+  .palette .p-empty .pe-title {
+    font: var(--type-headline);
+  }
+  .palette .p-empty .pe-text {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .palette .p-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-16);
+    height: 36px; /* local: palette footer */
+    padding: 0 var(--space-16) 0 var(--space-20);
+    border-top: 1px solid var(--separator);
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+  }
+  .palette .p-foot .row {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+}

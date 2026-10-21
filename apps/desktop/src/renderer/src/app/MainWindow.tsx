@@ -14,6 +14,8 @@ import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryTable } from '../library/LibraryTable';
 import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
+import { Palette, openPalette } from '../palette/Palette';
+import { Launcher } from '../shell/Launcher';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -119,6 +121,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     showShortcuts: () => void showShortcuts(),
+    openPalette,
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
   };
@@ -157,7 +160,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
     ) : (
-      <Toolbar title={t.shell.myLibrary} count={count > 0 ? t.shell.count(count) : undefined} actions={<ImportMenuButton />} />
+      <Toolbar title={t.shell.myLibrary} count={count > 0 ? t.shell.count(count) : undefined} actions={<ImportMenuButton />} trailing={<Launcher />} />
     );
   // N-5: until the first list has arrived the count is unknown, not 0 — show neither the first-run screen nor the
   // list (no empty-library flash). A first read that failed says so where the list would be, with a retry.
@@ -174,7 +177,17 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   return (
     <CommandProvider env={env}>
-      <Shell sidebar={<LibrarySidebar count={count} />} toolbar={toolbar} overlays={<Toasts />}>
+      <Shell
+        sidebar={<LibrarySidebar count={count} />}
+        launcher={<Launcher />}
+        toolbar={toolbar}
+        overlays={
+          <>
+            <Palette />
+            <Toasts />
+          </>
+        }
+      >
         {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
       </Shell>
       {(items.isSuccess || items.isError) && <div data-testid="app-ready" data-at={readyAt.current} hidden />}

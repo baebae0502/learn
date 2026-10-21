@@ -76,10 +76,11 @@ describe('command registry', () => {
     }
     expect(inPalette(commandById('item.open'))).toBe(false);
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
+    expect(inPalette(commandById('app.palette'))).toBe(false); // the palette does not list itself
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back', 'view.toggleSidebar',
+      'app.palette', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
@@ -91,6 +92,11 @@ describe('command registry', () => {
     expect(commandById('app.shortcuts')).toMatchObject({
       label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     });
+    // ⌘K heads 보기; last in the registry (R-10: menu-bar and palette lists keep the registry order).
+    expect(commandById('app.palette')).toMatchObject({
+      label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false,
+    });
+    expect(COMMANDS.at(-1)!.id).toBe('app.palette');
   });
 });
 
@@ -131,8 +137,8 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(commandById('item.openExternally').accelerator).toBeUndefined();
   });
   it('lists the menu-bar commands of a view (never item commands)', () => {
-    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts']);
-    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts']);
+    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.palette']);
+    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {

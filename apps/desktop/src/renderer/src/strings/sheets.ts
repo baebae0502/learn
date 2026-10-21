@@ -7,7 +7,7 @@ export const sheets = {
   addAnyway: '새 자료로 추가',
   skip: '건너뛰기',
   shortcutsTitle: '단축키',
-  groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', dialogs: '대화상자' },
-  /** The keys every sheet understands; sheets/shortcuts.ts spells them per platform. */
-  dialogKeys: { confirm: '기본 버튼 누르기', close: '닫기' },
+  groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', dialogs: '팔레트·대화상자' },
+  /** The keys the ⌘K palette and every sheet understand (design-spec 7.4); sheets/shortcuts.ts spells them per platform. */
+  dialogKeys: { move: '이동', run: '실행', close: '닫기' },
 } as const;

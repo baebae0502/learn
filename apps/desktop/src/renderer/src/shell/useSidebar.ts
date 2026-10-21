@@ -15,23 +15,29 @@ export const TOGGLE_IDS = { sidebar: 'sidebar-toggle', toolbar: 'toolbar-sidebar
 
 /**
  * Focus must not fall to <body> with the element that holds it: hiding makes the sidebar (and the separator) inert or
- * gone, showing unmounts the toolbar's toggle. Read before the change; for a keyboard user the copy that takes over
- * gets the focus (and its ring and tooltip). Otherwise — the pointer was last used, or nothing yet (focus that the
- * window gave on activation) — the focus is let go: a menu or shortcut toggle never pops a ring or a tooltip on the
- * toggle (Task 8 critique m1).
+ * gone, showing unmounts the toolbar's toggle and ⌘K launcher. Read before the change; for a keyboard user the copy
+ * that takes over gets the focus (and its ring and tooltip): the other launcher for a launcher, else the other toggle.
+ * Otherwise — the pointer was last used, or nothing yet (focus that the window gave on activation) — the focus is let
+ * go: a menu or shortcut toggle never pops a ring or a tooltip on the toggle (Task 8 critique m1).
  */
 export function keepFocusAcross(willHide: boolean): void {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement) || active === document.body) return;
+  const launcher = active.matches('.launcher');
   const leaving = willHide
     ? Boolean(document.querySelector('.sidebar-inner')?.contains(active)) || active.closest('.pane-separator') !== null
-    : active.id === TOGGLE_IDS.toolbar;
+    : active.id === TOGGLE_IDS.toolbar || (launcher && active.closest('.titlebar') !== null);
   if (!leaving) return;
   if (lastInput() !== 'keyboard') {
     active.blur();
     return;
   }
-  requestAnimationFrame(() => document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar)?.focus());
+  requestAnimationFrame(() => {
+    const next = launcher
+      ? document.querySelector<HTMLElement>(`${willHide ? '.titlebar' : '.sidebar-inner'} .launcher`)
+      : document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar);
+    next?.focus();
+  });
 }
 
 export function useToggleSidebar(): () => void {

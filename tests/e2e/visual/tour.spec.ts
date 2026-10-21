@@ -106,6 +106,28 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   }
 });
 
+test('palette: 초성 results and no results', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-col="added"]')];
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await runMenuCommand(s.app, 'app.palette');
+      await s.page.getByTestId('palette-input').fill('ㄱㅈ');
+      await expect(s.page.locator('[data-testid="palette-item"][data-focused]')).toHaveAttribute('data-command-id', 'file.importManaged');
+      await shoot(s.page, `palette-${theme}`, { mask: dates() });
+      await s.page.getByTestId('palette-input').fill('효소 억제제');
+      await expect(s.page.getByTestId('palette-empty')).toBeVisible();
+      await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('palette')).toBeHidden();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 /**
  * A home folder inside the test folder (HOME for the app): paths on screen read "~/…" the same on every machine, so
  * the path lines need no mask. Returns its path.

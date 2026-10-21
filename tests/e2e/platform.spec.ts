@@ -84,7 +84,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     }
     expect(entries(topMenu(menu, '파일'))).toEqual([[null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ['close', IS_MAC ? '윈도우 닫기' : '창 닫기']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
-    expect(entries(topMenu(menu, '보기'))).toEqual([[null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
+    expect(entries(topMenu(menu, '보기'))).toEqual([[null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
     expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
@@ -102,7 +102,9 @@ test('menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구', a
   const { app } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env: { LEARN_E2E: '' } });
   try {
     const view = topMenu(await menuSnapshot(app), '보기');
-    expect(entries(view)).toEqual([[null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구']]);
+    expect(entries(view)).toEqual([
+      [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구'],
+    ]);
   } finally {
     await app.close();
   }

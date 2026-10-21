@@ -17,6 +17,7 @@ import {
   launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, runMenuCommand, stubContextMenu, type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
+import { COMMANDS } from '../../packages/domain/src/commands';
 import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/src/renderer/src/design/color';
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
@@ -209,10 +210,12 @@ function tooltipInCapture(shot: string, box: { x: number; y: number; width: numb
   return { pixels: n, share: n ? Math.round((hits / n) * 100) / 100 : 0, bg: want };
 }
 
+/** 보기's own registry items (명령 팔레트…, the sidebar toggle): every other text row in it is a full-screen row. */
+const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length;
 /**
  * Rows of an open 보기 menu counted from its click capture (Task 8 R2-1): the panel is found from a seed in its top
- * padding (from System Events' frame of the open menu when it gave one), and every text row below the first one is a
- * full-screen row (보기 holds the sidebar item, a separator and the full-screen item(s) in E2E builds).
+ * padding (from System Events' frame of the open menu when it gave one), and every text row past the registry's is a
+ * full-screen row (보기 holds 명령 팔레트…, the sidebar item, separators and the full-screen item(s) in E2E builds).
  */
 function openMenuRowCount(shot: string | null, frame: { x: number; y: number } | null) {
   if (!shot) return null;
@@ -222,7 +225,7 @@ function openMenuRowCount(shot: string | null, frame: { x: number; y: number } |
   const fromFrame = frame && frame.x >= 0 && frame.y < img.height - 40 ? findMenuPanel(img, { x: frame.x + 6, y: frame.y + 5 }) : null;
   const panel = fromFrame && fromFrame.y1 - fromFrame.y0 > 20 ? fromFrame : findMenuPanel(img, { x: 206, y: 30 });
   const m = menuRows(img, panel);
-  return { panel: m.panel, rows: m.rows.length, separators: m.separators.length, fullScreenRows: Math.max(0, m.rows.length - 1) };
+  return { panel: m.panel, rows: m.rows.length, separators: m.separators.length, fullScreenRows: Math.max(0, m.rows.length - VIEW_REGISTRY_ROWS) };
 }
 
 interface InactiveChrome {
@@ -518,6 +521,48 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       await main.evaluate((w) => w.show());
     }
   }
+  save();
+});
+
+// Task 9: the main window is active here (no sheet just closed), light, three items in the library.
+test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈ, light and dark', TAG, async () => {
+  const palette = s.page.getByTestId('palette');
+  await guard('⌘K opens the palette', async () => {
+    let via = 'menu';
+    if (IS_MAC) {
+      await bringAppToFront(s.app).catch(() => {});
+      try {
+        await nativeKeystroke(s.app, 'k', ['command']);
+        via = 'keystroke';
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        await runMenuCommand(s.app, 'app.palette');
+      }
+    } else {
+      await runMenuCommand(s.app, 'app.palette');
+    }
+    await expect(palette).toBeVisible({ timeout: 5_000 });
+    const focused = await s.page.getByTestId('palette-input').evaluate((el) => el === document.activeElement);
+    results['palette'] = { via, focused };
+    check('⌘K opens the palette with the focus in its field', focused && (!IS_MAC || via === 'keystroke'), results['palette']);
+  });
+  if (!(await palette.isVisible())) return void save();
+  await guard('palette: 초성 ㄱㅈ finds 파일 가져오기…', async () => {
+    await s.page.keyboard.insertText('ㄱㅈ');
+    const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
+    await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged', { timeout: 5_000 });
+    const v = { cursor: await cursor.getAttribute('data-command-id'), mark: await cursor.locator('mark').textContent() };
+    results['paletteQuery'] = v;
+    check('palette: 초성 ㄱㅈ puts the cursor on 파일 가져오기… with 가져 marked', v.cursor === 'file.importManaged' && v.mark === '가져', v);
+  });
+  await allShots(s.app, s.page, 'm3-13-palette', 'command palette, 초성 ㄱㅈ (light)');
+  if (IS_MAC) {
+    await setTheme(s.page, 'dark');
+    await nativeWindowShot(s.app, 'm3-13b-palette-dark', 'command palette, 초성 ㄱㅈ (dark)');
+    await setTheme(s.page, 'light');
+  }
+  await s.page.keyboard.press('Escape');
+  await expect(palette).toBeHidden();
   save();
 });
 

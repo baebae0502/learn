@@ -38,5 +38,9 @@ describe('input modality (focus rings and tooltips after code-moved focus)', () 
     expect(tooltipsBlocked()).toBe(true);
     setTooltipBlock('menu', false);
     expect(tooltipsBlocked()).toBe(false);
+    setTooltipBlock('modal', true); // the ⌘K palette
+    expect(tooltipsBlocked()).toBe(true);
+    setTooltipBlock('modal', false);
+    expect(tooltipsBlocked()).toBe(false);
   });
 });

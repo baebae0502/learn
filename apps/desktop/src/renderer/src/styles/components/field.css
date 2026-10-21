@@ -69,4 +69,12 @@
   .launcher .kbd-group {
     margin-left: auto;
   }
+  /* Disabled with a reason (an import or a sheet holds the window): the field keeps its box and focus ring, its content
+     dims as a disabled control's does (design-spec 6: 45 %, glyphs 40 %). */
+  .launcher[aria-disabled='true'] > :is(.placeholder, .kbd-group) {
+    opacity: 0.45;
+  }
+  .launcher[aria-disabled='true'] > .icon {
+    opacity: 0.4;
+  }
 }

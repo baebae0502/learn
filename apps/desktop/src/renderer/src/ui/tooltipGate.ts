@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * Tooltips never show while the window is inactive (another app, a sheet, the settings window) or while a native
- * menu is open: a macOS tooltip never outlives window deactivation or sits under a menu (Task 8 critique m1).
+ * Tooltips never show while the window is inactive (another app, a sheet, the settings window), while a native
+ * menu is open, or while an in-window modal (the ⌘K palette) is up: a macOS tooltip never outlives window
+ * deactivation or sits under a menu or a palette (Task 8 critique m1; Task 9).
  */
-type Reason = 'inactive' | 'menu';
+type Reason = 'inactive' | 'menu' | 'modal';
 const active = new Set<Reason>();
 const listeners = new Set<() => void>();
 

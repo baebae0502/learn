@@ -15,7 +15,8 @@ export type CommandId =
   | 'item.openExternally'
   | 'item.relink'
   | 'view.toggleSidebar'
-  | 'app.shortcuts';
+  | 'app.shortcuts'
+  | 'app.palette';
 /** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
@@ -86,6 +87,8 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     keywords: ['단축키', '키보드', '도움말', 'shortcuts', 'keyboard'],
   },
+  // Last (R-10): menu-bar and palette lists keep this order; `menu` puts it at the head of 보기. Not in its own list.
+  { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];
 
 export function commandById(id: CommandId): CommandSpec {

@@ -15,5 +15,6 @@ export const library = {
   emptyBody1: 'PDF나 동영상을 이\u00a0창에 끌어다 놓거나 가져올 파일을 선택하세요.',
   emptyBody2: '원본은 그대로 두고 라이브러리에 사본을 만듭니다.',
   hintImport: '파일 가져오기',
+  hintPalette: '명령 팔레트',
   formats: 'PDF와 MP4 · MOV · WebM 동영상을 지원합니다.',
 } as const;

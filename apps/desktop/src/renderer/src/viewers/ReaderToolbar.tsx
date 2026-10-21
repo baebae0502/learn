@@ -3,6 +3,7 @@ import { commandById, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { useItem } from '../data/queries';
 import { formatSize } from '../format';
+import { Launcher } from '../shell/Launcher';
 import { Toolbar } from '../shell/Toolbar';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
@@ -25,6 +26,7 @@ export function ReaderToolbar({ itemId }: { itemId: string }) {
       titleTestId="viewer-title"
       count={item ? readerMeta(item) : undefined}
       leading={<IconButton icon={ChevronLeft} label={back.label} accelerator={back.accelerator} testId="viewer-back" onPress={() => run('nav.back')} />}
+      trailing={<Launcher />}
     />
   );
 }

@@ -42,6 +42,9 @@ export function EmptyLibrary(props: {
         <div className="row">
           <span>{t.library.hintImport}</span>
           <Kbd accelerator={managed.accelerator} />
+          <span className="gap" />
+          <span>{t.library.hintPalette}</span>
+          <Kbd accelerator={commandById('app.palette').accelerator} />
         </div>
         <div className="row">{t.library.formats}</div>
       </div>

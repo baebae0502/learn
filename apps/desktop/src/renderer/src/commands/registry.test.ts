@@ -14,6 +14,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   showShortcuts: vi.fn(),
+  openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
   ...over,
@@ -56,6 +57,16 @@ describe('renderer command registry', () => {
     const blocked = env({ blocked: true });
     expect(runCommand('app.shortcuts', blocked)).toBe(false);
     expect(blocked.showShortcuts).not.toHaveBeenCalled();
+  });
+  it('⌘K opens the palette in every view, but not while the window is blocked (an import or a sheet holds it)', () => {
+    for (const view of ['library', 'viewer'] as const) {
+      const e = env({ view });
+      expect(runCommand('app.palette', e)).toBe(true);
+      expect(e.openPalette).toHaveBeenCalledTimes(1);
+    }
+    const blocked = env({ blocked: true });
+    expect(runCommand('app.palette', blocked)).toBe(false);
+    expect(blocked.openPalette).not.toHaveBeenCalled();
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

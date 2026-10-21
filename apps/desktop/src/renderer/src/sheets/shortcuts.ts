@@ -13,13 +13,17 @@ export interface ShortcutGroup {
 }
 
 const ORDER: CommandContext[] = ['app', 'library', 'viewer'];
-/** design-spec 6 시트: the default button runs on ↩, esc closes. Spelled per platform like the registry keys. */
+/**
+ * design-spec 7.4 팔레트·대화상자: ↑ ↓ move the palette's cursor, ↩ runs it (or a sheet's default button), esc closes.
+ * Spelled per platform like the registry keys.
+ */
 const DIALOG_KEYS = [
-  { label: t.sheets.dialogKeys.confirm, accelerator: 'Enter' },
-  { label: t.sheets.dialogKeys.close, accelerator: 'Escape' },
+  { label: t.sheets.dialogKeys.move, accelerators: ['Up', 'Down'] },
+  { label: t.sheets.dialogKeys.run, accelerators: ['Enter'] },
+  { label: t.sheets.dialogKeys.close, accelerators: ['Escape'] },
 ] as const;
 
-/** The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), then the keys every dialog understands. */
+/** The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), then the palette and dialog keys. */
 export function shortcutGroups(platform: string): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
@@ -30,7 +34,11 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
   })).filter((g) => g.rows.length > 0);
   const dialogs: ShortcutGroup = {
     title: t.sheets.groups.dialogs,
-    rows: DIALOG_KEYS.map((r) => ({ label: r.label, keys: acceleratorKeys(r.accelerator, platform), spoken: acceleratorLabel(r.accelerator, platform) })),
+    rows: DIALOG_KEYS.map((r) => ({
+      label: r.label,
+      keys: r.accelerators.flatMap((a) => acceleratorKeys(a, platform)),
+      spoken: r.accelerators.map((a) => acceleratorLabel(a, platform)).join(' '),
+    })),
   };
   return [...groups, dialogs];
 }

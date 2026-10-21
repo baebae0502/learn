@@ -60,6 +60,8 @@ const EDIT: Shape = {
 };
 const VIEW = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.view', label: '보기', submenu: [
+    { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K' },
+    SEP,
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
     SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.

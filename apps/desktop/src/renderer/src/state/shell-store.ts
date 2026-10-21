@@ -8,16 +8,21 @@ export interface ShellState {
   sidebar: SidebarState;
   /** An import (dialog, copy, duplicate questions) is running: commands are disabled. */
   importing: boolean;
+  /** The ⌘K palette is open (palette/Palette.tsx). */
+  paletteOpen: boolean;
   setView(view: View): void;
   setSidebar(sidebar: SidebarState): void;
   setImporting(importing: boolean): void;
+  setPaletteOpen(open: boolean): void;
 }
 
 export const useShell = create<ShellState>()((set) => ({
   view: { kind: 'library' },
   sidebar: { width: SIDEBAR.default, collapsed: false, forceShown: false },
   importing: false,
+  paletteOpen: false,
   setView: (view) => set({ view }),
   setSidebar: (sidebar) => set({ sidebar }),
   setImporting: (importing) => set({ importing }),
+  setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
 }));

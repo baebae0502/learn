@@ -40,6 +40,19 @@ Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15
 - **분 예산 주의**: 비공개 저장소의 macOS 분은 10배로 차감된다. 디버깅은 이 서버의 xvfb(`pnpm e2e:evidence`를 `xvfb-run`으로)와 Linux CI(`ci.yml`, 증거 하네스도 실행)에서 먼저 끝내고, 실행할 때마다 `docs/mac-verification.md` 실행 기록 표에 run id·분·결과를 남긴다.
 - 증거 하네스: `playwright.evidence.config.ts`, `tests/evidence/`(`capture.ts` 페이지·창·전체 화면 캡처, 녹화, 실제 글꼴 조회 / `env.ts` 환경 보고). macOS 전용 캡처는 다른 OS에서 `skipped`로 기록된다.
 
+## 런타임 의존성 라이선스 (렌더러 번들 포함)
+
+| 패키지 | 버전 | 라이선스 |
+|---|---|---|
+| react-aria-components | 1.22.1 | Apache-2.0 |
+| lucide-react | 1.60.0 | ISC |
+| react-resizable-panels | 4.14.8 | MIT |
+| @tanstack/react-query | 5.104.5 | MIT |
+| zustand | 5.0.15 | MIT |
+| Pretendard Variable | 1.3.9 | SIL OFL 1.1 |
+
+`@axe-core/playwright`(MPL-2.0)는 테스트 전용이며 배포물에 들어가지 않는다.
+
 ## 구조
 - `packages/domain` 타입·스키마·Result · `packages/db` SQLite·마이그레이션 · `packages/library` 가져오기·복구·백업
 - `apps/desktop` Electron(main/preload/renderer) · `docs/decisions` ADR · `docs/p0-verification.md` P0 기록

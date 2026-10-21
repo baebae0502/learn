@@ -11,3 +11,10 @@ test('app boots with a sandboxed renderer on learn://app and migrates the librar
   await page.screenshot({ path: testInfo.outputPath('smoke.png') });
   await app.close();
 });
+
+test('bundled Pretendard loads through the app protocol (font MIME)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const faces = await page.evaluate(async () => (await document.fonts.load('13px "Pretendard Variable"', '가')).length);
+  expect(faces).toBeGreaterThan(0);
+  await app.close();
+});

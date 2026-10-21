@@ -32,7 +32,13 @@ const STATIC_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.wasm': 'application/wasm',
   '.bcmap': 'application/octet-stream', '.pfb': 'application/octet-stream', '.ttf': 'font/ttf', '.icc': 'application/octet-stream',
+  '.woff2': 'font/woff2', '.woff': 'font/woff', '.otf': 'font/otf',
 };
+
+/** MIME type for a file served from the renderer bundle. */
+export function contentTypeFor(file: string): string {
+  return STATIC_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+}
 
 /** Must run before app 'ready'. corsEnabled is only exercised in dev (renderer on the Vite server). */
 export function registerAppScheme(): void {
@@ -94,7 +100,7 @@ async function serveStatic(rendererDir: string, pathname: string): Promise<Respo
   if (!file.startsWith(rendererDir + path.sep)) return text(403, 'forbidden');
   try {
     const body = await fs.promises.readFile(file);
-    const type = STATIC_TYPES[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+    const type = contentTypeFor(file);
     const headers: Record<string, string> = { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff' };
     if (type.startsWith('text/html')) headers['Content-Security-Policy'] = CSP;
     return new Response(body, { headers });

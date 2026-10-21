@@ -1,0 +1,101 @@
+@layer base {
+  body {
+    font: var(--type-body);
+    color: var(--text-primary);
+    background: var(--bg-window);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Korean UI wrapping (design-spec 4). */
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    line-break: strict;
+    cursor: default;
+    user-select: none;
+    overflow: hidden;
+  }
+  /* macOS: the main window is transparent so the sidebar's vibrancy shows (Task 8). */
+  :root[data-vibrancy='1'] body {
+    background: transparent;
+  }
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  input,
+  textarea {
+    user-select: text;
+    cursor: text;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  .mono {
+    font: var(--type-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .ellipsis {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .spacer {
+    flex: 1 1 auto;
+  }
+  .icon {
+    flex: none;
+  }
+  /* UI prose we write: no one-word last line. Never on user or document text (design-spec 4). */
+  .ui-prose {
+    text-wrap: pretty;
+  }
+  .ui-balance {
+    text-wrap: balance;
+  }
+  .t-caption { font: var(--type-caption); }
+  .t-footnote { font: var(--type-footnote); }
+  .t-body { font: var(--type-body); }
+  .t-headline { font: var(--type-headline); }
+  .t-paragraph { font: var(--type-paragraph); }
+  .t-callout { font: var(--type-callout); }
+  .t-title3 { font: var(--type-title3); }
+  .t-title2 { font: var(--type-title2); }
+  .t-title1 { font: var(--type-title1); letter-spacing: -0.01em; }
+  .c-secondary { color: var(--text-secondary); }
+  .c-tertiary { color: var(--text-tertiary); }
+  .c-accent { color: var(--accent-text); }
+  .c-danger { color: var(--danger-text); }
+  .c-warning { color: var(--warning-text); }
+  .c-success { color: var(--success-text); }
+  /* Entrance motion (design-spec 8.1): popovers 4 px, toasts 8 px; reduced motion keeps only the fade. */
+  :root {
+    --pop-distance: -4px;
+    --toast-distance: 8px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --pop-distance: 0px;
+      --toast-distance: 0px;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      translate: 0 var(--pop-distance);
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      translate: 0 var(--toast-distance);
+    }
+  }
+}

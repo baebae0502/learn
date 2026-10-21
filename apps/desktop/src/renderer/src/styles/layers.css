@@ -1,0 +1,3 @@
+/* Cascade order for the whole renderer. styles/index.ts imports this file first.
+   legacy: the pre-M3 stylesheet, removed in Task 7 of the M3 plan. */
+@layer reset, legacy, tokens, base, components, screens, utilities;

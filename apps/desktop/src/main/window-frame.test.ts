@@ -62,16 +62,38 @@ describe('FullScreenFrameKeeper: the frame across full screen (polish minors 2 a
     expect(k.due(appKit, work)).toEqual(user);
   });
 
-  it('a move or resize by the user before the re-apply wins', () => {
+  it('a move or resize by the user inside the work area before the re-apply wins', () => {
     const k = new FullScreenFrameKeeper();
     k.settled({ bounds: user, zoomed: false, fullscreen: false });
     k.enter(user);
-    expect(k.leave(appKit)).toBe(true);
-    k.moved(appKit); // an event that did not change the frame (AppKit's own, repeated) keeps the re-apply
+    expect(k.leave(user)).toBe(true);
+    k.moved(user, work); // an event that did not change the frame (AppKit's own, repeated) keeps the re-apply
     expect(k.target).toEqual(user);
-    k.moved({ ...appKit, x: 100 }); // the user dragged the window
+    const dragged = { ...user, x: 100, y: 120 };
+    k.moved(dragged, work); // the user dragged the window, still wholly on screen
     expect(k.target).toBeNull();
-    expect(k.due({ ...appKit, x: 100 }, work)).toBeNull();
+    expect(k.due(dragged, work)).toBeNull();
+  });
+
+  it('an off-screen or oversize frame after leaving is never the user\'s: the re-apply stays and puts the frame back (R3-1)', () => {
+    const screen1024 = { x: 0, y: 25, width: 1024, height: 684 };
+    const before = { x: 0, y: 25, width: 1024, height: 681 };
+    const cases: Array<[string, { x: number; y: number; width: number; height: number }]> = [
+      ['R3-1: 1440 wide at x −416', { x: -416, y: 25, width: 1440, height: 900 }],
+      ['wider than the work area', { x: 0, y: 25, width: 1100, height: 681 }],
+      ['taller than the work area', { x: 0, y: 25, width: 1024, height: 700 }],
+      ['sticking out to the right', { x: 200, y: 25, width: 1024, height: 681 }],
+      ['above the work area (under the menu bar)', { x: 0, y: 0, width: 1024, height: 681 }],
+    ];
+    for (const [what, frame] of cases) {
+      const k = new FullScreenFrameKeeper();
+      k.settled({ bounds: before, zoomed: false, fullscreen: false });
+      k.enter(before);
+      expect(k.leave(before), what).toBe(true);
+      k.moved(frame, screen1024);
+      expect(k.target, what).toEqual(before);
+      expect(k.due(frame, screen1024), what).toEqual(before);
+    }
   });
 
   it('a minimized or full-screen frame is never noted; with nothing noted the fallback is used', () => {

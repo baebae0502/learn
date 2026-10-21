@@ -128,9 +128,13 @@ function keepFrameAcrossFullScreen(win: BrowserWindow): void {
       if (!win.isDestroyed()) keeper.settled(now());
     }, 250);
   };
-  // Between leaving full screen and the re-apply, a move or resize is the user's (the keeper causes none before it).
+  // Between leaving full screen and the re-apply, a move or resize inside the work area is the user's (the keeper
+  // causes none before it); one that leaves the window off screen or oversize is not, and the re-apply fixes it.
   const changed = () => {
-    if (!win.isDestroyed()) keeper.moved(win.getBounds());
+    if (!win.isDestroyed()) {
+      const now = win.getBounds();
+      keeper.moved(now, screen.getDisplayMatching(now).workArea);
+    }
     note();
   };
   win.on('show', note);

@@ -5,10 +5,16 @@ import { stubDeps } from './test-deps';
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
 const win = { fullscreen: false, focused: true, destroyed: false };
+/** What happened to the main window and its sheets, in order ('focus', 'sheet:<kind>'). */
+const events: string[] = [];
 const fakeWindow = {
   isDestroyed: () => win.destroyed,
   isFullScreen: () => win.fullscreen,
   isFocused: () => win.focused,
+  focus: () => {
+    events.push('focus');
+    win.focused = true;
+  },
 };
 let senderWindow: typeof fakeWindow | null = fakeWindow;
 
@@ -36,6 +42,7 @@ registerUiIpc(
     sheets: {
       open: async (_parent, payload) => {
         opened.push(payload);
+        events.push(`sheet:${payload.kind}`);
         return payload.kind === 'duplicate' ? { kind: 'duplicate', choice: 'add' } : { kind: 'shortcuts' };
       },
       payloadFor: () => ({ kind: 'shortcuts' }),
@@ -53,6 +60,7 @@ beforeEach(() => {
   Object.assign(win, { fullscreen: false, focused: true, destroyed: false });
   senderWindow = fakeWindow;
   opened.length = 0;
+  events.length = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -62,6 +70,16 @@ describe('sheets are opened over the main window only', () => {
     expect(opened).toEqual([{ kind: 'duplicate', fileName: 'molbio.pdf', existing: item }]);
     expect(await invoke('ui:showShortcuts', MAIN)).toEqual({ ok: true, data: undefined });
     expect(opened).toHaveLength(2);
+  });
+  it('a duplicate found after a drop on a background window brings the window forward before its sheet', async () => {
+    win.focused = false; // the files came from Finder, which is still the active app
+    await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID });
+    expect(events).toEqual(['focus', 'sheet:duplicate']);
+    // Already in front (an import from the open panel, a second duplicate): left to the system.
+    events.length = 0;
+    await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID });
+    await invoke('ui:showShortcuts', MAIN);
+    expect(events).toEqual(['sheet:duplicate', 'sheet:shortcuts']);
   });
   it('any other window (a sheet, later the settings window) is PERMISSION_DENIED and opens nothing', async () => {
     expect(await invoke('ui:confirmDuplicate', SHEET, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });

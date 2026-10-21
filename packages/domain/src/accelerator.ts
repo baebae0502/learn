@@ -42,15 +42,18 @@ export function platformAccelerator(accelerator: string, platform: string): stri
   return [...rest, 'Shift', key].join('+');
 }
 
-/** Keycaps for an accelerator: macOS symbols in ⌃⌥⇧⌘ order, elsewhere spelled-out modifiers. */
+/**
+ * Keycaps for an accelerator: macOS symbols in ⌃⌥⇧⌘ order, elsewhere spelled-out modifiers. A modifier on its own
+ * ('Alt': hold ⌥ while dropping to link) is its own keycap.
+ */
 export function acceleratorKeys(accelerator: string, platform: string): string[] {
   const { mods, key } = split(platformAccelerator(accelerator, platform));
   if (platform === 'darwin') {
     const symbols = mods.map((m) => MAC_SYMBOL[m] ?? m).sort((a, b) => MAC_ORDER.indexOf(a) - MAC_ORDER.indexOf(b));
-    return [...symbols, MAC_KEY[key] ?? (key.length === 1 ? key.toUpperCase() : key)];
+    return [...symbols, MAC_KEY[key] ?? MAC_SYMBOL[key] ?? (key.length === 1 ? key.toUpperCase() : key)];
   }
   const names = mods.map((m) => OTHER_NAME[m] ?? m).sort((a, b) => OTHER_ORDER.indexOf(a) - OTHER_ORDER.indexOf(b));
-  return [...names, OTHER_KEY[key] ?? (key.length === 1 ? key.toUpperCase() : key)];
+  return [...names, OTHER_KEY[key] ?? OTHER_NAME[key] ?? (key.length === 1 ? key.toUpperCase() : key)];
 }
 
 /** One-line form for menus, tooltips and the palette: "⌥⌘O" on macOS, "Ctrl+Alt+O" elsewhere. */

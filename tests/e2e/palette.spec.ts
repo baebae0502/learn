@@ -21,6 +21,9 @@ const tokenValue = (page: Page, prop: 'color' | 'backgroundColor', name: string)
     [prop, name] as const,
   );
 
+/** Two frames: whatever a handled event would have rendered is on screen by then. */
+const twoFrames = (page: Page) => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+
 /** Another window takes the key (as a second app would): the main window is neither key nor main. */
 async function deactivate(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ BrowserWindow }) => {
@@ -193,24 +196,26 @@ test('the pointer: hovering a row moves the cursor there, a click runs it once',
   }
 });
 
-test('the list follows the registry while the palette is open: a drop that starts an import leaves 설정… under the busy notice; ↩ opens it', async ({}, testInfo) => {
+test('a file drag with the palette open closes it, as a menu command would, and shows the drop overlay; the drop imports', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
-  const input = page.getByTestId('palette-input');
-  const ids = () => page.getByTestId('palette-item').evaluateAll((els) => els.map((e) => e.getAttribute('data-command-id')));
-  const busy = page.getByTestId('palette-busy');
-  /** A real file dropped on the window (its path from a file input, as from Finder): a duplicate, so the import waits in the duplicate sheet and holds the window. */
-  const dropDuplicate = () =>
-    expectWindow(app, 'sheet', () =>
-      page.evaluate(() => {
+  const palette = page.getByTestId('palette');
+  const overlay = page.getByTestId('drop-overlay');
+  /**
+   * A drag event at the middle of the window, on whatever element is there (the palette's scrim, then the overlay),
+   * carrying text or the real file from a file input (with a location on disk, as from Finder).
+   */
+  const fire = (type: 'dragenter' | 'dragover' | 'dragleave' | 'drop', carry: 'text' | 'file') =>
+    page.evaluate(
+      ([type, carry]) => {
         const dt = new DataTransfer();
-        dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
-        document.body.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-        document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      }),
+        if (carry === 'text') dt.setData('text/plain', '세포 신호 전달');
+        else dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
+        const target = document.elementFromPoint(innerWidth / 2, innerHeight / 2) ?? document.body;
+        target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
+      },
+      [type, carry] as const,
     );
   try {
-    await importPaths(page, [PDF]);
-    await expect(page.getByTestId('item-row')).toHaveCount(1);
     await page.evaluate(() => {
       const picker = document.createElement('input');
       picker.type = 'file';
@@ -220,37 +225,33 @@ test('the list follows the registry while the palette is open: a drop that start
     });
     await page.locator('#drop-source').setInputFiles(PDF);
     await runMenuCommand(app, 'app.palette');
-    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
-    await expect(busy).toHaveCount(0);
-    let sheet = await dropDuplicate();
-    // The window is held: only the main-owned 설정… can run, listed under a header that says why the rest is missing
-    // and that it comes back when the work ends (not "nothing can run" above a row that can).
-    await expect(page.getByTestId('palette')).toBeVisible();
-    await expect.poll(ids).toEqual(['app.settings']);
-    await expect(busy.locator('.pe-title')).toHaveText('진행 중인 작업이 있습니다');
-    await expect(busy.locator('.pe-text')).toHaveText('작업이 끝나면 다른\u00a0명령도 쓸 수 있습니다.');
-    await expect(page.getByRole('listbox').getByTestId('palette-busy')).toHaveCount(0); // a header, not an option
-    await expect(page.getByTestId('palette-status')).toHaveText('진행 중인 작업이 있습니다. 실행할 수 있는 명령 1개');
-    await expect.poll(() => cursorRow(page)).toBe('app.settings');
-    // Nothing listed: the notice alone (not "no match"): nothing can run until the work ends.
-    await input.fill('효소 억제제');
-    await expect(page.getByTestId('palette-item')).toHaveCount(0);
-    await expect(busy.locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
-    await expect(busy.locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
-    await expect(page.getByTestId('palette-empty')).toHaveCount(0);
-    await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다');
-    await input.fill('');
-    await closeSheet(sheet, 'Escape'); // 건너뛰기: the import ends
-    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
-    await expect(busy).toHaveCount(0);
-    await expect.poll(() => cursorRow(page)).toBe('file.importManaged');
-    // Held again: ↩ on 설정… opens the settings window (main-owned, it runs while the import waits).
-    sheet = await dropDuplicate();
-    await expect.poll(ids).toEqual(['app.settings']);
-    const settings = await expectWindow(app, 'settings', () => page.keyboard.press('Enter'));
-    await expect(settings.getByTestId('settings-root')).toBeVisible();
-    await expect(page.getByTestId('palette')).toBeHidden();
-    await closeSheet(sheet, 'Escape');
+    await expect(palette).toBeVisible();
+    // Text dragged in from another app is no drop for the library: the palette stays.
+    await fire('dragenter', 'text');
+    await fire('dragover', 'text');
+    await twoFrames(page);
+    await expect(palette).toBeVisible();
+    await expect(overlay).toHaveCount(0);
+    // Files are a new intent: the palette closes first, then the overlay comes up.
+    await fire('dragenter', 'file');
+    await expect(palette).toBeHidden();
+    await expect(overlay).toHaveAttribute('data-mode', 'copy');
+    await expect(page.getByTestId('drop-summary')).toHaveText('파일 1개(PDF 1)');
+    // The scrim that took the first dragenter has left the document (its dragleave never reaches the window): the drag
+    // goes on over the overlay, which stays up, and leaving the window from there takes the overlay down.
+    await fire('dragenter', 'file');
+    await fire('dragover', 'file');
+    await twoFrames(page);
+    await expect(overlay).toBeVisible();
+    await fire('dragleave', 'file');
+    await expect(overlay).toHaveCount(0);
+    await fire('dragenter', 'file');
+    await expect(overlay).toBeVisible();
+    await fire('drop', 'file');
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('import-done')).toHaveText(/자료 1개를 가져왔습니다/);
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await expect(palette).toHaveCount(0);
   } finally {
     await app.close();
   }

@@ -51,6 +51,9 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     const parent = mainWindowOf(event.sender);
     const existing = deps.getContext().repo.getItem(existingItemId);
     if (!parent || !existing) return { choice: 'skip' as const };
+    // Files dropped from Finder leave Finder the active app: the question must not wait unseen on a background window.
+    // A window already in front (the open panel's import, the next duplicate) is left to the system.
+    if (!parent.isFocused()) parent.focus();
     const result = await deps.sheets.open(parent, {
       kind: 'duplicate',
       fileName: path.basename(file),

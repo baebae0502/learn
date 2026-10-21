@@ -117,6 +117,10 @@ function PaletteDialog() {
   // An import or a sheet holds the window (not "no match"). Alone when nothing is listed: nothing can run until it ends.
   // Above the commands that still run (설정…): a header — not an option, never under the cursor — that says the others
   // come back when the work ends.
+  // Defensive in M3: nothing holds the window under an open palette. ⌘K and the launcher are refused while it is held,
+  // every command closes the palette before it runs, and a file drag closes it before its drop starts an import
+  // (shell/DropOverlay.tsx). An import that does not start in this window would reach it: the Dock's open-file (not
+  // built yet), later background work.
   const busy = env.blocked && (
     <div className="p-empty" data-testid="palette-busy">
       <div className="pe-title">{ranked.length > 0 ? t.palette.busyHeaderTitle : t.palette.busyTitle}</div>

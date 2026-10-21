@@ -17,11 +17,11 @@ import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
+import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
-import { useWindowDrop } from '../shell/useWindowDrop';
 import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -56,6 +56,9 @@ export function MainWindow(_props: { info: AppInfo }) {
   const runImport = useImport(confirm);
   /** The ⌘/ sheet is modal: commands (and drops) stay disabled until it closes. */
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag. The registry
+  // (env.blocked) and the window's drop target follow this one value.
+  const blocked = importing || sheetOpen;
   const showShortcuts = useCallback(async () => {
     setSheetOpen(true);
     try {
@@ -101,7 +104,6 @@ export function MainWindow(_props: { info: AppInfo }) {
     },
     [runImport],
   );
-  useWindowDrop(view.kind === 'library' && !importing && !sheetOpen, onDrop);
 
   // A failed refresh keeps the last list on screen and says so once (a StrictMode re-run sees the same error object).
   // A failed first read has no list to keep: the content column shows the list-failed notice instead (below).
@@ -125,8 +127,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const list = items.data ?? [];
   const env: CommandEnv = {
     view: view.kind === 'reader' ? 'viewer' : 'library',
-    // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag.
-    blocked: importing || sheetOpen,
+    blocked,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
@@ -204,6 +205,8 @@ export function MainWindow(_props: { info: AppInfo }) {
         overlays={
           <>
             <Palette />
+            {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
+            <DropOverlay enabled={view.kind === 'library' && !blocked} onDrop={onDrop} />
             <Toasts />
           </>
         }

@@ -31,6 +31,14 @@ describe('accelerators', () => {
     expect(acceleratorKeys('CmdOrCtrl+-', 'linux')).toEqual(['Ctrl', '-']);
     expect(acceleratorLabel('Alt+CmdOrCtrl+O', 'linux')).toBe('Ctrl+Alt+O');
   });
+  it('draws a modifier held on its own (⌥ on a drop links) as its keycap', () => {
+    expect(acceleratorKeys('Alt', 'darwin')).toEqual(['⌥']);
+    expect(acceleratorKeys('Shift', 'darwin')).toEqual(['⇧']);
+    expect(acceleratorLabel('Alt', 'darwin')).toBe('⌥');
+    expect(acceleratorKeys('Alt', 'linux')).toEqual(['Alt']);
+    expect(acceleratorKeys('Option', 'win32')).toEqual(['Alt']);
+    expect(acceleratorLabel('Alt', 'linux')).toBe('Alt');
+  });
   it('draws single-key shortcuts from the physical key code', () => {
     expect(keySpecKeys({ code: 'F6' }, 'darwin')).toEqual(['F6']);
     expect(keySpecKeys({ code: 'F6', shift: true }, 'darwin')).toEqual(['⇧', 'F6']);

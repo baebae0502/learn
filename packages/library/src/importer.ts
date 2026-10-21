@@ -45,7 +45,7 @@ export class Importer {
     const st = await fs.stat(src);
     if (!st.isFile()) throw new LearnError('UNSUPPORTED_TYPE', '일반 파일만 가져올 수 있습니다.');
     const kind = await sniffFile(src);
-    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.');
+    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4·MOV·WebM)을 가져올 수 있습니다.');
     const sha256 = await sha256File(src);
 
     const existing = repo.findAssetsBySha(sha256);

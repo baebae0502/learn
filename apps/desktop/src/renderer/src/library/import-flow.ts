@@ -33,14 +33,30 @@ export async function settleImport(outcomes: readonly ImportOutcome[], mode: Sto
     if (o.status !== 'duplicate') continue;
     const choice = await deps.confirm({ path: o.path, existingItemId: o.existingItemId });
     if (choice === 'open') report.openItemId = o.existingItemId;
-    if (choice === 'add') take(await deps.importAgain(o.path, mode));
+    if (choice !== 'add') continue;
+    try {
+      take(await deps.importAgain(o.path, mode));
+    } catch (e) {
+      // One failed re-import is one failed file: what was imported before it is still reported.
+      report.failed.push({ name: fileName(o.path), message: (e as Error).message });
+    }
   }
   return report;
 }
 
-/** Toast body: one "name: reason" line per file, at most `max`, then "외 N개". */
-export function failureLines(failed: ImportReport['failed'], max = 3): string {
-  const lines = failed.slice(0, max).map((f) => `${f.name}: ${f.message}`);
+/** "원인. 다음 행동." → [cause, next step]; a message without a second sentence has no next step. */
+const splitMessage = (m: string): [string, string] => {
+  const i = m.indexOf('. ');
+  return i < 0 ? [m, ''] : [m.slice(0, i + 1), m.slice(i + 2)];
+};
+
+/**
+ * Failure toast body: one "name: cause" line per file (at most `max`, then "외 N개"), and the next steps once each
+ * after the list, so five files with the same cause do not repeat the same advice five times.
+ */
+export function failureLines(failed: ImportReport['failed'], max = 3): { lines: string[]; hints: string[] } {
+  const lines = failed.slice(0, max).map((f) => `${f.name}: ${splitMessage(f.message)[0]}`);
   if (failed.length > max) lines.push(t.toast.more(failed.length - max));
-  return lines.join('\n');
+  const hints = [...new Set(failed.map((f) => splitMessage(f.message)[1]).filter(Boolean))];
+  return { lines, hints };
 }

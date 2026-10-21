@@ -20,7 +20,12 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
           importAgain: (path, m) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true })),
         });
         if (report.imported > 0) showToast({ kind: 'success', title: (mode === 'linked' ? t.toast.linked : t.toast.imported)(report.imported), testId: 'import-done' });
-        if (report.failed.length > 0) showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length), body: failureLines(report.failed), testId: 'import-failures' });
+        if (report.failed.length > 0) {
+          const { lines, hints } = failureLines(report.failed);
+          showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });
+        }
+        // Not item.open through the registry: the user picked 기존 자료 열기 inside this import's own question, while the
+        // import still holds the window (blocked), so the command would refuse. It is the import's result, not a new command.
         if (report.openItemId) setView({ kind: 'reader', itemId: report.openItemId });
       } catch (e) {
         showToast({ kind: 'error', title: t.toast.importFailed, body: (e as Error).message, testId: 'import-failures' });

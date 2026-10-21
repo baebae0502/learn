@@ -15,8 +15,25 @@ export type ToastKind = 'success' | 'error' | 'info';
 export interface ToastData {
   kind: ToastKind;
   title: string;
+  /** One line each, cut with an ellipsis (file names): the toast keeps its height whatever the names are. */
+  lines?: readonly string[];
+  /** A paragraph under the lines (the next step); wraps. */
   body?: string;
   testId?: string;
+}
+
+/** Description of a toast (shared with the state board): the lines, then the paragraph. */
+export function ToastLines({ data }: { data: Pick<ToastData, 'lines' | 'body'> }) {
+  return (
+    <>
+      {data.lines?.map((line, i) => (
+        <span key={i} className="t-line ellipsis" title={line}>
+          {line}
+        </span>
+      ))}
+      {data.body && <span className="t-body ui-prose">{data.body}</span>}
+    </>
+  );
 }
 
 /**
@@ -67,9 +84,9 @@ export function Toasts() {
               <Text slot="title" className="t-title">
                 {toast.content.title}
               </Text>
-              {toast.content.body && (
-                <Text slot="description" className="t-body">
-                  {toast.content.body}
+              {(toast.content.lines?.length || toast.content.body) && (
+                <Text slot="description" elementType="div" className="t-desc">
+                  <ToastLines data={toast.content} />
                 </Text>
               )}
             </ToastContent>

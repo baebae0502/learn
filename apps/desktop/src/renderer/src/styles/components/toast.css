@@ -49,10 +49,24 @@
   .toast .t-title {
     font: var(--type-headline);
   }
-  .toast .t-body {
+  /* Description: one-line ellipsis rows (file names, never re-wrapped), then the paragraph (next step, pretty). */
+  .toast .t-desc {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
     color: var(--text-secondary);
     font: var(--type-footnote);
+  }
+  .toast .t-line {
+    display: block;
+  }
+  .toast .t-body {
+    display: block;
+    font: var(--type-footnote);
     white-space: pre-line;
+  }
+  .toast .t-line + .t-body {
+    margin-top: var(--space-4);
   }
   /* Progress toast (M6): bar + % on the row under title and file name, across the text and action columns. */
   .toast .t-progress {

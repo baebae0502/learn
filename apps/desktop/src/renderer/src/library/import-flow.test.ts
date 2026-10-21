@@ -7,6 +7,8 @@ const imported = (path: string, id: string): ImportOutcome => ({ status: 'import
 const dup = (path: string, existingItemId: string): ImportOutcome => ({ status: 'duplicate', path, existingItemId });
 const failed = (path: string, message: string): ImportOutcome => ({ status: 'failed', path, code: 'UNSUPPORTED_TYPE', message });
 
+const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.';
+
 describe('settleImport', () => {
   it('counts imports and failures and asks about each duplicate in order', async () => {
     const confirm = vi.fn().mockResolvedValueOnce('skip').mockResolvedValueOnce('add');
@@ -21,12 +23,31 @@ describe('settleImport', () => {
     expect(report.openItemId).toBe('e1');
     expect(report.imported).toBe(0);
   });
+  it('a re-import that throws is one failed file; what was imported before and after still counts', async () => {
+    const importAgain = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('원본 파일을 읽지 못했습니다. 파일을 확인하세요.'))
+      .mockResolvedValueOnce([imported('/c.pdf', 'n3')]);
+    const report = await settleImport([imported('/a.pdf', 'n1'), dup('/dir/b.pdf', 'e2'), dup('/c.pdf', 'e3')], 'managed', { confirm: async () => 'add', importAgain });
+    expect(report).toEqual({ imported: 2, failed: [{ name: 'b.pdf', message: '원본 파일을 읽지 못했습니다. 파일을 확인하세요.' }], openItemId: null });
+  });
 });
 
 describe('failureLines', () => {
-  it('lists up to three files and counts the rest', () => {
+  it('lists up to three files with their cause and counts the rest', () => {
     const f = ['a', 'b', 'c', 'd', 'e'].map((n) => ({ name: `${n}.txt`, message: '지원하지 않는 형식입니다.' }));
-    expect(failureLines(f)).toBe('a.txt: 지원하지 않는 형식입니다.\nb.txt: 지원하지 않는 형식입니다.\nc.txt: 지원하지 않는 형식입니다.\n외 2개');
-    expect(failureLines(f.slice(0, 1))).toBe('a.txt: 지원하지 않는 형식입니다.');
+    expect(failureLines(f)).toEqual({ lines: ['a.txt: 지원하지 않는 형식입니다.', 'b.txt: 지원하지 않는 형식입니다.', 'c.txt: 지원하지 않는 형식입니다.', '외 2개'], hints: [] });
+    expect(failureLines(f.slice(0, 1))).toEqual({ lines: ['a.txt: 지원하지 않는 형식입니다.'], hints: [] });
+  });
+  it('gives each next step once, after the list (cause + next step, design-spec 9)', () => {
+    const f = [
+      ...['a', 'b', 'c', 'd'].map((n) => ({ name: `${n}.txt`, message: UNSUPPORTED })),
+      { name: 'dir', message: '일반 파일만 가져올 수 있습니다.' },
+      { name: 'x.pdf', message: '파일을 읽지 못했습니다. 다시 가져오세요.' },
+    ];
+    expect(failureLines(f)).toEqual({
+      lines: ['a.txt: 지원하지 않는 형식입니다.', 'b.txt: 지원하지 않는 형식입니다.', 'c.txt: 지원하지 않는 형식입니다.', '외 3개'],
+      hints: ['지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.', '다시 가져오세요.'],
+    });
   });
 });

@@ -10,7 +10,7 @@ import { readWindowParams } from '../ui/platform';
 import { SearchField } from '../ui/SearchField';
 import { Segmented } from '../ui/Segmented';
 import { Spinner } from '../ui/Spinner';
-import { ToastIcon, Toasts, showToast, type ToastData } from '../ui/toasts';
+import { ToastIcon, ToastLines, Toasts, showToast, type ToastData } from '../ui/toasts';
 import { TooltipText } from '../ui/Tooltip';
 
 // Sample copy on the board never reaches a user screen, so it stays outside strings/ (except shared words like 닫기).
@@ -63,7 +63,11 @@ function StaticToast({ data }: { data: ToastData }) {
       <ToastIcon kind={data.kind} />
       <div className="t-text">
         <div className="t-title">{data.title}</div>
-        {data.body && <div className="t-body">{data.body}</div>}
+        {(data.lines?.length || data.body) && (
+          <div className="t-desc">
+            <ToastLines data={data} />
+          </div>
+        )}
       </div>
       {data.kind === 'error' && <IconButton icon={X} label={t.common.close} size="small" />}
     </div>

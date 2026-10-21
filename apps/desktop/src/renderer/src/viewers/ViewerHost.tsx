@@ -12,11 +12,15 @@ import { VideoViewer } from './VideoViewer';
 
 /** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
 export function ViewerHost({ itemId }: { itemId: string }) {
-  const item = useItem(itemId);
+  // Every open re-checks the file (as M2 did), and nothing is decided from the cache until that read lands: a cached
+  // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
+  // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
+  const item = useItem(itemId, true);
   const { run, isEnabled } = useCommands();
   // The path a linked file was last seen at (the notice's file line); a managed copy's path means nothing to the user.
   const linkedMissing = item.data?.availability === 'missing' && item.data.storageMode === 'linked';
   const detail = useQuery({ queryKey: keys.detail(itemId), queryFn: () => unwrap(api().library.detail({ itemId })), enabled: linkedMissing });
+  if (!item.isFetchedAfterMount) return null; // transient: one IPC round trip
   if (item.isError) {
     // The item itself could not be read (deleted meanwhile, or the library went away): main's message is Korean.
     return (

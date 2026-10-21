@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AppInfo, LibraryItem, Result, StorageMode } from '@learn/domain';
+import type { AppInfo, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
@@ -7,6 +7,7 @@ import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
 import { keys, useItems, useLibrarySync } from '../data/queries';
 import { queryClient } from '../data/query-client';
+import { freshTargets } from '../data/targets';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySidebar } from '../library/LibrarySidebar';
@@ -105,8 +106,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     view: view.kind === 'reader' ? 'viewer' : 'library',
     // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag.
     blocked: importing || sheetOpen,
-    // The freshest fact first: library.get (the reader's item) re-checked the file; the list may be one change behind.
-    targetsOf: (ids) => ids.flatMap((id) => queryClient.getQueryData<LibraryItem>(keys.item(id)) ?? list.find((i) => i.id === id) ?? []),
+    // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
+    targetsOf: (ids) => freshTargets(queryClient, list, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
     open: (itemId) => setView({ kind: 'reader', itemId }),

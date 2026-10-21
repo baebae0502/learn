@@ -1,6 +1,5 @@
 import { Component, type ReactNode } from 'react';
 import { FatalScreen } from '../components/FatalScreen';
-import { t } from '../strings';
 
 /**
  * A render-time throw below this shows the fatal screen (which still reports the blocked context) instead of a blank
@@ -20,7 +19,7 @@ export class RenderBoundary extends Component<{ children: ReactNode }, { failed:
   }
 
   override render(): ReactNode {
-    if (this.state.failed) return <FatalScreen code="INTERNAL" message={t.shell.renderFailed} libraryRoot={null} />;
+    if (this.state.failed) return <FatalScreen kind="render" code="INTERNAL" libraryRoot={null} />;
     return this.props.children;
   }
 }

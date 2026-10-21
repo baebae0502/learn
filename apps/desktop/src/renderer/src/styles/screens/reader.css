@@ -1,0 +1,167 @@
+@layer screens {
+  .reader {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* 44 px reader toolbar (mockup .reader-toolbar): page controls, then the zoom on the right. */
+  .reader-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: var(--pane-header-height);
+    flex: none;
+    min-width: 0;
+    padding: 0 var(--space-12);
+    background: var(--bg-content);
+    border-bottom: 1px solid var(--separator);
+  }
+  .reader-toolbar .page-indicator {
+    min-width: 72px; /* local: "12 / 340쪽" without reflow */
+    text-align: center;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* Final states (PDF open failure, missing original, unplayable video): the 44 px row keeps only the title and
+     kind · size (mockup reader-pdf ?state=error|missing, dialogs ?scene=codec; title + 4 margin + 4 gap). */
+  .reader-toolbar.title-row {
+    gap: var(--space-8);
+  }
+  .zoom-select {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .zoom-select select {
+    height: var(--control-height-small);
+    padding: 0 var(--space-8);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-control);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .zoom-select select:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .pdf-stage,
+  .reader-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg-sunken);
+  }
+  .pdf-stage:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  /* At least the stage's width (the page centres in it) and as wide as the page at 200 %: a page wider than the stage
+     overflows to the right only, so its left edge stays reachable by scrolling. */
+  .pdf-page-wrap {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: fit-content;
+    min-width: 100%;
+    padding: var(--space-24);
+  }
+  .pdf-page-wrap canvas {
+    flex: none;
+    background: var(--page-original-bg);
+    box-shadow: var(--shadow-page);
+  }
+  .stage-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--space-24);
+  }
+  .video-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--video-stage);
+  }
+  .video-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  /* The stage is near-black in both themes, so this notice uses fixed light-on-dark values (mockup.css). */
+  .codec-notice {
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-12);
+    text-align: center;
+    color: oklch(92% 0.004 250); /* local: always-dark video stage */
+  }
+  .codec-notice .glyph {
+    width: 52px; /* local: mockup codec tile */
+    height: 52px;
+    border-radius: var(--radius-xl);
+    display: grid;
+    place-items: center;
+    background: oklch(100% 0 0 / 0.08); /* local: always-dark video stage */
+    color: oklch(85% 0.004 250); /* local: always-dark video stage */
+  }
+  .codec-notice h2 {
+    font: var(--type-title2);
+    color: oklch(97% 0 0); /* local: always-dark video stage */
+  }
+  .codec-notice p {
+    font: var(--type-paragraph);
+    color: oklch(78% 0.006 250); /* local: always-dark video stage */
+  }
+  .codec-notice .file {
+    padding: var(--space-8) var(--space-12);
+    border-radius: var(--radius-md);
+    background: oklch(100% 0 0 / 0.06); /* local: always-dark video stage */
+    font: var(--type-footnote);
+    color: oklch(78% 0.006 250); /* local: always-dark video stage */
+  }
+  .codec-notice .actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+  .codec-notice .btn {
+    background: oklch(100% 0 0 / 0.12); /* local: always-dark video stage */
+    color: oklch(96% 0 0); /* local: always-dark video stage */
+    box-shadow: none;
+  }
+  /* The rule above replaces the components layer's hover/press fills (a background-image): light ones instead. */
+  .codec-notice .btn:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
+    background: oklch(100% 0 0 / 0.18); /* local: always-dark video stage */
+  }
+  .codec-notice .btn:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
+    background: oklch(100% 0 0 / 0.24); /* local: always-dark video stage */
+  }
+  .codec-notice .btn .icon {
+    color: oklch(85% 0 0); /* local: always-dark video stage */
+  }
+  .fatal {
+    position: relative;
+    height: 100vh;
+    background: var(--bg-window);
+  }
+  .fatal-drag {
+    height: var(--toolbar-height);
+    -webkit-app-region: drag;
+  }
+  .fatal .notice p {
+    max-width: 440px;
+  }
+}

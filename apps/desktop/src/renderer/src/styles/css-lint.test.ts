@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const LAYERS = ['reset', 'legacy', 'tokens', 'base', 'components', 'screens', 'utilities'];
+const LAYERS = ['reset', 'tokens', 'base', 'components', 'screens', 'utilities'];
 
 function cssFiles(d: string): string[] {
   return fs.readdirSync(d, { withFileTypes: true }).flatMap((e) =>
@@ -12,15 +12,13 @@ function cssFiles(d: string): string[] {
   );
 }
 const layered = cssFiles(dir).filter((f) => path.basename(f) !== 'layers.css');
-/** legacy.css is the pre-M3 stylesheet kept for the old screens until Task 7 deletes it. */
-const linted = layered.filter((f) => path.basename(f) !== 'legacy.css');
 const rel = (f: string) => path.relative(dir, f);
 const withoutComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 
 describe('renderer CSS architecture', () => {
   it('declares the cascade layer order once, imported before the tokens', () => {
     const order = /@layer ([^;]+);/.exec(fs.readFileSync(path.join(dir, 'layers.css'), 'utf8'))?.[1]?.split(',').map((s) => s.trim());
-    expect(order).toEqual(LAYERS.filter((l) => l !== 'legacy' || fs.existsSync(path.join(dir, 'legacy.css'))));
+    expect(order).toEqual(LAYERS);
     const index = fs.readFileSync(path.join(dir, 'index.ts'), 'utf8');
     expect(index.indexOf("import './layers.css';")).toBe(index.search(/import /));
     expect(index.indexOf("import './layers.css';")).toBeLessThan(index.indexOf("import '../design/tokens.css';"));
@@ -40,7 +38,7 @@ describe('renderer CSS architecture', () => {
     }
   });
 
-  it.each(linted.map((f) => [rel(f), f]))('%s takes colours and type sizes from tokens (literals only on /* local */ lines)', (_name, file) => {
+  it.each(layered.map((f) => [rel(f), f]))('%s takes colours and type sizes from tokens (literals only on /* local */ lines)', (_name, file) => {
     const offenders = fs
       .readFileSync(file, 'utf8')
       .split('\n')

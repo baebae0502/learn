@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, FileX } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { assetUrl, type LibraryItem } from '@learn/domain';
-import { t } from '../strings/legacy';
+import { t } from '../strings';
+import { IconButton } from '../ui/Button';
+import { Notice } from '../ui/Notice';
 import { ratio, restorePageIndex } from './positionSaver';
+import { ReaderTitleRow } from './ReaderNotices';
 import { usePosition } from './usePosition';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -42,7 +46,12 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     });
     task.promise.then(
       (d) => { if (!cancelled) setDoc(d); },
-      (e: unknown) => { if (!cancelled) setError(`${t.pdfError} ${(e as Error)?.message ?? ''}`); },
+      (e: unknown) => {
+        if (cancelled) return;
+        // pdf.js messages are technical (and English): the name goes to the log, the user gets our notice.
+        console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
+        setError('failed');
+      },
     );
     return () => {
       cancelled = true;
@@ -90,7 +99,8 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
         if (!cancelled) setRendered((n) => n + 1);
       } catch (e) {
         if (cancelled || (e as Error)?.name === 'RenderingCancelledException') return;
-        setError(`${t.pdfError} ${(e as Error)?.message ?? ''}`);
+        console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
+        setError('failed');
       }
     })();
     return () => {
@@ -100,22 +110,53 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
   }, [doc, pageNum, zoom, restored]);
 
   const total = doc?.numPages ?? 0;
+  if (error) {
+    // A final state (design-spec 6, rubric 8; C-2): no reader controls that cannot work, only a 44 px title row
+    // (title + kind · size, like the unplayable-video screen) and the notice.
+    return (
+      <div className="reader">
+        <ReaderTitleRow item={item} />
+        <div className="reader-stage">
+          <div className="stage-center">
+            <Notice icon={FileX} title={t.reader.pdfErrorTitle} testId="pdf-error">
+              {t.reader.pdfErrorBody}
+            </Notice>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div className="pdf-viewer">
-      <div className="pdf-toolbar">
-        <button className="secondary" data-testid="pdf-prev" disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)}>{t.pdfPrev}</button>
-        <span data-testid="pdf-page-indicator">{total > 0 && restored ? t.pdfPage(pageNum, total) : '…'}</span>
-        <button className="secondary" data-testid="pdf-next" disabled={pageNum >= total} onClick={() => setPageNum((p) => p + 1)}>{t.pdfNext}</button>
-        <label>
-          {t.pdfZoom}{' '}
+    <div className="reader">
+      <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
+        <IconButton icon={ChevronLeft} label={t.reader.prevPage} testId="pdf-prev" isDisabled={pageNum <= 1} disabledReason={t.reader.firstPage} onPress={() => setPageNum((p) => p - 1)} />
+        <span className="page-indicator num" data-testid="pdf-page-indicator">
+          {total > 0 && restored ? t.reader.page(pageNum, total) : '…'}
+        </span>
+        <IconButton
+          icon={ChevronRight}
+          label={t.reader.nextPage}
+          testId="pdf-next"
+          isDisabled={pageNum >= total}
+          disabledReason={total === 0 ? t.reader.opening : t.reader.lastPage}
+          onPress={() => setPageNum((p) => p + 1)}
+        />
+        <span className="spacer" />
+        <label className="zoom-select">
+          <span>{t.reader.zoom}</span>
           <select data-testid="pdf-zoom" value={String(zoom)} onChange={(e) => setZoom(Number(e.target.value))}>
-            {ZOOMS.map((z) => <option key={z} value={String(z)}>{z * 100}%</option>)}
+            {ZOOMS.map((z) => (
+              <option key={z} value={String(z)}>
+                {z * 100}%
+              </option>
+            ))}
           </select>
         </label>
       </div>
-      {error && <p className="error" role="alert" data-testid="pdf-error">{error}</p>}
-      <div className="pdf-stage">
-        <canvas ref={canvasRef} data-testid="pdf-canvas" data-rendered={rendered} />
+      <div className="pdf-stage" tabIndex={0} aria-label={t.reader.pdfStage}>
+        <div className="pdf-page-wrap">
+          <canvas ref={canvasRef} data-testid="pdf-canvas" data-rendered={rendered} />
+        </div>
       </div>
     </div>
   );

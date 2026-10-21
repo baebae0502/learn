@@ -124,7 +124,7 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
 
   // Unsupported codec → explained, not silent
   await openItem(page, 'sample-mpeg4part2');
-  await expect(page.getByTestId('video-error')).toContainText('코덱');
+  await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   await page.screenshot({ path: testInfo.outputPath('04-unsupported.png') });
   await page.getByTestId('viewer-back').click();
 

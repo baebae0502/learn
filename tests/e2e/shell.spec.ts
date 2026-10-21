@@ -274,7 +274,9 @@ test('boot: a render-time failure in the main window shows the fatal screen, not
     await stubHandler(app, Channels.library.list, { ok: true, data: 5 }); // not a list: the old library view throws while rendering
     await page.reload();
     await expect(page.getByTestId('app-ready')).toBeAttached();
-    await expect(page.getByRole('alert')).toContainText('화면을 표시하지 못했습니다');
+    await expect(page.getByTestId('fatal-notice')).toContainText('화면을 표시하지 못했습니다');
+    await expect(page.getByTestId('fatal-notice')).toContainText('앱을 다시 시작하세요');
+    await expect(page.getByTestId('fatal-notice').locator('.file')).toHaveCount(0); // not a library failure: no backup line
     await expect(page.getByTestId('shell')).toHaveCount(0);
   } finally {
     await app.close();

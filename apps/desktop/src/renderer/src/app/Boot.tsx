@@ -20,9 +20,10 @@ export function Boot() {
     // The window still opens: prefs consumers fall back to DEFAULT_PREFS until main pushes prefsChanged. Code only.
     if (prefsFailure) console.warn(`[prefs] reading prefs failed: ${prefsFailure}`);
   }, [prefsFailure]);
-  if (info.isError) return <FatalScreen code={codeOf(info.error)} message={info.error.message} libraryRoot={null} />;
+  // Code only: main's message can carry a path or engine text (C-8); FatalScreen says it in our own words.
+  if (info.isError) return <FatalScreen code={codeOf(info.error)} libraryRoot={null} />;
   if (info.isPending || prefs.isPending) return null;
-  if (info.data.libraryError) return <FatalScreen code={info.data.libraryError.code} message={info.data.libraryError.message} libraryRoot={info.data.libraryRoot} />;
+  if (info.data.libraryError) return <FatalScreen code={info.data.libraryError.code} libraryRoot={info.data.libraryRoot} />;
   return <PanesGate info={info.data} />;
 }
 

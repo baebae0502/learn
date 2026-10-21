@@ -65,17 +65,7 @@ describe('UI copy (design-spec 4, 9)', () => {
     expect(copy.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
   });
   it('no renderer source shows a phase placeholder such as "P3 단계"', () => {
-    // strings/legacy.ts belongs to the pre-M3 screens and is deleted in Task 7.
-    const files = sources().filter((f) => f !== path.join('strings', 'legacy.ts'));
-    expect(files.filter((f) => /P[0-9]\s*단계/.test(read(f)))).toEqual([]);
-  });
-  it('only the pre-M3 screens import strings/legacy (no new screen may; Task 7 deletes it)', () => {
-    expect(sources().filter((f) => /from '(?:\.\.?\/)+strings\/legacy'/.test(read(f)))).toEqual([
-      'components/FatalScreen.tsx',
-      'viewers/PdfViewer.tsx',
-      'viewers/VideoViewer.tsx',
-      'viewers/ViewerHost.tsx',
-    ]);
+    expect(sources().filter((f) => /P[0-9]\s*단계/.test(read(f)))).toEqual([]);
   });
 });
 

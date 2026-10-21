@@ -5,7 +5,7 @@ import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItem, useItems, useLibrarySync } from '../data/queries';
+import { keys, useItems, useLibrarySync } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
@@ -20,12 +20,8 @@ import { useWindowDrop } from '../shell/useWindowDrop';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Toasts, showToast } from '../ui/toasts';
+import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
-
-function ReaderTitle({ itemId }: { itemId: string }) {
-  const item = useItem(itemId);
-  return <Toolbar title={item.data?.title ?? ''} />;
-}
 
 /** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
@@ -153,7 +149,7 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const toolbar =
     view.kind === 'reader' ? (
-      <ReaderTitle itemId={view.itemId} />
+      <ReaderToolbar itemId={view.itemId} />
     ) : (
       <Toolbar title={t.shell.myLibrary} count={count > 0 ? t.shell.count(count) : undefined} actions={<ImportMenuButton />} />
     );
@@ -173,7 +169,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell sidebar={<LibrarySidebar count={count} />} toolbar={toolbar} overlays={<Toasts />}>
-        {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} onBack={() => setView({ kind: 'library' })} /> : library}
+        {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
       </Shell>
       {(items.isSuccess || items.isError) && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
     </CommandProvider>

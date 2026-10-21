@@ -12,6 +12,11 @@ export function setTooltipBlock(reason: Reason, on: boolean): void {
   if (on === active.has(reason)) return;
   if (on) active.add(reason);
   else active.delete(reason);
+  // Visible to tests and the evidence harness (which reason holds tooltips back).
+  if (typeof document !== 'undefined') {
+    if (active.size > 0) document.documentElement.dataset['tooltipBlock'] = [...active].sort().join(' ');
+    else delete document.documentElement.dataset['tooltipBlock'];
+  }
   for (const l of listeners) l();
 }
 

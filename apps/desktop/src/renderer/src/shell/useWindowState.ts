@@ -34,4 +34,12 @@ export function useWindowState(): void {
   });
   // A menu-bar menu is open (macOS keeps the window key meanwhile): no tooltip under it.
   useLearnEvent('nativeMenu', ({ open }) => setTooltipBlock('menu', open));
+  // A menu takes all input while it tracks: input reaching the page means none is open (a missed close never sticks).
+  useEffect(() => {
+    const menuClosed = () => setTooltipBlock('menu', false);
+    for (const type of ['keydown', 'pointerdown'] as const) document.addEventListener(type, menuClosed, true);
+    return () => {
+      for (const type of ['keydown', 'pointerdown'] as const) document.removeEventListener(type, menuClosed, true);
+    };
+  }, []);
 }

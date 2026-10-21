@@ -547,6 +547,14 @@ test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈ, light and da
     check('⌘K opens the palette with the focus in its field', focused && (!IS_MAC || via === 'keystroke'), results['palette']);
   });
   if (!(await palette.isVisible())) return void save();
+  /** Key and main: active chrome, accent cursor row (a dimmed capture must fail here, not become the evidence). */
+  const active = () =>
+    s.page.evaluate(() => !document.documentElement.hasAttribute('data-window-inactive') && !document.documentElement.hasAttribute('data-window-not-main'));
+  const activeBeforeShot = async (shot: string) => {
+    await expect.poll(active, { timeout: 5_000 }).toBe(true).catch(() => {});
+    const v = { active: await active(), paletteVisible: await palette.isVisible() };
+    check(`palette: the window is key and main for ${shot} (review minor 4)`, v.active && v.paletteVisible, v);
+  };
   await guard('palette: 초성 ㄱㅈ finds 파일 가져오기…', async () => {
     await s.page.keyboard.insertText('ㄱㅈ');
     const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
@@ -555,9 +563,11 @@ test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈ, light and da
     results['paletteQuery'] = v;
     check('palette: 초성 ㄱㅈ puts the cursor on 파일 가져오기… with 가져 marked', v.cursor === 'file.importManaged' && v.mark === '가져', v);
   });
+  await activeBeforeShot('m3-13');
   await allShots(s.app, s.page, 'm3-13-palette', 'command palette, 초성 ㄱㅈ (light)');
   if (IS_MAC) {
-    await setTheme(s.page, 'dark');
+    await setTheme(s.page, 'dark'); // waits until the page is dark and the material has repainted
+    await activeBeforeShot('m3-13b');
     await nativeWindowShot(s.app, 'm3-13b-palette-dark', 'command palette, 초성 ㄱㅈ (dark)');
     await setTheme(s.page, 'light');
   }

@@ -106,23 +106,48 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   }
 });
 
-test('palette: 초성 results and no results', async ({}, testInfo) => {
+test('palette: empty query, 초성 results, several rows, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const dates = () => [s.page.locator('[data-col="added"]')];
+  const input = s.page.getByTestId('palette-input');
+  const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await runMenuCommand(s.app, 'app.palette');
-      await s.page.getByTestId('palette-input').fill('ㄱㅈ');
-      await expect(s.page.locator('[data-testid="palette-item"][data-focused]')).toHaveAttribute('data-command-id', 'file.importManaged');
+      // Every available command, the cursor on the first (critic T9-M1, T9-n4).
+      await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+      await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
+      await input.fill('ㄱㅈ');
+      await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
-      await s.page.getByTestId('palette-input').fill('효소 억제제');
+      if (theme === 'light') {
+        // ㄱ: three rows, the <mark> in accent text on the rows the cursor is not on.
+        await input.fill('ㄱ');
+        await expect(s.page.getByTestId('palette-item')).toHaveCount(3);
+        await shoot(s.page, 'palette-multi-light', { mask: dates() });
+      }
+      await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();
       await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
+    // Another window takes the key: the palette stays, its cursor row is the neutral selection (design-spec 3.1).
+    await setTheme(s.page, 'light');
+    await runMenuCommand(s.app, 'app.palette');
+    await input.fill('ㄱ');
+    await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+    await s.app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await shoot(s.page, 'palette-inactive-light', { mask: dates() });
+    await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
   } finally {
     await s.app.close();
   }

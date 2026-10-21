@@ -101,6 +101,16 @@ function Part1() {
           <Button icon={FolderSearch}>Finder에서 보기</Button>
         </div>
         <div className="g-row">
+          {/* Disabled with a reason and keyboard-focused: dimmed body, full-strength ring (design-spec 8.3). */}
+          <span className="g-label">이유 있는 비활성</span>
+          <Button variant="primary" force={['focus']} isDisabled disabledReason={REASON}>
+            가져오기
+          </Button>
+          <Button force={['focus']} isDisabled disabledReason={REASON} testId="g-soft-focus">
+            포커스
+          </Button>
+        </div>
+        <div className="g-row">
           <span className="g-label">메뉴 단추</span>
           <MenuButton label="가져오기" icon={Plus} items={IMPORT_MENU} onAction={noop} />
         </div>
@@ -119,6 +129,7 @@ function Part1() {
               testId={s.disabled ? 'g-icon-disabled' : undefined}
             />
           ))}
+          <IconButton icon={PanelLeft} label="사이드바 비활성 포커스" force={['focus']} isDisabled disabledReason={REASON} testId="g-soft-focus-icon" />
         </div>
         <h2 className="g-title">필드·실행기·키캡</h2>
         <div className="g-row">
@@ -309,7 +320,7 @@ function Part3() {
           <Button testId="g3-soft" isDisabled disabledReason={REASON} onPress={press}>
             내보내기
           </Button>
-          <IconButton testId="g3-soft-icon" icon={PanelLeft} label="사이드바" isDisabled disabledReason={REASON} onPress={press} />
+          <IconButton testId="g3-soft-icon" icon={PanelLeft} label="사이드바" accelerator="Ctrl+Cmd+S" isDisabled disabledReason={REASON} onPress={press} />
           <MenuButton
             testId="g3-soft-menu"
             label="정렬"
@@ -375,6 +386,9 @@ function Part3() {
             onPress={() => showToast({ kind: 'error', title: '파일 1개를 가져오지 못했습니다', body: 'notes.txt: 지원하지 않는 형식입니다.', testId: 'toast-error' })}
           >
             오류 토스트
+          </Button>
+          <Button testId="g3-toast-error-title" onPress={() => showToast({ kind: 'error', title: '필기를 저장하지 못했습니다', testId: 'toast-error-title' })}>
+            제목만 있는 오류 토스트
           </Button>
         </div>
       </section>

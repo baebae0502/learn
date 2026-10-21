@@ -31,6 +31,10 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
+  /* The 22 px close button sits on the 18 px title line: a title-only error toast stays 42, × centred on the line. */
+  .toast > .icon-btn.sm {
+    margin-block: -2px;
+  }
   .toast .t-icon {
     display: grid;
     margin-top: 1px;

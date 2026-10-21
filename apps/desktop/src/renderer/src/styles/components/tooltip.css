@@ -13,6 +13,10 @@
   .tooltip[data-entering] {
     animation: fade-in var(--duration-fast) var(--ease-standard);
   }
+  /* Reason of an icon button disabled with one, in the shortcut's place (ui/Tooltip.tsx). */
+  .tooltip-reason {
+    color: var(--text-secondary);
+  }
   .tooltip-shortcut {
     color: var(--text-tertiary);
     font-variant-numeric: tabular-nums;

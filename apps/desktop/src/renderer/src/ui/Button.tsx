@@ -46,11 +46,20 @@ export function Button({ children, variant = 'secondary', size = 'regular', icon
   return (
     <>
       <Tooltip label={disabledReason} isDisabled={!reason.soft}>
-        {button}
+        <SoftDisabled>{button}</SoftDisabled>
       </Tooltip>
       {reason.description}
     </>
   );
+}
+
+/**
+ * Box of a button that has a disabled reason (always present for such a call site, so the tree never changes). While
+ * the button is soft-disabled and keyboard-focused, the wrapper draws the focus ring outside the dimmed button: the
+ * ring keeps full opacity and 3:1 (design-spec 8.3). The RAC trigger contexts (tooltip, menu) pass through it.
+ */
+export function SoftDisabled({ children }: { children: ReactNode }) {
+  return <span className="soft-disabled">{children}</span>;
 }
 
 export interface IconButtonProps extends Omit<Base, 'aria-label'> {
@@ -64,7 +73,7 @@ export interface IconButtonProps extends Omit<Base, 'aria-label'> {
   size?: 'regular' | 'small';
   testId?: string;
   force?: ForcedState[];
-  /** Why the button can be disabled here: while `isDisabled` the tooltip shows it instead of the name (I1). */
+  /** Why the button can be disabled here: while `isDisabled` the tooltip shows it after the name, instead of the shortcut (I1). */
   disabledReason?: string;
 }
 
@@ -72,7 +81,7 @@ export function IconButton({ icon, label, accelerator, isOn, size = 'regular', t
   const reason = useDisabledReason(rest.isDisabled, disabledReason, rest['aria-describedby']);
   return (
     <>
-      <Tooltip label={reason.soft ? disabledReason! : label} accelerator={reason.soft ? undefined : accelerator}>
+      <Tooltip label={label} accelerator={accelerator} reason={reason.soft ? disabledReason : undefined}>
         <AriaButton
           {...withoutPresses(rest, reason.soft)}
           {...reason.controlProps}

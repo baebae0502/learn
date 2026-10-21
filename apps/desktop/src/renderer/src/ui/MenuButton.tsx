@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
-import type { ForcedState } from './Button';
+import { SoftDisabled, type ForcedState } from './Button';
 import { cx } from './cx';
 import { useDisabledReason } from './disabledReason';
 import { Icon } from './Icon';
@@ -124,7 +124,7 @@ export function MenuButton<K extends string>(props: {
           trigger
         ) : (
           <Tooltip label={props.disabledReason} isDisabled={!reason.soft}>
-            {trigger}
+            <SoftDisabled>{trigger}</SoftDisabled>
           </Tooltip>
         )}
         <Popover className="menu-popover" placement="bottom start" offset={4}>

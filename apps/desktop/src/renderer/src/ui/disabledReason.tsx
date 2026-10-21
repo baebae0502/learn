@@ -36,9 +36,26 @@ export function useDisabledReason(isDisabled: boolean | undefined, reason: strin
   };
 }
 
-const PRESS_HANDLERS = ['onPress', 'onPressStart', 'onPressEnd', 'onPressChange', 'onPressUp', 'onClick'] as const;
+/** Everything that acts on a press, click, key or pointer: a soft-disabled control runs none of it. */
+const PRESS_HANDLERS = [
+  'onPress',
+  'onPressStart',
+  'onPressEnd',
+  'onPressChange',
+  'onPressUp',
+  'onClick',
+  'onKeyDown',
+  'onKeyUp',
+  'onPointerDown',
+  'onPointerUp',
+  'onMouseDown',
+  'onMouseUp',
+] as const;
 
-/** The caller's RAC Button props without press handlers (and without form submission) while soft-disabled. */
+/**
+ * The caller's RAC Button props without press, click, key and pointer handlers (and without form submission) while
+ * soft-disabled. Focus and hover handlers stay: Tab and the reason tooltip need them.
+ */
 export function withoutPresses<P extends object>(props: P, soft: boolean): P {
   if (!soft) return props;
   const out: Record<string, unknown> = { ...(props as Record<string, unknown>) };

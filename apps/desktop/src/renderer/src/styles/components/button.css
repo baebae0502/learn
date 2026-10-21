@@ -116,8 +116,36 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: calc(var(--focus-ring-width) * -1);
   }
-  .icon-btn:is([data-disabled], [aria-disabled='true']) {
+  .icon-btn[data-disabled] {
     opacity: 0.4;
+  }
+  /* Disabled with a reason: still focusable, so only the glyph dims and the inside ring keeps full opacity (8.3).
+     Without a fill this looks the same as dimming the whole button. */
+  .icon-btn[aria-disabled='true'] > .icon {
+    opacity: 0.4;
+  }
+  /* Button or menu button with a disabled reason (ui/Button.tsx SoftDisabled): the wrapper has the button's box and
+     radius and draws the ring, 2 px at 1 px offset like .btn, outside the dimmed button (design-spec 8.3). */
+  .soft-disabled {
+    display: inline-flex;
+    flex: none;
+    border-radius: var(--radius-md);
+  }
+  .soft-disabled:has(> .btn-small) {
+    border-radius: var(--radius-sm);
+  }
+  .soft-disabled:has(> .btn.leading) {
+    margin-left: calc(var(--space-8) * -1);
+  }
+  .soft-disabled > .btn.leading {
+    margin-left: 0;
+  }
+  .soft-disabled > .btn[aria-disabled='true']:is([data-focus-visible], [data-force~='focus']) {
+    outline: none;
+  }
+  .soft-disabled:has(> .btn[aria-disabled='true']:is([data-focus-visible], [data-force~='focus'])) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
   .icon-btn.sm {
     width: 22px; /* local: inline buttons inside fields and rows */

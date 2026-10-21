@@ -3,12 +3,20 @@ import { Tooltip as AriaTooltip, TooltipTrigger } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
 import { currentPlatform } from './platform';
 
-/** Tooltip content: the name, then the shortcut in tertiary colour (design-spec 6 툴팁). Also drawn by the state board. */
-export function TooltipText({ label, accelerator }: { label: string; accelerator?: string | undefined }) {
+/**
+ * Tooltip content (design-spec 6 툴팁): the name, then one secondary slot — the shortcut in tertiary colour, or, for an
+ * icon button disabled with a reason, the reason in secondary colour (the shortcut cannot run then). Also drawn by the
+ * state board.
+ */
+export function TooltipText({ label, accelerator, reason }: { label: string; accelerator?: string | undefined; reason?: string | undefined }) {
   return (
     <>
       {label}
-      {accelerator && <span className="tooltip-shortcut">{acceleratorLabel(accelerator, currentPlatform())}</span>}
+      {reason !== undefined ? (
+        <span className="tooltip-reason">{reason}</span>
+      ) : (
+        accelerator && <span className="tooltip-shortcut">{acceleratorLabel(accelerator, currentPlatform())}</span>
+      )}
     </>
   );
 }
@@ -20,11 +28,14 @@ export function TooltipText({ label, accelerator }: { label: string; accelerator
 export function Tooltip({
   label,
   accelerator,
+  reason,
   isDisabled,
   children,
 }: {
   label: string;
   accelerator?: string | undefined;
+  /** Disabled reason shown after the name, in place of the shortcut. */
+  reason?: string | undefined;
   /** Keep the trigger wrapper (so the child never remounts) but show nothing. */
   isDisabled?: boolean;
   children: ReactElement;
@@ -33,7 +44,7 @@ export function Tooltip({
     <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled}>
       {children}
       <AriaTooltip className="tooltip" placement="bottom" offset={6}>
-        <TooltipText label={label} accelerator={accelerator} />
+        <TooltipText label={label} accelerator={accelerator} reason={reason} />
       </AriaTooltip>
     </TooltipTrigger>
   );

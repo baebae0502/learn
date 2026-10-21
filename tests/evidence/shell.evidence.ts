@@ -102,21 +102,9 @@ function sidebarContrast(theme: Theme, material: readonly number[]) {
   };
 }
 
-/**
- * macOS: bring Finder to the front (the window becomes inactive), capture the main window without focusing it, read
- * the close button's colour and the current sidebar row's fill, then bring the app back.
- */
-async function inactiveShot(name: string, description: string): Promise<Record<string, unknown>> {
-  osascript('tell application "Finder" to activate');
-  const t0 = Date.now();
-  while (frontmostProcess().name !== 'Finder' && Date.now() - t0 < 5_000) await sleep(200);
-  await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
-  await sleep(500); // the material and the lights repaint as inactive
-  const shot = await nativeWindowShot(s.app, name, description, { focus: false });
-  const frontmostAtShot = frontmostProcess().name; // R2-5: read before the app comes back
-  const closeButton = shot.file ? (await pngPixels(s.page, shot.file, [[25, 26]]))[0] ?? null : null;
-  const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
-  const chrome = await s.page.evaluate(() => {
+/** The main window's chrome as its page draws it now: its window states, the dimmable parts' colours, boxes to measure. */
+function mainChrome() {
+  return s.page.evaluate(() => {
     const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
     const probe = document.createElement('span');
     document.body.append(probe);
@@ -153,6 +141,23 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
       selectedLabelBox: box('[data-testid="nav-library"] .label'),
     };
   });
+}
+
+/**
+ * macOS: bring Finder to the front (the window becomes inactive), capture the main window without focusing it, read
+ * the close button's colour and the current sidebar row's fill, then bring the app back.
+ */
+async function inactiveShot(name: string, description: string): Promise<Record<string, unknown>> {
+  osascript('tell application "Finder" to activate');
+  const t0 = Date.now();
+  while (frontmostProcess().name !== 'Finder' && Date.now() - t0 < 5_000) await sleep(200);
+  await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+  await sleep(500); // the material and the lights repaint as inactive
+  const shot = await nativeWindowShot(s.app, name, description, { focus: false });
+  const frontmostAtShot = frontmostProcess().name; // R2-5: read before the app comes back
+  const closeButton = shot.file ? (await pngPixels(s.page, shot.file, [[25, 26]]))[0] ?? null : null;
+  const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+  const chrome = await mainChrome();
   // The drawn title and the selected row's label, measured like Finder's (finderRef): ink and ratio on their surface;
   // the toolbar's own fill at (600, 26), where it is empty (polish Q2: 236 light, 20 dark).
   const img = shot.file ? decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))) : null;
@@ -210,7 +215,10 @@ function tooltipInCapture(shot: string, box: { x: number; y: number; width: numb
   return { pixels: n, share: n ? Math.round((hits / n) * 100) / 100 : 0, bg: want };
 }
 
-/** 보기's own registry items (명령 팔레트…, the sidebar toggle): every other text row in it is a full-screen row. */
+/**
+ * 보기's own registry items (명령 팔레트…, the sidebar toggle, 글자 크게 / 작게 / 기본 글자 크기 — ⌘+'s hidden ⌘= twin
+ * is no row): every other text row in it is a full-screen row.
+ */
 const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length;
 /**
  * Rows of an open 보기 menu counted from its click capture (Task 8 R2-1): the panel is found from a seed in its top
@@ -525,7 +533,7 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
 });
 
 // Task 9: the main window is active here (no sheet just closed), light, three items in the library.
-test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈ, light and dark', TAG, async () => {
+test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈㅇ, light and dark', TAG, async () => {
   const palette = s.page.getByTestId('palette');
   await guard('⌘K opens the palette', async () => {
     let via = 'menu';
@@ -555,20 +563,21 @@ test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈ, light and da
     const v = { active: await active(), paletteVisible: await palette.isVisible() };
     check(`palette: the window is key and main for ${shot} (review minor 4)`, v.active && v.paletteVisible, v);
   };
-  await guard('palette: 초성 ㄱㅈ finds 파일 가져오기…', async () => {
-    await s.page.keyboard.insertText('ㄱㅈ');
+  // ㄱㅈㅇ: only 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게, Task 10).
+  await guard('palette: 초성 ㄱㅈㅇ finds 파일 가져오기…', async () => {
+    await s.page.keyboard.insertText('ㄱㅈㅇ');
     const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
     await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged', { timeout: 5_000 });
     const v = { cursor: await cursor.getAttribute('data-command-id'), mark: await cursor.locator('mark').textContent() };
     results['paletteQuery'] = v;
-    check('palette: 초성 ㄱㅈ puts the cursor on 파일 가져오기… with 가져 marked', v.cursor === 'file.importManaged' && v.mark === '가져', v);
+    check('palette: 초성 ㄱㅈㅇ puts the cursor on 파일 가져오기… with 가져오 marked', v.cursor === 'file.importManaged' && v.mark === '가져오', v);
   });
   await activeBeforeShot('m3-13');
-  await allShots(s.app, s.page, 'm3-13-palette', 'command palette, 초성 ㄱㅈ (light)');
+  await allShots(s.app, s.page, 'm3-13-palette', 'command palette, 초성 ㄱㅈㅇ (light)');
   if (IS_MAC) {
     await setTheme(s.page, 'dark'); // waits until the page is dark and the material has repainted
     await activeBeforeShot('m3-13b');
-    await nativeWindowShot(s.app, 'm3-13b-palette-dark', 'command palette, 초성 ㄱㅈ (dark)');
+    await nativeWindowShot(s.app, 'm3-13b-palette-dark', 'command palette, 초성 ㄱㅈㅇ (dark)');
     await setTheme(s.page, 'light');
   }
   await s.page.keyboard.press('Escape');
@@ -969,6 +978,68 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
   });
   if (await menuItemEnabled(s.app, 'nav.back')) await runMenuCommand(s.app, 'nav.back');
   await expect(s.page.getByTestId('library-table')).toBeVisible();
+  save();
+});
+
+// Task 10: ⌘, opens the settings window over the main window, which is then neither key nor main (design-spec 6 설정 창:
+// grey traffic lights, neutral selection; no ring or keyboard cursor, R2-2; dimmed chrome, R2-3). Light, then dark.
+test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG, async () => {
+  const settingsWindow = () =>
+    s.app.evaluateHandle(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))!);
+  for (const theme of ['light', 'dark'] as const) {
+    const shotName = theme === 'light' ? 'm3-15-settings' : 'm3-15b-settings-dark';
+    await guard(`${shotName}: the settings window over a main window that is neither key nor main`, async () => {
+      await setTheme(s.page, theme);
+      if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+      let via = 'menu';
+      const settings = await expectWindow(s.app, 'settings', async () => {
+        if (!IS_MAC) return runMenuCommand(s.app, 'app.settings');
+        try {
+          await nativeKeystroke(s.app, ',', ['command']);
+          via = 'keystroke';
+        } catch (e) {
+          if (!(e instanceof NativeInputNotPermitted)) throw e;
+          await runMenuCommand(s.app, 'app.settings');
+        }
+      });
+      try {
+        await expect.poll(async () => (await settingsWindow()).evaluate((w) => w.isVisible()), { timeout: 5_000 }).toBe(true);
+        await (await settingsWindow()).evaluate((w) => w.focus()); // key already after ⌘, on macOS; Xvfb has no window manager
+        await expect(s.page.locator('html')).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+        await s.page.waitForTimeout(600); // AppKit repaints the main window's lights and material as inactive
+        const chrome = await mainChrome();
+        const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+        const accent = await s.page.evaluate(() => {
+          const p = document.createElement('span');
+          document.body.append(p);
+          p.style.color = 'var(--accent)';
+          const c = getComputedStyle(p).color;
+          p.remove();
+          return c;
+        });
+        const page = await settings.evaluate(() => ({ title: document.title, width: innerWidth, notKey: document.documentElement.hasAttribute('data-window-inactive') }));
+        const bounds = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
+        const scale = await s.app.evaluate(({ screen }) => screen.getPrimaryDisplay().scaleFactor);
+        const shot = await fullScreenShot(shotName, `⌘, settings window (${theme}) over the main window: grey lights, neutral selection, dimmed chrome`);
+        // The main window's close button in the screen capture (its centre is 25, 26 in the window, Task 8).
+        const closeButton = shot.file ? ((await pngPixels(s.page, shot.file, [[Math.round((bounds.x + 25) * scale), Math.round((bounds.y + 26) * scale)]]))[0] ?? null) : null;
+        const v = { via, settings: page, chrome, navRow, accent, closeButton, bounds, scale, ...(await windowFacts()) };
+        results[theme === 'light' ? 'settings' : 'settingsDark'] = v;
+        check(`${shotName}: ⌘, opens the settings window, 600 wide, titled 설정, key${IS_MAC ? ' (a real keystroke)' : ''}`, page.width === 600 && page.title === '설정' && !page.notKey && (!IS_MAC || via === 'keystroke'), v);
+        check(
+          `${shotName}: the main window under it is neither key nor main — no ring or cursor, neutral selection, dimmed chrome${IS_MAC ? ', grey lights' : ''}`,
+          chromeDimmed(chrome) && chrome.cursor === 'none' && navRow !== accent && (!IS_MAC || isGrey(closeButton)),
+          v,
+        );
+      } finally {
+        await settings.close();
+        if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+        else await (await mainWindow(s.app)).evaluate((w) => w.focus());
+        await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 }).catch(() => {});
+      }
+    });
+  }
+  await setTheme(s.page, 'light');
   save();
 });
 

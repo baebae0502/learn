@@ -119,13 +119,13 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
       // Every available command, the cursor on the first (critic T9-M1, T9-n4).
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
-      await input.fill('ㄱㅈ');
+      await input.fill('ㄱㅈㅇ'); // one row: 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게, Task 10)
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
       if (theme === 'light') {
-        // ㄱ: three rows, the <mark> in accent text on the rows the cursor is not on.
+        // ㄱ: six rows, the <mark> in accent text on the rows the cursor is not on (설정… by its keyword 글자 크기: no mark).
         await input.fill('ㄱ');
-        await expect(s.page.getByTestId('palette-item')).toHaveCount(3);
+        await expect(s.page.getByTestId('palette-item')).toHaveCount(6);
         await shoot(s.page, 'palette-multi-light', { mask: dates() });
       }
       await input.fill('효소 억제제');
@@ -138,7 +138,7 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
     await setTheme(s.page, 'light');
     await runMenuCommand(s.app, 'app.palette');
     await input.fill('ㄱ');
-    await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+    await expect(cursor).toHaveAttribute('data-command-id', 'view.textBigger');
     await s.app.evaluate(({ BrowserWindow }) => {
       const w = new BrowserWindow({ width: 300, height: 200, show: true });
       void w.loadURL('about:blank');
@@ -171,6 +171,47 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
     await expect(s.page.getByTestId('palette-empty')).toContainText('지금은 명령을 실행할 수 없습니다');
     await shoot(s.page, 'palette-blocked-light', { mask: dates() });
     await closeSheet(dup, 'Escape');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('settings window (light, dark, a refused folder), compact density, 15 pt text', async ({}, testInfo) => {
+  // The library as deep as the default macOS one, under a HOME in the test folder: the path reads the same everywhere.
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(path.join(home, 'Library', 'Application Support', 'Learn'), { HOME: home });
+  const dates = () => [s.page.locator('[data-col="added"]')];
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+      await expect(settings.getByTestId('library-path')).toHaveText('~/Library/Application Support/Learn/library');
+      await shoot(settings, `settings-${theme}`);
+      if (theme === 'light') {
+        // A folder the user cannot write to: the cause and the next step under the buttons.
+        const ro = testInfo.outputPath('read-only');
+        fs.mkdirSync(ro, { recursive: true, mode: 0o555 });
+        await s.app.evaluate(({ dialog }, dir) => {
+          dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as typeof dialog.showOpenDialog;
+        }, ro);
+        await settings.getByTestId('library-choose').click();
+        await expect(settings.getByTestId('library-error')).toBeVisible();
+        await shoot(settings, 'settings-error-light');
+        fs.chmodSync(ro, 0o755);
+      }
+      await settings.close(); // Playwright's Page.close closes the BrowserWindow
+    }
+    // The main window is key again (Xvfb has no window manager to hand it back).
+    await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    await setTheme(s.page, 'light');
+    await s.page.evaluate(() => window.learn.prefs.set({ density: 'compact' }));
+    await expect(s.page.locator('html')).toHaveAttribute('data-density', 'compact');
+    await shoot(s.page, 'density-compact-light', { mask: dates() });
+    await s.page.evaluate(() => window.learn.prefs.set({ density: 'regular', fontSize: 15 }));
+    await expect(s.page.locator('html')).toHaveAttribute('data-font-size', '15');
+    await shoot(s.page, 'font-15-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

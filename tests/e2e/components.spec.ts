@@ -1,5 +1,5 @@
 // UI primitives in the real renderer: the interactive fixture of the component board (?window=gallery&part=3).
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { launch, type Session } from './helpers';
 
 const fixture = (platform = 'linux') => `learn://app/index.html?window=gallery&part=3&platform=${platform}&det=1`;
@@ -25,6 +25,22 @@ async function tabTo(page: Page, before: string, target: string): Promise<void> 
   await expect(page.getByTestId(target)).toBeFocused();
 }
 
+/**
+ * The focus ring a user sees on a control: who draws it (the control, or the .soft-disabled wrapper of a Button that
+ * is disabled with a reason), its geometry, and the opacity it is painted with (product over the ancestors).
+ */
+async function focusRing(control: Locator) {
+  return control.evaluate((el) => {
+    const holder = el.parentElement?.classList.contains('soft-disabled') ? el.parentElement : el;
+    const cs = getComputedStyle(holder);
+    let opacity = 1;
+    for (let e: Element | null = holder; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
+    return { holder: holder === el ? 'self' : 'wrapper', style: cs.outlineStyle, width: cs.outlineWidth, offset: cs.outlineOffset, opacity };
+  });
+}
+const OUTSIDE_RING = { holder: 'wrapper', style: 'solid', width: '2px', offset: '1px', opacity: 1 }; // like .btn
+const INSIDE_RING = { holder: 'self', style: 'solid', width: '2px', offset: '-2px', opacity: 1 }; // like .icon-btn
+
 test('a control disabled with a reason stays focusable, explains itself and ignores presses (I1)', async () => {
   const { page } = s;
   await open(page);
@@ -35,9 +51,9 @@ test('a control disabled with a reason stays focusable, explains itself and igno
   await expect(page.getByTestId('g3-before-presses')).toHaveText('1');
 
   const cases = [
-    { id: 'g3-soft', before: 'g3-before', name: '내보내기' },
-    { id: 'g3-soft-icon', before: 'g3-soft', name: '사이드바' },
-    { id: 'g3-soft-menu', before: 'g3-soft-icon', name: '정렬' },
+    { id: 'g3-soft', before: 'g3-before', name: '내보내기', ring: OUTSIDE_RING },
+    { id: 'g3-soft-icon', before: 'g3-soft', name: '사이드바', ring: INSIDE_RING },
+    { id: 'g3-soft-menu', before: 'g3-soft-icon', name: '정렬', ring: OUTSIDE_RING },
   ];
   for (const c of cases) {
     const control = page.getByTestId(c.id);
@@ -46,7 +62,19 @@ test('a control disabled with a reason stays focusable, explains itself and igno
     await expect(control).toHaveAccessibleName(c.name); // the reason is never part of the name
     await expect(control).toHaveAccessibleDescription(REASON); // persistent, not only while the tooltip is open
     await tabTo(page, c.before, c.id);
-    await expect(page.getByRole('tooltip')).toHaveText(REASON);
+    const tooltip = page.getByRole('tooltip');
+    if (c.ring === INSIDE_RING) {
+      // Icon button: name, then the reason in secondary colour; the shortcut slot gives way; one 18 px line.
+      await expect(tooltip).toContainText(c.name);
+      await expect(tooltip.locator('.tooltip-reason')).toHaveText(REASON);
+      await expect(tooltip.locator('.tooltip-shortcut')).toHaveCount(0);
+      expect((await tooltip.boundingBox())!.height).toBe(18);
+    } else {
+      await expect(tooltip).toHaveText(REASON);
+    }
+    // Spec 8.3: the ring keeps 3:1, so it is never dimmed with the disabled control (only its body or glyph is).
+    expect(await focusRing(control)).toEqual(c.ring);
+    expect(Number(await (c.ring === INSIDE_RING ? control.locator('.icon') : control).evaluate((e) => getComputedStyle(e).opacity))).toBeLessThan(0.5);
     for (const key of ['Enter', 'Space', 'ArrowDown']) await page.keyboard.press(key);
     await control.click({ force: true }); // Playwright treats aria-disabled as disabled; a user can still click
     await expect(presses).toHaveText('0');
@@ -158,7 +186,7 @@ test('search field: the clear button shows with a value, clears it and returns f
   await expect(clear).toBeVisible();
 });
 
-test('board geometry: toasts 42 / 58 with the icon on the title line, tooltip 18, menu rows 24, small field 24', async () => {
+test('board geometry: toasts 42 / 58 with icon and × on the title line, tooltip 18, menu rows 24, small field 24', async () => {
   const { page } = s;
   const box = async (selector: string) => (await page.locator(selector).first().boundingBox())!;
   await page.goto('learn://app/index.html?window=gallery&part=2&platform=linux&det=1');
@@ -169,9 +197,22 @@ test('board geometry: toasts 42 / 58 with the icon on the title line, tooltip 18
   expect(icon.width).toBe(16);
   expect(icon.y + icon.height / 2 - success.y).toBe(12 + 18 / 2);
   expect((await box('.gallery .tooltip')).height).toBe(18);
+  const error = await box('.toast[data-kind="error"]');
+  const close = await box('.toast[data-kind="error"] .icon-btn');
+  expect(close.y + close.height / 2 - error.y).toBe(12 + 18 / 2); // × centred on the title line
+
+  await page.goto(fixture());
+  await page.getByTestId('g3-toast-error-title').click();
+  expect((await page.getByTestId('toast-error-title').boundingBox())!.height).toBe(12 + 18 + 12);
 
   await page.goto('learn://app/index.html?window=gallery&part=1&platform=linux&det=1');
+  // The board's forced-focus samples of controls disabled with a reason (the tour baseline guards their pixels).
+  expect(await focusRing(page.getByTestId('g-soft-focus'))).toEqual(OUTSIDE_RING);
+  expect(await focusRing(page.getByTestId('g-soft-focus-icon'))).toEqual(INSIDE_RING);
   expect((await box('.menu .mi')).height).toBe(24);
+  // Section headers line up with the item labels (4 + 16 check column + 8 gap).
+  const headText = await page.locator('.menu .mhead').first().evaluate((e) => e.getBoundingClientRect().left + parseFloat(getComputedStyle(e).paddingLeft));
+  expect(headText).toBe((await box('.menu .mi .mi-label')).x);
   expect((await box('.menu .msep')).height).toBe(1);
   expect((await box('.field.small')).height).toBe(24);
 });

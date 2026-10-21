@@ -1,4 +1,5 @@
 import { Clapperboard, FileText, Link, TriangleAlert } from 'lucide-react';
+import type { Ref } from 'react';
 import type { LibraryItem } from '@learn/domain';
 import { formatDate, formatSize } from '../format';
 import { t } from '../strings';
@@ -9,7 +10,13 @@ import { useNow } from '../useNow';
  * M3 interim library list (M4 replaces it with the virtualized RAC table and keeps these metrics).
  * Open = click/↩ on a title or double-click on the row; right-click = native item menu. No selection or sorting yet.
  */
-export function LibraryTable(props: { items: readonly LibraryItem[]; onOpen(itemId: string): void; onContextMenu(itemId: string, x: number, y: number): void }) {
+export function LibraryTable(props: {
+  items: readonly LibraryItem[];
+  onOpen(itemId: string): void;
+  onContextMenu(itemId: string, x: number, y: number): void;
+  /** The first row's title button: where focus continues when the screen before the list took it along. */
+  firstTitleRef?: Ref<HTMLButtonElement>;
+}) {
   const now = useNow(); // 오늘/어제 move on at midnight
   return (
     <div className="table library-table" role="table" aria-label={t.library.table} data-testid="library-table">
@@ -20,7 +27,7 @@ export function LibraryTable(props: { items: readonly LibraryItem[]; onOpen(item
         <div className="th" role="columnheader">{t.library.colAdded}</div>
       </div>
       <div className="table-body" role="rowgroup">
-        {props.items.map((item) => {
+        {props.items.map((item, index) => {
           const missing = item.availability === 'missing';
           return (
             <div
@@ -37,7 +44,15 @@ export function LibraryTable(props: { items: readonly LibraryItem[]; onOpen(item
             >
               <div className="td" role="cell">
                 <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
-                <button type="button" className="row-open" data-testid="open-item" data-title={item.title} title={item.title} onClick={() => props.onOpen(item.id)}>
+                <button
+                  ref={index === 0 ? props.firstTitleRef : undefined}
+                  type="button"
+                  className="row-open"
+                  data-testid="open-item"
+                  data-title={item.title}
+                  title={item.title}
+                  onClick={() => props.onOpen(item.id)}
+                >
                   {item.title}
                 </button>
                 {item.storageMode === 'linked' && (

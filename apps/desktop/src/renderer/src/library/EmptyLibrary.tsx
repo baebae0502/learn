@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { useRef, type RefObject } from 'react';
 import { LibraryBig } from 'lucide-react';
 import { commandById } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
@@ -6,6 +6,7 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
+import { useFocusOnLeave } from './focusOnLeave';
 
 /** First run (design-spec 10.2, library-empty.html). The two buttons run the same registry commands as ⌘O / ⌥⌘O. */
 export function EmptyLibrary(props: {
@@ -16,14 +17,7 @@ export function EmptyLibrary(props: {
   const managed = commandById('file.importManaged');
   const linked = commandById('file.importLinked');
   const root = useRef<HTMLDivElement>(null);
-  const { focusOnLeave } = props;
-  useLayoutEffect(() => {
-    const el = root.current;
-    // Layout cleanups of a removed component run before React detaches its DOM, so the focused element is still here.
-    return () => {
-      if (focusOnLeave) focusOnLeave.current = el !== null && el.contains(document.activeElement);
-    };
-  }, [focusOnLeave]);
+  useFocusOnLeave(root, props.focusOnLeave);
   return (
     <div className="empty-state" data-testid="empty-state" ref={root}>
       <div className="glyph">

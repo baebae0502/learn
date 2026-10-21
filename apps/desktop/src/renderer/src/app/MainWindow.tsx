@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { CircleAlert } from 'lucide-react';
 import type { AppInfo, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
@@ -14,6 +13,7 @@ import { ImportMenuButton } from '../library/ImportMenuButton';
 import type { DuplicateChoice } from '../library/import-flow';
 import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryTable } from '../library/LibraryTable';
+import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
@@ -21,8 +21,6 @@ import { usePanePersistence, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowDrop } from '../shell/useWindowDrop';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { Button } from '../ui/Button';
-import { Notice } from '../ui/Notice';
 import { Toasts, showToast } from '../ui/toasts';
 import { ViewerHost } from '../viewers/ViewerHost';
 
@@ -89,6 +87,15 @@ export function MainWindow(_props: { info: AppInfo }) {
     showToast({ kind: 'error', title: t.shell.listFailed, body: items.error!.message, testId: 'list-error' });
   }, [refreshFailed, items.error]);
 
+  // The failed first read stays on screen while 다시 시도 reads again: a refetch without data puts the query back to
+  // pending (error cleared), which alone would blank the notice and drop its focused button.
+  const [lastListFailure, setLastListFailure] = useState<string | null>(null);
+  useEffect(() => {
+    if (items.isError && items.data === undefined) setLastListFailure(items.error.message);
+    else if (items.data !== undefined) setLastListFailure(null);
+  }, [items.isError, items.data, items.error]);
+  const listFailure = items.data !== undefined ? null : items.isError ? items.error.message : lastListFailure;
+
   const list = items.data ?? [];
   const env: CommandEnv = {
     view: view.kind === 'reader' ? 'viewer' : 'library',
@@ -121,14 +128,15 @@ export function MainWindow(_props: { info: AppInfo }) {
   const openFromList = useCallback((itemId: string) => runCommand('item.open', envRef.current, { itemIds: [itemId] }), []);
 
   const count = list.length;
-  // First import from the first-run screen: focus was on its button, which left with the screen (focus fell to
-  // <body>). Hand it to the first title, where the list continues; keyboard users keep their place.
-  const emptyHadFocus = useRef(false);
+  // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
+  // <body>: hand it to the first title, where the list continues; keyboard users keep their place.
+  const leftWithFocus = useRef(false);
+  const firstTitle = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
-    const hadFocus = emptyHadFocus.current;
-    emptyHadFocus.current = false;
+    const hadFocus = leftWithFocus.current;
+    leftWithFocus.current = false;
     if (!hadFocus || view.kind !== 'library' || count === 0) return;
-    if (document.activeElement === null || document.activeElement === document.body) document.querySelector<HTMLElement>('[data-testid="open-item"]')?.focus();
+    if (document.activeElement === null || document.activeElement === document.body) firstTitle.current?.focus();
   }, [view.kind, count]);
 
   const toolbar =
@@ -141,26 +149,13 @@ export function MainWindow(_props: { info: AppInfo }) {
   // list (no empty-library flash). A first read that failed says so where the list would be, with a retry.
   const library =
     items.data === undefined ? (
-      items.isError ? (
-        <div className="library-state">
-          <Notice
-            icon={CircleAlert}
-            title={t.library.listFailed}
-            testId="list-failed"
-            actions={
-              <Button variant="primary" testId="list-retry" onPress={() => void items.refetch()}>
-                {t.common.retry}
-              </Button>
-            }
-          >
-            {items.error.message}
-          </Notice>
-        </div>
+      listFailure !== null ? (
+        <ListFailed message={listFailure} retrying={items.isFetching} onRetry={() => void items.refetch()} focusOnLeave={leftWithFocus} />
       ) : null
     ) : count === 0 ? (
-      <EmptyLibrary focusOnLeave={emptyHadFocus} />
+      <EmptyLibrary focusOnLeave={leftWithFocus} />
     ) : (
-      <LibraryTable items={list} onOpen={openFromList} onContextMenu={(itemId, x, y) => void showItemMenu(itemId, x, y)} />
+      <LibraryTable items={list} firstTitleRef={firstTitle} onOpen={openFromList} onContextMenu={(itemId, x, y) => void showItemMenu(itemId, x, y)} />
     );
 
   return (

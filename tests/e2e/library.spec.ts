@@ -183,11 +183,23 @@ test('a first list read that fails says so where the list goes, and 다시 시�
     await expect(s.page.getByTestId('nav-library').locator('.count')).toHaveCount(0);
     await expect(s.page.getByTestId('import-menu')).toBeEnabled(); // importing still works
     await expect(s.page.getByTestId('list-error')).toHaveCount(0); // the notice is the message; no toast on top
-    await stubHandler(s.app, Channels.library.list, listed);
-    await s.page.getByTestId('list-retry').click();
+    // The next read answers when the test says so: meanwhile 다시 시도 is pending (focusable, presses ignored).
+    await s.app.evaluate(({ ipcMain }, [channel, reply]) => {
+      const g = globalThis as { __learnReleaseList?: () => void };
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel, () => new Promise((resolve) => (g.__learnReleaseList = () => resolve(reply))));
+    }, [Channels.library.list, listed] as const);
+    const retry = s.page.getByTestId('list-retry');
+    await retry.click();
+    await expect(retry).toHaveAttribute('data-pending', 'true');
+    await expect(retry).toHaveAttribute('aria-disabled', 'true');
+    await expect(retry).toBeFocused();
+    await s.app.evaluate(() => (globalThis as { __learnReleaseList?: () => void }).__learnReleaseList?.());
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('list-failed')).toHaveCount(0);
     await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개');
+    // The focused 다시 시도 left with the notice: focus continues on the first title.
+    await expect(s.page.getByTestId('open-item').first()).toBeFocused();
   } finally {
     await s.app.close();
   }

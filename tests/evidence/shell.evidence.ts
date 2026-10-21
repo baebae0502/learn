@@ -13,6 +13,7 @@ import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
   launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, runMenuCommand, stubContextMenu, type Session,
 } from '../e2e/helpers';
+import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { IS_MAC, allShots, captureOpenMenu, fullScreenShot, nativeWindowShot, platformFonts, pngCentroid, pngPixels, writeJson } from './capture';
 
@@ -404,9 +405,12 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
   const lib = path.join(tmp, 'library');
   const ud = path.join(tmp, 'userdata');
   // Bounds that fit the display's work area (run 39617644850 asked for 1000 wide at x 40 on the 1024-wide runner, and
-  // the restore moved it to x 24 to keep it on screen); what is restored is compared with the bounds before closing.
+  // the restore moved it to x 24 to keep it on screen) and respect the window's minimum size (run 39618864364 asked
+  // for 944 wide, below the 960 minimum). What is restored is compared with the bounds right before closing.
   const workArea = await s.app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
-  const bounds = { x: workArea.x + 40, y: workArea.y + 40, width: Math.min(1000, workArea.width - 80), height: Math.min(640, workArea.height - 80) };
+  const width = Math.max(layout.windowMinWidth, Math.min(1000, workArea.width - 80));
+  const height = Math.max(layout.windowMinHeight, Math.min(640, workArea.height - 80));
+  const bounds = { x: workArea.x + Math.min(40, Math.max(0, workArea.width - width)), y: workArea.y + Math.min(40, Math.max(0, workArea.height - height)), width, height };
   await (await mainWindow(s.app)).evaluate((w, b) => w.setBounds(b), bounds);
   await s.page.waitForTimeout(1500);
   const beforeClose = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());

@@ -105,36 +105,47 @@ export class CollectionsRepository {
    * in the tree). A live collection is returned unchanged (its separately deleted descendants stay deleted).
    */
   restore(id: string): Collection {
+    return this.restoreChanged(id).collection;
+  }
+
+  /** `restore`, also saying whether anything was restored (false for a collection that was already live). */
+  restoreChanged(id: string): { collection: Collection; changed: boolean } {
     return this.db.transaction(() => {
       if (!this.db.prepare('SELECT 1 FROM collections WHERE id = ?').get(id)) throw notFound();
-      if (this.isLive(id)) return this.get(id)!;
+      if (this.isLive(id)) return { collection: this.get(id)!, changed: false };
       this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM sub) AND deleted_at IS NOT NULL`).run({ id });
       this.db.prepare(`${ANCESTORS} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM anc) AND deleted_at IS NOT NULL`).run({ id });
-      return this.get(id)!;
+      return { collection: this.get(id)!, changed: true };
     })();
   }
 
   /** Adds non-trashed items (duplicates and unknown ids are skipped). Returns how many memberships were created. */
   addItems(id: string, itemIds: readonly string[]): number {
+    return this.addItemsChanged(id, itemIds).length;
+  }
+
+  /** `addItems`, returning the ids of the items that were added (each once, in input order). */
+  addItemsChanged(id: string, itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       if (!this.isLive(id)) throw notFound();
       const ins = this.db.prepare(`INSERT OR IGNORE INTO collection_items (collection_id, item_id, added_at)
                                    SELECT ?, i.id, ? FROM items i WHERE i.id = ? AND i.deleted_at IS NULL`);
       const now = nowIso();
-      let added = 0;
-      for (const itemId of itemIds) added += ins.run(id, now, itemId).changes;
-      return added;
+      return itemIds.filter((itemId) => ins.run(id, now, itemId).changes > 0);
     })();
   }
 
   /** Returns how many memberships were removed. */
   removeItems(id: string, itemIds: readonly string[]): number {
+    return this.removeItemsChanged(id, itemIds).length;
+  }
+
+  /** `removeItems`, returning the ids of the items that were removed (each once, in input order). */
+  removeItemsChanged(id: string, itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       if (!this.isLive(id)) throw notFound();
       const del = this.db.prepare('DELETE FROM collection_items WHERE collection_id = ? AND item_id = ?');
-      let removed = 0;
-      for (const itemId of itemIds) removed += del.run(id, itemId).changes;
-      return removed;
+      return itemIds.filter((itemId) => del.run(id, itemId).changes > 0);
     })();
   }
 

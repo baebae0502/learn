@@ -57,20 +57,22 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.updateMetadata, updateMetadataInput, ({ itemId, title, metadata }) => {
     const item = deps.getContext().repo.updateMetadata(itemId, { title, metadata });
-    broadcast('libraryChanged', { reason: 'metadata', itemIds: [itemId] });
+    // No field given: the repository wrote nothing, so there is nothing to announce.
+    if (title !== undefined || metadata !== undefined) broadcast('libraryChanged', { reason: 'metadata', itemIds: [itemId] });
     return item;
   });
 
+  // Only the items that actually moved are announced (already-trashed, live and unknown ids are skipped).
   handle(Channels.library.trash, itemIdsInput, ({ itemIds }) => {
-    const n = deps.getContext().repo.trash(itemIds);
-    if (n > 0) broadcast('libraryChanged', { reason: 'trash', itemIds });
-    return n;
+    const changed = deps.getContext().repo.trashChanged(itemIds);
+    if (changed.length > 0) broadcast('libraryChanged', { reason: 'trash', itemIds: changed });
+    return changed.length;
   });
 
   handle(Channels.library.restore, itemIdsInput, ({ itemIds }) => {
-    const n = deps.getContext().repo.restore(itemIds);
-    if (n > 0) broadcast('libraryChanged', { reason: 'restore', itemIds });
-    return n;
+    const changed = deps.getContext().repo.restoreChanged(itemIds);
+    if (changed.length > 0) broadcast('libraryChanged', { reason: 'restore', itemIds: changed });
+    return changed.length;
   });
 
   handle(Channels.library.listTrash, emptyInput, () => deps.getContext().repo.listTrash());

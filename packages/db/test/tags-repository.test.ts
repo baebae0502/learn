@@ -25,6 +25,13 @@ describe('TagsRepository: create / list / rename', () => {
     expectLearnError(() => repo.create('x'.repeat(201)), 'VALIDATION_FAILED', '태그 이름');
   });
 
+  it('findOrCreate says whether the tag was created', () => {
+    const first = repo.findOrCreate(' Math ');
+    expect(first).toEqual({ created: true, tag: { id: first.tag.id, name: 'Math', color: null, position: null, itemCount: 0 } });
+    expect(repo.findOrCreate('MATH')).toEqual({ created: false, tag: first.tag });
+    expect(repo.list()).toHaveLength(1);
+  });
+
   it('counts only non-trashed items and lists colored tags first by position', () => {
     const plain = repo.create('plain');
     const second = repo.create('second');
@@ -95,6 +102,28 @@ describe('TagsRepository: items', () => {
     expect(itemsOf(t.id)).toEqual([i2]);
     expectLearnError(() => repo.assign(newId(), [i1]), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
     expectLearnError(() => repo.unassign(newId(), [i1]), 'NOT_FOUND', '태그를 찾을 수 없습니다.');
+  });
+
+  it('assignChanged / unassignChanged report exactly the items whose tags changed, each once', () => {
+    const t = repo.create('t');
+    const [i1, i2, trashed] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run('2026-10-20T00:00:00.000Z', trashed);
+    expect(repo.assignChanged(t.id, [i1, i1, trashed, newId()])).toEqual([i1]);
+    expect(repo.assignChanged(t.id, [i1, i2])).toEqual([i2]);
+    expect(repo.assignChanged(t.id, [i2])).toEqual([]);
+    expect(repo.unassignChanged(t.id, [i1, i1, newId()])).toEqual([i1]);
+    expect(repo.unassignChanged(t.id, [i1])).toEqual([]);
+    expect(itemsOf(t.id)).toEqual([i2]);
+  });
+
+  it('togglePositionChanged also reports the items that changed (only the ones that lacked the tag when adding)', () => {
+    const t = repo.create('starred');
+    repo.setColor(t.id, 'orange', 4);
+    const [i1, i2, i3] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    repo.assign(t.id, [i1]);
+    expect(repo.togglePositionChanged(4, [i1, i2, i2, i3])).toEqual({ tagId: t.id, assigned: true, itemIds: [i2, i3] });
+    expect(repo.togglePositionChanged(4, [i3, i1])).toEqual({ tagId: t.id, assigned: false, itemIds: [i3, i1] });
+    expect(repo.togglePositionChanged(5, [i1])).toBeNull();
   });
 
   it('removes a tag and its assignments', () => {

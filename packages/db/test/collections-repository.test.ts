@@ -139,6 +139,16 @@ describe('CollectionsRepository: soft delete / restore', () => {
     expect(repo.restore(a).id).toBe(a); // restoring a live collection is a no-op
     expect(deletedAt(child)).not.toBeNull();
   });
+
+  it('restoreChanged says whether anything was restored', () => {
+    const a = repo.create({ name: 'a' }).id;
+    expect(repo.restoreChanged(a)).toMatchObject({ changed: false, collection: { id: a } });
+    repo.softDelete(a);
+    expect(repo.restoreChanged(a)).toMatchObject({ changed: true, collection: { id: a } });
+    expect(deletedAt(a)).toBeNull();
+    expect(repo.restoreChanged(a).changed).toBe(false);
+    expectLearnError(() => repo.restoreChanged(newId()), 'NOT_FOUND', '컬렉션을 찾을 수 없습니다.');
+  });
 });
 
 describe('CollectionsRepository: items', () => {
@@ -160,6 +170,18 @@ describe('CollectionsRepository: items', () => {
     expect(repo.removeItems(c, [i1, newId()])).toBe(1);
     expect(repo.removeItems(c, [i1])).toBe(0);
     expect(repo.itemIds(c, { includeSubcollections: false })).toEqual([i2]);
+  });
+
+  it('addItemsChanged / removeItemsChanged report exactly the items whose membership changed, each once', () => {
+    const c = repo.create({ name: 'c' }).id;
+    const [i1, i2, trashed] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run('2026-10-20T00:00:00.000Z', trashed);
+    expect(repo.addItemsChanged(c, [i1, i1, trashed, newId()])).toEqual([i1]);
+    expect(repo.addItemsChanged(c, [i1, i2])).toEqual([i2]);
+    expect(repo.addItemsChanged(c, [i1, i2])).toEqual([]);
+    expect(repo.removeItemsChanged(c, [i2, i2, newId()])).toEqual([i2]);
+    expect(repo.removeItemsChanged(c, [i2])).toEqual([]);
+    expect(repo.itemIds(c, { includeSubcollections: false })).toEqual([i1]);
   });
 
   it('collects item ids from live subcollections when asked, without duplicates', () => {

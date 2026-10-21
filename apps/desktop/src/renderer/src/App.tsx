@@ -57,7 +57,7 @@ export function App() {
     })();
   }, [refresh]);
 
-  // Every change made through main (import, relink, metadata, trash, organize) pushes libraryChanged.
+  // Every change made through main (import, relink, metadata, trash/restore, collections, tags, availability) pushes libraryChanged.
   useLearnEvent('libraryChanged', () => void refreshSafe());
 
   const runImport = useCallback(

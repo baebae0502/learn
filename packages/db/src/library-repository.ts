@@ -173,8 +173,16 @@ export class LibraryRepository {
     };
   }
 
-  /** Updates title (trimmed, 1–500) and/or metadata (schema v1) of a non-trashed item; always bumps updated_at. */
+  /**
+   * Updates title (trimmed, 1–500) and/or metadata (schema v1) of a non-trashed item and bumps updated_at.
+   * With neither field given nothing is written (updated_at stays); the item must still exist.
+   */
   updateMetadata(id: string, update: MetadataUpdate): LibraryItem {
+    if (update.title === undefined && update.metadata === undefined) {
+      const item = this.getItem(id);
+      if (!item) throw itemNotFound();
+      return item;
+    }
     let title: string | null = null;
     if (update.title !== undefined) {
       title = typeof update.title === 'string' ? update.title.trim() : '';
@@ -196,22 +204,28 @@ export class LibraryRepository {
 
   /** Moves items to the trash. Already-trashed and unknown ids are skipped; returns how many were trashed. */
   trash(itemIds: readonly string[]): number {
+    return this.trashChanged(itemIds).length;
+  }
+
+  /** `trash`, returning the ids that were trashed (each once, in input order). */
+  trashChanged(itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       const stmt = this.db.prepare('UPDATE items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL');
       const now = nowIso();
-      let n = 0;
-      for (const id of itemIds) n += stmt.run(now, id).changes;
-      return n;
+      return itemIds.filter((id) => stmt.run(now, id).changes > 0);
     })();
   }
 
   /** Restores trashed items. Live and unknown ids are skipped; returns how many were restored. */
   restore(itemIds: readonly string[]): number {
+    return this.restoreChanged(itemIds).length;
+  }
+
+  /** `restore`, returning the ids that were restored (each once, in input order). */
+  restoreChanged(itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       const stmt = this.db.prepare('UPDATE items SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL');
-      let n = 0;
-      for (const id of itemIds) n += stmt.run(id).changes;
-      return n;
+      return itemIds.filter((id) => stmt.run(id).changes > 0);
     })();
   }
 

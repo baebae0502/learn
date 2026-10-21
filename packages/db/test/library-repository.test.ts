@@ -165,6 +165,18 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expect(repo.updateMetadata(itemId, { title: 'x'.repeat(500) }).title).toHaveLength(500);
   });
 
+  it('an update with no fields writes nothing (updated_at stays) but still requires a live item', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const { itemId } = seedItem(db, { title: 'keep' });
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    expect(repo.updateMetadata(itemId, {})).toMatchObject({ title: 'keep', updatedAt: '2026-10-20T01:00:00.000Z' });
+    expect(repo.updateMetadata(itemId, { title: undefined, metadata: undefined }).updatedAt).toBe('2026-10-20T01:00:00.000Z');
+    expectLearnError(() => repo.updateMetadata(newId(), {}), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    repo.trash([itemId]);
+    expectLearnError(() => repo.updateMetadata(itemId, {}), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+  });
+
   it('rejects invalid metadata or titles, and unknown or trashed items, leaving the row unchanged', () => {
     const { itemId } = seedItem(db, { title: 'keep' });
     const bad = [
@@ -264,6 +276,16 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expect(repo.listTrash().map((i) => i.id)).toEqual([b]);
     expect(repo.getItem(a)).toMatchObject({ id: a, tagIds: [tag.id] });
     expect(repo.listItems().map((i) => i.id).sort()).toEqual([a, c].sort());
+  });
+
+  it('trashChanged / restoreChanged report exactly the items that moved, each once', () => {
+    const [a, b] = [seedItem(db).itemId, seedItem(db).itemId];
+    expect(repo.trashChanged([a, a, newId()])).toEqual([a]);
+    expect(repo.trashChanged([b, a])).toEqual([b]);
+    expect(repo.trashChanged([a, b])).toEqual([]);
+    expect(repo.restoreChanged([b, b, newId()])).toEqual([b]);
+    expect(repo.restoreChanged([a, b])).toEqual([a]);
+    expect(repo.restoreChanged([a, b])).toEqual([]);
   });
 
   it('groups non-trashed items that share content (same sha256) across assets', () => {

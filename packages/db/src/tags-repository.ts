@@ -54,13 +54,18 @@ export class TagsRepository {
 
   /** Returns the existing tag when one with the same name (ignoring case) exists. */
   create(rawName: string): Tag {
+    return this.findOrCreate(rawName).tag;
+  }
+
+  /** `create`, also saying whether a new tag was made (false when an existing one was returned). */
+  findOrCreate(rawName: string): { tag: Tag; created: boolean } {
     const name = cleanName(rawName);
     return this.db.transaction(() => {
       const existing = this.findByName(name);
-      if (existing) return this.get(existing)!;
+      if (existing) return { tag: this.get(existing)!, created: false };
       const id = newId();
       this.db.prepare('INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)').run(id, name, nowIso());
-      return this.get(id)!;
+      return { tag: this.get(id)!, created: true };
     })();
   }
 
@@ -102,6 +107,11 @@ export class TagsRepository {
 
   /** Tags non-trashed items (duplicates and unknown ids are skipped). Returns how many assignments were created. */
   assign(tagId: string, itemIds: readonly string[]): number {
+    return this.assignChanged(tagId, itemIds).length;
+  }
+
+  /** `assign`, returning the ids of the items that got the tag (each once, in input order). */
+  assignChanged(tagId: string, itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       if (!this.get(tagId)) throw notFound();
       return this.assignAll(tagId, itemIds);
@@ -110,6 +120,11 @@ export class TagsRepository {
 
   /** Returns how many assignments were removed. */
   unassign(tagId: string, itemIds: readonly string[]): number {
+    return this.unassignChanged(tagId, itemIds).length;
+  }
+
+  /** `unassign`, returning the ids of the items that lost the tag (each once, in input order). */
+  unassignChanged(tagId: string, itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       if (!this.get(tagId)) throw notFound();
       return this.unassignAll(tagId, itemIds);
@@ -122,6 +137,12 @@ export class TagsRepository {
    * `null` (nothing changed) when no tag holds that position or no target remains.
    */
   togglePosition(position: number, itemIds: readonly string[]): { tagId: string; assigned: boolean } | null {
+    const toggled = this.togglePositionChanged(position, itemIds);
+    return toggled && { tagId: toggled.tagId, assigned: toggled.assigned };
+  }
+
+  /** `togglePosition`, also returning the items whose tags changed (when adding: only those that lacked the tag). */
+  togglePositionChanged(position: number, itemIds: readonly string[]): { tagId: string; assigned: boolean; itemIds: string[] } | null {
     checkPosition(position);
     return this.db.transaction(() => {
       const tag = this.db.prepare('SELECT id FROM tags WHERE position = ?').get(position) as { id: string } | undefined;
@@ -131,9 +152,8 @@ export class TagsRepository {
       const targets = [...new Set(itemIds)].filter((itemId) => live.get(itemId) !== undefined);
       if (targets.length === 0) return null;
       const allHave = targets.every((itemId) => has.get(itemId, tag.id) !== undefined);
-      if (allHave) this.unassignAll(tag.id, targets);
-      else this.assignAll(tag.id, targets);
-      return { tagId: tag.id, assigned: !allHave };
+      const changed = allHave ? this.unassignAll(tag.id, targets) : this.assignAll(tag.id, targets);
+      return { tagId: tag.id, assigned: !allHave, itemIds: changed };
     })();
   }
 
@@ -144,18 +164,14 @@ export class TagsRepository {
     return row?.id;
   }
 
-  private assignAll(tagId: string, itemIds: readonly string[]): number {
+  private assignAll(tagId: string, itemIds: readonly string[]): string[] {
     const ins = this.db.prepare(`INSERT OR IGNORE INTO item_tags (item_id, tag_id)
                                  SELECT i.id, ? FROM items i WHERE i.id = ? AND i.deleted_at IS NULL`);
-    let n = 0;
-    for (const itemId of itemIds) n += ins.run(tagId, itemId).changes;
-    return n;
+    return itemIds.filter((itemId) => ins.run(tagId, itemId).changes > 0);
   }
 
-  private unassignAll(tagId: string, itemIds: readonly string[]): number {
+  private unassignAll(tagId: string, itemIds: readonly string[]): string[] {
     const del = this.db.prepare('DELETE FROM item_tags WHERE item_id = ? AND tag_id = ?');
-    let n = 0;
-    for (const itemId of itemIds) n += del.run(itemId, tagId).changes;
-    return n;
+    return itemIds.filter((itemId) => del.run(itemId, tagId).changes > 0);
   }
 }

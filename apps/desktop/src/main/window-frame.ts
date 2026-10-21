@@ -45,3 +45,66 @@ export function frameAfterFullScreen(before: Frame | null, now: Frame, workArea:
   };
   return same(want, now) ? null : want;
 }
+
+/** What a settled move or resize reports (window.ts reads it from the window). */
+export interface SettledFrame {
+  bounds: Frame;
+  /** Maximized: zoomed on macOS (the green button or a title-bar double click). */
+  zoomed: boolean;
+  fullscreen: boolean;
+  minimized?: boolean;
+}
+
+/**
+ * The window's frame across full screen (Task 8 R3-1 and the polish round's minors 2 and 4), free of Electron so it
+ * can be unit-tested. window.ts feeds it the window's events and does what it answers.
+ * - The windowed frame is noted only while the window is neither zoomed, full screen nor minimized.
+ * - Entering full screen remembers that frame and whether the window was zoomed.
+ * - On leaving, a zoomed window is left to AppKit, which restores the zoom; nothing is re-applied.
+ * - Otherwise the remembered frame is re-applied a moment later (`due`), unless a move or resize that the keeper did
+ *   not cause comes first: the user's frame wins (`moved`).
+ */
+export class FullScreenFrameKeeper {
+  private windowed: Frame | null = null;
+  private zoomed = false;
+  private entered: { frame: Frame | null; zoomed: boolean } | null = null;
+  private pending: { want: Frame; atLeave: Frame } | null = null;
+
+  /** A move or resize has settled, or the window was shown, maximized or unmaximized. */
+  settled(f: SettledFrame): void {
+    if (f.fullscreen || f.minimized) return;
+    this.zoomed = f.zoomed;
+    if (!f.zoomed) this.windowed = { ...f.bounds };
+  }
+
+  /** `enter-full-screen`. `fallback`: the normal bounds, when no frame has settled yet. */
+  enter(fallback: Frame): void {
+    this.entered = { frame: this.windowed ?? fallback, zoomed: this.zoomed };
+    this.pending = null;
+  }
+
+  /** `leave-full-screen`, with the frame AppKit restored. True when a re-apply is pending (schedule `due`). */
+  leave(restored: Frame): boolean {
+    const e = this.entered;
+    this.entered = null;
+    this.pending = e && !e.zoomed && e.frame ? { want: e.frame, atLeave: { ...restored } } : null;
+    return this.pending !== null;
+  }
+
+  /** A move or resize while the re-apply is pending: when it changed the frame, the user moved it, and that wins. */
+  moved(now: Frame): void {
+    if (this.pending && !same(now, this.pending.atLeave)) this.pending = null;
+  }
+
+  /** The frame the pending re-apply aims for (its display's work area clamps it), or null. */
+  get target(): Frame | null {
+    return this.pending?.want ?? null;
+  }
+
+  /** The re-apply's moment: the frame to set, or null (nothing pending, or the frame is already right). */
+  due(now: Frame, workArea: Frame): Frame | null {
+    const p = this.pending;
+    this.pending = null;
+    return p ? frameAfterFullScreen(p.want, now, workArea) : null;
+  }
+}

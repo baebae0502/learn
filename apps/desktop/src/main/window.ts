@@ -1,10 +1,10 @@
-import { BrowserWindow, screen, type Rectangle } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import type { WindowState } from '@learn/domain';
 import { layout } from '../renderer/src/design/tokens';
 import { sendEvent } from './events';
 import { attachEditContextMenu } from './menu/edit-context-menu';
 import { releaseWhenKey } from './sheet-release';
-import { defaultFrame, frameAfterFullScreen } from './window-frame';
+import { FullScreenFrameKeeper, defaultFrame } from './window-frame';
 import { mainWindowChrome, type ChromeOptions } from './window-options';
 
 export interface MainWindowOptions {
@@ -112,32 +112,44 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
 
 /**
  * A full-screen round trip returns the window to the frame it had before (R3-1: macOS restored the 1440-wide frame
- * first asked for, not the one the window had). The windowed frame is noted once a move or resize has settled; on
- * leaving full screen, AppKit's own restore lands first, then the frame from before is put back if it differs.
+ * first asked for, not the one the window had). The rules are FullScreenFrameKeeper's (window-frame.ts): the windowed
+ * frame is noted once a move or resize has settled, and only while the window is neither zoomed nor full screen; a
+ * zoomed window is left to AppKit; otherwise the frame from before is put back 400 ms after leaving (AppKit's restore
+ * lands first) unless the user moved or resized the window meanwhile.
  */
 function keepFrameAcrossFullScreen(win: BrowserWindow): void {
-  let windowed: Rectangle | null = null;
+  const keeper = new FullScreenFrameKeeper();
+  const now = () => ({ bounds: win.getBounds(), zoomed: win.isMaximized(), fullscreen: win.isFullScreen(), minimized: win.isMinimized() });
   let settle: ReturnType<typeof setTimeout> | undefined;
+  let reapply: ReturnType<typeof setTimeout> | undefined;
   const note = () => {
     clearTimeout(settle);
     settle = setTimeout(() => {
-      if (!win.isDestroyed() && !win.isFullScreen() && !win.isMaximized() && !win.isMinimized()) windowed = win.getBounds();
+      if (!win.isDestroyed()) keeper.settled(now());
     }, 250);
   };
+  // Between leaving full screen and the re-apply, a move or resize is the user's (the keeper causes none before it).
+  const changed = () => {
+    if (!win.isDestroyed()) keeper.moved(win.getBounds());
+    note();
+  };
   win.on('show', note);
-  win.on('resize', note);
-  win.on('move', note);
-  let before: Rectangle | null = null;
+  win.on('resize', changed);
+  win.on('move', changed);
+  win.on('maximize', () => keeper.settled(now()));
+  win.on('unmaximize', () => keeper.settled(now()));
   win.on('enter-full-screen', () => {
     clearTimeout(settle);
-    before = windowed ?? win.getNormalBounds();
+    clearTimeout(reapply);
+    keeper.enter(win.getNormalBounds());
   });
   win.on('leave-full-screen', () => {
-    const want = before;
-    before = null;
-    setTimeout(() => {
-      if (win.isDestroyed() || win.isFullScreen() || !want) return;
-      const fix = frameAfterFullScreen(want, win.getBounds(), screen.getDisplayMatching(want).workArea);
+    if (!keeper.leave(win.getBounds())) return;
+    clearTimeout(reapply);
+    reapply = setTimeout(() => {
+      const target = keeper.target;
+      if (win.isDestroyed() || win.isFullScreen() || !target) return;
+      const fix = keeper.due(win.getBounds(), screen.getDisplayMatching(target).workArea);
       if (fix) win.setBounds(fix);
     }, 400);
   });

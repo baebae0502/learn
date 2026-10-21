@@ -140,9 +140,9 @@ test('library screen and fonts', TAG, async () => {
   const shots = await allShots(app, page, '01-library', 'library with 5 imported fixtures');
   const fonts = [];
   for (const sel of [
-    '.brand strong',
-    '.sidebar h2',
-    '[data-testid="import-managed"]',
+    '[data-testid="toolbar-title"]',
+    '.sidebar .section-label',
+    '[data-testid="nav-library"] .label',
     '[data-testid="open-item"][data-title="sample"]',
     '[data-testid="open-item"][data-title="한글 경로 (테스트) #1"]',
   ]) {

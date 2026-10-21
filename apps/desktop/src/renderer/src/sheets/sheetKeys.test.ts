@@ -9,8 +9,11 @@ describe('sheet keys (design-spec 6: the default button on ↩, esc cancels)', (
     expect(key('Enter')).toBe('default');
     expect(key('Escape')).toBe('cancel');
   });
-  it('a modified ↩ is not the default button (⌘↩, ⇧↩ …), and nothing counts while an IME composes', () => {
-    for (const mod of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey'] as const) expect(key('Enter', { [mod]: true }), mod).toBe('interact');
+  it('a modified ↩ (⇧↩ ⌃↩ ⌥↩ ⌘↩) is swallowed: it neither runs the default nor presses the focused button', () => {
+    for (const mod of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey'] as const) expect(key('Enter', { [mod]: true }), mod).toBe('swallow');
+    expect(key('Enter', { shiftKey: true, metaKey: true })).toBe('swallow');
+  });
+  it('nothing counts while an IME composes', () => {
     expect(key('Enter', { isComposing: true })).toBe('none');
     expect(key('Escape', { isComposing: true })).toBe('none');
   });

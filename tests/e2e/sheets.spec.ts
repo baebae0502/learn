@@ -43,6 +43,11 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     // ↩ runs the default button (건너뛰기) even with 새 자료로 추가 focused; Space would press the focused one.
     await sheet.keyboard.press('Shift+Tab');
     await expect(sheet.getByTestId('dup-add')).toBeFocused();
+    // A modified ↩ (⇧↩ ⌃↩ ⌥↩ ⌘↩) does nothing: it does not press the focused 새 자료로 추가 either.
+    for (const combo of ['Shift+Enter', 'Control+Enter', 'Alt+Enter', 'Meta+Enter']) await sheet.keyboard.press(combo);
+    expect(sheet.isClosed()).toBe(false);
+    await expect(sheet.getByTestId('dup-add')).toBeFocused();
+    await expect(rows).toHaveCount(1);
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(1);
@@ -53,6 +58,12 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     await expect(rows).toHaveCount(2);
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
+    // A click on static text keeps focus on the button, as on a macOS sheet …
+    await sheet.locator('#sheet-text').click();
+    await expect(sheet.getByTestId('dup-skip')).toBeFocused();
+    // … and esc / ↩ work wherever focus is, even on <body> (the main window must never stay blocked).
+    await sheet.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect(sheet.locator('body')).toBeFocused();
     await closeSheet(sheet, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(2);
@@ -114,6 +125,8 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     // A sheet cannot open another sheet over itself (nor, from Task 10, the settings window): main window only.
     expect(await sheet.evaluate(() => window.learn.ui.showShortcuts())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
+    // A click on a row (static text) leaves ↩ working.
+    await sheet.getByTestId('shortcut-row').first().click();
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     await mainHasFocus(s.app);

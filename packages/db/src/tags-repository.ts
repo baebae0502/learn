@@ -21,8 +21,9 @@ export const toTag = (r: TagDbRow): Tag => ({
 
 const notFound = () => new LearnError('NOT_FOUND', '태그를 찾을 수 없습니다.');
 
+/** NFC (macOS can hand over decomposed Hangul), then trimmed; the bound counts the normalized name. */
 function cleanName(raw: unknown): string {
-  const name = typeof raw === 'string' ? raw.trim() : '';
+  const name = typeof raw === 'string' ? raw.normalize('NFC').trim() : '';
   if (name.length < 1 || name.length > 200) throw new LearnError('VALIDATION_FAILED', '태그 이름은 1–200자여야 합니다.');
   return name;
 }

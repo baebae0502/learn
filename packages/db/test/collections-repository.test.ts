@@ -45,6 +45,15 @@ describe('CollectionsRepository: create / rename / list', () => {
     expect(repo.rename(c.id, ' b ')).toMatchObject({ id: c.id, name: 'b', createdAt: '2026-10-20T01:00:00.000Z', updatedAt: '2026-10-20T02:00:00.000Z' });
   });
 
+  it('stores names NFC-normalized (create and rename)', () => {
+    const nfc = '선형대수';
+    const c = repo.create({ name: ` ${nfc.normalize('NFD')} ` });
+    expect(c.name).toBe(nfc);
+    expect(repo.rename(c.id, '해석학'.normalize('NFD')).name).toBe('해석학');
+    expect((db.prepare('SELECT name FROM collections WHERE id = ?').get(c.id) as { name: string }).name).toBe('해석학');
+    expect(repo.create({ name: '가'.repeat(200).normalize('NFD') }).name).toBe('가'.repeat(200)); // bound counts the NFC form
+  });
+
   it('validates names and requires a live parent', () => {
     expectLearnError(() => repo.create({ name: '   ' }), 'VALIDATION_FAILED', '컬렉션 이름');
     expectLearnError(() => repo.create({ name: 'x'.repeat(201) }), 'VALIDATION_FAILED', '컬렉션 이름');

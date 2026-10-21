@@ -25,6 +25,19 @@ describe('TagsRepository: create / list / rename', () => {
     expectLearnError(() => repo.create('x'.repeat(201)), 'VALIDATION_FAILED', '태그 이름');
   });
 
+  it('stores names NFC-normalized, so a decomposed (NFD) Hangul name finds its composed twin', () => {
+    const nfc = '수학';
+    const nfd = nfc.normalize('NFD');
+    const tag = repo.create(nfd);
+    expect(tag.name).toBe(nfc);
+    expect(repo.findOrCreate(nfc)).toEqual({ created: false, tag });
+    expect(repo.findOrCreate(`  ${nfd} `)).toEqual({ created: false, tag });
+    expect(repo.list()).toHaveLength(1);
+    const other = repo.create('물리');
+    expect(repo.rename(other.id, '수학'.normalize('NFD')).id).toBe(tag.id); // merges into the NFC twin
+    expect(repo.create('가'.repeat(200).normalize('NFD')).name).toBe('가'.repeat(200)); // bound counts the NFC form
+  });
+
   it('findOrCreate says whether the tag was created', () => {
     const first = repo.findOrCreate(' Math ');
     expect(first).toEqual({ created: true, tag: { id: first.tag.id, name: 'Math', color: null, position: null, itemCount: 0 } });

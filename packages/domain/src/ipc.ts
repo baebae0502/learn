@@ -21,7 +21,8 @@ export const assetIdInput = z.object({ assetId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
-export const nameSchema = z.string().trim().min(1).max(200);
+/** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
+export const nameSchema = z.string().normalize('NFC').trim().min(1).max(200);
 /** Item titles allow more than collection/tag names. */
 export const titleSchema = z.string().trim().min(1).max(500);
 export const positionSchema = z.number().int().min(1).max(8);

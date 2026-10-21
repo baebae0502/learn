@@ -37,8 +37,9 @@ const ANCESTORS = `WITH RECURSIVE anc(id) AS (
 const notFound = () => new LearnError('NOT_FOUND', '컬렉션을 찾을 수 없습니다.');
 const parentNotFound = () => new LearnError('NOT_FOUND', '상위 컬렉션을 찾을 수 없습니다.');
 
+/** NFC (macOS can hand over decomposed Hangul), then trimmed; the bound counts the normalized name. */
 function cleanName(raw: unknown): string {
-  const name = typeof raw === 'string' ? raw.trim() : '';
+  const name = typeof raw === 'string' ? raw.normalize('NFC').trim() : '';
   if (name.length < 1 || name.length > 200) throw new LearnError('VALIDATION_FAILED', '컬렉션 이름은 1–200자여야 합니다.');
   return name;
 }

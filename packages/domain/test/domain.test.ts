@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, fail, failureFrom, importPathsInput, newId, nowIso, ok,
-  pickAndImportInput, sourceAnchor, toLearnError, updateMetadataInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
+  nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
 describe('ids', () => {
@@ -74,5 +74,20 @@ describe('ipc contract', () => {
     expect(updateMetadataInput.safeParse({ itemId, title: '   ' }).success).toBe(false);
     expect(createCollectionInput.safeParse({ name: 'n'.repeat(200) }).success).toBe(true);
     expect(createCollectionInput.safeParse({ name: 'n'.repeat(201) }).success).toBe(false);
+  });
+  it('NFC-normalizes collection and tag names (macOS input can arrive decomposed), then trims and bounds them', () => {
+    const nfc = '선형대수';
+    const nfd = nfc.normalize('NFD');
+    expect(nfd).not.toBe(nfc);
+    expect(nameSchema.parse(`  ${nfd} `)).toBe(nfc);
+    expect(createTagInput.parse({ name: nfd }).name).toBe(nfc);
+    expect(createCollectionInput.parse({ name: nfd }).name).toBe(nfc);
+    const id = newId();
+    expect(renameTagInput.parse({ tagId: id, name: nfd }).name).toBe(nfc);
+    expect(renameCollectionInput.parse({ collectionId: id, name: nfd }).name).toBe(nfc);
+    // The 200-character bound applies to the normalized name: 200 syllables are 600 code units in NFD.
+    const long = '가'.repeat(200);
+    expect(nameSchema.parse(long.normalize('NFD'))).toBe(long);
+    expect(nameSchema.safeParse('가'.repeat(201).normalize('NFD')).success).toBe(false);
   });
 });

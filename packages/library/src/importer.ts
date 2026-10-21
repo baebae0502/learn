@@ -108,7 +108,7 @@ export class Importer {
     try {
       await fs.copyFile(src, staging);
       if ((await sha256File(staging)) !== sha256) {
-        throw new LearnError('HASH_MISMATCH', '복사하는 동안 원본 파일이 바뀌었습니다. 다시 시도하세요.', { retryable: true });
+        throw new LearnError('HASH_MISMATCH', '복사하는 동안 원본\u00a0파일이 바뀌었습니다. 다시 시도하세요.', { retryable: true });
       }
       await hooks?.afterStage?.(staging);
       await fs.mkdir(path.dirname(target), { recursive: true });

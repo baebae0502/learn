@@ -78,3 +78,47 @@ describe('UI copy (design-spec 4, 9)', () => {
     ]);
   });
 });
+
+/**
+ * Korean string literals of the main process and the library package (no tests, comments removed first): error
+ * messages become toasts and notices, dialog titles, buttons and filter names are on screen too (N-3, C-4).
+ */
+function mainProcessCopy(): Array<{ at: string; text: string }> {
+  const root = path.resolve(SRC, '../../../../..');
+  const out: Array<{ at: string; text: string }> = [];
+  const literal = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
+  for (const dir of ['apps/desktop/src/main', 'packages/library/src']) {
+    const walk = (d: string) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) {
+          const code = fs.readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
+          for (const m of code.matchAll(literal)) {
+            const text = m[1] ?? m[2] ?? m[3] ?? '';
+            if (/[가-힣]/.test(text)) out.push({ at: path.relative(root, p), text });
+          }
+        }
+      }
+    };
+    walk(path.join(root, dir));
+  }
+  return out;
+}
+
+describe('main-process and library copy users see (N-3, C-4)', () => {
+  const main = mainProcessCopy();
+  it('finds the copy (the walk reaches both trees)', () => {
+    expect(main.some((s) => s.at.startsWith(path.join('apps', 'desktop', 'src', 'main')))).toBe(true);
+    expect(main.some((s) => s.at.startsWith(path.join('packages', 'library', 'src')))).toBe(true);
+  });
+  it('binds determiner + noun and the listed compounds with U+00A0', () => {
+    expect(main.filter((s) => DETERMINER.test(s.text) || COMPOUNDS.some((c) => s.text.includes(c))).map(show)).toEqual([]);
+  });
+  it('uses 합니다체, never 해요체', () => {
+    expect(main.filter((s) => isHaeyo(s.text)).map(show)).toEqual([]);
+  });
+  it('has no internal jargon', () => {
+    expect(main.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
+  });
+});

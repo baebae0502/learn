@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
 import { FIXTURES, expectDisabledReason, importPaths, launch, menuSnapshot, openItem, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
 
@@ -27,6 +27,22 @@ async function stubShell(app: ElectronApplication, openFails = false): Promise<v
 const shellCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
 
 const heightOf = async (page: Page, testId: string) => Math.round((await page.getByTestId(testId).boundingBox())!.height);
+
+/** A notice's file line on a long path: the folder is cut (…), the file name is shown whole, inside the notice. */
+async function expectWholeFileName(notice: Locator, base: string): Promise<void> {
+  const line = notice.locator('.file');
+  await expect(line.locator('.file-base')).toHaveText(base);
+  const m = await line.evaluate((el) => {
+    const b = el.querySelector('.file-base')!;
+    const d = el.querySelector('.file-dir');
+    return {
+      baseFits: b.scrollWidth <= b.clientWidth,
+      dirCut: d !== null && d.scrollWidth > d.clientWidth,
+      inside: el.getBoundingClientRect().width <= el.parentElement!.getBoundingClientRect().width,
+    };
+  });
+  expect(m).toEqual({ baseFits: true, dirCut: true, inside: true });
+}
 
 /** The final states' 44 px title row (design-spec 6): title, then kind · size (· 외부 연결). */
 async function expectTitleRow(page: Page, title: string, meta: RegExp): Promise<void> {
@@ -163,6 +179,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     await expect(notice).toContainText('원본 파일을 찾을 수 없습니다');
     await expect(notice).toContainText('새 위치를 지정하세요');
     await expect(notice.locator('.file')).toHaveText(file); // where it was
+    await expectWholeFileName(notice, 'linked.pdf'); // the test folder's path is long
     await expectTitleRow(s.page, 'linked', /^PDF · \d+(\.\d)? KB · 외부 연결$/); // N-1
     await expect(s.page.getByTestId('relink')).toHaveText('다시 연결…');
     await expectDisabledReason(s.page.getByTestId('relink'), null);
@@ -208,6 +225,7 @@ test('a library that cannot be opened shows the fatal notice in our own words an
     // C-8: the sentence names the backup; the file name (in the library folder) is the monospace file line.
     await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 아래 위치에 업데이트 전 백업 파일이 있으면 그 파일로 복구할 수 있습니다.');
     await expect(notice.locator('.file')).toHaveText(path.join(lib, 'library.sqlite.pre-v*.bak'));
+    await expectWholeFileName(notice, 'library.sqlite.pre-v*.bak'); // the test folder's path is long
     await expect(notice.locator('.file')).toHaveAttribute('title', /\((INTERNAL|MIGRATION_FAILED|LIBRARY_UNAVAILABLE)\)$/);
     // main's message never reaches the screen (it can carry paths or engine text).
     const info = await s.page.evaluate(() => window.learn.app.info());

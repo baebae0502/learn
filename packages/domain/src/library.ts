@@ -86,6 +86,10 @@ export interface AppInfo {
   schemaVersion: number;
   platform: string;
   libraryError: { code: ErrorCode; message: string } | null;
+  /** The user's home folder: paths on screen show it as "~" (the full path stays in the tooltip). */
+  homeDir: string;
+  /** When the library could not be opened: the newest pre-update backup's file name in libraryRoot, or null. */
+  backupFile: string | null;
 }
 
 /** Renderer and assets share this origin so asset reads are same-origin (no CORS). */

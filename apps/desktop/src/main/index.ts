@@ -16,6 +16,7 @@ import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
 import { applyTheme } from './theme';
+import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
 import { windowUrl } from './window-url';
 
@@ -145,6 +146,9 @@ if (!app.requestSingleInstanceLock()) {
         schemaVersion: ctx?.schemaVersion ?? 0,
         platform: process.platform,
         libraryError,
+        homeDir: app.getPath('home'),
+        // Looked up when asked (the fatal screen asks once): a backup the user restores meanwhile is not cached.
+        backupFile: libraryError ? findUpdateBackup(libraryRoot) : null,
       }),
       prefs,
       uiContext: {

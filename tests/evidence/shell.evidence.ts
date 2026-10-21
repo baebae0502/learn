@@ -328,14 +328,19 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
     });
     // R2-6b: a tooltip crossing the dark material (raised surface over the sidebar).
     await guard('tooltip over the dark material', async () => {
-      // Keyboard focus opens it at once (a hover through Playwright opened none on the runner, run 39640208719).
+      // Keyboard focus opens it at once (a hover through Playwright opened none on the runner, run 39640208719). The
+      // app is brought to the front first and the shot does not refocus: refocusing closed the tooltip before the
+      // capture in run 39642950406 (a blur/focus push in between).
+      await bringAppToFront(s.app);
       await s.page.getByTestId('nav-library').focus();
       await s.page.keyboard.press('Shift+Tab');
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
       const shown = await s.page.getByRole('tooltip').count();
-      await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material');
-      results['tooltipDark'] = { shown };
-      check('tooltip over the dark material is captured', shown === 1, results['tooltipDark']);
+      await sleep(400); // the tooltip's fade-in
+      await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
+      const afterShot = await s.page.getByRole('tooltip').count();
+      results['tooltipDark'] = { shown, afterShot };
+      check('tooltip over the dark material is captured', shown === 1 && afterShot === 1, results['tooltipDark']);
     });
   }
   results['inactive'] = { ...inactive, activeRowLight: activeRow };
@@ -511,9 +516,9 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
    * 보기 opened (click and keyboard captures). The verdict on the number of 전체 화면 rows comes from the open menu's
    * pixels (R2-1: the closed menu's System Events list missed AppKit's extra row); the names are recorded as well.
    */
-  const viewMenu = async (prefix: string, what: string, expectedSidebar: string, expectedFullScreen: string) => {
+  const viewMenu = async (prefix: string, what: string, expectedSidebar: string, expectedFullScreen: string, focus = true) => {
     const closedNames = await menuItemNames(pid, 5);
-    const captured = await captureOpenMenu(s.app, pid, 5, prefix, what);
+    const captured = await captureOpenMenu(s.app, pid, 5, prefix, what, { focus });
     const counted = openMenuRowCount(captured.click.shot, captured.keyboard.open.frame);
     const v = {
       counted,
@@ -534,25 +539,33 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
   // A tooltip open by keyboard focus, then the 보기 menu opens over it: the tooltip closes (main's nativeMenu event).
   const startFacts = await windowFacts();
   results['menuTestStart'] = startFacts;
-  if (startFacts.inactiveAttr || !startFacts.mainFocused) await bringAppToFront(s.app).catch(() => {});
+  // In front before the tooltip opens; the menu capture below then does not refocus the window (that blurred it and
+  // closed the tooltip before the menu opened in run 39642950406).
+  await bringAppToFront(s.app).catch(() => {});
   let tooltipBefore = -1;
+  let tooltipOpenedAt = 0;
   await guard('keyboard focus opens the toggle tooltip (before the menu)', async () => {
     await s.page.getByTestId('nav-library').focus();
     await s.page.keyboard.press('Shift+Tab'); // keyboard focus back onto the sidebar toggle: its tooltip opens at once
     await expect(s.page.getByTestId('sidebar-toggle')).toBeFocused({ timeout: 5_000 });
     await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
     tooltipBefore = await s.page.getByRole('tooltip').count();
+    tooltipOpenedAt = await s.page.evaluate(() => Math.round(performance.now()));
     const v = { tooltipBefore, ...(await windowFacts()) };
     check('keyboard focus opens the toggle tooltip (before the menu)', tooltipBefore === 1, v);
   });
   await guard('보기 (sidebar shown)', async () => {
-    results['menuView'] = await viewMenu('m3-09-menu-view', '보기 menu open, sidebar shown', '사이드바 가리기', '전체 화면 시작');
+    results['menuView'] = await viewMenu('m3-09-menu-view', '보기 menu open, sidebar shown', '사이드바 가리기', '전체 화면 시작', false);
   });
   await guard('a menu-bar menu closes an open tooltip', async () => {
-    const menuPushes = (await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? [])).filter(([k]) => k === 'nativeMenu.open');
-    const v = { before: tooltipBefore, after: await s.page.getByRole('tooltip').count(), menuPushes, ...(await windowFacts()) };
+    const pushes = await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? []);
+    const menuPushes = pushes.filter(([k]) => k === 'nativeMenu.open');
+    // The menu, not a blur, must be what closed it: no "unfocused" push between the tooltip and the first menu opening.
+    const firstOpen = menuPushes.find(([, on]) => on)?.[2] ?? Infinity;
+    const blurBeforeMenu = pushes.some(([k, on, t]) => k === 'windowState.focused' && !on && t >= tooltipOpenedAt && t < firstOpen);
+    const v = { before: tooltipBefore, after: await s.page.getByRole('tooltip').count(), menuPushes, blurBeforeMenu, ...(await windowFacts()) };
     results['tooltipUnderMenu'] = v;
-    check('a menu-bar menu closes an open tooltip', v.before === 1 && v.after === 0 && menuPushes.some(([, on]) => on), v);
+    check('a menu-bar menu closes an open tooltip', v.before === 1 && v.after === 0 && menuPushes.some(([, on]) => on) && !blurBeforeMenu, v);
   });
   await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 

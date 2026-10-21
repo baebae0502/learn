@@ -327,8 +327,10 @@ export const pressEscape = () => tryExec('osascript', ['-e', 'tell application "
  * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
  * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
  */
-export async function captureOpenMenu(app: ElectronApplication, target: string | number, index: number, prefix: string, what: string) {
-  await focusApp(app);
+export async function captureOpenMenu(app: ElectronApplication, target: string | number, index: number, prefix: string, what: string, opts: { focus?: boolean } = {}) {
+  // `focus: false` when the app is already in front: focusApp can blur and refocus the window (run 39642950406), which
+  // closes an open tooltip before the menu does.
+  if (opts.focus !== false) await focusApp(app);
   const child = spawn('osascript', ['-e', `tell application "System Events" to tell ${processRef(target)} to click menu bar item ${index} of menu bar 1`], {
     stdio: ['ignore', 'ignore', 'pipe'],
   });

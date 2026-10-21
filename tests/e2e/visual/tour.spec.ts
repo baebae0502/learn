@@ -28,7 +28,7 @@ test('component state board (gallery parts 1–2)', async ({}, testInfo) => {
 
 const LIBRARY = ['sample.pdf', '한글 경로 (테스트) #1.pdf', 'sample-h264-aac.mp4', 'sample-mpeg4part2.mp4'].map((f) => path.join(FIXTURES, f));
 
-test('library: empty, list, collapsed sidebar, failure toast', async ({}, testInfo) => {
+test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const dates = () => [s.page.locator('[data-col="added"]')];
   try {
@@ -62,6 +62,19 @@ test('library: empty, list, collapsed sidebar, failure toast', async ({}, testIn
     await importFiles(s, [txt]);
     await expect(s.page.getByTestId('import-failures')).toBeVisible();
     await shoot(s.page, 'toast-failure-light', { mask: dates() });
+    // Several files with one cause: three one-line rows (a long name is cut, not wrapped), "외 2개", the advice once.
+    await s.page.getByTestId('import-failures').getByTestId('toast-close').click();
+    await expect(s.page.getByTestId('import-failures')).toHaveCount(0);
+    await setTheme(s.page, 'dark');
+    const names = ['세포 신호 전달 강의 녹음 메모 — 3주차 정리본 (최종 수정, 조교 확인 완료).txt', 'notes.txt', 'slides.key', 'draft.docx', 'archive.zip'];
+    const files = names.map((n) => {
+      const f = testInfo.outputPath(n);
+      fs.writeFileSync(f, 'x');
+      return f;
+    });
+    await importFiles(s, files);
+    await expect(s.page.getByTestId('import-failures').locator('.t-line')).toHaveCount(4);
+    await shoot(s.page, 'toast-failure-multi-dark', { mask: dates() });
   } finally {
     await s.app.close();
   }

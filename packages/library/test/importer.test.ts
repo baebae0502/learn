@@ -68,7 +68,7 @@ describe('duplicates (AC02)', () => {
     const first = await importer.importOne(src, { mode: 'managed' });
     const second = await importer.importOne(src, { mode: 'managed' });
     expect(second).toEqual({ status: 'duplicate', path: src, existingItemId: first.status === 'imported' ? first.item.id : '' });
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
     expect(fs.existsSync(src)).toBe(true);
   });
 
@@ -78,7 +78,7 @@ describe('duplicates (AC02)', () => {
     await importer.importOne(src, { mode: 'managed' });
     const again = await importer.importOne(src, { mode: 'managed', allowDuplicate: true });
     expect(again.status).toBe('imported');
-    expect(repo.counts()).toEqual({ items: 2, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 2, assets: 1, revisions: 1 });
   });
 
   it('detects duplicates by content even under a different name', async () => {
@@ -116,7 +116,7 @@ describe('failures', () => {
     const { layout, repo, importer } = setup({ afterStage: () => { throw new Error('disk yanked'); } });
     const out = await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'x'), { mode: 'managed' });
     expect(out).toMatchObject({ status: 'failed', code: 'INTERNAL' });
-    expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
+    expect(repo.counts()).toMatchObject({ items: 0, assets: 0, revisions: 0 });
     expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
   });
 
@@ -133,7 +133,7 @@ describe('failures', () => {
     fail = false;
     const retry = await importer.importOne(src, { mode: 'managed' });
     expect(retry.status).toBe('imported');
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
     expect(fs.statSync(target).ino).toBe(inodeBefore);
     expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
   });
@@ -161,7 +161,7 @@ describe('integrity branches', () => {
     expect(quarantined).toHaveLength(1);
     expect(quarantined[0]).toMatch(new RegExp(`^corrupt-${sha256}-`));
     expect(fs.readFileSync(path.join(layout.stagingDir, quarantined[0]!), 'utf8')).toBe('wrong bytes');
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
   });
 
   it('(a2) reuse path quarantines a corrupted placed file and restores it', async () => {
@@ -180,7 +180,7 @@ describe('integrity branches', () => {
     expect(quarantined).toHaveLength(1);
     expect(quarantined[0]).toMatch(new RegExp(`^corrupt-${sha256}-`));
     expect(fs.readFileSync(path.join(layout.stagingDir, quarantined[0]!), 'utf8')).toBe('rotten');
-    expect(repo.counts()).toEqual({ items: 2, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 2, assets: 1, revisions: 1 });
   });
 
   it('(b) detects source change mid-copy', async () => {
@@ -192,7 +192,7 @@ describe('integrity branches', () => {
     const out = await importer.importOne(src, { mode: 'managed' });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(out).toMatchObject({ status: 'failed', code: 'HASH_MISMATCH' });
-    expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
+    expect(repo.counts()).toMatchObject({ items: 0, assets: 0, revisions: 0 });
     expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
     vi.restoreAllMocks();
   });
@@ -201,7 +201,7 @@ describe('integrity branches', () => {
     const { layout, repo, importer } = setup({ afterPlace: () => { throw new Error('unexpected error'); } });
     const out = await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'x'), { mode: 'managed' });
     expect(out).toMatchObject({ status: 'failed', code: 'INTERNAL' });
-    expect(repo.counts()).toEqual({ items: 0, assets: 0, revisions: 0 });
+    expect(repo.counts()).toMatchObject({ items: 0, assets: 0, revisions: 0 });
   });
 });
 

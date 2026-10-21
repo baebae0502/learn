@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
+import { LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, createBackup, ensureLayout, libraryLayout, resolveAssetPath, restoreBackup, sha256File } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
@@ -31,12 +31,12 @@ describe('backup and restore (AC15 — files part)', () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-1');
     const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
-    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: 1, counts: { items: 3, assets: 3, revisions: 3 } });
+    expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 } });
     expect(manifest.assets.filter((a) => a.included)).toHaveLength(2); // linked is reference-only
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], counts: { items: 3, assets: 3, revisions: 3 }, countsMatch: true });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 }, countsMatch: true });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);
@@ -101,6 +101,17 @@ describe('backup and restore (AC15 — files part)', () => {
 
     const target = path.join(tempDir('restore'), 'Library');
     await expect(restoreBackup({ backupDir: dest, targetRoot: target })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+  });
+
+  it('restores from an old manifest that lacks the optional counts', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-old-manifest');
+    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const old = { ...manifest, schemaVersion: 1, counts: { items: 3, assets: 3, revisions: 3 } };
+    fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(old, null, 2));
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target });
+    expect(result.countsMatch).toBe(true);
   });
 
   it('rejects manifest from a newer schema version', async () => {

@@ -1,4 +1,5 @@
 import { sql as initial } from './001-initial';
+import { sql as organize } from './002-organize';
 
 export interface Migration {
   version: number;
@@ -6,5 +7,8 @@ export interface Migration {
   sql: string;
 }
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, name: 'initial', sql: initial }];
-export const LATEST_SCHEMA_VERSION = 1;
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, name: 'initial', sql: initial },
+  { version: 2, name: 'organize', sql: organize },
+];
+export const LATEST_SCHEMA_VERSION = MIGRATIONS.at(-1)!.version;

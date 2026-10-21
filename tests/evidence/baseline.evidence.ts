@@ -281,7 +281,7 @@ test('default library path on a disposable runner', TAG, async () => {
   await app?.close(); // single-instance lock: the shared instance must be gone first
   const s = await launch(null, null);
   try {
-    const info = await s.page.evaluate(() => window.learn.appInfo());
+    const info = await s.page.evaluate(() => window.learn.app.info());
     const userData = await s.app.evaluate(({ app: a }) => a.getPath('userData'));
     const expected = path.join(os.homedir(), 'Library/Application Support/Learn/Library');
     const libraryRoot = info.ok ? info.data.libraryRoot : null;

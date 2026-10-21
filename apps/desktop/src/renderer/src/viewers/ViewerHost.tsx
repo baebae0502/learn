@@ -5,13 +5,14 @@ import { t } from '../strings';
 import { PdfViewer } from './PdfViewer';
 import { VideoViewer } from './VideoViewer';
 
-export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBack(): void; onChanged(): void }) {
+/** The library list refreshes itself on libraryChanged (pushed by main after a relink). */
+export function ViewerHost({ itemId, onBack }: { itemId: string; onBack(): void }) {
   const [item, setItem] = useState<LibraryItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    unwrap(api().getItem({ itemId })).then(
+    unwrap(api().library.get({ itemId })).then(
       (i) => { if (!cancelled) setItem(i); },
       (e: Error) => { if (!cancelled) setError(e.message); },
     );
@@ -22,11 +23,8 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
     if (!item) return;
     setError(null);
     try {
-      const updated = await unwrap(api().pickAndRelink({ assetId: item.assetId }));
-      if (updated) {
-        setItem(updated);
-        onChanged();
-      }
+      const updated = await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+      if (updated) setItem(updated);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -53,5 +51,5 @@ export function ViewerHost({ itemId, onBack, onChanged }: { itemId: string; onBa
 }
 
 function ViewerBody({ item }: { item: LibraryItem }) {
-  return item.type === 'pdf' ? <PdfViewer item={item} /> : <VideoViewer item={item} />;
+  return item.type === 'pdf' ? <PdfViewer key={item.id} item={item} /> : <VideoViewer key={item.id} item={item} />;
 }

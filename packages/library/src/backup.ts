@@ -54,6 +54,11 @@ const BackupManifestSchema = z.object({
     items: z.number().int().nonnegative(),
     assets: z.number().int().nonnegative(),
     revisions: z.number().int().nonnegative(),
+    collections: z.number().int().nonnegative().optional(),
+    collectionItems: z.number().int().nonnegative().optional(),
+    tags: z.number().int().nonnegative().optional(),
+    itemTags: z.number().int().nonnegative().optional(),
+    readingPositions: z.number().int().nonnegative().optional(),
   }),
   assets: z.array(BackupAssetEntrySchema),
 });
@@ -148,7 +153,8 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
     throw new LearnError('VALIDATION_FAILED', '알 수 없는 백업 형식입니다.');
   }
 
-  const validatedManifest = parseResult.data as BackupManifest;
+  // Schema-inferred type: counts added in schema v2 stay optional for manifests written before them.
+  const validatedManifest = parseResult.data;
 
   if (validatedManifest.schemaVersion > LATEST_SCHEMA_VERSION) {
     throw new LearnError('VALIDATION_FAILED', '이 백업은 더 새로운 버전의 앱에서 만들어졌습니다.');
@@ -214,10 +220,9 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
       }
 
       const counts = repo.counts();
-      const countsMatch =
-        counts.items === validatedManifest.counts.items &&
-        counts.assets === validatedManifest.counts.assets &&
-        counts.revisions === validatedManifest.counts.revisions;
+      // Only compare fields the manifest has (older manifests lack the newer ones; counts() always fills every field).
+      const expected = validatedManifest.counts;
+      const countsMatch = (Object.keys(expected) as (keyof typeof expected)[]).every((k) => expected[k] === undefined || expected[k] === counts[k]);
 
       // Close DB before rename to ensure clean state
       db.close();

@@ -6,8 +6,8 @@ test('app boots with a sandboxed renderer on learn://app and migrates the librar
   expect(page.url()).toBe('learn://app/index.html');
   const isolated = await page.evaluate(() => typeof (globalThis as { require?: unknown }).require === 'undefined' && typeof window.learn === 'object');
   expect(isolated).toBe(true);
-  const info = await page.evaluate(() => window.learn.appInfo());
-  expect(info).toMatchObject({ ok: true, data: { version: '0.1.0', schemaVersion: 1, libraryError: null } });
+  const info = await page.evaluate(() => window.learn.app.info());
+  expect(info).toMatchObject({ ok: true, data: { version: '0.1.0', schemaVersion: 2, libraryError: null } });
   await page.screenshot({ path: testInfo.outputPath('smoke.png') });
   await app.close();
 });

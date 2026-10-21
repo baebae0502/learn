@@ -310,7 +310,7 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
       exe: a.getPath('exe'),
       userData: a.getPath('userData'),
     }));
-    const info = await s.page.evaluate(() => window.learn.appInfo());
+    const info = await s.page.evaluate(() => window.learn.app.info());
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await s.page.getByTestId('viewer-back').click();

@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId, nowIso, type StorageMode } from '@learn/domain';
-import { LibraryRepository, migrate, openDatabase, type AssetRow, type Db, type NewImportRecord } from '../src/index';
+import {
+  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, migrate, openDatabase,
+  type AssetRow, type Db, type NewImportRecord,
+} from '../src/index';
+import { expectLearnError, seedItem } from './fixtures';
 
 let db: Db;
 let repo: LibraryRepository;
@@ -43,7 +47,7 @@ describe('LibraryRepository', () => {
       storageMode: 'managed', availability: 'available', assetId: a.id, revisionId: rec.revision!.id, originalName: 'lecture.pdf',
     });
     expect(repo.listItems().map((i) => i.id)).toEqual([rec.item.id]);
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
   });
 
   it('rolls back everything when part of the insert fails', () => {
@@ -51,7 +55,7 @@ describe('LibraryRepository', () => {
     repo.insertImported(first);
     const clash = { ...record(asset(SHA_B, 'managed')), item: first.item }; // asset row goes in, then the item PK collides
     expect(() => repo.insertImported(clash)).toThrow();
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
     expect(repo.findAssetsBySha(SHA_B)).toEqual([]);
   });
 
@@ -113,7 +117,7 @@ describe('LibraryRepository', () => {
     const a2 = asset(SHA_B, 'managed');
     const rec2 = { ...record(a2), job: { id: jobId, kind: 'extract', dedupeKey: `extract:${SHA_B}:text-v0`, payload: { sha256: SHA_B } } };
     expect(() => repo.insertImported(rec2)).toThrow(); // id collision, different dedupeKey
-    expect(repo.counts()).toEqual({ items: 1, assets: 1, revisions: 1 }); // rec2 rolled back
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 }); // rec2 rolled back
     expect(repo.findAssetsBySha(SHA_B)).toEqual([]);
   });
 
@@ -127,5 +131,188 @@ describe('LibraryRepository', () => {
     expect(() => repo.setExternalPath(a.id, '/path.pdf', nowIso())).toThrow(/setExternalPath: no linked asset/);
     // verify row unchanged
     expect(repo.getAsset(a.id)).toMatchObject({ externalPath: null, storageMode: 'managed' });
+  });
+});
+
+describe('LibraryRepository: organize fields, metadata, trash, duplicates', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('round-trips metadata and exposes creators and year on the item', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const { itemId } = seedItem(db, { title: 'old' });
+    expect(repo.getItem(itemId)).toMatchObject({ creators: [], year: null, updatedAt: '2026-10-20T01:00:00.000Z' });
+
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    const metadata = {
+      creators: [{ name: '김교수', role: 'lecturer' as const }, { name: 'Lee', role: 'author' as const }],
+      date: '2021-03', publisher: 'MIT', url: 'https://example.org/x', language: 'ko', abstract: '요약', extra: 'n',
+    };
+    const updated = repo.updateMetadata(itemId, { title: '  선형대수 1강 ', metadata });
+    expect(updated).toMatchObject({
+      id: itemId, title: '선형대수 1강', creators: ['김교수', 'Lee'], year: 2021,
+      createdAt: '2026-10-20T01:00:00.000Z', updatedAt: '2026-10-20T02:00:00.000Z',
+    });
+    expect(repo.getItemDetail(itemId).metadata).toEqual(metadata);
+    expect(repo.listItems()[0]).toEqual(updated);
+
+    // title only keeps the metadata, metadata only keeps the title
+    expect(repo.updateMetadata(itemId, { title: 'T' })).toMatchObject({ title: 'T', creators: ['김교수', 'Lee'] });
+    expect(repo.updateMetadata(itemId, { metadata: { creators: [] } })).toMatchObject({ title: 'T', creators: [], year: null });
+    expect(repo.updateMetadata(itemId, { title: 'x'.repeat(500) }).title).toHaveLength(500);
+  });
+
+  it('an update with no fields writes nothing (updated_at stays) but still requires a live item', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const { itemId } = seedItem(db, { title: 'keep' });
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    expect(repo.updateMetadata(itemId, {})).toMatchObject({ title: 'keep', updatedAt: '2026-10-20T01:00:00.000Z' });
+    expect(repo.updateMetadata(itemId, { title: undefined, metadata: undefined }).updatedAt).toBe('2026-10-20T01:00:00.000Z');
+    expectLearnError(() => repo.updateMetadata(newId(), {}), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    repo.trash([itemId]);
+    expectLearnError(() => repo.updateMetadata(itemId, {}), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+  });
+
+  it('rejects invalid metadata or titles, and unknown or trashed items, leaving the row unchanged', () => {
+    const { itemId } = seedItem(db, { title: 'keep' });
+    const bad = [
+      { url: 'ftp://example.org' }, { date: '2021-13' }, { creators: [{ name: '', role: 'author' }] },
+      { creators: [{ name: 'x', role: 'singer' }] }, { abstract: 'x'.repeat(10_001) },
+    ];
+    for (const metadata of bad) {
+      expectLearnError(() => repo.updateMetadata(itemId, { metadata: metadata as never }), 'VALIDATION_FAILED', '메타데이터');
+    }
+    for (const title of ['   ', '', 'x'.repeat(501)]) {
+      expectLearnError(() => repo.updateMetadata(itemId, { title }), 'VALIDATION_FAILED', '제목');
+    }
+    expect(repo.getItem(itemId)).toMatchObject({ title: 'keep', creators: [] });
+    expect((db.prepare('SELECT metadata_json FROM items WHERE id = ?').get(itemId) as { metadata_json: string }).metadata_json).toBe('{}');
+
+    expectLearnError(() => repo.updateMetadata(newId(), { title: 'x' }), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    repo.trash([itemId]);
+    expectLearnError(() => repo.updateMetadata(itemId, { title: 'x' }), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+  });
+
+  it('degrades corrupt stored metadata to empty without failing the list', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { itemId } = seedItem(db);
+    db.prepare(`UPDATE items SET metadata_json = '{"creators":' WHERE id = ?`).run(itemId);
+    expect(repo.listItems()[0]).toMatchObject({ id: itemId, creators: [], year: null });
+    expect(warn).toHaveBeenCalledWith('METADATA_CORRUPT_JSON');
+  });
+
+  it('reflects tags and reading position in listItems and getItem', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const a = seedItem(db);
+    const b = seedItem(db);
+    const tags = new TagsRepository(db);
+    const t1 = tags.create('t1');
+    const t2 = tags.create('t2');
+    tags.assign(t1.id, [a.itemId, b.itemId]);
+    tags.assign(t2.id, [a.itemId]);
+    vi.setSystemTime(new Date('2026-10-20T03:00:00.000Z'));
+    new ReadingRepository(db).save({ itemId: a.itemId, revisionId: a.revisionId, locator: { kind: 'pdf', pageIndex: 4 }, progress: 0.25 });
+
+    const byId = new Map(repo.listItems().map((i) => [i.id, i]));
+    expect(byId.get(a.itemId)).toMatchObject({ tagIds: [t1.id, t2.id], progress: 0.25, openedAt: '2026-10-20T03:00:00.000Z' });
+    expect(byId.get(b.itemId)).toMatchObject({ tagIds: [t1.id], progress: null, openedAt: null });
+    expect(repo.getItem(a.itemId)).toEqual(byId.get(a.itemId));
+    expect(repo.getItem(b.itemId)).toEqual(byId.get(b.itemId));
+  });
+
+  it('returns item detail with file info, metadata, tags and live collections', () => {
+    const { itemId, asset } = seedItem(db, { mode: 'linked', sha: 'c'.repeat(64) });
+    const tag = new TagsRepository(db).create('중요');
+    new TagsRepository(db).assign(tag.id, [itemId]);
+    const cols = new CollectionsRepository(db);
+    const live = cols.create({ name: '강의' });
+    const gone = cols.create({ name: '옛것' });
+    cols.addItems(live.id, [itemId]);
+    cols.addItems(gone.id, [itemId]);
+    cols.softDelete(gone.id);
+    repo.updateMetadata(itemId, { metadata: { creators: [{ name: 'Kim', role: 'author' }], date: '2019' } });
+
+    const detail = repo.getItemDetail(itemId);
+    expect(detail.item).toEqual(repo.getItem(itemId));
+    expect(detail.metadata).toEqual({ creators: [{ name: 'Kim', role: 'author' }], date: '2019' });
+    expect(detail.file).toEqual({
+      originalName: 'lecture.pdf', mime: 'application/pdf', size: 1234, storageMode: 'linked',
+      externalPath: asset.externalPath, sha256: 'c'.repeat(64), availability: 'available',
+    });
+    expect(detail.tags).toEqual([{ id: tag.id, name: '중요', color: null, position: null, itemCount: 1 }]);
+    expect(detail.collections.map((c) => [c.id, c.itemCount])).toEqual([[live.id, 1]]);
+
+    expectLearnError(() => repo.getItemDetail(newId()), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    repo.trash([itemId]);
+    expectLearnError(() => repo.getItemDetail(itemId), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+  });
+
+  it('trashes and restores items, listing the trash most recently deleted first', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const [a, b, c] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    const tag = new TagsRepository(db).create('t');
+    new TagsRepository(db).assign(tag.id, [a]);
+
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    expect(repo.trash([a])).toBe(1);
+    vi.setSystemTime(new Date('2026-10-20T03:00:00.000Z'));
+    expect(repo.trash([b, a, newId()])).toBe(1); // a is already trashed, the unknown id is ignored
+
+    expect(repo.listItems().map((i) => i.id)).toEqual([c]);
+    expect(repo.getItem(a)).toBeUndefined();
+    const trash = repo.listTrash();
+    expect(trash.map((i) => i.id)).toEqual([b, a]);
+    expect(trash[1]).toMatchObject({ id: a, tagIds: [tag.id] });
+    expect((db.prepare('SELECT deleted_at FROM items WHERE id = ?').get(a) as { deleted_at: string }).deleted_at).toBe('2026-10-20T02:00:00.000Z');
+    expect(repo.counts().items).toBe(1);
+
+    expect(repo.restore([a, c, newId()])).toBe(1); // only a was in the trash
+    expect(repo.listTrash().map((i) => i.id)).toEqual([b]);
+    expect(repo.getItem(a)).toMatchObject({ id: a, tagIds: [tag.id] });
+    expect(repo.listItems().map((i) => i.id).sort()).toEqual([a, c].sort());
+  });
+
+  it('trashChanged / restoreChanged report exactly the items that moved, each once', () => {
+    const [a, b] = [seedItem(db).itemId, seedItem(db).itemId];
+    expect(repo.trashChanged([a, a, newId()])).toEqual([a]);
+    expect(repo.trashChanged([b, a])).toEqual([b]);
+    expect(repo.trashChanged([a, b])).toEqual([]);
+    expect(repo.restoreChanged([b, b, newId()])).toEqual([b]);
+    expect(repo.restoreChanged([a, b])).toEqual([a]);
+    expect(repo.restoreChanged([a, b])).toEqual([]);
+  });
+
+  it('groups non-trashed items that share content (same sha256) across assets', () => {
+    const SHA_D = 'd'.repeat(64);
+    const first = seedItem(db, { sha: SHA_A });
+    const second = seedItem(db, { reuseAsset: first.asset }); // same managed asset
+    const linked = seedItem(db, { sha: SHA_A, mode: 'linked' }); // same content, separate linked asset
+    seedItem(db, { sha: SHA_B }); // unique
+    const d1 = seedItem(db, { sha: SHA_D });
+    const d2 = seedItem(db, { reuseAsset: d1.asset });
+    expect(repo.duplicateGroups()).toEqual([
+      { sha256: SHA_A, itemIds: [first.itemId, second.itemId, linked.itemId] },
+      { sha256: SHA_D, itemIds: [d1.itemId, d2.itemId] },
+    ]);
+    repo.trash([d2.itemId]);
+    expect(repo.duplicateGroups()).toEqual([{ sha256: SHA_A, itemIds: [first.itemId, second.itemId, linked.itemId] }]);
+  });
+
+  it('counts every backed-up table', () => {
+    const { itemId, revisionId } = seedItem(db);
+    const tags = new TagsRepository(db);
+    tags.assign(tags.create('t').id, [itemId]);
+    const cols = new CollectionsRepository(db);
+    cols.addItems(cols.create({ name: 'c' }).id, [itemId]);
+    new ReadingRepository(db).save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null });
+    expect(repo.counts()).toEqual({
+      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1,
+    });
   });
 });

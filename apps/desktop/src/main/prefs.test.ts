@@ -7,7 +7,7 @@ import { PREFS_FILE, openPrefsStore, resolveLibraryRoot } from './prefs';
 
 let dir: string;
 const file = () => path.join(dir, PREFS_FILE);
-const DEFAULTS = { theme: 'system', density: 'comfortable', libraryRoot: null };
+const DEFAULTS = { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null };
 const ABS = path.resolve(os.tmpdir(), 'learn-lib');
 const errno = (code: string) => Object.assign(new Error(code), { code });
 
@@ -222,7 +222,7 @@ describe('prefs store', () => {
 
 describe('resolveLibraryRoot', () => {
   const userData = path.resolve(os.tmpdir(), 'ud');
-  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'comfortable', libraryRoot }) as const;
+  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot }) as const;
 
   it('LEARN_LIBRARY_DIR wins over prefs.libraryRoot', () => {
     expect(resolveLibraryRoot({ envDir: '/env/lib', prefs: prefs(ABS), userData })).toBe('/env/lib');

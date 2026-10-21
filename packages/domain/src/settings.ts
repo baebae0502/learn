@@ -20,15 +20,21 @@ export function parseSetting(key: string, value: unknown): unknown {
   return r.data;
 }
 
-/** Per-device preferences (stored outside the library). */
+/**
+ * Per-device preferences (stored outside the library). Values follow the approved design spec
+ * (docs/design/design-spec.md §3.2 rows 24/28/32, §10.6 text size 12–15 pt).
+ */
 export const prefsFields = {
   theme: z.enum(['system', 'light', 'dark']),
-  density: z.enum(['compact', 'comfortable']),
+  density: z.enum(['compact', 'regular', 'comfortable']),
+  /** UI text size in pt (lists, menus, panels; reader content zooms separately). */
+  fontSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
   libraryRoot: z.string().min(1).nullable(),
 };
 export const prefsSchema = z.object({
   theme: prefsFields.theme.default('system'),
-  density: prefsFields.density.default('comfortable'),
+  density: prefsFields.density.default('regular'),
+  fontSize: prefsFields.fontSize.default(13),
   libraryRoot: prefsFields.libraryRoot.default(null),
 });
 export type Prefs = z.infer<typeof prefsSchema>;

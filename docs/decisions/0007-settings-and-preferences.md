@@ -15,7 +15,7 @@ M2에서 테마·밀도·정렬·창 배치·읽기 위치를 저장하기 시�
 | 읽기 위치 | `library.sqlite`의 `reading_positions` 테이블 | 자료(item)·revision에 묶인 구조화 데이터 | 마이그레이션 `002-organize.ts` |
 
 ### 1. 무엇이 어디에 가는가
-- **기기 환경설정**: `theme`(`system`·`light`·`dark`), `density`(`compact`·`comfortable`), `libraryRoot`(절대 경로 또는 `null`). 라이브러리를 열기 전에 필요한 값(라이브러리 위치)과 창이 뜨기 전에 적용해야 하는 값(테마)이 여기 있다. 사용자 단축키 재지정(P6)도 여기에 둘 계획이다(ADR-0005, 아직 필드 없음).
+- **기기 환경설정**: `theme`(`system`·`light`·`dark`), `density`(`compact`·`regular`·`comfortable`, 행 높이 24/28/32, 기본 `regular`), `fontSize`(12·13·14·15pt, 기본 13), `libraryRoot`(절대 경로 또는 `null`). 라이브러리를 열기 전에 필요한 값(라이브러리 위치)과 창이 뜨기 전에 적용해야 하는 값(테마)이 여기 있다. 사용자 단축키 재지정(P6)도 여기에 둘 계획이다(ADR-0005, 아직 필드 없음).
 - **라이브러리 설정(KV)**: `library.sort`(정렬 열·방향), `layout.panes`(패널 폭, 0–4000 정수), `ui.lastOpenItemId`(uuid 또는 `null`). 라이브러리 폴더를 다른 기기로 복원하면 따라가야 하는 화면 상태다. 값은 JSON 문자열로 저장하고 쓸 때 `parseSetting`으로, 읽을 때 같은 스키마로 다시 검증한다.
 - **구조화 테이블 `reading_positions`**: item당 한 행(`item_id` PK) — `revision_id`, `locator_json`, `progress`(0–1 또는 NULL), `opened_at`, `updated_at`. 자료에 외래 키(`ON DELETE CASCADE`)로 묶이므로 자료가 지워지면 같이 사라지고, `listItems`가 `LEFT JOIN`으로 진행률·마지막 연 시각을 목록에 싣는다. KV가 아니라 테이블인 이유는 정렬·조인·무결성 제약(`progress` CHECK, FK)이 필요하고, 값이 자료 수만큼 늘어나기 때문이다. 키 레지스트리에 항목별 키를 만들면 레지스트리가 데이터가 된다.
 

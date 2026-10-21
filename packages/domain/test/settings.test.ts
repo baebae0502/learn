@@ -27,7 +27,7 @@ describe('settings registry', () => {
 
 describe('prefs', () => {
   it('has defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'comfortable', libraryRoot: null });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null });
   });
   it('rejects invalid values', () => {
     expect(prefsSchema.safeParse({ theme: 'neon' }).success).toBe(false);
@@ -47,6 +47,15 @@ describe('prefs patch input', () => {
     expect(prefsSetInput.safeParse({ theme: 'neon' }).success).toBe(false);
   });
   it('full prefs schema still defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'comfortable', libraryRoot: null });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null });
+  });
+});
+
+describe('prefs values follow the design spec', () => {
+  it('accepts the three densities and the four text sizes only', () => {
+    for (const density of ['compact', 'regular', 'comfortable'] as const) expect(prefsSetInput.parse({ density })).toEqual({ density });
+    for (const fontSize of [12, 13, 14, 15] as const) expect(prefsSetInput.parse({ fontSize })).toEqual({ fontSize });
+    expect(prefsSetInput.safeParse({ density: 'cozy' }).success).toBe(false);
+    expect(prefsSetInput.safeParse({ fontSize: 16 }).success).toBe(false);
   });
 });

@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, acceleratorLabel, commandById, type CommandId, type CommandSpec } from '@learn/domain';
-import { buildAppMenu } from './app-menu';
+import { applyMenuEnabled, buildAppMenu, menuItemIds } from './app-menu';
 
 interface Shape {
   label?: string;
@@ -204,6 +204,47 @@ describe('menu state and placement (M3)', () => {
     // A fixed command list: later tasks add 도움말 commands without touching this test.
     expect(shape(build('darwin', false, vi.fn(), ALL, [commandById('nav.back')])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '이동', '윈도우']);
     expect(shape(build('darwin', false, vi.fn(), ALL, [])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '윈도우']);
+  });
+});
+
+describe('in-place enabled toggle (the menu is built once; reports only flip enabled)', () => {
+  const cmds: CommandSpec[] = [
+    { id: 'file.importManaged', label: '하나', accelerator: 'CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 1 }, contexts: ['library'] },
+    { id: 'file.importLinked', label: '크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['library'] },
+    { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
+  ];
+  const registryIds = (menu: MenuItemConstructorOptions[]) => walk(menu).flatMap((i) => (i.id && !i.id.startsWith('menu.') ? [i.id] : []));
+
+  it('names a command\'s menu items the way the builder does: its id, then one #n per hidden twin', () => {
+    expect(menuItemIds(cmds[0]!)).toEqual(['file.importManaged']);
+    expect(menuItemIds(cmds[1]!)).toEqual(['file.importLinked', 'file.importLinked#1']);
+    for (const platform of ['darwin', 'linux', 'win32'] as const) {
+      expect(registryIds(build(platform, false, vi.fn(), ALL, cmds)).sort(), platform).toEqual(cmds.filter((c) => c.menu).flatMap(menuItemIds).sort());
+    }
+  });
+  it('flips enabled on every item and twin of a built menu', () => {
+    const template = build('linux', false, vi.fn(), new Set<CommandId>(), cmds);
+    const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+    const menu = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    const states = () => Object.fromEntries(registryIds(template).map((id) => [id, byId.get(id)!.enabled]));
+    expect(states()).toEqual({ 'file.importManaged': false, 'file.importLinked': false, 'file.importLinked#1': false });
+    applyMenuEnabled(menu, new Set<CommandId>(['file.importLinked']), cmds);
+    expect(states()).toEqual({ 'file.importManaged': false, 'file.importLinked': true, 'file.importLinked#1': true });
+    applyMenuEnabled(menu, new Set<CommandId>(['file.importManaged']), cmds);
+    expect(states()).toEqual({ 'file.importManaged': true, 'file.importLinked': false, 'file.importLinked#1': false });
+  });
+  it('toggles to the same state a fresh build would have, for every reportable context', () => {
+    for (const enabled of [new Set<CommandId>(), new Set<CommandId>(['file.importManaged', 'file.importLinked']), new Set<CommandId>(['nav.back'])]) {
+      const toggled = build('darwin', false, vi.fn(), new Set<CommandId>());
+      const byId = new Map(walk(toggled).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+      applyMenuEnabled({ getMenuItemById: (id) => byId.get(id) ?? null }, enabled);
+      expect(walk(toggled).map((i) => i.enabled)).toEqual(walk(build('darwin', false, vi.fn(), enabled)).map((i) => i.enabled));
+    }
+  });
+  it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
+    const asked: string[] = [];
+    applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1']);
   });
 });
 

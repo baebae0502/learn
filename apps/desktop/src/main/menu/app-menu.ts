@@ -1,5 +1,5 @@
 import type { MenuItemConstructorOptions } from 'electron';
-import { MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
+import { COMMANDS, MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
 export interface AppMenuOptions {
@@ -7,7 +7,7 @@ export interface AppMenuOptions {
   isDev: boolean;
   platform: NodeJS.Platform;
   commands: readonly CommandSpec[];
-  /** availableMenuCommands(last reported context): the only registry items that are enabled. */
+  /** availableMenuCommands(context at build time): the only registry items that start enabled (applyMenuEnabled flips them later). */
   enabled: ReadonlySet<CommandId>;
   /** Registry item clicked (mouse or accelerator). */
   onCommand(id: CommandId): void;
@@ -18,6 +18,14 @@ const SEP: Item = { type: 'separator' };
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
 const TWINS: Readonly<Record<string, readonly string[]>> = { 'CmdOrCtrl+Plus': ['CmdOrCtrl+='] };
+const twinAccelerators = (c: CommandSpec): readonly string[] => (c.accelerator ? TWINS[c.accelerator] : undefined) ?? [];
+
+/** Menu item ids a command produces: its own id, then `${id}#n` for each hidden accelerator twin. Build and toggle share it. */
+export function menuItemIds(c: CommandSpec): string[] {
+  return [c.id, ...twinAccelerators(c).map((_, i) => `${c.id}#${i + 1}`)];
+}
+
+const isEnabled = (id: CommandId, enabled: ReadonlySet<CommandId>): boolean => enabled.has(id) || MAIN_OWNED_COMMANDS.has(id);
 
 /** Where a command lands on this platform: "app" items move to the end of 파일 off macOS. */
 function placement(c: CommandSpec, platform: NodeJS.Platform): { menu: MenuName; group: number; order: number } | null {
@@ -27,13 +35,13 @@ function placement(c: CommandSpec, platform: NodeJS.Platform): { menu: MenuName;
 }
 
 function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
-  const enabled = opts.enabled.has(c.id) || MAIN_OWNED_COMMANDS.has(c.id);
+  const enabled = isEnabled(c.id, opts.enabled);
   const click = () => opts.onCommand(c.id);
   const label = commandLabel(c, opts.platform);
-  const item: Item = { id: c.id, label, enabled, click };
+  const [id, ...twinIds] = menuItemIds(c);
+  const item: Item = { id, label, enabled, click };
   if (c.accelerator) item.accelerator = platformAccelerator(c.accelerator, opts.platform);
-  const twins = (c.accelerator ? TWINS[c.accelerator] : undefined) ?? [];
-  return [item, ...twins.map((acc, i): Item => ({ id: `${c.id}#${i + 1}`, label, enabled, visible: false, accelerator: platformAccelerator(acc, opts.platform), click }))];
+  return [item, ...twinAccelerators(c).map((acc, i): Item => ({ id: twinIds[i], label, enabled, visible: false, accelerator: platformAccelerator(acc, opts.platform), click }))];
 }
 
 /** Registry commands for one menu, grouped (separator between groups) and ordered. */
@@ -104,4 +112,25 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
   };
   const help: Item = { id: 'menu.help', label: '도움말', role: 'help', submenu: reg('help') };
   return [...(mac ? [appMenu] : []), file, edit, view, go, windowMenu, help].filter((m) => Array.isArray(m.submenu) && m.submenu.length > 0);
+}
+
+/** What applyMenuEnabled needs from Electron's Menu (a plain lookup in unit tests). */
+export interface MenuItemLookup {
+  getMenuItemById(id: string): { enabled?: boolean } | null;
+}
+
+/**
+ * Applies a reported context to an already-built menu by flipping `enabled` in place on every registry item and its
+ * hidden twins. No rebuild: an open dropdown stays open, no window gets setMenu again, and it stays cheap when reports
+ * come quickly. Commands without a menu-bar placement are not looked up; ids the menu lacks are skipped.
+ */
+export function applyMenuEnabled(menu: MenuItemLookup, enabled: ReadonlySet<CommandId>, commands: readonly CommandSpec[] = COMMANDS): void {
+  for (const c of commands) {
+    if (!c.menu) continue;
+    const on = isEnabled(c.id, enabled);
+    for (const id of menuItemIds(c)) {
+      const item = menu.getMenuItemById(id);
+      if (item) item.enabled = on;
+    }
+  }
 }

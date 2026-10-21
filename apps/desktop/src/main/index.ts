@@ -1,14 +1,16 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, Menu } from 'electron';
-import { COMMANDS, LearnError, availableMenuCommands, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode } from '@learn/domain';
+import {
+  COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
+} from '@learn/domain';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { buildAppMenu } from './menu/app-menu';
+import { applyMenuEnabled, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { applyTheme } from './theme';
@@ -42,8 +44,11 @@ function openMainWindow(): BrowserWindow {
     if (mainWindow !== win) return;
     mainWindow = null;
     // No renderer left to act on menu commands (macOS keeps the app running): back to the pre-report state.
-    uiContext = { view: 'library', blocked: true };
-    installAppMenu();
+    setUiContext(BEFORE_FIRST_REPORT);
+  });
+  // A crashed renderer runs nothing either; a reloaded one reports again.
+  win.webContents.on('render-process-gone', () => {
+    if (mainWindow === win) setUiContext(BEFORE_FIRST_REPORT);
   });
   return win;
 }
@@ -55,17 +60,30 @@ const activation = createActivateGate({
   windowCount: () => BrowserWindow.getAllWindows().length,
 });
 
-/** Last command context of the main window (ADR-0005 §2); blocked until the renderer's first report. */
-let uiContext: CommandContextState = { view: 'library', blocked: true };
+/** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
+const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({ view: 'library', blocked: true });
+/** Last command context of the main window (ADR-0005 §2). */
+let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
 /** E2E marker: bumped on every accepted context report (tests wait for the first one). */
 const menuState = globalThis as { __learnMenuStateVersion?: number };
+let appMenu: Menu | null = null;
 
+/**
+ * Builds and installs the application menu. Once at startup: labels and accelerators do not change at runtime
+ * (rebuild here only for a platform or label change), and context reports flip `enabled` in place (setUiContext).
+ */
 function installAppMenu(): void {
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate(
-      buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, enabled: new Set(availableMenuCommands(uiContext)), onCommand: dispatchMenuCommand }),
-    ),
+  appMenu = Menu.buildFromTemplate(
+    buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, enabled: new Set(availableMenuCommands(uiContext)), onCommand: dispatchMenuCommand }),
   );
+  Menu.setApplicationMenu(appMenu);
+}
+
+/** Records the main window's context and toggles the registry items in place (no rebuild, open menus stay open). */
+function setUiContext(next: CommandContextState): void {
+  if (sameCommandContext(uiContext, next)) return;
+  uiContext = next;
+  if (appMenu) applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
 }
 
 /** Menu clicks and accelerators always act on the main window (also when a settings or sheet window is focused). */
@@ -118,10 +136,10 @@ if (!app.requestSingleInstanceLock()) {
       prefs,
       uiContext: {
         report(sender, ctx) {
-          if (!mainWindow || sender !== mainWindow.webContents) return; // only the main window drives the menu
-          uiContext = ctx;
-          installAppMenu();
-          menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1;
+          // Only the main window drives the menu (settings and sheet windows report nothing that counts).
+          if (!mainWindow || mainWindow.isDestroyed() || sender.id !== mainWindow.webContents.id) return;
+          menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1; // received, even if unchanged
+          setUiContext(ctx);
         },
         current: () => uiContext,
       },

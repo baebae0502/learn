@@ -74,6 +74,12 @@ export interface CommandContextState {
   blocked: boolean;
 }
 
+/** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */
+export function sameCommandContext(a: CommandContextState, b: CommandContextState): boolean {
+  const ka = Object.keys(a) as Array<keyof CommandContextState>;
+  return ka.length === Object.keys(b).length && ka.every((k) => Object.hasOwn(b, k) && Object.is(a[k], b[k]));
+}
+
 /** A command target, as far as availability goes (fresh from disk in main's context menus). */
 export interface CommandTargetInfo {
   storageMode: StorageMode;

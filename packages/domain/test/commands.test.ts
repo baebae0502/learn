@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
-import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, inPalette, isCommandAvailable, type CommandContextState, type CommandTargetInfo } from '../src/commands';
+import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, inPalette, isCommandAvailable, sameCommandContext, type CommandContextState, type CommandTargetInfo } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
 import { TAG_COLORS } from '../src/tag-colors';
@@ -107,6 +107,13 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked']);
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
+  });
+  it('compares reported contexts field by field (main skips a report that changes nothing)', () => {
+    expect(sameCommandContext(LIB, { view: 'library', blocked: false })).toBe(true);
+    expect(sameCommandContext(LIB, VIEWER)).toBe(false);
+    expect(sameCommandContext(LIB, { ...LIB, blocked: true })).toBe(false);
+    // A field only one side has (a later task's field against an older report) is a difference.
+    expect(sameCommandContext(LIB, { ...LIB, textSize: 13 } as CommandContextState)).toBe(false);
   });
   it('names macOS apps only on macOS', () => {
     const c = { ...commandById('file.importManaged'), labelOff: '다른 이름' };

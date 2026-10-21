@@ -14,6 +14,8 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   showShortcuts: vi.fn(),
+  showInFolder: vi.fn(),
+  openExternally: vi.fn(),
   ...over,
 });
 
@@ -61,6 +63,23 @@ describe('renderer command registry', () => {
     expect(isCommandEnabled('item.relink', env({ targetsOf: () => [{ storageMode: 'managed', availability: 'available' }] }), { itemIds: [ID] })).toBe(false);
     expect(runCommand('item.open', e, { itemIds: [ID] })).toBe(true);
     expect(e.open).toHaveBeenCalledWith(ID);
+  });
+  it('Finder에서 보기 / 기본 앱으로 열기 run for one item whose file exists, in any view, never while blocked', () => {
+    const available = (): CommandTargetInfo[] => [{ storageMode: 'managed', availability: 'available' }];
+    for (const view of ['library', 'viewer'] as const) {
+      const e = env({ view, targetsOf: available });
+      expect(runCommand('item.showInFolder', e, { itemIds: [ID] })).toBe(true);
+      expect(runCommand('item.openExternally', e, { itemIds: [ID] })).toBe(true);
+      expect(e.showInFolder).toHaveBeenCalledWith(ID);
+      expect(e.openExternally).toHaveBeenCalledWith(ID);
+    }
+    const missing = env();
+    expect(runCommand('item.showInFolder', missing, { itemIds: [ID] })).toBe(false);
+    expect(runCommand('item.openExternally', missing, { itemIds: [ID] })).toBe(false);
+    const blocked = env({ blocked: true, targetsOf: available });
+    expect(runCommand('item.openExternally', blocked, { itemIds: [ID] })).toBe(false);
+    expect(blocked.openExternally).not.toHaveBeenCalled();
+    expect(missing.showInFolder).not.toHaveBeenCalled();
   });
   it('runs a context-menu pick (main already judged it) unless the window is blocked', () => {
     const e = env({ targetsOf: () => [] });

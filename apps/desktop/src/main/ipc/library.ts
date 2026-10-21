@@ -1,16 +1,16 @@
-import { BrowserWindow, dialog, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import {
-  Channels, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, LearnError, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
-import { relinkAsset } from '@learn/library';
+import { relinkAsset, resolveAssetPath } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
 import type { Handle, IpcDeps } from './register';
 
 const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: 'PDF·동영상', extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
-  { name: '모든 파일', extensions: ['*'] },
+  { name: '모든\u00a0파일', extensions: ['*'] },
 ];
 
 async function showOpen(event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
@@ -42,7 +42,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();
-    const [picked] = await showOpen(event, { title: '원본 파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
+    const [picked] = await showOpen(event, { title: '원본\u00a0파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
     await relinkAsset(ctx.repo, assetId, picked);
     const itemIds = ctx.repo.itemIdsForAsset(assetId);
@@ -78,4 +78,25 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.listTrash, emptyInput, () => deps.getContext().repo.listTrash());
 
   handle(Channels.library.duplicateGroups, emptyInput, () => deps.getContext().repo.duplicateGroups());
+
+  /** The file on disk for an item, re-checked first (a missing file is reported, never revealed). */
+  async function existingFile(itemId: string): Promise<string> {
+    const ctx = deps.getContext();
+    const item = await refreshItemAvailability(ctx, itemId);
+    if (item.availability === 'missing') throw new LearnError('NOT_FOUND', '원본\u00a0파일을 찾을 수 없습니다. 파일을 옮겼다면 다시 연결하세요.');
+    const asset = ctx.repo.getAsset(item.assetId);
+    if (!asset) throw new LearnError('NOT_FOUND', '자료를 찾을 수 없습니다.');
+    return resolveAssetPath(ctx.layout, asset);
+  }
+
+  // Finder에서 보기 / 기본 앱으로 열기 (design-spec 7.3, 10.7): the renderer has no shell; main resolves the path itself.
+  handle(Channels.library.showInFolder, itemIdInput, async ({ itemId }) => {
+    shell.showItemInFolder(await existingFile(itemId));
+  });
+
+  handle(Channels.library.openExternally, itemIdInput, async ({ itemId }) => {
+    // openPath resolves with the OS's error text (English, may name the path): logged by code only, never shown.
+    const failure = await shell.openPath(await existingFile(itemId));
+    if (failure) throw new LearnError('INTERNAL', '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.');
+  });
 }

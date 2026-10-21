@@ -117,6 +117,10 @@ export interface LearnApi {
     restore(input: ItemIdsInput): Promise<Result<number>>;
     listTrash(): Promise<Result<LibraryItem[]>>;
     duplicateGroups(): Promise<Result<DuplicateGroup[]>>;
+    /** Reveal the item's file in Finder / the file manager. */
+    showInFolder(input: ItemIdInput): Promise<Result<void>>;
+    /** Open the file with the system's default app. */
+    openExternally(input: ItemIdInput): Promise<Result<void>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;

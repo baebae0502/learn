@@ -13,6 +13,9 @@ export interface CommandEnv extends CommandContextState {
   toggleSidebar(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
+  /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
+  showInFolder(itemId: string): void;
+  openExternally(itemId: string): void;
 }
 
 export interface CommandTarget {
@@ -27,6 +30,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importLinked': (env) => env.importFiles('linked'),
   'nav.back': (env) => env.back(),
   'item.open': (env, [itemId]) => env.open(itemId!),
+  'item.showInFolder': (env, [itemId]) => env.showInFolder(itemId!),
+  'item.openExternally': (env, [itemId]) => env.openExternally(itemId!),
   'item.relink': (env, [itemId]) => env.relink(itemId!),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'app.shortcuts': (env) => env.showShortcuts(),

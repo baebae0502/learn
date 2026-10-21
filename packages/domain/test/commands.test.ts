@@ -78,7 +78,9 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
-    expect(COMMANDS.map((c) => c.id).sort()).toEqual(['app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.relink', 'nav.back', 'view.toggleSidebar']);
+    expect(COMMANDS.map((c) => c.id).sort()).toEqual([
+      'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back', 'view.toggleSidebar',
+    ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
     expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
@@ -108,6 +110,24 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'linked', availability: 'available' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'managed', availability: 'missing' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
+  });
+  it('Finder에서 보기 / 기본 앱으로 열기 need one item whose file exists', () => {
+    for (const id of ['item.showInFolder', 'item.openExternally'] as const) {
+      expect(isCommandAvailable(id, LIB, [managedOk])).toBe(true);
+      expect(isCommandAvailable(id, VIEWER, [{ storageMode: 'linked', availability: 'available' }])).toBe(true);
+      expect(isCommandAvailable(id, LIB, [linkedMissing])).toBe(false);
+      expect(isCommandAvailable(id, LIB, [managedOk, managedOk])).toBe(false);
+      expect(isCommandAvailable(id, LIB)).toBe(false);
+    }
+    expect(commandLabel(commandById('item.showInFolder'), 'darwin')).toBe('Finder에서 보기');
+    expect(commandLabel(commandById('item.showInFolder'), 'linux')).toBe('폴더에서 보기');
+    expect(commandById('item.showInFolder')).toMatchObject({ contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } });
+    // Not an item context-menu entry (design-spec 7.3 has none, C-1): only the unplayable-video notice's button.
+    expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', contexts: ['item'] });
+    expect(commandById('item.openExternally').contextMenu).toBeUndefined();
+    // No accelerator yet: ⇧⌘R needs the table selection (M4).
+    expect(commandById('item.showInFolder').accelerator).toBeUndefined();
+    expect(commandById('item.openExternally').accelerator).toBeUndefined();
   });
   it('lists the menu-bar commands of a view (never item commands)', () => {
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts']);

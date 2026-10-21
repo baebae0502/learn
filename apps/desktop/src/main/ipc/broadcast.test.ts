@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Availability, CommandContextState, LibraryItem, Result } from '@learn/domain';
+import { commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
 import { stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -8,11 +8,21 @@ const sent: Array<[string, unknown]> = [];
 const fakeWindow = { isDestroyed: () => false, webContents: { isDestroyed: () => false, send: (ch: string, p: unknown) => sent.push([ch, p]) } };
 const disk: { availability: Availability } = { availability: 'available' };
 const popup = vi.fn(async (_entries: unknown, _at: unknown): Promise<string | null> => null);
+/** shell.showItemInFolder / shell.openPath: what main asked the OS to show or open. */
+const shellCalls: Array<[string, string]> = [];
+const openPathResult = { value: '' };
 
 vi.mock('electron', () => ({
   ipcMain: { handle: (channel: string, fn: Listener) => handlers.set(channel, fn) },
   BrowserWindow: { getAllWindows: () => [fakeWindow], fromWebContents: () => fakeWindow },
   dialog: {},
+  shell: {
+    showItemInFolder: (p: string) => void shellCalls.push(['reveal', p]),
+    openPath: async (p: string) => {
+      shellCalls.push(['open', p]);
+      return openPathResult.value;
+    },
+  },
 }));
 // The disk check: report whatever `disk` says and store it, like the real refreshAvailability.
 vi.mock('@learn/library', () => ({
@@ -21,6 +31,7 @@ vi.mock('@learn/library', () => ({
     return disk.availability;
   }),
   relinkAsset: vi.fn(),
+  resolveAssetPath: vi.fn((_layout: unknown, asset: { id: string }) => `/library/assets/${asset.id}.pdf`),
 }));
 vi.mock('../menu/context-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/context-menu')>()),
@@ -83,6 +94,8 @@ beforeEach(() => {
   disk.availability = 'available';
   reported.ctx = { view: 'library', blocked: false };
   popup.mockClear();
+  shellCalls.length = 0;
+  openPathResult.value = '';
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -172,6 +185,8 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.relink', label: '다시 연결…', enabled: true },
       'separator',
       { id: 'item.open', label: '열기', enabled: true },
+      'separator',
+      { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: false },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
@@ -187,7 +202,42 @@ describe('item context menu re-checks the file first', () => {
 
   it('no broadcast when the disk agrees with the stored state; 다시 연결… is left out for an available file', async () => {
     await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
-    expect(popup.mock.calls[0]![0]).toEqual([{ id: 'item.open', label: '열기', enabled: true }]);
+    expect(popup.mock.calls[0]![0]).toEqual([
+      { id: 'item.open', label: '열기', enabled: true },
+      'separator',
+      { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: true },
+    ]);
     expect(sent).toEqual([]);
+  });
+});
+
+describe('Finder에서 보기 / 기본 앱으로 열기 re-check the file, then hand its path to the OS', () => {
+  it('library.showInFolder reveals the file on disk; library.openExternally opens it with the default app', async () => {
+    expect(await call('library:showInFolder', { itemId: ITEM })).toEqual({ ok: true, data: undefined });
+    expect(await call('library:openExternally', { itemId: ITEM })).toEqual({ ok: true, data: undefined });
+    expect(shellCalls).toEqual([
+      ['reveal', `/library/assets/${ASSET}.pdf`],
+      ['open', `/library/assets/${ASSET}.pdf`],
+    ]);
+  });
+
+  it('a file that went missing is NOT_FOUND (Korean cause + next step), announced, and never handed to the OS', async () => {
+    disk.availability = 'missing';
+    for (const channel of ['library:showInFolder', 'library:openExternally']) {
+      const r = await call(channel, { itemId: ITEM });
+      expect(r).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+      expect((r as { message: string }).message).toContain('다시 연결하세요');
+    }
+    expect(shellCalls).toEqual([]);
+    expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
+  });
+
+  it('an unknown item is NOT_FOUND; no app for the type is INTERNAL with a Korean next step', async () => {
+    expect(await call('library:showInFolder', { itemId: OTHER })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    openPathResult.value = 'No application knows how to open this file';
+    const r = await call('library:openExternally', { itemId: ITEM });
+    expect(r).toMatchObject({ ok: false, code: 'INTERNAL' });
+    expect((r as { message: string }).message).toBe('기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.');
+    expect((r as { message: string }).message).not.toContain('No application'); // the OS text never reaches the user
   });
 });

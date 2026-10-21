@@ -6,7 +6,16 @@ import type { Availability, StorageMode } from './library';
  * shortcut sheet all render from it, and one predicate (isCommandAvailable) decides what can run.
  * No zod: the sandboxed preload imports this file (type imports only).
  */
-export type CommandId = 'file.importManaged' | 'file.importLinked' | 'nav.back' | 'item.open' | 'item.relink' | 'view.toggleSidebar' | 'app.shortcuts';
+export type CommandId =
+  | 'file.importManaged'
+  | 'file.importLinked'
+  | 'nav.back'
+  | 'item.open'
+  | 'item.showInFolder'
+  | 'item.openExternally'
+  | 'item.relink'
+  | 'view.toggleSidebar'
+  | 'app.shortcuts';
 /** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
@@ -53,6 +62,10 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   { id: 'item.relink', label: '다시 연결…', contexts: ['item'], contextMenu: { kinds: ['item'], group: 0, order: 1, onlyWhenAvailable: true } },
   { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
+  { id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } },
+  // Not in the item context menu: design-spec 7.3 lists no such item ("여기 없는 메뉴는 그리지 않는다", C-1).
+  // It is the second button of the unplayable-video notice (10.7).
+  { id: 'item.openExternally', label: '기본 앱으로 열기', contexts: ['item'] },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/숨기기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     keywords: ['사이드바', '패널', '숨기기', '보기', 'sidebar'],
@@ -98,6 +111,8 @@ type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) =>
 const RULES: Partial<Record<CommandId, Rule>> = {
   'item.open': (_ctx, t) => t.length === 1,
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
+  'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
+  'item.openExternally': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
 };
 
 /** The single availability predicate: main (menu bar, context menus) and the renderer (palette, toolbar, keymap). */

@@ -187,7 +187,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
-    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기']);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']);
   } finally {
     await app.close();
   }

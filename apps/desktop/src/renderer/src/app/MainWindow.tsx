@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AppInfo, StorageMode } from '@learn/domain';
+import type { AppInfo, LibraryItem, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
@@ -27,8 +27,11 @@ function ReaderTitle({ itemId }: { itemId: string }) {
   return <Toolbar title={item.data?.title ?? ''} />;
 }
 
-/** A failed relink or context-menu call: the message comes from main and is already Korean (cause + next step). */
+/** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
+
+/** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file first; a failure is a toast. */
+const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
 
 export function MainWindow(_props: { info: AppInfo }) {
   useLibrarySync();
@@ -106,13 +109,16 @@ export function MainWindow(_props: { info: AppInfo }) {
     view: view.kind === 'reader' ? 'viewer' : 'library',
     // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag.
     blocked: importing || sheetOpen,
-    targetsOf: (ids) => ids.flatMap((id) => list.find((i) => i.id === id) ?? []),
+    // The freshest fact first: library.get (the reader's item) re-checked the file; the list may be one change behind.
+    targetsOf: (ids) => ids.flatMap((id) => queryClient.getQueryData<LibraryItem>(keys.item(id)) ?? list.find((i) => i.id === id) ?? []),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
     open: (itemId) => setView({ kind: 'reader', itemId }),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     showShortcuts: () => void showShortcuts(),
+    showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
+    openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
   };
   useMenuCommands(env);
   useReportContext(env);

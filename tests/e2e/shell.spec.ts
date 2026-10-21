@@ -357,7 +357,7 @@ test('full screen drops the traffic-light inset (data-fullscreen)', async ({}, t
 // R-4: checked on Linux before the one macOS run — an opaque ancestor would hide the vibrancy and Step 9-2 would
 // wrongly turn it off. Linux has no vibrancy, so the main page is reloaded with the macOS flag.
 test('vibrancy page (data-vibrancy=1): the sidebar and every ancestor are clear; the content column stays opaque', async ({}, testInfo) => {
-  const { app, page } = await launch(...dirs(testInfo));
+  const { app, page } = await launch(...dirs(testInfo), { colorScheme: 'dark' });
   try {
     const url = new URL(page.url());
     url.searchParams.set('vibrancy', '1');
@@ -372,6 +372,15 @@ test('vibrancy page (data-vibrancy=1): the sidebar and every ancestor are clear;
     });
     expect(seen.opaque).toEqual([]);
     expect(seen.content).not.toBe('rgba(0, 0, 0, 0)');
+    // Sidebar text over the material uses its own tokens (dark: tertiary lifted to 70 %, a selected count in primary).
+    const sidebarText = await page.evaluate(() => ({
+      label: getComputedStyle(document.querySelector('.sidebar .section-label')!).color,
+      countSelected: getComputedStyle(document.querySelector('.sidebar')!).getPropertyValue('--sidebar-count-selected').trim(),
+      rootTertiary: getComputedStyle(document.documentElement).getPropertyValue('--text-tertiary').trim(),
+    }));
+    expect(sidebarText.label).toBe('oklch(0.7 0.008 250)');
+    expect(sidebarText.countSelected).not.toBe('');
+    expect(sidebarText.rootTertiary).toContain('oklch(58% 0.008 250)'); // the opaque fallback outside the sidebar is unchanged
   } finally {
     await app.close();
   }

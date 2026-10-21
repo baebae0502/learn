@@ -120,6 +120,24 @@ export const colorsContrastMore = {
 } as const satisfies Partial<Record<ColorToken, ThemePair>>;
 
 /**
+ * Sidebar text over the macOS vibrancy material (`:root[data-vibrancy='1'] .sidebar`; the opaque fallback keeps the
+ * base tokens). The material is the system's: the macos-15 runner measured #f6f6f6 in light and #383838 in dark (run
+ * 39618864364). In dark that is far lighter than the opaque `--bg-sidebar`, so the dark tertiary text is lifted and a
+ * selected row's count uses primary text. tokens.test.ts checks every sidebar text role on worst-case materials
+ * (dark #404040, light #f6f6f6). `sidebarCountSelected` exists only here (the opaque sidebar uses --text-secondary).
+ */
+export const colorsVibrancySidebar = {
+  textTertiary: { light: colors.textTertiary.light, dark: 'oklch(70% 0.008 250)' },
+  sidebarCountSelected: { light: colors.textSecondary.light, dark: colors.textPrimary.dark },
+} as const satisfies Record<string, ThemePair>;
+
+/** The same under `prefers-contrast: more` (the sidebar's own values would otherwise shadow the stronger ones). */
+export const colorsVibrancySidebarContrastMore = {
+  textTertiary: colorsContrastMore.textTertiary,
+  sidebarCountSelected: { light: colorsContrastMore.textSecondary.light, dark: colors.textPrimary.dark },
+} as const satisfies Record<keyof typeof colorsVibrancySidebar, ThemePair>;
+
+/**
  * Annotation and tag colours (positions 1–8, keys 1–8). Same values in both themes;
  * on dark pages highlights are drawn with lower opacity instead of different hues.
  */

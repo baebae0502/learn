@@ -87,6 +87,15 @@ export function renderCss() {
     assertInGamut(`contrastMore.${key}.dark`, p.dark);
     return `      --${kebab(key)}: ${pair(p)};`;
   });
+  /** Sidebar-scoped colour declarations over the macOS vibrancy material (`indent` spaces deep). */
+  const vibrancyDecls = (map, label, indent) =>
+    Object.entries(map).map(([key, p]) => {
+      assertInGamut(`${label}.${key}.light`, p.light);
+      assertInGamut(`${label}.${key}.dark`, p.dark);
+      return `${' '.repeat(indent)}--${kebab(key)}: ${pair(p)};`;
+    });
+  const vibrancy = vibrancyDecls(tokens.colorsVibrancySidebar, 'vibrancySidebar', 4);
+  const vibrancyMore = vibrancyDecls(tokens.colorsVibrancySidebarContrastMore, 'vibrancySidebarContrastMore', 6);
   const densities = Object.entries(tokens.density)
     .filter(([k]) => k !== tokens.defaultDensity)
     .map(([k]) => `  :root[data-density='${k}'] {\n    --row-height: var(--row-height-${k});\n  }`);
@@ -104,9 +113,17 @@ export function renderCss() {
     ...densities,
     "  :root[data-font='pretendard'] {\n    --font-ui: var(--font-pretendard);\n  }",
     '',
+    '  /* Sidebar text over the macOS vibrancy material (tokens.ts colorsVibrancySidebar). */',
+    "  :root[data-vibrancy='1'] .sidebar {",
+    ...vibrancy,
+    '  }',
+    '',
     '  @media (prefers-contrast: more) {',
     '    :root {',
     ...contrastMore,
+    '    }',
+    "    :root[data-vibrancy='1'] .sidebar {",
+    ...vibrancyMore,
     '    }',
     '  }',
     '',

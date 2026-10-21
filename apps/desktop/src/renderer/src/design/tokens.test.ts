@@ -5,6 +5,8 @@ import { composite, contrast, parseColor, type Rgba } from './color';
 import {
   colors,
   colorsContrastMore,
+  colorsVibrancySidebar,
+  colorsVibrancySidebarContrastMore,
   density,
   layout,
   space,
@@ -127,6 +129,45 @@ describe('colour tokens', () => {
     expect(L('bgContent')).toBeLessThan(L('bgSidebar'));
     expect(L('bgSidebar')).toBeLessThan(L('bgWindow'));
     expect(L('bgWindow')).toBeLessThan(L('bgRaised'));
+  });
+});
+
+describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () => {
+  /**
+   * The material is the system's. Measured on the macos-15 runner (run 39618864364): light #f6f6f6, dark #383838.
+   * Dark is tested at #404040, a margin above the measurement (a mid-tone wallpaper lightens it on real hardware).
+   */
+  const MATERIAL: Record<Theme, string> = { light: '#f6f6f6', dark: '#404040' };
+  type SidebarToken = ColorToken | keyof typeof colorsVibrancySidebar;
+
+  for (const theme of THEMES) {
+    for (const [mode, base, sidebar] of [
+      ['default', {}, colorsVibrancySidebar],
+      ['prefers-contrast: more', colorsContrastMore, colorsVibrancySidebarContrastMore],
+    ] as const) {
+      it(`${theme} (${mode}): labels 4.5:1, section labels and counts 3:1, a selected row's count 4.5:1, icons and focus 3:1`, () => {
+        const pick = (k: SidebarToken): Rgba =>
+          parseColor(((sidebar as Partial<Record<SidebarToken, ThemePair>>)[k] ?? (base as Partial<Record<SidebarToken, ThemePair>>)[k] ?? colors[k as ColorToken])[theme]);
+        const material = parseColor(MATERIAL[theme]);
+        const hover = composite(pick('fillHover'), material);
+        const selected = composite(pick('fillSelected'), material);
+        for (const [bg, name] of [[material, 'material'], [hover, 'hovered row'], [selected, 'selected row']] as const) {
+          expectContrast(`textPrimary/${name}`, pick('textPrimary'), bg, 4.5); // row labels
+          expectContrast(`accentText icon/${name}`, pick('accentText'), bg, 3); // row icons
+        }
+        for (const [bg, name] of [[material, 'material'], [hover, 'hovered row']] as const) {
+          expectContrast(`textTertiary/${name}`, pick('textTertiary'), bg, 3); // section labels, counts
+        }
+        expectContrast('sidebarCountSelected/selected row', pick('sidebarCountSelected'), selected, 4.5);
+        expectContrast('focus/material', pick('focus'), material, 3);
+      });
+    }
+  }
+
+  it('the base tokens alone would fail on the dark material (why the sidebar has its own)', () => {
+    const material = parseColor(MATERIAL.dark);
+    expect(contrast(parseColor(colors.textTertiary.dark), material)).toBeLessThan(3);
+    expect(contrast(parseColor(colors.textSecondary.dark), composite(parseColor(colors.fillSelected.dark), material))).toBeLessThan(4.5);
   });
 });
 

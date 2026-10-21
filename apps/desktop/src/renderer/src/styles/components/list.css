@@ -47,8 +47,9 @@
   .nav-row:is([data-current], [data-selected], [data-force~='selected']) {
     background: var(--fill-selected);
   }
+  /* Over the macOS vibrancy material the sidebar defines --sidebar-count-selected (tokens.ts colorsVibrancySidebar). */
   .nav-row:is([data-current], [data-selected], [data-force~='selected']) .count {
-    color: var(--text-secondary);
+    color: var(--sidebar-count-selected, var(--text-secondary));
   }
   .nav-list:focus-within .nav-row:is([data-current], [data-selected]),
   .nav-row[data-force~='focused'] {
@@ -67,7 +68,7 @@
     color: var(--accent-text);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .count {
-    color: var(--text-secondary);
+    color: var(--sidebar-count-selected, var(--text-secondary));
   }
   /* Keyboard cursor: inset 2 px ring; white 75 % on an accent-filled row. */
   .nav-row:is([data-focus-visible], [data-force~='cursor']) {

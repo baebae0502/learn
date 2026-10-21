@@ -206,6 +206,8 @@
   :root[data-vibrancy='1'] .sidebar {
     --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(70% 0.008 250));
     --sidebar-count-selected: light-dark(oklch(46% 0.01 250), oklch(94% 0.004 250));
+    --field-placeholder: light-dark(oklch(60% 0.008 250), oklch(76% 0.008 250));
+    --kbd-text: light-dark(oklch(46% 0.01 250), oklch(94% 0.004 250));
   }
 
   @media (prefers-contrast: more) {
@@ -220,6 +222,8 @@
     :root[data-vibrancy='1'] .sidebar {
       --text-tertiary: light-dark(oklch(46% 0.01 250), oklch(74% 0.008 250));
       --sidebar-count-selected: light-dark(oklch(36% 0.01 250), oklch(94% 0.004 250));
+      --field-placeholder: light-dark(oklch(46% 0.01 250), oklch(87% 0.006 250));
+      --kbd-text: light-dark(oklch(36% 0.01 250), oklch(94% 0.004 250));
     }
   }
 

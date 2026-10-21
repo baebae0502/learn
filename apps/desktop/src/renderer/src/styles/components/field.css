@@ -13,9 +13,10 @@
     font: var(--type-body);
     min-width: 0;
   }
+  /* Over the macOS vibrancy material the sidebar defines --field-placeholder (tokens.ts colorsVibrancySidebar). */
   .field .icon,
   .field .placeholder {
-    color: var(--text-tertiary);
+    color: var(--field-placeholder, var(--text-tertiary));
   }
   .field:is([data-focus-visible], [data-focus-within], [data-force~='focus']),
   .field:has(> .field-input:focus) {
@@ -41,7 +42,7 @@
     appearance: none;
   }
   .field .field-input::placeholder {
-    color: var(--text-tertiary);
+    color: var(--field-placeholder, var(--text-tertiary));
     opacity: 1;
   }
   .field .field-input::-webkit-search-cancel-button,

@@ -197,6 +197,20 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
         expectContrast('sidebarCountSelected/selected row', pick('sidebarCountSelected'), selected, 4.5);
         expectContrast('focus/material', pick('focus'), material, 3);
       });
+      // The ⌘K launcher: a field (--bg-field, --border) with a keycap (--bg-control) on the material. Roles (8.3, 6):
+      // the placeholder and the magnifier are tertiary text and an icon (3:1); the keycap label is a shortcut, which
+      // menus and tooltips show in the tertiary role (3:1). Idle, hovered and pressed; the field ring is the focus test above.
+      for (const hex of MATERIALS[theme]) it(`${theme} on ${hex} (${mode}): the ⌘K launcher's placeholder, glyph and keycap 3:1`, () => {
+        const pick = (k: SidebarToken): Rgba =>
+          parseColor(((sidebar as Partial<Record<SidebarToken, ThemePair>>)[k] ?? (base as Partial<Record<SidebarToken, ThemePair>>)[k] ?? colors[k as ColorToken])[theme]);
+        const material = parseColor(hex);
+        const field = composite(pick('bgField'), material);
+        for (const [state, under] of [['idle', field], ['hovered', composite(pick('fillHover'), field)], ['pressed', composite(pick('fillPressed'), field)]] as const) {
+          expectContrast(`fieldPlaceholder/${state} field`, pick('fieldPlaceholder'), under, 3);
+          expectContrast(`kbdText/keycap on the ${state} field`, pick('kbdText'), composite(pick('bgControl'), under), 3);
+        }
+        if (mode === 'prefers-contrast: more') expectContrast('border/material', composite(pick('border'), material), material, 3);
+      });
     }
   }
 
@@ -204,6 +218,10 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
     const material = parseColor(MATERIALS.dark[0]!);
     expect(contrast(parseColor(colors.textTertiary.dark), material)).toBeLessThan(3);
     expect(contrast(parseColor(colors.textSecondary.dark), composite(parseColor(colors.fillSelected.dark), material))).toBeLessThan(4.5);
+    // The launcher: the sidebar's own tertiary on the hovered field, and the keycap's secondary label on it.
+    const hovered = composite(parseColor(colors.fillHover.dark), composite(parseColor(colors.bgField.dark), material));
+    expect(contrast(parseColor(colorsVibrancySidebar.textTertiary.dark), hovered)).toBeLessThan(3);
+    expect(contrast(parseColor(colors.textSecondary.dark), composite(parseColor(colors.bgControl.dark), hovered))).toBeLessThan(3);
   });
 });
 

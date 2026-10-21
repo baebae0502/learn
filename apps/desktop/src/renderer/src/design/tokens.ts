@@ -147,16 +147,26 @@ export const colorsContrastMore = {
  * 39618864364). In dark that is far lighter than the opaque `--bg-sidebar`, so the dark tertiary text is lifted and a
  * selected row's count uses primary text. tokens.test.ts checks every sidebar text role on worst-case materials
  * (dark #404040, light #f6f6f6). `sidebarCountSelected` exists only here (the opaque sidebar uses --text-secondary).
+ *
+ * The ⌘K launcher is a field on that material (Task 9): its translucent dark fill lightens the material further, and
+ * its keycap's fill more again. So in dark a field's placeholder and glyph (`fieldPlaceholder`, the tertiary role:
+ * 3:1 on the field, hovered and pressed) are lifted past the sidebar's tertiary, and a keycap's label (`kbdText`, a
+ * shortcut: 3:1 like the menus' and tooltips' tertiary shortcuts) is primary, as the shortcut sheet's keycaps are. Both
+ * exist only here: components/field.css and kbd.css fall back to --text-tertiary and --text-secondary elsewhere.
  */
 export const colorsVibrancySidebar = {
   textTertiary: { light: colors.textTertiary.light, dark: 'oklch(70% 0.008 250)' },
   sidebarCountSelected: { light: colors.textSecondary.light, dark: colors.textPrimary.dark },
+  fieldPlaceholder: { light: colors.textTertiary.light, dark: 'oklch(76% 0.008 250)' },
+  kbdText: { light: colors.textSecondary.light, dark: colors.textPrimary.dark },
 } as const satisfies Record<string, ThemePair>;
 
 /** The same under `prefers-contrast: more` (the sidebar's own values would otherwise shadow the stronger ones). */
 export const colorsVibrancySidebarContrastMore = {
   textTertiary: colorsContrastMore.textTertiary,
   sidebarCountSelected: { light: colorsContrastMore.textSecondary.light, dark: colors.textPrimary.dark },
+  fieldPlaceholder: { light: colorsContrastMore.textTertiary.light, dark: colorsContrastMore.textSecondary.dark },
+  kbdText: { light: colorsContrastMore.textSecondary.light, dark: colors.textPrimary.dark },
 } as const satisfies Record<keyof typeof colorsVibrancySidebar, ThemePair>;
 
 /**

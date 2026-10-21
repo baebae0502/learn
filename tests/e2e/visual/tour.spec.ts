@@ -121,7 +121,9 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await setTheme(s.page, theme);
       await openItem(s.page, 'sample');
       await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-      await shoot(s.page, `reader-pdf-${theme}`);
+      // The page's own text: the sample's non-embedded standard font is drawn with the system's fallback font, which
+      // differs between Debian and Ubuntu (CI). The page box, its shadow, the stage and both toolbars stay compared.
+      await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.getByTestId('pdf-canvas')] });
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'sample-mpeg4part2');
       await expect(s.page.getByTestId('video-error')).toBeVisible();

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, Menu } from 'electron';
 import { COMMANDS, LearnError, toLearnError, type AppInfo, type CommandId, type ErrorCode } from '@learn/domain';
+import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
@@ -42,6 +43,13 @@ function openMainWindow(): BrowserWindow {
   });
   return win;
 }
+
+const activation = createActivateGate({
+  openWindow: () => {
+    mainWindow = openMainWindow();
+  },
+  windowCount: () => BrowserWindow.getAllWindows().length,
+});
 
 /** Menu command → the focused window (accelerators and clicks), else the main window. */
 function dispatchMenuCommand(commandId: CommandId): void {
@@ -93,12 +101,12 @@ if (!app.requestSingleInstanceLock()) {
     };
     registerAllIpc(createHandle(devOrigin), deps);
 
+    activation.markReady();
     mainWindow = openMainWindow();
   });
 
-  app.on('activate', () => {
-    if (app.isReady() && BrowserWindow.getAllWindows().length === 0) mainWindow = openMainWindow();
-  });
+  // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
+  app.on('activate', () => activation.onActivate());
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

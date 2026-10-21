@@ -1,7 +1,7 @@
 // ⌘K command palette and launcher (design-spec 10.5, 6, 2.3; ADR-0005 §5).
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
@@ -200,30 +200,10 @@ test('a file drag with the palette open closes it, as a menu command would, and 
   const { app, page } = await launch(...dirs(testInfo));
   const palette = page.getByTestId('palette');
   const overlay = page.getByTestId('drop-overlay');
-  /**
-   * A drag event at the middle of the window, on whatever element is there (the palette's scrim, then the overlay),
-   * carrying text or the real file from a file input (with a location on disk, as from Finder).
-   */
-  const fire = (type: 'dragenter' | 'dragover' | 'dragleave' | 'drop', carry: 'text' | 'file') =>
-    page.evaluate(
-      ([type, carry]) => {
-        const dt = new DataTransfer();
-        if (carry === 'text') dt.setData('text/plain', '세포 신호 전달');
-        else dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
-        const target = document.elementFromPoint(innerWidth / 2, innerHeight / 2) ?? document.body;
-        target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
-      },
-      [type, carry] as const,
-    );
+  /** A drag event at the middle of the window, on whatever element is there (the palette's scrim, then the overlay). */
+  const fire = (type: 'dragenter' | 'dragover' | 'dragleave' | 'drop', carry: 'text' | 'source') => drag(page, type, carry, { at: 'centre' });
   try {
-    await page.evaluate(() => {
-      const picker = document.createElement('input');
-      picker.type = 'file';
-      picker.id = 'drop-source';
-      picker.hidden = true;
-      document.body.append(picker);
-    });
-    await page.locator('#drop-source').setInputFiles(PDF);
+    await dropSource(page, [PDF]);
     await runMenuCommand(app, 'app.palette');
     await expect(palette).toBeVisible();
     // Text dragged in from another app is no drop for the library: the palette stays.
@@ -233,21 +213,21 @@ test('a file drag with the palette open closes it, as a menu command would, and 
     await expect(palette).toBeVisible();
     await expect(overlay).toHaveCount(0);
     // Files are a new intent: the palette closes first, then the overlay comes up.
-    await fire('dragenter', 'file');
+    await fire('dragenter', 'source');
     await expect(palette).toBeHidden();
     await expect(overlay).toHaveAttribute('data-mode', 'copy');
     await expect(page.getByTestId('drop-summary')).toHaveText('파일 1개(PDF 1)');
     // The scrim that took the first dragenter has left the document (its dragleave never reaches the window): the drag
     // goes on over the overlay, which stays up, and leaving the window from there takes the overlay down.
-    await fire('dragenter', 'file');
-    await fire('dragover', 'file');
+    await fire('dragenter', 'source');
+    await fire('dragover', 'source');
     await twoFrames(page);
     await expect(overlay).toBeVisible();
-    await fire('dragleave', 'file');
+    await fire('dragleave', 'source');
     await expect(overlay).toHaveCount(0);
-    await fire('dragenter', 'file');
+    await fire('dragenter', 'source');
     await expect(overlay).toBeVisible();
-    await fire('drop', 'file');
+    await fire('drop', 'source');
     await expect(overlay).toHaveCount(0);
     await expect(page.getByTestId('import-done')).toHaveText(/자료 1개를 가져왔습니다/);
     await expect(page.getByTestId('item-row')).toHaveCount(1);

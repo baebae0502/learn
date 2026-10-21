@@ -172,6 +172,65 @@ export async function closeSheet(sheet: Page, key: 'Escape' | 'Enter'): Promise<
   await closed;
 }
 
+/** Real files in a hidden `#drop-source` file input: their File objects have a location on disk, as Finder's do. */
+export async function dropSource(page: Page, paths: string[]): Promise<void> {
+  await page.evaluate(() => {
+    document.getElementById('drop-source')?.remove();
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.multiple = true;
+    picker.id = 'drop-source';
+    picker.hidden = true;
+    document.body.append(picker);
+  });
+  await page.locator('#drop-source').setInputFiles(paths);
+}
+
+export type DragType = 'dragenter' | 'dragover' | 'dragleave' | 'drop';
+/**
+ * What a synthetic drag carries: files by [name, MIME type] (no location on disk, like an in-memory file), the real
+ * files of `#drop-source` (dropSource), or text from another app.
+ */
+export type DragCarry = ReadonlyArray<readonly [string, string]> | 'source' | 'text';
+
+/**
+ * One event of a synthetic drag from another app, on <body> or on the element at the middle of the window. As the OS
+ * does, a drag that is over the window repeats dragover (every 100 ms, the last ⌥ state) until it leaves or drops, so
+ * the overlay's idle timeout does not end a drag the test still holds; `repeat: false` sends this one event only.
+ *
+ * Returns the dropEffect the page left on the event: on a dragover "none" where the window takes no drop, else "copy"
+ * or "link". A constructed DataTransfer ignores dropEffect writes (it is not in drag-and-drop mode; Chromium keeps
+ * "none"), so each event carries a stand-in for the browser's own: the real items, files and types, and a writable
+ * dropEffect that starts as "copy" on a dragover (the browser's start for a copy-or-link drag from Finder).
+ */
+export function drag(page: Page, type: DragType, carry: DragCarry, opts: { altKey?: boolean; at?: 'centre'; repeat?: boolean } = {}): Promise<string> {
+  return page.evaluate(
+    ({ type, carry, altKey, centre, repeat }) => {
+      const transfer = () => {
+        const dt = new DataTransfer();
+        if (carry === 'text') dt.setData('text/plain', '세포 신호 전달');
+        else if (carry === 'source') for (const f of Array.from((document.getElementById('drop-source') as HTMLInputElement).files!)) dt.items.add(f);
+        else for (const [name, mime] of carry) dt.items.add(new File(['x'], name, { type: mime }));
+        return dt;
+      };
+      const fire = (target: EventTarget, kind: string, dt: DataTransfer) => {
+        const event = new DragEvent(kind, { dataTransfer: dt, altKey, bubbles: true, cancelable: true });
+        const shim = { types: dt.types, items: dt.items, files: dt.files, effectAllowed: 'copyLink', dropEffect: kind === 'dragover' ? 'copy' : 'none' };
+        Object.defineProperty(event, 'dataTransfer', { value: shim });
+        target.dispatchEvent(event);
+        return shim.dropEffect;
+      };
+      const g = window as unknown as { __learnDragRepeat?: ReturnType<typeof setInterval> };
+      clearInterval(g.__learnDragRepeat);
+      delete g.__learnDragRepeat;
+      const effect = fire((centre ? document.elementFromPoint(innerWidth / 2, innerHeight / 2) : null) ?? document.body, type, transfer());
+      if (repeat && (type === 'dragenter' || type === 'dragover')) g.__learnDragRepeat = setInterval(() => fire(document.body, 'dragover', transfer()), 100);
+      return effect;
+    },
+    { type, carry, altKey: opts.altKey ?? false, centre: opts.at === 'centre', repeat: opts.repeat ?? true },
+  );
+}
+
 export async function openItem(page: Page, title: string): Promise<void> {
   await page.locator(`[data-testid="open-item"][data-title="${title}"]`).click();
 }

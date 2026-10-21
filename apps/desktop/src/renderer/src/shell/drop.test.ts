@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { dropSummaryText, summarizeDrop, windowDropTarget, type DropState, type FileDrag } from './drop';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DROP_IDLE_MS, dropSummaryText, guardDocumentDrops, summarizeDrop, windowDropTarget, type DropState, type FileDrag } from './drop';
 
 const f = (type: string) => ({ kind: 'file', type });
 
@@ -26,11 +26,11 @@ function drag(opts: { target?: EventTarget; altKey?: boolean; types?: string[]; 
 }
 const PATHS: Record<string, string> = { 'a.pdf': '/Users/me/a.pdf', 'b.mp4': '/Users/me/b.mp4', 'synthetic.pdf': '' };
 
-function setup() {
+function setup(idleMs?: number) {
   const shown: Array<DropState | null> = [];
   const entered = vi.fn();
   const onDrop = vi.fn();
-  const target = windowDropTarget({ show: (s) => shown.push(s), entered, drop: onDrop, pathForFile: (x) => PATHS[x.name] ?? '' });
+  const target = windowDropTarget({ show: (s) => shown.push(s), entered, drop: onDrop, pathForFile: (x) => PATHS[x.name] ?? '', idleMs });
   const last = () => shown.at(-1) ?? null;
   return { target, shown, last, entered, onDrop };
 }
@@ -143,5 +143,80 @@ describe('window drop target (design-spec 7.2: copy, ⌥ = link)', () => {
     target.enter(drag({ target: el() }));
     target.leave(drag({ target: content })); // an element from before the reset
     expect(last()).not.toBeNull();
+  });
+});
+
+describe('safety net: the opaque overlay never outlives the drag (review minor 1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('goes when no dragover has come for a second; every dragover re-arms the timer', () => {
+    expect(DROP_IDLE_MS).toBe(1000);
+    const { target, last } = setup();
+    target.enter(drag({ target: el() }));
+    vi.advanceTimersByTime(900);
+    target.over(drag());
+    vi.advanceTimersByTime(900);
+    expect(last()).not.toBeNull();
+    // A drag cancelled outside the window whose dragleave never came: the dragovers stop.
+    vi.advanceTimersByTime(100);
+    expect(last()).toBeNull();
+    // The drag was still there after all: the next dragover brings the overlay back at once, and a drop still imports.
+    target.over(drag({ target: el(), altKey: true }));
+    expect(last()?.link).toBe(true);
+  });
+
+  it('a short injected timeout; a timer left from a drag that ended does nothing', () => {
+    const { target, shown, onDrop } = setup(50);
+    target.enter(drag({ target: el() }));
+    vi.advanceTimersByTime(49);
+    expect(shown.at(-1)).not.toBeNull();
+    vi.advanceTimersByTime(1);
+    expect(shown.at(-1)).toBeNull();
+    // Ended by a drop, by the last dragleave or by reset: the overlay went then, and nothing fires later.
+    const content = el();
+    target.enter(drag({ target: content }));
+    target.drop(drag());
+    target.enter(drag({ target: content }));
+    target.leave(drag({ target: content }));
+    target.enter(drag({ target: content }));
+    target.reset();
+    const count = shown.length;
+    vi.advanceTimersByTime(1000);
+    expect(shown).toHaveLength(count);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the document refuses drops nothing takes (review minor 2)', () => {
+  /** The listeners guardDocumentDrops adds, by event type. */
+  function guarded() {
+    const listeners = new Map<string, (e: Event) => void>();
+    guardDocumentDrops({ addEventListener: (type: string, fn: (e: Event) => void) => listeners.set(type, fn) } as unknown as Document);
+    return (type: 'dragover' | 'drop', init: { defaultPrevented?: boolean; dropEffect?: string } = {}) => {
+      const dataTransfer = { dropEffect: init.dropEffect ?? 'copy' };
+      const e = { defaultPrevented: init.defaultPrevented ?? false, dataTransfer, preventDefault: vi.fn() };
+      listeners.get(type)!(e as unknown as Event);
+      return e;
+    };
+  }
+
+  it('a dragover no drop target took shows "none" (the no-drop cursor on macOS), and nothing navigates the window', () => {
+    const fire = guarded();
+    const over = fire('dragover');
+    expect(over.preventDefault).toHaveBeenCalled();
+    expect(over.dataTransfer.dropEffect).toBe('none');
+    const drop = fire('drop');
+    expect(drop.preventDefault).toHaveBeenCalled();
+  });
+
+  it('a drop target inside the page that accepted the dragover keeps its own effect', () => {
+    const fire = guarded();
+    const taken = fire('dragover', { defaultPrevented: true, dropEffect: 'move' });
+    expect(taken.dataTransfer.dropEffect).toBe('move');
   });
 });

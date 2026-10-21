@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
 import { THEMES, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -162,15 +162,8 @@ test('drop overlay: copy and ⌥ link, and in a window that is neither key nor m
     ['b.pdf', 'application/pdf'],
     ['c.mp4', 'video/mp4'],
   ];
-  const fire = (type: 'dragenter' | 'dragover' | 'dragleave', altKey: boolean) =>
-    s.page.evaluate(
-      ({ type, files, altKey }) => {
-        const dt = new DataTransfer();
-        for (const [n, m] of files) dt.items.add(new File(['x'], n, { type: m }));
-        document.body.dispatchEvent(new DragEvent(type, { dataTransfer: dt, altKey, bubbles: true, cancelable: true }));
-      },
-      { type, files, altKey },
-    );
+  // As the OS does, the held drag repeats dragover (helpers drag), so the overlay's idle timeout never ends it mid-shot.
+  const fire = (type: 'dragenter' | 'dragover' | 'dragleave', altKey: boolean) => drag(s.page, type, files, { altKey });
   const overlay = s.page.getByTestId('drop-overlay');
   try {
     for (const theme of THEMES) {

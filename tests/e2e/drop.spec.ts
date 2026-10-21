@@ -2,43 +2,27 @@
 // A real Finder drag (⌥ while dragging, the cursor badge) is a manual check on real hardware; these are synthetic drags.
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, expectWindow, importPaths, launch, mainWindow, openItem, runMenuCommand } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectWindow, importPaths, launch, mainWindow, openItem, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
 
-type Drag = 'dragenter' | 'dragover' | 'dragleave' | 'drop';
-/** A synthetic Finder drag (types come from the files, like Chromium does for real drags). */
-const drag = (page: Page, type: Drag, files: Array<[string, string]>, altKey = false) =>
-  page.evaluate(
-    ({ type, files, altKey }) => {
-      const dt = new DataTransfer();
-      for (const [name, mime] of files) dt.items.add(new File(['x'], name, { type: mime }));
-      document.body.dispatchEvent(new DragEvent(type, { dataTransfer: dt, altKey, bubbles: true, cancelable: true }));
-    },
-    { type, files, altKey },
-  );
-
-/** A file input holding real files: their File objects have a location on disk, as Finder's do (webUtils.getPathForFile). */
-async function realFiles(page: Page, paths: string[]): Promise<void> {
-  await page.evaluate(() => {
-    document.getElementById('drop-source')?.remove();
-    const picker = document.createElement('input');
-    picker.type = 'file';
-    picker.multiple = true;
-    picker.id = 'drop-source';
-    picker.hidden = true;
-    document.body.append(picker);
-  });
-  await page.locator('#drop-source').setInputFiles(paths);
+/** dragenter, dragover and drop of the real files in #drop-source, ⌥ held or not. */
+async function dropReal(page: Page, altKey = false): Promise<void> {
+  for (const type of ['dragenter', 'dragover', 'drop'] as const) await drag(page, type, 'source', { altKey });
 }
-/** dragenter, dragover and drop of the real files, ⌥ held or not. */
-const dropReal = (page: Page, altKey = false) =>
-  page.evaluate((altKey) => {
-    const dt = new DataTransfer();
-    for (const f of Array.from((document.getElementById('drop-source') as HTMLInputElement).files!)) dt.items.add(f);
-    for (const type of ['dragenter', 'dragover', 'drop']) document.body.dispatchEvent(new DragEvent(type, { dataTransfer: dt, altKey, bubbles: true, cancelable: true }));
-  }, altKey);
+/**
+ * The held drag stops sending dragovers and `event` arrives (the window's blur, or a dragend): is the overlay gone two
+ * frames later?
+ */
+const goneAfter = (page: Page, event: 'blur' | 'dragend') =>
+  page.evaluate(async (event) => {
+    clearInterval((window as unknown as { __learnDragRepeat?: ReturnType<typeof setInterval> }).__learnDragRepeat);
+    if (event === 'blur') window.dispatchEvent(new FocusEvent('blur'));
+    else document.body.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    return document.querySelector('[data-testid="drop-overlay"]') === null;
+  }, event);
 /** Two frames: whatever a handled event would have rendered is on screen by then. */
 const twoFrames = (page: Page) => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 
@@ -63,11 +47,11 @@ test('dragging files in shows the window-wide overlay with counts; ⌥ switches 
     expect(await overlay.boundingBox()).toMatchObject({ x: 0, y: 52 });
     // The sidebar top (traffic lights, toggle) stays above the overlay.
     expect(await page.evaluate(() => document.elementFromPoint(200, 26)?.closest('[data-testid="sidebar-top"]') !== null)).toBe(true);
-    await drag(page, 'dragover', THREE, true);
+    expect(await drag(page, 'dragover', THREE, { altKey: true })).toBe('link');
     await expect(overlay).toHaveAttribute('data-mode', 'link');
     await expect(page.getByTestId('drop-link')).toHaveAttribute('data-on', '');
     await expect(page.getByTestId('drop-copy')).not.toHaveAttribute('data-on');
-    await drag(page, 'dragover', THREE, false);
+    expect(await drag(page, 'dragover', THREE)).toBe('copy');
     await expect(overlay).toHaveAttribute('data-mode', 'copy');
     await drag(page, 'dragleave', THREE);
     await expect(overlay).toHaveCount(0);
@@ -84,10 +68,10 @@ test('dragging files in shows the window-wide overlay with counts; ⌥ switches 
 test('a drop imports a copy; with ⌥ held it links the original', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    await realFiles(page, [PDF]);
+    await dropSource(page, [PDF]);
     await dropReal(page);
     await expect(page.getByTestId('import-done')).toHaveText(/자료 1개를 가져왔습니다/);
-    await realFiles(page, [path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await dropSource(page, [path.join(FIXTURES, 'sample-h264-aac.mp4')]);
     await dropReal(page, true);
     await expect(page.getByTestId('import-done').filter({ hasText: '연결했습니다' })).toHaveText(/자료 1개를 연결했습니다/);
     const modes = await page.evaluate(async () => {
@@ -101,12 +85,13 @@ test('a drop imports a copy; with ⌥ held it links the original', async ({}, te
   }
 });
 
-test('no overlay while reading, and a drop there imports nothing', async ({}, testInfo) => {
+test('no overlay while reading; the drag gets the no-drop cursor and a drop there imports nothing', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
     await drag(page, 'dragenter', THREE);
+    expect(await drag(page, 'dragover', THREE)).toBe('none');
     await drag(page, 'drop', THREE);
     await twoFrames(page);
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
@@ -116,11 +101,12 @@ test('no overlay while reading, and a drop there imports nothing', async ({}, te
   }
 });
 
-test('a sheet holds the window: no overlay, and a drop is ignored (a window under a sheet takes no drops)', async ({}, testInfo) => {
+test('a sheet holds the window: no overlay, the no-drop cursor, and a drop is ignored (a window under a sheet takes no drops)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     const keys = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
     await drag(page, 'dragenter', THREE);
+    expect(await drag(page, 'dragover', THREE)).toBe('none');
     await drag(page, 'drop', THREE);
     await twoFrames(page);
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
@@ -129,6 +115,36 @@ test('a sheet holds the window: no overlay, and a drop is ignored (a window unde
     // The sheet is gone: the window takes drops again.
     await drag(page, 'dragenter', THREE);
     await expect(page.getByTestId('drop-overlay')).toBeVisible();
+    expect(await drag(page, 'dragover', THREE)).toBe('copy');
+    await drag(page, 'dragleave', THREE);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the safety net: the overlay goes a second after the last dragover, on blur and on dragend; a held drag keeps it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const overlay = page.getByTestId('drop-overlay');
+  try {
+    // A drag cancelled outside the window whose dragleave never came: no more dragovers, and the overlay goes by itself.
+    await drag(page, 'dragenter', THREE, { repeat: false });
+    await expect(overlay).toBeVisible();
+    const shownAt = Date.now();
+    await expect(overlay).toHaveCount(0, { timeout: 5_000 });
+    expect(Date.now() - shownAt).toBeGreaterThan(500);
+    // A drag held over the window keeps sending dragovers (as the OS does): the overlay stays past the second.
+    await drag(page, 'dragenter', THREE);
+    await page.waitForTimeout(1_500);
+    await expect(overlay).toBeVisible();
+    await drag(page, 'dragleave', THREE);
+    await expect(overlay).toHaveCount(0);
+    // The window loses the focus, or a drag that began in the window ends: the overlay goes at once, well inside the
+    // idle second (the held drag's last dragover came less than 100 ms before).
+    for (const event of ['blur', 'dragend'] as const) {
+      await drag(page, 'dragenter', THREE);
+      await expect(overlay).toBeVisible();
+      expect(await goneAfter(page, event), event).toBe(true);
+    }
   } finally {
     await app.close();
   }
@@ -175,6 +191,7 @@ test('in a window that is neither key nor main the ring, tile and current card s
     // The forced state is in effect: the chrome above the overlay has receded.
     await expect.poll(() => page.locator('.titlebar .tb-title .title').evaluate((e) => getComputedStyle(e).color)).toBe(await token('--text-inactive'));
     expect(await look()).toEqual(active);
+    await drag(page, 'dragleave', THREE);
   } finally {
     await app.close();
   }
@@ -184,7 +201,7 @@ test('a duplicate dropped on a background window: main brings the window forward
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [PDF]);
-    await realFiles(page, [PDF]);
+    await dropSource(page, [PDF]);
     // Record each focus() on the main window with the number of sheets showing at that moment.
     await (await mainWindow(app)).evaluate((w) => {
       const log: number[] = [];

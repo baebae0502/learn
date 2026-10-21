@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
-import { parseSetting, prefsSchema } from '../src/settings';
+import { DEFAULT_PREFS, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
 const code = (fn: () => unknown): string | undefined => {
@@ -28,6 +28,9 @@ describe('settings registry', () => {
 describe('prefs', () => {
   it('has defaults', () => {
     expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null });
+    // What a window shows when reading prefs failed (renderer Boot falls back to it).
+    expect(DEFAULT_PREFS).toEqual(prefsSchema.parse({}));
+    expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
   });
   it('rejects invalid values', () => {
     expect(prefsSchema.safeParse({ theme: 'neon' }).success).toBe(false);

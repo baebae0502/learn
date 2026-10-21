@@ -14,6 +14,7 @@ export const keys = {
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
+/** After a failed read `data` stays undefined (Boot still opens the window): read it as `usePrefs().data ?? DEFAULT_PREFS`. */
 export const usePrefs = () => useQuery({ queryKey: keys.prefs, queryFn: () => unwrap(api().prefs.get()) });
 export const useItems = () => useQuery({ queryKey: keys.items, queryFn: () => unwrap(api().library.list()) });
 /** `library.get` re-checks the file on disk; main broadcasts libraryChanged when that changed availability. */

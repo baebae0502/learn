@@ -48,5 +48,7 @@ describe('renderer command registry', () => {
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);
+    expect(runPicked('file.nope' as CommandId, env(), [ID])).toBe(false);
+    expect(runPicked('toString' as CommandId, env(), [ID])).toBe(false); // not fooled by Object.prototype
   });
 });

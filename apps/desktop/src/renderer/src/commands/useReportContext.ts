@@ -7,6 +7,12 @@ import { contextOf, type CommandEnv } from './registry';
 export function useReportContext(env: CommandEnv): void {
   const json = JSON.stringify(contextOf(env));
   useEffect(() => {
-    void api().ui.reportContext(JSON.parse(json) as CommandContextState);
+    // A lost report leaves the menu bar on the previous context; log the code only (no payload).
+    api().ui.reportContext(JSON.parse(json) as CommandContextState).then(
+      (r) => {
+        if (!r.ok) console.warn(`[commands] reportContext failed: ${r.code}`);
+      },
+      () => console.warn('[commands] reportContext failed: INTERNAL'),
+    );
   }, [json]);
 }

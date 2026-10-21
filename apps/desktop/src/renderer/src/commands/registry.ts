@@ -1,4 +1,4 @@
-import { COMMANDS, isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
+import { isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
@@ -49,7 +49,7 @@ export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget
  * one libraryChanged behind), so only the window-level block is checked here.
  */
 export function runPicked(id: CommandId, env: CommandEnv, itemIds: readonly string[]): boolean {
-  if (!Object.hasOwn(COMMAND_HANDLERS, id) || env.blocked || !COMMANDS.some((c) => c.id === id)) return false;
+  if (!Object.hasOwn(COMMAND_HANDLERS, id) || env.blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
   COMMAND_HANDLERS[id](env, itemIds);
   return true;
 }

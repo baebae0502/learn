@@ -65,10 +65,10 @@ export const themeHex = {
 /** BrowserWindow `backgroundColor` per theme, so the first frame is never white in dark mode. */
 export const windowBackground = { light: '#f6f7f8', dark: '#242527' } as const;
 
-/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead). */
+/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead): 51 tall, above the toolbar's hairline. */
 export const titleBarOverlay = {
-  light: { color: '#f6f7f8', symbolColor: '#54595e', height: 52 },
-  dark: { color: '#242527', symbolColor: '#b4b8bc', height: 52 },
+  light: { color: '#f6f7f8', symbolColor: '#54595e', height: 51 },
+  dark: { color: '#242527', symbolColor: '#b4b8bc', height: 51 },
 } as const;
 
 export const trafficLightPosition = { x: 18, y: 18 } as const;

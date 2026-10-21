@@ -152,8 +152,9 @@ export function renderTs() {
     Object.entries(o)
       .map(([k, v]) => `${indent}${k}: '${v}',`)
       .join('\n');
+  // One less than the toolbar: the overlay must not paint over the toolbar's 1 px bottom hairline (Task 8 critique m3).
   const overlay = (t) =>
-    `{ color: '${themes[t].bgWindow}', symbolColor: '${themes[t].textSecondary}', height: ${tokens.layout.toolbarHeight} }`;
+    `{ color: '${themes[t].bgWindow}', symbolColor: '${themes[t].textSecondary}', height: ${tokens.layout.toolbarHeight - 1} }`;
   return [
     `// ${HEADER}`,
     '// Opaque theme colours as hex for the main process (no CSS available there).',
@@ -170,7 +171,7 @@ export function renderTs() {
     '/** BrowserWindow `backgroundColor` per theme, so the first frame is never white in dark mode. */',
     `export const windowBackground = { light: '${themes.light.bgWindow}', dark: '${themes.dark.bgWindow}' } as const;`,
     '',
-    '/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead). */',
+    '/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead): 51 tall, above the toolbar\'s hairline. */',
     'export const titleBarOverlay = {',
     `  light: ${overlay('light')},`,
     `  dark: ${overlay('dark')},`,

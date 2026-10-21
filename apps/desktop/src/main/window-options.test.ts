@@ -15,9 +15,11 @@ describe('main window chrome (design-spec 2.1)', () => {
   it('macOS without vibrancy: the opaque window colour of the theme', () => {
     expect(mainWindowChrome({ platform: 'darwin', theme: 'dark', vibrancy: false })).toEqual({ titleBarStyle: 'hidden', trafficLightPosition: { ...trafficLightPosition }, backgroundColor: windowBackground.dark });
   });
-  it('Linux/Windows: window controls overlay in the 52 px bar, token colours, themed background', () => {
+  it('Linux/Windows: window controls overlay in the 52 px bar above its hairline, token colours, themed background', () => {
     expect(mainWindowChrome({ platform: 'linux', theme: 'light', vibrancy: false })).toEqual({ titleBarStyle: 'hidden', titleBarOverlay: { ...titleBarOverlay.light }, backgroundColor: windowBackground.light });
-    expect(titleBarOverlay.light.height).toBe(52);
+    // 51, not the 52 bar: the overlay covers rows 0–50 and leaves the toolbar's 1 px bottom hairline (row 51) visible.
+    expect(titleBarOverlay.light.height).toBe(51);
+    expect(titleBarOverlay.dark.height).toBe(51);
   });
   it('re-applies the theme to a live window', () => {
     const win = { setBackgroundColor: vi.fn(), setTitleBarOverlay: vi.fn() };

@@ -51,7 +51,7 @@
 ## 2. 창과 패널 격자
 
 ### 2.1 공통
-- 창: 기본 1440×900, 최소 960×600(`tokens.layout.windowMin*`). `titleBarStyle: 'hidden'`, `trafficLightPosition: {x: 18, y: 18}`(M3에서 macOS 러너로 확인), `vibrancy: 'sidebar'`. Linux/Windows는 `titleBarOverlay`(색은 `tokens.generated.ts`).
+- 창: 기본 1440×900, 최소 960×600(`tokens.layout.windowMin*`). `titleBarStyle: 'hidden'`, `trafficLightPosition: {x: 18, y: 18}`(M3에서 macOS 러너로 확인), `vibrancy: 'sidebar'`. Linux/Windows는 `titleBarOverlay`(색은 `tokens.generated.ts`, 높이 51 — 도구 막대 아래 1px 경계선을 덮지 않는다).
 - 신호등: 12px 원 3개, 간격 8, 묶음 원점 (18, 20)에 그려 52px 막대 세로 가운데. 왼쪽 **84px**(`--traffic-light-inset`)은 신호등 전용이다. 신호등은 네이티브이므로 웹 내용(스크림, 드롭 오버레이)이 덮거나 흐리게 할 수 없다. 창이 비활성이면 회색.
 - 도구 막대 52, 패널 머리 44, 표 머리 28, 컨트롤 28(작게 22·24, 크게 32), 아이콘 히트 영역 28.
 - 패널 폭(px, 드래그로 조절·기억): 사이드바 **240** (180–360), 항목 패널 **320** (260–480). **사이드바 폭은 모든 탭에서 하나다**(라이브러리 컬렉션, PDF 썸네일, 영상 대본이 같은 폭을 쓴다). 창이 960에 가까워지면 항목 패널 → 사이드바 순으로 자동 접힌다(사용자가 직접 접은 상태만 기억한다. 자동 접힘은 저장하지 않고 창 폭에서 다시 계산한다).

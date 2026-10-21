@@ -2,9 +2,10 @@
 // Baselines: tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png. Update with
 //   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots
 // @2x captures for the design critic: LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
+import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, runMenuCommand } from '../helpers';
+import { expect, test } from '@playwright/test';
+import { FIXTURES, importFiles, importPaths, runMenuCommand } from '../helpers';
 import { THEMES, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -25,30 +26,42 @@ test('component state board (gallery parts 1–2)', async ({}, testInfo) => {
   }
 });
 
-/**
- * The pre-M3 list (until Task 5) sizes its columns from their text, so the import time's minutes move every column
- * even under the mask: pin the text of its date cells. No-op once the fixed-grid table of Task 5 replaces it.
- */
-const pinOldListDates = (page: Page) =>
-  page.locator('table.items td:last-child').evaluateAll((cells) => {
-    for (const cell of cells) cell.textContent = '2026. 10. 21. 오전 09:24';
-  });
+const LIBRARY = ['sample.pdf', '한글 경로 (테스트) #1.pdf', 'sample-h264-aac.mp4', 'sample-mpeg4part2.mp4'].map((f) => path.join(FIXTURES, f));
 
-test('shell frame: library and collapsed sidebar', async ({}, testInfo) => {
+test('library: empty, list, collapsed sidebar, failure toast', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-col="added"], table.items td:last-child')];
+  const dates = () => [s.page.locator('[data-col="added"]')];
   try {
-    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, '한글 경로 (테스트) #1.pdf'), path.join(FIXTURES, 'sample-h264-aac.mp4')]);
-    await expect(s.page.getByTestId('item-row')).toHaveCount(3);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
-      await pinOldListDates(s.page);
-      await shoot(s.page, `shell-${theme}`, { mask: dates() });
+      await shoot(s.page, `empty-${theme}`);
+    }
+    await importPaths(s.page, LIBRARY);
+    // A linked file that went missing: the row shows the link mark and the 파일 없음 flag.
+    const gone = testInfo.outputPath('gone.pdf');
+    fs.copyFileSync(LIBRARY[0]!, gone);
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    fs.rmSync(gone);
+    await s.page.evaluate(async () => {
+      const list = await window.learn.library.list();
+      if (list.ok) for (const i of list.data) await window.learn.library.get({ itemId: i.id });
+    });
+    await expect(s.page.getByTestId('missing-flag')).toHaveCount(1);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `library-${theme}`, { mask: dates() });
       await runMenuCommand(s.app, 'view.toggleSidebar');
-      await pinOldListDates(s.page);
-      await shoot(s.page, `shell-collapsed-${theme}`, { mask: dates() });
+      await shoot(s.page, `library-collapsed-${theme}`, { mask: dates() });
       await runMenuCommand(s.app, 'view.toggleSidebar');
     }
+    await setTheme(s.page, 'light');
+    await importFiles(s, [path.join(FIXTURES, 'sample.pdf')]); // duplicate → the pre-M3 dialog, skip it
+    await s.page.getByTestId('dup-cancel').click();
+    const txt = testInfo.outputPath('notes.txt');
+    fs.writeFileSync(txt, 'x');
+    await importFiles(s, [txt]);
+    await expect(s.page.getByTestId('import-failures')).toBeVisible();
+    await shoot(s.page, 'toast-failure-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

@@ -127,7 +127,9 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'sample-mpeg4part2');
       await expect(s.page.getByTestId('video-error')).toBeVisible();
-      await shoot(s.page, `reader-codec-${theme}`);
+      // The fixture's size depends on the machine's ffmpeg (200 KB here, 190 KB on CI): mask the three lines that show it.
+      const sizes = [s.page.getByTestId('toolbar-count'), s.page.getByTestId('reader-title-row').locator('.t-footnote'), s.page.getByTestId('video-error').locator('.file')];
+      await shoot(s.page, `reader-codec-${theme}`, { mask: sizes });
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'broken');
       await expect(s.page.getByTestId('pdf-error')).toBeVisible();

@@ -1,0 +1,46 @@
+@layer components {
+  .notice {
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-12);
+    text-align: center;
+  }
+  .notice .glyph {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-xl);
+    display: grid;
+    place-items: center;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-secondary);
+  }
+  .notice .glyph.warning {
+    background: var(--warning-soft);
+    box-shadow: none;
+    color: var(--warning-text);
+  }
+  .notice .glyph.accent {
+    background: var(--accent-soft);
+    box-shadow: none;
+    color: var(--accent-text);
+  }
+  .notice h2 {
+    font: var(--type-title2);
+  }
+  .notice p {
+    font: var(--type-paragraph);
+    color: var(--text-secondary);
+  }
+  .notice .file {
+    max-width: 100%;
+    color: var(--text-secondary);
+  }
+  .notice .actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+}

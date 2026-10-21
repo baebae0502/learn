@@ -1,0 +1,27 @@
+@layer components {
+  .kbd-group {
+    display: inline-flex;
+    gap: 2px;
+    flex: none;
+  }
+  .kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-xs);
+    background: var(--bg-control);
+    box-shadow: 0 0 0 0.5px var(--border), 0 0.5px 0 0.5px var(--border);
+    color: var(--text-secondary);
+    font: var(--type-caption);
+    letter-spacing: 0.02em;
+  }
+  .shortcut {
+    color: var(--text-tertiary);
+    font: var(--type-body);
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+}

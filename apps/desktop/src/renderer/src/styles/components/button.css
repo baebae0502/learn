@@ -1,0 +1,128 @@
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+    height: var(--control-height);
+    padding: 0 var(--space-12);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--bg-control);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-primary);
+    font: var(--type-body);
+    white-space: nowrap;
+    flex: none;
+    cursor: default;
+    -webkit-app-region: no-drag;
+  }
+  .btn .icon {
+    color: var(--text-secondary);
+  }
+  .btn.has-icon {
+    padding-left: var(--space-8);
+  }
+  .btn.has-menu {
+    padding-right: var(--space-8);
+  }
+  .btn:is([data-hovered], [data-force~='hover']) {
+    background-image: linear-gradient(var(--fill-hover), var(--fill-hover));
+  }
+  .btn:is([data-pressed], [data-force~='pressed']) {
+    background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+  }
+  .btn:is([data-focus-visible], [data-force~='focus']) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .btn[data-disabled] {
+    opacity: 0.45;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: var(--text-on-accent);
+    box-shadow: none;
+    font-weight: 500;
+  }
+  .btn-primary .icon {
+    color: inherit;
+  }
+  .btn-primary:is([data-hovered], [data-force~='hover']) {
+    background: var(--accent-hover);
+  }
+  .btn-primary:is([data-pressed], [data-force~='pressed']) {
+    background: var(--accent-pressed);
+  }
+  .btn:is(.btn-plain, .btn-plain-accent, .btn-plain-danger) {
+    background: transparent;
+    box-shadow: none;
+  }
+  .btn:is(.btn-plain, .btn-plain-accent, .btn-plain-danger):is([data-hovered], [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  .btn:is(.btn-plain, .btn-plain-accent, .btn-plain-danger):is([data-pressed], [data-force~='pressed']) {
+    background: var(--fill-pressed);
+  }
+  .btn-plain-accent,
+  .btn-plain-accent .icon {
+    color: var(--accent-text);
+  }
+  .btn-plain-danger,
+  .btn-plain-danger .icon {
+    color: var(--danger-text);
+  }
+  .btn.leading {
+    padding: 0 var(--space-8);
+    margin-left: calc(var(--space-8) * -1);
+  }
+  .btn-small {
+    height: var(--control-height-small);
+    padding: 0 var(--space-8);
+    font: var(--type-footnote);
+    border-radius: var(--radius-sm);
+  }
+  .btn-large {
+    height: var(--control-height-large);
+    padding: 0 var(--space-16);
+  }
+  .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: var(--hit-target);
+    height: var(--hit-target);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    flex: none;
+    -webkit-app-region: no-drag;
+  }
+  .icon-btn:is([data-hovered], [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  .icon-btn:is([data-pressed], [data-force~='pressed']) {
+    background: var(--fill-pressed);
+  }
+  .icon-btn:is([data-on], [data-force~='on']) {
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+  }
+  .icon-btn:is([data-focus-visible], [data-force~='focus']) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .icon-btn[data-disabled] {
+    opacity: 0.4;
+  }
+  .icon-btn.sm {
+    width: 22px; /* local: inline buttons inside fields and rows */
+    height: 22px;
+    border-radius: var(--radius-sm);
+  }
+  /* DisabledReason: carries the native tooltip of a disabled control; no box of its own (M-2). */
+  .disabled-reason {
+    display: contents;
+  }
+}

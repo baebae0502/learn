@@ -1,0 +1,39 @@
+@layer components {
+  .field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: var(--control-height);
+    padding: 0 var(--space-8);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-body);
+    min-width: 0;
+  }
+  .field .icon,
+  .field .placeholder {
+    color: var(--text-tertiary);
+  }
+  .field:is([data-focus-visible], [data-focus-within], [data-force~='focus']) {
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  /* ⌘K launcher: a field-shaped button (design-spec 6 검색 필드·실행기). */
+  .launcher {
+    text-align: left;
+    cursor: default;
+    -webkit-app-region: no-drag;
+  }
+  .launcher:is([data-hovered], [data-force~='hover']) {
+    background-image: linear-gradient(var(--fill-hover), var(--fill-hover));
+  }
+  .launcher:is([data-pressed], [data-force~='pressed']) {
+    background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+  }
+  .launcher .kbd-group {
+    margin-left: auto;
+  }
+}

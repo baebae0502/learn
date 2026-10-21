@@ -1,0 +1,20 @@
+@layer components {
+  .tooltip {
+    display: flex;
+    gap: var(--space-8);
+    max-width: 280px;
+    padding: var(--space-4) var(--space-8);
+    border-radius: var(--radius-md);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+  }
+  .tooltip[data-entering] {
+    animation: fade-in var(--duration-fast) var(--ease-standard);
+  }
+  .tooltip-shortcut {
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+}

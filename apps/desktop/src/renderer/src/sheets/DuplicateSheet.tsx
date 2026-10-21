@@ -5,10 +5,12 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { resolveSheet } from './SheetApp';
+import { useSheetKeys } from './sheetKeys';
 
 /** dialogs.html?scene=duplicate. ↩ = 건너뛰기 (the safe default), esc = 건너뛰기, 기존 자료 열기 on the left. */
 export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { kind: 'duplicate' }> }) {
   const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice });
+  const keys = useSheetKeys(() => choose('skip'), () => choose('skip'));
   const e = payload.existing;
   return (
     <div
@@ -20,16 +22,16 @@ export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { k
       data-sheet-root=""
       data-kind="duplicate"
       data-testid="sheet-root"
-      onKeyDown={(ev) => {
-        if (ev.key === 'Escape' && !ev.nativeEvent.isComposing) choose('skip');
-      }}
+      {...keys}
     >
       <div className="d-body">
         <div className="d-title">
           <span className="badge-icon">
             <Icon icon={Copy} />
           </span>
-          <h2 id="sheet-title">{t.sheets.duplicateTitle}</h2>
+          <h2 id="sheet-title" className="ui-balance">
+            {t.sheets.duplicateTitle}
+          </h2>
         </div>
         <p className="d-text ui-prose" id="sheet-text">
           <b data-testid="dup-file">{payload.fileName}</b>

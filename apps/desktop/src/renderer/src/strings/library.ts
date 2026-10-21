@@ -8,7 +8,7 @@ export const library = {
   type: { pdf: 'PDF', video: '동영상' },
   linked: '외부 파일 연결',
   missing: '파일 없음',
-  missingTitle: '원본 파일을 찾을 수 없습니다',
+  missingTitle: '원본\u00a0파일을 찾을 수 없습니다',
   importButton: '가져오기',
   emptyTitle: '아직 자료가 없습니다',
   // "이 창": determiner + noun bound with U+00A0 (design-spec 9), as in library-empty.html.

@@ -106,7 +106,7 @@
       : '';
     const linked = it.linked ? `<span class="c-tertiary" title="외부 파일 연결">${icon('link', 'sm')}</span>` : '';
     const flag = it.missing
-      ? `<span class="inline-flag c-warning" title="원본 파일을 찾을 수 없습니다">${icon('triangle-alert', 'sm')}파일 없음</span>`
+      ? `<span class="inline-flag c-warning" title="원본&nbsp;파일을 찾을 수 없습니다">${icon('triangle-alert', 'sm')}파일 없음</span>`
       : it.unplayable
         ? `<span class="inline-flag c-warning" title="이 동영상 형식은 재생할 수 없습니다">${icon('video-off', 'sm')}재생 불가</span>`
         : '';
@@ -565,7 +565,7 @@
         error: `<div class="notice" role="alert" ${ms('M7', 'PDF 열기 실패(손상)')}>
             <div class="glyph">${icon('file-x', 'xl')}</div>
             <h2>이&nbsp;PDF를 열 수 없습니다</h2>
-            <p>파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본 파일은 그대로 보관됩니다. 다른&nbsp;사본이 있으면 다시 가져오세요.</p>
+            <p>파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본&nbsp;파일은 그대로 보관됩니다. 다른&nbsp;사본이 있으면 다시 가져오세요.</p>
             <div class="file">ion-channels-excitable.pdf · 2.3 MB</div>
             <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
           </div>`,
@@ -578,7 +578,7 @@
           </div>`,
         missing: `<div class="notice" role="alert" ${ms('M3', '원본 없음(다시 연결)')}>
             <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
-            <h2>원본 파일을 찾을 수 없습니다</h2>
+            <h2>원본&nbsp;파일을 찾을 수 없습니다</h2>
             <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
             <div class="file" title="/Users/seojin/Downloads/papers/calcium-signaling.pdf">~/Downloads/papers/calcium-signaling.pdf</div>
             <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리에서 보기</div></div>
@@ -731,7 +731,7 @@
         <div class="codec-notice" role="alert" ${ms('M3', '재생 불가 안내(Finder에서 보기·기본 앱으로 열기)')}>
           <div class="glyph">${icon('video-off', 'xl')}</div>
           <h2>이&nbsp;동영상은 재생할 수 없습니다</h2>
-          <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본 파일은 그대로 보관됩니다.</p>
+          <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본&nbsp;파일은 그대로 보관됩니다.</p>
           <div class="file mono">seminar-0915.avi · 1.3 GB</div>
           <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
         </div>
@@ -878,7 +878,7 @@
     return `<div class="dialog" role="alertdialog" aria-label="중복 파일" ${ms('M3', '중복 확인 시트')}>
       <div class="d-body">
         <div class="d-title"><span class="badge-icon">${icon('copy')}</span><div><h2>이미 라이브러리에 있는 파일입니다</h2></div></div>
-        <p class="d-text"><b>molbio_ch06_signaling.pdf</b>는 아래 자료와 내용이 완전히 같습니다. 어느&nbsp;쪽을 골라도 원본 파일은 지우지 않습니다.</p>
+        <p class="d-text"><b>molbio_ch06_signaling.pdf</b>는 아래 자료와 내용이 완전히 같습니다. 어느&nbsp;쪽을 골라도 원본&nbsp;파일은 지우지 않습니다.</p>
         <div class="card item-card"><span class="thumb">${icon('file-text')}</span>
           <div style="min-width:0"><div class="t-headline ellipsis">분자생물학 6장 · 신호 전달</div><div class="t-footnote c-secondary ellipsis">분자생물학 · 4.2 MB · 2026. 10. 20. 추가</div></div></div>
         <label class="checkbox t-footnote" ${ms('M6', '남은 중복에 같은 선택')}><span class="box is-on">${icon('check')}</span>남은 중복 파일 2개에도 같은 선택 적용</label>

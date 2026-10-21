@@ -6,10 +6,12 @@ import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { shortcutGroups } from './shortcuts';
 import { resolveSheet } from './SheetApp';
+import { useSheetKeys } from './sheetKeys';
 
 /** ⌘/ (design-spec 7.4), generated from the command registry; ↩ or esc closes it. */
 export function ShortcutsSheet() {
   const done = () => resolveSheet({ kind: 'shortcuts' });
+  const keys = useSheetKeys(done, done);
   return (
     <div
       className="sheet wide"
@@ -19,16 +21,16 @@ export function ShortcutsSheet() {
       data-sheet-root=""
       data-kind="shortcuts"
       data-testid="sheet-root"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') done();
-      }}
+      {...keys}
     >
       <div className="d-body">
         <div className="d-title">
           <span className="badge-icon">
             <Icon icon={Keyboard} />
           </span>
-          <h2 id="sheet-title">{t.sheets.shortcutsTitle}</h2>
+          <h2 id="sheet-title" className="ui-balance">
+            {t.sheets.shortcutsTitle}
+          </h2>
         </div>
         <div className="shortcut-groups">
           {shortcutGroups(currentPlatform()).map((g) => (

@@ -29,6 +29,14 @@ function on(c: (k: ColorToken) => Rgba, fill: ColorToken, base: ColorToken): Rgb
   return f.a < 1 ? composite(f, c(base)) : f;
 }
 
+/** Translucent layers composited bottom-up onto `base` (a control on a card on a surface). */
+function onLayers(c: (k: ColorToken) => Rgba, fills: readonly ColorToken[], base: ColorToken): Rgba {
+  return fills.reduce((under, fill) => {
+    const f = c(fill);
+    return f.a < 1 ? composite(f, under) : f;
+  }, c(base));
+}
+
 function expectContrast(label: string, fg: Rgba, bg: Rgba, min: number) {
   const ratio = contrast(fg, bg);
   expect(ratio, `${label}: ${ratio.toFixed(2)} < ${min}`).toBeGreaterThanOrEqual(min);
@@ -57,6 +65,16 @@ describe('colour tokens', () => {
                 expectContrast(`${text}/${fill}@${s}`, c(text), on(c, fill, s), 4.5);
               }
             }
+          }
+        });
+
+        it('controls on a card (a sheet\'s keycaps and file thumb: bgControl over fillHover): text ≥ 4.5:1, icons ≥ 3:1', () => {
+          for (const s of SURFACES) {
+            const nested = onLayers(c, ['fillHover', 'bgControl'], s);
+            expectContrast(`textPrimary/bgControl@fillHover@${s}`, c('textPrimary'), nested, 4.5);
+            // Secondary is only an icon colour there (the thumb glyph): 4.16:1 in dark on bgRaised, under 4.5, which is
+            // why the shortcut sheet's keycaps use primary text (screens/sheet.css).
+            expectContrast(`textSecondary icon/bgControl@fillHover@${s}`, c('textSecondary'), nested, 3);
           }
         });
 

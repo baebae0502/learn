@@ -16,7 +16,7 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('spells the dialog keys the way the platform does (↩ esc on macOS, Enter Esc elsewhere)', () => {
     const dialogKeys = (platform: string) => shortcutGroups(platform).at(-1)!.rows.map((r) => [r.label, r.keys, r.spoken]);
-    expect(dialogKeys('darwin')).toEqual([['기본 단추 실행', ['↩'], '↩'], ['닫기', ['esc'], 'esc']]);
-    expect(dialogKeys('linux')).toEqual([['기본 단추 실행', ['Enter'], 'Enter'], ['닫기', ['Esc'], 'Esc']]);
+    expect(dialogKeys('darwin')).toEqual([['기본 버튼 누르기', ['↩'], '↩'], ['닫기', ['esc'], 'esc']]);
+    expect(dialogKeys('linux')).toEqual([['기본 버튼 누르기', ['Enter'], 'Enter'], ['닫기', ['Esc'], 'Esc']]);
   });
 });

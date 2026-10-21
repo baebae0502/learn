@@ -45,7 +45,7 @@ const isHaeyo = (text: string): boolean => HAEYO.test(text.replace(YO_NOUNS, '')
 
 // Same rules as the mockups' copyLint (docs/design/mockups/assets/mockup.js).
 const DETERMINER = /(?:^|[\s(‘“])(이|그|저|새|다른|각|모든|어느) (?=[가-힣])/;
-const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽'];
+const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
 const INTERNAL = /SHA-256|해시|staging|관리형|경로만 기록/;
 const show = (s: { at: string; text: string }) => `${s.at}: ${s.text}`;
 

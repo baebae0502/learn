@@ -55,19 +55,20 @@
     flex: none;
     padding: var(--space-12) var(--space-20) var(--space-16);
   }
-  .card {
+  /* Sheet parts are scoped to .sheet: other screens may use these names for their own things. */
+  .sheet .card {
     border-radius: var(--radius-lg);
     background: var(--fill-hover);
     box-shadow: inset 0 0 0 1px var(--separator);
   }
-  .item-card {
+  .sheet .item-card {
     display: grid;
     grid-template-columns: 32px minmax(0, 1fr);
     column-gap: var(--space-12);
     align-items: center;
     padding: var(--space-12);
   }
-  .item-card .thumb {
+  .sheet .item-card .thumb {
     width: 32px;
     height: 40px;
     border-radius: var(--radius-xs);
@@ -77,38 +78,52 @@
     box-shadow: inset 0 0 0 1px var(--border);
     color: var(--text-secondary);
   }
-  .item-card .card-text {
+  .sheet .item-card .card-text {
     display: flex;
     flex-direction: column;
-    gap: 2px;
     min-width: 0;
   }
-  .group-label {
+  /* Size and date line up like the table's numbers (design-spec 6 시트: 보조 정보 … tabular). */
+  .sheet .item-card .t-footnote {
+    font-variant-numeric: tabular-nums;
+  }
+  .sheet .group-label {
     margin: 0 0 var(--space-8) var(--space-4);
     color: var(--text-secondary);
     font: var(--type-footnote);
     font-weight: 600;
   }
-  .shortcut-groups {
+  .sheet .shortcut-groups {
     display: flex;
     flex-direction: column;
     gap: var(--space-16);
   }
-  .shortcut-list {
+  .sheet .shortcut-list {
     padding: var(--space-4) 0;
   }
-  .shortcut-row {
+  /* content-box: each row is a full 28 plus its 1 px separator, so the keycaps land on whole pixels. */
+  .sheet .shortcut-row {
+    box-sizing: content-box;
     display: flex;
     align-items: center;
     gap: var(--space-12);
     min-height: var(--control-height);
     padding: 0 var(--space-12) 0 var(--space-16);
   }
-  .shortcut-row + .shortcut-row {
+  .sheet .shortcut-row + .shortcut-row {
     border-top: 1px solid var(--separator);
   }
-  .shortcut-row .sr-label {
+  .sheet .shortcut-row .sr-label {
     flex: 1 1 auto;
     min-width: 0;
+  }
+  /* Here the keys are the content: primary text (secondary on a keycap on the card is 4.16:1 in dark, under 4.5). */
+  .sheet .shortcut-row .kbd {
+    color: var(--text-primary);
+  }
+  /* A sheet opens with its default button marked by the accent fill alone, as on macOS; the first key or pointer
+     press (useSheetKeys) brings focus rings back. */
+  .sheet[data-fresh] .d-foot .btn-primary:is([data-focus-visible], :focus-visible) {
+    outline: none;
   }
 }

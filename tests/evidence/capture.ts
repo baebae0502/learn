@@ -111,6 +111,31 @@ async function screencapture(args: string[], file: string): Promise<void> {
   if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`screencapture wrote no file: ${file}`);
 }
 
+/** Capture any window by its CGWindowID (e.g. Finder's, for a reference shot). macOS only; records a skip elsewhere. */
+export async function windowShotById(id: string, name: string, description: string): Promise<ManifestEntry> {
+  if (!IS_MAC) return record({ file: null, kind: 'window', description, skipped: `screencapture needs darwin (running on ${process.platform})` });
+  const { abs, rel } = outFile(`${name}.window.png`);
+  try {
+    await screencapture(['-x', '-o', `-l${id}`], abs);
+    return record({ file: rel, kind: 'window', description: `${description} (CGWindowID ${id})` });
+  } catch (e) {
+    return record({ file: null, kind: 'window', description, error: String((e as Error).message ?? e) });
+  }
+}
+
+/** CGWindowID of an app's frontmost normal window by owner name (JXA + CGWindowListCopyWindowInfo), or null. */
+export async function windowIdOf(ownerName: string): Promise<string | null> {
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'var info = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));',
+    `var w = info.filter(function (x) { return x.kCGWindowOwnerName === ${JSON.stringify(ownerName)} && x.kCGWindowLayer === 0 && x.kCGWindowBounds && x.kCGWindowBounds.Height > 150; })[0];`,
+    "w ? String(w.kCGWindowNumber) : '';",
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  const id = r.stdout.trim();
+  return r.ok && /^\d+$/.test(id) ? id : null;
+}
+
 /**
  * macOS window capture via `screencapture -l<CGWindowID>`: includes title bar and traffic lights. The app is brought to
  * the front first (active colours) unless `focus: false` — an inactive window as it looks behind another app.
@@ -264,6 +289,9 @@ export async function tryExec(cmd: string, args: string[], timeout = 30_000): Pr
 }
 
 /** Names of the menu bar items System Events sees for `processName` (item 2 is the app menu). */
+/** A System Events process reference: by name, or by pid (unambiguous when several apps are called "Electron"). */
+const processRef = (target: string | number) => (typeof target === 'number' ? `(first process whose unix id is ${target})` : `process "${target}"`);
+
 export async function menuBarNames(processName: string) {
   return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
 }
@@ -272,11 +300,11 @@ export async function menuBarNames(processName: string) {
  * The items of menu-bar menu `index` as System Events sees them (what AppKit shows, including items it adds itself),
  * one entry per item; a separator is "-". Null when System Events refuses or fails.
  */
-export async function menuItemNames(processName: string, index: number): Promise<string[] | null> {
+export async function menuItemNames(target: string | number, index: number): Promise<string[] | null> {
   const script = [
     'set out to {}',
     'tell application "System Events"',
-    `tell process "${processName}"`,
+    `tell ${processRef(target)}`,
     `repeat with i in (menu items of menu 1 of menu bar item ${index} of menu bar 1)`,
     'set n to name of i',
     'if n is missing value then set n to "-"',
@@ -299,9 +327,9 @@ export const pressEscape = () => tryExec('osascript', ['-e', 'tell application "
  * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
  * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
  */
-export async function captureOpenMenu(app: ElectronApplication, processName: string, index: number, prefix: string, what: string) {
+export async function captureOpenMenu(app: ElectronApplication, target: string | number, index: number, prefix: string, what: string) {
   await focusApp(app);
-  const child = spawn('osascript', ['-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`], {
+  const child = spawn('osascript', ['-e', `tell application "System Events" to tell ${processRef(target)} to click menu bar item ${index} of menu bar 1`], {
     stdio: ['ignore', 'ignore', 'pipe'],
   });
   let stderr = '';
@@ -330,10 +358,12 @@ export async function captureOpenMenu(app: ElectronApplication, processName: str
   keys.push('key code 125', 'end tell');
   const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
   await sleep(1200);
+  // While the menu is open (the keyboard path leaves System Events free): what AX lists in it, and its frame.
+  const open = await openMenuInfo(target, index);
   const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
   await pressEscape();
   await pressEscape();
-  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim() };
+  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim(), open };
   return { click, keyboard };
 }
 
@@ -378,4 +408,26 @@ export async function pngCentroid(page: Page, rel: string, box: { x: number; y: 
     }
     return n ? { x: box.x + sx / n + 0.5, y: box.y + sy / n + 0.5, n, width: img.naturalWidth } : null;
   }, { b64, box, match });
+}
+
+/** Items and frame of an open menu-bar menu as System Events sees them (null parts when it cannot tell). */
+export async function openMenuInfo(target: string | number, index: number): Promise<{ names: string[] | null; frame: { x: number; y: number; width: number; height: number } | null }> {
+  const names = await menuItemNames(target, index);
+  const r = await tryExec(
+    'osascript',
+    [
+      'tell application "System Events"',
+      `tell ${processRef(target)}`,
+      `set m to menu 1 of menu bar item ${index} of menu bar 1`,
+      'set p to position of m',
+      'set z to size of m',
+      'end tell',
+      'end tell',
+      'return (item 1 of p as text) & "," & (item 2 of p as text) & "," & (item 1 of z as text) & "," & (item 2 of z as text)',
+    ].flatMap((l) => ['-e', l]),
+    20_000,
+  );
+  const n = r.ok ? r.stdout.trim().split(',').map(Number) : [];
+  const frame = n.length === 4 && n.every(Number.isFinite) ? { x: n[0]!, y: n[1]!, width: n[2]!, height: n[3]! } : null;
+  return { names, frame };
 }

@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, acceleratorLabel, commandById, platformAccelerator, type CommandId, type CommandSpec } from '@learn/domain';
-import { FULL_SCREEN, applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds } from './app-menu';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds } from './app-menu';
 
 interface Shape {
   label?: string;
@@ -262,16 +262,20 @@ describe('macOS 전체 화면 item (Task 8 R2-1)', () => {
     expect(walk(view(true)).find((i) => i.id === FULL_SCREEN.id)?.label).toBe('전체 화면 종료');
     expect(walk(view()).filter((i) => i.label?.includes('전체 화면'))).toHaveLength(1);
   });
-  it('relabels in place on macOS only, keeping the id; Linux/Windows keep the neutral role item', () => {
+  it('follows the main window in place on macOS only: label by state, disabled without a main window or under a sheet', () => {
     const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn() });
     const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
     const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
-    applyFullScreenLabel(lookup, 'darwin', true);
-    expect(byId.get(FULL_SCREEN.id)).toMatchObject({ label: '전체 화면 종료', accelerator: 'Ctrl+Cmd+F' });
-    applyFullScreenLabel(lookup, 'darwin', false);
-    expect(byId.get(FULL_SCREEN.id)?.label).toBe('전체 화면 시작');
+    applyFullScreenItem(lookup, 'darwin', { available: true, fullscreen: true });
+    expect(byId.get(FULL_SCREEN.id)).toMatchObject({ label: '전체 화면 종료', accelerator: 'Ctrl+Cmd+F', enabled: true });
+    // The window closed in full screen and a new one opened: re-derived from the new window, never the old 종료.
+    applyFullScreenItem(lookup, 'darwin', { available: true, fullscreen: false });
+    expect(byId.get(FULL_SCREEN.id)).toMatchObject({ label: '전체 화면 시작', enabled: true });
+    applyFullScreenItem(lookup, 'darwin', { available: false, fullscreen: false }); // a sheet is attached, or no window
+    expect(byId.get(FULL_SCREEN.id)?.enabled).toBe(false);
+    expect(walk(buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), fullScreenAvailable: false })).find((i) => i.id === FULL_SCREEN.id)?.enabled).toBe(false);
     const asked: string[] = [];
-    applyFullScreenLabel({ getMenuItemById: (id) => (asked.push(id), null) }, 'linux', true);
+    applyFullScreenItem({ getMenuItemById: (id) => (asked.push(id), null) }, 'linux', { available: true, fullscreen: true });
     expect(asked).toEqual([]);
     for (const platform of ['linux', 'win32'] as const) {
       expect(walk(build(platform)).find((i) => i.label?.includes('전체 화면'))).toMatchObject({ label: '전체 화면', role: 'togglefullscreen' });

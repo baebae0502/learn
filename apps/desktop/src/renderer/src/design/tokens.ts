@@ -76,12 +76,19 @@ export const colors = {
   /** Placeholders, counts, disabled. ≥ 3:1 — never for information-bearing body text. */
   textTertiary: { light: 'oklch(60% 0.008 250)', dark: 'oklch(58% 0.008 250)' },
   textOnAccent: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
+  /**
+   * Chrome text and glyphs of a window that is not main (design-spec 2.1): primary at 30 %, as AppKit dims Finder's
+   * (measured 172/236 light, 85/20 dark, run 39642950406). Translucent, so one value fits toolbar, material and fills.
+   */
+  textInactive: { light: 'oklch(23% 0.008 250 / 0.3)', dark: 'oklch(94% 0.004 250 / 0.3)' },
 
   // ── Accent (base / accent / contrast) ──────────────────────────────────────
   accent: { light: 'oklch(53% 0.088 190)', dark: 'oklch(50% 0.084 190)' },
   accentHover: { light: 'oklch(49% 0.082 190)', dark: 'oklch(54% 0.09 190)' },
   accentPressed: { light: 'oklch(45% 0.076 190)', dark: 'oklch(46% 0.078 190)' },
   accentText: { light: 'oklch(49% 0.082 190)', dark: 'oklch(78% 0.1 190)' },
+  /** Sidebar row icons of a window that is not main: the accent text at 30 % (the hue stays, faded, as Finder's). */
+  accentTextInactive: { light: 'oklch(49% 0.082 190 / 0.3)', dark: 'oklch(78% 0.1 190 / 0.3)' },
   accentSoft: { light: 'oklch(53% 0.088 190 / 0.11)', dark: 'oklch(72% 0.1 190 / 0.16)' },
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes

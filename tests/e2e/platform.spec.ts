@@ -336,7 +336,7 @@ test('ui.windowState() answers the current fullscreen and focus state that main 
     const mainSees = () =>
       app.evaluate(({ BrowserWindow }) => {
         const w = BrowserWindow.getAllWindows()[0]!;
-        return { fullscreen: w.isFullScreen(), focused: w.isFocused() };
+        return { fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false };
       });
     const query = () => page.evaluate(() => window.learn.ui.windowState());
     expect(await query()).toEqual({ ok: true, data: await mainSees() });

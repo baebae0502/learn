@@ -15,6 +15,8 @@ export interface AppMenuOptions {
   labels?: Pick<CommandContextState, 'sidebar'>;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
   fullScreenState?: boolean;
+  /** Whether the macOS 전체 화면 item can run: a main window exists and none of our sheets is attached. Default true. */
+  fullScreenAvailable?: boolean;
   /** macOS: the 전체 화면 item's click and ⌃⌘F toggle the main window's full screen. */
   onToggleFullScreen?(): void;
 }
@@ -34,7 +36,15 @@ const fullScreenLabel = (fullscreen: boolean) => FULL_SCREEN.stateLabels[fullscr
  */
 function fullScreenItems(opts: AppMenuOptions): Item[] {
   if (opts.platform !== 'darwin') return [{ role: 'togglefullscreen', label: FULL_SCREEN.label }];
-  return [{ id: FULL_SCREEN.id, label: fullScreenLabel(opts.fullScreenState ?? false), accelerator: 'Ctrl+Cmd+F', click: () => opts.onToggleFullScreen?.() }];
+  return [
+    {
+      id: FULL_SCREEN.id,
+      label: fullScreenLabel(opts.fullScreenState ?? false),
+      accelerator: 'Ctrl+Cmd+F',
+      enabled: opts.fullScreenAvailable ?? true,
+      click: () => opts.onToggleFullScreen?.(),
+    },
+  ];
 }
 
 type Item = MenuItemConstructorOptions;
@@ -182,9 +192,22 @@ export function applyMenuLabels(
   }
 }
 
-/** macOS: the 전체 화면 item says what it will do — 전체 화면 시작 / 전체 화면 종료 — relabelled in place. */
-export function applyFullScreenLabel(menu: MenuItemLookup, platform: NodeJS.Platform, fullscreen: boolean): void {
+/** The main window's state as the macOS 전체 화면 item needs it. */
+export interface FullScreenItemState {
+  /** A main window exists and none of our sheets is attached to it (the registry's `blocked`). */
+  available: boolean;
+  fullscreen: boolean;
+}
+
+/**
+ * macOS: the 전체 화면 item, updated in place from the main window's state — named by what it will do (전체 화면 시작 /
+ * 종료) and disabled without a main window or while one of our sheets is attached. Main calls it whenever a main
+ * window opens or closes, enters or leaves full screen, or a sheet comes or goes, so the label is never stale.
+ */
+export function applyFullScreenItem(menu: MenuItemLookup, platform: NodeJS.Platform, state: FullScreenItemState): void {
   if (platform !== 'darwin') return;
   const item = menu.getMenuItemById(FULL_SCREEN.id);
-  if (item) item.label = fullScreenLabel(fullscreen);
+  if (!item) return;
+  item.label = fullScreenLabel(state.fullscreen);
+  item.enabled = state.available;
 }

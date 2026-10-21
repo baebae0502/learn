@@ -33,6 +33,8 @@ export function createSheetHost(opts: {
   preload: string;
   url(): string;
   platform: NodeJS.Platform;
+  /** The sheet is about to show over `parent` (it takes the key window; the parent stays the main window). */
+  onSheetShown?(parent: BrowserWindow): void;
   /**
    * The sheet's window has closed and the parent has the focus back. macOS makes the parent key again without a
    * 'focus' event (run 39631541294), so main re-reads the parent's window state here.
@@ -116,11 +118,13 @@ export function createSheetHost(opts: {
           if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
           await markSized(win.webContents);
           clearTimeout(watchdog);
+          if (!parent.isDestroyed()) opts.onSheetShown?.(parent);
           win.show();
         })().catch(() => {
           // Only a window closed mid-measure gets here (settled already); otherwise show it unsized rather than lose the question.
           if (win.isDestroyed()) return;
           clearTimeout(watchdog);
+          if (!parent.isDestroyed()) opts.onSheetShown?.(parent);
           win.show();
         });
       });

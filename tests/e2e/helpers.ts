@@ -78,7 +78,8 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
  */
 export function mainWindow(app: ElectronApplication) {
   return app.evaluateHandle(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=main'));
+    // A window being closed can still be listed: skip destroyed ones (their webContents throws).
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=main'));
     if (!w) throw new Error('no main window (window=main)');
     return w;
   });

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -442,7 +442,7 @@ test('an open tooltip closes when the window becomes inactive and does not come 
   }
 });
 
-test('an inactive window draws no focus ring or keyboard cursor and dims its chrome; the ring returns in place (R2-2, R2-3)', async ({}, testInfo) => {
+test('not key: no ring or cursor, neutral selection; not main as well: the chrome dims to --text-inactive; under a sheet it stays main (R3-2, R3-4)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   const row = page.getByTestId('nav-library');
   const looks = () =>
@@ -452,41 +452,59 @@ test('an inactive window draws no focus ring or keyboard cursor and dims its chr
         cursor: css('[data-testid="nav-library"]').boxShadow,
         title: css('[data-testid="toolbar-title"]').color,
         toggle: css('[data-testid="sidebar-toggle"]').color,
+        section: css('.sidebar .section-label').color,
         rowIcon: css('[data-testid="nav-library"] > .icon').color,
+        selectedRowText: css('[data-testid="nav-library"]').color,
+        notKey: document.documentElement.hasAttribute('data-window-inactive'),
+        notMain: document.documentElement.hasAttribute('data-window-not-main'),
       };
     });
-  const tokens = () =>
-    page.evaluate(() => {
+  const token = (name: string) =>
+    page.evaluate((v) => {
       const probe = document.createElement('span');
       document.body.append(probe);
-      const read = (v: string) => ((probe.style.color = `var(${v})`), getComputedStyle(probe).color);
-      const out = { secondary: read('--text-secondary'), tertiary: read('--text-tertiary') };
+      probe.style.color = `var(${v})`;
+      const out = getComputedStyle(probe).color;
       probe.remove();
       return out;
-    });
+    }, name);
   try {
+    await importPaths(page, [PDF]);
     await row.focus();
     await page.keyboard.press('ArrowDown'); // keyboard cursor on the current row
     const active = await looks();
+    expect(active).toMatchObject({ notKey: false, notMain: false });
     expect(active.cursor).not.toBe('none');
+
+    // Another window takes the key: not key and not main.
     await app.evaluate(({ BrowserWindow }) => {
       const w = new BrowserWindow({ width: 300, height: 200, show: true });
       void w.loadURL('about:blank');
       w.focus();
       (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
     });
-    await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
-    const inactive = await looks();
-    const t = await tokens();
-    expect(inactive.cursor).toBe('none');
-    expect(inactive.title).toBe(t.secondary);
-    expect(inactive.toggle).toBe(t.tertiary);
-    expect(inactive.rowIcon).toBe(t.secondary);
+    await expect(page.locator('html')).toHaveAttribute('data-window-not-main', '');
+    const inactive = await token('--text-inactive');
+    await expect.poll(async () => (await looks()).title).toBe(inactive); // colours may ease in
+    const background = await looks();
+    expect(background).toMatchObject({ notKey: true, notMain: true, cursor: 'none', title: inactive, toggle: inactive, section: inactive });
+    expect(background.rowIcon).toBe(await token('--accent-text-inactive'));
+    expect(background.selectedRowText).toBe(await token('--text-primary')); // neutral selection; its text is not dimmed
     await expect(row).toBeFocused(); // the focus stayed where it was
     await app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(app)).evaluate((w) => w.focus());
     await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
-    expect(await looks()).toEqual(active); // ring, title and glyphs back as they were
+    await expect.poll(looks).toEqual(active); // ring, title and glyphs back as they were
+
+    // One of our sheets takes the key: not key (no ring, neutral selection) but still main (chrome undimmed).
+    const sheet = await expectWindow(app, 'sheet', () => importFiles({ app, page }, [PDF]));
+    await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await expect.poll(async () => (await looks()).cursor).toBe('none');
+    const underSheet = await looks();
+    expect(underSheet).toMatchObject({ notKey: true, notMain: false, cursor: 'none', title: active.title, toggle: active.toggle, section: active.section });
+    expect(underSheet.rowIcon).toBe(await token('--accent-text')); // the neutral selection's icon, not faded
+    await closeSheet(sheet, 'Escape');
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
   } finally {
     await app.close();
   }

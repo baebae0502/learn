@@ -68,9 +68,9 @@ describe('sheets are opened over the main window only', () => {
 
 describe('ui.windowState (query; the windowState push stays)', () => {
   it("answers the sender window's current fullscreen and focus state", async () => {
-    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true } });
+    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false } });
     Object.assign(win, { fullscreen: true, focused: false });
-    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false } });
+    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false } });
   });
 
   it('NOT_FOUND when the sender has no (live) window; extra input is VALIDATION_FAILED', async () => {

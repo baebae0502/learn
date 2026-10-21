@@ -13,8 +13,20 @@ export interface MainWindowOptions {
   chrome: ChromeOptions;
 }
 
+const sheets = new WeakMap<BrowserWindow, boolean>();
+
 /** What the windowState push and the ui.windowState query report. */
-export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused() });
+export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused(), sheetOpen: sheets.get(win) ?? false });
+
+/** Whether one of our sheets is attached to `win` now. */
+export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) ?? false;
+
+/** The sheet host reports a sheet attached to (or gone from) `win`; the window state is pushed when it changes. */
+export function setSheetOpen(win: BrowserWindow, open: boolean): void {
+  if (win.isDestroyed()) return;
+  sheets.set(win, open);
+  resyncWindowState(win);
+}
 
 const pushers = new WeakMap<BrowserWindow, () => void>();
 /**
@@ -58,7 +70,7 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   const pushState = () => {
     if (win.isDestroyed()) return;
     const next = windowStateOf(win);
-    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused) return;
+    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen) return;
     last = next;
     sendEvent(win.webContents, 'windowState', next);
   };

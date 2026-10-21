@@ -24,10 +24,12 @@
     --text-secondary: light-dark(oklch(46% 0.01 250), oklch(78% 0.008 250));
     --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(58% 0.008 250));
     --text-on-accent: light-dark(oklch(100% 0 0), oklch(100% 0 0));
+    --text-inactive: light-dark(oklch(23% 0.008 250 / 0.3), oklch(94% 0.004 250 / 0.3));
     --accent: light-dark(oklch(53% 0.088 190), oklch(50% 0.084 190));
     --accent-hover: light-dark(oklch(49% 0.082 190), oklch(54% 0.09 190));
     --accent-pressed: light-dark(oklch(45% 0.076 190), oklch(46% 0.078 190));
     --accent-text: light-dark(oklch(49% 0.082 190), oklch(78% 0.1 190));
+    --accent-text-inactive: light-dark(oklch(49% 0.082 190 / 0.3), oklch(78% 0.1 190 / 0.3));
     --accent-soft: light-dark(oklch(53% 0.088 190 / 0.11), oklch(72% 0.1 190 / 0.16));
     --focus: light-dark(oklch(57% 0.096 190), oklch(72% 0.11 190));
     --meter: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));

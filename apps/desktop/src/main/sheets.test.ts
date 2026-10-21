@@ -84,14 +84,19 @@ describe('sheet host', () => {
     expect(p.focus).toHaveBeenCalledTimes(1); // keyboard focus goes back to the window the sheet hung over
   });
 
-  it('tells main once the sheet window has closed, so it can re-read the parent window state (macOS sends no focus event)', async () => {
+  it('tells main when the sheet shows and once its window has closed (sheetOpen; macOS sends no focus event on close)', async () => {
     const onSheetClosed = vi.fn();
-    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'darwin', onSheetClosed });
+    const shownAt: boolean[] = [];
+    const onSheetShown = vi.fn(() => shownAt.push(FakeWindow.all[0]!.shown));
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'darwin', onSheetShown, onSheetClosed });
     const p = parent();
     const result = h.open(p, { kind: 'shortcuts' });
     await tick();
     const w = FakeWindow.all[0]!;
     await ready(w);
+    // Reported just before the sheet shows (the parent stays main: its chrome must not dim while the sheet takes key).
+    expect(onSheetShown).toHaveBeenCalledExactlyOnceWith(p);
+    expect(shownAt).toEqual([false]);
     expect(onSheetClosed).not.toHaveBeenCalled();
     h.resolve(contentsOf(w), { kind: 'shortcuts' });
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });

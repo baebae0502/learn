@@ -124,14 +124,25 @@ describe('colour tokens', () => {
     }
   });
 
-  it('inactive window chrome (design-spec 2.1): the dimmed title stays body-legible, the dimmed glyphs ≥ 3:1 on the toolbar', () => {
+  it('not-main window chrome (design-spec 2.1, 8.3): pinned near Finder, not held to the key-window targets', () => {
+    // Finder on the same runner (run 39642950406): labels 172 on 236 = 1.92:1 (light), 85 on 20 = 2.47:1 (dark); accent
+    // icons faded to 1.46:1 / 1.74:1. Ours: primary and accent text at 30 % on the inactive materials and the toolbar.
+    const band = (label: string, fg: Rgba, bg: Rgba, lo: number, hi: number) => {
+      const r = contrast(fg, bg);
+      expect(r, `${label}: ${r.toFixed(2)} outside ${lo}–${hi}`).toBeGreaterThanOrEqual(lo);
+      expect(r, `${label}: ${r.toFixed(2)} outside ${lo}–${hi}`).toBeLessThanOrEqual(hi);
+    };
+    const surfaces: Record<Theme, string[]> = { light: ['#ececec', colors.bgWindow.light], dark: ['#141414', colors.bgWindow.dark] };
     for (const theme of THEMES) {
-      for (const overrides of [{}, colorsContrastMore]) {
-        const c = palette(theme, overrides);
-        expectContrast(`${theme} title textSecondary/bgWindow`, c('textSecondary'), c('bgWindow'), 4.5);
-        expectContrast(`${theme} toolbar glyph textTertiary/bgWindow`, c('textTertiary'), c('bgWindow'), 3);
-        expectContrast(`${theme} sidebar row icon textSecondary/bgSidebar`, c('textSecondary'), c('bgSidebar'), 3);
+      for (const s of surfaces[theme]) {
+        const bg = parseColor(s);
+        // design-spec 8.3: light 1.85–2.1:1, dark 2.4–2.7:1 (Finder 1.92 / 2.47).
+        band(`${theme} textInactive on ${s}`, parseColor(colors.textInactive[theme]), bg, theme === 'light' ? 1.85 : 2.4, theme === 'light' ? 2.1 : 2.7);
+        band(`${theme} accentTextInactive on ${s}`, parseColor(colors.accentTextInactive[theme]), bg, 1.3, 2.1);
       }
+      // The same colours as the active roles, at 30 %.
+      expect(colors.textInactive[theme]).toBe(colors.textPrimary[theme].replace(')', ' / 0.3)'));
+      expect(colors.accentTextInactive[theme]).toBe(colors.accentText[theme].replace(')', ' / 0.3)'));
     }
   });
 
@@ -172,9 +183,6 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
         }
         expectContrast('sidebarCountSelected/selected row', pick('sidebarCountSelected'), selected, 4.5);
         expectContrast('focus/material', pick('focus'), material, 3);
-        // Inactive window (design-spec 2.1): row icons in secondary, the sidebar toggle in tertiary.
-        expectContrast('textSecondary row icon/material', pick('textSecondary'), material, 3);
-        expectContrast('textTertiary toggle glyph/material', pick('textTertiary'), material, 3);
       });
     }
   }

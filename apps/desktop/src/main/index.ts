@@ -12,13 +12,13 @@ import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
+import { applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { findUpdateBackup } from './update-backup';
-import { createMainWindow, resyncWindowState } from './window';
+import { createMainWindow, isSheetOpen, resyncWindowState, setSheetOpen } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { windowUrl } from './window-url';
 
@@ -61,16 +61,14 @@ function openMainWindow(): BrowserWindow {
     chrome: chrome(),
   });
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
-  const relabelFullScreen = (fullscreen: boolean) => {
-    if (appMenu) applyFullScreenLabel(appMenu, process.platform, fullscreen);
-  };
-  win.on('enter-full-screen', () => relabelFullScreen(true));
-  win.on('leave-full-screen', () => relabelFullScreen(false));
+  win.on('enter-full-screen', refreshFullScreenItem);
+  win.on('leave-full-screen', refreshFullScreenItem);
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
     // No renderer left to act on menu commands (macOS keeps the app running): back to the pre-report state.
     setUiContext(BEFORE_FIRST_REPORT);
+    refreshFullScreenItem();
   });
   // A crashed renderer runs nothing either; a reloaded one reports again.
   win.webContents.on('render-process-gone', () => {
@@ -79,9 +77,17 @@ function openMainWindow(): BrowserWindow {
   return win;
 }
 
+/** The macOS 전체 화면 item from the current main window (none, under a sheet, in full screen or not). */
+function refreshFullScreenItem(): void {
+  if (!appMenu) return;
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  applyFullScreenItem(appMenu, process.platform, { available: win !== null && !isSheetOpen(win), fullscreen: win?.isFullScreen() ?? false });
+}
+
 const activation = createActivateGate({
   openWindow: () => {
     mainWindow = openMainWindow();
+    refreshFullScreenItem();
   },
   windowCount: () => BrowserWindow.getAllWindows().length,
 });
@@ -108,6 +114,7 @@ function installAppMenu(): void {
       onCommand: dispatchMenuCommand,
       labels: { ...(uiContext.sidebar ? { sidebar: uiContext.sidebar } : {}) },
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
+      fullScreenAvailable: mainWindow !== null && !mainWindow.isDestroyed() && !isSheetOpen(mainWindow),
       onToggleFullScreen: () => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(!mainWindow.isFullScreen());
       },
@@ -211,9 +218,15 @@ if (!app.requestSingleInstanceLock()) {
         preload: path.join(here, '../preload/index.cjs'),
         url: () => windowUrl(rendererBase, 'sheet', urlOptions),
         platform: process.platform,
+        // The parent stays the main window under its sheet (chrome undimmed); 전체 화면 waits for the sheet.
+        onSheetShown: (parent) => {
+          setSheetOpen(parent, true);
+          refreshFullScreenItem();
+        },
         // Now and once AppKit has settled the key window (no 'focus' event comes for it on macOS).
         onSheetClosed: (parent) => {
-          resyncWindowState(parent);
+          setSheetOpen(parent, false);
+          refreshFullScreenItem();
           setTimeout(() => {
             if (!parent.isDestroyed()) resyncWindowState(parent);
           }, 250);
@@ -224,6 +237,7 @@ if (!app.requestSingleInstanceLock()) {
 
     activation.markReady();
     mainWindow = openMainWindow();
+    refreshFullScreenItem();
   });
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).

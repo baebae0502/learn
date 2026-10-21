@@ -13,11 +13,9 @@
   [hidden] {
     display: none !important;
   }
-  /* Inactive window — not the key window (design-spec 2.1, 8.3; Task 8 critique R2-2, R2-3). As AppKit does: no
-     focus ring and no keyboard cursor anywhere (the focus stays put, so they return in place when the window is key
-     again), the toolbar title and glyphs dim, and sidebar row icons lose their accent. The selection is already the
-     neutral fill (components/list.css); the traffic lights are the system's. Real focus states only: the state board's
-     forced states ([data-force]) are left alone. */
+  /* Not the key window (data-window-inactive; design-spec 2.1, 8.3): no focus ring and no keyboard cursor anywhere, as
+     AppKit draws them only in the key window. The focus stays put, so they return in place. The selection is already
+     the neutral fill (components/list.css). Real focus states only: the state board's forced states are left alone. */
   :root[data-window-inactive] :is(:focus-visible, [data-focus-visible], .soft-disabled) {
     outline: none;
   }
@@ -31,14 +29,18 @@
   :root[data-window-inactive] .pane-separator:focus-visible::before {
     content: none;
   }
-  :root[data-window-inactive] .titlebar .tb-title .title {
-    color: var(--text-secondary);
-  }
-  :root[data-window-inactive] :is(.titlebar, .sidebar-top) .icon-btn {
-    color: var(--text-tertiary);
-  }
-  :root[data-window-inactive] .nav-row > .icon {
-    color: var(--text-secondary);
+  /* Not the main window either (data-window-not-main: neither key nor the parent of one of our sheets): the chrome's
+     text and glyphs dim to Finder's level (--text-inactive = primary at 30 %, row icons the accent at 30 %; run
+     39642950406). Content is untouched, and so is the selected sidebar row's text. Never under prefers-contrast: more. */
+  @media not (prefers-contrast: more) {
+    :root[data-window-not-main] .titlebar :is(.tb-title .title, .tb-title .count, .icon-btn, .btn, .btn .icon),
+    :root[data-window-not-main] .sidebar-top .icon-btn,
+    :root[data-window-not-main] .sidebar :is(.section-label, .nav-row:not([data-current], [data-selected]), .nav-row:not([data-current], [data-selected]) .count) {
+      color: var(--text-inactive);
+    }
+    :root[data-window-not-main] .sidebar .nav-row > .icon {
+      color: var(--accent-text-inactive);
+    }
   }
 
   /* Screenshots (LEARN_DETERMINISTIC=1): nothing moves, no caret. */

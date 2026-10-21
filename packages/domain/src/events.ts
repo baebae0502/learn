@@ -4,7 +4,13 @@ import type { Prefs } from './settings';
 /** The window's fullscreen/focus state: pushed on change (windowState event) and answered by `ui.windowState()`. */
 export interface WindowState {
   fullscreen: boolean;
+  /** The key window (macOS): rings, keyboard cursor and the accent selection only here. */
   focused: boolean;
+  /**
+   * One of our sheets is attached. A window that is not key but carries a sheet stays the main window (AppKit draws its
+   * chrome active): only a window that is neither key nor a sheet's parent dims its chrome (design-spec 2.1).
+   */
+  sheetOpen: boolean;
 }
 
 export interface LearnEventMap {

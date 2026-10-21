@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import type { CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
@@ -95,6 +95,26 @@ export async function importPaths(page: Page, paths: string[]): Promise<LibraryI
     if (o.status !== 'imported') throw new Error(`library.import: ${o.path} → ${o.status}`);
     return o.item;
   });
+}
+
+/** Import through the real menu path (stubbed dialog): 파일 › 파일 가져오기… or 외부 파일 연결…. */
+export async function importFiles(s: Session, paths: string[], mode: 'managed' | 'linked' = 'managed'): Promise<void> {
+  await stubOpenDialog(s.app, paths);
+  await runMenuCommand(s.app, mode === 'managed' ? 'file.importManaged' : 'file.importLinked');
+}
+
+/**
+ * A control disabled with a reason (ui/disabledReason.tsx, M-2): focusable but aria-disabled, and the reason is its
+ * accessible description (the same text its tooltip shows). `null`: enabled again, with no reason left behind.
+ */
+export async function expectDisabledReason(control: Locator, reason: string | null): Promise<void> {
+  if (reason === null) {
+    await expect(control).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(control).toHaveAccessibleDescription('');
+  } else {
+    await expect(control).toHaveAttribute('aria-disabled', 'true');
+    await expect(control).toHaveAccessibleDescription(reason);
+  }
 }
 
 export async function openItem(page: Page, title: string): Promise<void> {

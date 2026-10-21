@@ -73,7 +73,6 @@ describe('UI copy (design-spec 4, 9)', () => {
     expect(sources().filter((f) => /from '(?:\.\.?\/)+strings\/legacy'/.test(read(f)))).toEqual([
       'components/DuplicateDialog.tsx',
       'components/FatalScreen.tsx',
-      'components/LibraryView.tsx',
       'viewers/PdfViewer.tsx',
       'viewers/VideoViewer.tsx',
       'viewers/ViewerHost.tsx',

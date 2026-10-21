@@ -62,11 +62,11 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     await importFiles(s, [txt]);
     await expect(s.page.getByTestId('import-failures')).toBeVisible();
     await shoot(s.page, 'toast-failure-light', { mask: dates() });
-    // Several files with one cause: three one-line rows (a long name is cut, not wrapped), "외 2개", the advice once.
+    // Several files with one cause: three one-line rows (a long name is cut, its cause stays), "외 2개", the advice once.
     await s.page.getByTestId('import-failures').getByTestId('toast-close').click();
     await expect(s.page.getByTestId('import-failures')).toHaveCount(0);
     await setTheme(s.page, 'dark');
-    const names = ['세포 신호 전달 강의 녹음 메모 — 3주차 정리본 (최종 수정, 조교 확인 완료).txt', 'notes.txt', 'slides.key', 'draft.docx', 'archive.zip'];
+    const names = ['세포 신호 전달 강의 녹음 메모 — 3주차 정리본 (최종).txt', 'notes.txt', 'slides.key', 'draft.docx', 'archive.zip'];
     const files = names.map((n) => {
       const f = testInfo.outputPath(n);
       fs.writeFileSync(f, 'x');
@@ -74,6 +74,10 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     });
     await importFiles(s, files);
     await expect(s.page.getByTestId('import-failures').locator('.t-line')).toHaveCount(4);
+    // The long name is what gets cut; its cause stays whole.
+    const long = s.page.getByTestId('import-failures').locator('.t-line').first();
+    expect(await long.locator('.t-name').evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+    expect(await long.locator('.t-cause').evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     await shoot(s.page, 'toast-failure-multi-dark', { mask: dates() });
   } finally {
     await s.app.close();

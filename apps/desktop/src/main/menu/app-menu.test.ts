@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, acceleratorLabel, commandById, platformAccelerator, type CommandId, type CommandSpec } from '@learn/domain';
-import { FULL_SCREEN, applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, type FullScreenItem } from './app-menu';
+import { FULL_SCREEN, applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds } from './app-menu';
 
 interface Shape {
   label?: string;
@@ -63,7 +63,7 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
     SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.
-    platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', role: 'togglefullscreen' } : { label: '전체 화면', role: 'togglefullscreen' },
+    platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
   ],
 });
 const GO: Shape = {
@@ -250,35 +250,32 @@ describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)',
 });
 
 describe('macOS 전체 화면 item (Task 8 R2-1)', () => {
-  const view = (fullScreen: FullScreenItem, fullScreenState = false, onToggleFullScreen = vi.fn()) =>
-    shape(buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), fullScreen, fullScreenState, onToggleFullScreen }).find((m) => m.id === 'menu.view')!.submenu! as MenuItemConstructorOptions[]);
-  it('names what it will do: 전체 화면 시작 while windowed, 전체 화면 종료 in full screen', () => {
-    expect(view('role').at(-1)).toEqual({ id: FULL_SCREEN.id, label: '전체 화면 시작', role: 'togglefullscreen' });
-    expect(view('role', true).at(-1)).toEqual({ id: FULL_SCREEN.id, label: '전체 화면 종료', role: 'togglefullscreen' });
-  });
-  it('variants: the role item, our plain item on ⌃⌘F, or none of ours', () => {
+  const view = (fullScreenState = false, onToggleFullScreen = vi.fn()) =>
+    buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), fullScreenState, onToggleFullScreen }).find((m) => m.id === 'menu.view')!.submenu as MenuItemConstructorOptions[];
+  it('is our own item on ⌃⌘F, no role (AppKit showed a second copy of the role item), named by what it will do', () => {
     const onToggle = vi.fn();
-    const plainTemplate = buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), fullScreen: 'plain', onToggleFullScreen: onToggle });
-    const plain = walk(plainTemplate).find((i) => i.id === FULL_SCREEN.id)!;
-    expect(plain).toMatchObject({ label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' });
-    expect(plain.role).toBeUndefined();
-    plain.click!({} as never, undefined, {} as never);
+    const item = walk(view(false, onToggle)).find((i) => i.id === FULL_SCREEN.id)!;
+    expect(item).toMatchObject({ label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' });
+    expect(item.role).toBeUndefined();
+    item.click!({} as never, undefined, {} as never);
     expect(onToggle).toHaveBeenCalledTimes(1);
-    expect(view('none').map((i) => i.label ?? i.type)).toEqual(['사이드바 보기/가리기']);
+    expect(walk(view(true)).find((i) => i.id === FULL_SCREEN.id)?.label).toBe('전체 화면 종료');
+    expect(walk(view()).filter((i) => i.label?.includes('전체 화면'))).toHaveLength(1);
   });
-  it('relabels in place on macOS only, keeping the id', () => {
+  it('relabels in place on macOS only, keeping the id; Linux/Windows keep the neutral role item', () => {
     const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn() });
     const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
     const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
     applyFullScreenLabel(lookup, 'darwin', true);
-    expect(byId.get(FULL_SCREEN.id)).toMatchObject({ label: '전체 화면 종료', role: 'togglefullscreen' });
+    expect(byId.get(FULL_SCREEN.id)).toMatchObject({ label: '전체 화면 종료', accelerator: 'Ctrl+Cmd+F' });
     applyFullScreenLabel(lookup, 'darwin', false);
     expect(byId.get(FULL_SCREEN.id)?.label).toBe('전체 화면 시작');
-    const linux = buildAppMenu({ isDev: false, platform: 'linux', commands: COMMANDS, enabled: ALL, onCommand: vi.fn() });
     const asked: string[] = [];
     applyFullScreenLabel({ getMenuItemById: (id) => (asked.push(id), null) }, 'linux', true);
     expect(asked).toEqual([]);
-    expect(walk(linux).find((i) => i.role === 'togglefullscreen')).toMatchObject({ label: '전체 화면' });
+    for (const platform of ['linux', 'win32'] as const) {
+      expect(walk(build(platform)).find((i) => i.label?.includes('전체 화면'))).toMatchObject({ label: '전체 화면', role: 'togglefullscreen' });
+    }
   });
 });
 

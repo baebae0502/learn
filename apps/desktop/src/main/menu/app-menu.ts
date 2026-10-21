@@ -13,19 +13,11 @@ export interface AppMenuOptions {
   onCommand(id: CommandId): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
   labels?: Pick<CommandContextState, 'sidebar'>;
-  /** macOS 전체 화면 item (Task 8 R2-1 spike variants; default 'role'). Ignored elsewhere (always the role item). */
-  fullScreen?: FullScreenItem;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
   fullScreenState?: boolean;
-  /** 'plain' variant: the item's click and ⌃⌘F toggle the main window's full screen. */
+  /** macOS: the 전체 화면 item's click and ⌃⌘F toggle the main window's full screen. */
   onToggleFullScreen?(): void;
 }
-
-/**
- * macOS 전체 화면 item variants (Task 8 R2-1 spike): 'role' — Electron's togglefullscreen role; 'plain' — our own item
- * (no role) on ⌃⌘F; 'none' — no item of ours, whatever AppKit adds is what the menu shows.
- */
-export type FullScreenItem = 'role' | 'plain' | 'none';
 
 /** The macOS 전체 화면 item: Apple Korean names it by what it will do; the neutral name is spec 7.4's. */
 export const FULL_SCREEN = {
@@ -35,17 +27,14 @@ export const FULL_SCREEN = {
 } as const;
 const fullScreenLabel = (fullscreen: boolean) => FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed'];
 
+/**
+ * macOS: our own item, no role. Electron's togglefullscreen role uses the toggleFullScreenMode: selector, and AppKit
+ * on macOS 15 shows a second, visible copy of such an item with the system's fn F (runs 39618864364 – 39640208719); a
+ * plain item on ⌃⌘F is the one row (R2-1 spike, run 39640208719). Linux/Windows keep the role (F11).
+ */
 function fullScreenItems(opts: AppMenuOptions): Item[] {
   if (opts.platform !== 'darwin') return [{ role: 'togglefullscreen', label: FULL_SCREEN.label }];
-  const label = fullScreenLabel(opts.fullScreenState ?? false);
-  switch (opts.fullScreen ?? 'role') {
-    case 'none':
-      return [];
-    case 'plain':
-      return [{ id: FULL_SCREEN.id, label, accelerator: 'Ctrl+Cmd+F', click: () => opts.onToggleFullScreen?.() }];
-    default:
-      return [{ id: FULL_SCREEN.id, role: 'togglefullscreen', label }];
-  }
+  return [{ id: FULL_SCREEN.id, label: fullScreenLabel(opts.fullScreenState ?? false), accelerator: 'Ctrl+Cmd+F', click: () => opts.onToggleFullScreen?.() }];
 }
 
 type Item = MenuItemConstructorOptions;

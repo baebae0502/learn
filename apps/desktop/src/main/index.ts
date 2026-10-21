@@ -12,7 +12,7 @@ import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu, type FullScreenItem } from './menu/app-menu';
+import { applyFullScreenLabel, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
@@ -27,15 +27,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // Same app name (and thus userData path) whether launched via `electron .` or the built entry.
 app.setName('Learn');
 
-/**
- * Task 8 R2-1 spike, evidence runs only (LEARN_E2E=1, never a user setting): which 전체 화면 item 보기 carries on
- * macOS — a role item (b), our own plain item on ⌃⌘F with AppKit's injection turned off (c), or none of ours (a).
- */
-const fullScreenItem: FullScreenItem = (() => {
-  if (process.platform !== 'darwin' || process.env['LEARN_E2E'] !== '1') return 'role';
-  return ({ a: 'none', b: 'role', c: 'plain' } as const)[process.env['LEARN_FS_MENU'] as 'a' | 'b' | 'c'] ?? 'role';
-})();
-if (fullScreenItem === 'plain') systemPreferences.setUserDefault('NSFullScreenMenuItemEverywhere', 'boolean', false);
+// macOS: 보기's 전체 화면 is our own plain item (app-menu.ts); AppKit is also told, in the app's own defaults, not to
+// add a full-screen item of its own (older macOS does when no item uses its selector). Task 8 R2-1.
+if (process.platform === 'darwin') systemPreferences.setUserDefault('NSFullScreenMenuItemEverywhere', 'boolean', false);
 
 // E2E and multi-profile runs isolate userData (also scopes the single-instance lock).
 if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEARN_USER_DATA_DIR']);
@@ -113,7 +107,6 @@ function installAppMenu(): void {
       enabled: new Set(availableMenuCommands(uiContext)),
       onCommand: dispatchMenuCommand,
       labels: { ...(uiContext.sidebar ? { sidebar: uiContext.sidebar } : {}) },
-      fullScreen: fullScreenItem,
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
       onToggleFullScreen: () => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(!mainWindow.isFullScreen());

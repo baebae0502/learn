@@ -42,8 +42,11 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 | 3 | [39443865113](https://github.com/baebae0502/learn/actions/runs/39443865113) | evidence / macos-15 / 예 | 114초 → 2분 | 성공 | 스파이크 4개 테스트 통과, 패키지 앱 실행 |
 | 4 | [39444862608](https://github.com/baebae0502/learn/actions/runs/39444862608) | all / macos-26 / 예 | 297초 → 5분 | 실패 | 증거 10/10 통과, 기능 E2E 5/6(같은 전체 화면 멈춤). 메뉴 열기 수정 확인 |
 | 5 | [39451895620](https://github.com/baebae0502/learn/actions/runs/39451895620) | all / macos-15 / 아니오 (label `m0-fix1`) | 164초 → 3분 | **성공** | 수정 1회차 확인: 증거 9 통과 + 1 skip(패키지 스파이크, packaged=false), 기능 E2E 6/6 통과 + darwin 특성 테스트 1개 예상 실패(`test.fail`). 메뉴 열기 ①·② macOS 15에서도 성공 |
+| 6 | [39534378577](https://github.com/baebae0502/learn/actions/runs/39534378577) | all / macos-15 / 예 (M2) | → 7분 | **성공** | 아래 "M2 실행" |
+| 7 | [39617644850](https://github.com/baebae0502/learn/actions/runs/39617644850) | evidence / macos-15 / 아니오 (label `m3-chrome`) | 212초 → 4분 | 실패 | M3 창 크롬 1회차: 증거 12 통과 · 1 skip(패키지 스파이크) · 판정 테스트 1 실패 — 하네스 원인 2건(비교 창 빈 캡처, 화면보다 넓은 복원 요청), 아래 "M3 창 크롬" |
+| 8 | [39618864364](https://github.com/baebae0502/learn/actions/runs/39618864364) | evidence / macos-15 / 아니오 (label `m3-chrome`) | 144초 → 3분 | 실패 | 하네스 수정 후 2회차: 증거 12 통과 · 1 skip · 판정 테스트 1 실패 — 앱 판정 16개 모두 통과, 하네스 원인 1건(최소 폭보다 좁은 복원 요청)은 9b7a1a5에서 고침(확인은 Task 14 실행) |
 
-**합계: macOS 5회, 16분(포함 분 160분 차감) / 예산 8회.** Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
+**합계: macOS 8회(M0 5 · M2 1 · M3 2), 30분(포함 분 300분 차감).** M0은 예산 8회 중 5회. M3은 계획 2회(Task 8 · Task 14)와 무료 한도 안 추가 1회 가운데 Task 8이 2회(계획 1 + 하네스 수정 재실행 1)를 써서 Task 14의 1회가 남았다(C-9: 지출 한도 $0이라 과금 없음). fixture 잡(ubuntu)은 run마다 1분(×1). Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
 
 ## 기준선 실측
 
@@ -113,6 +116,35 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 - **⌘O 정확히 1회**: Playwright의 CDP 키는 NSMenu 키 등가물에 닿지 않으므로, 앱을 맨 앞으로 가져온 뒤(System Events가 앱의 main pid를 frontmost로 보고할 때까지 대기) `osascript`로 `keystroke "o" using command down`을 보냈다. 러너 이미지는 `/usr/bin/osascript`에 손쉬운 사용·Apple Events 권한을 미리 준다(actions/runner-images `configure-tccdb-macos.sh`). 결과: 대화상자 1회, 항목 1개. 헬퍼 `nativeKeystroke`는 M3의 ⌘K·⌘, 검증에 재사용한다.
 - **읽기 위치**: 영상 7.0005초에서 일시정지 → SIGKILL → 재실행 → 7.001초. PDF는 다시 열면 떠난 쪽.
 - 이 실행 뒤 M2 최종 리뷰 수정에서 기능 E2E 2개(`position.spec.ts` "opening a PDF records openedAt even when the page never changes", `platform.spec.ts` "ui.windowState() answers the current fullscreen and focus state that main sees")가 추가돼 지금은 22개다. 추가분은 macOS에서 아직 돌리지 않았다(다음 macOS 실행에서 확인).
+
+## M3 창 크롬 (run 39617644850 · 39618864364, 2026-10-21, macos-15 arm64, `suite=evidence`, 4분 + 3분)
+
+`tests/evidence/shell.evidence.ts`가 한 세션(직렬)으로 재고, 값은 `m3-shell.json`(`checks`에 판정과 근거 값), 캡처는 `m3-chrome/m3-0*·m3-1*.window.png`·`.screen.png`. 아래 값은 2회차(39618864364), 1회차와 다르면 함께 적었다. 러너 화면 1024×768 @1x, 창 1024×684.
+
+| Step 9 | 값 | 판정 · 보정 |
+|---|---|---|
+| 1 신호등 | 닫기 단추 중심 (24.5, 25.5)pt, 확대 단추 중심 x 64.5(오른쪽 끝 약 70.5 < 84), 1pt = 1px. 두 회 같음 | 기준 y 26 ± 1.5, x 24 안 → **보정 없음**(`trafficLightPosition` (18, 18) 유지). 토큰 y 18은 단추 프레임 원점이고 원은 그보다 약 1.5 아래에 그려져 명세의 "묶음 원점 (18, 20)"과 화면상 일치 |
+| 2 비브런시 | 사이드바(120, 500) 비브런시 246,246,246 · 불투명(`LEARN_VIBRANCY=0`) 238,241,243(= `--bg-sidebar`) → sidebarDelta 8. 내용(700, 500) 255,255,255 · 255,255,255 → contentDelta 0 | 재질이 보이고 그 위 조상은 모두 투명, 내용 면은 불투명 → **기본값 켬 유지**. 1회차는 비교 창이 빈 캡처(창 배경과 신호등만)라 sidebarDelta 2로 잘못 나왔다(하네스: 같은 자리에 겹친 창은 Chromium이 그리지 않음 → 2회차는 메인 창을 숨기고 찍음) |
+| 3 메뉴 막대 | `Learn`(System Events 이름은 비패키지라 `Electron`) · 파일 · 편집 · 보기 · 이동 · 윈도우 · 도움말. `m3-09-menu-view-*.screen.png`에 "사이드바 보기/숨기기 ⌃⌘S" | 통과. 단 보기 메뉴에 **"전체 화면"이 두 번**(`fn F`와 `⌃⌘F`) — macOS가 붙이는 전체 화면 항목과 우리 `togglefullscreen`이 겹친다(아래 발견) |
+| 4 실제 단축키 | ⌃⌘S 두 번(숨김 → 보임), PDF에서 ⌘1 → 라이브러리: `ok` | 통과 |
+| 5 창 상태 | 닫기 직전 (40, 65, 960×604) → 재시작 후 (40, 65, 960×604) | `windowStatePersistence`가 macOS에서 그대로 복원 → **Step 10 대체 구현 불필요**. 1회차는 1024pt 화면에 x 40·폭 1000을 요청해 복원이 x 24로 화면 안에 맞췄고(y·크기는 정확), 2회차는 요청 폭 944가 최소 폭 960보다 좁아 960이 됐다(둘 다 하네스, 9b7a1a5에서 최소 크기와 작업 영역에 맞춤) |
+
+이어 받은 확인(Task 6·7):
+- **비활성 단축키**: 라이브러리에서(라이브러리로 돌아가기 비활성) 실제 ⌘1 → 창 1개 그대로, 라이브러리 표 그대로, `[app]` 콘솔 오류 없음. 통과.
+- **시트의 실제 ↩·esc**(System Events `key code` 36·53, 키 창은 시트): 중복 시트 ↩ → 83ms에 닫힘, 항목 3개 그대로(건너뛰기), 가져오기 메뉴 다시 켜짐. 단축키 시트 esc → 22ms에 닫힘. 통과.
+- **이유 있는 비활성 컨트롤의 초점 고리**: PDF 1쪽의 이전 쪽(`첫 쪽입니다`)에 키보드 초점 → `data-focus-visible`, 고리 solid 2px `--focus`, 단추 불투명도 1(아이콘만 0.4). 창 캡처 뒤에도 같음. `m3-10-soft-disabled-focus.window.png`.
+- **치명 화면**: 위 52px 띠(`.fatal-drag`)가 `drag`, 신호등 아래(24, 26)와 오른쪽 끝 모두 띠 안이고 `no-drag` 요소 없음(맨 위 요소는 `app-region`이 없는 가운데 정렬 상자라 끌기를 막지 않는다). `m3-11-fatal.window.png`. 임시 폴더가 홈 밖(`/var/folders/…`)이라 경로가 `~`로 줄지 않는 것은 예상대로.
+- **Finder에서 보기**(행 컨텍스트 메뉴 → 레지스트리 → `shell.showItemInFolder` 1회): 210ms(1회차 168ms) 뒤 맨 앞 앱이 Finder. 통과.
+- **리더 열기 지연**(페이지 안 `performance.now()`, 보고만): PDF는 클릭부터 캔버스 표시까지 14ms(1회차 29), 빈 내용 구간(ViewerHost의 IPC 1회 왕복)도 그 안. 재생할 수 없는 동영상은 내용이 다시 차기까지 86ms(48), 안내가 보이기까지 896ms(1,312) — 미디어 오류가 늦게 온다.
+- **VoiceOver**는 러너에서 돌릴 수 없다: 실기에서 손으로 확인하는 항목이다(아래 "남은 실기 확인 항목").
+
+보정: 없음(신호등 토큰, 비브런시 기본값, 창 상태 대체 구현 모두 측정값이 기준 안). 다음 macOS 실행(Task 14)에서 9b7a1a5의 창 상태 판정이 통과하는지 본다.
+
+발견(디자인 비평·후속 작업 판단용):
+- 시트(중복·단축키)가 도구 막대 아래에 붙지 않고 창의 세로 가운데에 뜬다(`m3-07`·`m3-08-*.screen.png`). `setSheetOffset(52)`가 이 macOS에서 시트 위치를 정하지 않는 것으로 보인다.
+- 보기 메뉴의 "전체 화면" 중복(`fn F`, `⌃⌘F`).
+- 같은 자리에 겹친 두 번째 앱의 창은 캡처가 늦게 갱신된다(2회차 비교 창 캡처에 첫 그림의 빈 목록이 찍힘. 표본 두 점은 빈 영역이라 판정에는 영향 없음).
+- Linux E2E는 Xvfb 화면을 1920×1200으로 키웠다: 숨긴 제목 막대(프레임 없는 창)는 화면과 크기가 같으면 Chromium이 1px 줄여, 1440×900 화면에서는 투어의 1440×900 뷰포트를 만들 수 없다. 증거 하네스(Linux)는 1440×900 그대로.
 
 ## 알려진 한계
 

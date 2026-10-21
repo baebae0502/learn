@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { platformAccelerator } from '../../packages/domain/src/accelerator';
+import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
 import { COMMANDS, commandLabel, isCommandAvailable, type MenuName } from '../../packages/domain/src/commands';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
@@ -56,6 +56,12 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     }
     const roles = all.map(roleOf);
     for (const banned of ['reload', 'forcereload', 'toggledevtools']) expect(roles).not.toContain(banned);
+
+    // No two live items (role defaults filled in by Electron, hidden twins included) share a shortcut on this platform.
+    const shortcuts = all.flatMap((n) => (n.accelerator ? [acceleratorLabel(n.accelerator, process.platform)] : []));
+    expect(shortcuts.length).toBeGreaterThanOrEqual(8);
+    expect(shortcuts.filter((a, i) => shortcuts.indexOf(a) !== i)).toEqual([]);
+    if (!IS_MAC) expect(shortcuts.filter((a) => a.includes('Super'))).toEqual([]);
     expect(all.map((n) => n.label)).not.toContain('개발자 도구');
 
     // Registry-driven: each placed command appears exactly once, in its platform menu, with its id, platform label and

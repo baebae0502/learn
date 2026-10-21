@@ -18,6 +18,12 @@ describe('accelerators', () => {
     expect(acceleratorKeys('Ctrl+Tab', 'darwin')).toEqual(['⌃', '⇥']);
     expect(acceleratorLabel('Alt+CmdOrCtrl+O', 'darwin')).toBe('⌥⌘O');
   });
+  it('sorts modifiers written in any order into ⌃⌥⇧⌘ on macOS', () => {
+    expect(acceleratorLabel('CmdOrCtrl+Shift+N', 'darwin')).toBe('⇧⌘N');
+    expect(acceleratorLabel('Cmd+Ctrl+F', 'darwin')).toBe('⌃⌘F');
+    expect(acceleratorLabel('CmdOrCtrl+Alt+G', 'darwin')).toBe('⌥⌘G');
+    expect(acceleratorLabel('Shift+Cmd+Alt+Ctrl+K', 'darwin')).toBe('⌃⌥⇧⌘K');
+  });
   it('spells modifiers out on Linux and Windows', () => {
     expect(acceleratorKeys('Alt+CmdOrCtrl+O', 'linux')).toEqual(['Ctrl', 'Alt', 'O']);
     expect(acceleratorKeys('Ctrl+Cmd+S', 'linux')).toEqual(['Ctrl', 'Shift', 'S']);

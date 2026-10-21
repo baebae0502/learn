@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, inPalette, isCommandAvailable, type CommandContextState, type CommandTargetInfo } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -35,11 +36,23 @@ describe('command registry', () => {
     for (const c of COMMANDS) expect(commandById(c.id)).toBe(c);
   });
   it('gives every accelerator and every single key to one command (one native menu serves every view in M3)', () => {
-    const accels = COMMANDS.flatMap((c) => (c.accelerator ? [c.accelerator] : []));
-    expect(new Set(accels).size).toBe(accels.length);
+    // Compared per platform after mapping (⌃⌘ → Ctrl+Shift off macOS) and sorting modifiers, so 'Shift+CmdOrCtrl+X'
+    // and 'CmdOrCtrl+Shift+X' collide. Hidden twins and Electron's role defaults are checked in app-menu.test.ts.
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      const accels = COMMANDS.flatMap((c) => (c.accelerator ? [acceleratorLabel(c.accelerator, platform)] : []));
+      expect(accels.filter((a, i) => accels.indexOf(a) !== i), platform).toEqual([]);
+    }
+    // A bare Cmd (without the OrCtrl part, and not the ⌃⌘ pair) would be the Super key on Linux/Windows.
+    for (const c of COMMANDS) {
+      if (!c.accelerator) continue;
+      for (const platform of ['linux', 'win32']) expect(acceleratorKeys(c.accelerator, platform), c.id).not.toContain('Super');
+    }
     const keys = COMMANDS.flatMap((c) => (c.key ? [`${c.key.shift ? 'Shift+' : ''}${c.key.code}`] : []));
     expect(new Set(keys).size).toBe(keys.length);
-    expect(accels).not.toContain('CmdOrCtrl+['); // ⌘[ / ⌘] belong to PDF history (M7, design-spec 7.4)
+    // ⌘[ / ⌘] belong to PDF history (M7, design-spec 7.4).
+    const mac = COMMANDS.flatMap((c) => (c.accelerator ? [acceleratorLabel(c.accelerator, 'darwin')] : []));
+    expect(mac).not.toContain('⌘[');
+    expect(mac).not.toContain('⌘]');
   });
   it('labels every command in Korean; placements use known menus; context menus use known kinds', () => {
     for (const c of COMMANDS) {
@@ -86,6 +99,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.open', LIB, [managedOk, managedOk])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [managedOk])).toBe(false);
+    expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'linked', availability: 'available' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'managed', availability: 'missing' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
   });

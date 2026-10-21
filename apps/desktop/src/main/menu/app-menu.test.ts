@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, commandById, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, acceleratorLabel, commandById, type CommandId, type CommandSpec } from '@learn/domain';
 import { buildAppMenu } from './app-menu';
 
 interface Shape {
@@ -196,11 +196,55 @@ describe('menu state and placement (M3)', () => {
     const linux = build('linux', false, vi.fn(), ALL, cmds);
     expect(item(linux, 'file.importManaged')).toMatchObject({ accelerator: 'Ctrl+Shift+S', label: '파일 관리자에서 보기' });
     expect(item(build('darwin', false, vi.fn(), ALL, cmds), 'file.importManaged')).toMatchObject({ accelerator: 'Ctrl+Cmd+S', label: 'Finder에서 보기' });
-    expect(item(linux, 'file.importLinked#1')).toMatchObject({ visible: false, accelerator: 'CmdOrCtrl+=', label: '크게' });
+    expect(item(linux, 'file.importLinked#1')).toMatchObject({ visible: false, accelerator: 'CmdOrCtrl+=', label: '크게', enabled: true });
+    // The twin follows its command's availability (⌘= must not run a command ⌘+ cannot).
+    expect(item(build('linux', false, vi.fn(), new Set<CommandId>(), cmds), 'file.importLinked#1')?.enabled).toBe(false);
   });
   it('leaves out top-level menus with nothing in them', () => {
     // A fixed command list: later tasks add 도움말 commands without touching this test.
     expect(shape(build('darwin', false, vi.fn(), ALL, [commandById('nav.back')])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '이동', '윈도우']);
     expect(shape(build('darwin', false, vi.fn(), ALL, [])).map((m) => m.label)).toEqual(['Learn', '파일', '편집', '보기', '윈도우']);
+  });
+});
+
+describe('shortcut collisions per platform (registry items, hidden twins, Electron role defaults)', () => {
+  /** Electron 44's default accelerators for the roles this builder uses (menu-item-roles.ts; the live Linux menu agrees). */
+  const roleAccelerator = (role: string, platform: NodeJS.Platform): string | null => {
+    const mac = platform === 'darwin';
+    const win = platform === 'win32';
+    const table: Record<string, string | null> = {
+      close: 'CommandOrControl+W', undo: 'CommandOrControl+Z', redo: win ? 'Control+Y' : 'Shift+CommandOrControl+Z',
+      cut: 'CommandOrControl+X', copy: 'CommandOrControl+C', paste: 'CommandOrControl+V', selectall: 'CommandOrControl+A',
+      minimize: 'CommandOrControl+M', hide: 'Command+H', hideothers: 'Command+Alt+H', quit: win ? null : 'CommandOrControl+Q',
+      togglefullscreen: mac ? 'Control+Command+F' : 'F11', toggledevtools: mac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+    };
+    return table[role.toLowerCase()] ?? null;
+  };
+  /** Every shortcut in the built menu as the platform shows it (mapped, modifiers sorted), hidden items included. */
+  const shortcuts = (platform: NodeJS.Platform, commands: readonly CommandSpec[] = COMMANDS) =>
+    walk(build(platform, true, vi.fn(), ALL, commands)).flatMap((i) => {
+      const acc = i.accelerator ? String(i.accelerator) : i.role ? roleAccelerator(i.role, platform) : null;
+      return acc ? [acceleratorLabel(acc, platform)] : [];
+    });
+  const clashes = (list: string[]) => [...new Set(list.filter((a, i) => list.indexOf(a) !== i))];
+  const PLATFORMS = ['darwin', 'linux', 'win32'] as const;
+
+  it('the shipped menu has none on any platform, and nothing becomes the Super key off macOS', () => {
+    for (const platform of PLATFORMS) {
+      const list = shortcuts(platform);
+      expect(list.length, platform).toBeGreaterThanOrEqual(10);
+      expect(clashes(list), platform).toEqual([]);
+      if (platform !== 'darwin') expect(list.filter((a) => a.includes('Super')), platform).toEqual([]);
+    }
+  });
+  it('catches a clash with a hidden twin and with a role default (the check can fail)', () => {
+    const zoom: CommandSpec = { id: 'file.importManaged', label: '크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'] };
+    const equals: CommandSpec = { id: 'file.importLinked', label: '같음', accelerator: 'CmdOrCtrl+=', menu: { menu: 'view', group: 1, order: 2 }, contexts: ['app'] };
+    expect(clashes(shortcuts('darwin', [zoom, equals]))).toEqual(['⌘=']);
+    const focus: CommandSpec = { id: 'nav.back', label: '집중', accelerator: 'Ctrl+Cmd+F', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'] };
+    expect(clashes(shortcuts('darwin', [focus]))).toEqual(['⌃⌘F']); // 전체 화면's ⌃⌘F on macOS
+    expect(clashes(shortcuts('linux', [focus]))).toEqual([]); // Ctrl+Shift+F against F11
+    const closeTab: CommandSpec = { ...focus, accelerator: 'CmdOrCtrl+W' };
+    for (const platform of PLATFORMS) expect(clashes(shortcuts(platform, [closeTab])), platform).toHaveLength(1);
   });
 });

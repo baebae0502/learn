@@ -3,6 +3,7 @@ import type { WindowState } from '@learn/domain';
 import { layout } from '../renderer/src/design/tokens';
 import { sendEvent } from './events';
 import { attachEditContextMenu } from './menu/edit-context-menu';
+import { releaseWhenKey } from './sheet-release';
 import { defaultFrame, frameAfterFullScreen } from './window-frame';
 import { mainWindowChrome, type ChromeOptions } from './window-options';
 
@@ -13,19 +14,42 @@ export interface MainWindowOptions {
   chrome: ChromeOptions;
 }
 
-const sheets = new WeakMap<BrowserWindow, boolean>();
+/**
+ * Our sheets per parent: 'open' while one is attached; 'releasing' from its closing until the parent is key again,
+ * during which the parent still counts as main (windowState.sheetOpen) but the sheet is gone (isSheetOpen).
+ */
+const sheets = new WeakMap<BrowserWindow, 'open' | 'releasing'>();
+const releases = new WeakMap<BrowserWindow, () => void>();
 
 /** What the windowState push and the ui.windowState query report. */
-export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused(), sheetOpen: sheets.get(win) ?? false });
+export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused(), sheetOpen: sheets.has(win) });
 
 /** Whether one of our sheets is attached to `win` now. */
-export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) ?? false;
+export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) === 'open';
 
-/** The sheet host reports a sheet attached to (or gone from) `win`; the window state is pushed when it changes. */
-export function setSheetOpen(win: BrowserWindow, open: boolean): void {
+/** The sheet host is about to show a sheet on `win`: it stays main (design-spec 2.1); a pending release is cancelled. */
+export function sheetShown(win: BrowserWindow): void {
   if (win.isDestroyed()) return;
-  sheets.set(win, open);
+  releases.get(win)?.();
+  releases.delete(win);
+  sheets.set(win, 'open');
   resyncWindowState(win);
+}
+
+/**
+ * The sheet on `win` has closed. `win` keeps counting as main until it is key again, so its chrome never dims
+ * between the two (polish minor 1; sheet-release.ts); the window state is re-read then.
+ */
+export function sheetClosed(win: BrowserWindow): void {
+  if (win.isDestroyed() || !sheets.has(win)) return;
+  sheets.set(win, 'releasing');
+  releases.get(win)?.();
+  const cancel = releaseWhenKey(win, () => {
+    releases.delete(win);
+    sheets.delete(win);
+    resyncWindowState(win);
+  });
+  if (sheets.get(win) === 'releasing') releases.set(win, cancel);
 }
 
 const pushers = new WeakMap<BrowserWindow, () => void>();

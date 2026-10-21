@@ -18,7 +18,7 @@ import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { findUpdateBackup } from './update-backup';
-import { createMainWindow, isSheetOpen, resyncWindowState, setSheetOpen } from './window';
+import { createMainWindow, isSheetOpen, sheetClosed, sheetShown } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { windowUrl } from './window-url';
 
@@ -220,16 +220,13 @@ if (!app.requestSingleInstanceLock()) {
         platform: process.platform,
         // The parent stays the main window under its sheet (chrome undimmed); 전체 화면 waits for the sheet.
         onSheetShown: (parent) => {
-          setSheetOpen(parent, true);
+          sheetShown(parent);
           refreshFullScreenItem();
         },
-        // Now and once AppKit has settled the key window (no 'focus' event comes for it on macOS).
+        // The parent stays main until it is key again, re-read within 250 ms (no 'focus' event comes for it on macOS).
         onSheetClosed: (parent) => {
-          setSheetOpen(parent, false);
+          sheetClosed(parent);
           refreshFullScreenItem();
-          setTimeout(() => {
-            if (!parent.isDestroyed()) resyncWindowState(parent);
-          }, 250);
         },
       }),
     };

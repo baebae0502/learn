@@ -13,6 +13,7 @@ import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
   launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, runMenuCommand, stubContextMenu, type Session,
 } from '../e2e/helpers';
+import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { IS_MAC, allShots, captureOpenMenu, fullScreenShot, nativeWindowShot, platformFonts, pngCentroid, pngPixels, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
@@ -148,21 +149,44 @@ test('M3 chrome: library light/dark and vibrancy on/off', TAG, async () => {
   await s.page.waitForTimeout(500);
   if (IS_MAC && light?.file) {
     // A second, throwaway profile (R-5): `tmp` must keep pointing at the main session for the restart test below.
+    // The main window is hidden meanwhile: both windows open at the same place, and Chromium stops drawing an occluded
+    // window, whose capture is then the bare window background (run 39617644850: a blank opaque capture).
+    const main = await mainWindow(s.app);
+    await main.evaluate((w) => w.hide());
     const opaqueDir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-opaque-'));
-    const opaque = await launch(path.join(opaqueDir, 'library'), path.join(opaqueDir, 'userdata'), { env: { LEARN_VIBRANCY: '0' } });
     try {
-      await importPaths(opaque.page, [PDF, MP4, MPEG4]);
-      const shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
-      if (shot.file) {
-        const points = [[120, 500], [700, 500]] as const; // sidebar, content (points; runner is 1x)
-        const [withVib, without] = [await pngPixels(s.page, light.file, points), await pngPixels(s.page, shot.file, points)];
-        const delta = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)));
-        results['vibrancy'] = { sidebar: { vibrancy: withVib[0], opaque: without[0] }, content: { vibrancy: withVib[1], opaque: without[1] }, sidebarDelta: delta(withVib[0]!, without[0]!), contentDelta: delta(withVib[1]!, without[1]!) };
-        check('content stays opaque under vibrancy (delta ≤ 2)', delta(withVib[1]!, without[1]!) <= 2, results['vibrancy']);
+      const opaque = await launch(path.join(opaqueDir, 'library'), path.join(opaqueDir, 'userdata'), { env: { LEARN_VIBRANCY: '0' } });
+      try {
+        await importPaths(opaque.page, [PDF, MP4, MPEG4]);
+        await expect(opaque.page.getByTestId('item-row')).toHaveCount(3);
+        await expect.poll(() => opaque.page.evaluate(() => document.visibilityState)).toBe('visible');
+        await opaque.page.waitForTimeout(500);
+        const shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
+        if (shot.file) {
+          const points = [[120, 500], [700, 500]] as const; // sidebar, content (points; runner is 1x)
+          const [withVib, without] = [await pngPixels(s.page, light.file, points), await pngPixels(s.page, shot.file, points)];
+          const delta = (a: readonly number[], b: readonly number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)));
+          const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+          const token = { sidebar: rgb(themeHex.light.bgSidebar), content: rgb(themeHex.light.bgContent) };
+          const v = {
+            sidebar: { vibrancy: withVib[0], opaque: without[0], token: token.sidebar },
+            content: { vibrancy: withVib[1], opaque: without[1], token: token.content },
+            sidebarDelta: delta(withVib[0]!, without[0]!),
+            contentDelta: delta(withVib[1]!, without[1]!),
+            // The opaque capture shows the page (its sidebar is the fallback token), not a bare window background.
+            opaqueCaptureValid: delta(without[0]!, token.sidebar) <= 2 && delta(without[1]!, token.content) <= 2,
+          };
+          results['vibrancy'] = v;
+          check('opaque comparison capture shows the page', v.opaqueCaptureValid, v);
+          check('sidebar vibrancy visible (sidebarDelta > 2)', v.sidebarDelta > 2, v);
+          check('content stays opaque under vibrancy (contentDelta ≤ 2)', v.contentDelta <= 2, v);
+        }
+      } finally {
+        await opaque.app.close();
       }
     } finally {
-      await opaque.app.close();
       fs.rmSync(opaqueDir, { recursive: true, force: true });
+      await main.evaluate((w) => w.show());
     }
   }
   save();
@@ -379,18 +403,23 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
 test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
   const lib = path.join(tmp, 'library');
   const ud = path.join(tmp, 'userdata');
-  const bounds = { x: 40, y: 60, width: 1000, height: 640 };
+  // Bounds that fit the display's work area (run 39617644850 asked for 1000 wide at x 40 on the 1024-wide runner, and
+  // the restore moved it to x 24 to keep it on screen); what is restored is compared with the bounds before closing.
+  const workArea = await s.app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+  const bounds = { x: workArea.x + 40, y: workArea.y + 40, width: Math.min(1000, workArea.width - 80), height: Math.min(640, workArea.height - 80) };
   await (await mainWindow(s.app)).evaluate((w, b) => w.setBounds(b), bounds);
   await s.page.waitForTimeout(1500);
+  const beforeClose = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
   await s.app.close();
   s = await launch(lib, ud);
   const restored = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
-  results['windowState'] = { requested: bounds, restored };
+  results['windowState'] = { workArea, requested: bounds, beforeClose, restored };
   check(
     'window bounds restored after a restart',
-    restored.width === bounds.width && restored.height === bounds.height && Math.abs(restored.x - bounds.x) <= 2 && Math.abs(restored.y - bounds.y) <= 30,
+    restored.width === beforeClose.width && restored.height === beforeClose.height && Math.abs(restored.x - beforeClose.x) <= 2 && Math.abs(restored.y - beforeClose.y) <= 2,
     results['windowState'],
   );
+  check('window took the requested bounds before closing', beforeClose.width === bounds.width && beforeClose.height === bounds.height, results['windowState']);
   save();
 });
 

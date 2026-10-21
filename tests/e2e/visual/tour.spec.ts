@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand } from '../helpers';
+import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
 import { THEMES, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -151,7 +151,8 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
     // A file dropped while the palette is up starts an import; a duplicate keeps it waiting in its sheet, which holds the
-    // window: nothing can run, and the notice says so (critic T9-n5). The file comes from a file input, as from Finder.
+    // window: only 설정… can run, under the notice that says why (critic T9-n5). The file comes from a file input, as
+    // from Finder.
     await input.fill('');
     await s.page.evaluate(() => {
       const picker = document.createElement('input');
@@ -168,7 +169,9 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
         document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
       }),
     );
-    await expect(s.page.getByTestId('palette-empty')).toContainText('지금은 명령을 실행할 수 없습니다');
+    // Only the main-owned 설정… still runs: listed under the notice that says why the rest is missing (review minor 1).
+    await expect(s.page.getByTestId('palette-busy')).toContainText('지금은 명령을 실행할 수 없습니다');
+    await expect(s.page.getByTestId('palette-item')).toHaveCount(1);
     await shoot(s.page, 'palette-blocked-light', { mask: dates() });
     await closeSheet(dup, 'Escape');
   } finally {
@@ -176,7 +179,11 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
   }
 });
 
-test('settings window (light, dark, a refused folder), compact density, 15 pt text', async ({}, testInfo) => {
+/** The settings window's BrowserWindow, evaluated in main. */
+const settingsWindow = (app: Session['app']) =>
+  app.evaluateHandle(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))!);
+
+test('settings window (light, dark, focus, not key, a refused folder), compact density, 15 pt text', async ({}, testInfo) => {
   // The library as deep as the default macOS one, under a HOME in the test folder: the path reads the same everywhere.
   const home = tourHome(testInfo.outputPath());
   const s = await launchTour(path.join(home, 'Library', 'Application Support', 'Learn'), { HOME: home });
@@ -189,6 +196,16 @@ test('settings window (light, dark, a refused folder), compact density, 15 pt te
       await expect(settings.getByTestId('library-path')).toHaveText('~/Library/Application Support/Learn/library');
       await shoot(settings, `settings-${theme}`);
       if (theme === 'light') {
+        // Keyboard focus on the selected tile: the focus ring 2 px outside the selection ring (critic T10-n5).
+        await settings.keyboard.press('Tab');
+        await expect(settings.getByTestId('theme-tile-light')).toHaveAttribute('data-focus-visible', 'true');
+        await shoot(settings, 'settings-focus-light');
+        // Not the key window: no focus ring, and the selection ring turns neutral (design-spec 2.1, 3.1).
+        await (await mainWindow(s.app)).evaluate((w) => w.focus());
+        await expect(settings.locator('html')).toHaveAttribute('data-window-inactive', '');
+        await shoot(settings, 'settings-inactive-light');
+        await (await settingsWindow(s.app)).evaluate((w) => w.focus());
+        await expect(settings.locator('html')).not.toHaveAttribute('data-window-inactive', '');
         // A folder the user cannot write to: the cause and the next step under the buttons.
         const ro = testInfo.outputPath('read-only');
         fs.mkdirSync(ro, { recursive: true, mode: 0o555 });

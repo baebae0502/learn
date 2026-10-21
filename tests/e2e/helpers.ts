@@ -32,6 +32,11 @@ export interface LaunchOptions {
   args?: string[];
   /** Packaged app executable. When set, the unpackaged `apps/desktop` path is not passed. */
   executablePath?: string;
+  /**
+   * prefers-color-scheme emulation. Playwright emulates 'light' by default; `null` turns emulation off so the app's
+   * own theme pref (nativeTheme.themeSource) drives it, as on a user's machine (visual tour).
+   */
+  colorScheme?: null | 'light' | 'dark';
 }
 
 /**
@@ -52,6 +57,7 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     env,
     ...(opts.executablePath ? { executablePath: opts.executablePath } : {}),
     ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
+    ...(opts.colorScheme !== undefined ? { colorScheme: opts.colorScheme } : {}),
   });
   try {
     const page = await app.firstWindow();

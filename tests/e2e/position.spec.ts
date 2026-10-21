@@ -23,12 +23,21 @@ async function listed(page: Page, title: string): Promise<LibraryItem> {
 
 const progressOf = async (page: Page, title: string) => (await listed(page, title)).progress;
 
-/** Hard kill of the Electron main process (no quit handlers, no beforeunload). */
-async function hardKill(app: ElectronApplication): Promise<void> {
+/** Hard kill of the Electron main process (no quit handlers, no beforeunload); waits at most `timeoutMs` for the exit. */
+async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Promise<void> {
   const proc = app.process();
-  const exited = new Promise((resolve) => proc.once('exit', resolve));
-  process.kill(proc.pid!, 'SIGKILL');
-  await exited;
+  const pid = proc.pid!;
+  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+  process.kill(pid, 'SIGKILL');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Electron main process ${pid} did not exit within ${timeoutMs} ms of SIGKILL`)), timeoutMs);
+  });
+  try {
+    await Promise.race([exited, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 test('PDF reopens on the page it was left on; progress reaches library.list', async ({}, testInfo) => {
@@ -40,7 +49,7 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
     await expect(indicator).toHaveText('1 / 3쪽');
     await page.getByTestId('pdf-next').click();
     await expect(indicator).toHaveText('2 / 3쪽');
-    await page.waitForTimeout(400); // past the 300 ms page-save debounce
+    await page.waitForTimeout(400); // the brief's scenario wait (> 300 ms debounce); the save itself is confirmed by the poll below
     // Saved by the debounce while the viewer is still open (not only by the unmount flush): (pageIndex + 1) / pageCount.
     await expect.poll(() => progressOf(page, 'sample')).toBeCloseTo(2 / 3, 5);
     await page.getByTestId('viewer-back').click();
@@ -102,7 +111,7 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     }, RESUME_AT);
     expect(Math.abs(pausedAt - RESUME_AT)).toBeLessThanOrEqual(0.5);
     await expect.poll(() => progressOf(page, 'sample-h264-aac')).toBeCloseTo(pausedAt / duration, 2);
-    await page.waitForTimeout(400); // ≥ 400 ms after the last save trigger (pause) before the kill
+    await page.waitForTimeout(400); // the brief's ≥ 400 ms after the last save trigger; the save is already confirmed by the poll above
 
     await hardKill(app);
     killed = true;
@@ -120,6 +129,6 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     console.log('[measure] video resume', JSON.stringify({ pausedAt, resumedAt, duration }));
     expect((await listed(page, 'sample-h264-aac')).progress).toBeCloseTo(pausedAt / duration, 2);
   } finally {
-    if (!killed) await app.close();
+    if (!killed) await app.close().catch(() => {}); // never mask a failed relaunch's own error
   }
 });

@@ -210,7 +210,7 @@ test('prefs: theme dark survives a restart and drives nativeTheme.themeSource', 
     expect(await page.evaluate(() => window.learn.prefs.get())).toMatchObject({ ok: true, data: { theme: 'dark' } });
     expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('dark');
   } finally {
-    await app.close();
+    await app.close().catch(() => {}); // never mask a failed relaunch's own error
   }
 });
 
@@ -235,7 +235,7 @@ test('settings: library.sort survives a restart; an unregistered key is VALIDATI
       code: 'VALIDATION_FAILED',
     });
   } finally {
-    await app.close();
+    await app.close().catch(() => {}); // never mask a failed relaunch's own error
   }
 });
 
@@ -311,6 +311,11 @@ test('push: libraryChanged{import} reaches the renderer with the payload only', 
       .poll(() => page.evaluate(() => (window as unknown as { __libraryChanged: unknown[][] }).__libraryChanged))
       .toEqual([[{ reason: 'import', itemIds: [item!.id] }]]);
     await expect(page.getByTestId('item-row')).toHaveCount(1);
+    // Still exactly one after the list refresh settles: a late duplicate push (or a refresh that re-broadcasts) fails here.
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => (window as unknown as { __libraryChanged: unknown[][] }).__libraryChanged)).toEqual([
+      [{ reason: 'import', itemIds: [item!.id] }],
+    ]);
   } finally {
     await app.close();
   }

@@ -14,8 +14,13 @@ export const keys = {
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
-/** After a failed read `data` stays undefined (Boot still opens the window): read it as `usePrefs().data ?? DEFAULT_PREFS`. */
-export const usePrefs = () => useQuery({ queryKey: keys.prefs, queryFn: () => unwrap(api().prefs.get()) });
+/**
+ * After a failed read `data` stays undefined (Boot still opens the window): read it as `usePrefs().data ?? DEFAULT_PREFS`.
+ * Read once per window, then kept current by prefsChanged. A failed read is not retried when another reader mounts
+ * (the main window, useApplyPrefs): that retry put the query back to pending, Boot unmounted the shell and it mounted
+ * again — a loop (shell.spec "a failed prefs read still opens the shell").
+ */
+export const usePrefs = () => useQuery({ queryKey: keys.prefs, queryFn: () => unwrap(api().prefs.get()), retryOnMount: false });
 export const useItems = () => useQuery({ queryKey: keys.items, queryFn: () => unwrap(api().library.list()) });
 /**
  * `library.get` re-checks the file on disk; main broadcasts libraryChanged when that changed availability.

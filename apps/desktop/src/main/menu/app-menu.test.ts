@@ -37,12 +37,15 @@ const build = (
 ) => buildAppMenu({ isDev, platform, commands, enabled, onCommand });
 
 const SEP = { type: 'separator' };
+/** ⌘, (S-2): the macOS app menu after Learn 정보; at the end of 파일 elsewhere. */
+const SETTINGS: Shape = { id: 'app.settings', label: '설정…', accelerator: 'CmdOrCtrl+,' };
 
 const FILE = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.file', label: '파일', submenu: [
     { id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' },
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
     SEP,
+    ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
     { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },
   ],
@@ -64,6 +67,12 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     SEP,
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
     SEP,
+    // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
+    { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
+    { id: 'view.textBigger#1', label: '글자 크게', accelerator: 'CmdOrCtrl+=' },
+    { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-' },
+    { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0' },
+    SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.
     platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
   ],
@@ -84,6 +93,8 @@ describe('buildAppMenu', () => {
       {
         id: 'menu.app', label: 'Learn', submenu: [
           { label: 'Learn 정보', role: 'about' },
+          SEP,
+          SETTINGS,
           SEP,
           { label: '서비스', role: 'services' },
           SEP,
@@ -201,6 +212,14 @@ describe('menu state and placement (M3)', () => {
     expect(item(menu, 'file.importManaged')?.enabled).toBe(true);
     expect(item(menu, 'file.importLinked')?.enabled).toBe(false);
     expect(item(menu, 'nav.back')?.enabled).toBe(false);
+  });
+  it('keeps the main-owned 설정… enabled with nothing else available (before the first report, the fatal screen)', () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      const menu = build(platform, false, vi.fn(), new Set());
+      expect(item(menu, 'app.settings')?.enabled, platform).toBe(true);
+      expect(item(menu, 'file.importManaged')?.enabled, platform).toBe(false);
+      expect(item(menu, 'view.textBigger#1')?.enabled, platform).toBe(false);
+    }
   });
   it('puts "app" commands in the macOS app menu, at the end of 파일 elsewhere', () => {
     const extra: CommandSpec = { id: 'nav.back', label: '설정…', accelerator: 'CmdOrCtrl+,', menu: { menu: 'app', group: 2, order: 1 }, contexts: ['app'] };

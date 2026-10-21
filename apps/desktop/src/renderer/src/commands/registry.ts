@@ -18,7 +18,14 @@ export interface CommandEnv extends CommandContextState {
   /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
   showInFolder(itemId: string): void;
   openExternally(itemId: string): void;
+  /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
+  openSettings(): void;
+  /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref. */
+  setTextSize(size: TextSize): void;
 }
+
+type TextSize = CommandContextState['textSize'];
+const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
 
 export interface CommandTarget {
   itemIds?: readonly string[];
@@ -38,11 +45,15 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
+  'app.settings': (env) => env.openSettings(),
+  'view.textBigger': (env) => env.setTextSize(clampTextSize(env.textSize + 1)),
+  'view.textSmaller': (env) => env.setTextSize(clampTextSize(env.textSize - 1)),
+  'view.textReset': (env) => env.setTextSize(13),
 };
 
 /** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */
 export function contextOf(env: CommandEnv): CommandContextState {
-  return { view: env.view, blocked: env.blocked, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
+  return { view: env.view, blocked: env.blocked, textSize: env.textSize, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
 }
 
 export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {

@@ -19,10 +19,16 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(dialogKeys('darwin')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['↩'], '↩'], ['닫기', ['esc'], 'esc']]);
     expect(dialogKeys('linux')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['Enter'], 'Enter'], ['닫기', ['Esc'], 'Esc']]);
   });
-  it('lists ⌘K first among the app commands (design-spec 7.4), whatever the registry order (R-10)', () => {
+  it('lists the app commands in design-spec 7.4 order (⌘, ⌘K ⌘/ ⌃⌘S), whatever the registry order (R-10)', () => {
     const app = shortcutGroups('darwin')[0]!;
-    expect(app.rows.map((r) => r.label)).toEqual(['명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기']);
-    expect(app.rows[0]).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
+    expect(app.rows.map((r) => r.label)).toEqual(['설정…', '명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기']);
+    expect(app.rows[0]).toEqual({ label: '설정…', keys: ['⌘', ','], spoken: '⌘,' });
+    expect(app.rows[1]).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
+  });
+  it('lists ⌘+ / ⌘− / ⌘0 under 라이브러리 (design-spec 7.4), after the import commands', () => {
+    const library = shortcutGroups('darwin')[1]!;
+    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '글자 크게', '글자 작게', '기본 글자 크기']);
+    expect(library.rows.slice(2).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
   });
   it('marks ↑ ↓ as alternative keys (drawn apart), every other row as one chord', () => {
     const rows = shortcutGroups('darwin').flatMap((g) => g.rows);

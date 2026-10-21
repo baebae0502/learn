@@ -35,6 +35,12 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
   });
+  it('the renderer never sends a library path (R4): prefs.set takes no libraryRoot; main\'s own patch does', () => {
+    expectTypeOf<Ipc.PrefsSetInput>().not.toHaveProperty('libraryRoot');
+    expectTypeOf<Ipc.PrefsPatch>().toHaveProperty('libraryRoot');
+    expectTypeOf<Parameters<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<Promise<Result<{ relaunching: boolean }>>>();
+  });
   it('context menus are typed by kind', () => {
     expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag' | 'column'>();
   });

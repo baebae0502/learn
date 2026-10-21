@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
 
 const { contextMenuEntries, popupCommandMenu } = await import('./context-menu');
 
-const LIB: CommandContextState = { view: 'library', blocked: false };
+const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13 };
 const target = (storageMode: 'managed' | 'linked', availability: 'available' | 'missing'): CommandTargetInfo => ({ storageMode, availability });
 const ids = (entries: ReturnType<typeof contextMenuEntries>) => entries.map((e) => (e === 'separator' ? '-' : e.id));
 const win = {} as BaseWindow;

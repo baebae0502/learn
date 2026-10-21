@@ -1,65 +1,15 @@
 import { BrowserWindow, screen } from 'electron';
-import type { WindowState } from '@learn/domain';
 import { layout } from '../renderer/src/design/tokens';
-import { sendEvent } from './events';
 import { attachEditContextMenu } from './menu/edit-context-menu';
-import { releaseWhenKey } from './sheet-release';
 import { FullScreenFrameKeeper, defaultFrame } from './window-frame';
 import { mainWindowChrome, type ChromeOptions } from './window-options';
+import { trackWindowState } from './window-state';
 
 export interface MainWindowOptions {
   preload: string;
   url: string;
   /** Title bar, traffic lights, vibrancy and the first-frame colour (window-options.ts). */
   chrome: ChromeOptions;
-}
-
-/**
- * Our sheets per parent: 'open' while one is attached; 'releasing' from its closing until the parent is key again,
- * during which the parent still counts as main (windowState.sheetOpen) but the sheet is gone (isSheetOpen).
- */
-const sheets = new WeakMap<BrowserWindow, 'open' | 'releasing'>();
-const releases = new WeakMap<BrowserWindow, () => void>();
-
-/** What the windowState push and the ui.windowState query report. */
-export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused(), sheetOpen: sheets.has(win) });
-
-/** Whether one of our sheets is attached to `win` now. */
-export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) === 'open';
-
-/** The sheet host is about to show a sheet on `win`: it stays main (design-spec 2.1); a pending release is cancelled. */
-export function sheetShown(win: BrowserWindow): void {
-  if (win.isDestroyed()) return;
-  releases.get(win)?.();
-  releases.delete(win);
-  sheets.set(win, 'open');
-  resyncWindowState(win);
-}
-
-/**
- * The sheet on `win` has closed. `win` keeps counting as main until it is key again, so its chrome never dims
- * between the two (polish minor 1; sheet-release.ts); the window state is re-read then.
- */
-export function sheetClosed(win: BrowserWindow): void {
-  if (win.isDestroyed() || !sheets.has(win)) return;
-  sheets.set(win, 'releasing');
-  releases.get(win)?.();
-  const cancel = releaseWhenKey(win, () => {
-    releases.delete(win);
-    sheets.delete(win);
-    resyncWindowState(win);
-  });
-  if (sheets.get(win) === 'releasing') releases.set(win, cancel);
-}
-
-const pushers = new WeakMap<BrowserWindow, () => void>();
-/**
- * Re-reads a main window's state and pushes it if it changed. For the moments Electron emits no event: macOS makes
- * the parent key again when its sheet closes without a 'focus' event, which left the renderer showing an inactive
- * window (neutral selection, no tooltips) on run 39631541294.
- */
-export function resyncWindowState(win: BrowserWindow): void {
-  pushers.get(win)?.();
 }
 
 /** The main window in the M3 chrome (design-spec 2.1): hidden title bar, traffic lights or the controls overlay. */
@@ -89,22 +39,7 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   attachEditContextMenu(win.webContents);
   keepFrameAcrossFullScreen(win);
 
-  // windowState push: only on an actual change of fullscreen/focus.
-  let last: WindowState | null = null;
-  const pushState = () => {
-    if (win.isDestroyed()) return;
-    const next = windowStateOf(win);
-    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen) return;
-    last = next;
-    sendEvent(win.webContents, 'windowState', next);
-  };
-  win.on('enter-full-screen', pushState);
-  win.on('leave-full-screen', pushState);
-  win.on('enter-html-full-screen', pushState);
-  win.on('leave-html-full-screen', pushState);
-  win.on('focus', pushState);
-  win.on('blur', pushState);
-  pushers.set(win, pushState);
+  trackWindowState(win); // windowState push: only on an actual change of full screen, focus or sheet
 
   void win.loadURL(opts.url);
   return win;

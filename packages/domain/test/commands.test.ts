@@ -24,8 +24,8 @@ describe('channels', () => {
   });
 });
 
-const LIB: CommandContextState = { view: 'library', blocked: false };
-const VIEWER: CommandContextState = { view: 'viewer', blocked: false };
+const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13 };
+const VIEWER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13 };
 const linkedMissing: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
 const managedOk: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
 
@@ -80,7 +80,8 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back', 'view.toggleSidebar',
+      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back',
+      'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
@@ -92,6 +93,12 @@ describe('command registry', () => {
     expect(commandById('app.shortcuts')).toMatchObject({
       label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     });
+    // ⌘, (design-spec 7.4): the macOS app menu, the end of 파일 elsewhere; main runs it (MAIN_OWNED_COMMANDS).
+    expect(commandById('app.settings')).toMatchObject({ label: '설정…', accelerator: 'CmdOrCtrl+,', menu: { menu: 'app', group: 1, order: 1 }, contexts: ['app'] });
+    // ⌘+ / ⌘− / ⌘0: the library's text size (design-spec 7.4 라이브러리), one 보기 group.
+    expect(commandById('view.textBigger')).toMatchObject({ label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'] });
+    expect(commandById('view.textSmaller')).toMatchObject({ label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'] });
+    expect(commandById('view.textReset')).toMatchObject({ label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'] });
     // ⌘K heads 보기; last in the registry (R-10: menu-bar and palette lists keep the registry order).
     expect(commandById('app.palette')).toMatchObject({
       label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false,
@@ -137,16 +144,33 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(commandById('item.openExternally').accelerator).toBeUndefined();
   });
   it('lists the menu-bar commands of a view (never item commands)', () => {
-    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.palette']);
-    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.palette']);
+    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
+    expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
+    expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
+  });
+  it('settings is main-owned: available even while blocked', () => {
+    expect(MAIN_OWNED_COMMANDS.has('app.settings')).toBe(true);
+    expect(isCommandAvailable('app.settings', { ...LIB, blocked: true })).toBe(true);
+  });
+  it('text size steps stay within 12–15 and reset only away from 13', () => {
+    expect(isCommandAvailable('view.textBigger', { ...LIB, textSize: 15 })).toBe(false);
+    expect(isCommandAvailable('view.textBigger', { ...LIB, textSize: 14 })).toBe(true);
+    expect(isCommandAvailable('view.textSmaller', { ...LIB, textSize: 12 })).toBe(false);
+    expect(isCommandAvailable('view.textSmaller', { ...LIB, textSize: 13 })).toBe(true);
+    expect(isCommandAvailable('view.textReset', LIB)).toBe(false);
+    expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14 })).toBe(true);
+    expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 12 })).toBe(true);
+    expect(isCommandAvailable('view.textBigger', { ...VIEWER, textSize: 13 })).toBe(false); // library scope (design-spec 7.4)
+    expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14, blocked: true })).toBe(false);
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {
-    expect(sameCommandContext(LIB, { view: 'library', blocked: false })).toBe(true);
+    expect(sameCommandContext(LIB, { view: 'library', blocked: false, textSize: 13 })).toBe(true);
+    expect(sameCommandContext(LIB, { ...LIB, textSize: 14 })).toBe(false);
     expect(sameCommandContext(LIB, VIEWER)).toBe(false);
     expect(sameCommandContext(LIB, { ...LIB, blocked: true })).toBe(false);
     // A field only one side has (a later task's field against an older report) is a difference.
-    expect(sameCommandContext(LIB, { ...LIB, textSize: 13 } as CommandContextState)).toBe(false);
+    expect(sameCommandContext(LIB, { ...LIB, extra: 1 } as CommandContextState)).toBe(false);
     // The sidebar state is part of the report (it relabels the menu), so a change is a new context.
     expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'shown' })).toBe(true);
     expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'hidden' })).toBe(false);

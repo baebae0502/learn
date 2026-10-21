@@ -16,7 +16,11 @@ export type CommandId =
   | 'item.relink'
   | 'view.toggleSidebar'
   | 'app.shortcuts'
-  | 'app.palette';
+  | 'app.palette'
+  | 'app.settings'
+  | 'view.textBigger'
+  | 'view.textSmaller'
+  | 'view.textReset';
 /** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
@@ -87,6 +91,15 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     keywords: ['단축키', '키보드', '도움말', 'shortcuts', 'keyboard'],
   },
+  // ⌘, (design-spec 6 설정 창): main opens the settings window itself, so it also works when the library failed to open.
+  {
+    id: 'app.settings', label: '설정…', accelerator: 'CmdOrCtrl+,', menu: { menu: 'app', group: 1, order: 1 }, contexts: ['app'],
+    keywords: ['설정', '환경설정', '테마', '다크', '밀도', '글자 크기', '라이브러리 위치', 'settings', 'preferences'],
+  },
+  // ⌘+ / ⌘− / ⌘0: the library's UI text size (design-spec 7.4 라이브러리; PDF zoom takes these keys in the reader, M7).
+  { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'], keywords: ['글자', '크게', '확대', 'font', 'bigger'] },
+  { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'], keywords: ['글자', '작게', '축소', 'font', 'smaller'] },
+  { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'], keywords: ['글자', '기본', 'font', 'reset'] },
   // Last (R-10): menu-bar and palette lists keep this order; `menu` puts it at the head of 보기. Not in its own list.
   { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];
@@ -108,7 +121,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: Pick<Comma
 }
 
 /** Commands main runs itself: always available, even before (or without) a renderer. */
-export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>([]);
+export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['app.settings']);
 
 /** What availability depends on. The main window's renderer owns it and reports it (ui:reportContext). */
 export interface CommandContextState {
@@ -117,6 +130,8 @@ export interface CommandContextState {
   blocked: boolean;
   /** For state labels only (not availability): absent where the window has no sidebar (the fatal screen). */
   sidebar?: SidebarState;
+  /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
+  textSize: 12 | 13 | 14 | 15;
 }
 
 /** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */
@@ -137,6 +152,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
   'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
   'item.openExternally': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
+  'view.textBigger': (c) => c.textSize < 15,
+  'view.textSmaller': (c) => c.textSize > 12,
+  'view.textReset': (c) => c.textSize !== 13,
 };
 
 /** The single availability predicate: main (menu bar, context menus) and the renderer (palette, toolbar, keymap). */

@@ -3,6 +3,7 @@ import { DatabaseZap, MonitorX } from 'lucide-react';
 import { api } from '../api';
 import { homeRelative } from '../format';
 import { t } from '../strings';
+import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
 import { currentPlatform } from '../ui/platform';
 
@@ -22,9 +23,9 @@ export interface FatalScreenProps {
  * sentence points at no backup (n5). The window can still be moved (52 px drag strip).
  */
 export function FatalScreen({ kind = 'library', code, libraryRoot = null, backupFile = null, homeDir = null }: FatalScreenProps) {
-  // No library, no registry command can run: only main-owned commands stay in the menu bar.
+  // No library, no registry command can run: only main-owned commands (설정…) stay in the menu bar.
   useEffect(() => {
-    void api().ui.reportContext({ view: 'library', blocked: true });
+    void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13 });
   }, []);
   const sep = currentPlatform() === 'win32' ? '\\' : '/';
   const backup = kind === 'library' && libraryRoot && backupFile ? `${libraryRoot}${sep}${backupFile}` : null;
@@ -39,6 +40,12 @@ export function FatalScreen({ kind = 'library', code, libraryRoot = null, backup
             file={backup ? homeRelative(backup, homeDir) : undefined}
             fileTitle={backup ? `${backup} (${code})` : undefined}
             testId="fatal-notice"
+            actions={
+              // The library's location can still be changed: the settings window is main's (app.settings), not the library's.
+              <Button variant="primary" testId="fatal-settings" onPress={() => void api().ui.openSettings()}>
+                {t.fatal.openSettings}
+              </Button>
+            }
           >
             {backup ? t.fatal.backupBody : t.fatal.restartBody}
           </Notice>

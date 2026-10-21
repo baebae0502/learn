@@ -5,7 +5,7 @@ import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src
 import { COMMANDS, commandLabel, isCommandAvailable, type MenuName } from '../../packages/domain/src/commands';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
-  FIXTURES, NativeInputNotPermitted, importPaths, launch, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
+  FIXTURES, NativeInputNotPermitted, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
   recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
@@ -29,6 +29,11 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
+/** 보기 up to its full-screen item: the palette, the sidebar toggle, the text size group (with ⌘+'s hidden ⌘= twin). */
+const VIEW_START = [
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''],
+  [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
+];
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
   return launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -78,13 +83,18 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         expect.objectContaining({
           label: commandLabel(c, process.platform, { sidebar: 'shown' }), // the shell opens with the sidebar shown
           accelerator: c.accelerator ? platformAccelerator(c.accelerator, process.platform) : null,
-          enabled: isCommandAvailable(c.id, { view: 'library', blocked: false }),
+          enabled: isCommandAvailable(c.id, { view: 'library', blocked: false, textSize: 13 }),
         }),
       ]);
     }
-    expect(entries(topMenu(menu, '파일'))).toEqual([[null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ['close', IS_MAC ? '윈도우 닫기' : '창 닫기']]);
+    // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn 정보 in the app menu.
+    expect(entries(topMenu(menu, '파일'))).toEqual([
+      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
+    ]);
+    if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn 정보'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
-    expect(entries(topMenu(menu, '보기'))).toEqual([[null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
+    // The text size group; the second 글자 크게 is ⌘+'s hidden ⌘= twin (menuSnapshot does not carry `visible`).
+    expect(entries(topMenu(menu, '보기'))).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
     expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
@@ -102,9 +112,7 @@ test('menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구', a
   const { app } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env: { LEARN_E2E: '' } });
   try {
     const view = topMenu(await menuSnapshot(app), '보기');
-    expect(entries(view)).toEqual([
-      [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''], IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구'],
-    ]);
+    expect(entries(view)).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구']]);
   } finally {
     await app.close();
   }
@@ -335,18 +343,14 @@ test('preload: window.learn has only the declared invokers, no generic IPC; on()
 test('ui.windowState() answers the current fullscreen and focus state that main sees', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
-    const mainSees = () =>
-      app.evaluate(({ BrowserWindow }) => {
-        const w = BrowserWindow.getAllWindows()[0]!;
-        return { fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false };
-      });
+    const mainSees = async () => (await mainWindow(app)).evaluate((w) => ({ fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false }));
     const query = () => page.evaluate(() => window.learn.ui.windowState());
     expect(await query()).toEqual({ ok: true, data: await mainSees() });
     expect((await mainSees()).fullscreen).toBe(false);
     // macOS animates native fullscreen into its own Space and leaving mid-transition hangs (first-session.spec), so the
     // toggle runs where the switch is immediate.
     if (!IS_MAC) {
-      const setFullScreen = (on: boolean) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0]!.setFullScreen(on), on);
+      const setFullScreen = async (on: boolean) => (await mainWindow(app)).evaluate((w, on) => w.setFullScreen(on), on);
       await setFullScreen(true);
       await expect.poll(async () => (await query()).ok && (await mainSees()).fullscreen).toBe(true);
       expect(await query()).toEqual({ ok: true, data: await mainSees() });

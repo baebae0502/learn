@@ -21,14 +21,14 @@ test('palette: ↓, Enter and Escape during a composition neither move, run nor 
     const before = await cursor();
     await page.keyboard.press('ArrowDown');
     expect(await cursor()).toBe(before);
-    await cdp.send('Input.imeSetComposition', { text: 'ㄱㅈ', selectionStart: 2, selectionEnd: 2 });
+    await cdp.send('Input.imeSetComposition', { text: 'ㄱㅈㅇ', selectionStart: 3, selectionEnd: 3 });
     await expect(page.getByTestId('palette-item').first()).toHaveAttribute('data-command-id', 'file.importManaged');
     await page.keyboard.press('Enter');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('palette')).toBeVisible();
     expect(await openDialogCalls(app)).toBe(0);
-    await cdp.send('Input.insertText', { text: 'ㄱㅈ' }); // commits the composition
-    await expect(input).toHaveValue('ㄱㅈ');
+    await cdp.send('Input.insertText', { text: 'ㄱㅈㅇ' }); // commits the composition
+    await expect(input).toHaveValue('ㄱㅈㅇ');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect.poll(() => openDialogCalls(app)).toBe(1);
@@ -43,10 +43,12 @@ test('palette: keyCode 229 keys (macOS IME) are ignored even without isComposing
     await stubOpenDialog(app, []);
     await runMenuCommand(app, 'app.palette');
     await page.getByTestId('palette-input').fill('ㄱ');
-    // The cursor is on a row first, so a 229 ↩ that got through would run it (the test cannot pass vacuously).
+    // The cursor is on a row first (글자 크게), so a 229 ↩ that got through would run it: the text size would change.
     const cursor = page.locator('[data-testid="palette-item"][data-focused]');
-    await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+    const textSize = () => page.evaluate(() => document.documentElement.dataset['fontSize']);
+    await expect(cursor).toHaveAttribute('data-command-id', 'view.textBigger');
     expect(await page.getByTestId('palette-item').count()).toBeGreaterThan(1);
+    expect(await textSize()).toBe('13');
     const cdp = await page.context().newCDPSession(page);
     for (const key of ['ArrowDown', 'Enter', 'Escape'] as const) {
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: 229, nativeVirtualKeyCode: 229 });
@@ -54,11 +56,12 @@ test('palette: keyCode 229 keys (macOS IME) are ignored even without isComposing
     }
     await page.waitForTimeout(300);
     await expect(page.getByTestId('palette')).toBeVisible();
-    await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+    await expect(cursor).toHaveAttribute('data-command-id', 'view.textBigger');
+    expect(await textSize()).toBe('13');
     expect(await openDialogCalls(app)).toBe(0);
     // The same keys without 229 do act (the control): ↓ moves the cursor.
     await page.keyboard.press('ArrowDown');
-    await expect(cursor).not.toHaveAttribute('data-command-id', 'file.importManaged');
+    await expect(cursor).not.toHaveAttribute('data-command-id', 'view.textBigger');
   } finally {
     await app.close();
   }

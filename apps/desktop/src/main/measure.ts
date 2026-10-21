@@ -24,3 +24,34 @@ export async function contentHeight(contents: WebContents, selector: string, fal
 export async function markSized(contents: WebContents): Promise<void> {
   await contents.executeJavaScript("document.documentElement.dataset.sized = '1'", true);
 }
+
+/**
+ * Calls `onHeight` with the natural height (CSS px, rounded up) of the first element matching `selector` whenever it
+ * differs from `known` — a ResizeObserver in the page answers one pending call per change — until the page goes away.
+ * The settings window grows and shrinks with a message that appears in it (it cannot be resized by hand).
+ */
+export function followContentHeight(contents: WebContents, selector: string, known: number, onHeight: (height: number) => void): void {
+  if (contents.isDestroyed()) return;
+  const script = `new Promise((resolve) => {
+    const el = document.querySelector(${JSON.stringify(selector)});
+    if (!el) return resolve(0);
+    // The first notification comes at once with the current size, so a change made before this call is not missed.
+    const ro = new ResizeObserver(() => {
+      const h = Math.ceil(el.getBoundingClientRect().height);
+      if (h !== ${known}) {
+        ro.disconnect();
+        resolve(h);
+      }
+    });
+    ro.observe(el);
+  })`;
+  contents.executeJavaScript(script, true).then(
+    (value) => {
+      const height = Number(value);
+      if (contents.isDestroyed() || !(height > 0) || height === known) return; // gone, or nothing to follow
+      onHeight(height);
+      followContentHeight(contents, selector, height, onHeight);
+    },
+    () => {}, // the page went away mid-call
+  );
+}

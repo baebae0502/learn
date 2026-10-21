@@ -9,4 +9,6 @@ export const fatal = {
   restartBody: '데이터는 삭제되지 않았습니다. 앱을 다시 시작하세요.',
   /** A render-time failure in the main window (RenderBoundary): the library itself is fine. */
   renderTitle: '화면을 표시하지 못했습니다',
+  /** The library could not be opened: its location can still be changed in the settings window (main-owned ⌘,). */
+  openSettings: '설정 열기',
 } as const;

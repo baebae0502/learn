@@ -21,3 +21,4 @@ import './screens/library.css';
 import './screens/sheet.css';
 import './screens/reader.css';
 import './screens/palette.css';
+import './screens/settings.css';

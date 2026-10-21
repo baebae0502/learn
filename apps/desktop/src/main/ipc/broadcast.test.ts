@@ -73,7 +73,7 @@ const tags = {
   togglePositionChanged: vi.fn((): { tagId: string; assigned: boolean; itemIds: string[] } | null => null),
 };
 /** What the main window last reported (deps.uiContext.current()). */
-const reported: { ctx: CommandContextState } = { ctx: { view: 'library', blocked: false } };
+const reported: { ctx: CommandContextState } = { ctx: { view: 'library', blocked: false, textSize: 13 } };
 const deps = stubDeps({
   getContext: () => ({ layout: {}, repo, collections, tags }) as never,
   appInfo: () => ({}) as never,
@@ -92,7 +92,7 @@ beforeEach(() => {
   sent.length = 0;
   stored.availability = 'available';
   disk.availability = 'available';
-  reported.ctx = { view: 'library', blocked: false };
+  reported.ctx = { view: 'library', blocked: false, textSize: 13 };
   popup.mockClear();
   shellCalls.length = 0;
   openPathResult.value = '';
@@ -192,7 +192,7 @@ describe('item context menu re-checks the file first', () => {
   });
 
   it("judges with the main window's reported context: while it is blocked nothing is offered enabled", async () => {
-    reported.ctx = { view: 'library', blocked: true }; // e.g. the duplicate dialog is open
+    reported.ctx = { view: 'library', blocked: true, textSize: 13 }; // e.g. the duplicate dialog is open
     disk.availability = 'missing';
     expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: null });
     const offered = (popup.mock.calls[0]?.[0] ?? []) as Array<{ id: string; enabled: boolean } | 'separator'>;

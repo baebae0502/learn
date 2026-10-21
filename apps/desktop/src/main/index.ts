@@ -1,9 +1,10 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, Menu, systemPreferences, type WebContents } from 'electron';
+import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
 import {
   COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
 } from '@learn/domain';
+import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
@@ -15,11 +16,13 @@ import { openLibraryContext, type LibraryContext } from './library-context';
 import { applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
+import { createSettingsWindow } from './settings-window';
 import { createSheetHost } from './sheets';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { findUpdateBackup } from './update-backup';
-import { createMainWindow, isSheetOpen, sheetClosed, sheetShown } from './window';
+import { createMainWindow } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
+import { isSheetOpen, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -42,7 +45,7 @@ const isDevBuild = !app.isPackaged && process.env['LEARN_E2E'] !== '1';
 const deterministic = isDeterministic(process.env);
 if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);
 
-/** Every window loads the same renderer; `?window=` picks what it shows (main, sheet, later settings). */
+/** Every window loads the same renderer; `?window=` picks what it shows (main, settings, sheet). */
 const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
 const vibrancy = shouldUseVibrancy(process.platform, process.env);
 const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: false };
@@ -84,16 +87,25 @@ function refreshFullScreenItem(): void {
   applyFullScreenItem(appMenu, process.platform, { available: win !== null && !isSheetOpen(win), fullscreen: win?.isFullScreen() ?? false });
 }
 
+/** ⌘, (main-owned): one settings window, placed over the main window when there is one. */
+const settingsWindow = createSettingsWindow({
+  preload: path.join(here, '../preload/index.cjs'),
+  url: () => windowUrl(rendererBase, 'settings', urlOptions),
+  main: () => mainWindow,
+});
+
 const activation = createActivateGate({
   openWindow: () => {
     mainWindow = openMainWindow();
     refreshFullScreenItem();
   },
-  windowCount: () => BrowserWindow.getAllWindows().length,
+  // R-22: only the main window counts. With just the settings window left (macOS keeps the app running), a dock click
+  // still opens a main window.
+  windowCount: () => (mainWindow && !mainWindow.isDestroyed() ? 1 : 0),
 });
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
-const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({ view: 'library', blocked: true });
+const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({ view: 'library', blocked: true, textSize: 13 });
 /** Last command context of the main window (ADR-0005 §2). */
 let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
 /** E2E marker: bumped on every accepted context report (tests wait for the first one). */
@@ -149,8 +161,15 @@ function setUiContext(next: CommandContextState): void {
 /** The main window's renderer (sheets and the settings window are other windows). */
 const isMainWindow = (sender: WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender.id === mainWindow.webContents.id;
 
-/** Menu clicks and accelerators always act on the main window (also when a settings or sheet window is focused). */
+/**
+ * Menu clicks and accelerators act on the main window (also when a settings or sheet window is focused), except the
+ * main-owned 설정…, which main runs itself: it works even when the library failed to open or no main window exists.
+ */
 function dispatchMenuCommand(commandId: CommandId): void {
+  if (commandId === 'app.settings') {
+    settingsWindow.open();
+    return;
+  }
   const target = mainWindow;
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
@@ -177,6 +196,8 @@ if (!app.requestSingleInstanceLock()) {
     app.setAboutPanelOptions(aboutPanelOptions(app.getVersion(), process.versions.electron));
     onThemeChange(() => {
       if (mainWindow && !mainWindow.isDestroyed()) applyChromeTheme(mainWindow, chrome());
+      // The settings window has the standard frame: only its background (seen while it resizes) follows.
+      settingsWindow.current()?.setBackgroundColor(windowBackground[currentTheme()]);
     });
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
@@ -187,6 +208,18 @@ if (!app.requestSingleInstanceLock()) {
       console.error(`[library] open failed: ${le.code}`);
     }
     handleAppProtocol({ getContext: () => ctx, rendererDir: path.join(here, '../renderer'), devOrigin });
+
+    // A sheet — our sheet window or a native dialog — keeps its parent the main window (chrome undimmed) until the parent
+    // is key again, re-read within 250 ms (no 'focus' event comes for it on macOS); 전체 화면 waits for the main
+    // window's sheet.
+    const onSheetShown = (parent: BrowserWindow) => {
+      sheetShown(parent);
+      refreshFullScreenItem();
+    };
+    const onSheetClosed = (parent: BrowserWindow) => {
+      sheetClosed(parent);
+      refreshFullScreenItem();
+    };
 
     const deps: IpcDeps = {
       getContext: () => {
@@ -218,17 +251,31 @@ if (!app.requestSingleInstanceLock()) {
         preload: path.join(here, '../preload/index.cjs'),
         url: () => windowUrl(rendererBase, 'sheet', urlOptions),
         platform: process.platform,
-        // The parent stays the main window under its sheet (chrome undimmed); 전체 화면 waits for the sheet.
-        onSheetShown: (parent) => {
-          sheetShown(parent);
-          refreshFullScreenItem();
-        },
-        // The parent stays main until it is key again, re-read within 250 ms (no 'focus' event comes for it on macOS).
-        onSheetClosed: (parent) => {
-          sheetClosed(parent);
-          refreshFullScreenItem();
-        },
+        onSheetShown,
+        onSheetClosed,
       }),
+      windows: {
+        openSettings: () => void settingsWindow.open(),
+        async asSheet(owner, show) {
+          onSheetShown(owner);
+          try {
+            return await show();
+          } finally {
+            if (!owner.isDestroyed()) onSheetClosed(owner);
+          }
+        },
+      },
+      relaunch() {
+        if (process.env['LEARN_E2E'] === '1') {
+          // Playwright cannot follow a relaunched process: E2E only records the request.
+          (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
+          return;
+        }
+        setImmediate(() => {
+          app.relaunch();
+          app.quit();
+        });
+      },
     };
     registerAllIpc(createHandle(devOrigin), deps);
 

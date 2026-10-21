@@ -7,6 +7,7 @@ const missingLinked: CommandTargetInfo = { storageMode: 'linked', availability: 
 const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   view: 'library',
   blocked: false,
+  textSize: 13,
   targetsOf: (ids) => ids.map(() => missingLinked),
   importFiles: vi.fn(),
   back: vi.fn(),
@@ -17,6 +18,8 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
+  openSettings: vi.fn(),
+  setTextSize: vi.fn(),
   ...over,
 });
 
@@ -25,7 +28,8 @@ describe('renderer command registry', () => {
     expect(Object.keys(COMMAND_HANDLERS).sort()).toEqual(COMMANDS.map((c) => c.id).sort());
   });
   it('reports only the context fields, never the handlers', () => {
-    expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false });
+    expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false, textSize: 13 });
+    expect(contextOf(env({ textSize: 15, sidebar: 'hidden' }))).toEqual({ view: 'library', blocked: false, textSize: 15, sidebar: 'hidden' });
   });
   it('runs through the shared availability predicate', () => {
     const lib = env();
@@ -67,6 +71,32 @@ describe('renderer command registry', () => {
     const blocked = env({ blocked: true });
     expect(runCommand('app.palette', blocked)).toBe(false);
     expect(blocked.openPalette).not.toHaveBeenCalled();
+  });
+  it('⌘, opens the settings window in every view, even while the window is blocked (main-owned)', () => {
+    for (const e of [env(), env({ view: 'viewer' }), env({ blocked: true })]) {
+      expect(runCommand('app.settings', e)).toBe(true);
+      expect(e.openSettings).toHaveBeenCalledTimes(1);
+    }
+  });
+  it('steps the text size: ⌘+ / ⌘− one point within 12–15, ⌘0 back to 13, in the library only', () => {
+    const at = (textSize: 12 | 13 | 14 | 15, view: 'library' | 'viewer' = 'library') => env({ textSize, view });
+    let e = at(13);
+    expect(runCommand('view.textBigger', e)).toBe(true);
+    expect(e.setTextSize).toHaveBeenCalledWith(14);
+    e = at(13);
+    expect(runCommand('view.textSmaller', e)).toBe(true);
+    expect(e.setTextSize).toHaveBeenCalledWith(12);
+    e = at(15);
+    expect(runCommand('view.textBigger', e)).toBe(false);
+    expect(runCommand('view.textReset', e)).toBe(true);
+    expect(e.setTextSize).toHaveBeenCalledExactlyOnceWith(13);
+    e = at(12);
+    expect(runCommand('view.textSmaller', e)).toBe(false);
+    expect(runCommand('view.textReset', at(13))).toBe(false);
+    e = at(14, 'viewer');
+    expect(runCommand('view.textBigger', e)).toBe(false); // the reader zooms its own content (M7)
+    expect(runCommand('view.textReset', e)).toBe(false);
+    expect(e.setTextSize).not.toHaveBeenCalled();
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

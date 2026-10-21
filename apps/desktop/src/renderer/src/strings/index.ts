@@ -4,8 +4,9 @@ import { fatal } from './fatal';
 import { library } from './library';
 import { palette } from './palette';
 import { reader } from './reader';
+import { settings } from './settings';
 import { shell } from './shell';
 import { sheets } from './sheets';
 import { toast } from './toast';
 
-export const t = { common, shell, library, reader, fatal, toast, sheets, palette } as const;
+export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings } as const;

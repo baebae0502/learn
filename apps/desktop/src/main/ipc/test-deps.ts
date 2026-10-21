@@ -10,9 +10,11 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
       throw new Error('appInfo not stubbed');
     },
     prefs: {} as IpcDeps['prefs'],
-    uiContext: { report: () => {}, current: () => ({ view: 'library', blocked: false }) },
+    uiContext: { report: () => {}, current: () => ({ view: 'library', blocked: false, textSize: 13 }) },
     sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {} },
     isMainWindow: () => true,
+    windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },
+    relaunch: () => {},
     ...over,
   };
 }

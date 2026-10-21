@@ -3,7 +3,7 @@ import { BrowserWindow, type WebContents } from 'electron';
 import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
-import { windowStateOf } from '../window';
+import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
 
 export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
@@ -62,5 +62,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {
     const parent = mainWindowOf(event.sender);
     if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
+  });
+
+  // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library and no main window.
+  handle(Channels.ui.openSettings, emptyInput, () => {
+    deps.windows.openSettings();
   });
 }

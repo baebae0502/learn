@@ -1,4 +1,4 @@
-import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron';
+import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import type { z } from 'zod';
 import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Result } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
@@ -16,6 +16,18 @@ export interface IpcDeps {
   sheets: SheetHost;
   /** Whether `sender` is the main window's renderer (sheets and the settings window are not). */
   isMainWindow(sender: WebContents): boolean;
+  windows: {
+    /** ⌘, (main-owned): opens the settings window, or brings it to the front. */
+    openSettings(): void;
+    /**
+     * Runs a native dialog that macOS attaches to `owner` as a sheet (showOpenDialog / showMessageBox with a parent):
+     * `owner` stays the main window meanwhile, and its window state is re-read once it is key again (38e3a9e) —
+     * whichever window it is (the settings window's folder dialog and restart confirmation).
+     */
+    asSheet<T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T>;
+  };
+  /** Restarts into the library location just saved. Under E2E (LEARN_E2E=1) it only records the request. */
+  relaunch(): void;
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

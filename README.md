@@ -58,5 +58,7 @@ Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15
 - `apps/desktop` Electron(main/preload/renderer) · `docs/decisions` ADR · `docs/p0-verification.md` P0 기록
 - `docs/design` 디자인 명세·목업·비평 기준 · `apps/desktop/src/renderer/src/design` 토큰·글꼴(Pretendard, OFL)
 
+라이브러리 위치는 설정(⌘,) › 라이브러리 › 다른 폴더 선택…에서 바꾸며 Learn을 다시 시작하면 적용됩니다.
+
 ## 문제 해결
 - Electron 44 npm 패키지에는 postinstall이 없다. `pnpm install`은 바이너리를 받지 않고, 첫 `require('electron')` 또는 첫 실행(`pnpm dev`, E2E) 때 지연 다운로드한다. GitHub 릴리스 연결이 느려 이 단계에서 멈추면 해당 버전 zip을 따로 받아 `electron` 패키지의 `checksums.json` sha256과 대조한 뒤 `@electron/get` 캐시(`~/.cache/electron/<sha256(릴리스 URL 디렉터리)>/`, macOS는 `~/Library/Caches/electron/…`)에 두고 다시 실행한다. 자세한 내용은 `docs/p0-verification.md` #10.

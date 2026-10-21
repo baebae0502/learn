@@ -90,9 +90,11 @@ function PaletteDialog() {
   const ids = useId();
   const platform = currentPlatform();
   const state = env.sidebar ? { sidebar: env.sidebar } : {};
-  // Only what can run now (no fake commands), re-read on every render: the list follows availability while open.
+  // Only what can run now (no fake commands), re-read on every render: the list follows availability while open. While
+  // an import or a sheet holds the window nothing is listed and the notice says why — also not the main-owned 설정…,
+  // which the menu bar (⌘,) still opens.
   const ranked = rankCommands(
-    COMMANDS.filter((c) => inPalette(c) && isEnabled(c.id)),
+    COMMANDS.filter((c) => inPalette(c) && !env.blocked && isEnabled(c.id)),
     query,
     platform,
     state,

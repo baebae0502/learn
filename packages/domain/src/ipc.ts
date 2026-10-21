@@ -47,8 +47,11 @@ export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid
 export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) });
 export const settingGetInput = z.object({ key: z.string().min(1).max(100) });
 export const settingSetInput = z.object({ key: z.string().min(1).max(100), value: z.unknown() });
-/** Patch input: built from default-free fields so omitted keys stay omitted. */
-export const prefsSetInput = z.object(prefsFields).partial().strict();
+/** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */
+export const prefsPatchInput = z.object(prefsFields).partial().strict();
+export type PrefsPatch = z.input<typeof prefsPatchInput>;
+/** What the renderer may change: everything but the library location, which only app.chooseLibraryFolder sets (R4). */
+export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true }).partial().strict();
 export const savePositionInput = z.object({
   itemId: z.uuid(),
   revisionId: z.uuid(),
@@ -58,7 +61,12 @@ export const savePositionInput = z.object({
 export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
 /** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
 export const commandContextInput = z
-  .object({ view: z.enum(['library', 'viewer']), blocked: z.boolean(), sidebar: z.enum(['shown', 'hidden']).optional() })
+  .object({
+    view: z.enum(['library', 'viewer']),
+    blocked: z.boolean(),
+    sidebar: z.enum(['shown', 'hidden']).optional(),
+    textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
+  })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
 
@@ -105,7 +113,13 @@ export type ShowContextMenuInput = z.input<typeof showContextMenuInput>;
 
 /** The only surface the renderer sees (window.learn). */
 export interface LearnApi {
-  app: { info(): Promise<Result<AppInfo>> };
+  app: {
+    info(): Promise<Result<AppInfo>>;
+    /** Reveal the library folder in Finder / the file manager. */
+    showLibraryFolder(): Promise<Result<void>>;
+    /** Main picks and checks a folder, confirms the restart, saves it and relaunches (the renderer never sends a path). */
+    chooseLibraryFolder(): Promise<Result<{ relaunching: boolean }>>;
+  };
   library: {
     pickAndImport(input: PickAndImportInput): Promise<Result<ImportOutcome[]>>;
     import(input: ImportPathsInput): Promise<Result<ImportOutcome[]>>;
@@ -169,6 +183,8 @@ export interface LearnApi {
     confirmDuplicate(input: ConfirmDuplicateInput): Promise<Result<{ choice: DuplicateChoice }>>;
     /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */
     showShortcuts(): Promise<Result<void>>;
+    /** ⌘, : opens the settings window, or brings it to the front (the main-owned app.settings command). */
+    openSettings(): Promise<Result<void>>;
   };
   /** Only callable from an open sheet window. */
   sheet: {

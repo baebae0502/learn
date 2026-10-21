@@ -16,10 +16,10 @@ export interface ShortcutGroup {
 
 const ORDER: CommandContext[] = ['app', 'library', 'viewer'];
 /**
- * The sheet's own order (design-spec 7.4: ⌘K, then ⌘/, then ⌃⌘S): these lead their group in this order, the rest
+ * The sheet's own order (design-spec 7.4: ⌘, then ⌘K, ⌘/ and ⌃⌘S): these lead their group in this order, the rest
  * follow in registry order. COMMANDS itself keeps app.palette last (R-10).
  */
-const SHEET_ORDER: readonly CommandId[] = ['app.palette', 'app.shortcuts', 'view.toggleSidebar'];
+const SHEET_ORDER: readonly CommandId[] = ['app.settings', 'app.palette', 'app.shortcuts', 'view.toggleSidebar'];
 const sheetRank = (id: CommandId) => {
   const i = SHEET_ORDER.indexOf(id);
   return i < 0 ? SHEET_ORDER.length : i;

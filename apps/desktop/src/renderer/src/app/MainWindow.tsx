@@ -5,7 +5,7 @@ import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
-import { keys, useItems, useLibrarySync } from '../data/queries';
+import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
 import { EmptyLibrary } from '../library/EmptyLibrary';
@@ -15,6 +15,7 @@ import { LibraryTable } from '../library/LibraryTable';
 import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
+import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { Launcher } from '../shell/Launcher';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
@@ -34,10 +35,12 @@ const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.a
 const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
 
 export function MainWindow(_props: { info: AppInfo }) {
+  useApplyPrefs();
   useWindowState();
   useLibrarySync();
   usePanePersistence();
   const items = useItems();
+  const prefs = usePrefs().data;
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);
@@ -113,6 +116,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     blocked: importing || sheetOpen,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
+    // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
+    textSize: prefs?.fontSize ?? 13,
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (ids) => freshTargets(queryClient, list, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
@@ -124,6 +129,9 @@ export function MainWindow(_props: { info: AppInfo }) {
     openPalette,
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
+    openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
+    // Applied through prefsChanged (useApplyPrefs), like a change made in the settings window; a refused write is a toast.
+    setTextSize: (fontSize) => void unwrap(api().prefs.set({ fontSize })).catch(actionFailed),
   };
   useMenuCommands(env);
   useReportContext(env);

@@ -46,11 +46,12 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
     // The scrim lies over the 52 px drag strips; it must not drag the window (R-23).
     expect(await page.locator('.palette-scrim').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region'))).toBe('no-drag');
     // What can run now, in registry order, the toggle by what it will do (사이드바 가리기 while shown; Task 8 m2).
-    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /사이드바 가리기/, /단축키 도움말/]);
-    await page.getByTestId('palette-input').fill('ㄱㅈ');
+    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /사이드바 가리기/, /단축키 도움말/, /설정…/, /글자 크게/, /글자 작게/]);
+    // ㄱㅈㅇ: only 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게 and 설정…'s 글자 크기, Task 10).
+    await page.getByTestId('palette-input').fill('ㄱㅈㅇ');
     const first = page.getByTestId('palette-item').first();
     await expect(first).toHaveAttribute('data-command-id', 'file.importManaged');
-    await expect(first.locator('mark')).toHaveText('가져');
+    await expect(first.locator('mark')).toHaveText('가져오');
     await expect(first).toHaveAttribute('data-focused', 'true'); // the list cursor is on the first result
     // The cursor row's keycaps darken the accent (critic T9-n1); ↑ ↓ in the footer are alternatives, set apart (T9-n2).
     expect(await first.locator('.kbd').first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await tokenValue(page, 'backgroundColor', '--bg-kbd-on-accent'));
@@ -103,9 +104,9 @@ test('the cursor is on a row whenever the list has rows: on open and after every
     await expectCursor('view.toggleSidebar');
     await page.keyboard.press('Backspace');
     await expect(input).toHaveValue('ㅅ');
-    await expect(page.getByTestId('palette-item')).toHaveCount(2);
+    await expect(page.getByTestId('palette-item')).toHaveCount(4); // 사이드바, 설정…, 가져오기 (사본), 글자 작게 (축소)
     await page.keyboard.press('ArrowDown');
-    await expectCursor('file.importManaged');
+    await expectCursor('app.settings');
     await page.keyboard.press('Backspace');
     await expect(input).toHaveValue('');
     await expectCursor('file.importManaged');
@@ -143,16 +144,16 @@ test('ARIA: a combobox over a listbox, unique option ids, nothing to point at wi
     await expect(listbox).toHaveCount(1);
     await expect(input).toHaveAttribute('aria-controls', (await listbox.getAttribute('id'))!);
     const ids = await listbox.getByRole('option').evaluateAll((els) => els.map((e) => e.id));
-    expect(ids.length).toBe(4);
+    expect(ids.length).toBe(7);
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.every((id) => id.length > 0)).toBe(true);
     await expect(listbox.getByRole('option', { selected: true })).toHaveCount(1);
     // The result count is a polite status, and a cursor move does not change it.
     await expect(status).toHaveAttribute('role', 'status');
-    await expect(status).toHaveText('명령 4개');
+    await expect(status).toHaveText('명령 7개');
     await page.keyboard.press('ArrowDown');
-    await expect(status).toHaveText('명령 4개');
-    await input.fill('ㄱㅈ');
+    await expect(status).toHaveText('명령 7개');
+    await input.fill('ㄱㅈㅇ');
     await expect(status).toHaveText('명령 1개');
     // No rows: collapsed, nothing controlled or active, the status reads the notice's title.
     await input.fill('효소 억제제');
@@ -388,7 +389,7 @@ test('the palette stays open in an inactive window; its cursor row turns neutral
   const cursorRow = page.locator('[data-testid="palette-item"][data-focused]');
   try {
     await runMenuCommand(app, 'app.palette');
-    await page.getByTestId('palette-input').fill('ㄱㅈ');
+    await page.getByTestId('palette-input').fill('ㄱㅈㅇ');
     await expect(cursorRow).toHaveAttribute('data-command-id', 'file.importManaged');
     expect(await cursorRow.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await tokenValue(page, 'backgroundColor', '--accent'));
     await deactivate(app);

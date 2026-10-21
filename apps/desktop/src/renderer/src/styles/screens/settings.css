@@ -1,0 +1,169 @@
+@layer screens {
+  /* The ⌘, settings window (settings.html; design-spec 6 설정 창): groups of --bg-control on the window colour.
+     Every part is scoped to .settings: other screens may use these names for their own things. */
+  .settings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-20);
+    padding: var(--space-8) var(--space-20) var(--space-20);
+  }
+  .settings .group-label {
+    margin: 0 0 var(--space-8) var(--space-4);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-weight: var(--weight-semibold);
+  }
+  .settings .form-group {
+    border-radius: var(--radius-lg);
+    background: var(--bg-control);
+    box-shadow: inset 0 0 0 1px var(--separator);
+  }
+  .settings .form-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-16);
+    min-height: 44px; /* local: settings row (design-spec 6 설정 창) */
+    padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
+  }
+  .settings .form-row + .form-row {
+    border-top: 1px solid var(--separator);
+  }
+  .settings .fr-label {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .settings .fr-label .hint {
+    display: block;
+    margin-top: 2px; /* local: settings.html */
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .settings .form-row.stacked {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-12);
+    padding-top: var(--space-12);
+    padding-bottom: var(--space-16);
+  }
+  /* A segmented control on a group sits on the grouped track (recessed in dark: its labels keep 4.5:1). */
+  .settings .form-group .segmented {
+    background: var(--bg-track-grouped);
+  }
+
+  /* Theme tiles: a window in miniature and its name; the selected one has a 2 px ring 2 px off the picture. */
+  .settings .theme-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-16);
+  }
+  .settings .theme-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-8);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    outline: none;
+    cursor: default;
+  }
+  .settings .theme-tile[data-selected] {
+    color: var(--text-primary);
+    font-weight: var(--weight-semibold);
+  }
+  .settings .theme-tile .preview {
+    position: relative;
+    width: 100%;
+    height: 86px; /* local: settings.html preview */
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .settings .theme-tile .preview::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--border);
+    pointer-events: none;
+  }
+  .settings .theme-tile[data-selected] .preview {
+    box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--accent-ring);
+  }
+  /* Keyboard focus: the focus ring outside the selection ring. Not key (data-window-inactive): no ring, and the
+     selection turns neutral like every other selection (design-spec 2.1, 3.1). */
+  .settings .theme-tile[data-focus-visible] .preview {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: 5px; /* local: outside the 2 + 2 selection ring */
+  }
+  :root[data-window-inactive] .settings .theme-tile .preview {
+    outline: none;
+  }
+  :root[data-window-inactive] .settings .theme-tile[data-selected] .preview {
+    box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--border-strong);
+  }
+  .settings .theme-tile .pv {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: 30% 1fr;
+  }
+  .settings .theme-tile .pv-side {
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* local: miniature */
+    padding: 18px 6px 6px; /* local: miniature */
+  }
+  .settings .theme-tile .pv-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* local: miniature */
+    padding: 18px 8px 6px; /* local: miniature */
+  }
+  .settings .theme-tile .preview i {
+    display: block;
+    height: 4px; /* local: miniature */
+    border-radius: 2px; /* local: miniature */
+  }
+  .settings .theme-tile .lights {
+    position: absolute;
+    top: 6px; /* local: miniature traffic lights */
+    left: 6px; /* local: miniature traffic lights */
+    display: flex;
+    gap: 3px; /* local: miniature traffic lights */
+  }
+  .settings .theme-tile .lights b {
+    width: 5px; /* local: miniature traffic lights */
+    height: 5px; /* local: miniature traffic lights */
+    border-radius: 50%;
+    background: #ff5f57; /* local: macOS close */
+  }
+  .settings .theme-tile .lights b:nth-child(2) {
+    background: #febc2e; /* local: macOS minimise */
+  }
+  .settings .theme-tile .lights b:nth-child(3) {
+    background: #28c840; /* local: macOS zoom */
+  }
+
+  /* Library location: a read-only path (no field chrome), the full path in its tooltip, cut at the end. */
+  .settings .path-box {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    min-width: 0;
+    font: var(--type-mono);
+    color: var(--text-primary);
+  }
+  .settings .path-box .icon {
+    color: var(--accent-text);
+  }
+  .settings .row-actions {
+    display: flex;
+    gap: var(--space-8);
+  }
+  .settings .field-error {
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
+  .settings > section > .field-error {
+    margin: var(--space-8) 0 0 var(--space-4);
+  }
+}

@@ -30,3 +30,15 @@ export function formatDate(iso: string, now: Date = new Date()): string {
 export function msUntilMidnight(now: Date): number {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
 }
+
+/**
+ * A path as shown on screen: inside the home folder it starts with "~" (mockup, Finder), anything else is unchanged.
+ * Only the exact folder prefix counts (`/Users/a` never abbreviates `/Users/ab/…`); the full path stays in tooltips.
+ */
+export function homeRelative(p: string, home: string | null | undefined): string {
+  const h = (home ?? '').replace(/[\\/]+$/, '');
+  if (h === '') return p;
+  if (p === h) return '~';
+  const next = p.charAt(h.length);
+  return p.startsWith(h) && (next === '/' || next === '\\') ? `~${p.slice(h.length)}` : p;
+}

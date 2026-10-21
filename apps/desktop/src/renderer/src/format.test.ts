@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatSize, msUntilMidnight } from './format';
+import { formatDate, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -31,5 +31,24 @@ describe('format (design-spec 9)', () => {
     expect(formatSize(4_404_019)).toBe('4.2 MB');
     expect(formatSize(2_576_980_378)).toBe('2.4 GB');
     expect(formatSize(512)).toBe('512 B');
+  });
+});
+
+describe('homeRelative (paths on screen show the home folder as ~)', () => {
+  it('abbreviates the exact home folder prefix only', () => {
+    expect(homeRelative('/Users/a/Downloads/x.pdf', '/Users/a')).toBe('~/Downloads/x.pdf');
+    expect(homeRelative('/Users/a', '/Users/a')).toBe('~');
+    expect(homeRelative('/Users/ab/x.pdf', '/Users/a')).toBe('/Users/ab/x.pdf'); // a sibling folder that shares the prefix
+    expect(homeRelative('/Volumes/disk/x.pdf', '/Users/a')).toBe('/Volumes/disk/x.pdf');
+    expect(homeRelative('/Users/a/x.pdf', '/Users/a/')).toBe('~/x.pdf'); // a trailing separator on home
+  });
+  it('handles Windows backslashes', () => {
+    expect(homeRelative('C:\\Users\\a\\Documents\\x.pdf', 'C:\\Users\\a')).toBe('~\\Documents\\x.pdf');
+    expect(homeRelative('C:\\Users\\ab\\x.pdf', 'C:\\Users\\a')).toBe('C:\\Users\\ab\\x.pdf');
+  });
+  it('leaves the path alone without a usable home', () => {
+    expect(homeRelative('/Users/a/x.pdf', null)).toBe('/Users/a/x.pdf');
+    expect(homeRelative('/Users/a/x.pdf', '')).toBe('/Users/a/x.pdf');
+    expect(homeRelative('/x.pdf', '/')).toBe('/x.pdf'); // a root "home" would abbreviate everything
   });
 });

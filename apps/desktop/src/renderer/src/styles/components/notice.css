@@ -34,25 +34,19 @@
     font: var(--type-paragraph);
     color: var(--text-secondary);
   }
-  /* Folder, then file name: the folder shrinks first (…), the name keeps its width (ui/Notice.tsx splitPath). */
+  /* A path: every folder (with its separator) and the name are unbreakable units, so the line wraps only after a
+     separator and nothing is cut (design-spec 4; ui/Notice.tsx pathParts). A unit wider than the whole line breaks
+     inside. Selectable: on the fatal screen this is the only way to copy the location. */
   .notice .file {
-    display: flex;
-    justify-content: center;
     max-width: 100%;
-    min-width: 0;
     color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    text-wrap: wrap;
+    user-select: text;
+    cursor: text;
   }
-  .notice .file-dir,
-  .notice .file-base {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-  .notice .file-dir {
-    min-width: 0;
-  }
-  .notice .file-base {
-    flex: none;
+  .notice .file-part {
+    display: inline-block;
     max-width: 100%;
   }
   .notice .actions {

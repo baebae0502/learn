@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cx } from './cx';
 import { Icon } from './Icon';
@@ -6,13 +6,14 @@ import { Icon } from './Icon';
 export type NoticeTone = 'neutral' | 'warning' | 'accent';
 
 /**
- * A file line's two parts: the folder (up to the last separator) and the file name. On a line too narrow for the
- * whole path the folder is cut (…) and the name stays whole, like Finder's middle truncation: the name is what the
- * user looks for (the missing original, the backup to restore from).
+ * A file line's parts: each folder with its trailing separator, then the file name. On screen every part is an
+ * unbreakable unit, so a long path wraps only after a separator and no character is lost (design-spec 4: no
+ * middle elision); only a part wider than the whole line breaks inside.
  */
-export function splitPath(file: string): { dir: string; base: string } {
-  const cut = Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\')) + 1;
-  return { dir: file.slice(0, cut), base: file.slice(cut) };
+export function pathParts(file: string): { folders: string[]; base: string } {
+  const parts = file.split(/(?<=[\\/])/);
+  const base = parts.pop() ?? '';
+  return { folders: parts, base };
 }
 
 /**
@@ -45,11 +46,20 @@ export function Notice(props: {
 }
 
 function FileLine({ file, title }: { file: string; title: string }) {
-  const { dir, base } = splitPath(file);
+  const { folders, base } = pathParts(file);
   return (
     <div className="file mono" title={title}>
-      {dir && <span className="file-dir">{dir}</span>}
-      <span className="file-base">{base}</span>
+      {folders.length > 0 && (
+        <span className="file-dir">
+          {folders.map((f, i) => (
+            <Fragment key={i}>
+              <span className="file-part">{f}</span>
+              <wbr />
+            </Fragment>
+          ))}
+        </span>
+      )}
+      <span className="file-part file-base">{base}</span>
     </div>
   );
 }

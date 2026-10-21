@@ -8,6 +8,8 @@ export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { dup
 export const SHEET_TOP = 60;
 /** A sheet not shown this long after its page began loading is given up (null), so the parent never stays blocked. */
 export const SHEET_SHOW_TIMEOUT_MS = 10_000;
+/** An unresponsive sheet is given up only if it does not answer again within this grace period (a long task is fine). */
+export const UNRESPONSIVE_GRACE_MS = 5_000;
 
 export interface SheetHost {
   /**
@@ -66,10 +68,12 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
       const id = win.webContents.id;
       let done = false;
       let watchdog: ReturnType<typeof setTimeout> | undefined;
+      let hung: ReturnType<typeof setTimeout> | undefined;
       const settle = (result: SheetResult | null) => {
         if (done) return;
         done = true;
         clearTimeout(watchdog);
+        clearTimeout(hung);
         pending.delete(id);
         resolve(result);
         if (!win.isDestroyed()) win.close();
@@ -84,7 +88,11 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
       win.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
         if (isMainFrame) settle(null);
       });
-      win.on('unresponsive', () => settle(null));
+      win.on('unresponsive', () => {
+        clearTimeout(hung);
+        hung = setTimeout(() => settle(null), UNRESPONSIVE_GRACE_MS);
+      });
+      win.on('responsive', () => clearTimeout(hung));
       win.once('ready-to-show', () => {
         void (async () => {
           const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]'), maxHeight);
@@ -96,7 +104,9 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
           win.show();
         })().catch(() => {
           // Only a window closed mid-measure gets here (settled already); otherwise show it unsized rather than lose the question.
-          if (!win.isDestroyed()) win.show();
+          if (win.isDestroyed()) return;
+          clearTimeout(watchdog);
+          win.show();
         });
       });
       watchdog = setTimeout(() => {

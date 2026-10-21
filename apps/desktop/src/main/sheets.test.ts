@@ -40,7 +40,7 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP } = await import('./sheets');
+const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
 const parent = (id = 1): FakeParent =>
@@ -99,7 +99,7 @@ describe('sheet host', () => {
     expect(() => h.payloadFor(contentsOf(w))).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
   });
 
-  it('settles with null when the window closes without an answer, or its page fails to load, hangs or crashes', async () => {
+  it('settles with null when the window closes without an answer, or its page fails to load or crashes', async () => {
     const h = host();
     const p = parent();
     const closed = h.open(p, { kind: 'shortcuts' });
@@ -125,13 +125,51 @@ describe('sheet host', () => {
     expect(FakeWindow.all[3]!.destroyed).toBe(false);
     FakeWindow.all[3]!.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'learn://app/index.html', true);
     await expect(failedLoad).resolves.toBeNull();
+  });
 
-    const hung = h.open(parent(), { kind: 'shortcuts' });
-    await tick();
-    await ready(FakeWindow.all[4]!);
-    FakeWindow.all[4]!.emit('unresponsive');
-    await expect(hung).resolves.toBeNull();
-    expect(FakeWindow.all[4]!.destroyed).toBe(true);
+  it('ends a sheet that stays unresponsive for 5 s; one that recovers within the grace period stays', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    let settled: unknown = 'pending';
+    void h.open(parent(), { kind: 'shortcuts' }).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(0);
+    const w = FakeWindow.all[0]!;
+    w.emit('ready-to-show');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(UNRESPONSIVE_GRACE_MS).toBe(5_000);
+
+    w.emit('unresponsive'); // a long task, then it answers again
+    await vi.advanceTimersByTimeAsync(UNRESPONSIVE_GRACE_MS - 1);
+    w.emit('responsive');
+    await vi.advanceTimersByTimeAsync(UNRESPONSIVE_GRACE_MS * 2);
+    expect(settled).toBe('pending');
+    expect(w.destroyed).toBe(false);
+
+    w.emit('unresponsive'); // hung for good
+    await vi.advanceTimersByTimeAsync(UNRESPONSIVE_GRACE_MS - 1);
+    expect(settled).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBeNull();
+    expect(w.destroyed).toBe(true);
+  });
+
+  it('a sheet shown unsized after a failed measurement is not given up by the show watchdog', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    let settled: unknown = 'pending';
+    void h.open(parent(), { kind: 'shortcuts' }).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(0);
+    const w = FakeWindow.all[0]!;
+    w.webContents.executeJavaScript = async () => {
+      throw new Error('measure failed');
+    };
+    w.emit('ready-to-show');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(w.shown).toBe(true);
+    w.shown = false; // even if the window were hidden again later, the watchdog was cleared when it was shown
+    await vi.advanceTimersByTimeAsync(SHEET_SHOW_TIMEOUT_MS * 2);
+    expect(settled).toBe('pending');
+    expect(w.destroyed).toBe(false);
   });
 
   it('gives up on a sheet that is still not shown 10 s after loading began, so the parent is never left blocked', async () => {

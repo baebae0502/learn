@@ -155,6 +155,55 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
   }
 });
 
+test('drop overlay: copy and ⌥ link, and in a window that is neither key nor main', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const files: Array<[string, string]> = [
+    ['a.pdf', 'application/pdf'],
+    ['b.pdf', 'application/pdf'],
+    ['c.mp4', 'video/mp4'],
+  ];
+  const fire = (type: 'dragenter' | 'dragover' | 'dragleave', altKey: boolean) =>
+    s.page.evaluate(
+      ({ type, files, altKey }) => {
+        const dt = new DataTransfer();
+        for (const [n, m] of files) dt.items.add(new File(['x'], n, { type: m }));
+        document.body.dispatchEvent(new DragEvent(type, { dataTransfer: dt, altKey, bubbles: true, cancelable: true }));
+      },
+      { type, files, altKey },
+    );
+  const overlay = s.page.getByTestId('drop-overlay');
+  try {
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await fire('dragenter', false);
+      await expect(overlay).toHaveAttribute('data-mode', 'copy');
+      await shoot(s.page, `drop-${theme}`);
+      if (theme === 'light') {
+        await fire('dragover', true);
+        await expect(overlay).toHaveAttribute('data-mode', 'link');
+        await shoot(s.page, 'drop-link-light');
+        // A drag from Finder arrives while Finder is the active app: the window is neither key nor main (forced, as
+        // main sets them). The chrome above recedes; the overlay's ring, tile and current card do not.
+        await fire('dragover', false);
+        await s.page.evaluate(() => {
+          document.documentElement.setAttribute('data-window-inactive', '');
+          document.documentElement.setAttribute('data-window-not-main', '');
+        });
+        await expect(overlay).toHaveAttribute('data-mode', 'copy');
+        await shoot(s.page, 'drop-inactive-light');
+        await s.page.evaluate(() => {
+          document.documentElement.removeAttribute('data-window-inactive');
+          document.documentElement.removeAttribute('data-window-not-main');
+        });
+      }
+      await fire('dragleave', false);
+      await expect(overlay).toHaveCount(0);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 /** The settings window's BrowserWindow, evaluated in main. */
 const settingsWindow = (app: Session['app']) =>
   app.evaluateHandle(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))!);

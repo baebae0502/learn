@@ -1,11 +1,23 @@
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator } from '@playwright/test';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
 import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, launch, menuItemEnabled, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
+/** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
+const ring = (button: Locator) => button.evaluate((e) => getComputedStyle(e).outlineStyle);
+/**
+ * Keyboard focus is back in the main window once a sheet has closed. Asked of main (the focused BrowserWindow):
+ * inside the page, document.hasFocus() is always true under Playwright's focus emulation.
+ */
+const mainHasFocus = (app: ElectronApplication) =>
+  expect
+    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('window=main') ?? false), {
+      message: 'focus back in the main window',
+    })
+    .toBe(true);
 
-test('a duplicate import asks in a sheet: ↩ skips, 새 자료로 추가 adds, esc skips, 기존 자료 열기 opens', async ({}, testInfo) => {
+test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus), 새 자료로 추가 adds, esc skips, 기존 자료 열기 opens', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const rows = s.page.getByTestId('item-row');
   try {
@@ -18,10 +30,23 @@ test('a duplicate import asks in a sheet: ↩ skips, 새 자료로 추가 adds, 
     await expect(sheet.getByTestId('dup-file')).toHaveText('sample.pdf');
     await expect(sheet.getByTestId('dup-card')).toContainText('sample');
     await expect(sheet.getByTestId('dup-card')).toContainText('PDF ·');
+    // The default button has focus, marked by its accent fill alone (no ring) until the keyboard is used.
     await expect(sheet.getByTestId('dup-skip')).toBeFocused();
+    expect(await ring(sheet.getByTestId('dup-skip'))).toBe('none');
     expect(await menuItemEnabled(s.app, 'file.importManaged')).toBe(false); // the main window waits for the answer
+    await sheet.keyboard.press('Shift+Tab');
+    await expect(sheet.getByTestId('dup-add')).toBeFocused();
+    expect(await ring(sheet.getByTestId('dup-add'))).toBe('solid');
+    await sheet.keyboard.press('Tab');
+    await expect(sheet.getByTestId('dup-skip')).toBeFocused();
+    expect(await ring(sheet.getByTestId('dup-skip'))).toBe('solid'); // back on the default button: its ring shows now
+    // ↩ runs the default button (건너뛰기) even with 새 자료로 추가 focused; Space would press the focused one.
+    await sheet.keyboard.press('Shift+Tab');
+    await expect(sheet.getByTestId('dup-add')).toBeFocused();
     await closeSheet(sheet, 'Enter');
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(1);
+    await mainHasFocus(s.app);
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
     await sheet.getByTestId('dup-add').click();
@@ -31,6 +56,7 @@ test('a duplicate import asks in a sheet: ↩ skips, 새 자료로 추가 adds, 
     await closeSheet(sheet, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(2);
+    await mainHasFocus(s.app);
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
     await sheet.getByTestId('dup-open').click();
@@ -74,7 +100,7 @@ test('the sheet is a 440 px modal child of the main window, 8 px under the toolb
   }
 });
 
-test('⌘/ lists every registry shortcut in a sheet; ↩ closes it', async ({}, testInfo) => {
+test('⌘/ lists every registry shortcut in a sheet; only the main window opens sheets; ↩ closes it', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
@@ -83,9 +109,14 @@ test('⌘/ lists every registry shortcut in a sheet; ↩ closes it', async ({}, 
       await expect(sheet.getByTestId('shortcut-row').filter({ hasText: commandLabel(c, process.platform) }), c.id).toHaveCount(1);
     }
     await expect(sheet.getByTestId('shortcuts-done')).toBeFocused();
+    expect(await ring(sheet.getByTestId('shortcuts-done'))).toBe('none');
     expect(await menuItemEnabled(s.app, 'app.shortcuts')).toBe(false);
+    // A sheet cannot open another sheet over itself (nor, from Task 10, the settings window): main window only.
+    expect(await sheet.evaluate(() => window.learn.ui.showShortcuts())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    await mainHasFocus(s.app);
   } finally {
     await s.app.close();
   }

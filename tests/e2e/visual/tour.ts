@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, type Locator, type Page } from '@playwright/test';
-import { ROOT, launch, type Session } from '../helpers';
+import { ROOT, launch, mainWindow, type Session } from '../helpers';
 
 /** @2x captures for the design critic (same size as docs/design/renders, 2880×1800). Not committed. */
 export const TOUR_DIR = path.join(ROOT, 'test-results', 'tour');
@@ -16,8 +16,7 @@ export const THEMES: readonly TourTheme[] = ['light', 'dark'];
  */
 export async function launchTour(dir: string, env: Record<string, string> = {}): Promise<Session> {
   const s = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { env: { LEARN_DETERMINISTIC: '1', TZ: 'Asia/Seoul', ...env }, colorScheme: null });
-  await s.app.evaluate(({ BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0]!;
+  await (await mainWindow(s.app)).evaluate((w) => {
     w.setContentSize(1440, 900);
     w.setPosition(0, 0);
   });

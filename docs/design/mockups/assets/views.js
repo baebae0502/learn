@@ -328,7 +328,7 @@
         <div class="files">파일 3개(PDF 2 · 동영상 1)</div>
         <div class="drop-modes">
           <div class="drop-mode is-on">${icon('copy')}<span class="dm-title">사본으로 가져오기</span>
-            <span class="dm-text">라이브러리 폴더에 복사합니다. 원본은 그대로 둡니다.</span></div>
+            <span class="dm-text">라이브러리 폴더에 복사합니다.<br>원본은 그대로 둡니다.</span></div>
           <div class="drop-mode is-off">${icon('link')}<span class="dm-title">외부 파일로 연결${kbd('⌥')}</span>
             <span class="dm-text">복사하지 않고 원래 위치의 파일을 그대로 씁니다.</span></div>
         </div>

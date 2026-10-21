@@ -1488,6 +1488,7 @@ h2,
 .drop-panel h1 {
   margin: var(--space-4) 0 0;
   font: var(--type-title1);
+  letter-spacing: -0.01em; /* the title1 role's tracking, as .t-title1 */
 }
 .drop-panel .files {
   color: var(--text-secondary);
@@ -1512,7 +1513,8 @@ h2,
   row-gap: 2px;
 }
 .drop-mode.is-on {
-  box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-e1);
+  /* --accent-ring: 3:1 on the raised card in dark, where the accent fill (tuned for white text) is 2.37:1 (critic T11-n1). */
+  box-shadow: inset 0 0 0 2px var(--accent-ring), var(--shadow-e1);
 }
 .drop-mode .icon {
   color: var(--accent-text);

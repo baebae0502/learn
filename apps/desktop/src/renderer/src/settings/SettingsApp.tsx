@@ -72,7 +72,10 @@ export function SettingsApp() {
             >
               {THEMES.map((v) => (
                 <Radio key={v} value={v} className="theme-tile" data-testid={`theme-tile-${v}`}>
-                  <ThemePreview kind={v} />
+                  {/* The selection ring is the frame's border, 2 px off the picture with the group showing through. */}
+                  <span className="frame">
+                    <ThemePreview kind={v} />
+                  </span>
                   <span>{t.settings.themes[v]}</span>
                 </Radio>
               ))}
@@ -99,7 +102,7 @@ export function SettingsApp() {
               aria-labelledby="l-font"
               value={String(prefs.fontSize)}
               onChange={(v) => set({ fontSize: Number(v) as Prefs['fontSize'] })}
-              options={SIZES.map((v) => ({ value: String(v), label: t.settings.fontSizes[v], testId: `font-size-${v}` }))}
+              options={SIZES.map((v) => ({ value: String(v), label: t.settings.fontSizes[v], title: t.settings.fontSizePt(v), testId: `font-size-${v}` }))}
             />
           </div>
         </div>

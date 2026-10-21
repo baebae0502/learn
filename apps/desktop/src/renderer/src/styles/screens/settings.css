@@ -38,19 +38,21 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
+  /* No trailing control in a stacked row: equal sides, so the tile grid sits in the middle (critic T10-n4). */
   .settings .form-row.stacked {
     flex-direction: column;
     align-items: stretch;
     gap: var(--space-12);
-    padding-top: var(--space-12);
-    padding-bottom: var(--space-16);
+    padding: var(--space-12) var(--space-16) var(--space-16);
   }
   /* A segmented control on a group sits on the grouped track (recessed in dark: its labels keep 4.5:1). */
   .settings .form-group .segmented {
     background: var(--bg-track-grouped);
   }
 
-  /* Theme tiles: a window in miniature and its name; the selected one has a 2 px ring 2 px off the picture. */
+  /* Theme tiles: a window in miniature and its name. The selected one has a 2 px ring 2 px off the picture: the frame's
+     border, with a transparent padding between, so the gap shows the group in both themes (critic T10-m1). The frame's
+     -4 margin keeps the picture 86 tall and its name 8 below it. */
   .settings .theme-tiles {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -70,6 +72,28 @@
     color: var(--text-primary);
     font-weight: var(--weight-semibold);
   }
+  .settings .theme-tile .frame {
+    align-self: stretch;
+    margin: -4px; /* local: border 2 + gap 2 */
+    padding: 2px; /* local: the ring's gap */
+    border: 2px solid transparent;
+    border-radius: 12px; /* local: the picture's 8 + 4 */
+  }
+  .settings .theme-tile[data-selected] .frame {
+    border-color: var(--accent-ring);
+  }
+  /* Keyboard focus: the focus ring 2 px outside the selection ring (the thumbnail grammar, critic T10-n5). Not key
+     (data-window-inactive): no ring, and the selection turns neutral like every other selection (design-spec 2.1, 3.1). */
+  .settings .theme-tile[data-focus-visible] .frame {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: 2px; /* local: the thumbnail grammar's 2 px off the selection ring */
+  }
+  :root[data-window-inactive] .settings .theme-tile .frame {
+    outline: none;
+  }
+  :root[data-window-inactive] .settings .theme-tile[data-selected] .frame {
+    border-color: var(--border-strong);
+  }
   .settings .theme-tile .preview {
     position: relative;
     width: 100%;
@@ -84,21 +108,6 @@
     border-radius: inherit;
     box-shadow: inset 0 0 0 1px var(--border);
     pointer-events: none;
-  }
-  .settings .theme-tile[data-selected] .preview {
-    box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--accent-ring);
-  }
-  /* Keyboard focus: the focus ring outside the selection ring. Not key (data-window-inactive): no ring, and the
-     selection turns neutral like every other selection (design-spec 2.1, 3.1). */
-  .settings .theme-tile[data-focus-visible] .preview {
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: 5px; /* local: outside the 2 + 2 selection ring */
-  }
-  :root[data-window-inactive] .settings .theme-tile .preview {
-    outline: none;
-  }
-  :root[data-window-inactive] .settings .theme-tile[data-selected] .preview {
-    box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--border-strong);
   }
   .settings .theme-tile .pv {
     position: absolute;

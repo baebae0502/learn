@@ -192,6 +192,10 @@ describe('colour tokens', () => {
     expect(parseColor(colors.separatorChromeInactive.dark)).toMatchObject({ r: 0, g: 0, b: 0, a: 1 });
   });
 
+  it('the selection ring is the meter teal by definition, not a copy of its values (review minor 4)', () => {
+    expect(colors.accentRing).toBe(colors.meter);
+  });
+
   it('the cursor row\'s keycap darkens the accent fill (critic T9-n1: the label was the panel\'s weakest text, 3.61 / 4.03:1)', () => {
     // Pinned near the critique's measure: 6.59:1 light, 7.42:1 dark (a white keycap fill would lighten it instead).
     const ratio = (theme: Theme) => contrast(parseColor(colors.textOnAccent[theme]), composite(parseColor(colors.bgKbdOnAccent[theme]), parseColor(colors.accent[theme])));

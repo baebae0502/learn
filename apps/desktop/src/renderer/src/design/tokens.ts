@@ -27,6 +27,12 @@ export interface ThemePair {
 export const hues = { neutral: 250, accent: 190 } as const;
 
 /**
+ * The accent teal light enough to keep 3:1 against tracks and surfaces in dark, where the accent fill (tuned for white
+ * text on it) does not: meter fills and selection rings.
+ */
+const meterTeal: ThemePair = { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' };
+
+/**
  * Theme colours. Keys become CSS custom properties in kebab case
  * (`bgWindow` → `--bg-window`). Values are OKLCH (or hex for fixed palettes).
  */
@@ -118,12 +124,13 @@ export const colors = {
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
       (the dark accent fill is too dark for that; it is tuned for white text on it). */
-  meter: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
+  meter: meterTeal,
   /**
    * A 2 px selection ring drawn on a surface (the selected theme tile; later the current thumbnail and drop card): ≥ 3:1
-   * against the surfaces it sits on. The dark accent fill is tuned for white text on it and gave 1.95:1 on a settings group.
+   * against the surfaces it sits on. The dark accent fill is tuned for white text on it and gave 1.95:1 on a settings
+   * group. The meter's teal by definition (an alias, so the two cannot drift).
    */
-  accentRing: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
+  accentRing: meterTeal,
 
   // ── Semantic ────────────────────────────────────────────────────────────────
   danger: { light: 'oklch(56% 0.19 27)', dark: 'oklch(64% 0.18 25)' },

@@ -5,6 +5,8 @@ import { cx } from './cx';
 export interface SegmentOption<V extends string> {
   value: V;
   label: string;
+  /** Shown on hover (the system tooltip), e.g. a size label's value in pt (settings.html 글자 크기). */
+  title?: string;
   testId?: string;
 }
 
@@ -30,11 +32,21 @@ export function Segmented<V extends string>(props: {
       className={cx('segmented', props.fill && 'fill')}
       data-force={props.force?.join(' ')}
     >
-      {props.options.map((o) => (
-        <Radio key={o.value} value={o.value} className="seg" data-testid={o.testId}>
-          {o.label}
-        </Radio>
-      ))}
+      {props.options.map((o) => {
+        const segment = (
+          <Radio key={o.value} value={o.value} className="seg" data-testid={o.testId}>
+            {o.label}
+          </Radio>
+        );
+        // RAC passes no `title` to the segment: a box-less wrapper carries the system tooltip (settings.html title="12pt").
+        return o.title ? (
+          <span key={o.value} className="seg-tip" title={o.title}>
+            {segment}
+          </span>
+        ) : (
+          segment
+        );
+      })}
     </RadioGroup>
   );
 }

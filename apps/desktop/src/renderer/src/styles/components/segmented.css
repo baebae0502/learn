@@ -10,6 +10,10 @@
   .segmented.fill {
     display: flex;
   }
+  /* A segment's tooltip wrapper (Segmented `title`): no box of its own, so the track lays the segments out as before. */
+  .segmented .seg-tip {
+    display: contents;
+  }
   .segmented .seg {
     display: inline-flex;
     align-items: center;

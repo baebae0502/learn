@@ -28,28 +28,46 @@ const shellCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis 
 
 const heightOf = async (page: Page, testId: string) => Math.round((await page.getByTestId(testId).boundingBox())!.height);
 
-/** A notice's file line on a long path: the folder is cut (…), the file name is shown whole, inside the notice. */
-async function expectWholeFileName(notice: Locator, base: string): Promise<void> {
-  const line = notice.locator('.file');
-  await expect(line.locator('.file-base')).toHaveText(base);
-  const m = await line.evaluate((el) => {
-    const b = el.querySelector('.file-base')!;
-    const d = el.querySelector('.file-dir');
-    return {
-      baseFits: b.scrollWidth <= b.clientWidth,
-      dirCut: d !== null && d.scrollWidth > d.clientWidth,
-      inside: el.getBoundingClientRect().width <= el.parentElement!.getBoundingClientRect().width,
-    };
-  });
-  expect(m).toEqual({ baseFits: true, dirCut: true, inside: true });
+/**
+ * A home folder inside the test folder, given to the app as HOME: the paths it shows read "~/…" exactly, whatever
+ * the runner's folders are called (a long test-folder name would otherwise be the part that wraps).
+ */
+function testHome(dir: string): { home: string; env: Record<string, string> } {
+  const home = path.join(dir, 'home');
+  fs.mkdirSync(home, { recursive: true });
+  return { home, env: { HOME: home } };
 }
 
-/** The final states' 44 px title row (design-spec 6): title, then kind · size (· 외부 연결). */
-async function expectTitleRow(page: Page, title: string, meta: RegExp): Promise<void> {
-  const row = page.getByTestId('reader-title-row');
-  await expect(row.locator('.t-headline')).toHaveText(title);
-  await expect(row.locator('.t-footnote')).toHaveText(meta);
-  expect(await heightOf(page, 'reader-title-row')).toBe(44);
+/**
+ * A notice's path line (design-spec 4: no middle elision): every character is shown, the line wraps only after a
+ * separator (no folder or name is broken), the file name is whole on one line, and the line stays inside the notice.
+ * Returns the number of lines.
+ */
+async function expectPathLine(notice: Locator, shown: string, base: string): Promise<number> {
+  const line = notice.locator('.file');
+  await expect(line).toHaveText(shown);
+  await expect(line.locator('.file-base')).toHaveText(base);
+  const m = await line.evaluate((el) => {
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    const parts = [...el.querySelectorAll<HTMLElement>('.file-part')];
+    const box = el.getBoundingClientRect();
+    const notice = el.parentElement!.getBoundingClientRect();
+    return {
+      partsWhole: parts.every((p) => Math.round(p.getBoundingClientRect().height) === lh),
+      noOverflow: el.scrollWidth <= el.clientWidth,
+      inside: box.left >= notice.left - 0.5 && box.right <= notice.right + 0.5,
+      selectable: getComputedStyle(el).userSelect === 'text',
+      lines: Math.round(box.height / lh),
+    };
+  });
+  expect({ ...m, lines: undefined }).toEqual({ partsWhole: true, noOverflow: true, inside: true, selectable: true, lines: undefined });
+  return m.lines;
+}
+
+/** Final states sit directly under the 52 px unified toolbar: no 44 px title row in M3 (spec 2.1; fix round 1 M1). */
+async function expectStageUnderToolbar(page: Page, stage: string): Promise<void> {
+  await expect(page.getByTestId('reader-title-row')).toHaveCount(0);
+  expect(Math.round((await page.locator(stage).boundingBox())!.y)).toBe(52);
 }
 
 test('reader chrome: back button and ⌘1, title and kind · size in the toolbar, a 44 px reader toolbar', async ({}, testInfo) => {
@@ -73,6 +91,11 @@ test('reader chrome: back button and ⌘1, title and kind · size in the toolbar
     });
     expect(stage.got).toBe(stage.want);
     expect(stage.overflow).toBe('auto');
+    // The zoom select draws the 12 px chevron instead of the native arrow (m2); the page buttons are up/down (m3).
+    expect(await s.page.getByTestId('pdf-zoom').evaluate((el) => getComputedStyle(el).appearance)).toBe('none');
+    await expect(s.page.locator('.zoom-select .icon')).toBeVisible();
+    await expect(s.page.getByTestId('pdf-prev').locator('svg')).toHaveClass(/lucide-chevron-up/);
+    await expect(s.page.getByTestId('pdf-next').locator('svg')).toHaveClass(/lucide-chevron-down/);
     // A disabled control says why (M-2): focusable, aria-disabled, the reason as its description; an enabled one has none.
     await expectDisabledReason(s.page.getByTestId('pdf-prev'), '첫 쪽입니다');
     await expectDisabledReason(s.page.getByTestId('pdf-next'), null);
@@ -95,22 +118,34 @@ test('reader chrome: back button and ⌘1, title and kind · size in the toolbar
   }
 });
 
-test('a PDF that cannot be opened: a 44 px title row and the notice, no reader controls (design-spec 6)', async ({}, testInfo) => {
+test('a PDF that cannot be opened: the notice with the file and Finder에서 보기 · 기본 앱으로 열기, no reader controls (design-spec 6)', async ({}, testInfo) => {
   const src = testInfo.outputPath('src');
   fs.mkdirSync(src, { recursive: true });
   const broken = path.join(src, 'broken.pdf');
   fs.writeFileSync(broken, '%PDF-1.4\n% not a real document\n%%EOF\n'); // passes the import's type check, pdf.js rejects it
-  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const lib = testInfo.outputPath('library');
+  const s = await launch(lib, testInfo.outputPath('userdata'));
   const warnings: string[] = [];
   s.page.on('console', (m) => {
     if (m.type() === 'warning') warnings.push(m.text());
   });
   try {
+    await stubShell(s.app);
     await importPaths(s.page, [broken]);
     await openItem(s.page, 'broken');
-    await expect(s.page.getByTestId('pdf-error')).toContainText('이 PDF를 열 수 없습니다');
-    await expect(s.page.getByTestId('pdf-error')).toContainText('다시 가져오세요');
-    await expectTitleRow(s.page, 'broken', /^PDF · \d+ B$/);
+    const notice = s.page.getByTestId('pdf-error');
+    await expect(notice.locator('h2')).toHaveText('이 PDF를 열 수 없습니다');
+    await expect(notice.locator('p')).toHaveText('파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본 파일은 그대로 보관됩니다. 다른 사본이 있으면 다시 가져오세요.');
+    await expect(notice.locator('.file')).toHaveText('broken.pdf · 37 B');
+    await expectStageUnderToolbar(s.page, '.reader-stage');
+    // m1 / C-1 as amended: both file actions are notice buttons, through the registry.
+    await expect(s.page.getByTestId('pdf-reveal')).toHaveText(REVEAL);
+    await expect(s.page.getByTestId('pdf-open')).toHaveText('기본 앱으로 열기');
+    await expectDisabledReason(s.page.getByTestId('pdf-reveal'), null);
+    await s.page.getByTestId('pdf-reveal').click();
+    await s.page.getByTestId('pdf-open').click();
+    await expect.poll(async () => (await shellCalls(s.app)).map(([k]) => k)).toEqual(['reveal', 'open']);
+    expect((await shellCalls(s.app)).every(([, p]) => p.startsWith(path.join(lib, 'assets')))).toBe(true);
     for (const id of ['pdf-prev', 'pdf-next', 'pdf-zoom', 'pdf-page-indicator', 'pdf-canvas', 'reader-toolbar']) await expect(s.page.getByTestId(id), id).toHaveCount(0);
     // pdf.js's own message is logged by name only and never shown.
     expect(warnings.some((w) => /^\[pdf\] open\/render failed: \w+$/.test(w))).toBe(true);
@@ -120,7 +155,7 @@ test('a PDF that cannot be opened: a 44 px title row and the notice, no reader c
   }
 });
 
-test('unplayable video: title row and notice with Finder에서 보기 and 기본 앱으로 열기 through the registry', async ({}, testInfo) => {
+test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and 기본 앱으로 열기 through the registry', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await stubShell(s.app);
@@ -130,7 +165,7 @@ test('unplayable video: title row and notice with Finder에서 보기 and 기본
     await expect(notice).toContainText('이 동영상은 재생할 수 없습니다');
     await expect(notice).toContainText('MP4(H.264/AAC)');
     await expect(notice.locator('.file')).toHaveText(/^sample-mpeg4part2\.mp4 · \d/);
-    await expectTitleRow(s.page, 'sample-mpeg4part2', /^동영상 · \d/);
+    await expectStageUnderToolbar(s.page, '.video-stage'); // no row is inserted when the error arrives (no 44 px jump)
     await expect(s.page.getByTestId('video')).toBeHidden(); // kept in the DOM (the evidence harness reads video.error)
     await expect(s.page.getByTestId('codec-reveal')).toHaveText(REVEAL);
     await expect(s.page.getByTestId('codec-open')).toHaveText('기본 앱으로 열기');
@@ -155,11 +190,12 @@ test('unplayable video: title row and notice with Finder에서 보기 and 기본
 });
 
 test('missing linked original: 다시 연결… first in the context menu and in the notice; 라이브러리에서 보기 goes back', async ({}, testInfo) => {
-  const src = testInfo.outputPath('src');
+  const { home, env } = testHome(testInfo.outputPath());
+  const src = path.join(home, 'Downloads');
   fs.mkdirSync(src, { recursive: true });
   const file = path.join(src, 'linked.pdf');
   fs.copyFileSync(PDF, file);
-  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env });
   try {
     await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
@@ -178,9 +214,9 @@ test('missing linked original: 다시 연결… first in the context menu and in
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('원본 파일을 찾을 수 없습니다');
     await expect(notice).toContainText('새 위치를 지정하세요');
-    await expect(notice.locator('.file')).toHaveText(file); // where it was
-    await expectWholeFileName(notice, 'linked.pdf'); // the test folder's path is long
-    await expectTitleRow(s.page, 'linked', /^PDF · \d+(\.\d)? KB · 외부 연결$/); // N-1
+    await expectPathLine(notice, '~/Downloads/linked.pdf', 'linked.pdf'); // where it was, home as ~
+    await expect(notice.locator('.file')).toHaveAttribute('title', file); // the full path
+    await expectStageUnderToolbar(s.page, '.reader-stage');
     await expect(s.page.getByTestId('relink')).toHaveText('다시 연결…');
     await expectDisabledReason(s.page.getByTestId('relink'), null);
     await s.page.getByTestId('missing-back').click();
@@ -190,7 +226,6 @@ test('missing linked original: 다시 연결… first in the context menu and in
     await s.page.getByTestId('relink').click();
     await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expect(s.page.getByTestId('missing-notice')).toHaveCount(0);
-    await expect(s.page.getByTestId('reader-title-row')).toHaveCount(0);
   } finally {
     await s.app.close();
   }
@@ -208,28 +243,61 @@ test('a missing managed copy: the notice says to import the original again, with
     await expect(notice).toContainText('라이브러리 안의 사본을 찾을 수 없습니다');
     await expect(notice.locator('.file')).toHaveCount(0); // the path inside the library means nothing to the user
     await expect(s.page.getByTestId('relink')).toHaveCount(0);
-    await expectTitleRow(s.page, 'sample', /^PDF · \d+(\.\d)? KB$/);
+    await expectStageUnderToolbar(s.page, '.reader-stage');
   } finally {
     await s.app.close();
   }
 });
 
-test('a library that cannot be opened shows the fatal notice in our own words and disables every registry command', async ({}, testInfo) => {
-  const lib = testInfo.outputPath('library');
+test('reopening an item whose file vanished silently shows the missing notice, never the stale reader first', async ({}, testInfo) => {
+  const src = testInfo.outputPath('src');
+  fs.mkdirSync(src, { recursive: true });
+  const file = path.join(src, 'linked.pdf');
+  fs.copyFileSync(PDF, file);
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
+    await openItem(s.page, 'linked');
+    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/); // cached as available
+    await s.page.getByTestId('viewer-back').click();
+    fs.renameSync(file, path.join(src, 'moved.pdf')); // main does not watch the disk: no libraryChanged
+    // Record every reader state that appears from here on.
+    await s.page.evaluate(() => {
+      const g = window as unknown as { __seen: string[] };
+      g.__seen = [];
+      new MutationObserver(() => {
+        for (const id of ['pdf-canvas', 'pdf-error', 'missing-notice']) {
+          if (document.querySelector(`[data-testid="${id}"]`) && !g.__seen.includes(id)) g.__seen.push(id);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await openItem(s.page, 'linked');
+    await expect(s.page.getByTestId('missing-notice')).toBeVisible();
+    expect(await s.page.evaluate(() => (window as unknown as { __seen: string[] }).__seen)).toEqual(['missing-notice']);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a library that cannot be opened: our own words, the newest real backup on a wrapping path line, every command disabled', async ({}, testInfo) => {
+  // A folder as deep as the default macOS library (~/Library/Application Support/Learn/Library): the line must wrap.
+  const { home, env } = testHome(testInfo.outputPath());
+  const lib = path.join(home, 'Library', 'Application Support', 'Learn', 'Library');
   fs.mkdirSync(lib, { recursive: true });
   fs.writeFileSync(path.join(lib, 'library.sqlite'), 'not a database');
-  const s = await launch(lib, testInfo.outputPath('userdata'));
+  const ud = testInfo.outputPath('userdata');
+  let s = await launch(lib, ud, { env });
   try {
+    // No pre-update backup: the sentence points at none and there is no file line (n5).
     const notice = s.page.getByTestId('fatal-notice');
     await expect(notice.locator('h2')).toHaveText('라이브러리를 열 수 없습니다');
-    // C-8: the sentence names the backup; the file name (in the library folder) is the monospace file line.
-    await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 아래 위치에 업데이트 전 백업 파일이 있으면 그 파일로 복구할 수 있습니다.');
-    await expect(notice.locator('.file')).toHaveText(path.join(lib, 'library.sqlite.pre-v*.bak'));
-    await expectWholeFileName(notice, 'library.sqlite.pre-v*.bak'); // the test folder's path is long
-    await expect(notice.locator('.file')).toHaveAttribute('title', /\((INTERNAL|MIGRATION_FAILED|LIBRARY_UNAVAILABLE)\)$/);
+    await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 앱을 다시 시작하세요.');
+    await expect(notice.locator('.file')).toHaveCount(0);
     // main's message never reaches the screen (it can carry paths or engine text).
     const info = await s.page.evaluate(() => window.learn.app.info());
     if (!info.ok || !info.data.libraryError) throw new Error('expected a library error');
+    expect(info.data.backupFile).toBeNull();
+    expect(info.data.homeDir).toBe(home);
     await expect(notice).not.toContainText(info.data.libraryError.message);
     // The window can still be dragged by its top strip.
     expect(await s.page.locator('.fatal-drag').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
@@ -237,6 +305,19 @@ test('a library that cannot be opened shows the fatal notice in our own words an
     const registry = new Set<string>(COMMANDS.map((c) => c.id));
     const enabled = flat(await menuSnapshot(s.app)).filter((n) => n.id !== null && registry.has(n.id) && n.enabled && !MAIN_OWNED_COMMANDS.has(n.id as CommandId));
     expect(enabled.map((n) => n.id)).toEqual([]);
+  } finally {
+    await s.app.close();
+  }
+  // Two pre-update backups: the newest (highest version) is named, never a pattern (C-8, n5).
+  for (const v of [2, 3]) fs.writeFileSync(path.join(lib, `library.sqlite.pre-v${v}.bak`), '');
+  s = await launch(lib, ud, { env });
+  try {
+    const notice = s.page.getByTestId('fatal-notice');
+    await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 아래 위치의 업데이트 전 백업 파일로 복구할 수 있습니다.');
+    const full = path.join(lib, 'library.sqlite.pre-v3.bak');
+    const lines = await expectPathLine(notice, '~/Library/Application Support/Learn/Library/library.sqlite.pre-v3.bak', 'library.sqlite.pre-v3.bak');
+    expect(lines).toBe(2); // wrapped after the last separator, not cut
+    await expect(notice.locator('.file')).toHaveAttribute('title', new RegExp(`^${full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\((INTERNAL|MIGRATION_FAILED|LIBRARY_UNAVAILABLE)\\)$`));
   } finally {
     await s.app.close();
   }

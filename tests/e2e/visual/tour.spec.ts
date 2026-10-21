@@ -106,14 +106,31 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   }
 });
 
+/**
+ * A home folder inside the test folder (HOME for the app): paths on screen read "~/…" the same on every machine, so
+ * the path lines need no mask. Returns its path.
+ */
+function tourHome(dir: string): string {
+  const home = path.join(dir, 'home');
+  fs.mkdirSync(home, { recursive: true });
+  return home;
+}
+
 test('readers: PDF, unplayable video, PDF that cannot be opened, missing original', async ({}, testInfo) => {
-  const s = await launchTour(testInfo.outputPath());
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
   try {
-    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-mpeg4part2.mp4')]);
-    const broken = testInfo.outputPath('broken.pdf');
+    // The unplayable fixture is encoded by the machine's ffmpeg (its size differs between Debian and CI's Ubuntu):
+    // a copy zero-extended to a fixed size shows the same "293 KB" everywhere and is still refused as MPEG-4 Part 2.
+    const unplayable = path.join(home, 'sample-mpeg4part2.mp4');
+    fs.copyFileSync(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), unplayable);
+    if (fs.statSync(unplayable).size >= 300_000) throw new Error('the MPEG-4 fixture outgrew the tour size');
+    fs.truncateSync(unplayable, 300_000);
+    const broken = path.join(home, 'broken.pdf');
     fs.writeFileSync(broken, '%PDF-1.4\n% not a real document\n%%EOF\n'); // passes the import's type check, pdf.js rejects it
-    await importPaths(s.page, [broken]);
-    const gone = testInfo.outputPath('gone.pdf');
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), unplayable, broken]);
+    const gone = path.join(home, 'Downloads', 'gone.pdf');
+    fs.mkdirSync(path.dirname(gone), { recursive: true });
     fs.copyFileSync(path.join(FIXTURES, 'sample.pdf'), gone);
     await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
     fs.rmSync(gone);
@@ -126,19 +143,16 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.getByTestId('pdf-canvas')] });
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'sample-mpeg4part2');
-      await expect(s.page.getByTestId('video-error')).toBeVisible();
-      // The fixture's size depends on the machine's ffmpeg (200 KB here, 190 KB on CI): mask the three lines that show it.
-      const sizes = [s.page.getByTestId('toolbar-count'), s.page.getByTestId('reader-title-row').locator('.t-footnote'), s.page.getByTestId('video-error').locator('.file')];
-      await shoot(s.page, `reader-codec-${theme}`, { mask: sizes });
+      await expect(s.page.getByTestId('video-error')).toContainText('이 동영상은 재생할 수 없습니다');
+      await shoot(s.page, `reader-codec-${theme}`);
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'broken');
       await expect(s.page.getByTestId('pdf-error')).toBeVisible();
       await shoot(s.page, `reader-error-${theme}`);
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'gone');
-      await expect(s.page.getByTestId('missing-notice')).toBeVisible();
-      // The path line differs per test folder.
-      await shoot(s.page, `reader-missing-${theme}`, { mask: [s.page.getByTestId('missing-notice').locator('.file')] });
+      await expect(s.page.getByTestId('missing-notice').locator('.file')).toHaveText('~/Downloads/gone.pdf');
+      await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
     }
@@ -147,20 +161,33 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
   }
 });
 
-test('fatal: the library cannot be opened', async ({}, testInfo) => {
-  // launchTour opens <dir>/library: an unreadable database there gives the fatal screen at the tour's window size.
-  const lib = testInfo.outputPath('library');
+/** An unreadable database (and one pre-update backup) in `<dir>/library`, which launchTour opens. */
+function brokenLibrary(dir: string): void {
+  const lib = path.join(dir, 'library');
   fs.mkdirSync(lib, { recursive: true });
   fs.writeFileSync(path.join(lib, 'library.sqlite'), 'not a database');
-  const s = await launchTour(testInfo.outputPath());
-  try {
-    await expect(s.page.getByTestId('fatal-notice')).toBeVisible();
-    for (const theme of THEMES) {
-      await setTheme(s.page, theme);
-      // The file line holds the test folder's path.
-      await shoot(s.page, `fatal-${theme}`, { mask: [s.page.getByTestId('fatal-notice').locator('.file')] });
+  fs.writeFileSync(path.join(lib, 'library.sqlite.pre-v2.bak'), '');
+}
+
+test('fatal: the library cannot be opened (a short and a deep library folder)', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  // "~/library/library.sqlite.pre-v2.bak" fits one line; a folder as deep as the default macOS library
+  // (~/Library/Application Support/Learn/…) wraps after a separator (design-spec 4: no middle elision).
+  const cases = [
+    { name: 'fatal', dir: home, shown: '~/library/library.sqlite.pre-v2.bak' },
+    { name: 'fatal-longpath', dir: path.join(home, 'Library', 'Application Support', 'Learn'), shown: '~/Library/Application Support/Learn/library/library.sqlite.pre-v2.bak' },
+  ];
+  for (const c of cases) {
+    brokenLibrary(c.dir);
+    const s = await launchTour(c.dir, { HOME: home });
+    try {
+      await expect(s.page.getByTestId('fatal-notice').locator('.file')).toHaveText(c.shown);
+      for (const theme of THEMES) {
+        await setTheme(s.page, theme);
+        await shoot(s.page, `${c.name}-${theme}`);
+      }
+    } finally {
+      await s.app.close();
     }
-  } finally {
-    await s.app.close();
   }
 });

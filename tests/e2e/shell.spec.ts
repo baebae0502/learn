@@ -509,3 +509,36 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     await app.close();
   }
 });
+
+test('the window is named after its view: the library title, then the open item (R3-5)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const title = async () => (await mainWindow(app)).evaluate((w) => w.getTitle());
+  try {
+    await importPaths(page, [PDF]);
+    await expect.poll(title).toBe(await page.getByTestId('toolbar-title').textContent());
+    expect(await title()).toBe('내 라이브러리');
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect.poll(title).toBe('sample');
+    await runMenuCommand(app, 'nav.back');
+    await expect.poll(title).toBe('내 라이브러리');
+  } finally {
+    await app.close();
+  }
+});
+
+test('in full screen there are no traffic lights: a hidden sidebar leaves the toolbar its normal 12 px start (R3-5)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const left = () => page.getByTestId('toolbar').evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft));
+  try {
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    // As on macOS: windowed, the toolbar clears the lights (84); in full screen it starts at the normal padding.
+    await page.evaluate(() => document.documentElement.setAttribute('data-platform', 'darwin'));
+    expect(await left()).toBe(84);
+    await page.evaluate(() => document.documentElement.setAttribute('data-fullscreen', ''));
+    expect(await left()).toBe(12);
+  } finally {
+    await app.close();
+  }
+});

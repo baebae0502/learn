@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { SidebarToggle } from './SidebarToggle';
 import { useSidebarHidden } from './useSidebar';
 
@@ -8,6 +8,11 @@ import { useSidebarHidden } from './useSidebar';
  */
 export function Toolbar(props: { title: string; count?: string; titleTestId?: string; leading?: ReactNode; actions?: ReactNode; trailing?: ReactNode }) {
   const hidden = useSidebarHidden();
+  // The window is named after its view, as native windows are after their folder or document (design-spec 2.1): the
+  // title shows in 윈도우, Mission Control and the full-screen reveal strip. Electron follows document.title.
+  useEffect(() => {
+    if (props.title) document.title = props.title;
+  }, [props.title]);
   return (
     <header className="titlebar" data-testid="toolbar">
       {hidden && <SidebarToggle place="toolbar" />}

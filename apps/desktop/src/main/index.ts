@@ -6,6 +6,7 @@ import {
 } from '@learn/domain';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
+import { DETERMINISTIC_SWITCHES, isDeterministic } from './deterministic';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
@@ -15,6 +16,7 @@ import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { applyTheme } from './theme';
 import { createMainWindow } from './window';
+import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,6 +31,9 @@ const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
 /** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
 const isDevBuild = !app.isPackaged && process.env['LEARN_E2E'] !== '1';
 
+const deterministic = isDeterministic(process.env);
+if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);
+
 registerAppScheme();
 
 let ctx: LibraryContext | null = null;
@@ -38,7 +43,12 @@ let mainWindow: BrowserWindow | null = null;
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
     preload: path.join(here, '../preload/index.cjs'),
-    url: devServerUrl ?? `${APP_SCHEME}://app/index.html`,
+    url: windowUrl(devServerUrl ?? `${APP_SCHEME}://app/index.html`, 'main', {
+      platform: process.platform,
+      deterministic,
+      vibrancy: false, // Task 8
+      demo: false, // Task 13
+    }),
   });
   win.on('closed', () => {
     if (mainWindow !== win) return;

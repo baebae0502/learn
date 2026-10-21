@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { composite, contrast, parseColor, type Rgba } from './color';
@@ -7,12 +8,14 @@ import {
   colorsContrastMore,
   colorsVibrancySidebar,
   colorsVibrancySidebarContrastMore,
+  defaultUiTextSize,
   density,
   inactiveOpacity,
   layout,
   space,
   tagColors,
   typeScale,
+  uiTextSizes,
   type ColorToken,
   type ThemePair,
 } from './tokens';
@@ -81,6 +84,31 @@ describe('colour tokens', () => {
           }
         });
 
+        it('grouped surfaces: the settings window\'s groups and a sheet\'s .card keep secondary text at 4.5:1 (carried T6 check)', () => {
+          // Settings (design-spec 6 설정 창): groups are --bg-control on --bg-window; a sheet's .card is --fill-hover on --bg-raised.
+          const group = onLayers(c, ['bgControl'], 'bgWindow');
+          const card = onLayers(c, ['fillHover'], 'bgRaised');
+          for (const [label, bg] of [['settings group', group], ['sheet card', card]] as const) {
+            expectContrast(`textPrimary/${label}`, c('textPrimary'), bg, 4.5);
+            expectContrast(`textSecondary/${label}`, c('textSecondary'), bg, 4.5); // hints, theme names, card meta
+          }
+          // A segmented control inside a group sits on its own track (bgTrackGrouped): unselected labels on the track, the
+          // selected one on its raised segment, which still stands out from the track.
+          const track = onLayers(c, ['bgControl', 'bgTrackGrouped'], 'bgWindow');
+          const selected = onLayers(c, ['bgControl', 'bgTrackGrouped', 'bgControlSelected'], 'bgWindow');
+          expectContrast('textSecondary/bgTrackGrouped@settings group', c('textSecondary'), track, 4.5);
+          expectContrast('textPrimary/bgControlSelected@bgTrackGrouped@settings group', c('textPrimary'), selected, 4.5);
+          expect(contrast(selected, track), 'selected segment vs track').toBeGreaterThanOrEqual(theme === 'dark' ? 1.5 : 1);
+          // The plain track would not do in dark (why the grouped one exists).
+          if (theme === 'dark' && mode === 'default') expect(contrast(c('textSecondary'), onLayers(c, ['bgControl', 'bgTrack'], 'bgWindow'))).toBeLessThan(4.5);
+          // The library path's folder glyph (accent text) and the folder error under it.
+          expectContrast('accentText icon/settings group', c('accentText'), group, 3);
+          expectContrast('dangerText/settings group', c('dangerText'), group, 4.5);
+          // The selected theme tile's ring and, when the window is not key, its neutral ring.
+          expectContrast('accentRing/settings group', c('accentRing'), group, 3);
+          expectContrast('borderStrong ring/settings group', c('borderStrong'), group, 3);
+        });
+
         it('tertiary text and icons ≥ 3:1 on base surfaces (non-essential text only)', () => {
           for (const s of SURFACES) expectContrast(`textTertiary/${s}`, c('textTertiary'), c(s), 3);
         });
@@ -112,6 +140,7 @@ describe('colour tokens', () => {
         it('focus ring and strong borders ≥ 3:1 against the surfaces they sit on', () => {
           for (const s of SURFACES) {
             expectContrast(`focus/${s}`, c('focus'), c(s), 3);
+            expectContrast(`accentRing/${s}`, c('accentRing'), c(s), 3);
             expectContrast(`borderStrong/${s}`, c('borderStrong'), c(s), 3);
           }
         });
@@ -257,6 +286,17 @@ describe('scale tokens', () => {
       expect(t.weight, role).toBeLessThanOrEqual(600);
     }
     expect(typeScale.body).toEqual({ size: 13, line: 18, weight: 400 });
+  });
+
+  it('UI text sizes match prefs.fontSize and scale from 13', () => {
+    expect([...uiTextSizes]).toEqual([12, 13, 14, 15]);
+    expect(defaultUiTextSize).toBe(13);
+    const css = fs.readFileSync(path.join(import.meta.dirname, 'tokens.css'), 'utf8');
+    expect(css).toContain('--type-body: 400 round(calc(13px * var(--text-scale)), 1px)/round(calc(18px * var(--text-scale)), 2px) var(--font-ui);');
+    // Semibold roles keep the weight token (Task 8 n6).
+    expect(css).toContain('--type-headline: var(--weight-semibold) round(calc(13px * var(--text-scale)), 1px)/round(calc(18px * var(--text-scale)), 2px) var(--font-ui);');
+    expect(css).toContain("  :root[data-font-size='15'] {\n    --text-scale: calc(15 / 13);");
+    expect(css).not.toContain("data-font-size='13'"); // 13 is the default: --text-scale 1
   });
 });
 

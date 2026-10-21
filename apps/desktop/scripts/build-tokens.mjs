@@ -49,20 +49,23 @@ export function renderCss() {
   section('Elevation');
   for (const [key, layers] of Object.entries(tokens.shadows)) decl(`shadow-${key}`, shadow(layers));
 
-  section('Typography');
+  section('Typography (roles scale with --text-scale: settings 글자 크기, main window only)');
   decl('font-system', tokens.fonts.system);
   decl('font-pretendard', tokens.fonts.pretendard);
   decl('font-mono', tokens.fonts.mono);
   decl('font-ui', 'var(--font-system)');
+  decl('text-scale', '1');
   for (const [k, v] of Object.entries(tokens.fontWeight)) decl(`weight-${kebab(k)}`, String(v));
   // Every semibold role reads --weight-semibold, so one value moves all of them (design-spec 4).
   const weight = (w) => (w === tokens.fontWeight.semibold ? 'var(--weight-semibold)' : String(w));
+  // Sizes to whole px, line heights to the 2 px half-grid (scale tokens test); at --text-scale 1 they are the values.
+  const scaled = (n, step) => `round(calc(${px(n)} * var(--text-scale)), ${step}px)`;
   for (const [role, t] of Object.entries(tokens.typeScale)) {
     const name = kebab(role);
-    decl(`text-${name}-size`, px(t.size));
-    decl(`text-${name}-line`, px(t.line));
+    decl(`text-${name}-size`, scaled(t.size, 1));
+    decl(`text-${name}-line`, scaled(t.line, 2));
     decl(`text-${name}-weight`, weight(t.weight));
-    decl(`type-${name}`, `${weight(t.weight)} ${px(t.size)}/${px(t.line)} ${role === 'mono' ? 'var(--font-mono)' : 'var(--font-ui)'}`);
+    decl(`type-${name}`, `${weight(t.weight)} ${scaled(t.size, 1)}/${scaled(t.line, 2)} ${role === 'mono' ? 'var(--font-mono)' : 'var(--font-ui)'}`);
   }
 
   section('Space (4 px grid; the name is the pixel value)');
@@ -104,6 +107,9 @@ export function renderCss() {
   const densities = Object.entries(tokens.density)
     .filter(([k]) => k !== tokens.defaultDensity)
     .map(([k]) => `  :root[data-density='${k}'] {\n    --row-height: var(--row-height-${k});\n  }`);
+  const textSizes = tokens.uiTextSizes
+    .filter((size) => size !== tokens.defaultUiTextSize)
+    .map((size) => `  :root[data-font-size='${size}'] {\n    --text-scale: calc(${size} / ${tokens.defaultUiTextSize});\n  }`);
 
   return [
     `/* ${HEADER} */`,
@@ -116,6 +122,7 @@ export function renderCss() {
     "  :root[data-theme='light'] {\n    color-scheme: light;\n  }",
     "  :root[data-theme='dark'] {\n    color-scheme: dark;\n  }",
     ...densities,
+    ...textSizes,
     "  :root[data-font='pretendard'] {\n    --font-ui: var(--font-pretendard);\n  }",
     '',
     '  /* Sidebar text over the macOS vibrancy material (tokens.ts colorsVibrancySidebar). */',

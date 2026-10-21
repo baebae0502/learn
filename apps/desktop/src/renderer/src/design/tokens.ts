@@ -52,6 +52,11 @@ export const colors = {
   bgControlSelected: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0 / 0.2)' },
   /** Track behind segmented controls and progress bars. */
   bgTrack: { light: 'oklch(23% 0.01 250 / 0.07)', dark: 'oklch(100% 0 0 / 0.08)' },
+  /**
+   * The track of a segmented control on a grouped surface (the settings window's --bg-control groups). Recessed in dark:
+   * the usual lighter track over the group's own white 10 % left its labels at 4.39:1 and the selected one at 4.23:1.
+   */
+  bgTrackGrouped: { light: 'oklch(23% 0.01 250 / 0.07)', dark: 'oklch(0% 0 0 / 0.12)' },
   /** Modal backdrop. */
   bgScrim: { light: 'oklch(20% 0.01 250 / 0.24)', dark: 'oklch(0% 0 0 / 0.5)' },
   /**
@@ -114,6 +119,11 @@ export const colors = {
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
       (the dark accent fill is too dark for that; it is tuned for white text on it). */
   meter: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
+  /**
+   * A 2 px selection ring drawn on a surface (the selected theme tile; later the current thumbnail and drop card): ≥ 3:1
+   * against the surfaces it sits on. The dark accent fill is tuned for white text on it and gave 1.95:1 on a settings group.
+   */
+  accentRing: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
 
   // ── Semantic ────────────────────────────────────────────────────────────────
   danger: { light: 'oklch(56% 0.19 27)', dark: 'oklch(64% 0.18 25)' },
@@ -250,6 +260,13 @@ export const typeScale = {
 /** List/table row heights by density. */
 export const density = { compact: 24, regular: 28, comfortable: 32 } as const;
 export const defaultDensity = 'regular' satisfies keyof typeof density;
+
+/**
+ * UI text sizes in pt (prefs.fontSize, settings 글자 크기). Every type role scales by size / 13, rounded to whole px
+ * (line heights to the 2 px half-grid); bars, controls and rows keep their heights. Main window only.
+ */
+export const uiTextSizes = [12, 13, 14, 15] as const;
+export const defaultUiTextSize = 13;
 
 /** Window and panel geometry (px). */
 export const layout = {

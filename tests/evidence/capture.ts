@@ -433,3 +433,28 @@ export async function openMenuInfo(target: string | number, index: number): Prom
   const frame = n.length === 4 && n.every(Number.isFinite) ? { x: n[0]!, y: n[1]!, width: n[2]!, height: n[3]! } : null;
   return { names, frame };
 }
+
+/**
+ * Moves the real pointer (macOS: a warp plus a posted mouse-moved event, so AppKit sees the pointer leave) and returns
+ * where it was and where it is (global top-left coordinates). In full screen the menu bar and the title strip are
+ * revealed while the pointer is at the top of the screen (Task 8 R3-5: m3-09h of run 39652039788 showed both).
+ */
+export async function movePointer(x: number, y: number): Promise<{ before: number[] | null; after: number[] | null; error?: string }> {
+  if (!IS_MAC) return { before: null, after: null, error: 'not darwin' };
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'function loc() { var p = $.CGEventGetLocation($.CGEventCreate(null)); return [Math.round(p.x), Math.round(p.y)]; }',
+    'var before = loc();',
+    `var to = { x: ${Math.round(x)}, y: ${Math.round(y)} };`,
+    '$.CGWarpMouseCursorPosition(to);',
+    '$.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, to, $.kCGMouseButtonLeft));',
+    'JSON.stringify({ before: before, after: loc() });',
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  if (!r.ok) return { before: null, after: null, error: 'osascript failed' };
+  try {
+    return JSON.parse(r.stdout.trim()) as { before: number[]; after: number[] };
+  } catch {
+    return { before: null, after: null, error: 'unparsable' };
+  }
+}

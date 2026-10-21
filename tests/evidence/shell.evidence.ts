@@ -21,7 +21,7 @@ import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/s
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import {
-  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, nativeWindowShot, outFile, platformFonts, pngCentroid, pngPixels, record,
+  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, outFile, platformFonts, pngCentroid, pngPixels, record,
   tryExec, windowIdOf, windowShotById, writeJson,
 } from './capture';
 import { elementStats, inkMass, regionStats, selectionBand } from './image-stats';
@@ -142,6 +142,20 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
   return { frontmostAtShot, closeButton, navRow, chrome, titleInk };
 }
+/** Close-button red (#ff5f57) pixels in a capture's top-left corner, where the traffic lights are drawn. */
+function redLightPixels(shot: string) {
+  const img = decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot)));
+  let n = 0;
+  for (let y = 0; y < Math.min(70, img.height); y++) {
+    for (let x = 0; x < Math.min(120, img.width); x++) {
+      const i = (y * img.width + x) * 4;
+      const [r, g, b] = [img.data[i]!, img.data[i + 1]!, img.data[i + 2]!];
+      if (r > 215 && g > 60 && g < 130 && b > 50 && b < 125) n++;
+    }
+  }
+  return n;
+}
+
 /** The open tooltip's box (page coordinates) and its background, or null. */
 const tooltipBox = (page: Page) =>
   page.evaluate(() => {
@@ -688,11 +702,17 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     // R3-5: full screen, sidebar hidden, nothing revealed at the top — the toolbar starts at the normal padding.
     await runMenuCommand(s.app, 'view.toggleSidebar');
     await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
-    await sleep(600);
+    // The pointer leaves the top of the screen (the 보기 click above left it there, which keeps the menu bar and the
+    // title strip with its lights revealed over the toolbar) for an empty spot of the content.
+    const pointer = await movePointer(512, 620);
+    await sleep(2500); // AppKit hides the menu bar and the strip after a moment
     const fsToolbar = await padding(s.page);
-    await nativeWindowShot(s.app, 'm3-09h-fullscreen-sidebar-hidden', 'full screen, sidebar hidden (no traffic lights, no 84 inset)', { focus: false });
-    await fullScreenShot('m3-09h-fullscreen-sidebar-hidden', 'full screen, sidebar hidden');
+    const shot = await nativeWindowShot(s.app, 'm3-09h-fullscreen-sidebar-hidden', 'full screen, pointer away, sidebar hidden (no traffic lights, no 84 inset)', { focus: false });
+    await fullScreenShot('m3-09h-fullscreen-sidebar-hidden', 'full screen, pointer away, sidebar hidden');
+    const lights = shot.file ? redLightPixels(shot.file) : null;
+    results['fullScreenHidden'] = { toolbar: fsToolbar, pointer, lights };
     check('full screen with the sidebar hidden: the toolbar starts at 12 (no lights to clear)', fsToolbar.left === 12, fsToolbar);
+    check('full screen, pointer away: no traffic lights or title strip over the toolbar in the capture (R3-5)', lights === 0, results['fullScreenHidden']);
     await runMenuCommand(s.app, 'view.toggleSidebar');
     await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await nativeKeystroke(s.app, 'f', ['control', 'command']);

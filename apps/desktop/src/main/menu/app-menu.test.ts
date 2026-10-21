@@ -67,7 +67,12 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
 const GO: Shape = {
   id: 'menu.go', label: '이동', submenu: [{ id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' }],
 };
-const HELP: Shape = { id: 'menu.help', label: '도움말', role: 'help', submenu: [{ id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/' }] };
+const HELP = (platform: NodeJS.Platform): Shape => ({
+  id: 'menu.help', label: '도움말', role: 'help', submenu: [
+    { id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/' },
+    ...(platform === 'darwin' ? [] : [SEP, { label: 'Learn 정보', role: 'about' }]),
+  ],
+});
 
 describe('buildAppMenu', () => {
   it('macOS: Learn app menu + 파일/편집/보기/이동/윈도우/도움말, Korean labels', () => {
@@ -97,7 +102,7 @@ describe('buildAppMenu', () => {
           { label: '모두 앞으로 가져오기', role: 'front' },
         ],
       },
-      HELP,
+      HELP('darwin'),
     ]);
   });
 
@@ -109,9 +114,16 @@ describe('buildAppMenu', () => {
         VIEW(platform),
         GO,
         { id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [{ label: '최소화', role: 'minimize' }] },
-        HELP,
+        HELP(platform),
       ]);
     }
+  });
+
+  it('Linux and Windows get Learn 정보 at the end of 도움말', () => {
+    for (const platform of ['linux', 'win32'] as const) {
+      expect(shape(build(platform)).find((m) => m.id === 'menu.help')!.submenu!.map((s) => s.label ?? s.type), platform).toEqual(['단축키 도움말', 'separator', 'Learn 정보']);
+    }
+    expect(shape(build('darwin')).find((m) => m.id === 'menu.help')!.submenu!.map((s) => s.label ?? s.type)).toEqual(['단축키 도움말']);
   });
 
   it('never offers Reload / Force Reload; DevTools only in a dev build', () => {

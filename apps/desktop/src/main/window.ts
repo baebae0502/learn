@@ -3,25 +3,31 @@ import type { WindowState } from '@learn/domain';
 import { layout } from '../renderer/src/design/tokens';
 import { sendEvent } from './events';
 import { attachEditContextMenu } from './menu/edit-context-menu';
+import { mainWindowChrome, type ChromeOptions } from './window-options';
 
 export interface MainWindowOptions {
   preload: string;
   url: string;
+  /** Title bar, traffic lights, vibrancy and the first-frame colour (window-options.ts). */
+  chrome: ChromeOptions;
 }
 
 /** What the windowState push and the ui.windowState query report. */
 export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused() });
 
-/** Same window options as before M2 (the visual redesign is M3). */
+/** The main window in the M3 chrome (design-spec 2.1): hidden title bar, traffic lights or the controls overlay. */
 export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   const win = new BrowserWindow({
+    // Electron 44: bounds and maximized/fullscreen restored across restarts (stored per name in userData).
+    name: 'main',
+    windowStatePersistence: { bounds: true, displayMode: true },
     width: 1440,
     height: 900,
-    minWidth: 960,
-    minHeight: 600,
+    minWidth: layout.windowMinWidth,
+    minHeight: layout.windowMinHeight,
     show: false,
     title: 'Learn',
-    backgroundColor: '#eef2f6',
+    ...mainWindowChrome(opts.chrome),
     webPreferences: {
       preload: opts.preload,
       sandbox: true,

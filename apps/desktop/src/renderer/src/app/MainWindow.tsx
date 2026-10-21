@@ -18,6 +18,7 @@ import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
 import { usePanePersistence, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowDrop } from '../shell/useWindowDrop';
+import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Toasts, showToast } from '../ui/toasts';
@@ -31,6 +32,7 @@ const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.a
 const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
 
 export function MainWindow(_props: { info: AppInfo }) {
+  useWindowState();
   useLibrarySync();
   usePanePersistence();
   const items = useItems();

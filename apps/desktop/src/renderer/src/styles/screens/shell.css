@@ -8,7 +8,7 @@
   .window-panes {
     height: 100%;
   }
-  /* Sidebar: full height, opaque fallback colour; transparent over macOS vibrancy (Task 8). */
+  /* Sidebar: full height, opaque fallback colour; transparent over macOS vibrancy. */
   .sidebar {
     display: flex;
     flex-direction: column;
@@ -17,6 +17,10 @@
     background: var(--bg-sidebar);
     box-shadow: inset -1px 0 0 var(--separator); /* the 1 px pane boundary, inside the 240 */
   }
+  /* Vibrancy (macOS): the sidebar and every ancestor are clear so the window material shows through (R-4). Base
+     clears body; .window would otherwise paint --bg-content. The main column keeps its own opaque --bg-content. */
+  :root[data-vibrancy='1'],
+  :root[data-vibrancy='1'] .window,
   :root[data-vibrancy='1'] .sidebar {
     background: transparent;
   }
@@ -36,6 +40,10 @@
     flex: none;
     padding: 0 var(--space-12) 0 var(--traffic-light-inset);
     -webkit-app-region: drag;
+  }
+  /* Full screen has no traffic lights: no 84 px inset. */
+  :root[data-fullscreen] .sidebar-top {
+    padding-left: var(--space-12);
   }
   .launcher-wrap {
     flex: none;
@@ -76,8 +84,11 @@
     min-width: 0;
     background: var(--bg-content);
   }
-  /* Unified toolbar (design-spec 2.1): 52 px, --bg-window, hairline below. */
+  /* Unified toolbar (design-spec 2.1): 52 px, --bg-window, hairline below. Left: 12, or the 84 px traffic-light
+     inset while the sidebar is hidden on macOS. Right: 12 plus the Linux/Windows window controls overlay. */
   .titlebar {
+    /* Room for the window controls overlay at the right end (0 on macOS: no titlebar-area env values). */
+    --titlebar-controls: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
     display: flex;
     align-items: center;
     gap: var(--space-8);
@@ -88,6 +99,10 @@
     background: var(--bg-window);
     border-bottom: 1px solid var(--separator);
     -webkit-app-region: drag;
+  }
+  /* macOS: the traffic lights sit in the toolbar while the sidebar is hidden (84 px), not in full screen. */
+  :root[data-platform='darwin']:not([data-fullscreen]) .window[data-sidebar='hidden'] .titlebar {
+    --titlebar-inset: var(--traffic-light-inset);
   }
   .tb-title {
     display: flex;

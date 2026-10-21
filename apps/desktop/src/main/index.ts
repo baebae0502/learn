@@ -4,6 +4,7 @@ import { app, BrowserWindow, Menu, type WebContents } from 'electron';
 import {
   COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
 } from '@learn/domain';
+import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { DETERMINISTIC_SWITCHES, isDeterministic } from './deterministic';
@@ -15,9 +16,10 @@ import { applyMenuEnabled, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
-import { applyTheme } from './theme';
+import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
+import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -38,7 +40,9 @@ if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.comma
 
 /** Every window loads the same renderer; `?window=` picks what it shows (main, sheet, later settings). */
 const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
-const urlOptions = { platform: process.platform, deterministic, vibrancy: false, demo: false };
+const vibrancy = shouldUseVibrancy(process.platform, process.env);
+const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: false };
+const chrome = (): ChromeOptions => ({ platform: process.platform, theme: currentTheme(), vibrancy });
 
 registerAppScheme();
 
@@ -50,6 +54,7 @@ function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
     preload: path.join(here, '../preload/index.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
+    chrome: chrome(),
   });
   win.on('closed', () => {
     if (mainWindow !== win) return;
@@ -125,6 +130,10 @@ if (!app.requestSingleInstanceLock()) {
     const prefs = openPrefsStore(app.getPath('userData'));
     if (prefs.readOnly) console.error('[prefs] read-only for this session: PREFS_UNAVAILABLE');
     applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
+    app.setAboutPanelOptions(aboutPanelOptions(app.getVersion(), process.versions.electron));
+    onThemeChange(() => {
+      for (const win of BrowserWindow.getAllWindows()) if (win === mainWindow) applyChromeTheme(win, chrome());
+    });
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
       ctx = await openLibraryContext(libraryRoot);

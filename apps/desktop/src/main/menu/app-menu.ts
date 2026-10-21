@@ -110,7 +110,8 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       reg('window'),
     ),
   };
-  const help: Item = { id: 'menu.help', label: '도움말', role: 'help', submenu: reg('help') };
+  // macOS keeps Learn 정보 in the app menu; elsewhere it ends 도움말 (S-2).
+  const help: Item = { id: 'menu.help', label: '도움말', role: 'help', submenu: join(reg('help'), mac ? [] : [{ role: 'about', label: 'Learn 정보' }]) };
   return [...(mac ? [appMenu] : []), file, edit, view, go, windowMenu, help].filter((m) => Array.isArray(m.submenu) && m.submenu.length > 0);
 }
 

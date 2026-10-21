@@ -8,3 +8,11 @@ import type { Prefs } from '@learn/domain';
 export function applyTheme(theme: Prefs['theme']): void {
   if (nativeTheme.themeSource !== theme) nativeTheme.themeSource = theme;
 }
+
+/** 'light' | 'dark' as the window frame should be drawn now. */
+export const currentTheme = (): 'light' | 'dark' => (nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+
+/** Runs `cb` whenever the effective theme changes (prefs or the system appearance). */
+export function onThemeChange(cb: () => void): void {
+  nativeTheme.on('updated', cb);
+}

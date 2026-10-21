@@ -1,8 +1,9 @@
 // Layout B shell (design-spec 2.1, 2.3): fixed sidebar top, shared width, resize/collapse/persist, auto-fold.
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, importPaths, launch, openItem, runMenuCommand } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, openItem, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -278,6 +279,91 @@ test('boot: a render-time failure in the main window shows the fatal screen, not
     await expect(page.getByTestId('fatal-notice')).toContainText('앱을 다시 시작하세요');
     await expect(page.getByTestId('fatal-notice').locator('.file')).toHaveCount(0); // not a library failure: no backup line
     await expect(page.getByTestId('shell')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('frame: themed background (no white flash) that follows the theme; overlay room on Linux; drag regions', async ({}, testInfo) => {
+  const ud = testInfo.outputPath('userdata');
+  fs.mkdirSync(ud, { recursive: true });
+  fs.writeFileSync(path.join(ud, 'preferences.json'), JSON.stringify({ theme: 'dark' }));
+  const { app, page } = await launch(testInfo.outputPath('library'), ud);
+  const bg = async () => (await mainWindow(app)).evaluate((w) => w.getBackgroundColor().toLowerCase());
+  try {
+    if (process.platform !== 'darwin') {
+      expect(await bg()).toBe('#242527'); // windowBackground.dark before the first paint
+      await page.evaluate(() => window.learn.prefs.set({ theme: 'light' }));
+      await expect.poll(bg).toBe('#f6f7f8');
+      const room = await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:fixed;left:env(titlebar-area-x,0px);width:env(titlebar-area-width,100vw)';
+        document.body.append(probe);
+        const r = probe.getBoundingClientRect();
+        probe.remove();
+        return { controls: innerWidth - (r.left + r.width), padding: parseFloat(getComputedStyle(document.querySelector('[data-testid="toolbar"]')!).paddingRight) };
+      });
+      expect(room.controls).toBeGreaterThan(0);
+      expect(room.padding).toBeCloseTo(12 + room.controls, 0);
+    }
+    const region = (sel: string) => page.locator(sel).first().evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region'));
+    expect(await region('[data-testid="toolbar"]')).toBe('drag');
+    expect(await region('[data-testid="sidebar-top"]')).toBe('drag');
+    expect(await region('[data-testid="sidebar-toggle"]')).toBe('no-drag');
+  } finally {
+    await app.close();
+  }
+});
+
+test('window bounds survive a restart (windowStatePersistence)', async ({}, testInfo) => {
+  const [lib, ud] = dirs(testInfo);
+  let s = await launch(lib, ud);
+  const bounds = { x: 40, y: 40, width: 1200, height: 760 };
+  await (await mainWindow(s.app)).evaluate((w, b) => w.setBounds(b), bounds);
+  await s.page.waitForTimeout(1500);
+  await s.app.close();
+  s = await launch(lib, ud);
+  try {
+    const restored = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
+    expect(restored.width).toBe(bounds.width);
+    expect(restored.height).toBe(bounds.height);
+    expect(Math.abs(restored.x - bounds.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(restored.y - bounds.y)).toBeLessThanOrEqual(30); // a macOS menu bar may push it down
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('full screen drops the traffic-light inset (data-fullscreen)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setFullScreen(true));
+    await expect(page.locator('html')).toHaveAttribute('data-fullscreen', '');
+    await (await mainWindow(app)).evaluate((w) => w.setFullScreen(false));
+    await expect(page.locator('html')).not.toHaveAttribute('data-fullscreen', '');
+  } finally {
+    await app.close();
+  }
+});
+
+// R-4: checked on Linux before the one macOS run — an opaque ancestor would hide the vibrancy and Step 9-2 would
+// wrongly turn it off. Linux has no vibrancy, so the main page is reloaded with the macOS flag.
+test('vibrancy page (data-vibrancy=1): the sidebar and every ancestor are clear; the content column stays opaque', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const url = new URL(page.url());
+    url.searchParams.set('vibrancy', '1');
+    await page.goto(url.toString());
+    await expect(page.getByTestId('shell')).toBeVisible();
+    await expect(page.locator('html')).toHaveAttribute('data-vibrancy', '1');
+    const seen = await page.evaluate(() => {
+      const clear = (el: Element) => getComputedStyle(el).backgroundColor === 'rgba(0, 0, 0, 0)';
+      const opaque: string[] = [];
+      for (let el: Element | null = document.querySelector('.sidebar'); el; el = el.parentElement) if (!clear(el)) opaque.push(`${el.tagName.toLowerCase()}.${el.className}`);
+      return { opaque, content: getComputedStyle(document.querySelector('.main-column')!).backgroundColor };
+    });
+    expect(seen.opaque).toEqual([]);
+    expect(seen.content).not.toBe('rgba(0, 0, 0, 0)');
   } finally {
     await app.close();
   }

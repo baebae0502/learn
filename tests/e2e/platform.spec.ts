@@ -91,7 +91,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기']]
         : [['minimize', '최소화']],
     );
-    expect(entries(topMenu(menu, '도움말'))).toEqual([[null, '단축키 도움말']]);
+    expect(entries(topMenu(menu, '도움말'))).toEqual(IS_MAC ? [[null, '단축키 도움말']] : [[null, '단축키 도움말'], ['-', ''], ['about', 'Learn 정보']]);
   } finally {
     await app.close();
   }

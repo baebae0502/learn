@@ -136,15 +136,56 @@ describe('prefs store', () => {
     expect(openPrefsStore(dir).set({ theme: 'dark' })).toEqual({ ...DEFAULTS, theme: 'dark', libraryRoot: 'rel/lib' });
   });
 
-  it('fills defaults for keys missing from an older file and drops unknown keys', () => {
+  it('fills defaults for keys missing from an older file; unknown keys are not exposed', () => {
     fs.writeFileSync(file(), JSON.stringify({ theme: 'dark', future: 1 }));
     expect(openPrefsStore(dir).get()).toEqual({ ...DEFAULTS, theme: 'dark' });
   });
 
+  it('an invalid field falls back to its default on its own: the other fields and libraryRoot survive, nothing is moved', () => {
+    const body = JSON.stringify({ theme: 'blue', density: 'compact', fontSize: 99, libraryRoot: ABS });
+    fs.writeFileSync(file(), body);
+    const store = openPrefsStore(dir);
+    expect(store.get()).toEqual({ theme: 'system', density: 'compact', fontSize: 13, libraryRoot: ABS });
+    expect(store.readOnly).toBe(false);
+    expect(vi.mocked(console.warn).mock.calls).toEqual([['PREFS_FIELD_INVALID theme'], ['PREFS_FIELD_INVALID fontSize']]);
+    expect(fs.readdirSync(dir)).toEqual([PREFS_FILE]); // not quarantined
+    expect(fs.readFileSync(file(), 'utf8')).toBe(body);
+    expect(resolveLibraryRoot({ envDir: undefined, prefs: store.get(), userData: dir })).toBe(ABS);
+  });
+
+  it('saving keeps keys (and values) this build does not know, so a newer build\'s prefs survive', () => {
+    fs.writeFileSync(file(), JSON.stringify({ theme: 'sepia', libraryRoot: ABS, future: { shortcuts: { 'library.import': 'Cmd+I' } } }));
+    const store = openPrefsStore(dir);
+    expect(store.set({ density: 'compact' })).toEqual({ ...DEFAULTS, density: 'compact', libraryRoot: ABS });
+    expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toEqual({
+      theme: 'sepia', density: 'compact', fontSize: 13, libraryRoot: ABS, future: { shortcuts: { 'library.import': 'Cmd+I' } },
+    });
+    expect(store.set({ theme: 'dark' }).theme).toBe('dark');
+    expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toMatchObject({ theme: 'dark', future: { shortcuts: { 'library.import': 'Cmd+I' } } });
+    expect(openPrefsStore(dir).get()).toEqual({ ...DEFAULTS, theme: 'dark', density: 'compact', libraryRoot: ABS });
+  });
+
+  it('rejects an invalid or unknown patch key with VALIDATION_FAILED and writes nothing', () => {
+    const store = openPrefsStore(dir);
+    for (const patch of [{ theme: 'neon' }, { fontSize: 16 }, { nope: 1 }]) {
+      let err: unknown;
+      try {
+        store.set(patch as never);
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(LearnError);
+      expect((err as LearnError).code).toBe('VALIDATION_FAILED');
+    }
+    expect(fs.existsSync(file())).toBe(false);
+    expect(store.get()).toEqual(DEFAULTS);
+  });
+
   it.each([
     ['unparseable JSON', '{ theme: dark'],
-    ['schema mismatch', JSON.stringify({ theme: 'blue' })],
     ['not an object', '[]'],
+    ['null', 'null'],
+    ['a bare string', '"dark"'],
   ])('quarantines a corrupt file (%s) and starts from defaults', (_label, body) => {
     fs.writeFileSync(file(), body);
     const store = openPrefsStore(dir, { now: () => new Date('2026-10-21T01:02:03.456Z') });

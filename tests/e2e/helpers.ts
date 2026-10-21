@@ -333,6 +333,8 @@ export interface NativeKeystroke {
   output: string;
   /** nativeKeyCode: which window (`?window=` kind) was focused right before the key went out. */
   focusedWindow?: string | null;
+  /** Date.now() right before osascript posted the key (an effect seen earlier is not the key's). */
+  sentAt: number;
 }
 
 /** The AppleScript ` using …` clause for System Events `keystroke` / `key code`. */
@@ -349,7 +351,8 @@ export async function nativeKeystroke(app: ElectronApplication, key: string, mod
   if (!/^[ -~]$/.test(key)) throw new Error(`nativeKeystroke: one printable ASCII character expected, got ${JSON.stringify(key)}`);
   const frontmost = await bringAppToFront(app);
   const script = `tell application "System Events" to keystroke ${JSON.stringify(key)}${usingClause(modifiers)}`;
-  return { frontmost, script, output: osascript(script) };
+  const sentAt = Date.now();
+  return { frontmost, script, output: osascript(script), sentAt };
 }
 
 /** macOS virtual key codes for the keys `nativeKeystroke` cannot type. */
@@ -379,5 +382,6 @@ export async function nativeKeyCode(
   }
   const focusedWindow = await app.evaluate(({ BrowserWindow }) => /[?&]window=(\w+)/.exec(BrowserWindow.getFocusedWindow()?.webContents.getURL() ?? '')?.[1] ?? null);
   const script = `tell application "System Events" to key code ${code}${usingClause(modifiers)}`;
-  return { frontmost, script, output: osascript(script), focusedWindow };
+  const sentAt = Date.now();
+  return { frontmost, script, output: osascript(script), focusedWindow, sentAt };
 }

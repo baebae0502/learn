@@ -1,6 +1,9 @@
-// @evidence — M3 window chrome on macOS: traffic lights in the 52 px bar, sidebar vibrancy, hidden title bar,
-// Korean menu bar, sheets under the toolbar, real accelerators and keys, window state. Linux CI runs it with captures
-// skipped.
+// @evidence — M3 window chrome on macOS: traffic lights in the 52 px bar, sidebar vibrancy (light and dark, legible
+// text on the measured material), active and inactive windows, hidden title bar, Korean menu bar with state labels and
+// one 전체 화면, sheets, real accelerators and keys, tooltips, window state. Linux CI runs it with captures skipped.
+//
+// Every launch passes colorScheme: null, so the page follows the theme pref through nativeTheme as on a user's Mac
+// (Playwright otherwise emulates a light page while the native material goes dark — Task 8 critique M1).
 //
 // Checks never stop the run: the tests share one session in serial mode, where any failed test (a soft assertion
 // too) would skip every later one. So each check is recorded in m3-shell.json (`checks`) as it is measured, and the
@@ -11,11 +14,15 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, runMenuCommand, stubContextMenu, type Session,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, runMenuCommand, stubContextMenu, type LaunchOptions,
+  type Session,
 } from '../e2e/helpers';
-import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
+import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/src/renderer/src/design/color';
+import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
-import { IS_MAC, allShots, captureOpenMenu, fullScreenShot, nativeWindowShot, platformFonts, pngCentroid, pngPixels, writeJson } from './capture';
+import {
+  IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, nativeWindowShot, platformFonts, pngCentroid, pngPixels, writeJson,
+} from './capture';
 
 const TAG = { tag: '@evidence' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -44,6 +51,54 @@ async function guard(name: string, run: () => Promise<void>): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The page follows the theme pref (nativeTheme), as for a user: no Playwright colour-scheme emulation (M1). */
+const UNEMULATED: LaunchOptions = { colorScheme: null };
+
+type Theme = 'light' | 'dark';
+/** Switch the theme pref and wait until the page itself is in that theme (not only the native material). */
+async function setTheme(page: Page, theme: Theme): Promise<void> {
+  await page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
+  await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+  await page.waitForTimeout(300); // the native material and the frame repaint
+}
+
+const rgbOf = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const delta = (a: readonly number[], b: readonly number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)));
+const rgba = ([r, g, b]: readonly number[]): Rgba => ({ r: r! / 255, g: g! / 255, b: b! / 255, a: 1, clamped: false });
+const ratio = (fg: string, bg: Rgba) => Math.round(contrast(parseColor(fg), bg) * 100) / 100;
+
+/** Sidebar text on a measured vibrancy material (design-spec 8.3; tokens.test.ts checks the same roles on #404040). */
+function sidebarContrast(theme: Theme, material: readonly number[]) {
+  const m = rgba(material);
+  const selected = composite(parseColor(colors.fillSelected[theme]), m);
+  return {
+    material,
+    primary: ratio(colors.textPrimary[theme], m),
+    tertiary: ratio(colorsVibrancySidebar.textTertiary[theme], m),
+    countSelected: ratio(colorsVibrancySidebar.sidebarCountSelected[theme], selected),
+    tertiaryBaseToken: ratio(colors.textTertiary[theme], m), // what the opaque fallback token would give here
+  };
+}
+
+/**
+ * macOS: bring Finder to the front (the window becomes inactive), capture the main window without focusing it, read
+ * the close button's colour and the current sidebar row's fill, then bring the app back.
+ */
+async function inactiveShot(name: string, description: string): Promise<Record<string, unknown>> {
+  osascript('tell application "Finder" to activate');
+  const t0 = Date.now();
+  while (frontmostProcess().name !== 'Finder' && Date.now() - t0 < 5_000) await sleep(200);
+  await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+  await sleep(500); // the material and the lights repaint as inactive
+  const shot = await nativeWindowShot(s.app, name, description, { focus: false });
+  const closeButton = shot.file ? (await pngPixels(s.page, shot.file, [[25, 26]]))[0] ?? null : null;
+  const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+  await bringAppToFront(s.app);
+  await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+  return { frontmost: frontmostProcess().name === 'Finder' ? 'Finder' : 'app', closeButton, navRow };
+}
+/** Grey: no channel stands out (the active close button is red #ff5f57). */
+const isGrey = (rgb: readonly number[] | null) => rgb !== null && Math.max(...rgb) - Math.min(...rgb) <= 24;
 /** The main session's profile: every test here, including the restart in the last one, uses this one folder. */
 let tmp = '';
 let s: Session;
@@ -93,27 +148,36 @@ async function closeSheetNatively(sheet: Page, code: number, fallback: 'Escape' 
     await closeSheet(sheet, fallback);
     return { native: false, closed: true, ms: null, focusedBefore: null, note: 'not darwin: Playwright key' };
   }
-  const closedEvent = new Promise<true>((resolve) => sheet.once('close', () => resolve(true)));
+  let closedAt: number | null = null;
+  const closedEvent = new Promise<true>((resolve) =>
+    sheet.once('close', () => {
+      closedAt = Date.now();
+      resolve(true);
+    }),
+  );
   let note: string | undefined;
   let focusedBefore: string | null = null;
-  let sentAt = 0;
+  let sentAt: number | null = null;
   try {
-    focusedBefore = (await nativeKeyCode(s.app, code, [], { window: 'sheet' })).focusedWindow ?? null;
-    sentAt = Date.now();
+    const key = await nativeKeyCode(s.app, code, [], { window: 'sheet' });
+    focusedBefore = key.focusedWindow ?? null;
+    sentAt = key.sentAt;
   } catch (e) {
     note = errorText(e);
   }
-  // Up to 5 s from the key (bringing the app to the front before it can take a few seconds on the runner).
-  const ok = sheet.isClosed() || (note === undefined && (await Promise.race([closedEvent, sleep(5_000).then(() => false)])));
-  const ms = ok && sentAt ? Date.now() - sentAt : null;
-  if (!ok && !sheet.isClosed()) await closeSheet(sheet, fallback); // the run goes on; the check fails
-  return { native: note === undefined, closed: ok, ms, focusedBefore, ...(note ? { note } : {}) };
+  // Up to 5 s from the key. Only a close after the key was sent counts (review minor 7): a sheet that closed before
+  // (or without) the key did not answer it.
+  if (sentAt !== null && !sheet.isClosed()) await Promise.race([closedEvent, sleep(5_000)]);
+  const at = closedAt as number | null;
+  const closed = sentAt !== null && at !== null && at >= sentAt;
+  if (!sheet.isClosed()) await closeSheet(sheet, fallback); // the run goes on; the check fails
+  return { native: note === undefined, closed, ms: closed ? at! - sentAt! : null, focusedBefore, ...(note ? { note } : at !== null && !closed ? { note: 'closed before the key was sent' } : {}) };
 }
 
 test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-'));
-  s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'));
+  s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), UNEMULATED);
 });
 test.afterAll(async () => {
   await s?.app.close().catch(() => {});
@@ -131,7 +195,8 @@ test('M3 chrome: empty library — traffic lights centred in the 52 px bar insid
     const red = await pngCentroid(s.page, win.file, { x: 0, y: 0, w: 120, h: 60 }, 'red');
     const green = await pngCentroid(s.page, win.file, { x: 0, y: 0, w: 120, h: 60 }, 'green');
     const px = red ? red.width / (await windowWidth(s.app)) : 1;
-    results['trafficLights'] = { red, green, devicePixelsPerPoint: px, expect: { redCentre: [24, 26], greenRightEdgeBelow: 84 } };
+    // Geometric centres (pixel i covers [i, i + 1)): run 39618864364 measured the close button at (25.0, 26.0).
+    results['trafficLights'] = { red, green, devicePixelsPerPoint: px, expect: { redCentre: [25, 26], greenRightEdgeBelow: 84 } };
     check('close button found', red !== null, red);
     if (red) check('close button centred in the 52 px bar (y 26 ± 1.5)', Math.abs(red.y / px - 26) <= 1.5, { y: red.y / px, x: red.x / px });
     if (green) check('lights inside the 84 px inset', green.x / px + 6 < 84, { greenX: green.x / px });
@@ -139,15 +204,56 @@ test('M3 chrome: empty library — traffic lights centred in the 52 px bar insid
   save();
 });
 
-test('M3 chrome: library light/dark and vibrancy on/off', TAG, async () => {
+test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', TAG, async () => {
   await importPaths(s.page, [PDF, MP4, MPEG4]);
   await expect(s.page.getByTestId('item-row')).toHaveCount(3);
-  const [, light] = await allShots(s.app, s.page, 'm3-02-library-light', 'library, light');
-  await s.page.evaluate(() => window.learn.prefs.set({ theme: 'dark' }));
-  await s.page.waitForTimeout(500);
-  await allShots(s.app, s.page, 'm3-03-library-dark', 'library, dark');
-  await s.page.evaluate(() => window.learn.prefs.set({ theme: 'light' }));
-  await s.page.waitForTimeout(500);
+  // A keyboard user in the sidebar: the current row has the accent fill while the window is active.
+  await s.page.getByTestId('nav-library').focus();
+  await s.page.keyboard.press('ArrowDown');
+  const navRow = () => s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+  const [, light] = await allShots(s.app, s.page, 'm3-02-library-light', 'library, light (sidebar list focused: accent selection)');
+  const activeRow = await navRow();
+  const inactive: Record<string, unknown> = {};
+  if (IS_MAC) {
+    await guard('inactive window: grey lights, neutral selection (light)', async () => {
+      inactive['light'] = await inactiveShot('m3-02b-library-light-inactive', 'library, light, window inactive (Finder in front)');
+      const v = inactive['light'] as { closeButton: number[] | null; navRow: string };
+      check('inactive window: grey lights, neutral selection (light)', isGrey(v.closeButton) && v.navRow !== activeRow, { ...v, activeRow });
+    });
+  }
+
+  await setTheme(s.page, 'dark');
+  const [darkPage, dark] = await allShots(s.app, s.page, 'm3-03-library-dark', 'library, dark');
+  // The page itself is dark (not a light page over a dark material, as runs 39617644850 / 39618864364 captured).
+  if (darkPage?.file) {
+    const [content] = await pngPixels(s.page, darkPage.file, [[700, 500]]);
+    const v = { content, darkToken: rgbOf(themeHex.dark.bgContent), lightToken: rgbOf(themeHex.light.bgContent) };
+    results['darkPage'] = v;
+    check('the dark capture is a dark page (content = dark --bg-content)', delta(content!, v.darkToken) <= 2 && delta(content!, v.lightToken) > 2, v);
+  }
+  if (IS_MAC && light?.file && dark?.file) {
+    // Sidebar text on the material the runner actually draws (an empty sidebar spot, below the list).
+    const [lightMaterial] = await pngPixels(s.page, light.file, [[120, 500]]);
+    const [darkMaterial] = await pngPixels(s.page, dark.file, [[120, 500]]);
+    const v = { light: sidebarContrast('light', lightMaterial!), dark: sidebarContrast('dark', darkMaterial!) };
+    results['sidebarContrast'] = v;
+    for (const theme of ['light', 'dark'] as const) {
+      const c = v[theme];
+      check(`sidebar text on the measured ${theme} material (8.3)`, c.primary >= 4.5 && c.tertiary >= 3 && c.countSelected >= 4.5, c);
+    }
+    await guard('inactive window: grey lights, neutral selection (dark)', async () => {
+      inactive['dark'] = await inactiveShot('m3-03b-library-dark-inactive', 'library, dark, window inactive (Finder in front)');
+      const v2 = inactive['dark'] as { closeButton: number[] | null; navRow: string };
+      check('inactive window: grey lights, neutral selection (dark)', isGrey(v2.closeButton) && v2.navRow !== (await navRow()), v2);
+    });
+  }
+  results['inactive'] = { ...inactive, activeRowLight: activeRow };
+  await setTheme(s.page, 'light');
+  // Leave the sidebar and use the pointer, as a mouse user would before the menu toggles below.
+  await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await s.page.mouse.move(700, 400);
+  await s.page.mouse.move(705, 405);
+
   if (IS_MAC && light?.file) {
     // A second, throwaway profile (R-5): `tmp` must keep pointing at the main session for the restart test below.
     // The main window is hidden meanwhile: both windows open at the same place, and Chromium stops drawing an occluded
@@ -156,7 +262,7 @@ test('M3 chrome: library light/dark and vibrancy on/off', TAG, async () => {
     await main.evaluate((w) => w.hide());
     const opaqueDir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-opaque-'));
     try {
-      const opaque = await launch(path.join(opaqueDir, 'library'), path.join(opaqueDir, 'userdata'), { env: { LEARN_VIBRANCY: '0' } });
+      const opaque = await launch(path.join(opaqueDir, 'library'), path.join(opaqueDir, 'userdata'), { ...UNEMULATED, env: { LEARN_VIBRANCY: '0' } });
       try {
         await importPaths(opaque.page, [PDF, MP4, MPEG4]);
         await expect(opaque.page.getByTestId('item-row')).toHaveCount(3);
@@ -166,9 +272,7 @@ test('M3 chrome: library light/dark and vibrancy on/off', TAG, async () => {
         if (shot.file) {
           const points = [[120, 500], [700, 500]] as const; // sidebar, content (points; runner is 1x)
           const [withVib, without] = [await pngPixels(s.page, light.file, points), await pngPixels(s.page, shot.file, points)];
-          const delta = (a: readonly number[], b: readonly number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i]!)));
-          const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-          const token = { sidebar: rgb(themeHex.light.bgSidebar), content: rgb(themeHex.light.bgContent) };
+          const token = { sidebar: rgbOf(themeHex.light.bgSidebar), content: rgbOf(themeHex.light.bgContent) };
           const v = {
             sidebar: { vibrancy: withVib[0], opaque: without[0], token: token.sidebar },
             content: { vibrancy: withVib[1], opaque: without[1], token: token.content },
@@ -194,20 +298,42 @@ test('M3 chrome: library light/dark and vibrancy on/off', TAG, async () => {
 });
 
 test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and esc)', TAG, async () => {
+  const tooltips = () => s.page.getByRole('tooltip').count();
+  const afterToggles: number[] = [];
   await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+  await s.page.waitForTimeout(300);
+  afterToggles.push(await tooltips());
   await allShots(s.app, s.page, 'm3-04-collapsed', 'sidebar hidden: traffic lights over the toolbar, 84 px inset');
   const folded = await padding(s.page);
   results['collapsedToolbar'] = folded;
   check(`collapsed toolbar left padding ${IS_MAC ? 84 : 12}`, folded.left === (IS_MAC ? 84 : 12), folded);
+  if (IS_MAC) {
+    await setTheme(s.page, 'dark');
+    await nativeWindowShot(s.app, 'm3-04b-collapsed-dark', 'sidebar hidden, dark');
+    await setTheme(s.page, 'light');
+  }
   await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+  await s.page.waitForTimeout(300);
+  afterToggles.push(await tooltips());
+  // m1: a menu toggle pops no tooltip on the toggle (the run before showed one through every later capture).
+  results['tooltipsAfterMenuToggles'] = afterToggles;
+  check('no tooltip after menu toggles of the sidebar', afterToggles.every((n) => n === 0), afterToggles);
 
   // f. Reader open latency (report only): from the click to the reader or notice, timed in the page.
   const latency: Record<string, unknown> = {};
   latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-canvas"]');
   await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await allShots(s.app, s.page, 'm3-05-pdf', 'PDF in the new chrome');
+  // n6: a Latin-only title at 600 — SF Semibold (as the Hangul beside it is SemiBold), not Bold?
+  results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="viewer-title"]');
+  if (IS_MAC) {
+    await setTheme(s.page, 'dark');
+    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await nativeWindowShot(s.app, 'm3-05b-pdf-dark', 'PDF, dark');
+    await setTheme(s.page, 'light');
+  }
   await runMenuCommand(s.app, 'nav.back');
   latency['unplayable'] = await timedOpen(s.page, 'sample-mpeg4part2', '[data-testid="video-error"]');
   await expect(s.page.getByTestId('video-error')).toBeVisible();
@@ -220,7 +346,7 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   const rows = s.page.getByTestId('item-row');
   const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
   await s.page.waitForTimeout(800); // sheet slide-in
-  await fullScreenShot('m3-07-sheet-duplicate', 'duplicate sheet attached under the toolbar');
+  await fullScreenShot('m3-07-sheet-duplicate', 'duplicate sheet (macOS centres it over the window and dims the parent)');
   await guard('real ↩ on the duplicate sheet skips', async () => {
     const r = await closeSheetNatively(dup, KEY_CODE.return, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged'), { timeout: 5_000 }).toBe(true);
@@ -241,9 +367,56 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   save();
 });
 
-test('M3 chrome: Korean menu bar and the open 보기 menu', TAG, async () => {
+test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states, the 편집 menu, no tooltip under a menu', TAG, async () => {
   results['menu'] = (await menuSnapshot(s.app)).map((m) => m.label);
-  if (IS_MAC) results['menuView'] = await captureOpenMenu(s.app, 'Electron', 5, 'm3-09-menu-view', '보기 menu open');
+  if (!IS_MAC) return void save();
+  const sidebarLabel = async () =>
+    (await menuSnapshot(s.app)).flatMap(function walk(n): Array<{ id: string | null; label: string; submenu: unknown }> {
+      return [n, ...((n.submenu as typeof n[] | null) ?? []).flatMap(walk)];
+    }).find((n) => n.id === 'view.toggleSidebar')?.label;
+  // What AppKit shows in 보기 (its own items included): exactly one 전체 화면 (n5), and the state label (m2).
+  const viewMenu = async (state: 'shown' | 'hidden') => {
+    const items = await menuItemNames('Electron', 5);
+    const fullScreen = items?.filter((n) => n.includes('전체 화면')) ?? [];
+    const expected = state === 'shown' ? '사이드바 가리기' : '사이드바 보기';
+    const v = { items, fullScreen, electronLabel: await sidebarLabel() };
+    check(`보기 (sidebar ${state}): one 전체 화면, the item says ${expected}`, items !== null && fullScreen.length === 1 && items.includes(expected) && v.electronLabel === expected, v);
+    return v;
+  };
+
+  // A tooltip open by keyboard focus, then the 보기 menu opens over it: the tooltip closes (main's nativeMenu event).
+  await s.page.evaluate(() => {
+    const w = window as unknown as { __menuEvents: boolean[] };
+    w.__menuEvents = [];
+    window.learn.on('nativeMenu', (e) => w.__menuEvents.push(e.open));
+  });
+  await s.page.getByTestId('nav-library').focus();
+  await s.page.keyboard.press('Shift+Tab'); // keyboard focus back onto the sidebar toggle: its tooltip opens at once
+  await expect(s.page.getByTestId('sidebar-toggle')).toBeFocused();
+  await expect(s.page.getByRole('tooltip')).toHaveCount(1);
+  const tooltipBefore = await s.page.getByRole('tooltip').count();
+  const shown = await viewMenu('shown');
+  results['menuView'] = { ...(await captureOpenMenu(s.app, 'Electron', 5, 'm3-09-menu-view', '보기 menu open, sidebar shown')), names: shown };
+  const tooltipUnderMenu = {
+    before: tooltipBefore,
+    after: await s.page.getByRole('tooltip').count(),
+    menuEvents: await s.page.evaluate(() => (window as unknown as { __menuEvents: boolean[] }).__menuEvents),
+  };
+  results['tooltipUnderMenu'] = tooltipUnderMenu;
+  check('a menu-bar menu closes an open tooltip', tooltipUnderMenu.after === 0 && tooltipUnderMenu.menuEvents.includes(true), tooltipUnderMenu);
+  await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+  await runMenuCommand(s.app, 'view.toggleSidebar');
+  await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+  const hidden = await viewMenu('hidden');
+  results['menuViewHidden'] = { ...(await captureOpenMenu(s.app, 'Electron', 5, 'm3-09c-menu-view-hidden', '보기 menu open, sidebar hidden')), names: hidden };
+  await runMenuCommand(s.app, 'view.toggleSidebar');
+  await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+
+  // n5: AppKit adds items to 편집 too (dictation, emoji); see what it shows.
+  results['menuEdit'] = { ...(await captureOpenMenu(s.app, 'Electron', 4, 'm3-12-menu-edit', '편집 menu open')), names: await menuItemNames('Electron', 4) };
+  results['menuFile'] = { names: await menuItemNames('Electron', 3) };
+  check('파일 says 윈도우 닫기 (n4)', ((results['menuFile'] as { names: string[] | null }).names ?? []).includes('윈도우 닫기'), results['menuFile']);
   save();
 });
 
@@ -330,7 +503,7 @@ test('M3 chrome: the fatal screen keeps a drag strip under the traffic lights', 
     fs.mkdirSync(lib, { recursive: true });
     fs.writeFileSync(path.join(lib, 'library.sqlite'), 'not a database');
     fs.writeFileSync(path.join(lib, 'library.sqlite.pre-v2.bak'), '');
-    const fatal = await launch(lib, path.join(dir, 'userdata'));
+    const fatal = await launch(lib, path.join(dir, 'userdata'), UNEMULATED);
     try {
       await expect(fatal.page.getByTestId('fatal-notice')).toBeVisible();
       const strip = await fatal.page.evaluate(() => {
@@ -415,7 +588,7 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
   await s.page.waitForTimeout(1500);
   const beforeClose = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
   await s.app.close();
-  s = await launch(lib, ud);
+  s = await launch(lib, ud, UNEMULATED);
   const restored = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
   results['windowState'] = { workArea, requested: bounds, beforeClose, restored };
   check(

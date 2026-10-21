@@ -111,12 +111,15 @@ async function screencapture(args: string[], file: string): Promise<void> {
   if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`screencapture wrote no file: ${file}`);
 }
 
-/** macOS window capture via `screencapture -l<CGWindowID>`: includes title bar and traffic lights. */
-export async function nativeWindowShot(app: ElectronApplication, name: string, description: string): Promise<ManifestEntry> {
+/**
+ * macOS window capture via `screencapture -l<CGWindowID>`: includes title bar and traffic lights. The app is brought to
+ * the front first (active colours) unless `focus: false` — an inactive window as it looks behind another app.
+ */
+export async function nativeWindowShot(app: ElectronApplication, name: string, description: string, opts: { focus?: boolean } = {}): Promise<ManifestEntry> {
   if (!IS_MAC) return record({ file: null, kind: 'window', description, skipped: `screencapture needs darwin (running on ${process.platform})` });
   const { abs, rel } = outFile(`${name}.window.png`);
   try {
-    await focusApp(app);
+    if (opts.focus !== false) await focusApp(app);
     const id = await cgWindowId(app);
     await screencapture(['-x', '-o', `-l${id}`], abs);
     return record({ file: rel, kind: 'window', description: `${description} (CGWindowID ${id})` });
@@ -265,6 +268,29 @@ export async function menuBarNames(processName: string) {
   return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
 }
 
+/**
+ * The items of menu-bar menu `index` as System Events sees them (what AppKit shows, including items it adds itself),
+ * one entry per item; a separator is "-". Null when System Events refuses or fails.
+ */
+export async function menuItemNames(processName: string, index: number): Promise<string[] | null> {
+  const script = [
+    'set out to {}',
+    'tell application "System Events"',
+    `tell process "${processName}"`,
+    `repeat with i in (menu items of menu 1 of menu bar item ${index} of menu bar 1)`,
+    'set n to name of i',
+    'if n is missing value then set n to "-"',
+    'set end of out to n',
+    'end repeat',
+    'end tell',
+    'end tell',
+    "set AppleScript's text item delimiters to linefeed",
+    'return out as text',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 20_000);
+  return r.ok ? r.stdout.trim().split('\n') : null;
+}
+
 export const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
 
 /**
@@ -327,7 +353,10 @@ export async function pngPixels(page: Page, rel: string, points: ReadonlyArray<r
   }, { b64, points });
 }
 
-/** Centroid (device px) and size of the pixels in `box` whose RGB satisfies `match` (e.g. the red close button). */
+/**
+ * Geometric centroid (device px: pixel i covers [i, i + 1), so the centre of pixels 19–30 is 25.0) and size of the
+ * pixels in `box` whose RGB satisfies `match` (e.g. the red close button).
+ */
 export async function pngCentroid(page: Page, rel: string, box: { x: number; y: number; w: number; h: number }, match: 'red' | 'green'): Promise<{ x: number; y: number; n: number; width: number } | null> {
   const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');
   return page.evaluate(async ({ b64, box, match }) => {
@@ -347,6 +376,6 @@ export async function pngCentroid(page: Page, rel: string, box: { x: number; y: 
       const i = (y * box.w + x) * 4;
       if (test(d[i]!, d[i + 1]!, d[i + 2]!)) { sx += x; sy += y; n++; }
     }
-    return n ? { x: box.x + sx / n, y: box.y + sy / n, n, width: img.naturalWidth } : null;
+    return n ? { x: box.x + sx / n + 0.5, y: box.y + sy / n + 0.5, n, width: img.naturalWidth } : null;
   }, { b64, box, match });
 }

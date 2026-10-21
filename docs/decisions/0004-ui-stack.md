@@ -14,7 +14,7 @@ M1 목업은 가상화된 정렬 표, 중첩 트리, 탭, 메뉴·팝오버·시
 | 데이터 | **@tanstack/react-query** 5.x(IPC 조회 캐시, main 푸시 이벤트로 무효화) | MIT |
 | UI 상태 | **zustand** 5.x(탭, 패널, 선택, 팔레트) | MIT |
 | 스타일 | 일반 CSS + `@layer reset, tokens, base, components, screens, utilities`. 토큰은 생성된 `tokens.css`. 한국어 줄바꿈 규칙은 `base`. | — |
-| 글꼴 | 시스템 글꼴 우선, 번들 Pretendard Variable(Linux/Windows, 또는 소유자 선택 시 전체) | OFL-1.1 |
+| 글꼴 | macOS는 시스템 글꼴(SF Pro + Apple SD Gothic Neo, 소유자 확정 2026-10-21), Linux/Windows는 번들 Pretendard Variable | OFL-1.1 |
 | 한글 초성 검색 | 작은 자체 함수(NFD 분해) 우선, 부족하면 es-hangul 2.x | (MIT) |
 | 접근성 검사(개발 전용) | @axe-core/playwright 4.x | MPL-2.0(개발 도구, 배포물에 포함 안 됨) |
 

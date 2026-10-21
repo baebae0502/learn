@@ -44,7 +44,7 @@
         tr.innerHTML = `<td>${label}</td>
           <td>${link('theme=light&layout=A', 'A')}${link('theme=light&layout=B', 'B')}</td>
           <td>${link('theme=dark&layout=A', 'A')}${link('theme=dark&layout=B', 'B')}</td>
-          <td>${states.map(([n, q]) => link('theme=light&layout=A&' + q, n)).join('')}</td>`;
+          <td>${states.map(([n, q]) => link('theme=light&layout=B&' + q, n)).join('')}</td>`;
         t.appendChild(tr);
       }
     </script>

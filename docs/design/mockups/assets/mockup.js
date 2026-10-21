@@ -1,7 +1,7 @@
 /*
  * Mockup kit core: query parameters, icons, window shell, milestone overlay.
  *   ?theme=light|dark   (default: follow the OS)
- *   ?layout=A|B         (default A)
+ *   ?layout=A|B         (default B — the owner's choice; A is kept for comparison)
  *   ?font=system|pretendard
  *   ?density=compact|regular|comfortable
  *   ?ms=1               milestone overlay: every element tagged data-ms gets a dashed outline
@@ -17,7 +17,7 @@ window.Mockup = (() => {
   };
   const theme = param('theme', ['light', 'dark'], null);
   if (theme) root.dataset.theme = theme;
-  root.dataset.layout = param('layout', ['A', 'B'], 'A');
+  root.dataset.layout = param('layout', ['A', 'B'], 'B');
   root.dataset.font = param('font', ['system', 'pretendard'], 'system');
   root.dataset.density = param('density', ['compact', 'regular', 'comfortable'], 'regular');
   const showMilestones = params.get('ms') === '1';

@@ -58,6 +58,126 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
   }
 });
 
+/** The id of the row under the palette's list cursor, or null. */
+const cursorRow = (page: Page) => page.evaluate(() => document.querySelector('[data-testid="palette-item"][data-focused]')?.getAttribute('data-command-id') ?? null);
+
+test('the cursor is on a row whenever the list has rows: on open and after every edit (T9-M1)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const input = page.getByTestId('palette-input');
+  /** The cursor row, and the input names it as its active descendant (screen readers follow the cursor). */
+  const expectCursor = async (id: string) => {
+    await expect.poll(() => cursorRow(page)).toBe(id);
+    const row = page.locator(`[data-testid="palette-item"][data-command-id="${id}"]`);
+    await expect(input).toHaveAttribute('aria-activedescendant', (await row.getAttribute('id'))!);
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+  };
+  const PASTE = IS_MAC ? 'Meta+V' : 'Control+V';
+  const UNDO = IS_MAC ? 'Meta+Z' : 'Control+Z';
+  try {
+    await stubOpenDialog(app, []);
+    // On open, with an empty query: the first row; ↓ and ↑ move it; ↩ runs the cursor row, once.
+    await runMenuCommand(app, 'app.palette');
+    await expect(input).toBeFocused();
+    await expectCursor('file.importManaged');
+    await page.keyboard.press('ArrowDown');
+    await expectCursor('file.importLinked');
+    await page.keyboard.press('ArrowUp');
+    await expectCursor('file.importManaged');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect.poll(() => openDialogCalls(app)).toBe(1);
+    await page.waitForTimeout(300);
+    expect(await openDialogCalls(app)).toBe(1);
+
+    // Every edit puts the cursor back on the first row: typing, Backspace, a paste, undo.
+    await runMenuCommand(app, 'app.palette');
+    await expect(input).toBeFocused();
+    await page.keyboard.type('ㅅㅇ');
+    await expectCursor('view.toggleSidebar');
+    await page.keyboard.press('Backspace');
+    await expect(input).toHaveValue('ㅅ');
+    await expect(page.getByTestId('palette-item')).toHaveCount(2);
+    await page.keyboard.press('ArrowDown');
+    await expectCursor('file.importManaged');
+    await page.keyboard.press('Backspace');
+    await expect(input).toHaveValue('');
+    await expectCursor('file.importManaged');
+    await page.keyboard.press('ArrowDown');
+    await app.evaluate(({ clipboard }) => clipboard.writeText('단축'));
+    await page.keyboard.press(PASTE);
+    await expect(input).toHaveValue('단축');
+    await expectCursor('app.shortcuts');
+    await page.keyboard.press(UNDO);
+    await expect(input).toHaveValue('');
+    await expectCursor('file.importManaged');
+    await page.keyboard.insertText('연결');
+    await expectCursor('file.importLinked');
+    await stubOpenDialog(app, []);
+    await page.keyboard.press('Enter');
+    await expect.poll(() => openDialogCalls(app)).toBe(1);
+    await page.waitForTimeout(300);
+    expect(await openDialogCalls(app)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the pointer: hovering a row moves the cursor there, a click runs it once', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await stubOpenDialog(app, []);
+    await runMenuCommand(app, 'app.palette');
+    const linked = page.locator('[data-testid="palette-item"][data-command-id="file.importLinked"]');
+    await linked.hover();
+    await expect.poll(() => cursorRow(page)).toBe('file.importLinked');
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the field keeps the focus
+    await linked.click();
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect.poll(() => openDialogCalls(app)).toBe(1);
+    await page.waitForTimeout(300);
+    expect(await openDialogCalls(app)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the list follows what can run while the palette is open: a drop that starts an import empties it until the import ends', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await runMenuCommand(app, 'app.palette');
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
+    // A real file dropped on the window (its path comes from a file input, as from Finder): a duplicate, so the import
+    // waits in the duplicate sheet and holds the window.
+    await page.evaluate(() => {
+      const picker = document.createElement('input');
+      picker.type = 'file';
+      picker.id = 'drop-source';
+      picker.hidden = true;
+      document.body.append(picker);
+    });
+    await page.locator('#drop-source').setInputFiles(PDF);
+    const sheet = await expectWindow(app, 'sheet', () =>
+      page.evaluate(() => {
+        const dt = new DataTransfer();
+        dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
+        document.body.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+        document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }),
+    );
+    // Nothing can run now: no rows, and the notice says why (not "no match").
+    await expect(page.getByTestId('palette')).toBeVisible();
+    await expect(page.getByTestId('palette-item')).toHaveCount(0);
+    await expect(page.getByTestId('palette-empty')).toHaveText('진행 중인 작업이 끝나면 쓸 수 있습니다');
+    await closeSheet(sheet, 'Escape'); // 건너뛰기: the import ends
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
+    await expect.poll(() => cursorRow(page)).toBe('file.importManaged');
+  } finally {
+    await app.close();
+  }
+});
+
 test('keywords, no results, esc, and a menu command while open', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {

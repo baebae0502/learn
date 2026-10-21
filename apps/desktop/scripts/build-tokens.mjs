@@ -54,12 +54,15 @@ export function renderCss() {
   decl('font-pretendard', tokens.fonts.pretendard);
   decl('font-mono', tokens.fonts.mono);
   decl('font-ui', 'var(--font-system)');
+  for (const [k, v] of Object.entries(tokens.fontWeight)) decl(`weight-${kebab(k)}`, String(v));
+  // Every semibold role reads --weight-semibold, so one value moves all of them (design-spec 4).
+  const weight = (w) => (w === tokens.fontWeight.semibold ? 'var(--weight-semibold)' : String(w));
   for (const [role, t] of Object.entries(tokens.typeScale)) {
     const name = kebab(role);
     decl(`text-${name}-size`, px(t.size));
     decl(`text-${name}-line`, px(t.line));
-    decl(`text-${name}-weight`, String(t.weight));
-    decl(`type-${name}`, `${t.weight} ${px(t.size)}/${px(t.line)} ${role === 'mono' ? 'var(--font-mono)' : 'var(--font-ui)'}`);
+    decl(`text-${name}-weight`, weight(t.weight));
+    decl(`type-${name}`, `${weight(t.weight)} ${px(t.size)}/${px(t.line)} ${role === 'mono' ? 'var(--font-mono)' : 'var(--font-ui)'}`);
   }
 
   section('Space (4 px grid; the name is the pixel value)');

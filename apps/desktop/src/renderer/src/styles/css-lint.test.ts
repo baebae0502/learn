@@ -46,7 +46,9 @@ describe('renderer CSS architecture', () => {
       .filter(({ line }) => !line.includes('local'))
       .filter(({ line }) => {
         const code = line.replace(/\/\*.*?\*\//g, '');
-        return /#[0-9a-fA-F]{3,8}\b/.test(code) || /\b(rgb|rgba|hsl|hsla|oklch|oklab|lab|lch)\(/.test(code) || /\bfont(-size)?\s*:[^;]*\b\d+(\.\d+)?px/.test(code) || /font-weight\s*:\s*(700|800|900|bold)/.test(code);
+        return /#[0-9a-fA-F]{3,8}\b/.test(code) || /\b(rgb|rgba|hsl|hsla|oklch|oklab|lab|lch)\(/.test(code) || /\bfont(-size)?\s*:[^;]*\b\d+(\.\d+)?px/.test(code) || /font-weight\s*:\s*(700|800|900|bold)/.test(code) ||
+          // Semibold comes from --weight-semibold (tokens.ts fontWeight), never a literal 600 (Task 8 n6).
+          /font-weight\s*:\s*600\b/.test(code);
       })
       .map(({ line, n }) => `${n}: ${line.trim()}`);
     expect(offenders).toEqual([]);

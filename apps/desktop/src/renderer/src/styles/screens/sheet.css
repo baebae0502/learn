@@ -91,7 +91,7 @@
     margin: 0 0 var(--space-8) var(--space-4);
     color: var(--text-secondary);
     font: var(--type-footnote);
-    font-weight: 600;
+    font-weight: var(--weight-semibold);
   }
   .sheet .shortcut-groups {
     display: flex;

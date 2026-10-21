@@ -188,19 +188,26 @@ export const fonts = {
 } as const;
 
 /** Type roles: size / line height / weight. Body is 13/18 like macOS. Korean UI avoids 700. */
+/**
+ * Font weights. Korean UI never goes above 600 (design-spec 4). `semibold` is every title and emphasis role; it is a
+ * token so its value can follow what macOS actually draws (Task 8 n6: at 600 Chromium picks SF Bold for Latin next to
+ * Apple SD Gothic Neo SemiBold for Hangul).
+ */
+export const fontWeight = { regular: 400, medium: 500, semibold: 600 } as const;
+
 export const typeScale = {
-  caption: { size: 11, line: 14, weight: 400 },
-  footnote: { size: 12, line: 16, weight: 400 },
-  body: { size: 13, line: 18, weight: 400 },
-  headline: { size: 13, line: 18, weight: 600 },
+  caption: { size: 11, line: 14, weight: fontWeight.regular },
+  footnote: { size: 12, line: 16, weight: fontWeight.regular },
+  body: { size: 13, line: 18, weight: fontWeight.regular },
+  headline: { size: 13, line: 18, weight: fontWeight.semibold },
   /** Multi-line Korean at UI size (dialog messages, transcript, descriptions). */
-  paragraph: { size: 13, line: 20, weight: 400 },
+  paragraph: { size: 13, line: 20, weight: fontWeight.regular },
   /** Reading text: empty-state copy, notes; Korean paragraphs at 14/22. */
-  callout: { size: 14, line: 22, weight: 400 },
-  title3: { size: 15, line: 20, weight: 600 },
-  title2: { size: 17, line: 22, weight: 600 },
-  title1: { size: 22, line: 28, weight: 600 },
-  mono: { size: 12, line: 16, weight: 400 },
+  callout: { size: 14, line: 22, weight: fontWeight.regular },
+  title3: { size: 15, line: 20, weight: fontWeight.semibold },
+  title2: { size: 17, line: 22, weight: fontWeight.semibold },
+  title1: { size: 22, line: 28, weight: fontWeight.semibold },
+  mono: { size: 12, line: 16, weight: fontWeight.regular },
 } as const;
 
 /** List/table row heights by density. */

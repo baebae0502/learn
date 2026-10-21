@@ -7,7 +7,8 @@ export const drop = {
   video: '동영상',
   other: '기타',
   copyTitle: '사본으로 가져오기',
-  copyBody: '라이브러리 폴더에 복사합니다. 원본은 그대로 둡니다.',
+  // A line per sentence (.dm-text is pre-line); the link card's one sentence wraps where it must.
+  copyBody: '라이브러리 폴더에 복사합니다.\n원본은 그대로 둡니다.',
   linkTitle: '외부 파일로 연결',
   linkBody: '복사하지 않고 원래 위치의 파일을 그대로 씁니다.',
 } as const;

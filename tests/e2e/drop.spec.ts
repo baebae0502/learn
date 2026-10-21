@@ -42,6 +42,8 @@ test('dragging files in shows the window-wide overlay with counts; ⌥ switches 
     await expect(page.getByTestId('drop-summary')).toHaveText('파일 3개(PDF 2 · 동영상 1)');
     await expect(page.getByTestId('drop-copy')).toHaveAttribute('data-on', '');
     await expect(page.getByTestId('drop-link')).not.toHaveAttribute('data-on');
+    // A line per sentence in the copy card (T11-n2): innerText keeps the break only where it is rendered (pre-line).
+    expect(await page.getByTestId('drop-copy').locator('.dm-text').evaluate((e) => (e as HTMLElement).innerText)).toBe('라이브러리 폴더에 복사합니다.\n원본은 그대로 둡니다.');
     // The key that switches to linking, from the accelerator helpers: ⌥ on macOS, Alt elsewhere.
     await expect(page.getByTestId('drop-link').locator('.kbd')).toHaveText(IS_MAC ? '⌥' : 'Alt');
     expect(await overlay.boundingBox()).toMatchObject({ x: 0, y: 52 });

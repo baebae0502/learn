@@ -95,5 +95,6 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
     line-height: round(calc(18px * var(--text-scale)), 2px); /* local: mockup .dm-text, two lines read apart */
+    white-space: pre-line; /* a line per sentence (strings/drop.ts) */
   }
 }

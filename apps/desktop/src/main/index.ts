@@ -29,7 +29,7 @@ if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEA
 const devServerUrl = !app.isPackaged ? (process.env['ELECTRON_RENDERER_URL'] ?? null) : null;
 const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
 /** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
-const isDevBuild = !app.isPackaged && !process.env['LEARN_E2E'];
+const isDevBuild = !app.isPackaged && process.env['LEARN_E2E'] !== '1';
 
 registerAppScheme();
 
@@ -64,8 +64,13 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    // First, before any await: Electron's default menu (English, with Reload) must never be live. Needs no library.
+    Menu.setApplicationMenu(
+      Menu.buildFromTemplate(buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, onCommand: dispatchMenuCommand })),
+    );
     hardenApp(devOrigin);
     const prefs = openPrefsStore(app.getPath('userData'));
+    if (prefs.readOnly) console.error('[prefs] read-only for this session: PREFS_UNAVAILABLE');
     applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
@@ -96,9 +101,6 @@ if (!app.requestSingleInstanceLock()) {
       register(handle, deps);
     }
 
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate(buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, onCommand: dispatchMenuCommand })),
-    );
     mainWindow = openMainWindow();
   });
 

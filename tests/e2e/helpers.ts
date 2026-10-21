@@ -42,6 +42,7 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   delete env['LEARN_USER_DATA_DIR'];
   if (libraryDir !== null) env['LEARN_LIBRARY_DIR'] = libraryDir;
   if (userDataDir !== null) env['LEARN_USER_DATA_DIR'] = userDataDir;
+  env['LEARN_E2E'] = '1'; // the shipped menu (no "개발자 도구"); a caller's env can still override it
   Object.assign(env, opts.env);
   const app = await electron.launch({
     args: opts.executablePath ? [...(opts.args ?? [])] : [...(opts.args ?? []), path.join(ROOT, 'apps/desktop')],

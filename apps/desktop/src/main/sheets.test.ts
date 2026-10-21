@@ -84,6 +84,20 @@ describe('sheet host', () => {
     expect(p.focus).toHaveBeenCalledTimes(1); // keyboard focus goes back to the window the sheet hung over
   });
 
+  it('tells main once the sheet window has closed, so it can re-read the parent window state (macOS sends no focus event)', async () => {
+    const onSheetClosed = vi.fn();
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'darwin', onSheetClosed });
+    const p = parent();
+    const result = h.open(p, { kind: 'shortcuts' });
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    expect(onSheetClosed).not.toHaveBeenCalled();
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    expect(onSheetClosed).toHaveBeenCalledExactlyOnceWith(p);
+  });
+
   it('answers only an open sheet: anyone else is PERMISSION_DENIED, a result of the wrong kind VALIDATION_FAILED', async () => {
     const h = host();
     const stranger = { id: 999 } as unknown as WebContents;

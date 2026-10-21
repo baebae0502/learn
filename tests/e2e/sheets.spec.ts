@@ -52,6 +52,8 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(1);
     await mainHasFocus(s.app);
+    // The page shows an active window again (selection colours, tooltips): main pushed the state back after the sheet.
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
     await sheet.getByTestId('dup-add').click();

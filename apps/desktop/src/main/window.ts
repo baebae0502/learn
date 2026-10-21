@@ -15,6 +15,16 @@ export interface MainWindowOptions {
 /** What the windowState push and the ui.windowState query report. */
 export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused() });
 
+const pushers = new WeakMap<BrowserWindow, () => void>();
+/**
+ * Re-reads a main window's state and pushes it if it changed. For the moments Electron emits no event: macOS makes
+ * the parent key again when its sheet closes without a 'focus' event, which left the renderer showing an inactive
+ * window (neutral selection, no tooltips) on run 39631541294.
+ */
+export function resyncWindowState(win: BrowserWindow): void {
+  pushers.get(win)?.();
+}
+
 /** The main window in the M3 chrome (design-spec 2.1): hidden title bar, traffic lights or the controls overlay. */
 export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   const win = new BrowserWindow({
@@ -55,6 +65,7 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   win.on('leave-html-full-screen', pushState);
   win.on('focus', pushState);
   win.on('blur', pushState);
+  pushers.set(win, pushState);
 
   void win.loadURL(opts.url);
   return win;

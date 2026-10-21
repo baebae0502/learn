@@ -29,7 +29,16 @@ interface Pending {
   settle(result: SheetResult | null): void;
 }
 
-export function createSheetHost(opts: { preload: string; url(): string; platform: NodeJS.Platform }): SheetHost {
+export function createSheetHost(opts: {
+  preload: string;
+  url(): string;
+  platform: NodeJS.Platform;
+  /**
+   * The sheet's window has closed and the parent has the focus back. macOS makes the parent key again without a
+   * 'focus' event (run 39631541294), so main re-reads the parent's window state here.
+   */
+  onSheetClosed?(parent: BrowserWindow): void;
+}): SheetHost {
   const pending = new Map<number, Pending>();
   /** Per parent window: the sheet showing now (and any queued behind it). */
   const queues = new Map<number, Promise<unknown>>();
@@ -84,7 +93,10 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
         if (!parent.isDestroyed()) parent.focus();
       };
       pending.set(id, { payload, settle });
-      win.on('closed', () => settle(null));
+      win.on('closed', () => {
+        settle(null);
+        if (!parent.isDestroyed()) opts.onSheetClosed?.(parent);
+      });
       // A sheet whose page never comes up, or stops answering, must not hold the import (or the window) forever: it
       // ends unanswered.
       win.webContents.on('render-process-gone', () => settle(null));

@@ -18,7 +18,7 @@ import { hardenApp } from './security';
 import { createSheetHost } from './sheets';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { findUpdateBackup } from './update-backup';
-import { createMainWindow } from './window';
+import { createMainWindow, resyncWindowState } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { windowUrl } from './window-url';
 
@@ -198,7 +198,18 @@ if (!app.requestSingleInstanceLock()) {
         current: () => uiContext,
       },
       isMainWindow,
-      sheets: createSheetHost({ preload: path.join(here, '../preload/index.cjs'), url: () => windowUrl(rendererBase, 'sheet', urlOptions), platform: process.platform }),
+      sheets: createSheetHost({
+        preload: path.join(here, '../preload/index.cjs'),
+        url: () => windowUrl(rendererBase, 'sheet', urlOptions),
+        platform: process.platform,
+        // Now and once AppKit has settled the key window (no 'focus' event comes for it on macOS).
+        onSheetClosed: (parent) => {
+          resyncWindowState(parent);
+          setTimeout(() => {
+            if (!parent.isDestroyed()) resyncWindowState(parent);
+          }, 250);
+        },
+      }),
     };
     registerAllIpc(createHandle(devOrigin), deps);
 

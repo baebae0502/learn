@@ -241,6 +241,8 @@ test('a missing managed copy: the notice says to import the original again, with
     await openItem(s.page, 'sample');
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('라이브러리 안의 사본을 찾을 수 없습니다');
+    // The window is still named after the item (design-spec 2.1), not left at the library's title.
+    await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=main'))?.getTitle())).toBe('sample');
     await expect(notice.locator('.file')).toHaveCount(0); // the path inside the library means nothing to the user
     await expect(s.page.getByTestId('relink')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');

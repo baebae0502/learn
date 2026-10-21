@@ -6,6 +6,7 @@ import { formatSize } from '../format';
 import { Toolbar } from '../shell/Toolbar';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
+import { readerWindowTitle } from './readerTitle';
 
 /** "PDF · 4.2 MB · 외부 연결": the toolbar's count while reading (no tab strip, no pane header until M7). */
 const readerMeta = (item: LibraryItem): string =>
@@ -13,12 +14,14 @@ const readerMeta = (item: LibraryItem): string =>
 
 /** Unified toolbar while reading (no tab strip until M7): back to the library (⌘1), title, kind · size. */
 export function ReaderToolbar({ itemId }: { itemId: string }) {
-  const item = useItem(itemId).data;
+  const query = useItem(itemId);
+  const item = query.data;
   const { run } = useCommands();
   const back = commandById('nav.back');
   return (
     <Toolbar
       title={item?.title ?? ''}
+      windowTitle={readerWindowTitle(query)}
       titleTestId="viewer-title"
       count={item ? readerMeta(item) : undefined}
       leading={<IconButton icon={ChevronLeft} label={back.label} accelerator={back.accelerator} testId="viewer-back" onPress={() => run('nav.back')} />}

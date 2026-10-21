@@ -1,4 +1,6 @@
 export const shell = {
+  /** The window title when nothing more specific is known (index.html's <title>). */
+  appName: 'Learn',
   sidebar: '사이드바',
   libraryHeading: '라이브러리',
   myLibrary: '내 라이브러리',

@@ -296,6 +296,33 @@ test('preload: window.learn has only the declared invokers, no generic IPC; on()
   }
 });
 
+test('ui.windowState() answers the current fullscreen and focus state that main sees', async ({}, testInfo) => {
+  const { app, page } = await session(testInfo);
+  try {
+    const mainSees = () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const w = BrowserWindow.getAllWindows()[0]!;
+        return { fullscreen: w.isFullScreen(), focused: w.isFocused() };
+      });
+    const query = () => page.evaluate(() => window.learn.ui.windowState());
+    expect(await query()).toEqual({ ok: true, data: await mainSees() });
+    expect((await mainSees()).fullscreen).toBe(false);
+    // macOS animates native fullscreen into its own Space and leaving mid-transition hangs (first-session.spec), so the
+    // toggle runs where the switch is immediate.
+    if (!IS_MAC) {
+      const setFullScreen = (on: boolean) => app.evaluate(({ BrowserWindow }, on) => BrowserWindow.getAllWindows()[0]!.setFullScreen(on), on);
+      await setFullScreen(true);
+      await expect.poll(async () => (await query()).ok && (await mainSees()).fullscreen).toBe(true);
+      expect(await query()).toEqual({ ok: true, data: await mainSees() });
+      await setFullScreen(false);
+      await expect.poll(async () => (await mainSees()).fullscreen).toBe(false);
+      expect(await query()).toEqual({ ok: true, data: await mainSees() });
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('push: libraryChanged{import} reaches the renderer with the payload only', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {

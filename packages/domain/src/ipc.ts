@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CommandId } from './commands';
-import type { LearnEventMap } from './events';
+import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
@@ -138,6 +138,8 @@ export interface LearnApi {
   };
   ui: {
     showContextMenu(input: ShowContextMenuInput): Promise<Result<{ commandId: CommandId } | null>>;
+    /** The calling window's current state (the windowState push only reports changes). */
+    windowState(): Promise<Result<WindowState>>;
   };
   /** Subscribe to a main->renderer push event; returns an unsubscribe function. */
   on<K extends keyof LearnEventMap>(name: K, cb: (payload: LearnEventMap[K]) => void): () => void;

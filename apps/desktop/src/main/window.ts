@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron';
-import type { LearnEventMap } from '@learn/domain';
+import type { WindowState } from '@learn/domain';
 import { sendEvent } from './events';
 import { attachEditContextMenu } from './menu/edit-context-menu';
 
@@ -7,6 +7,9 @@ export interface MainWindowOptions {
   preload: string;
   url: string;
 }
+
+/** What the windowState push and the ui.windowState query report. */
+export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused() });
 
 /** Same window options as before M2 (the visual redesign is M3). */
 export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
@@ -31,10 +34,10 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   attachEditContextMenu(win.webContents);
 
   // windowState push: only on an actual change of fullscreen/focus.
-  let last: LearnEventMap['windowState'] | null = null;
+  let last: WindowState | null = null;
   const pushState = () => {
     if (win.isDestroyed()) return;
-    const next = { fullscreen: win.isFullScreen(), focused: win.isFocused() };
+    const next = windowStateOf(win);
     if (last && last.fullscreen === next.fullscreen && last.focused === next.focused) return;
     last = next;
     sendEvent(win.webContents, 'windowState', next);

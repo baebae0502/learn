@@ -1,6 +1,12 @@
 import type { CommandId } from './commands';
 import type { Prefs } from './settings';
 
+/** The window's fullscreen/focus state: pushed on change (windowState event) and answered by `ui.windowState()`. */
+export interface WindowState {
+  fullscreen: boolean;
+  focused: boolean;
+}
+
 export interface LearnEventMap {
   menuCommand: { commandId: CommandId };
   /**
@@ -13,7 +19,7 @@ export interface LearnEventMap {
     reason: 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'collections' | 'tags' | 'availability';
     itemIds?: string[];
   };
-  windowState: { fullscreen: boolean; focused: boolean };
+  windowState: WindowState;
   settingsChanged: { keys: string[] };
   prefsChanged: { prefs: Prefs };
 }

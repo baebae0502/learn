@@ -40,7 +40,7 @@ export function ShortcutsSheet() {
                 {g.rows.map((r) => (
                   <div className="shortcut-row" key={r.label} data-testid="shortcut-row">
                     <span className="sr-label">{r.label}</span>
-                    <Kbd keys={r.keys} />
+                    <Kbd keys={r.keys} alternatives={r.alternatives} />
                     <span className="visually-hidden">{r.spoken}</span>
                   </div>
                 ))}

@@ -101,6 +101,10 @@ describe('colour tokens', () => {
           }
         });
 
+        it('a keycap on the accent fill (the palette\'s cursor row): its white label ≥ 4.5:1 on the darkened keycap', () => {
+          expectContrast('textOnAccent/bgKbdOnAccent@accent', c('textOnAccent'), on(c, 'bgKbdOnAccent', 'accent'), 4.5);
+        });
+
         it('meter fills (progress, spinner, scrubber) ≥ 3:1 against the track on every surface', () => {
           for (const s of SURFACES) expectContrast(`meter/track@${s}`, c('meter'), on(c, 'bgTrack', s), 3);
         });
@@ -157,6 +161,13 @@ describe('colour tokens', () => {
     }
     expect(colors.separatorChromeInactive.light).toBe(colors.separator.light);
     expect(parseColor(colors.separatorChromeInactive.dark)).toMatchObject({ r: 0, g: 0, b: 0, a: 1 });
+  });
+
+  it('the cursor row\'s keycap darkens the accent fill (critic T9-n1: the label was the panel\'s weakest text, 3.61 / 4.03:1)', () => {
+    // Pinned near the critique's measure: 6.59:1 light, 7.42:1 dark (a white keycap fill would lighten it instead).
+    const ratio = (theme: Theme) => contrast(parseColor(colors.textOnAccent[theme]), composite(parseColor(colors.bgKbdOnAccent[theme]), parseColor(colors.accent[theme])));
+    expect(ratio('light')).toBeCloseTo(6.59, 1);
+    expect(ratio('dark')).toBeCloseTo(7.42, 1);
   });
 
   it('dark mode puts content below the chrome and raised surfaces above it', () => {

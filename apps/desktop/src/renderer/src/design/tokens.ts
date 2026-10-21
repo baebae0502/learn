@@ -105,6 +105,11 @@ export const colors = {
   accentPressed: { light: 'oklch(45% 0.076 190)', dark: 'oklch(46% 0.078 190)' },
   accentText: { light: 'oklch(49% 0.082 190)', dark: 'oklch(78% 0.1 190)' },
   accentSoft: { light: 'oklch(53% 0.088 190 / 0.11)', dark: 'oklch(72% 0.1 190 / 0.16)' },
+  /**
+   * A keycap on an accent fill (the palette's cursor row): a darkened patch, so its white label reads 6.6:1 (light) and
+   * 7.4:1 (dark) instead of the 3.6 / 4.0:1 a lightened one gave (critic T9-n1).
+   */
+  bgKbdOnAccent: { light: 'oklch(0% 0 0 / 0.16)', dark: 'oklch(0% 0 0 / 0.16)' },
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
       (the dark accent fill is too dark for that; it is tuned for white text on it). */

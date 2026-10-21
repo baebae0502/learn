@@ -133,7 +133,7 @@
     color: var(--text-on-accent);
   }
   :root:not([data-window-inactive]) .palette .p-item[data-focused] .kbd {
-    background: oklch(100% 0 0 / 0.18); /* local: keycap on the accent fill */
+    background: var(--bg-kbd-on-accent);
     box-shadow: none;
     color: var(--text-on-accent);
   }

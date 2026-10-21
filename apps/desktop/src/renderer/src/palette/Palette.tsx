@@ -208,7 +208,7 @@ function PaletteDialog() {
         {ranked.length > 0 && (
           <>
             <span className="row">
-              <Kbd keys={['↑', '↓']} />
+              <Kbd keys={['↑', '↓']} alternatives />
               {t.palette.footMove}
             </span>
             <span className="row">

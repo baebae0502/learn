@@ -33,6 +33,7 @@
     --accent-pressed: light-dark(oklch(45% 0.076 190), oklch(46% 0.078 190));
     --accent-text: light-dark(oklch(49% 0.082 190), oklch(78% 0.1 190));
     --accent-soft: light-dark(oklch(53% 0.088 190 / 0.11), oklch(72% 0.1 190 / 0.16));
+    --bg-kbd-on-accent: light-dark(oklch(0% 0 0 / 0.16), oklch(0% 0 0 / 0.16));
     --focus: light-dark(oklch(57% 0.096 190), oklch(72% 0.11 190));
     --meter: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));
     --danger: light-dark(oklch(56% 0.19 27), oklch(64% 0.18 25));

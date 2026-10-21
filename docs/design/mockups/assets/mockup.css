@@ -2230,7 +2230,7 @@ h2,
   color: var(--text-on-accent);
 }
 .palette .p-item.is-active .kbd {
-  background: oklch(100% 0 0 / 0.18);
+  background: var(--bg-kbd-on-accent); /* darkened: its white label 6.6 / 7.4:1 (critic T9-n1) */
   box-shadow: none;
   color: var(--text-on-accent);
 }

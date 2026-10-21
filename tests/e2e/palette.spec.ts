@@ -52,6 +52,9 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
     await expect(first).toHaveAttribute('data-command-id', 'file.importManaged');
     await expect(first.locator('mark')).toHaveText('가져');
     await expect(first).toHaveAttribute('data-focused', 'true'); // the list cursor is on the first result
+    // The cursor row's keycaps darken the accent (critic T9-n1); ↑ ↓ in the footer are alternatives, set apart (T9-n2).
+    expect(await first.locator('.kbd').first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await tokenValue(page, 'backgroundColor', '--bg-kbd-on-accent'));
+    expect(await page.locator('.p-foot .kbd-group').first().evaluate((el) => [el.classList.contains('alternatives'), getComputedStyle(el).columnGap])).toEqual([true, '6px']);
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect.poll(() => openDialogCalls(app)).toBe(1);

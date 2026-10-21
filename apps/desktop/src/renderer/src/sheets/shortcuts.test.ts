@@ -19,7 +19,13 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(dialogKeys('darwin')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['↩'], '↩'], ['닫기', ['esc'], 'esc']]);
     expect(dialogKeys('linux')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['Enter'], 'Enter'], ['닫기', ['Esc'], 'Esc']]);
   });
-  it('lists ⌘K with the app commands', () => {
-    expect(shortcutGroups('darwin')[0]!.rows.find((r) => r.label === '명령 팔레트…')).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
+  it('lists ⌘K first among the app commands (design-spec 7.4), whatever the registry order (R-10)', () => {
+    const app = shortcutGroups('darwin')[0]!;
+    expect(app.rows.map((r) => r.label)).toEqual(['명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기']);
+    expect(app.rows[0]).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
+  });
+  it('marks ↑ ↓ as alternative keys (drawn apart), every other row as one chord', () => {
+    const rows = shortcutGroups('darwin').flatMap((g) => g.rows);
+    expect(rows.filter((r) => r.alternatives).map((r) => r.label)).toEqual(['이동']);
   });
 });

@@ -6,6 +6,8 @@ import { contentHeight, markSized } from './measure';
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
 /** 8 px under the 52 px toolbar (macOS does this itself through setSheetOffset; elsewhere we place it). */
 export const SHEET_TOP = 60;
+/** A sheet not shown this long after its page began loading is given up (null), so the parent never stays blocked. */
+export const SHEET_SHOW_TIMEOUT_MS = 10_000;
 
 export interface SheetHost {
   /**
@@ -63,17 +65,26 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
       });
       const id = win.webContents.id;
       let done = false;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
       const settle = (result: SheetResult | null) => {
         if (done) return;
         done = true;
+        clearTimeout(watchdog);
         pending.delete(id);
         resolve(result);
         if (!win.isDestroyed()) win.close();
+        // Keyboard focus goes back to the window the sheet hung over (Linux/Windows do not always hand it back).
+        if (!parent.isDestroyed()) parent.focus();
       };
       pending.set(id, { payload, settle });
       win.on('closed', () => settle(null));
-      // A sheet whose page never comes up must not hold the import (or the window) forever: it ends unanswered.
+      // A sheet whose page never comes up, or stops answering, must not hold the import (or the window) forever: it
+      // ends unanswered.
       win.webContents.on('render-process-gone', () => settle(null));
+      win.webContents.on('did-fail-load', (_event, _code, _description, _url, isMainFrame) => {
+        if (isMainFrame) settle(null);
+      });
+      win.on('unresponsive', () => settle(null));
       win.once('ready-to-show', () => {
         void (async () => {
           const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]'), maxHeight);
@@ -81,12 +92,16 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
           win.setContentSize(width, height);
           if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
           await markSized(win.webContents);
+          clearTimeout(watchdog);
           win.show();
         })().catch(() => {
           // Only a window closed mid-measure gets here (settled already); otherwise show it unsized rather than lose the question.
           if (!win.isDestroyed()) win.show();
         });
       });
+      watchdog = setTimeout(() => {
+        if (!win.isDestroyed() && !win.isVisible()) settle(null);
+      }, SHEET_SHOW_TIMEOUT_MS);
       win.loadURL(opts.url()).catch(() => settle(null));
     });
   }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
 
 /** A BrowserWindow stand-in: records what the host does with it; tests drive its lifecycle events. */
@@ -23,6 +23,7 @@ class FakeWindow extends EventEmitter {
     FakeWindow.all.push(this);
   }
   isDestroyed = () => this.destroyed;
+  isVisible = () => this.shown && !this.destroyed;
   setContentSize = (w: number, h: number) => void (this.contentSize = [w, h]);
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   show = () => void (this.shown = true);
@@ -39,10 +40,11 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, SHEET_TOP } = await import('./sheets');
+const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP } = await import('./sheets');
 
-const parent = (id = 1) =>
-  ({ id, isDestroyed: () => false, getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: 900 }) }) as unknown as BrowserWindow;
+type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
+const parent = (id = 1): FakeParent =>
+  ({ id, isDestroyed: () => false, focus: vi.fn(), getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: 900 }) }) as unknown as FakeParent;
 const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
@@ -54,13 +56,17 @@ async function ready(w: FakeWindow): Promise<void> {
 beforeEach(() => {
   FakeWindow.all = [];
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe('sheet host', () => {
   const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
 
   it('opens a hidden modal child, sizes it to its content, places it under the toolbar, then shows it', async () => {
     const h = host();
-    const result = h.open(parent(), { kind: 'shortcuts' });
+    const p = parent();
+    const result = h.open(p, { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
     const w = FakeWindow.all[0]!;
     expect(w.options).toMatchObject({ width: 560, modal: true, frame: false });
@@ -71,9 +77,11 @@ describe('sheet host', () => {
     expect(w.position).toEqual([100 + (1440 - 560) / 2, 50 + SHEET_TOP]);
     expect(w.shown).toBe(true);
     expect(h.payloadFor(contentsOf(w))).toEqual({ kind: 'shortcuts' });
+    expect(p.focus).not.toHaveBeenCalled();
     h.resolve(contentsOf(w), { kind: 'shortcuts' });
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
     expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1); // keyboard focus goes back to the window the sheet hung over
   });
 
   it('answers only an open sheet: anyone else is PERMISSION_DENIED, a result of the wrong kind VALIDATION_FAILED', async () => {
@@ -91,12 +99,14 @@ describe('sheet host', () => {
     expect(() => h.payloadFor(contentsOf(w))).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
   });
 
-  it('settles with null when the window closes without an answer, or its page fails to load or crashes', async () => {
+  it('settles with null when the window closes without an answer, or its page fails to load, hangs or crashes', async () => {
     const h = host();
-    const closed = h.open(parent(), { kind: 'shortcuts' });
+    const p = parent();
+    const closed = h.open(p, { kind: 'shortcuts' });
     await tick();
     FakeWindow.all[0]!.close();
     await expect(closed).resolves.toBeNull();
+    expect(p.focus).toHaveBeenCalledTimes(1);
 
     const failing = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/fail.html', platform: 'linux' });
     await expect(failing.open(parent(), { kind: 'shortcuts' })).resolves.toBeNull();
@@ -107,6 +117,53 @@ describe('sheet host', () => {
     FakeWindow.all[2]!.webContents.emit('render-process-gone');
     await expect(crashed).resolves.toBeNull();
     expect(FakeWindow.all[2]!.destroyed).toBe(true);
+
+    // did-fail-load counts for the page itself, not for a subframe.
+    const failedLoad = h.open(parent(), { kind: 'shortcuts' });
+    await tick();
+    FakeWindow.all[3]!.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'learn://app/x', false);
+    expect(FakeWindow.all[3]!.destroyed).toBe(false);
+    FakeWindow.all[3]!.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'learn://app/index.html', true);
+    await expect(failedLoad).resolves.toBeNull();
+
+    const hung = h.open(parent(), { kind: 'shortcuts' });
+    await tick();
+    await ready(FakeWindow.all[4]!);
+    FakeWindow.all[4]!.emit('unresponsive');
+    await expect(hung).resolves.toBeNull();
+    expect(FakeWindow.all[4]!.destroyed).toBe(true);
+  });
+
+  it('gives up on a sheet that is still not shown 10 s after loading began, so the parent is never left blocked', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const p = parent();
+    let settled: unknown = 'pending';
+    void h.open(p, { kind: 'shortcuts' }).then((r) => (settled = r));
+    await vi.advanceTimersByTimeAsync(0);
+    const w = FakeWindow.all[0]!; // ready-to-show never comes
+    expect(SHEET_SHOW_TIMEOUT_MS).toBe(10_000);
+    await vi.advanceTimersByTimeAsync(SHEET_SHOW_TIMEOUT_MS - 1);
+    expect(settled).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    expect(settled).toBeNull();
+    expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1);
+
+    // A sheet that came up in time stays open as long as the user needs it.
+    let answer: unknown = 'pending';
+    void h.open(p, { kind: 'shortcuts' }).then((r) => (answer = r));
+    await vi.advanceTimersByTimeAsync(0);
+    const shown = FakeWindow.all[1]!;
+    shown.emit('ready-to-show');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown.shown).toBe(true);
+    await vi.advanceTimersByTimeAsync(SHEET_SHOW_TIMEOUT_MS * 3);
+    expect(answer).toBe('pending');
+    expect(shown.destroyed).toBe(false);
+    h.resolve(contentsOf(shown), { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(answer).toEqual({ kind: 'shortcuts' });
   });
 
   it('shows one sheet at a time per window: a second request waits until the first closes', async () => {

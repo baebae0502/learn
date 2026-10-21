@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, type WebContents } from 'electron';
 import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
@@ -41,8 +41,14 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     return windowStateOf(window);
   });
 
+  // Sheets hang over the main window only: a sheet (or the settings window) cannot open one over itself.
+  const mainWindowOf = (sender: WebContents): BrowserWindow | null => {
+    if (!deps.isMainWindow(sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    return BrowserWindow.fromWebContents(sender);
+  };
+
   handle(Channels.ui.confirmDuplicate, confirmDuplicateInput, async ({ path: file, existingItemId }, event) => {
-    const parent = BrowserWindow.fromWebContents(event.sender);
+    const parent = mainWindowOf(event.sender);
     const existing = deps.getContext().repo.getItem(existingItemId);
     if (!parent || !existing) return { choice: 'skip' as const };
     const result = await deps.sheets.open(parent, {
@@ -54,7 +60,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   });
 
   handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {
-    const parent = BrowserWindow.fromWebContents(event.sender);
+    const parent = mainWindowOf(event.sender);
     if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
   });
 }

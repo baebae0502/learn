@@ -14,6 +14,8 @@ export interface IpcDeps {
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */
   sheets: SheetHost;
+  /** Whether `sender` is the main window's renderer (sheets and the settings window are not). */
+  isMainWindow(sender: WebContents): boolean;
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

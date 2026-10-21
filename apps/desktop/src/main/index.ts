@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, type WebContents } from 'electron';
 import {
   COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
 } from '@learn/domain';
@@ -96,6 +96,9 @@ function setUiContext(next: CommandContextState): void {
   if (appMenu) applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
 }
 
+/** The main window's renderer (sheets and the settings window are other windows). */
+const isMainWindow = (sender: WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender.id === mainWindow.webContents.id;
+
 /** Menu clicks and accelerators always act on the main window (also when a settings or sheet window is focused). */
 function dispatchMenuCommand(commandId: CommandId): void {
   const target = mainWindow;
@@ -147,12 +150,13 @@ if (!app.requestSingleInstanceLock()) {
       uiContext: {
         report(sender, ctx) {
           // Only the main window drives the menu (settings and sheet windows report nothing that counts).
-          if (!mainWindow || mainWindow.isDestroyed() || sender.id !== mainWindow.webContents.id) return;
+          if (!isMainWindow(sender)) return;
           menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1; // received, even if unchanged
           setUiContext(ctx);
         },
         current: () => uiContext,
       },
+      isMainWindow,
       sheets: createSheetHost({ preload: path.join(here, '../preload/index.cjs'), url: () => windowUrl(rendererBase, 'sheet', urlOptions), platform: process.platform }),
     };
     registerAllIpc(createHandle(devOrigin), deps);

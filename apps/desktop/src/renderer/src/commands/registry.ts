@@ -1,11 +1,10 @@
-import { COMMANDS, type CommandId } from '@learn/domain/commands';
+import { COMMANDS, isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
 
-/** What the app can do right now; App.tsx rebuilds it every render. */
-export interface CommandEnv {
-  view: 'library' | 'viewer';
-  /** An import is running or a modal dialog is open: every command is ignored. */
-  blocked: boolean;
+/** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
+export interface CommandEnv extends CommandContextState {
+  /** Availability facts for item targets (from the library list). */
+  targetsOf(itemIds: readonly string[]): CommandTargetInfo[];
   importFiles(mode: StorageMode): void;
   back(): void;
   open(itemId: string): void;
@@ -16,10 +15,10 @@ export interface CommandTarget {
   itemIds?: readonly string[];
 }
 
-type CommandHandler = (env: CommandEnv, itemIds: readonly string[]) => void;
+type Handler = (env: CommandEnv, itemIds: readonly string[]) => void;
 
-/** Renderer side of the command registry: one handler per COMMANDS id (menus can only show handled commands). */
-export const COMMAND_HANDLERS: Record<CommandId, CommandHandler> = {
+/** Renderer side of the registry: exactly one handler per command id (menus can only show handled commands). */
+export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
   'nav.back': (env) => env.back(),
@@ -27,20 +26,30 @@ export const COMMAND_HANDLERS: Record<CommandId, CommandHandler> = {
   'item.relink': (env, [itemId]) => env.relink(itemId!),
 };
 
-/**
- * Runs a command if it applies now and returns whether it ran. Menu items stay enabled until M3, so a
- * command outside its context (e.g. "라이브러리로 돌아가기" in the library) is ignored here.
- * Item commands (context menu) act on exactly one item in M2.
- */
-export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
-  const spec = COMMANDS.find((c) => c.id === id);
-  if (!spec || !Object.hasOwn(COMMAND_HANDLERS, id) || env.blocked) return false;
+/** Just the context fields (what main needs for the menu bar). */
+export function contextOf(env: CommandEnv): CommandContextState {
+  return { view: env.view, blocked: env.blocked };
+}
+
+export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
+  if (!Object.hasOwn(COMMAND_HANDLERS, id)) return false;
   const itemIds = target.itemIds ?? [];
-  if (spec.contexts.includes('item')) {
-    if (itemIds.length !== 1) return false;
-  } else if (!spec.contexts.includes(env.view)) {
-    return false;
-  }
+  return isCommandAvailable(id, contextOf(env), env.targetsOf(itemIds));
+}
+
+/** Runs a command if it is available now; returns whether it ran. */
+export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
+  if (!isCommandEnabled(id, env, target)) return false;
+  COMMAND_HANDLERS[id](env, target.itemIds ?? []);
+  return true;
+}
+
+/**
+ * A command picked from a native context menu: main enabled it with fresh file state (the renderer's list may lag
+ * one libraryChanged behind), so only the window-level block is checked here.
+ */
+export function runPicked(id: CommandId, env: CommandEnv, itemIds: readonly string[]): boolean {
+  if (!Object.hasOwn(COMMAND_HANDLERS, id) || env.blocked || !COMMANDS.some((c) => c.id === id)) return false;
   COMMAND_HANDLERS[id](env, itemIds);
   return true;
 }

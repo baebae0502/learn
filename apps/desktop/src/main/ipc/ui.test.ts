@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
+import { stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -18,7 +19,7 @@ vi.mock('electron', () => ({
 
 const { createHandle } = await import('./register');
 const { registerUiIpc } = await import('./ui');
-registerUiIpc(createHandle(null), { getContext: () => ({}) as never, appInfo: () => ({}) as never, prefs: {} as never });
+registerUiIpc(createHandle(null), stubDeps({ getContext: () => ({}) as never, appInfo: () => ({}) as never }));
 
 const call = (raw?: unknown) => handlers.get('ui:windowState')!({ sender: {}, senderFrame: { url: 'learn://app/index.html' } }, raw);
 

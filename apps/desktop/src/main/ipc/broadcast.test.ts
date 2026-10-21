@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Availability, LibraryItem, Result } from '@learn/domain';
+import { stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -60,7 +61,7 @@ const tags = {
   unassignChanged: vi.fn((_t: string, ids: string[]) => ids),
   togglePositionChanged: vi.fn((): { tagId: string; assigned: boolean; itemIds: string[] } | null => null),
 };
-const deps = { getContext: () => ({ layout: {}, repo, collections, tags }) as never, appInfo: () => ({}) as never, prefs: {} as never };
+const deps = stubDeps({ getContext: () => ({ layout: {}, repo, collections, tags }) as never, appInfo: () => ({}) as never });
 
 const handle = createHandle(null);
 registerLibraryIpc(handle, deps);
@@ -157,21 +158,20 @@ describe('collection and tag mutations broadcast reason collections / tags, only
 });
 
 describe('item context menu re-checks the file first', () => {
-  it('a linked file that went missing this session enables 다시 연결… and updates the badge', async () => {
+  it('a linked file that went missing this session puts 다시 연결… first and updates the badge', async () => {
     disk.availability = 'missing'; // stored state still says available
     await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
-    const entries = popup.mock.calls[0]![0] as Array<{ id: string; enabled: boolean }>;
-    expect(entries).toEqual([
-      { id: 'item.open', label: '열기', enabled: true },
+    expect(popup.mock.calls[0]![0]).toEqual([
       { id: 'item.relink', label: '다시 연결…', enabled: true },
+      'separator',
+      { id: 'item.open', label: '열기', enabled: true },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
 
-  it('no broadcast when the disk agrees with the stored state', async () => {
+  it('no broadcast when the disk agrees with the stored state; 다시 연결… is left out for an available file', async () => {
     await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
-    const entries = popup.mock.calls[0]![0] as Array<{ id: string; enabled: boolean }>;
-    expect(entries.find((e) => e.id === 'item.relink')!.enabled).toBe(false);
+    expect(popup.mock.calls[0]![0]).toEqual([{ id: 'item.open', label: '열기', enabled: true }]);
     expect(sent).toEqual([]);
   });
 });

@@ -56,6 +56,8 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   try {
     const page = await app.firstWindow();
     await expect(page.getByTestId('app-ready')).toBeAttached();
+    // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).
+    await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuStateVersion?: number }).__learnMenuStateVersion ?? 0)).toBeGreaterThan(0);
     return { app, page };
   } catch (e) {
     await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
@@ -127,14 +129,24 @@ export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]
 
 /**
  * Click an application-menu item by id the way Electron does for a mouse click: the MenuItem's own `click()`
- * with the focused window. Throws when the item is missing, hidden or disabled (a user couldn't click it).
+ * with the focused window. Waits up to 5 s for the item to become clickable (the renderer reports its context
+ * asynchronously), then throws when it is missing, hidden or disabled (a user couldn't click it).
  */
 export async function runMenuCommand(app: ElectronApplication, id: CommandId): Promise<void> {
+  await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
   await app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
     const item = Menu.getApplicationMenu()?.getMenuItemById(id);
     if (!item) throw new Error(`no application menu item with id ${id}`);
     if (!item.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
     item.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
+  }, id);
+}
+
+/** Whether the application-menu item exists, is visible and is enabled right now. */
+export async function menuItemEnabled(app: ElectronApplication, id: CommandId): Promise<boolean> {
+  return app.evaluate(({ Menu }, id) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+    return Boolean(item && item.enabled && item.visible);
   }, id);
 }
 

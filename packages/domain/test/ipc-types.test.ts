@@ -31,6 +31,10 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['reader']['getPosition']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['reader']['savePosition']>>().toEqualTypeOf<Ipc.SavePositionInput>();
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();
+    expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
+  });
+  it('context menus are typed by kind', () => {
+    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag' | 'column'>();
   });
   it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {
     expectTypeOf<ReturnType<LearnApi['tags']['togglePosition']>>()

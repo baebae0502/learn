@@ -29,7 +29,7 @@ function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     const ctx = deps.getContext();
-    const paths = await showOpen(event, { title: '자료 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(event, { title: '파일 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
     return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
   });
 

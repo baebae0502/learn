@@ -21,5 +21,5 @@ export const Channels = {
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
-  ui: { showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState' },
+  ui: { showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext' },
 } as const;

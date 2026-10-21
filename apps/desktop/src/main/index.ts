@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, Menu } from 'electron';
-import { COMMANDS, LearnError, toLearnError, type AppInfo, type CommandId, type ErrorCode } from '@learn/domain';
+import { COMMANDS, LearnError, availableMenuCommands, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode } from '@learn/domain';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { sendEvent } from './events';
@@ -39,7 +39,11 @@ function openMainWindow(): BrowserWindow {
     url: devServerUrl ?? `${APP_SCHEME}://app/index.html`,
   });
   win.on('closed', () => {
-    if (mainWindow === win) mainWindow = null;
+    if (mainWindow !== win) return;
+    mainWindow = null;
+    // No renderer left to act on menu commands (macOS keeps the app running): back to the pre-report state.
+    uiContext = { view: 'library', blocked: true };
+    installAppMenu();
   });
   return win;
 }
@@ -51,10 +55,25 @@ const activation = createActivateGate({
   windowCount: () => BrowserWindow.getAllWindows().length,
 });
 
-/** Menu command → the focused window (accelerators and clicks), else the main window. */
+/** Last command context of the main window (ADR-0005 §2); blocked until the renderer's first report. */
+let uiContext: CommandContextState = { view: 'library', blocked: true };
+/** E2E marker: bumped on every accepted context report (tests wait for the first one). */
+const menuState = globalThis as { __learnMenuStateVersion?: number };
+
+function installAppMenu(): void {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, enabled: new Set(availableMenuCommands(uiContext)), onCommand: dispatchMenuCommand }),
+    ),
+  );
+}
+
+/** Menu clicks and accelerators always act on the main window (also when a settings or sheet window is focused). */
 function dispatchMenuCommand(commandId: CommandId): void {
-  const target = BrowserWindow.getFocusedWindow() ?? mainWindow;
-  if (target && !target.isDestroyed()) sendEvent(target.webContents, 'menuCommand', { commandId });
+  const target = mainWindow;
+  if (!target || target.isDestroyed()) return;
+  if (!target.isFocused()) target.focus();
+  sendEvent(target.webContents, 'menuCommand', { commandId });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -68,9 +87,8 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     // First, before any await: Electron's default menu (English, with Reload) must never be live. Needs no library.
-    Menu.setApplicationMenu(
-      Menu.buildFromTemplate(buildAppMenu({ isDev: isDevBuild, platform: process.platform, commands: COMMANDS, onCommand: dispatchMenuCommand })),
-    );
+    // Registry items stay disabled until the main window's renderer reports its context.
+    installAppMenu();
     hardenApp(devOrigin);
     const prefs = openPrefsStore(app.getPath('userData'));
     if (prefs.readOnly) console.error('[prefs] read-only for this session: PREFS_UNAVAILABLE');
@@ -98,6 +116,15 @@ if (!app.requestSingleInstanceLock()) {
         libraryError,
       }),
       prefs,
+      uiContext: {
+        report(sender, ctx) {
+          if (!mainWindow || sender !== mainWindow.webContents) return; // only the main window drives the menu
+          uiContext = ctx;
+          installAppMenu();
+          menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1;
+        },
+        current: () => uiContext,
+      },
     };
     registerAllIpc(createHandle(devOrigin), deps);
 

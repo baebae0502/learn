@@ -1,6 +1,6 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron';
+import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import type { z } from 'zod';
-import { LearnError, failureFrom, ok, type AppInfo, type Channels, type LearnApi, type Result } from '@learn/domain';
+import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Result } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
 import { isAllowedAppUrl } from '../url-policy';
@@ -9,6 +9,8 @@ export interface IpcDeps {
   getContext(): LibraryContext;
   appInfo(): AppInfo;
   prefs: PrefsStore;
+  /** The main window's renderer reports its command context; main derives menu availability from it. */
+  uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

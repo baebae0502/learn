@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppInfo, ImportOutcome, LibraryItem, Result, StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from './api';
-import { runCommand, type CommandEnv } from './commands/registry';
+import { runPicked, type CommandEnv } from './commands/registry';
 import { useMenuCommands } from './commands/useMenuCommands';
+import { useReportContext } from './commands/useReportContext';
 import { DuplicateDialog } from './components/DuplicateDialog';
 import { FatalScreen } from './components/FatalScreen';
 import { LibraryView } from './components/LibraryView';
@@ -102,12 +103,14 @@ export function App() {
   const commandEnv: CommandEnv = {
     view: openId ? 'viewer' : 'library',
     blocked: !info || info.libraryError !== null || status === 'busy' || duplicates.length > 0,
+    targetsOf: (ids) => ids.flatMap((id) => items.find((i) => i.id === id) ?? []),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setOpenId(null),
     open: (itemId) => setOpenId(itemId),
     relink: (itemId) => void relinkItem(itemId),
   };
   useMenuCommands(commandEnv);
+  useReportContext(commandEnv);
   const commandEnvRef = useRef(commandEnv);
   useEffect(() => {
     commandEnvRef.current = commandEnv;
@@ -117,7 +120,7 @@ export function App() {
     setActionError(null);
     try {
       const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [itemId], x, y }));
-      if (picked) runCommand(picked.commandId, commandEnvRef.current, { itemIds: [itemId] });
+      if (picked) runPicked(picked.commandId, commandEnvRef.current, [itemId]);
     } catch (e) {
       setActionError((e as Error).message);
     }

@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { COMMANDS, type MenuName } from '../../packages/domain/src/commands';
+import { platformAccelerator } from '../../packages/domain/src/accelerator';
+import { COMMANDS, commandLabel, isCommandAvailable, type MenuName } from '../../packages/domain/src/commands';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
-  FIXTURES, NativeInputNotPermitted, importPaths, launch, menuSnapshot, nativeKeystroke, openDialogCalls, openItem, recordedPopups,
-  runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
+  FIXTURES, NativeInputNotPermitted, importPaths, launch, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
+  recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -15,7 +16,7 @@ test.beforeAll(() => {
   if (!fs.existsSync(PDF)) throw new Error(`fixture missing: ${PDF} — run \`pnpm fixtures\``);
 });
 
-const TOP_LABELS: Record<MenuName, string> = { file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우' };
+const TOP_LABELS: Record<MenuName, string> = { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' };
 const HANGUL = /[가-힣]/;
 
 const flatten = (nodes: readonly MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flatten(n.submenu ?? [])]);
@@ -42,6 +43,8 @@ async function importOnePdf(page: Page): Promise<string> {
 test('menu: Korean top-level menus built from the registry, no reload or developer tools', async ({}, testInfo) => {
   const { app } = await session(testInfo);
   try {
+    // M2's App reports blocked: true on its first render, so the library context may land just after launch().
+    await expect.poll(() => menuItemEnabled(app, 'file.importManaged')).toBe(true);
     const menu = await menuSnapshot(app);
     expect(menu.map((m) => m.label)).toEqual([...(IS_MAC ? ['Learn'] : []), '파일', '편집', '보기', '이동', '윈도우']);
 
@@ -55,7 +58,8 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     for (const banned of ['reload', 'forcereload', 'toggledevtools']) expect(roles).not.toContain(banned);
     expect(all.map((n) => n.label)).not.toContain('개발자 도구');
 
-    // Registry-driven: each placed command appears exactly once, in its menu, with its id, label and accelerator.
+    // Registry-driven: each placed command appears exactly once, in its platform menu, with its id, platform label and
+    // accelerator, enabled exactly when the shared predicate allows it in the library view.
     for (const c of COMMANDS) {
       const hits = all.filter((n) => n.id === c.id);
       if (!c.menu) {
@@ -63,11 +67,16 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         continue;
       }
       expect(hits, c.id).toHaveLength(1);
-      expect(flatten(topMenu(menu, TOP_LABELS[c.menu.menu])).filter((n) => n.id === c.id)).toEqual([
-        expect.objectContaining({ label: c.label, accelerator: c.accelerator ?? null, enabled: true }),
+      const menuName = c.menu.menu === 'app' && !IS_MAC ? 'file' : c.menu.menu;
+      expect(flatten(topMenu(menu, TOP_LABELS[menuName])).filter((n) => n.id === c.id)).toEqual([
+        expect.objectContaining({
+          label: commandLabel(c, process.platform),
+          accelerator: c.accelerator ? platformAccelerator(c.accelerator, process.platform) : null,
+          enabled: isCommandAvailable(c.id, { view: 'library', blocked: false }),
+        }),
       ]);
     }
-    expect(entries(topMenu(menu, '파일'))).toEqual([[null, '자료 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ['close', '창 닫기']]);
+    expect(entries(topMenu(menu, '파일'))).toEqual([[null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ['close', '창 닫기']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
     expect(entries(topMenu(menu, '보기'))).toEqual([['togglefullscreen', '전체 화면']]);
     expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기']]);
@@ -92,7 +101,7 @@ test('menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구', a
   }
 });
 
-test('menu command 자료 가져오기… opens the (stubbed) dialog once and adds the item', async ({}, testInfo) => {
+test('menu command 파일 가져오기… opens the (stubbed) dialog once and adds the item', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
     await expect(page.getByTestId('empty-state')).toBeVisible();
@@ -107,7 +116,7 @@ test('menu command 자료 가져오기… opens the (stubbed) dialog once and ad
 });
 
 // A real OS-level ⌘O (System Events keystroke): Playwright's CDP keys never reach NSMenu key equivalents.
-test('⌘O (자료 가져오기…) opens the dialog exactly once', async ({}, testInfo) => {
+test('⌘O (파일 가져오기…) opens the dialog exactly once', async ({}, testInfo) => {
   test.skip(
     !IS_MAC,
     'Linux/xvfb: CDP-synthesized keys never reach native menu accelerators (Task 4: 0 dialog calls) and there is no ' +
@@ -158,7 +167,7 @@ test('menu command 라이브러리로 돌아가기 returns from the PDF viewer t
   }
 });
 
-test('item context menu: right-click a row, pick 열기 → the viewer opens; 다시 연결… is listed disabled', async ({}, testInfo) => {
+test('item context menu: right-click a row, pick 열기 → the viewer opens; 다시 연결… only for a missing linked file', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
     await importOnePdf(page);
@@ -167,12 +176,28 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     await expect(page.getByTestId('viewer-title')).toHaveText('sample');
     await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
-    expect(await recordedPopups(app)).toEqual([
-      [
-        { id: 'item.open', label: '열기', enabled: true, type: 'normal' },
-        { id: 'item.relink', label: '다시 연결…', enabled: false, type: 'normal' },
-      ],
-    ]);
+    const popups = await recordedPopups(app);
+    expect(popups).toHaveLength(1);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('menu: enabled state follows the reported view (ui:reportContext)', async ({}, testInfo) => {
+  const { app, page } = await session(testInfo);
+  try {
+    await importOnePdf(page);
+    expect(await menuItemEnabled(app, 'file.importManaged')).toBe(true);
+    expect(await menuItemEnabled(app, 'nav.back')).toBe(false);
+    await openItem(page, 'sample');
+    await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(true);
+    expect(await menuItemEnabled(app, 'file.importManaged')).toBe(false);
+    await runMenuCommand(app, 'nav.back');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(false);
+    // The payload is validated strictly (later tasks add fields to the schema and the type together).
+    expect(await page.evaluate(() => window.learn.ui.reportContext({ view: 'viewer', blocked: false, extra: 1 } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   } finally {
     await app.close();
   }

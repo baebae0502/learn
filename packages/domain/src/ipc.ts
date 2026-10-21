@@ -1,12 +1,12 @@
 import { z } from 'zod';
-import type { CommandId } from './commands';
+import { COMMANDS, type CommandContextState, type CommandId } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
-import { prefsFields } from './settings';
+import { LIBRARY_SORT_COLUMNS, prefsFields } from './settings';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
@@ -54,12 +54,19 @@ export const savePositionInput = z.object({
   locator: readingLocatorSchema,
   progress: z.number().min(0).max(1).nullable(),
 });
-export const showContextMenuInput = z.object({
-  kind: z.literal('item'),
-  itemIds: z.array(z.uuid()).min(1).max(5000),
-  x: z.number().finite(),
-  y: z.number().finite(),
-});
+export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
+/** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
+export const commandContextInput = z.object({ view: z.enum(['library', 'viewer']), blocked: z.boolean() }).strict() satisfies z.ZodType<CommandContextState>;
+export type CommandContextInput = z.input<typeof commandContextInput>;
+
+const point = { x: z.number().finite(), y: z.number().finite() };
+/** Native context menus by kind (ADR-0005 §4). M3 has item commands only; the other kinds get theirs in M4–M5. */
+export const showContextMenuInput = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  z.object({ kind: z.literal('column'), columnId: z.enum(LIBRARY_SORT_COLUMNS), ...point }),
+]);
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
@@ -141,6 +148,8 @@ export interface LearnApi {
     showContextMenu(input: ShowContextMenuInput): Promise<Result<{ commandId: CommandId } | null>>;
     /** The calling window's current state (the windowState push only reports changes). */
     windowState(): Promise<Result<WindowState>>;
+    /** The main window's command context changed; main re-derives the menu bar from it (other windows are ignored). */
+    reportContext(input: CommandContextInput): Promise<Result<void>>;
   };
   /** Subscribe to a main->renderer push event; returns an unsubscribe function. */
   on<K extends keyof LearnEventMap>(name: K, cb: (payload: LearnEventMap[K]) => void): () => void;

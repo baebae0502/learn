@@ -1,3 +1,4 @@
+export * from './accelerator';
 export * from './anchors';
 export * from './commands';
 export * from './errors';

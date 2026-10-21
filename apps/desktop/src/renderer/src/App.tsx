@@ -11,7 +11,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar, type SaveStatus } from './components/TopBar';
 import { TutorPanel } from './components/TutorPanel';
 import { useLearnEvent } from './events';
-import { t } from './strings';
+import { t } from './strings/legacy';
 import { ViewerHost } from './viewers/ViewerHost';
 
 interface PendingDuplicate {

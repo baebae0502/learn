@@ -2,7 +2,7 @@ import { useState, type DragEvent } from 'react';
 import type { LibraryItem, StorageMode } from '@learn/domain';
 import { api } from '../api';
 import { formatDate, formatSize } from '../format';
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 export interface LibraryViewProps {
   items: LibraryItem[];

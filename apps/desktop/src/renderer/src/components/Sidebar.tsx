@@ -1,4 +1,4 @@
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 export function Sidebar({ count, active, onShowLibrary }: { count: number; active: boolean; onShowLibrary(): void }) {
   return (

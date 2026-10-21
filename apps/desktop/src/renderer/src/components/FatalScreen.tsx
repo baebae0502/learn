@@ -1,4 +1,4 @@
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 export function FatalScreen({ code, message, libraryRoot }: { code: string; message: string; libraryRoot: string | null }) {
   return (

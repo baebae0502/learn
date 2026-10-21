@@ -1,4 +1,4 @@
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 export type SaveStatus = 'idle' | 'busy' | 'error';
 

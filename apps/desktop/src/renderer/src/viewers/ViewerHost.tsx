@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LibraryItem } from '@learn/domain';
 import { api, unwrap } from '../api';
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 import { PdfViewer } from './PdfViewer';
 import { VideoViewer } from './VideoViewer';
 

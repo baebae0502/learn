@@ -1,4 +1,4 @@
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 /** Placeholder only: no fake chat, no hard-coded memory. Implemented in P3. */
 export function TutorPanel({ onClose }: { onClose(): void }) {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 import { ratio, restoreVideoSeconds } from './positionSaver';
 import { usePosition } from './usePosition';
 

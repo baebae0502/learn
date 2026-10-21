@@ -3,7 +3,7 @@ import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { assetUrl, type LibraryItem } from '@learn/domain';
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 import { ratio, restorePageIndex } from './positionSaver';
 import { usePosition } from './usePosition';
 

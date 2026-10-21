@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { t } from '../strings';
+import { t } from '../strings/legacy';
 
 export function DuplicateDialog(props: { path: string; onOpenExisting(): void; onAddAnyway(): void; onCancel(): void }) {
   const cancelRef = useRef<HTMLButtonElement>(null);

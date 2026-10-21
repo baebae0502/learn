@@ -193,15 +193,24 @@ test('the pointer: hovering a row moves the cursor there, a click runs it once',
   }
 });
 
-test('the list follows what can run while the palette is open: a drop that starts an import empties it until the import ends', async ({}, testInfo) => {
+test('the list follows the registry while the palette is open: a drop that starts an import leaves 설정… under the busy notice; ↩ opens it', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
+  const input = page.getByTestId('palette-input');
+  const ids = () => page.getByTestId('palette-item').evaluateAll((els) => els.map((e) => e.getAttribute('data-command-id')));
+  const busy = page.getByTestId('palette-busy');
+  /** A real file dropped on the window (its path from a file input, as from Finder): a duplicate, so the import waits in the duplicate sheet and holds the window. */
+  const dropDuplicate = () =>
+    expectWindow(app, 'sheet', () =>
+      page.evaluate(() => {
+        const dt = new DataTransfer();
+        dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
+        document.body.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
+        document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }),
+    );
   try {
     await importPaths(page, [PDF]);
     await expect(page.getByTestId('item-row')).toHaveCount(1);
-    await runMenuCommand(app, 'app.palette');
-    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
-    // A real file dropped on the window (its path comes from a file input, as from Finder): a duplicate, so the import
-    // waits in the duplicate sheet and holds the window.
     await page.evaluate(() => {
       const picker = document.createElement('input');
       picker.type = 'file';
@@ -210,23 +219,36 @@ test('the list follows what can run while the palette is open: a drop that start
       document.body.append(picker);
     });
     await page.locator('#drop-source').setInputFiles(PDF);
-    const sheet = await expectWindow(app, 'sheet', () =>
-      page.evaluate(() => {
-        const dt = new DataTransfer();
-        dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
-        document.body.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
-        document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
-      }),
-    );
-    // Nothing can run now: no rows, and the notice says why (not "no match").
+    await runMenuCommand(app, 'app.palette');
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
+    await expect(busy).toHaveCount(0);
+    let sheet = await dropDuplicate();
+    // The window is held: only the main-owned 설정… can run, listed under the notice that says why the rest is missing.
     await expect(page.getByTestId('palette')).toBeVisible();
+    await expect.poll(ids).toEqual(['app.settings']);
+    await expect(busy.locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
+    await expect(busy.locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
+    await expect(page.getByRole('listbox').getByTestId('palette-busy')).toHaveCount(0); // a header, not an option
+    await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다. 실행할 수 있는 명령 1개');
+    await expect.poll(() => cursorRow(page)).toBe('app.settings');
+    // Nothing listed: the notice alone (not "no match").
+    await input.fill('효소 억제제');
     await expect(page.getByTestId('palette-item')).toHaveCount(0);
-    await expect(page.getByTestId('palette-empty').locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
-    await expect(page.getByTestId('palette-empty').locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
+    await expect(busy).toBeVisible();
+    await expect(page.getByTestId('palette-empty')).toHaveCount(0);
     await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다');
+    await input.fill('');
     await closeSheet(sheet, 'Escape'); // 건너뛰기: the import ends
     await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
+    await expect(busy).toHaveCount(0);
     await expect.poll(() => cursorRow(page)).toBe('file.importManaged');
+    // Held again: ↩ on 설정… opens the settings window (main-owned, it runs while the import waits).
+    sheet = await dropDuplicate();
+    await expect.poll(ids).toEqual(['app.settings']);
+    const settings = await expectWindow(app, 'settings', () => page.keyboard.press('Enter'));
+    await expect(settings.getByTestId('settings-root')).toBeVisible();
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await closeSheet(sheet, 'Escape');
   } finally {
     await app.close();
   }

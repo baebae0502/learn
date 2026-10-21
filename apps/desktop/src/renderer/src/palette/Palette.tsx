@@ -90,11 +90,11 @@ function PaletteDialog() {
   const ids = useId();
   const platform = currentPlatform();
   const state = env.sidebar ? { sidebar: env.sidebar } : {};
-  // Only what can run now (no fake commands), re-read on every render: the list follows availability while open. While
-  // an import or a sheet holds the window nothing is listed and the notice says why — also not the main-owned 설정…,
-  // which the menu bar (⌘,) still opens.
+  // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
+  // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
+  // notice that says why the rest is missing (review minor 1).
   const ranked = rankCommands(
-    COMMANDS.filter((c) => inPalette(c) && !env.blocked && isEnabled(c.id)),
+    COMMANDS.filter((c) => inPalette(c) && isEnabled(c.id)),
     query,
     platform,
     state,
@@ -106,7 +106,22 @@ function PaletteDialog() {
   // Keep the cursor row in view when ↑ ↓ move it past the list's edge.
   // Read out politely when the result changes (the count, or the notice that replaces the list); a cursor move or an
   // edit that leaves the same count changes nothing here, so nothing is re-announced.
-  const status = ranked.length > 0 ? t.palette.resultCount(ranked.length) : env.blocked ? t.palette.busyTitle : t.palette.emptyTitle(query.trim());
+  const status =
+    ranked.length > 0
+      ? env.blocked
+        ? t.palette.busyStatus(ranked.length)
+        : t.palette.resultCount(ranked.length)
+      : env.blocked
+        ? t.palette.busyTitle
+        : t.palette.emptyTitle(query.trim());
+  // An import or a sheet holds the window: nothing else can run until it ends (not "no match"). Alone when nothing is
+  // listed, else a header above the list — not an option, never under the cursor.
+  const busy = env.blocked && (
+    <div className="p-empty" data-testid="palette-busy">
+      <div className="pe-title">{t.palette.busyTitle}</div>
+      <div className="pe-text">{t.palette.busyBody}</div>
+    </div>
+  );
   const cursorElementId = cursor >= 0 ? optionId(cursor) : null;
   useLayoutEffect(() => {
     if (cursorElementId) document.getElementById(cursorElementId)?.scrollIntoView({ block: 'nearest' });
@@ -158,6 +173,7 @@ function PaletteDialog() {
           </span>
         </div>
         <div className="p-list">
+          {ranked.length > 0 && busy}
           {ranked.length > 0 ? (
             <div role="listbox" id={listId} aria-label={t.palette.group}>
               <section role="group" aria-labelledby={`${ids}-group`}>
@@ -194,20 +210,12 @@ function PaletteDialog() {
               </section>
             </div>
           ) : (
-            <div className="p-empty" data-testid="palette-empty">
-              {env.blocked ? (
-                // An import or a sheet holds the window: nothing can run until it ends (not "no match").
-                <>
-                  <div className="pe-title">{t.palette.busyTitle}</div>
-                  <div className="pe-text">{t.palette.busyBody}</div>
-                </>
-              ) : (
-                <>
-                  <div className="pe-title">{t.palette.emptyTitle(query.trim())}</div>
-                  <div className="pe-text">{t.palette.emptyBody}</div>
-                </>
-              )}
-            </div>
+            (busy || (
+              <div className="p-empty" data-testid="palette-empty">
+                <div className="pe-title">{t.palette.emptyTitle(query.trim())}</div>
+                <div className="pe-text">{t.palette.emptyBody}</div>
+              </div>
+            ))
           )}
         </div>
       </div>

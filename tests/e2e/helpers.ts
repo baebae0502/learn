@@ -117,6 +117,47 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
   }
 }
 
+/**
+ * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. A sheet is
+ * returned once main has shown it at its measured size (hidden → sized to its content → shown), and the page's
+ * viewport has that size: geometry and screenshots never see the first, full-height layout.
+ */
+export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
+  const opened = app.waitForEvent('window', { timeout: 15_000 });
+  await trigger();
+  const page = await opened;
+  await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
+  await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
+  if (kind === 'sheet') {
+    await expect
+      .poll(
+        async () => {
+          const shown = await app.evaluate(({ BrowserWindow }, url) => {
+            const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
+            return w?.isVisible() ? w.getContentSize().join('x') : null;
+          }, page.url());
+          return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
+        },
+        { message: 'the sheet is shown at its measured size' },
+      )
+      .toBe(true);
+  }
+  return page;
+}
+
+/**
+ * Press a key that closes the sheet and wait for its window to close (R-12). esc acts on keydown, as on a native
+ * sheet, so the window can be gone before Playwright sends the keyup: a press that failed because the page closed is
+ * the expected end, any other failure is not.
+ */
+export async function closeSheet(sheet: Page, key: 'Escape' | 'Enter'): Promise<void> {
+  const closed = sheet.waitForEvent('close');
+  await sheet.keyboard.press(key).catch((e: unknown) => {
+    if (!sheet.isClosed()) throw e;
+  });
+  await closed;
+}
+
 export async function openItem(page: Page, title: string): Promise<void> {
   await page.locator(`[data-testid="open-item"][data-title="${title}"]`).click();
 }
@@ -259,7 +300,7 @@ export function frontmostProcess(): FrontmostProcess {
 export async function bringAppToFront(app: ElectronApplication, timeoutMs = 10_000): Promise<FrontmostProcess> {
   await app.evaluate(({ app: electronApp, BrowserWindow }) => {
     electronApp.focus({ steal: true });
-    BrowserWindow.getAllWindows()[0]?.focus();
+    BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))?.focus();
   });
   const pid = app.process().pid;
   const deadline = Date.now() + timeoutMs;

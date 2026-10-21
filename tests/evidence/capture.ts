@@ -88,7 +88,7 @@ export async function pageShot(page: Page, name: string, description: string): P
 export async function focusApp(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ app: a, BrowserWindow }) => {
     a.focus({ steal: true });
-    const w = BrowserWindow.getAllWindows()[0];
+    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=main'));
     w?.show();
     w?.focus();
     w?.moveTop();
@@ -96,9 +96,11 @@ export async function focusApp(app: ElectronApplication): Promise<void> {
   await sleep(400);
 }
 
-/** CGWindowID of the first window: getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
+/** CGWindowID of the main window: getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
 export async function cgWindowId(app: ElectronApplication): Promise<string> {
-  const sourceId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getMediaSourceId() ?? '');
+  const sourceId = await app.evaluate(
+    ({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))?.getMediaSourceId() ?? '',
+  );
   const m = /^window:(\d+):/.exec(sourceId);
   if (!m) throw new Error(`unexpected media source id: ${JSON.stringify(sourceId)}`);
   return m[1]!;

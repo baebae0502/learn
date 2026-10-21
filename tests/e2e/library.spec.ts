@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { expectDisabledReason, importFiles, importPaths, launch, openItem, stubOpenDialog, type Session } from './helpers';
+import { expectDisabledReason, expectWindow, importFiles, importPaths, launch, openItem, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -38,21 +38,19 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   await expect(s.page.getByTestId('import-done').getByTestId('toast-close')).toHaveCount(0); // C-6: success has no ×
   await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개');
 
-  await importFiles(s, [a]);
-  await expect(s.page.getByTestId('duplicate-dialog')).toBeVisible();
-  // The import waits for the answer: 가져오기 ▾ is disabled and says why (M-2; the description is its tooltip text).
+  let sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
+  // The import waits for the sheet's answer: 가져오기 ▾ is disabled and says why (M-2; the description is its tooltip text).
   await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
-  await s.page.getByTestId('dup-cancel').click();
-  await expect(s.page.getByTestId('duplicate-dialog')).toBeHidden();
+  await sheet.getByTestId('dup-skip').click();
   await expect(s.page.getByTestId('item-row')).toHaveCount(1);
   await expectDisabledReason(s.page.getByTestId('import-menu'), null);
 
-  await importFiles(s, [a]);
-  await s.page.getByTestId('dup-add').click();
+  sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
+  await sheet.getByTestId('dup-add').click();
   await expect(s.page.getByTestId('item-row')).toHaveCount(2);
 
-  await importFiles(s, [a]);
-  await s.page.getByTestId('dup-open').click();
+  sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
+  await sheet.getByTestId('dup-open').click();
   await expect(s.page.getByTestId('viewer-title')).toHaveText('Chapter 06');
   await s.page.getByTestId('viewer-back').click();
 

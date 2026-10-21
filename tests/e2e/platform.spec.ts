@@ -46,7 +46,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     // launch() returns after the first context report; poll anyway so a report that lands a moment later is not a failure.
     await expect.poll(() => menuItemEnabled(app, 'file.importManaged')).toBe(true);
     const menu = await menuSnapshot(app);
-    expect(menu.map((m) => m.label)).toEqual([...(IS_MAC ? ['Learn'] : []), '파일', '편집', '보기', '이동', '윈도우']);
+    expect(menu.map((m) => m.label)).toEqual([...(IS_MAC ? ['Learn'] : []), '파일', '편집', '보기', '이동', '윈도우', '도움말']);
 
     const all = flatten(menu);
     // Every visible label is Korean; the only exception is the macOS app menu, which carries the app's name.
@@ -91,6 +91,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기']]
         : [['minimize', '최소화']],
     );
+    expect(entries(topMenu(menu, '도움말'))).toEqual([[null, '단축키 도움말']]);
   } finally {
     await app.close();
   }
@@ -152,6 +153,8 @@ test('⌘O (파일 가져오기…) opens the dialog exactly once', async ({}, t
     expect(await openDialogCalls(app)).toBe(1);
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(page.getByTestId('duplicate-dialog')).toHaveCount(0);
+    // …and no duplicate sheet window opened over it.
+    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
   } finally {
     await app.close();
   }

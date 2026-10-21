@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, importFiles, importPaths, runMenuCommand } from '../helpers';
+import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, menuItemEnabled, runMenuCommand } from '../helpers';
 import { THEMES, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -55,8 +55,10 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
       await runMenuCommand(s.app, 'view.toggleSidebar');
     }
     await setTheme(s.page, 'light');
-    await importFiles(s, [path.join(FIXTURES, 'sample.pdf')]); // duplicate → the pre-M3 dialog, skip it
-    await s.page.getByTestId('dup-cancel').click();
+    // A duplicate opens the duplicate sheet (shot in its own test below): close it, which skips.
+    const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [path.join(FIXTURES, 'sample.pdf')]));
+    await closeSheet(dup, 'Escape');
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     const txt = testInfo.outputPath('notes.txt');
     fs.writeFileSync(txt, 'x');
     await importFiles(s, [txt]);
@@ -79,6 +81,26 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     expect(await long.locator('.t-name').evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     expect(await long.locator('.t-cause').evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     await shoot(s.page, 'toast-failure-multi-dark', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [path.join(FIXTURES, 'sample.pdf')]));
+      await shoot(dup, `sheet-duplicate-${theme}`, { mask: [dup.getByTestId('dup-card').locator('.t-footnote')] });
+      await closeSheet(dup, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+      const keys = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      await shoot(keys, `sheet-shortcuts-${theme}`);
+      await closeSheet(keys, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
   } finally {
     await s.app.close();
   }

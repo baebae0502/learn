@@ -331,6 +331,14 @@ export interface NativeKeystroke {
   frontmost: FrontmostProcess;
   script: string;
   output: string;
+  /** nativeKeyCode: which window (`?window=` kind) was focused right before the key went out. */
+  focusedWindow?: string | null;
+}
+
+/** The AppleScript ` using …` clause for System Events `keystroke` / `key code`. */
+function usingClause(modifiers: readonly KeyModifier[]): string {
+  const downs = modifiers.map((m) => `${m} down`);
+  return downs.length === 0 ? '' : downs.length === 1 ? ` using ${downs[0]}` : ` using {${downs.join(', ')}}`;
 }
 
 /**
@@ -340,8 +348,36 @@ export interface NativeKeystroke {
 export async function nativeKeystroke(app: ElectronApplication, key: string, modifiers: readonly KeyModifier[] = []): Promise<NativeKeystroke> {
   if (!/^[ -~]$/.test(key)) throw new Error(`nativeKeystroke: one printable ASCII character expected, got ${JSON.stringify(key)}`);
   const frontmost = await bringAppToFront(app);
-  const downs = modifiers.map((m) => `${m} down`);
-  const using = downs.length === 0 ? '' : downs.length === 1 ? ` using ${downs[0]}` : ` using {${downs.join(', ')}}`;
-  const script = `tell application "System Events" to keystroke ${JSON.stringify(key)}${using}`;
+  const script = `tell application "System Events" to keystroke ${JSON.stringify(key)}${usingClause(modifiers)}`;
   return { frontmost, script, output: osascript(script) };
+}
+
+/** macOS virtual key codes for the keys `nativeKeystroke` cannot type. */
+export const KEY_CODE = { return: 36, escape: 53 } as const;
+
+/**
+ * darwin only: a real OS-level press of a non-printable key (System Events `key code`, e.g. KEY_CODE.return), with the
+ * same frontmost and permission handling as `nativeKeystroke`. `window: 'sheet'` then makes the open sheet the key
+ * window (bringAppToFront focuses the main window), so the press reaches the sheet as a user's would.
+ */
+export async function nativeKeyCode(
+  app: ElectronApplication,
+  code: number,
+  modifiers: readonly KeyModifier[] = [],
+  opts: { window?: 'main' | 'sheet' } = {},
+): Promise<NativeKeystroke> {
+  if (!Number.isInteger(code) || code < 0 || code > 127) throw new Error(`nativeKeyCode: a macOS virtual key code (0–127) expected, got ${code}`);
+  const frontmost = await bringAppToFront(app);
+  if (opts.window === 'sheet') {
+    const found = await app.evaluate(({ BrowserWindow }) => {
+      const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=sheet'));
+      w?.focus();
+      return Boolean(w);
+    });
+    if (!found) throw new Error('nativeKeyCode: no sheet window to send the key to');
+    await new Promise((resolve) => setTimeout(resolve, 300)); // AppKit moves key status asynchronously
+  }
+  const focusedWindow = await app.evaluate(({ BrowserWindow }) => /[?&]window=(\w+)/.exec(BrowserWindow.getFocusedWindow()?.webContents.getURL() ?? '')?.[1] ?? null);
+  const script = `tell application "System Events" to key code ${code}${usingClause(modifiers)}`;
+  return { frontmost, script, output: osascript(script), focusedWindow };
 }

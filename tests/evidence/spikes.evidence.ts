@@ -1,13 +1,12 @@
 // M0 spikes (@evidence): what the macOS runner lets us capture, and the packaged app.
 // Each spike records its outcome in evidence-results/spikes.json; a failed capture is data, not a test failure,
 // unless the app itself misbehaves.
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { FIXTURES, launch, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
-import { EVIDENCE_ROOT, IS_MAC, focusApp, fullScreenShot, nativeWindowShot, pageShot, startRecording, startScreencast, tryExec, writeJson } from './capture';
+import { EVIDENCE_ROOT, IS_MAC, captureOpenMenu, focusApp, fullScreenShot, menuBarNames, nativeWindowShot, pageShot, pressEscape, startRecording, startScreencast, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -36,58 +35,6 @@ async function pngSize(rel: string | null): Promise<string | null> {
   const h = /pixelHeight: (\d+)/.exec(r.stdout)?.[1];
   return w && h ? `${w}x${h}` : null;
 }
-
-/** Names of the menu bar items System Events sees for `processName` (item 2 is the app menu). */
-async function menuBarNames(processName: string) {
-  return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
-}
-
-const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
-
-/**
- * Open menu bar item `index` of `processName` two ways and capture the screen each time.
- * Run 39443865113 showed that `click` under `ignoring application responses` returned at once but no
- * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
- * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
- */
-async function captureOpenMenu(app: ElectronApplication, processName: string, index: number, prefix: string, what: string) {
-  await focusApp(app);
-  const child = spawn('osascript', ['-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
-  let stderr = '';
-  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
-  const exited = new Promise<string>((resolve) => child.on('exit', (code, signal) => resolve(`exit ${code ?? signal}`)));
-  await sleep(1500);
-  const runningAfterDelay = child.exitCode === null && child.signalCode === null;
-  const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
-  child.kill('SIGTERM');
-  // A pending AXPress keeps System Events busy; restart it only on throwaway CI machines.
-  const unblock = process.env['CI'] ? await tryExec('killall', ['System Events']) : { ok: false, skipped: 'not CI' };
-  await sleep(800);
-  await pressEscape();
-  await sleep(300);
-  const click = {
-    shot: clickShot.file,
-    osascriptStillRunningAfter1500ms: runningAfterDelay,
-    osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
-    stderr: stderr.trim(),
-    killallSystemEvents: 'skipped' in unblock ? unblock.skipped : unblock.ok,
-  };
-
-  await focusApp(app);
-  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
-  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
-  keys.push('key code 125', 'end tell');
-  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
-  await sleep(1200);
-  const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
-  await pressEscape();
-  await pressEscape();
-  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim() };
-  return { click, keyboard };
-}
-
 
 async function freshSession(opts: LaunchOptions = {}): Promise<Session & { tmp: string }> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-'));

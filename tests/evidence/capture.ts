@@ -259,3 +259,94 @@ export async function tryExec(cmd: string, args: string[], timeout = 30_000): Pr
     return { ok: false, stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? err.message), ms: Date.now() - t0 };
   }
 }
+
+/** Names of the menu bar items System Events sees for `processName` (item 2 is the app menu). */
+export async function menuBarNames(processName: string) {
+  return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
+}
+
+export const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
+
+/**
+ * Open menu bar item `index` of `processName` two ways and capture the screen each time.
+ * Run 39443865113 showed that `click` under `ignoring application responses` returned at once but no
+ * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
+ * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
+ */
+export async function captureOpenMenu(app: ElectronApplication, processName: string, index: number, prefix: string, what: string) {
+  await focusApp(app);
+  const child = spawn('osascript', ['-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  const exited = new Promise<string>((resolve) => child.on('exit', (code, signal) => resolve(`exit ${code ?? signal}`)));
+  await sleep(1500);
+  const runningAfterDelay = child.exitCode === null && child.signalCode === null;
+  const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
+  child.kill('SIGTERM');
+  // A pending AXPress keeps System Events busy; restart it only on throwaway CI machines.
+  const unblock = process.env['CI'] ? await tryExec('killall', ['System Events']) : { ok: false, skipped: 'not CI' };
+  await sleep(800);
+  await pressEscape();
+  await sleep(300);
+  const click = {
+    shot: clickShot.file,
+    osascriptStillRunningAfter1500ms: runningAfterDelay,
+    osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
+    stderr: stderr.trim(),
+    killallSystemEvents: 'skipped' in unblock ? unblock.skipped : unblock.ok,
+  };
+
+  await focusApp(app);
+  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
+  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
+  keys.push('key code 125', 'end tell');
+  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
+  await sleep(1200);
+  const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
+  await pressEscape();
+  await pressEscape();
+  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim() };
+  return { click, keyboard };
+}
+
+/** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */
+export async function pngPixels(page: Page, rel: string, points: ReadonlyArray<readonly [number, number]>): Promise<number[][]> {
+  const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');
+  return page.evaluate(async ({ b64, points }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    return points.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
+  }, { b64, points });
+}
+
+/** Centroid (device px) and size of the pixels in `box` whose RGB satisfies `match` (e.g. the red close button). */
+export async function pngCentroid(page: Page, rel: string, box: { x: number; y: number; w: number; h: number }, match: 'red' | 'green'): Promise<{ x: number; y: number; n: number; width: number } | null> {
+  const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');
+  return page.evaluate(async ({ b64, box, match }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(box.x, box.y, box.w, box.h).data;
+    // Fixed predicates (the page's CSP has no unsafe-eval): macOS close (#ff5f57-ish) and zoom (#28c840-ish) buttons.
+    const test = (r: number, g: number, b: number) => (match === 'red' ? r > 200 && g > 60 && g < 130 && b > 50 && b < 120 : r < 120 && g > 150 && b < 120);
+    let sx = 0, sy = 0, n = 0;
+    for (let y = 0; y < box.h; y++) for (let x = 0; x < box.w; x++) {
+      const i = (y * box.w + x) * 4;
+      if (test(d[i]!, d[i + 1]!, d[i + 2]!)) { sx += x; sy += y; n++; }
+    }
+    return n ? { x: box.x + sx / n, y: box.y + sy / n, n, width: img.naturalWidth } : null;
+  }, { b64, box, match });
+}

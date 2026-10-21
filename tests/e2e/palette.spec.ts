@@ -35,8 +35,12 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await stubOpenDialog(app, []);
+    // M3 finds commands only, and the launcher says so, like the palette's own field (critic T9-m1).
+    await expect(page.getByTestId('launcher')).toContainText('명령 검색');
+    await expect(page.getByTestId('launcher')).toHaveAccessibleName(`명령 검색 (${IS_MAC ? '⌘K' : 'Ctrl+K'})`);
     await page.getByTestId('launcher').click();
     await expect(page.getByTestId('palette')).toBeVisible();
+    await expect(page.getByTestId('palette-input')).toHaveAttribute('placeholder', '명령 검색');
     await expect(page.getByTestId('palette-input')).toBeFocused();
     await expect(page.getByTestId('palette-esc')).toHaveText(IS_MAC ? 'esc' : 'Esc'); // input-row keycap (palette.html, C-7), platform spelling
     // The scrim lies over the 52 px drag strips; it must not drag the window (R-23).

@@ -49,7 +49,10 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 | 9 | [39629607271](https://github.com/baebae0502/learn/actions/runs/39629607271) | evidence / macos-15 / 아니오 (label `m3-chrome-2`) | 176초 → 3분 | 실패 | Task 8 수정 1회차: 메뉴 테스트의 하드 단언(툴팁이 열려야 함)이 실패해 직렬 모드에서 뒤 테스트 7개가 건너뛰어짐(하네스). 그 앞 판정은 모두 통과 |
 | 10 | [39631541294](https://github.com/baebae0502/learn/actions/runs/39631541294) | evidence / macos-15 / 아니오 (label `m3-chrome-2`) | 171초 → 3분 | 실패 | 하네스 수정 후: 테스트 전부 실행. 판정 29개 중 26개 통과, 3개는 앱 결함 하나(시트가 닫힌 뒤 창이 비활성으로 남음 — 38e3a9e에서 고침, 확인은 Task 14) 때문 — 아래 "M3 창 크롬 수정 1회차" |
 
-**합계: macOS 10회(M0 5 · M2 1 · M3 4), 36분(포함 분 360분 차감).** M0은 예산 8회 중 5회. M3은 Task 8이 2회, Task 8 수정 1회차가 2회(통제자 허용, 무료 한도 안 — C-9: 지출 한도 $0이라 과금 없음)를 썼다. Task 14의 1회가 남았다. fixture 잡(ubuntu)은 run마다 1분(×1). Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
+| 11 | [39640208719](https://github.com/baebae0502/learn/actions/runs/39640208719) | evidence / macos-15 / 아니오 (label `m3-chrome-3`) | 264초 → 5분 | 실패 | Task 8 수정 2회차 1차: R2-1 실험(보기의 전체 화면 항목 세 변형). 기본(역할 항목)은 열린 메뉴에 2행. 변형 앱이 앞으로 오지 못해 실험의 행 수·⌃⌘F 판정은 하네스 결함으로 비었고, 클릭 캡처를 다시 세어 결정 — 아래 "M3 창 크롬 수정 2회차" |
+| 12 | [39642950406](https://github.com/baebae0502/learn/actions/runs/39642950406) | evidence / macos-15 / 아니오 (label `m3-chrome-3`) | 198초 → 4분 | **성공** | 고른 변형(우리 항목, ⌃⌘F) 확인: 판정 35개 모두 통과 |
+
+**합계: macOS 12회(M0 5 · M2 1 · M3 6), 45분(포함 분 450분 차감).** M0은 예산 8회 중 5회. M3은 Task 8이 2회, Task 8 수정 1·2회차가 각 2회(통제자 허용, 무료 한도 안 — C-9: 지출 한도 $0이라 과금 없음)를 썼다. Task 14의 1회가 남았다. fixture 잡(ubuntu)은 run마다 1분(×1). Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
 
 ## 기준선 실측
 
@@ -165,6 +168,42 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 - **리더 열기 지연(보고만)**: PDF 23ms, 재생할 수 없는 동영상 안내 652ms.
 - **찾은 앱 결함**: 시트가 닫힌 뒤 메인 창이 키 창(`isFocused()` true)인데 마지막 windowState 푸시는 "비활성" — macOS는 시트가 끝날 때 부모를 다시 키 창으로 만들면서 Electron 'focus'를 내지 않는다. 그 결과 선택이 중립색으로 남고 툴팁이 막혔다(판정 3개 실패의 원인). 38e3a9e: 시트 창이 닫히면 main이 부모 상태를 다시 읽어 보낸다. macOS 확인은 Task 14 실행.
 - VoiceOver는 여전히 실기 수동 확인 항목이다.
+
+## M3 창 크롬 수정 2회차 (run 39640208719 · 39642950406, 2026-10-21, macos-15 arm64, `suite=evidence`, 5분 + 4분)
+
+비평 2회차(critic-t8 round2)의 R2-1(보기에 전체 화면이 여전히 둘, 닫힌 메뉴의 System Events 목록으로 센 판정은 하나라고 보고)과 R2-2–R2-6, n6. 증거: `evidence/m3-chrome-3/39642950406/`(확인), `evidence/m3-chrome-3/39640208719/`(실험).
+
+- **열린 메뉴로 센다**: 판정은 이제 열린 보기 메뉴 캡처의 픽셀로 글자 행과 구분선을 센다(`tests/evidence/menu-rows.ts`, 단위 테스트는 run 39631541294 캡처 조각에서 전체 화면 행 2개). 열린 메뉴의 System Events 목록도 기록하는데, **열린 상태에서도 AppKit이 덧붙인 행을 보여 주지 않는다**(2행일 때도 이름은 하나).
+- **R2-1 실험(run 39640208719, 클릭 캡처를 같은 계수기로 셈)**:
+  - (b) Electron `togglefullscreen` 역할(단축키 지정 없음): **2행** — "전체 화면 시작 fn F", "전체 화면 시작 ⌃⌘F". 두 행 모두 우리 제목이고 상태 이름도 함께 바뀐다: AppKit이 `toggleFullScreenMode:` 항목의 사본을 보이게 띄운다(Electron #49074는 숨은 사본만 지운다). 이전 `registerDefaults`는 아무 효과가 없었다.
+  - (a) 우리 항목 없음: **0행** — AppKit은 아무것도 넣지 않는다. 그러니 fn F 행은 AppKit 자신의 "Enter Full Screen"이 아니었다.
+  - (c) 역할 없는 우리 항목(⌃⌘F, 메인 창 전체 화면 토글) + 앱 기본값 `NSFullScreenMenuItemEverywhere = false`: **1행**.
+  - 이 실행에서 변형 앱이 앞으로 오지 못해(같은 "Electron" 앱이 이미 앞에 있음) 실제 ⌃⌘F 판정이 비었다 → (c)를 제품 경로로 두고 run 39642950406의 주 세션이 확인했다.
+- **확인(run 39642950406, 판정 35/35)**:
+  - 보기는 사이드바가 보일 때·가려졌을 때·전체 화면에서 모두 **1행**(패널 y 25–90). 이름은 "전체 화면 시작" → 실제 ⌃⌘F로 들어가면 "전체 화면 종료"(m3-09f) → 다시 ⌃⌘F로 나온다.
+  - 38e3a9e: 시트가 닫히고 255·275ms 안에 활성으로 돌아오고 선택은 다시 강조색.
+  - 툴팁: 메뉴로 접고 펴도 없음 [0, 0]. m3-10의 비활성 이유 툴팁 "이전 쪽 · 첫 쪽입니다" 다시 보임.
+  - 비활성 창: 키보드 커서 없음, 도구 막대 제목·사이드바 행 아이콘이 `--text-secondary`.
+- **하네스 남은 점(Task 14)**: 다크 재질 위 툴팁(m3-14)과 메뉴 아래 툴팁은 DOM으로는 열려 있었지만, 캡처 직전 `focusApp`이 창을 잠깐 비활성으로 만들어 툴팁이 닫혔다(푸시 기록에 "unfocused"가 메뉴 열림보다 먼저). 6847751에서 앞으로 가져온 뒤 다시 포커스하지 않게 고쳤다 — Task 14 실행에서 확인한다.
+- **Finder 기준**(`ref-finder-*`, 같은 러너):
+
+  | 상태 | 제목 막대 면 → 제목 글자 | 사이드바 면 → 글자 | 사이드바의 가장 짙은 색(아이콘) |
+  |---|---|---|---|
+  | 라이트 활성 | 254 → 77 | 248 → 73 | (10,122,255) 강조 파랑 |
+  | 라이트 비활성 | 236 → **172** | 236 → 34 | (236,204,162) 회색에 가까움 |
+  | 다크 활성 | 38 → 233 | 56 → 255 | 강조색 |
+  | 다크 비활성 | 20 → **85** | 23 → 255 | (27,64,104) 흐림 |
+
+  Finder는 비활성에서 제목을 크게 흐리고(라이트 172/236), 사이드바 아이콘의 강조색을 뺀다. 사이드바 글자는 그대로다. 우리 R2-3(제목 `--text-secondary`, 아이콘 회색)과 방향이 같고 Finder가 더 흐리다 — 비평이 판단한다.
+- **n6(semibold)**: 15px에서 잉크 합은 라틴 500 166 · 590 264 · 600 209 · 700 235, 한글 500 209 · 590 237 · 600 236 · 700 265.
+  - 라틴 600은 CDP 이름만 `.SFNS-Bold`이고 잉크는 500과 700 사이다(가변 글꼴의 중간 굵기).
+  - 라틴 590은 `.SFNS-Regular`인데 잉크가 700보다 많아 합성 굵게로 보인다.
+  - 한글 590은 600과 같다(Apple SD Gothic Neo SemiBold).
+  - 결론: **600 유지**(spec 4에 기록).
+- 그 밖(두 실행 같음):
+  - 다크 시트(m3-07b)와 Finder 참고 캡처 4장.
+  - 편집의 AppKit 항목은 여전히 영어(비패키지).
+  - 열기 지연: PDF 40ms, 재생 불가 안내 657ms.
 
 ## 알려진 한계
 

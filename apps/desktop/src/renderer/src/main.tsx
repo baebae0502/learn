@@ -18,7 +18,12 @@ if (params.vibrancy) root.dataset['vibrancy'] = '1';
 const VIEWS: Partial<Record<RendererWindow, ComponentType>> = { main: App, gallery: Gallery };
 const View = VIEWS[params.window] ?? App;
 
-createRoot(document.getElementById('root')!).render(
+// Errors React catches or can't recover from are logged by name only: messages can carry paths or document text.
+const errorName = (e: unknown): string => (e instanceof Error ? e.name : 'unknown');
+createRoot(document.getElementById('root')!, {
+  onCaughtError: (e) => console.error(`[app] caught ${errorName(e)}`),
+  onUncaughtError: (e) => console.error(`[app] uncaught ${errorName(e)}`),
+}).render(
   <StrictMode>
     <I18nProvider locale="ko-KR">
       <View />

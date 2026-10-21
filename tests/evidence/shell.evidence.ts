@@ -51,6 +51,23 @@ async function guard(name: string, run: () => Promise<void>): Promise<void> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Records main's windowState and nativeMenu pushes in the page (diagnostics for the window-state checks). */
+async function recordPushes(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __pushes: Array<[string, boolean, number]> };
+    w.__pushes = [];
+    window.learn.on('windowState', (e) => w.__pushes.push(['windowState.focused', e.focused, Math.round(performance.now())]));
+    window.learn.on('nativeMenu', (e) => w.__pushes.push(['nativeMenu.open', e.open, Math.round(performance.now())]));
+  });
+}
+/** The window as the page and main see it now, plus the last pushes. */
+const windowFacts = async () => ({
+  inactiveAttr: await s.page.evaluate(() => document.documentElement.hasAttribute('data-window-inactive')),
+  tooltipBlock: await s.page.evaluate(() => document.documentElement.dataset['tooltipBlock'] ?? null),
+  mainFocused: await (await mainWindow(s.app)).evaluate((w) => w.isFocused()),
+  pushes: (await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? [])).slice(-8),
+});
+
 /** The page follows the theme pref (nativeTheme), as for a user: no Playwright colour-scheme emulation (M1). */
 const UNEMULATED: LaunchOptions = { colorScheme: null };
 
@@ -178,6 +195,7 @@ test.describe.configure({ mode: 'serial' });
 test.beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-'));
   s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), UNEMULATED);
+  await recordPushes(s.page);
 });
 test.afterAll(async () => {
   await s?.app.close().catch(() => {});
@@ -364,6 +382,13 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
     results['sheetEscape'] = r;
     check('real esc closes the shortcut sheet', IS_MAC ? r.native && r.closed : r.closed, r);
   });
+  // The main window is active again once its sheet has closed (selection colours, tooltips).
+  await guard('the main window is active again after a sheet closes', async () => {
+    await expect.poll(() => s.page.evaluate(() => document.documentElement.hasAttribute('data-window-inactive')), { timeout: 3_000 }).toBe(false).catch(() => {});
+    const v = await windowFacts();
+    results['afterSheets'] = v;
+    check('the main window is active again after a sheet closes', !v.inactiveAttr && v.mainFocused, v);
+  });
   save();
 });
 
@@ -385,38 +410,49 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states, the �
   };
 
   // A tooltip open by keyboard focus, then the 보기 menu opens over it: the tooltip closes (main's nativeMenu event).
-  await s.page.evaluate(() => {
-    const w = window as unknown as { __menuEvents: boolean[] };
-    w.__menuEvents = [];
-    window.learn.on('nativeMenu', (e) => w.__menuEvents.push(e.open));
+  // Run 39629607271: no tooltip opened here at all, which stopped the run; every part is guarded now, and the window
+  // state is recorded first (an inactive window blocks tooltips) and restored if needed.
+  const startFacts = await windowFacts();
+  results['menuTestStart'] = startFacts;
+  if (startFacts.inactiveAttr || !startFacts.mainFocused) await bringAppToFront(s.app).catch(() => {});
+  let tooltipBefore = -1;
+  await guard('keyboard focus opens the toggle tooltip (before the menu)', async () => {
+    await s.page.getByTestId('nav-library').focus();
+    await s.page.keyboard.press('Shift+Tab'); // keyboard focus back onto the sidebar toggle: its tooltip opens at once
+    await expect(s.page.getByTestId('sidebar-toggle')).toBeFocused({ timeout: 5_000 });
+    await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
+    tooltipBefore = await s.page.getByRole('tooltip').count();
+    const v = { tooltipBefore, ...(await windowFacts()) };
+    check('keyboard focus opens the toggle tooltip (before the menu)', tooltipBefore === 1, v);
   });
-  await s.page.getByTestId('nav-library').focus();
-  await s.page.keyboard.press('Shift+Tab'); // keyboard focus back onto the sidebar toggle: its tooltip opens at once
-  await expect(s.page.getByTestId('sidebar-toggle')).toBeFocused();
-  await expect(s.page.getByRole('tooltip')).toHaveCount(1);
-  const tooltipBefore = await s.page.getByRole('tooltip').count();
-  const shown = await viewMenu('shown');
+  let shown: unknown = null;
+  await guard('보기 (sidebar shown)', async () => {
+    shown = await viewMenu('shown');
+  });
   results['menuView'] = { ...(await captureOpenMenu(s.app, 'Electron', 5, 'm3-09-menu-view', '보기 menu open, sidebar shown')), names: shown };
-  const tooltipUnderMenu = {
-    before: tooltipBefore,
-    after: await s.page.getByRole('tooltip').count(),
-    menuEvents: await s.page.evaluate(() => (window as unknown as { __menuEvents: boolean[] }).__menuEvents),
-  };
-  results['tooltipUnderMenu'] = tooltipUnderMenu;
-  check('a menu-bar menu closes an open tooltip', tooltipUnderMenu.after === 0 && tooltipUnderMenu.menuEvents.includes(true), tooltipUnderMenu);
+  await guard('a menu-bar menu closes an open tooltip', async () => {
+    const menuPushes = (await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? [])).filter(([k]) => k === 'nativeMenu.open');
+    const v = { before: tooltipBefore, after: await s.page.getByRole('tooltip').count(), menuPushes, ...(await windowFacts()) };
+    results['tooltipUnderMenu'] = v;
+    check('a menu-bar menu closes an open tooltip', v.before === 1 && v.after === 0 && menuPushes.some(([, on]) => on), v);
+  });
   await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
-  await runMenuCommand(s.app, 'view.toggleSidebar');
-  await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
-  const hidden = await viewMenu('hidden');
-  results['menuViewHidden'] = { ...(await captureOpenMenu(s.app, 'Electron', 5, 'm3-09c-menu-view-hidden', '보기 menu open, sidebar hidden')), names: hidden };
-  await runMenuCommand(s.app, 'view.toggleSidebar');
+  await guard('보기 (sidebar hidden)', async () => {
+    await runMenuCommand(s.app, 'view.toggleSidebar');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    const hidden = await viewMenu('hidden');
+    results['menuViewHidden'] = { ...(await captureOpenMenu(s.app, 'Electron', 5, 'm3-09c-menu-view-hidden', '보기 menu open, sidebar hidden')), names: hidden };
+  });
+  if ((await s.page.getByTestId('shell').getAttribute('data-sidebar')) === 'hidden') await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
 
   // n5: AppKit adds items to 편집 too (dictation, emoji); see what it shows.
-  results['menuEdit'] = { ...(await captureOpenMenu(s.app, 'Electron', 4, 'm3-12-menu-edit', '편집 menu open')), names: await menuItemNames('Electron', 4) };
-  results['menuFile'] = { names: await menuItemNames('Electron', 3) };
-  check('파일 says 윈도우 닫기 (n4)', ((results['menuFile'] as { names: string[] | null }).names ?? []).includes('윈도우 닫기'), results['menuFile']);
+  await guard('편집 and 파일 menus', async () => {
+    results['menuEdit'] = { ...(await captureOpenMenu(s.app, 'Electron', 4, 'm3-12-menu-edit', '편집 menu open')), names: await menuItemNames('Electron', 4) };
+    results['menuFile'] = { names: await menuItemNames('Electron', 3) };
+    check('파일 says 윈도우 닫기 (n4)', ((results['menuFile'] as { names: string[] | null }).names ?? []).includes('윈도우 닫기'), results['menuFile']);
+  });
   save();
 });
 
@@ -589,6 +625,7 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
   const beforeClose = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
   await s.app.close();
   s = await launch(lib, ud, UNEMULATED);
+  await recordPushes(s.page);
   const restored = await (await mainWindow(s.app)).evaluate((w) => w.getBounds());
   results['windowState'] = { workArea, requested: bounds, beforeClose, restored };
   check(

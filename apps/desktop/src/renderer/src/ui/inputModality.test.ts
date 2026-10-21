@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNavigationKey, lastInput, noteKey, notePointer } from './inputModality';
+import { installInputModality, isNavigationKey, lastInput, noteKey, notePointer } from './inputModality';
 import { setTooltipBlock, tooltipsBlocked } from './tooltipGate';
 
 const key = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey', boolean>> = {}) => ({ key, metaKey: false, ctrlKey: false, altKey: false, ...mods });
@@ -18,6 +18,16 @@ describe('input modality (focus rings and tooltips after code-moved focus)', () 
     noteKey(key('Tab'));
     expect(lastInput()).toBe('keyboard');
     notePointer();
+    expect(lastInput()).toBe('pointer');
+  });
+  it('listens to key and pointer presses only: a pointer that merely moves does not cancel the keyboard', () => {
+    const listeners = new Map<string, (e: unknown) => void>();
+    const doc = { addEventListener: (type: string, fn: (e: unknown) => void) => listeners.set(type, fn) } as unknown as Document;
+    installInputModality(doc);
+    expect([...listeners.keys()].sort()).toEqual(['keydown', 'pointerdown']);
+    listeners.get('keydown')!(key('Tab'));
+    expect(lastInput()).toBe('keyboard'); // no pointermove listener exists to undo it
+    listeners.get('pointerdown')!({});
     expect(lastInput()).toBe('pointer');
   });
   it('tooltips are blocked while any reason holds', () => {

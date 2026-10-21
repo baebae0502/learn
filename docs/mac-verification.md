@@ -109,7 +109,7 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 ## M2 실행 (run 39534378577, 2026-10-21, macos-15 arm64, `suite=all`, 패키지 포함, 7분)
 
 - 증거 테스트 11개, 기능 E2E 20개 모두 기대대로(실패 0, 건너뜀 0, 불안정 0). 전체 화면 빠른 전환 경합은 기존처럼 `test.fail()`로 기대 실패.
-- **메뉴바**: 레지스트리 기반 한국어 메뉴로 교체됨. 비패키지 `Electron`/패키지 `Learn` · 파일 · 편집 · 보기 · 이동 · 윈도우. 파일 메뉴에 "자료 가져오기… ⌘O", "외부 파일 연결… ⌥⌘O", "창 닫기 ⌘W". Reload·Force Reload·개발자 도구 없음(`spike4-menubar-click`, `spike5-packaged-appmenu-click`). 앱 메뉴는 "Learn 정보 · 서비스 · Learn 가리기 · 기타 가리기 · 모두 보기 · Learn 종료".
+- **메뉴바**: 레지스트리 기반 한국어 메뉴로 교체됨. 비패키지 `Electron`/패키지 `Learn` · 파일 · 편집 · 보기 · 이동 · 윈도우. 파일 메뉴에 "파일 가져오기… ⌘O"(M2 당시 레이블 '자료 가져오기…', M3에서 '파일 가져오기…'로 바뀜), "외부 파일 연결… ⌥⌘O", "창 닫기 ⌘W". Reload·Force Reload·개발자 도구 없음(`spike4-menubar-click`, `spike5-packaged-appmenu-click`). 앱 메뉴는 "Learn 정보 · 서비스 · Learn 가리기 · 기타 가리기 · 모두 보기 · Learn 종료".
 - **⌘O 정확히 1회**: Playwright의 CDP 키는 NSMenu 키 등가물에 닿지 않으므로, 앱을 맨 앞으로 가져온 뒤(System Events가 앱의 main pid를 frontmost로 보고할 때까지 대기) `osascript`로 `keystroke "o" using command down`을 보냈다. 러너 이미지는 `/usr/bin/osascript`에 손쉬운 사용·Apple Events 권한을 미리 준다(actions/runner-images `configure-tccdb-macos.sh`). 결과: 대화상자 1회, 항목 1개. 헬퍼 `nativeKeystroke`는 M3의 ⌘K·⌘, 검증에 재사용한다.
 - **읽기 위치**: 영상 7.0005초에서 일시정지 → SIGKILL → 재실행 → 7.001초. PDF는 다시 열면 떠난 쪽.
 - 이 실행 뒤 M2 최종 리뷰 수정에서 기능 E2E 2개(`position.spec.ts` "opening a PDF records openedAt even when the page never changes", `platform.spec.ts` "ui.windowState() answers the current fullscreen and focus state that main sees")가 추가돼 지금은 22개다. 추가분은 macOS에서 아직 돌리지 않았다(다음 macOS 실행에서 확인).

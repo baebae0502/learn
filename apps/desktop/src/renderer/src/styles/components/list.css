@@ -108,8 +108,8 @@
     content: '';
     position: absolute;
     left: 0;
-    top: 6px; /* local: 16 px divider centred in the 28 px header */
-    bottom: 6px;
+    top: 6px; /* local: a 16 px divider in the header's 27 px above its 1 px border (6 + 16 + 5) */
+    bottom: 5px;
     width: 1px;
     background: var(--separator);
   }

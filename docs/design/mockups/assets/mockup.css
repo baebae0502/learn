@@ -900,8 +900,8 @@ h2,
   content: '';
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
+  top: 6px; /* a 16 px divider in the 27 px above the header's 1 px border (6 + 16 + 5) */
+  bottom: 5px;
   width: 1px;
   background: var(--separator);
 }

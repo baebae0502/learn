@@ -84,6 +84,8 @@ export function renderCss() {
   section('Focus');
   decl('focus-ring-width', px(tokens.focusRing.width));
   decl('focus-ring-offset', px(tokens.focusRing.offset));
+  section('A window that is not main');
+  decl('opacity-inactive', String(tokens.inactiveOpacity));
 
   const contrastMore = Object.entries(tokens.colorsContrastMore).map(([key, p]) => {
     assertInGamut(`contrastMore.${key}.light`, p.light);

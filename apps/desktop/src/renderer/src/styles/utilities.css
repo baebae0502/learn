@@ -29,17 +29,48 @@
   :root[data-window-inactive] .pane-separator:focus-visible::before {
     content: none;
   }
-  /* Not the main window either (data-window-not-main: neither key nor the parent of one of our sheets): the chrome's
-     text and glyphs dim to Finder's level (--text-inactive = primary at 30 %, row icons the accent at 30 %; run
-     39642950406). Content is untouched, and so is the selected sidebar row's text. Never under prefers-contrast: more. */
+  /* Not the main window either (data-window-not-main: neither key nor the parent of one of our sheets): the chrome
+     recedes as Finder's does (design-spec 2.1; runs 39642950406, 39653189858). Never under prefers-contrast: more.
+     - Text: --text-inactive (primary at 30 %); the selected sidebar row's name and count --text-inactive-selected
+       (35 %, on the selection fill). Content is untouched.
+     - Glyphs keep their solid colour (primary, row icons the accent text) and fade as a whole (--opacity-inactive on
+       the svg), so overlapping strokes do not darken where translucent ones would (critic N4-1).
+     - macOS: the toolbar takes the inactive material's colour and, in dark, the sidebar edge and the toolbar hairline
+       turn black (design-spec 8.2). Linux/Windows keep the toolbar: main fixes the controls overlay's colour. */
   @media not (prefers-contrast: more) {
-    :root[data-window-not-main] .titlebar :is(.tb-title .title, .tb-title .count, .icon-btn, .btn, .btn .icon),
-    :root[data-window-not-main] .sidebar-top .icon-btn,
+    :root[data-window-not-main] .titlebar :is(.tb-title .title, .tb-title .count, .btn),
     :root[data-window-not-main] .sidebar :is(.section-label, .nav-row:not([data-current], [data-selected]), .nav-row:not([data-current], [data-selected]) .count) {
       color: var(--text-inactive);
     }
+    :root[data-window-not-main] .sidebar :is(.nav-row:is([data-current], [data-selected]), .nav-row:is([data-current], [data-selected]) .count) {
+      color: var(--text-inactive-selected);
+    }
+    :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn,
+    :root[data-window-not-main] .titlebar .btn .icon {
+      color: var(--text-primary);
+    }
     :root[data-window-not-main] .sidebar .nav-row > .icon {
-      color: var(--accent-text-inactive);
+      color: var(--accent-text);
+    }
+    :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn > .icon,
+    :root[data-window-not-main] .titlebar .btn .icon,
+    :root[data-window-not-main] .sidebar .nav-row > .icon {
+      opacity: var(--opacity-inactive);
+    }
+    /* A glyph disabled with a reason keeps its own dimming on top (components/button.css: 0.4). */
+    :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn[aria-disabled='true'] > .icon {
+      opacity: calc(var(--opacity-inactive) * 0.4);
+    }
+    :root[data-platform='darwin'][data-window-not-main] .titlebar {
+      background: var(--bg-chrome-inactive);
+      border-bottom-color: var(--separator-chrome-inactive);
+    }
+    :root[data-platform='darwin'][data-window-not-main] .sidebar {
+      box-shadow: inset -1px 0 0 var(--separator-chrome-inactive);
+    }
+    /* Vibrancy off: the opaque sidebar takes the same fill, so the chrome stays one surface with the toolbar. */
+    :root[data-platform='darwin'][data-window-not-main]:not([data-vibrancy='1']) .sidebar {
+      background: var(--bg-chrome-inactive);
     }
   }
 

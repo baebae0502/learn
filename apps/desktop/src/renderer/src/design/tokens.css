@@ -14,10 +14,12 @@
     --bg-control-selected: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.2));
     --bg-track: light-dark(oklch(23% 0.01 250 / 0.07), oklch(100% 0 0 / 0.08));
     --bg-scrim: light-dark(oklch(20% 0.01 250 / 0.24), oklch(0% 0 0 / 0.5));
+    --bg-chrome-inactive: light-dark(#ececec, #141414);
     --fill-hover: light-dark(oklch(23% 0.01 250 / 0.05), oklch(100% 0 0 / 0.06));
     --fill-pressed: light-dark(oklch(23% 0.01 250 / 0.09), oklch(100% 0 0 / 0.1));
     --fill-selected: light-dark(oklch(23% 0.01 250 / 0.13), oklch(100% 0 0 / 0.13));
     --separator: light-dark(oklch(89.5% 0.004 250), oklch(33% 0.005 250));
+    --separator-chrome-inactive: light-dark(oklch(89.5% 0.004 250), oklch(0% 0 0));
     --border: light-dark(oklch(86% 0.005 250), oklch(100% 0 0 / 0.12));
     --border-strong: light-dark(oklch(60% 0.008 250), oklch(62% 0.008 250));
     --text-primary: light-dark(oklch(23% 0.008 250), oklch(94% 0.004 250));
@@ -25,11 +27,11 @@
     --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(58% 0.008 250));
     --text-on-accent: light-dark(oklch(100% 0 0), oklch(100% 0 0));
     --text-inactive: light-dark(oklch(23% 0.008 250 / 0.3), oklch(94% 0.004 250 / 0.3));
+    --text-inactive-selected: light-dark(oklch(23% 0.008 250 / 0.35), oklch(94% 0.004 250 / 0.35));
     --accent: light-dark(oklch(53% 0.088 190), oklch(50% 0.084 190));
     --accent-hover: light-dark(oklch(49% 0.082 190), oklch(54% 0.09 190));
     --accent-pressed: light-dark(oklch(45% 0.076 190), oklch(46% 0.078 190));
     --accent-text: light-dark(oklch(49% 0.082 190), oklch(78% 0.1 190));
-    --accent-text-inactive: light-dark(oklch(49% 0.082 190 / 0.3), oklch(78% 0.1 190 / 0.3));
     --accent-soft: light-dark(oklch(53% 0.088 190 / 0.11), oklch(72% 0.1 190 / 0.16));
     --focus: light-dark(oklch(57% 0.096 190), oklch(72% 0.11 190));
     --meter: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));
@@ -180,6 +182,8 @@
     /* Focus */
     --focus-ring-width: 2px;
     --focus-ring-offset: 1px;
+    /* A window that is not main */
+    --opacity-inactive: 0.3;
   }
 
   :root[data-theme='light'] {

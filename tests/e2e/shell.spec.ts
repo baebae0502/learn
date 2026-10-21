@@ -442,7 +442,7 @@ test('an open tooltip closes when the window becomes inactive and does not come 
   }
 });
 
-test('not key: no ring or cursor, neutral selection; not main as well: the chrome dims to --text-inactive; under a sheet it stays main (R3-2, R3-4)', async ({}, testInfo) => {
+test('not key: no ring or cursor, neutral selection; not main as well: the chrome recedes; under a sheet it stays main (R3-2, R3-4, polish)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   const row = page.getByTestId('nav-library');
   const looks = () =>
@@ -452,9 +452,14 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
         cursor: css('[data-testid="nav-library"]').boxShadow,
         title: css('[data-testid="toolbar-title"]').color,
         toggle: css('[data-testid="sidebar-toggle"]').color,
+        toggleOpacity: css('[data-testid="sidebar-toggle"] > .icon').opacity,
         section: css('.sidebar .section-label').color,
         rowIcon: css('[data-testid="nav-library"] > .icon').color,
+        rowIconOpacity: css('[data-testid="nav-library"] > .icon').opacity,
         selectedRowText: css('[data-testid="nav-library"]').color,
+        toolbarFill: css('[data-testid="toolbar"]').backgroundColor,
+        toolbarLine: css('[data-testid="toolbar"]').borderBottomColor,
+        sidebarEdge: css('.sidebar').boxShadow,
         notKey: document.documentElement.hasAttribute('data-window-inactive'),
         notMain: document.documentElement.hasAttribute('data-window-not-main'),
       };
@@ -473,7 +478,7 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     await row.focus();
     await page.keyboard.press('ArrowDown'); // keyboard cursor on the current row
     const active = await looks();
-    expect(active).toMatchObject({ notKey: false, notMain: false });
+    expect(active).toMatchObject({ notKey: false, notMain: false, toggleOpacity: '1', rowIconOpacity: '1' });
     expect(active.cursor).not.toBe('none');
 
     // Another window takes the key: not key and not main.
@@ -487,24 +492,56 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     const inactive = await token('--text-inactive');
     await expect.poll(async () => (await looks()).title).toBe(inactive); // colours may ease in
     const background = await looks();
-    expect(background).toMatchObject({ notKey: true, notMain: true, cursor: 'none', title: inactive, toggle: inactive, section: inactive });
-    expect(background.rowIcon).toBe(await token('--accent-text-inactive'));
-    expect(background.selectedRowText).toBe(await token('--text-primary')); // neutral selection; its text is not dimmed
+    // Text dims to the translucent token; glyphs keep a solid colour and fade as a whole (N4-1).
+    expect(background).toMatchObject({ notKey: true, notMain: true, cursor: 'none', title: inactive, section: inactive, toggleOpacity: '0.3', rowIconOpacity: '0.3' });
+    expect(background.toggle).toBe(await token('--text-primary'));
+    expect(background.rowIcon).toBe(await token('--accent-text'));
+    expect(background.selectedRowText).toBe(await token('--text-inactive-selected')); // Finder dims the selected row too
+    // Linux keeps its toolbar fill and lines (the controls overlay's colour is fixed).
+    expect(background).toMatchObject({ toolbarFill: active.toolbarFill, toolbarLine: active.toolbarLine, sidebarEdge: active.sidebarEdge });
+    // macOS (forced): the toolbar takes the inactive material, and in dark the chrome lines turn black.
+    const platform = await page.evaluate(() => document.documentElement.getAttribute('data-platform'));
+    await page.evaluate(() => document.documentElement.setAttribute('data-platform', 'darwin'));
+    for (const theme of ['light', 'dark'] as const) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);
+      const mac = await looks();
+      expect(mac.toolbarFill, theme).toBe(await token('--bg-chrome-inactive'));
+      expect(mac.toolbarLine, theme).toBe(await token('--separator-chrome-inactive'));
+      expect(mac.sidebarEdge, theme).toContain(await token('--separator-chrome-inactive'));
+    }
+    expect(await token('--separator-chrome-inactive')).toBe('oklch(0 0 0)'); // dark: black
+    await page.evaluate((p) => {
+      if (p === null) document.documentElement.removeAttribute('data-platform');
+      else document.documentElement.setAttribute('data-platform', p);
+      document.documentElement.removeAttribute('data-theme');
+    }, platform);
     await expect(row).toBeFocused(); // the focus stayed where it was
     await app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(app)).evaluate((w) => w.focus());
     await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
     await expect.poll(looks).toEqual(active); // ring, title and glyphs back as they were
 
-    // One of our sheets takes the key: not key (no ring, neutral selection) but still main (chrome undimmed).
+    // One of our sheets takes the key: not key (no ring, neutral selection) but still main (chrome undimmed). The
+    // chrome never dims on the way: not while the sheet is open, nor between its closing and the window being key.
+    await page.evaluate(() => {
+      const w = window as unknown as { __notMainSeen?: boolean; __notMainObserver?: MutationObserver };
+      w.__notMainSeen = false;
+      w.__notMainObserver = new MutationObserver(() => {
+        if (document.documentElement.hasAttribute('data-window-not-main')) w.__notMainSeen = true;
+      });
+      w.__notMainObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-window-not-main'] });
+    });
     const sheet = await expectWindow(app, 'sheet', () => importFiles({ app, page }, [PDF]));
     await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
     await expect.poll(async () => (await looks()).cursor).toBe('none');
     const underSheet = await looks();
-    expect(underSheet).toMatchObject({ notKey: true, notMain: false, cursor: 'none', title: active.title, toggle: active.toggle, section: active.section });
+    expect(underSheet).toMatchObject({ notKey: true, notMain: false, cursor: 'none', title: active.title, toggle: active.toggle, toggleOpacity: '1', section: active.section, rowIconOpacity: '1' });
     expect(underSheet.rowIcon).toBe(await token('--accent-text')); // the neutral selection's icon, not faded
+    expect(underSheet.selectedRowText).toBe(await token('--text-primary'));
     await closeSheet(sheet, 'Escape');
     await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    await page.waitForTimeout(400); // past main's 250 ms re-read
+    expect(await page.evaluate(() => (window as unknown as { __notMainSeen?: boolean }).__notMainSeen)).toBe(false);
   } finally {
     await app.close();
   }

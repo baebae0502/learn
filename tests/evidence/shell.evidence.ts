@@ -120,9 +120,19 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
     const probe = document.createElement('span');
     document.body.append(probe);
     const token = (v: string) => ((probe.style.color = `var(${v})`), getComputedStyle(probe).color);
-    const tokens = { inactive: token('--text-inactive'), accentInactive: token('--accent-text-inactive') };
+    const tokens = {
+      inactive: token('--text-inactive'),
+      inactiveSelected: token('--text-inactive-selected'),
+      primary: token('--text-primary'),
+      accentText: token('--accent-text'),
+      chromeFill: token('--bg-chrome-inactive'),
+      chromeLine: token('--separator-chrome-inactive'),
+    };
     probe.remove();
-    const titleBox = document.querySelector('[data-testid="toolbar-title"]')!.getBoundingClientRect();
+    const box = (sel: string) => {
+      const r = document.querySelector(sel)!.getBoundingClientRect();
+      return { x0: Math.round(r.x), y0: Math.round(r.y), x1: Math.round(r.right), y1: Math.round(r.bottom) };
+    };
     return {
       notKey: document.documentElement.hasAttribute('data-window-inactive'),
       notMain: document.documentElement.hasAttribute('data-window-not-main'),
@@ -130,17 +140,27 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
       title: css('[data-testid="toolbar-title"]').color,
       count: css('[data-testid="toolbar-count"]').color,
       toggle: css('[data-testid="sidebar-toggle"]').color,
+      toggleOpacity: css('[data-testid="sidebar-toggle"] > .icon').opacity,
       section: css('.sidebar .section-label').color,
       rowIcon: css('[data-testid="nav-library"] > .icon').color,
+      rowIconOpacity: css('[data-testid="nav-library"] > .icon').opacity,
+      selectedRow: css('[data-testid="nav-library"]').color,
+      toolbarFill: css('[data-testid="toolbar"]').backgroundColor,
+      toolbarLine: css('[data-testid="toolbar"]').borderBottomColor,
       tokens,
-      titleBox: { x0: Math.round(titleBox.x), y0: Math.round(titleBox.y), x1: Math.round(titleBox.right), y1: Math.round(titleBox.bottom) },
+      titleBox: box('[data-testid="toolbar-title"]'),
+      selectedLabelBox: box('[data-testid="nav-library"] .label'),
     };
   });
-  // The drawn title, measured like Finder's (finderRef): ink and ratio on its surface.
-  const titleInk = shot.file ? elementStats(decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))), chrome.titleBox) : null;
+  // The drawn title and the selected row's label, measured like Finder's (finderRef): ink and ratio on their surface;
+  // the toolbar's own fill at (600, 26), where it is empty (polish Q2: 236 light, 20 dark).
+  const img = shot.file ? decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))) : null;
+  const titleInk = img ? elementStats(img, chrome.titleBox) : null;
+  const selectedInk = img ? elementStats(img, chrome.selectedLabelBox) : null;
+  const toolbarPixel = shot.file ? (await pngPixels(s.page, shot.file, [[600, 26]]))[0] ?? null : null;
   await bringAppToFront(s.app);
   await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
-  return { frontmostAtShot, closeButton, navRow, chrome, titleInk };
+  return { frontmostAtShot, closeButton, navRow, chrome, titleInk, selectedInk, toolbarPixel };
 }
 /** Close-button red (#ff5f57) pixels in a capture's top-left corner, where the traffic lights are drawn. */
 function redLightPixels(shot: string) {
@@ -212,13 +232,32 @@ interface InactiveChrome {
   title: string;
   count: string;
   toggle: string;
+  toggleOpacity: string;
   section: string;
   rowIcon: string;
-  tokens: { inactive: string; accentInactive: string };
+  rowIconOpacity: string;
+  selectedRow: string;
+  toolbarFill: string;
+  toolbarLine: string;
+  tokens: { inactive: string; inactiveSelected: string; primary: string; accentText: string; chromeFill: string; chromeLine: string };
 }
-/** R3-2: not key and not main, and every dimmed role resolves to the inactive tokens. */
+/**
+ * R3-2 and the polish round: not key and not main; text at --text-inactive (the selected row at
+ * --text-inactive-selected); glyphs in their solid colour, faded as a whole (N4-1); on macOS the toolbar takes the
+ * inactive material and its line the inactive separator (Q2, N4-4).
+ */
 const chromeDimmed = (c: InactiveChrome) =>
-  c.notKey && c.notMain && [c.title, c.count, c.toggle, c.section].every((v) => v === c.tokens.inactive) && c.rowIcon === c.tokens.accentInactive;
+  c.notKey &&
+  c.notMain &&
+  [c.title, c.count, c.section].every((v) => v === c.tokens.inactive) &&
+  c.selectedRow === c.tokens.inactiveSelected &&
+  c.toggle === c.tokens.primary &&
+  c.toggleOpacity === '0.3' &&
+  c.rowIcon === c.tokens.accentText &&
+  c.rowIconOpacity === '0.3' &&
+  (!IS_MAC || (c.toolbarFill === c.tokens.chromeFill && c.toolbarLine === c.tokens.chromeLine));
+/** The captured toolbar at (600, 26) is the inactive material: 236 light, 20 dark (± 2). */
+const toolbarIsMaterial = (rgb: readonly number[] | null, theme: 'light' | 'dark') => rgb !== null && rgb.every((v) => Math.abs(v - (theme === 'light' ? 236 : 20)) <= 2);
 
 /** Grey: no channel stands out (the active close button is red #ff5f57). */
 const isGrey = (rgb: readonly number[] | null) => rgb !== null && Math.max(...rgb) - Math.min(...rgb) <= 24;
@@ -384,7 +423,8 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       inactive['light'] = await inactiveShot('m3-02b-library-light-inactive', 'library, light, window inactive (Finder in front)');
       const v = inactive['light'] as { closeButton: number[] | null; navRow: string; chrome: InactiveChrome };
       check('inactive window: grey lights, neutral selection, no keyboard cursor (light)', isGrey(v.closeButton) && v.navRow !== activeRow && v.chrome.cursor === 'none', { ...v, activeRow });
-      check('not main: the chrome dims to --text-inactive and the row icon to --accent-text-inactive (light, R3-2)', chromeDimmed(v.chrome), v.chrome);
+      check('not main: the chrome recedes — text tokens, glyphs faded whole, the material toolbar (light, R3-2, polish)', chromeDimmed(v.chrome), v.chrome);
+      check('not main: the captured toolbar is the inactive material, 236 (light, polish Q2)', toolbarIsMaterial((inactive['light'] as { toolbarPixel: number[] | null }).toolbarPixel, 'light'), inactive['light']);
     });
   }
 
@@ -411,7 +451,8 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       inactive['dark'] = await inactiveShot('m3-03b-library-dark-inactive', 'library, dark, window inactive (Finder in front)');
       const v2 = inactive['dark'] as { closeButton: number[] | null; navRow: string; chrome: InactiveChrome };
       check('inactive window: grey lights, neutral selection, no keyboard cursor (dark)', isGrey(v2.closeButton) && v2.navRow !== (await navRow()) && v2.chrome.cursor === 'none', v2);
-      check('not main: the chrome dims to --text-inactive and the row icon to --accent-text-inactive (dark, R3-2)', chromeDimmed(v2.chrome), v2.chrome);
+      check('not main: the chrome recedes — text tokens, glyphs faded whole, the material toolbar (dark, R3-2, polish)', chromeDimmed(v2.chrome), v2.chrome);
+      check('not main: the captured toolbar is the inactive material, 20 (dark, polish Q2)', toolbarIsMaterial((inactive['dark'] as { toolbarPixel: number[] | null }).toolbarPixel, 'dark'), inactive['dark']);
     });
     // R2-6b: a tooltip crossing the dark material (raised surface over the sidebar).
     await guard('tooltip over the dark material', async () => {
@@ -551,6 +592,17 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
 
   // b. Real ↩ on the duplicate sheet runs its default button, 건너뛰기: the sheet closes, nothing is added, the import ends.
   const rows = s.page.getByTestId('item-row');
+  // Polish: the chrome must never dim around a sheet — not while it is open, nor between its closing and the window
+  // becoming key again (main keeps the parent main until then).
+  await s.page.evaluate(() => {
+    const w = window as unknown as { __notMainSeen?: number[]; __notMainObserver?: MutationObserver };
+    w.__notMainSeen = [];
+    w.__notMainObserver?.disconnect();
+    w.__notMainObserver = new MutationObserver(() => {
+      if (document.documentElement.hasAttribute('data-window-not-main')) w.__notMainSeen!.push(Math.round(performance.now()));
+    });
+    w.__notMainObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-window-not-main'] });
+  });
   const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
   await s.page.waitForTimeout(800); // sheet slide-in
   await fullScreenShot('m3-07-sheet-duplicate', 'duplicate sheet (macOS centres it over the window and dims the parent)');
@@ -581,6 +633,13 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
     const outcome = { ...r, rows: await rows.count(), libraryShown: await s.page.getByTestId('library-table').isVisible(), again };
     results['sheetReturn'] = outcome;
     check('real ↩ on the duplicate sheet skips', IS_MAC ? r.native && r.closed && outcome.rows === 3 && outcome.libraryShown : outcome.rows === 3, outcome);
+  });
+  await guard('no dimmed flash around the duplicate sheet', async () => {
+    await sleep(500); // past main's 250 ms re-read
+    const seen = await s.page.evaluate(() => (window as unknown as { __notMainSeen?: number[] }).__notMainSeen ?? null);
+    await s.page.evaluate(() => (window as unknown as { __notMainObserver?: MutationObserver }).__notMainObserver?.disconnect());
+    results['sheetNoFlash'] = { notMainAt: seen };
+    check('the chrome never dims between a sheet opening, closing and the window being key again (polish)', Array.isArray(seen) && seen.length === 0, results['sheetNoFlash']);
   });
   // b. Real esc closes the shortcut sheet.
   await navRow.focus();
@@ -727,6 +786,35 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     const same = JSON.stringify(before.bounds) === JSON.stringify(b);
     results['fullScreenRoundTrip'] = { before, after, same, inside };
     check('a full-screen round trip returns the window to its frame, inside the work area (R3-1)', same && inside, results['fullScreenRoundTrip']);
+  });
+  if (await (await mainWindow(s.app)).evaluate((w) => w.isFullScreen())) {
+    await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
+    await sleep(2000);
+  }
+  // N4-3: the same round trip from a frame of the user's own (spec 2.1: back to the size and place it had before).
+  await guard('full-screen round trip from a user frame', async () => {
+    const isFull = async () => (await mainWindow(s.app)).evaluate((w) => w.isFullScreen());
+    const restore = (await boundsNow()).bounds;
+    await (await mainWindow(s.app)).evaluate((w) => w.setBounds({ x: 40, y: 65, width: 960, height: 604 }));
+    await sleep(800); // past the 250 ms settle that notes the windowed frame
+    const before = await boundsNow();
+    await bringAppToFront(s.app);
+    await nativeKeystroke(s.app, 'f', ['control', 'command']);
+    await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
+    await sleep(1500);
+    await nativeKeystroke(s.app, 'f', ['control', 'command']);
+    await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
+    await sleep(1500);
+    const after = await boundsNow();
+    await fullScreenShot('m3-09i-after-fullscreen-user-frame', 'after a full-screen round trip from the frame (40,65,960×604)');
+    const b = after.bounds;
+    const a = after.workArea;
+    const inside = b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width && b.y + b.height <= a.y + a.height;
+    const same = JSON.stringify(before.bounds) === JSON.stringify(b);
+    results['fullScreenRoundTripUserFrame'] = { before, after, same, inside };
+    check('a full-screen round trip from a user frame returns to it, inside the work area (N4-3)', same && inside && b.width === 960, results['fullScreenRoundTripUserFrame']);
+    await (await mainWindow(s.app)).evaluate((w, r) => w.setBounds(r), restore);
+    await sleep(800);
   });
   if (await (await mainWindow(s.app)).evaluate((w) => w.isFullScreen())) {
     await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));

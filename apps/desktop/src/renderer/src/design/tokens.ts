@@ -54,6 +54,12 @@ export const colors = {
   bgTrack: { light: 'oklch(23% 0.01 250 / 0.07)', dark: 'oklch(100% 0 0 / 0.08)' },
   /** Modal backdrop. */
   bgScrim: { light: 'oklch(20% 0.01 250 / 0.24)', dark: 'oklch(0% 0 0 / 0.5)' },
+  /**
+   * macOS, a window that is not main: the toolbar takes the inactive window material's colour, so the title-bar band
+   * and the sidebar are one surface as in Finder (measured on the macos-15 runner, run 39631541294; Finder's toolbar
+   * 255 → 236 light, 38 → 20 dark, run 39653189858). Also the opaque sidebar's fill then (vibrancy off).
+   */
+  bgChromeInactive: { light: '#ececec', dark: '#141414' },
 
   // ── State fills (translucent so they work on every surface) ────────────────
   fillHover: { light: 'oklch(23% 0.01 250 / 0.05)', dark: 'oklch(100% 0 0 / 0.06)' },
@@ -64,6 +70,11 @@ export const colors = {
   // ── Lines ───────────────────────────────────────────────────────────────────
   /** Hairlines between panes, table header rule. */
   separator: { light: 'oklch(89.5% 0.004 250)', dark: 'oklch(33% 0.005 250)' },
+  /**
+   * macOS, a window that is not main: the sidebar's edge and the toolbar's hairline. Black in dark, as Finder draws
+   * them (critic N4-4, run 39653189858); light keeps --separator.
+   */
+  separatorChromeInactive: { light: 'oklch(89.5% 0.004 250)', dark: 'oklch(0% 0 0)' },
   /** Control and card borders. */
   border: { light: 'oklch(86% 0.005 250)', dark: 'oklch(100% 0 0 / 0.12)' },
   /** ≥ 3:1 boundary for controls that need one (checkbox, radio, high-contrast mode). */
@@ -77,18 +88,22 @@ export const colors = {
   textTertiary: { light: 'oklch(60% 0.008 250)', dark: 'oklch(58% 0.008 250)' },
   textOnAccent: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
   /**
-   * Chrome text and glyphs of a window that is not main (design-spec 2.1): primary at 30 %, as AppKit dims Finder's
-   * (measured 172/236 light, 85/20 dark, run 39642950406). Translucent, so one value fits toolbar, material and fills.
+   * Chrome text of a window that is not main (design-spec 2.1): primary at 30 % (`inactiveOpacity`), as AppKit dims
+   * Finder's (measured 172/236 light, 85/20 dark, run 39642950406). Translucent, so one value fits toolbar, material
+   * and fills. Glyphs keep their solid colour and fade as a whole instead (`--opacity-inactive`).
    */
   textInactive: { light: 'oklch(23% 0.008 250 / 0.3)', dark: 'oklch(94% 0.004 250 / 0.3)' },
+  /**
+   * The selected sidebar row's name and count in a window that is not main: primary at 35 %, on the selection fill
+   * (Finder's selected label 147/211 = 2.05:1 light, 111/46 = 2.70:1 dark, run 39653189858).
+   */
+  textInactiveSelected: { light: 'oklch(23% 0.008 250 / 0.35)', dark: 'oklch(94% 0.004 250 / 0.35)' },
 
   // ── Accent (base / accent / contrast) ──────────────────────────────────────
   accent: { light: 'oklch(53% 0.088 190)', dark: 'oklch(50% 0.084 190)' },
   accentHover: { light: 'oklch(49% 0.082 190)', dark: 'oklch(54% 0.09 190)' },
   accentPressed: { light: 'oklch(45% 0.076 190)', dark: 'oklch(46% 0.078 190)' },
   accentText: { light: 'oklch(49% 0.082 190)', dark: 'oklch(78% 0.1 190)' },
-  /** Sidebar row icons of a window that is not main: the accent text at 30 % (the hue stays, faded, as Finder's). */
-  accentTextInactive: { light: 'oklch(49% 0.082 190 / 0.3)', dark: 'oklch(78% 0.1 190 / 0.3)' },
   accentSoft: { light: 'oklch(53% 0.088 190 / 0.11)', dark: 'oklch(72% 0.1 190 / 0.16)' },
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
@@ -294,3 +309,9 @@ export const shadows = {
 
 /** Focus ring geometry: 2 px `--focus` outline offset 1 px on controls, inset on rows. */
 export const focusRing = { width: 2, offset: 1 } as const;
+
+/**
+ * How far a window that is not main fades its chrome (design-spec 2.1): the alpha of --text-inactive, and the
+ * opacity of its glyphs, which keep their colour and fade as a whole so overlapping strokes do not darken (N4-1).
+ */
+export const inactiveOpacity = 0.3;

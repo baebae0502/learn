@@ -1,7 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LibraryItem, ReadingLocator, ReadingPosition } from '@learn/domain';
 import { api, ApiError, unwrap } from '../api';
 import { createPositionSaver, type PositionSaver, type SavePolicy } from './positionSaver';
+
+export interface LatestPosition {
+  locator: ReadingLocator;
+  progress: number | null;
+}
 
 export interface PositionHandle {
   /** false until the stored position (or its absence) is known. */
@@ -13,21 +18,28 @@ export interface PositionHandle {
   flush(): void;
 }
 
-const logFailure = (e: unknown) => {
-  console.warn('reader.savePosition failed', e instanceof ApiError ? e.code : 'UNKNOWN');
+const logFailure = (what: string, e: unknown) => {
+  console.warn(`${what} failed`, e instanceof ApiError ? e.code : 'UNKNOWN');
 };
 
 /**
  * Loads the stored reading position (getPosition also marks the item opened in main) and saves new ones.
  * Never saves before markRestored, so loading cannot overwrite the stored value with the default.
+ * `readLatest` lets the viewer supply the exact final position, read just before the unmount flush.
+ * The returned handle changes identity only when the item or the loaded position changes.
  */
-export function usePosition(item: LibraryItem, policy: SavePolicy): PositionHandle {
+export function usePosition(item: LibraryItem, policy: SavePolicy, readLatest?: () => LatestPosition | null): PositionHandle {
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState<ReadingPosition | null>(null);
   const saver = useRef<PositionSaver | null>(null);
   const policyRef = useRef(policy);
+  const latestRef = useRef(readLatest);
   const itemId = item.id;
   const revisionId = item.revisionId;
+
+  useEffect(() => {
+    latestRef.current = readLatest;
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -35,12 +47,15 @@ export function usePosition(item: LibraryItem, policy: SavePolicy): PositionHand
     setSaved(null);
     unwrap(api().reader.getPosition({ itemId })).then(
       (p) => { if (!cancelled) { setSaved(p); setLoaded(true); } },
-      (e: unknown) => { if (!cancelled) { logFailure(e); setLoaded(true); } },
+      (e: unknown) => { if (!cancelled) { logFailure('reader.getPosition', e); setLoaded(true); } },
     );
     return () => {
       cancelled = true;
-      saver.current?.flush();
-      saver.current?.dispose();
+      const s = saver.current;
+      const latest = latestRef.current?.();
+      if (s && latest) s.update(latest.locator, latest.progress);
+      s?.flush();
+      s?.dispose();
       saver.current = null;
     };
   }, [itemId]);
@@ -51,23 +66,18 @@ export function usePosition(item: LibraryItem, policy: SavePolicy): PositionHand
     return () => window.removeEventListener('beforeunload', onUnload);
   }, []);
 
-  // Stable identity per item: callers use these in effects.
-  const handle = useRef<PositionHandle | null>(null);
-  const markRestored = (initial: ReadingLocator) => {
+  const markRestored = useCallback((initial: ReadingLocator) => {
+    saver.current?.flush();
     saver.current?.dispose();
     saver.current = createPositionSaver({
       policy: policyRef.current,
       initial,
       send: (locator, progress) => unwrap(api().reader.savePosition({ itemId, revisionId, locator, progress })),
-      onError: logFailure,
+      onError: (e) => logFailure('reader.savePosition', e),
     });
-  };
-  handle.current = {
-    loaded,
-    saved,
-    markRestored,
-    update: (l, p) => saver.current?.update(l, p),
-    flush: () => saver.current?.flush(),
-  };
-  return handle.current;
+  }, [itemId, revisionId]);
+  const update = useCallback((l: ReadingLocator, p: number | null) => saver.current?.update(l, p), []);
+  const flush = useCallback(() => saver.current?.flush(), []);
+
+  return useMemo(() => ({ loaded, saved, markRestored, update, flush }), [loaded, saved, markRestored, update, flush]);
 }

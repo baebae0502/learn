@@ -51,5 +51,5 @@ export function ViewerHost({ itemId, onBack }: { itemId: string; onBack(): void 
 }
 
 function ViewerBody({ item }: { item: LibraryItem }) {
-  return item.type === 'pdf' ? <PdfViewer item={item} /> : <VideoViewer item={item} />;
+  return item.type === 'pdf' ? <PdfViewer key={item.id} item={item} /> : <VideoViewer key={item.id} item={item} />;
 }

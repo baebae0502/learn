@@ -57,13 +57,12 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     pos.markRestored({ kind: 'pdf', pageIndex: index });
     setPageNum(index + 1);
     setRestored(true);
-  }, [doc, pos, restored]);
+  }, [doc, pos.loaded, pos.saved, pos.markRestored, restored]);
 
   useEffect(() => {
     if (!restored || !doc) return;
     pos.update({ kind: 'pdf', pageIndex: pageNum - 1 }, ratio(pageNum, doc.numPages));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageNum, restored, doc]);
+  }, [pageNum, restored, doc, pos.update]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -105,7 +104,7 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     <div className="pdf-viewer">
       <div className="pdf-toolbar">
         <button className="secondary" data-testid="pdf-prev" disabled={pageNum <= 1} onClick={() => setPageNum((p) => p - 1)}>{t.pdfPrev}</button>
-        <span data-testid="pdf-page-indicator">{total > 0 ? t.pdfPage(pageNum, total) : '…'}</span>
+        <span data-testid="pdf-page-indicator">{total > 0 && restored ? t.pdfPage(pageNum, total) : '…'}</span>
         <button className="secondary" data-testid="pdf-next" disabled={pageNum >= total} onClick={() => setPageNum((p) => p + 1)}>{t.pdfNext}</button>
         <label>
           {t.pdfZoom}{' '}

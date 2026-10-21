@@ -2,29 +2,20 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
 import { t } from '../strings';
 import { ratio, restoreVideoSeconds } from './positionSaver';
-import { usePosition, type PositionHandle } from './usePosition';
+import { usePosition } from './usePosition';
 
 const TIME_SAVE = { kind: 'throttle', ms: 2000 } as const;
 
 export function VideoViewer({ item }: { item: LibraryItem }) {
   const [error, setError] = useState<{ message: string; detail: string } | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const posRef = useRef<PositionHandle | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null); // kept after unmount so the final time can still be read
   const restored = useRef(false);
 
-  // Declared before usePosition so its cleanup runs first: record the true final time, then flush.
-  useEffect(() => {
-    const video = videoRef.current;
-    return () => {
-      if (video && restored.current) {
-        posRef.current?.update({ kind: 'video', timeMs: Math.round(video.currentTime * 1000) }, ratio(video.currentTime, video.duration));
-        posRef.current?.flush();
-      }
-    };
-  }, []);
-
-  const pos = usePosition(item, TIME_SAVE);
-  posRef.current = pos;
+  const pos = usePosition(item, TIME_SAVE, () => {
+    const v = videoRef.current;
+    if (!v || !restored.current) return null;
+    return { locator: { kind: 'video', timeMs: Math.round(v.currentTime * 1000) }, progress: ratio(v.currentTime, v.duration) };
+  });
 
   const record = (v: HTMLVideoElement, immediate: boolean) => {
     if (!restored.current) return;
@@ -43,7 +34,6 @@ export function VideoViewer({ item }: { item: LibraryItem }) {
   // Metadata can arrive before the saved position does (or the other way round).
   useEffect(() => {
     if (videoRef.current) tryRestore(videoRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos.loaded]);
 
   const onError = (e: SyntheticEvent<HTMLVideoElement>) => {
@@ -56,7 +46,7 @@ export function VideoViewer({ item }: { item: LibraryItem }) {
   return (
     <div className="video-viewer">
       <video
-        ref={videoRef}
+        ref={(el) => { if (el) videoRef.current = el; }}
         data-testid="video"
         src={assetUrl(item.assetId)}
         controls

@@ -52,6 +52,24 @@ describe('position saver', () => {
     expect(send).toHaveBeenLastCalledWith(video(2000), 0.2);
   });
 
+  it('a flush cancels the trailing throttle timer and the next update is throttled again', () => {
+    const { saver, send } = make({ kind: 'throttle', ms: 2000 }, video(0));
+    saver.update(video(1000), 0.1);
+    vi.advanceTimersByTime(500);
+    saver.update(video(1500), 0.15); // trailing timer pending
+    saver.flush(); // e.g. pause
+    expect(send).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(3000);
+    expect(send).toHaveBeenCalledTimes(2); // trailing timer was cancelled
+    saver.update(video(5000), 0.5);
+    expect(send).toHaveBeenCalledTimes(3); // window long past: leading save
+    vi.advanceTimersByTime(100);
+    saver.update(video(5100), 0.51);
+    expect(send).toHaveBeenCalledTimes(3); // throttled again
+    vi.advanceTimersByTime(1900);
+    expect(send).toHaveBeenCalledTimes(4);
+  });
+
   it('flush sends the pending value immediately and cancels the timer', () => {
     const { saver, send } = make({ kind: 'debounce', ms: 300 }, pdf(0));
     saver.update(pdf(4), 0.5);
@@ -108,5 +126,7 @@ describe('position math', () => {
     expect(restoreVideoSeconds(video(99_000), 100)).toBe(0);
     expect(restoreVideoSeconds(null, 100)).toBe(0);
     expect(restoreVideoSeconds(video(5000), Number.NaN)).toBe(5);
+    expect(restoreVideoSeconds(video(5000), Number.POSITIVE_INFINITY)).toBe(5);
+    expect(ratio(5, Number.NaN)).toBeNull();
   });
 });

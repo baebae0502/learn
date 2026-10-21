@@ -85,12 +85,18 @@ export function App() {
 
   const relinkItem = useCallback(async (itemId: string) => {
     try {
+      // `get` re-checks the file on disk (main broadcasts libraryChanged if that changed availability).
       const item = await unwrap(api().library.get({ itemId }));
-      if (item.storageMode === 'linked') await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+      if (item.storageMode !== 'linked') return;
+      if (item.availability !== 'missing') {
+        void refreshSafe(); // the file is back: no dialog, just clear a stale badge
+        return;
+      }
+      await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
     } catch (e) {
       setActionError((e as Error).message);
     }
-  }, []);
+  }, [refreshSafe]);
 
   // Menu and context-menu commands; anything that doesn't apply right now is ignored by the registry.
   const commandEnv: CommandEnv = {

@@ -1,10 +1,11 @@
 import { BrowserWindow, dialog, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import {
-  Channels, LearnError, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
-import { refreshAvailability, relinkAsset } from '@learn/library';
+import { relinkAsset } from '@learn/library';
 import { broadcast } from '../events';
+import { refreshItemAvailability } from '../item-availability';
 import type { Handle, IpcDeps } from './register';
 
 const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
@@ -36,14 +37,8 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.list, emptyInput, () => deps.getContext().repo.listItems());
 
-  handle(Channels.library.get, itemIdInput, async ({ itemId }) => {
-    const ctx = deps.getContext();
-    const item = ctx.repo.getItem(itemId);
-    const asset = item && ctx.repo.getAsset(item.assetId);
-    if (!item || !asset) throw new LearnError('NOT_FOUND', '자료를 찾을 수 없습니다.');
-    await refreshAvailability(ctx.layout, ctx.repo, asset);
-    return ctx.repo.getItem(itemId)!;
-  });
+  // Re-checks the file; a changed availability is broadcast (libraryChanged{availability}).
+  handle(Channels.library.get, itemIdInput, ({ itemId }) => refreshItemAvailability(deps.getContext(), itemId));
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();

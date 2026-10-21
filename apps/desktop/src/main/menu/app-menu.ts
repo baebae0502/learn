@@ -13,6 +13,39 @@ export interface AppMenuOptions {
   onCommand(id: CommandId): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
   labels?: Pick<CommandContextState, 'sidebar'>;
+  /** macOS 전체 화면 item (Task 8 R2-1 spike variants; default 'role'). Ignored elsewhere (always the role item). */
+  fullScreen?: FullScreenItem;
+  /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
+  fullScreenState?: boolean;
+  /** 'plain' variant: the item's click and ⌃⌘F toggle the main window's full screen. */
+  onToggleFullScreen?(): void;
+}
+
+/**
+ * macOS 전체 화면 item variants (Task 8 R2-1 spike): 'role' — Electron's togglefullscreen role; 'plain' — our own item
+ * (no role) on ⌃⌘F; 'none' — no item of ours, whatever AppKit adds is what the menu shows.
+ */
+export type FullScreenItem = 'role' | 'plain' | 'none';
+
+/** The macOS 전체 화면 item: Apple Korean names it by what it will do; the neutral name is spec 7.4's. */
+export const FULL_SCREEN = {
+  id: 'menu.view.fullScreen',
+  label: '전체 화면',
+  stateLabels: { windowed: '전체 화면 시작', fullscreen: '전체 화면 종료' },
+} as const;
+const fullScreenLabel = (fullscreen: boolean) => FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed'];
+
+function fullScreenItems(opts: AppMenuOptions): Item[] {
+  if (opts.platform !== 'darwin') return [{ role: 'togglefullscreen', label: FULL_SCREEN.label }];
+  const label = fullScreenLabel(opts.fullScreenState ?? false);
+  switch (opts.fullScreen ?? 'role') {
+    case 'none':
+      return [];
+    case 'plain':
+      return [{ id: FULL_SCREEN.id, label, accelerator: 'Ctrl+Cmd+F', click: () => opts.onToggleFullScreen?.() }];
+    default:
+      return [{ id: FULL_SCREEN.id, role: 'togglefullscreen', label }];
+  }
 }
 
 type Item = MenuItemConstructorOptions;
@@ -97,12 +130,10 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       reg('edit'),
     ),
   };
-  // One 전체 화면 item on macOS: main registers NSFullScreenMenuItemEverywhere = false (index.ts), so AppKit does not add
-  // its own next to this role item (Electron's role uses a selector AppKit does not recognise as full screen).
   const view: Item = {
     id: 'menu.view',
     label: '보기',
-    submenu: join(reg('view'), [{ role: 'togglefullscreen', label: '전체 화면' }], opts.isDev ? [{ role: 'toggleDevTools', label: '개발자 도구' }] : []),
+    submenu: join(reg('view'), fullScreenItems(opts), opts.isDev ? [{ role: 'toggleDevTools', label: '개발자 도구' }] : []),
   };
   const go: Item = { id: 'menu.go', label: '이동', submenu: reg('go') };
   const windowMenu: Item = {
@@ -160,4 +191,11 @@ export function applyMenuLabels(
       if (item) item.label = label;
     }
   }
+}
+
+/** macOS: the 전체 화면 item says what it will do — 전체 화면 시작 / 전체 화면 종료 — relabelled in place. */
+export function applyFullScreenLabel(menu: MenuItemLookup, platform: NodeJS.Platform, fullscreen: boolean): void {
+  if (platform !== 'darwin') return;
+  const item = menu.getMenuItemById(FULL_SCREEN.id);
+  if (item) item.label = fullScreenLabel(fullscreen);
 }

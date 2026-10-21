@@ -39,8 +39,6 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
   });
   win.once('ready-to-show', () => win.show());
   attachEditContextMenu(win.webContents);
-  // Sheets hang below the 52 px toolbar, not the (hidden) title bar (design-spec 6 시트).
-  if (process.platform === 'darwin') win.setSheetOffset(layout.toolbarHeight);
 
   // windowState push: only on an actual change of fullscreen/focus.
   let last: WindowState | null = null;

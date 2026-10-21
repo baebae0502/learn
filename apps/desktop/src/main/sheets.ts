@@ -4,7 +4,10 @@ import { themeHex } from '../renderer/src/design/tokens.generated';
 import { contentHeight, markSized } from './measure';
 
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
-/** 8 px under the 52 px toolbar (macOS does this itself through setSheetOffset; elsewhere we place it). */
+/**
+ * Off macOS: 8 px under the 52 px toolbar, centred across the window (design-spec 6 시트). macOS places a sheet itself:
+ * centred over the parent window, which it dims (Big Sur and later — every macOS Electron 44 runs on).
+ */
 export const SHEET_TOP = 60;
 /** A sheet not shown this long after its page began loading is given up (null), so the parent never stays blocked. */
 export const SHEET_SHOW_TIMEOUT_MS = 10_000;
@@ -43,7 +46,7 @@ export function createSheetHost(opts: { preload: string; url(): string; platform
       const maxHeight = Math.max(160, room.height - SHEET_TOP - 16);
       const win = new BrowserWindow({
         parent,
-        modal: true, // macOS: attached as a sheet below parent.setSheetOffset(52)
+        modal: true, // macOS: a sheet, centred over the parent and dimming it (the system's placement)
         show: false,
         width,
         height: maxHeight, // measured at full height first, then shrunk to the content

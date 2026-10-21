@@ -73,7 +73,7 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
 
 /**
  * The main window's BrowserWindow, as a handle evaluated in the main process: the window whose URL has
- * `window=main` (sheets, and from Task 10 the settings window, are other windows; `getAllWindows()[0]` is not
+ * `window=main` (sheets and the settings window are other windows; `getAllWindows()[0]` is not
  * reliably the main one once they exist). `(await mainWindow(app)).evaluate((w) => …)`.
  */
 export function mainWindow(app: ElectronApplication) {

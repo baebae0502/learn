@@ -15,7 +15,7 @@ const box = async (page: Page, testId: string) => {
 };
 const sidebarWidth = async (page: Page) => Math.round((await box(page, 'sidebar')).width);
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
-const zoom = (app: ElectronApplication, f: number) => app.evaluate(({ BrowserWindow }, f) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(f), f);
+const zoom = async (app: ElectronApplication, f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
 /** The stored layout.panes setting (null while nothing was ever saved), read after the 300 ms save debounce. */
 const savedPanes = async (page: Page): Promise<unknown> => {
   await page.waitForTimeout(600);

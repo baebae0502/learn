@@ -55,7 +55,8 @@ async function macInfo(): Promise<Record<string, unknown>> {
 /** Collect runner + app environment into evidence-results/env.json. */
 export async function writeEnv(app: ElectronApplication): Promise<Record<string, unknown>> {
   const electron = await app.evaluate(async ({ app: a, screen, BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
+    // The main window by its URL (sheets and the settings window are windows too).
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=main'));
     let gpuInfo: unknown = null;
     try {
       gpuInfo = await a.getGPUInfo('basic');

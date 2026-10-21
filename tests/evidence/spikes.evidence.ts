@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, launch, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
+import { FIXTURES, launch, mainWindow, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
 import { EVIDENCE_ROOT, IS_MAC, captureOpenMenu, focusApp, fullScreenShot, menuBarNames, nativeWindowShot, pageShot, pressEscape, startRecording, startScreencast, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
@@ -117,7 +117,8 @@ test('spike 3+4: native context menu and menu bar capture', TAG, async () => {
         { label: '휴지통으로 이동' },
       ]);
       (globalThis as { __evidenceMenu?: Electron.Menu }).__evidenceMenu = menu;
-      setTimeout(() => menu.popup({ window: BrowserWindow.getAllWindows()[0]!, x: 420, y: 260 }), 0);
+      const main = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))!;
+      setTimeout(() => menu.popup({ window: main, x: 420, y: 260 }), 0);
     });
     await sleep(1200);
     const ctxShot = await fullScreenShot('spike3-context-menu', 'temporary native context menu opened with Menu.popup()');
@@ -190,11 +191,7 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
     ]);
     return { outcome, ms: Date.now() - t0 };
   };
-  const winState = () =>
-    s.app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0]!;
-      return { isFullScreen: w.isFullScreen(), bounds: w.getBounds() };
-    });
+  const winState = async () => (await mainWindow(s.app)).evaluate((w) => ({ isFullScreen: w.isFullScreen(), bounds: w.getBounds() }));
   const docFullscreen = async () => {
     const r = await Promise.race([s.page.evaluate(() => document.fullscreenElement !== null), sleep(5000).then(() => 'timeout')]);
     return r;
@@ -215,7 +212,7 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
       const afterExit = { window: await winState(), documentFullscreen: await docFullscreen() };
       let recovery: Record<string, unknown> | null = null;
       if (exit.outcome !== 'resolved' || afterExit.window.isFullScreen) {
-        await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setFullScreen(false));
+        await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
         await sleep(3000);
         recovery = { via: 'BrowserWindow.setFullScreen(false)', window: await winState(), documentFullscreen: await docFullscreen() };
       }

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, importPaths, launch, menuSnapshot, openItem, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, importPaths, launch, mainWindow, menuSnapshot, openItem, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -242,7 +242,7 @@ test('a missing managed copy: the notice says to import the original again, with
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('라이브러리 안의 사본을 찾을 수 없습니다');
     // The window is still named after the item (design-spec 2.1), not left at the library's title.
-    await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=main'))?.getTitle())).toBe('sample');
+    await expect.poll(async () => (await mainWindow(s.app)).evaluate((w) => w.getTitle())).toBe('sample');
     await expect(notice.locator('.file')).toHaveCount(0); // the path inside the library means nothing to the user
     await expect(s.page.getByTestId('relink')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');

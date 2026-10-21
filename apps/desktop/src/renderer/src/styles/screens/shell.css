@@ -25,6 +25,7 @@
     flex-direction: column;
     height: 100%;
     min-width: 0;
+    padding-right: 1px; /* the boundary line's column; children inset from the line, as mockup border-right */
   }
   /* Top 88 px, identical in every view: 0–52 traffic lights (84 inset) + toggle, 52–80 launcher, 80–88 gap. */
   .sidebar-top {

@@ -23,7 +23,7 @@ const logFailure = (what: string, e: unknown) => {
 };
 
 /**
- * Loads the stored reading position (getPosition also marks the item opened in main) and saves new ones.
+ * Records the open (reader.open, once per mount), loads the stored reading position and saves new ones.
  * Never saves before markRestored, so loading cannot overwrite the stored value with the default.
  * `readLatest` lets the viewer supply the exact final position, read just before the unmount flush.
  * The returned handle changes identity only when the item or the loaded position changes.
@@ -49,6 +49,8 @@ export function usePosition(item: LibraryItem, policy: SavePolicy, readLatest?: 
       (p) => { if (!cancelled) { setSaved(p); setLoaded(true); } },
       (e: unknown) => { if (!cancelled) { logFailure('reader.getPosition', e); setLoaded(true); } },
     );
+    // Independent of the load above (sent after it, so getPosition still sees what was stored before this open).
+    unwrap(api().reader.open({ itemId })).catch((e: unknown) => logFailure('reader.open', e));
     return () => {
       cancelled = true;
       const s = saver.current;

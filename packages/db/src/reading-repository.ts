@@ -29,6 +29,13 @@ const toPosition = (r: ReadingDbRow): ReadingPosition | undefined => {
 
 const itemMissing = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
 
+/** Where a never-read item starts (the same place the viewers open it without a saved position). */
+function startLocator(type: string): ReadingLocator | null {
+  if (type === 'pdf') return { kind: 'pdf', pageIndex: 0 };
+  if (type === 'video') return { kind: 'video', timeMs: 0 };
+  return null;
+}
+
 /** Per-item reading position (one row per item, `reading_positions`). */
 export class ReadingRepository {
   constructor(private readonly db: Db) {}
@@ -39,7 +46,7 @@ export class ReadingRepository {
     return row && toPosition(row);
   }
 
-  /** Upsert. `openedAt` is set by the first save (and by `markOpened`), never cleared by later saves. */
+  /** Upsert. `openedAt` comes from `markOpened` (or the first save if it is still empty); saves never change it. */
   save(input: SaveReadingPosition): ReadingPosition {
     const locator = readingLocatorSchema.safeParse(input.locator);
     if (!locator.success) throw new LearnError('VALIDATION_FAILED', '읽기 위치가 올바르지 않습니다.');
@@ -66,13 +73,27 @@ export class ReadingRepository {
   }
 
   /**
-   * Records that the item was opened now. Returns false when the item has no saved position yet
-   * (the first `save` then sets `openedAt`); throws NOT_FOUND for an unknown item.
+   * Records that the item was opened now (`reader.open`). An item without a row gets one at its type's start
+   * (`{kind:'pdf',pageIndex:0}` / `{kind:'video',timeMs:0}`), its latest revision and no progress; an existing
+   * row only gets `opened_at`. Throws NOT_FOUND for an unknown item, VALIDATION_FAILED for a type without a locator.
    */
-  markOpened(itemId: string): boolean {
-    return this.db.transaction(() => {
-      if (!this.db.prepare('SELECT 1 FROM items WHERE id = ?').get(itemId)) throw itemMissing();
-      return this.db.prepare('UPDATE reading_positions SET opened_at = ? WHERE item_id = ?').run(nowIso(), itemId).changes > 0;
+  markOpened(itemId: string): void {
+    this.db.transaction(() => {
+      const item = this.db.prepare('SELECT type FROM items WHERE id = ?').get(itemId) as { type: string } | undefined;
+      if (!item) throw itemMissing();
+      const now = nowIso();
+      if (this.db.prepare('UPDATE reading_positions SET opened_at = ? WHERE item_id = ?').run(now, itemId).changes > 0) return;
+      const locator = startLocator(item.type);
+      if (!locator) throw new LearnError('VALIDATION_FAILED', '이 자료 종류는 읽기 위치를 지원하지 않습니다.');
+      const revision = this.db
+        .prepare(`SELECT r.id FROM source_revisions r JOIN item_assets ia ON ia.asset_id = r.asset_id AND ia.role = 'original'
+                  WHERE ia.item_id = ? ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1`)
+        .get(itemId) as { id: string } | undefined;
+      if (!revision) throw new LearnError('NOT_FOUND', '이 항목의 원본 버전을 찾을 수 없습니다.');
+      this.db
+        .prepare(`INSERT INTO reading_positions (item_id, revision_id, locator_json, progress, opened_at, updated_at)
+                  VALUES (?, ?, ?, NULL, ?, ?)`)
+        .run(itemId, revision.id, JSON.stringify(locator), now, now);
     })();
   }
 }

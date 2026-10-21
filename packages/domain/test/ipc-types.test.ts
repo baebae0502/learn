@@ -27,6 +27,7 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['settings']['get']>>().toEqualTypeOf<Ipc.SettingGetInput>();
     expectTypeOf<P<LearnApi['settings']['set']>>().toEqualTypeOf<Ipc.SettingSetInput>();
     expectTypeOf<P<LearnApi['prefs']['set']>>().toEqualTypeOf<Ipc.PrefsSetInput>();
+    expectTypeOf<P<LearnApi['reader']['open']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['reader']['getPosition']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['reader']['savePosition']>>().toEqualTypeOf<Ipc.SavePositionInput>();
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();

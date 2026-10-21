@@ -20,6 +20,6 @@ export const Channels = {
   },
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
-  reader: { getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
+  reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
   ui: { showContextMenu: 'ui:showContextMenu' },
 } as const;

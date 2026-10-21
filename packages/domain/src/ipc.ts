@@ -130,6 +130,9 @@ export interface LearnApi {
     set(input: PrefsSetInput): Promise<Result<Prefs>>;
   };
   reader: {
+    /** Records that the viewer opened the item (sets `openedAt`; creates the position row at the start if none). */
+    open(input: ItemIdInput): Promise<Result<void>>;
+    /** The stored position, or null. A pure read. */
     getPosition(input: ItemIdInput): Promise<Result<ReadingPosition | null>>;
     savePosition(input: SavePositionInput): Promise<Result<void>>;
   };

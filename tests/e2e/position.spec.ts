@@ -80,6 +80,29 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
   }
 });
 
+test('opening a PDF records openedAt even when the page never changes', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PDF]);
+    expect((await listed(page, 'sample')).openedAt).toBeNull();
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await page.getByTestId('viewer-back').click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+
+    await expect.poll(async () => (await listed(page, 'sample')).openedAt).not.toBeNull();
+    const item = await listed(page, 'sample');
+    expect(item.progress).toBeNull(); // opening alone saves no position
+    // The row reader.open created starts at the first page; reading it back has no side effect.
+    const read = () => page.evaluate((itemId) => window.learn.reader.getPosition({ itemId }), imported!.id);
+    const first = await read();
+    expect(first).toMatchObject({ ok: true, data: { locator: { kind: 'pdf', pageIndex: 0 }, progress: null, openedAt: item.openedAt } });
+    expect(await read()).toEqual(first);
+  } finally {
+    await app.close();
+  }
+});
+
 test('video resumes at the paused time after a SIGKILL and relaunch; progress reaches library.list', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');
   const ud = testInfo.outputPath('userdata');

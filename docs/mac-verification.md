@@ -100,11 +100,18 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 - **화면**: 러너 화면이 1024×768 @1x라 1440×900 창이 1024×684로 줄어든다. 표 열이 좁아져 "보관", "복사본", "동영상", "사용 가능"이 **글자 단위로 줄바꿈**되고(`word-break: keep-all` 없음), 날짜가 3줄로 접힌다(`01-library.*.png`). Linux 1440×900에서는 한 줄. M1 타입 규칙(`keep-all`)과 M4 표 열 폭에 반영할 것.
 - **스크롤바**: macOS에서는 가운데 영역 오른쪽에 항상 보이는 스크롤바가 생긴다(마우스 연결 기본값의 레거시 스크롤바, `01-library.window.png`).
 - **글꼴**: macOS는 SF + Apple SD Gothic Neo, Linux는 DejaVu Sans + WenQuanYi Zen Hei. 같은 문구라도 폭이 달라 줄바꿈 위치가 다르다.
-- **메뉴바**: 비패키지 실행은 메뉴바 앱 이름이 "Electron"(`app.setName('Learn')`으로 바뀌지 않음), 패키지 앱은 "Learn". 기본 메뉴는 Electron 기본값(`menu.json`: Learn/File/Edit/View/Window, View에 Reload·Force Reload·Toggle Developer Tools 포함, 모두 영어) — M2에서 교체.
+- **메뉴바**: 비패키지 실행은 메뉴바 앱 이름이 "Electron"(`app.setName('Learn')`으로 바뀌지 않음), 패키지 앱은 "Learn". 기본 메뉴는 Electron 기본값(`menu.json`: Learn/File/Edit/View/Window, View에 Reload·Force Reload·Toggle Developer Tools 포함, 모두 영어) — M2에서 교체(아래 M2 실행).
 - **창 크롬**: 신호등 3색과 제목 "Learn"이 찍힌다. macOS 26은 제목이 왼쪽 정렬이고 모서리가 더 둥글다.
 - **HEVC**: macOS는 재생, Linux는 미지원.
 - **전체 화면**: macOS에서는 HTML 전체 화면이 네이티브 전체 화면 공간으로 전환되고, 전환 중 해제 시 위의 멈춤이 생긴다. Linux(Xvfb)에서는 즉시 전환.
 - **오류 문구 넘침**: 미지원 코덱 안내의 기술 문자열 `PipelineStatus::DEMUXER_ERROR_NO_SUPPORTED_STREAMS:`가 상자 밖으로 넘친다(macOS 좁은 창에서 확인, `06-unsupported.page.png`).
+
+## M2 실행 (run 39534378577, 2026-10-21, macos-15 arm64, `suite=all`, 패키지 포함, 7분)
+
+- 증거 테스트 11개, 기능 E2E 20개 모두 기대대로(실패 0, 건너뜀 0, 불안정 0). 전체 화면 빠른 전환 경합은 기존처럼 `test.fail()`로 기대 실패.
+- **메뉴바**: 레지스트리 기반 한국어 메뉴로 교체됨. 비패키지 `Electron`/패키지 `Learn` · 파일 · 편집 · 보기 · 이동 · 윈도우. 파일 메뉴에 "자료 가져오기… ⌘O", "외부 파일 연결… ⌥⌘O", "창 닫기 ⌘W". Reload·Force Reload·개발자 도구 없음(`spike4-menubar-click`, `spike5-packaged-appmenu-click`). 앱 메뉴는 "Learn 정보 · 서비스 · Learn 가리기 · 기타 가리기 · 모두 보기 · Learn 종료".
+- **⌘O 정확히 1회**: Playwright의 CDP 키는 NSMenu 키 등가물에 닿지 않으므로, 앱을 맨 앞으로 가져온 뒤(System Events가 앱의 main pid를 frontmost로 보고할 때까지 대기) `osascript`로 `keystroke "o" using command down`을 보냈다. 러너 이미지는 `/usr/bin/osascript`에 손쉬운 사용·Apple Events 권한을 미리 준다(actions/runner-images `configure-tccdb-macos.sh`). 결과: 대화상자 1회, 항목 1개. 헬퍼 `nativeKeystroke`는 M3의 ⌘K·⌘, 검증에 재사용한다.
+- **읽기 위치**: 영상 7.0005초에서 일시정지 → SIGKILL → 재실행 → 7.001초. PDF는 다시 열면 떠난 쪽.
 
 ## 알려진 한계
 

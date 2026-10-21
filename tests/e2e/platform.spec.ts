@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { COMMANDS, type MenuName } from '../../packages/domain/src/commands';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
-  FIXTURES, importPaths, launch, menuSnapshot, openDialogCalls, openItem, recordedPopups, runMenuCommand, stubContextMenu,
-  stubOpenDialog, type MenuNode,
+  FIXTURES, NativeInputNotPermitted, importPaths, launch, menuSnapshot, nativeKeystroke, openDialogCalls, openItem, recordedPopups,
+  runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -28,8 +28,6 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
-
-const windowFocus = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.focus());
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
   return launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -108,17 +106,30 @@ test('menu command 자료 가져오기… opens the (stubbed) dialog once and ad
   }
 });
 
+// A real OS-level ⌘O (System Events keystroke): Playwright's CDP keys never reach NSMenu key equivalents.
 test('⌘O (자료 가져오기…) opens the dialog exactly once', async ({}, testInfo) => {
   test.skip(
     !IS_MAC,
-    'Linux/xvfb: CDP-synthesized keys never reach native menu accelerators (Task 4: 0 dialog calls). The menu click ' +
-      'path is covered by the runMenuCommand test; this key path runs on the macOS evidence lane.',
+    'Linux/xvfb: CDP-synthesized keys never reach native menu accelerators (Task 4: 0 dialog calls) and there is no ' +
+      'OS-level keystroke here. The menu click path is covered by the runMenuCommand test; this runs on the macOS lane.',
   );
   const { app, page } = await session(testInfo);
   try {
     await stubOpenDialog(app, [PDF]);
-    await windowFocus(app);
-    await page.keyboard.press('Meta+O');
+    let sent: NativeKeystroke;
+    try {
+      sent = await nativeKeystroke(app, 'o', ['command']);
+    } catch (e) {
+      if (!(e instanceof NativeInputNotPermitted)) throw e;
+      testInfo.annotations.push({ type: 'osascript', description: `not permitted: ${e.message}` });
+      test.skip(true, `OS-level keystrokes not permitted: ${e.message}`);
+      throw e; // unreachable: test.skip throws
+    }
+    testInfo.annotations.push(
+      { type: 'frontmost', description: `${sent.frontmost.name} (pid ${sent.frontmost.pid})` },
+      { type: 'osascript', description: JSON.stringify({ script: sent.script, output: sent.output }) },
+    );
+    console.log('[measure] native ⌘O', JSON.stringify(sent));
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     expect(await openDialogCalls(app)).toBe(1);
     // A second dispatch (e.g. a renderer key handler on top of the accelerator) would land right behind the first.

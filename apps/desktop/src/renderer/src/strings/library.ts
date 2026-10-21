@@ -1,5 +1,6 @@
 export const library = {
   table: '자료 목록',
+  listFailed: '자료 목록을 불러오지 못했습니다',
   colTitle: '제목',
   colType: '종류',
   colSize: '크기',

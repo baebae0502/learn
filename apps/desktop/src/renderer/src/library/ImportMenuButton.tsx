@@ -15,6 +15,7 @@ export function ImportMenuButton() {
       label={t.library.importButton}
       icon={Plus}
       testId="import-menu"
+      placement="bottom end" // the toolbar's last control: the menu hangs from its right edge, inside the window
       isDisabled={!IDS.some((id) => isEnabled(id))}
       disabledReason={t.common.busy}
       items={IDS.map((id) => ({ id, label: commandById(id).label, accelerator: commandById(id).accelerator, testId: TEST_IDS[id], isDisabled: !isEnabled(id) }))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatSize } from './format';
+import { formatDate, formatSize, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -10,6 +10,22 @@ describe('format (design-spec 9)', () => {
     expect(formatDate(at(2026, 10, 20, 20, 40), now)).toBe('어제 오후 8:40');
     expect(formatDate(at(2026, 10, 12, 10, 0), now)).toBe('2026. 10. 12.');
     expect(formatDate(at(2025, 12, 31, 23, 59), new Date(2026, 0, 1, 8, 0))).toBe('어제 오후 11:59');
+  });
+  it('keeps the whole calendar day: 00:00 and 23:59 are today, a later day is a plain date', () => {
+    expect(formatDate(at(2026, 10, 21, 0, 0), now)).toBe('오늘 오전 12:00');
+    expect(formatDate(at(2026, 10, 21, 23, 59), now)).toBe('오늘 오후 11:59');
+    expect(formatDate(at(2026, 10, 20, 0, 0), now)).toBe('어제 오전 12:00');
+    expect(formatDate(at(2026, 10, 19, 23, 59), now)).toBe('2026. 10. 19.');
+    expect(formatDate(at(2026, 10, 22, 0, 0), now)).toBe('2026. 10. 22.'); // a future date (clock change) is never 오늘/어제
+  });
+  it('shows a dash, not "Invalid Date", for a value that is not a date', () => {
+    expect(formatDate('', now)).toBe('—');
+    expect(formatDate('not a date', now)).toBe('—');
+  });
+  it('the next local midnight', () => {
+    expect(msUntilMidnight(new Date(2026, 9, 21, 23, 59, 59, 0))).toBe(1000);
+    expect(msUntilMidnight(new Date(2026, 9, 21, 0, 0, 0, 0))).toBe(24 * 3600 * 1000);
+    expect(msUntilMidnight(new Date(2026, 11, 31, 12, 0))).toBe(12 * 3600 * 1000);
   });
   it('keeps one decimal below 10 units', () => {
     expect(formatSize(4_404_019)).toBe('4.2 MB');

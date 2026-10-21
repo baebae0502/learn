@@ -17,9 +17,15 @@ const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 /** design-spec 9: "오늘 오전 9:24", "어제 오후 8:40", otherwise "2026. 10. 12.". */
 export function formatDate(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return t.common.noValue;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
   if (dayKey(d) === dayKey(now)) return `${t.common.today} ${time}`;
   if (dayKey(d) === dayKey(yesterday)) return `${t.common.yesterday} ${time}`;
   return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
+}
+
+/** Milliseconds from `now` to the next local midnight, when "오늘" and "어제" move on (useNow). */
+export function msUntilMidnight(now: Date): number {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime() - now.getTime();
 }

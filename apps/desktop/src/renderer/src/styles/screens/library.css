@@ -6,15 +6,29 @@
     display: flex;
     flex-direction: column;
   }
+  /* The body reserves its scrollbar's gutter and the head reserves the same one, so a classic scrollbar (Linux, or
+     macOS with "always show") never shifts the columns against the head; overlay scrollbars reserve nothing. */
+  .library-table .table-head {
+    overflow: hidden;
+    scrollbar-gutter: stable;
+  }
   .library-table .table-body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     padding-bottom: var(--space-8);
   }
   .library-table .linked-mark {
     display: inline-flex;
     flex: none;
+  }
+  /* A list that could not be read: the stage notice where the list would be, on the empty state's optical centre. */
+  .library-state {
+    flex: 1 1 auto;
+    display: grid;
+    place-items: center;
+    padding: var(--space-32) var(--space-32) 96px; /* local: optical centre, as .empty-state */
   }
   /* First run (library-empty.html): optical centre above the geometric one. */
   .empty-state {

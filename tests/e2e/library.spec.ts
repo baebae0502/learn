@@ -1,9 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
+import { Channels } from '../../packages/domain/src/ipc-channels';
 import { expectDisabledReason, importFiles, importPaths, launch, openItem, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
+
+/** Replace one IPC handler in main with a fixed reply (a Result, as createHandle would send it). */
+const stubHandler = (app: ElectronApplication, channel: string, reply: unknown) =>
+  app.evaluate(({ ipcMain }, [channel, reply]) => {
+    ipcMain.removeHandler(channel as string);
+    ipcMain.handle(channel as string, () => reply);
+  }, [channel, reply] as const);
 
 function fakePdf(dir: string, name: string, body: string): string {
   fs.mkdirSync(dir, { recursive: true });
@@ -100,28 +108,86 @@ test('the empty-state buttons and the drop path need a real file location', asyn
   }
 });
 
-test('while an import runs, the first-run buttons are disabled with the reason as their tooltip (M-2)', async ({}, testInfo) => {
+/** An open dialog that stays up until `releaseOpenDialog` (a user still choosing files); no paths = cancelled. */
+const holdOpenDialog = (s: Session, paths: string[]) =>
+  s.app.evaluate(({ dialog }, paths) => {
+    const g = globalThis as { __learnReleaseDialog?: () => void };
+    dialog.showOpenDialog = (() =>
+      new Promise((resolve) => {
+        g.__learnReleaseDialog = () => resolve({ canceled: paths.length === 0, filePaths: paths });
+      })) as typeof dialog.showOpenDialog;
+  }, paths);
+const releaseOpenDialog = (s: Session) => s.app.evaluate(() => (globalThis as { __learnReleaseDialog?: () => void }).__learnReleaseDialog?.());
+/** Two frames: anything a click set off in React has rendered. */
+const frames = (s: Session) => s.page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+test('while an import runs, its controls are disabled with the reason as their tooltip (M-2) and the list opens nothing', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const pdf = fakePdf(testInfo.outputPath('src'), 'held.pdf', 'held');
   try {
-    // An open dialog that stays up until the test lets it go (a user still choosing files).
-    await s.app.evaluate(({ dialog }, paths) => {
-      const g = globalThis as { __learnReleaseDialog?: () => void };
-      dialog.showOpenDialog = (() =>
-        new Promise((resolve) => {
-          g.__learnReleaseDialog = () => resolve({ canceled: false, filePaths: paths });
-        })) as typeof dialog.showOpenDialog;
-    }, [pdf]);
+    await holdOpenDialog(s, [pdf]);
     const managed = s.page.getByTestId('import-managed');
     await managed.click();
     for (const id of ['import-managed', 'import-linked', 'import-menu']) await expectDisabledReason(s.page.getByTestId(id), BUSY);
     await s.page.mouse.move(700, 880); // leave the button the click pressed, then come back: the tooltip opens on hover
     await managed.hover();
     await expect(s.page.getByRole('tooltip')).toHaveText(BUSY);
-    await s.app.evaluate(() => (globalThis as { __learnReleaseDialog?: () => void }).__learnReleaseDialog?.());
+    await releaseOpenDialog(s);
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
+    // The focused button left with the first-run screen: focus continues on the first title, not on <body>.
+    await expect(s.page.getByTestId('open-item').first()).toBeFocused();
+
+    // Opening from the list goes through the registry (item.open), so it is refused while the import holds the window.
+    await holdOpenDialog(s, []);
+    await s.page.getByTestId('import-menu').click();
+    await s.page.getByTestId('import-menu-managed').click();
+    await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
+    const title = s.page.locator('[data-testid="open-item"][data-title="held"]');
+    const opensNothing = async (how: () => Promise<void>) => {
+      await how();
+      await frames(s);
+      await expect(s.page.getByTestId('viewer-title')).toHaveCount(0);
+      await expect(s.page.getByTestId('library-table')).toBeVisible();
+    };
+    await opensNothing(() => title.click());
+    await opensNothing(() => s.page.getByTestId('item-row').locator('[data-col="added"]').dblclick());
+    await opensNothing(async () => {
+      await title.focus();
+      await s.page.keyboard.press('Enter');
+    });
+    await releaseOpenDialog(s); // cancelled: nothing imported, nothing to report
+    await expectDisabledReason(s.page.getByTestId('import-menu'), null);
+    await title.click();
+    await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a first list read that fails says so where the list goes, and 다시 시도 reads it again', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [fakePdf(testInfo.outputPath('src'), 'kept.pdf', 'kept')]);
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    const listed = await s.page.evaluate(() => window.learn.library.list());
+    await stubHandler(s.app, Channels.library.list, { ok: false, code: 'INTERNAL', message: '라이브러리를 읽지 못했습니다. 잠시 뒤 다시 시도하세요.', retryable: true });
+    await s.page.reload();
+    await expect(s.page.getByTestId('app-ready')).toBeAttached();
+    const notice = s.page.getByTestId('list-failed');
+    await expect(notice).toContainText('자료 목록을 불러오지 못했습니다');
+    await expect(notice).toContainText('잠시 뒤 다시 시도하세요');
+    await expect(s.page.getByTestId('empty-state')).toHaveCount(0); // never "아직 자료가 없습니다" for a list we could not read
+    await expect(s.page.getByTestId('toolbar-count')).toHaveCount(0);
+    await expect(s.page.getByTestId('nav-library').locator('.count')).toHaveCount(0);
+    await expect(s.page.getByTestId('import-menu')).toBeEnabled(); // importing still works
+    await expect(s.page.getByTestId('list-error')).toHaveCount(0); // the notice is the message; no toast on top
+    await stubHandler(s.app, Channels.library.list, listed);
+    await s.page.getByTestId('list-retry').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    await expect(s.page.getByTestId('list-failed')).toHaveCount(0);
+    await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개');
   } finally {
     await s.app.close();
   }
@@ -162,6 +228,8 @@ test('a title opens on click, ↩ or Space, a row on double-click; the keyboard-
   try {
     await importPaths(s.page, [fakePdf(src, 'first.pdf', '1'), fakePdf(src, 'second.pdf', '2')]);
     await expect(s.page.getByTestId('item-row')).toHaveCount(2);
+    // Nothing had focus on the first-run screen, so the list takes none (the hand-off is only for a focused button).
+    expect(await s.page.evaluate(() => document.activeElement === document.body)).toBe(true);
     const title = s.page.locator('[data-testid="open-item"][data-title="first"]');
     const row = s.page.getByTestId('item-row').filter({ has: title });
     const other = s.page.getByTestId('item-row').filter({ hasNot: title });

@@ -105,6 +105,8 @@ export function MenuButton<K extends string>(props: {
   isDisabled?: boolean;
   /** Why it can be disabled here: while `isDisabled` the button stays focusable but never opens (I1, ui/disabledReason). */
   disabledReason?: string;
+  /** Which edge the menu lines up with: the button's start (default) or, for a button at the window's end, its end. */
+  placement?: 'bottom start' | 'bottom end';
   testId?: string;
 }) {
   const reason = useDisabledReason(props.isDisabled, props.disabledReason);
@@ -127,7 +129,7 @@ export function MenuButton<K extends string>(props: {
             <SoftDisabled>{trigger}</SoftDisabled>
           </Tooltip>
         )}
-        <Popover className="menu-popover" placement="bottom start" offset={4}>
+        <Popover className="menu-popover" placement={props.placement ?? 'bottom start'} offset={4}>
           <MenuList entries={props.items} onAction={props.onAction} />
         </Popover>
       </MenuTrigger>

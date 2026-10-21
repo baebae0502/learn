@@ -132,7 +132,7 @@ if (!app.requestSingleInstanceLock()) {
     applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
     app.setAboutPanelOptions(aboutPanelOptions(app.getVersion(), process.versions.electron));
     onThemeChange(() => {
-      for (const win of BrowserWindow.getAllWindows()) if (win === mainWindow) applyChromeTheme(win, chrome());
+      if (mainWindow && !mainWindow.isDestroyed()) applyChromeTheme(mainWindow, chrome());
     });
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {

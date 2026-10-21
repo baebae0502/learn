@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, acceleratorLabel, commandById, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, acceleratorLabel, commandById, platformAccelerator, type CommandId, type CommandSpec } from '@learn/domain';
 import { applyMenuEnabled, buildAppMenu, menuItemIds } from './app-menu';
 
 interface Shape {
@@ -57,7 +57,13 @@ const EDIT: Shape = {
     { label: '모두 선택', role: 'selectAll' },
   ],
 };
-const VIEW: Shape = { id: 'menu.view', label: '보기', submenu: [{ label: '전체 화면', role: 'togglefullscreen' }] };
+const VIEW = (platform: NodeJS.Platform): Shape => ({
+  id: 'menu.view', label: '보기', submenu: [
+    { id: 'view.toggleSidebar', label: '사이드바 보기/숨기기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
+    SEP,
+    { label: '전체 화면', role: 'togglefullscreen' },
+  ],
+});
 const GO: Shape = {
   id: 'menu.go', label: '이동', submenu: [{ id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' }],
 };
@@ -80,7 +86,7 @@ describe('buildAppMenu', () => {
       },
       FILE,
       EDIT,
-      VIEW,
+      VIEW('darwin'),
       GO,
       {
         id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [
@@ -98,7 +104,7 @@ describe('buildAppMenu', () => {
       expect(shape(build(platform))).toEqual([
         FILE,
         EDIT,
-        VIEW,
+        VIEW(platform),
         GO,
         { id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [{ label: '최소화', role: 'minimize' }] },
       ]);
@@ -115,11 +121,7 @@ describe('buildAppMenu', () => {
       }
     }
     const view = build('darwin', true).find((m) => m.id === 'menu.view')!;
-    expect(shape(view.submenu as MenuItemConstructorOptions[])).toEqual([
-      { label: '전체 화면', role: 'togglefullscreen' },
-      SEP,
-      { label: '개발자 도구', role: 'toggleDevTools' },
-    ]);
+    expect(shape(view.submenu as MenuItemConstructorOptions[])).toEqual([...VIEW('darwin').submenu!, SEP, { label: '개발자 도구', role: 'toggleDevTools' }]);
   });
 
   it('every label is Korean except the app name', () => {

@@ -32,25 +32,10 @@
   .muted { color: var(--muted); }
   .small { font-size: 13px; }
   
-  .shell { display: grid; height: 100%; grid-template-columns: 220px minmax(0, 1fr) 340px; grid-template-rows: 56px minmax(0, 1fr); grid-template-areas: 'top top top' 'side center tutor'; }
-  .shell.no-tutor { grid-template-columns: 220px minmax(0, 1fr) 0; }
-  .topbar { grid-area: top; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; background: var(--top); color: #fff; }
-  .brand { font-size: 18px; }
-  .save-status { font-size: 13px; color: var(--top-text); }
-  .save-status.save-error { color: #ffb4ac; }
-  .sidebar { grid-area: side; background: var(--side); padding: 20px 12px; overflow: auto; }
-  .sidebar h2 { font-size: 13px; letter-spacing: 0.06em; margin: 18px 10px 8px; }
-  .nav-item { width: 100%; display: flex; justify-content: space-between; background: none; border: none; color: var(--text); padding: 8px 10px; }
-  .nav-item.active { background: #c9dde6; }
-  .sidebar p { margin: 4px 10px; }
-  .center { grid-area: center; overflow: auto; padding: 16px; }
-  .tutor { grid-area: tutor; background: var(--panel); margin: 16px 16px 16px 0; border-radius: 12px; padding: 16px; overflow: auto; }
-  .tutor-head { display: flex; justify-content: space-between; align-items: center; }
-  .tutor-head h2 { font-size: 15px; margin: 0; }
-  .tutor .pending { background: var(--bg); border-radius: 8px; padding: 12px; line-height: 1.5; }
-  .tutor-toggle { position: fixed; right: 16px; bottom: 16px; }
   
   .library, .viewer { background: var(--panel); border-radius: 12px; padding: 16px; min-height: 100%; }
+  /* M3 Task 4: the old screens scroll inside the shell's content column (the removed .center did; Tasks 5 and 7 replace them). */
+  .content > :is(.library, .viewer) { flex: 1 1 auto; min-height: 0; overflow: auto; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
   .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 14px; color: var(--muted); text-align: center; margin-bottom: 12px; }
   .drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }

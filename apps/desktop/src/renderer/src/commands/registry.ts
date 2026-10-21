@@ -9,6 +9,8 @@ export interface CommandEnv extends CommandContextState {
   back(): void;
   open(itemId: string): void;
   relink(itemId: string): void;
+  /** ⌃⌘S (Task 4). */
+  toggleSidebar(): void;
 }
 
 export interface CommandTarget {
@@ -24,6 +26,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'nav.back': (env) => env.back(),
   'item.open': (env, [itemId]) => env.open(itemId!),
   'item.relink': (env, [itemId]) => env.relink(itemId!),
+  'view.toggleSidebar': (env) => env.toggleSidebar(),
 };
 
 /** Just the context fields (what main needs for the menu bar). */

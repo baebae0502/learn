@@ -1,0 +1,118 @@
+@layer screens {
+  .window {
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-content);
+  }
+  .window-panes {
+    height: 100%;
+  }
+  /* Sidebar: full height, opaque fallback colour; transparent over macOS vibrancy (Task 8). */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    background: var(--bg-sidebar);
+    box-shadow: inset -1px 0 0 var(--separator); /* the 1 px pane boundary, inside the 240 */
+  }
+  :root[data-vibrancy='1'] .sidebar {
+    background: transparent;
+  }
+  .sidebar-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+  }
+  /* Top 88 px, identical in every view: 0–52 traffic lights (84 inset) + toggle, 52–80 launcher, 80–88 gap. */
+  .sidebar-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: var(--toolbar-height);
+    flex: none;
+    padding: 0 var(--space-12) 0 var(--traffic-light-inset);
+    -webkit-app-region: drag;
+  }
+  .launcher-wrap {
+    flex: none;
+    height: 36px; /* local: 28 launcher + 8 gap, so the view navigator starts at y 88 */
+    padding: 0 var(--space-8) var(--space-8);
+  }
+  .sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--space-8) var(--space-12);
+  }
+  /* Resize handle: zero width on the boundary, ±4 px hit area; the line itself is the sidebar's inset shadow. */
+  .pane-separator {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 0px;
+    outline: none;
+  }
+  .pane-separator::after {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+  }
+  .pane-separator:focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0 -1px 0 -2px;
+    background: var(--focus);
+  }
+  .window[data-sidebar='hidden'] .pane-separator {
+    display: none;
+  }
+  .main-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    background: var(--bg-content);
+  }
+  /* Unified toolbar (design-spec 2.1): 52 px, --bg-window, hairline below. */
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    height: var(--toolbar-height);
+    flex: none;
+    min-width: 0;
+    padding: 0 calc(var(--space-12) + var(--titlebar-controls, 0px)) 0 var(--titlebar-inset, var(--space-12));
+    background: var(--bg-window);
+    border-bottom: 1px solid var(--separator);
+    -webkit-app-region: drag;
+  }
+  .tb-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+  .tb-title .title {
+    font: var(--type-title3);
+  }
+  .tb-title .count {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .tb-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-left: auto;
+  }
+  .content {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}

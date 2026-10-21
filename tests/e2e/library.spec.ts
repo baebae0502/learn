@@ -19,7 +19,6 @@ test('import, duplicate prompt, missing linked file and relink', async ({}, test
 
   let { app, page } = await launch(lib, ud);
   await expect(page.getByTestId('empty-state')).toBeVisible();
-  await expect(page.getByTestId('tutor-panel')).toContainText('P3');
 
   await stubOpenDialog(app, [a]);
   await page.getByTestId('import-managed').click();
@@ -48,12 +47,6 @@ test('import, duplicate prompt, missing linked file and relink', async ({}, test
   await stubOpenDialog(app, [notes]);
   await page.getByTestId('import-managed').click();
   await expect(page.getByTestId('import-failures')).toContainText('지원하지 않는 형식');
-
-  await page.getByTestId('tutor-close').click();
-  await expect(page.getByTestId('tutor-panel')).toBeHidden();
-  await expect(page.getByTestId('tutor-open')).toBeVisible();
-  await page.getByTestId('tutor-open').click();
-  await expect(page.getByTestId('tutor-panel')).toBeVisible();
 
   await stubOpenDialog(app, [b]);
   await page.getByTestId('import-linked').click();

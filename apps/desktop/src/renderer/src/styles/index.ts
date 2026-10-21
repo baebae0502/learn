@@ -17,3 +17,4 @@ import './components/toast.css';
 import './components/notice.css';
 import './components/list.css';
 import './screens/gallery.css';
+import './screens/shell.css';

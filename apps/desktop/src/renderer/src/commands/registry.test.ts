@@ -12,6 +12,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   back: vi.fn(),
   open: vi.fn(),
   relink: vi.fn(),
+  toggleSidebar: vi.fn(),
   ...over,
 });
 
@@ -32,6 +33,16 @@ describe('renderer command registry', () => {
     const viewer = env({ view: 'viewer' });
     expect(runCommand('nav.back', viewer)).toBe(true);
     expect(viewer.back).toHaveBeenCalledTimes(1);
+  });
+  it('⌃⌘S toggles the sidebar in every view, but not while the window is blocked', () => {
+    for (const view of ['library', 'viewer'] as const) {
+      const e = env({ view });
+      expect(runCommand('view.toggleSidebar', e)).toBe(true);
+      expect(e.toggleSidebar).toHaveBeenCalledTimes(1);
+    }
+    const blocked = env({ blocked: true });
+    expect(runCommand('view.toggleSidebar', blocked)).toBe(false);
+    expect(blocked.toggleSidebar).not.toHaveBeenCalled();
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

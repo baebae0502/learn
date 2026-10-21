@@ -18,6 +18,31 @@ const copy: Array<{ at: string; text: string }> = [];
 collect(t, 't', copy);
 for (const c of COMMANDS) copy.push({ at: `command ${c.id}`, text: c.label });
 
+/** Renderer sources (no tests) under src/, relative paths. */
+const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+function sources(): string[] {
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) files.push(path.relative(SRC, p));
+    }
+  };
+  walk(SRC);
+  return files.sort();
+}
+const read = (rel: string) => fs.readFileSync(path.join(SRC, rel), 'utf8');
+
+/**
+ * 해요체 endings: a sentence-final 요 (있어요, 됐어요, 좋네요, 그렇군요; also before "," or ")") or 죠. The polite
+ * imperative "-세요" (다시 시도하세요) is 합니다체 here: design-spec 9 and 6 use it, and so do the mockups (SDD ruling
+ * C-3/R-7). Nouns ending in 요 (필요, 중요 …) are removed first, so 필요해요 is still caught.
+ */
+const YO_NOUNS = /필요|중요|주요|개요|수요/g;
+const HAEYO = /(?<!세)요(?=[.!?,)\s]|$)|죠(?=[.!?,)\s]|$)/;
+const isHaeyo = (text: string): boolean => HAEYO.test(text.replace(YO_NOUNS, ''));
+
 // Same rules as the mockups' copyLint (docs/design/mockups/assets/mockup.js).
 const DETERMINER = /(?:^|[\s(‘“])(이|그|저|새|다른|각|모든|어느) (?=[가-힣])/;
 const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽'];
@@ -28,26 +53,34 @@ describe('UI copy (design-spec 4, 9)', () => {
   it('binds determiner + noun and the listed compounds with U+00A0', () => {
     expect(copy.filter((s) => DETERMINER.test(s.text) || COMPOUNDS.some((c) => s.text.includes(c))).map(show)).toEqual([]);
   });
+  it('tells 해요체 from 합니다체 and the -세요 imperative', () => {
+    expect(['다시 시도하세요.', '선택하세요', '확인하세요, 그다음', '필요합니다.', '중요 표시', '요약', '요청을 보냈습니다.'].filter(isHaeyo)).toEqual([]);
+    const haeyo = ['열 수 있어요.', '됐어요', '있어요, 그리고', '(열 수 있어요)', '그렇죠', '그렇죠?', '좋네요', '그렇군요.', '필요해요.', '중요해요'];
+    expect(haeyo.filter((s) => !isHaeyo(s))).toEqual([]);
+  });
   it('uses 합니다체, never 해요체', () => {
-    // The polite imperative "-세요" (다시 시도하세요, 다시 가져오세요) is 합니다체 here: design-spec 9 and 6 use it, and so
-    // do the mockups (SDD ruling C-3/R-7). Every other sentence-final 요 (해요, 돼요, 있어요, 거예요 …) is 해요체.
-    expect(copy.filter((s) => /(?<!세)요[.!?]?(\s|$)/.test(s.text) && !s.text.includes('필요')).map(show)).toEqual([]);
+    expect(copy.filter((s) => isHaeyo(s.text)).map(show)).toEqual([]);
   });
   it('has no internal jargon', () => {
     expect(copy.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
   });
   it('no renderer source shows a phase placeholder such as "P3 단계"', () => {
-    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const files: string[] = [];
-    const walk = (d: string) => {
-      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
-        const p = path.join(d, e.name);
-        if (e.isDirectory()) walk(p);
-        // strings/legacy.ts belongs to the pre-M3 screens and is deleted in Task 7.
-        else if (/\.(ts|tsx)$/.test(e.name) && !e.name.endsWith('.test.ts') && e.name !== 'legacy.ts') files.push(p);
-      }
-    };
-    walk(root);
-    expect(files.filter((f) => /P[0-9]\s*단계/.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(root, f))).toEqual([]);
+    // strings/legacy.ts belongs to the pre-M3 screens and is deleted in Task 7.
+    const files = sources().filter((f) => f !== path.join('strings', 'legacy.ts'));
+    expect(files.filter((f) => /P[0-9]\s*단계/.test(read(f)))).toEqual([]);
+  });
+  it('only the pre-M3 screens import strings/legacy (no new screen may; Task 7 deletes it)', () => {
+    expect(sources().filter((f) => /from '(?:\.\.?\/)+strings\/legacy'/.test(read(f)))).toEqual([
+      'App.tsx',
+      'components/DuplicateDialog.tsx',
+      'components/FatalScreen.tsx',
+      'components/LibraryView.tsx',
+      'components/Sidebar.tsx',
+      'components/TopBar.tsx',
+      'components/TutorPanel.tsx',
+      'viewers/PdfViewer.tsx',
+      'viewers/VideoViewer.tsx',
+      'viewers/ViewerHost.tsx',
+    ]);
   });
 });

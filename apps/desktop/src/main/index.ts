@@ -4,13 +4,8 @@ import { app, BrowserWindow, Menu } from 'electron';
 import { COMMANDS, LearnError, toLearnError, type AppInfo, type CommandId, type ErrorCode } from '@learn/domain';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { sendEvent } from './events';
-import { registerAppIpc } from './ipc/app';
-import { registerLibraryIpc } from './ipc/library';
-import { registerOrganizeIpc } from './ipc/organize';
-import { registerReaderIpc } from './ipc/reader';
+import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
-import { registerSettingsIpc } from './ipc/settings';
-import { registerUiIpc } from './ipc/ui';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
@@ -96,10 +91,7 @@ if (!app.requestSingleInstanceLock()) {
       }),
       prefs,
     };
-    const handle = createHandle(devOrigin);
-    for (const register of [registerAppIpc, registerLibraryIpc, registerOrganizeIpc, registerSettingsIpc, registerReaderIpc, registerUiIpc]) {
-      register(handle, deps);
-    }
+    registerAllIpc(createHandle(devOrigin), deps);
 
     mainWindow = openMainWindow();
   });

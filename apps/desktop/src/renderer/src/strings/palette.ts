@@ -10,8 +10,14 @@ export const palette = {
   /** While an import or a sheet holds the window (critic T9-n5): what is unavailable, then why and what next. */
   busyTitle: '지금은 명령을 실행할 수 없습니다',
   busyBody: '진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.',
-  /** Read out (polite) while the window is held and a command that still runs (설정…) is listed under the notice. */
-  busyStatus: (n: number) => `지금은 명령을 실행할 수 없습니다. 실행할 수 있는 명령 ${n}개`,
+  /**
+   * The same hold while a command that still runs (설정…) is listed under it: the header says why the rest is missing
+   * and when it comes back, not that nothing runs.
+   */
+  busyHeaderTitle: '진행 중인 작업이 있습니다',
+  busyHeaderBody: '작업이 끝나면 다른\u00a0명령도 쓸 수 있습니다.',
+  /** Read out (polite) with that header: the hold, then how many commands are listed. */
+  busyStatus: (n: number) => `진행 중인 작업이 있습니다. 실행할 수 있는 명령 ${n}개`,
   /** Read out (polite) when the number of results changes. */
   resultCount: (n: number) => `명령 ${n}개`,
   footMove: '이동',

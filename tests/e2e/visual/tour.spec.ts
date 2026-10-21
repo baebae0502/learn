@@ -169,8 +169,8 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
         document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
       }),
     );
-    // Only the main-owned 설정… still runs: listed under the notice that says why the rest is missing (review minor 1).
-    await expect(s.page.getByTestId('palette-busy')).toContainText('지금은 명령을 실행할 수 없습니다');
+    // Only the main-owned 설정… still runs: listed under a header that says the rest comes back when the work ends.
+    await expect(s.page.getByTestId('palette-busy')).toContainText('진행 중인 작업이 있습니다');
     await expect(s.page.getByTestId('palette-item')).toHaveCount(1);
     await shoot(s.page, 'palette-blocked-light', { mask: dates() });
     await closeSheet(dup, 'Escape');

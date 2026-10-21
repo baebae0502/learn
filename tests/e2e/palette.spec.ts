@@ -223,18 +223,20 @@ test('the list follows the registry while the palette is open: a drop that start
     await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
     await expect(busy).toHaveCount(0);
     let sheet = await dropDuplicate();
-    // The window is held: only the main-owned 설정… can run, listed under the notice that says why the rest is missing.
+    // The window is held: only the main-owned 설정… can run, listed under a header that says why the rest is missing
+    // and that it comes back when the work ends (not "nothing can run" above a row that can).
     await expect(page.getByTestId('palette')).toBeVisible();
     await expect.poll(ids).toEqual(['app.settings']);
-    await expect(busy.locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
-    await expect(busy.locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
+    await expect(busy.locator('.pe-title')).toHaveText('진행 중인 작업이 있습니다');
+    await expect(busy.locator('.pe-text')).toHaveText('작업이 끝나면 다른\u00a0명령도 쓸 수 있습니다.');
     await expect(page.getByRole('listbox').getByTestId('palette-busy')).toHaveCount(0); // a header, not an option
-    await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다. 실행할 수 있는 명령 1개');
+    await expect(page.getByTestId('palette-status')).toHaveText('진행 중인 작업이 있습니다. 실행할 수 있는 명령 1개');
     await expect.poll(() => cursorRow(page)).toBe('app.settings');
-    // Nothing listed: the notice alone (not "no match").
+    // Nothing listed: the notice alone (not "no match"): nothing can run until the work ends.
     await input.fill('효소 억제제');
     await expect(page.getByTestId('palette-item')).toHaveCount(0);
-    await expect(busy).toBeVisible();
+    await expect(busy.locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
+    await expect(busy.locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
     await expect(page.getByTestId('palette-empty')).toHaveCount(0);
     await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다');
     await input.fill('');

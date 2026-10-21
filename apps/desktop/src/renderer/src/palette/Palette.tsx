@@ -114,12 +114,13 @@ function PaletteDialog() {
       : env.blocked
         ? t.palette.busyTitle
         : t.palette.emptyTitle(query.trim());
-  // An import or a sheet holds the window: nothing else can run until it ends (not "no match"). Alone when nothing is
-  // listed, else a header above the list — not an option, never under the cursor.
+  // An import or a sheet holds the window (not "no match"). Alone when nothing is listed: nothing can run until it ends.
+  // Above the commands that still run (설정…): a header — not an option, never under the cursor — that says the others
+  // come back when the work ends.
   const busy = env.blocked && (
     <div className="p-empty" data-testid="palette-busy">
-      <div className="pe-title">{t.palette.busyTitle}</div>
-      <div className="pe-text">{t.palette.busyBody}</div>
+      <div className="pe-title">{ranked.length > 0 ? t.palette.busyHeaderTitle : t.palette.busyTitle}</div>
+      <div className="pe-text">{ranked.length > 0 ? t.palette.busyHeaderBody : t.palette.busyBody}</div>
     </div>
   );
   const cursorElementId = cursor >= 0 ? optionId(cursor) : null;

@@ -15,7 +15,7 @@
     "tokens:check": "node --experimental-strip-types apps/desktop/scripts/build-tokens.mjs --check",
     "mockups:render": "node --experimental-strip-types scripts/render-mockups.mjs",
     "e2e": "pnpm build && pnpm fixtures && playwright test",
-    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1440x900x24\" playwright test",
+    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1920x1200x24\" playwright test",
     "e2e:evidence": "pnpm build && pnpm fixtures && playwright test -c playwright.evidence.config.ts"
   },
   "devDependencies": {

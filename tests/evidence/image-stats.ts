@@ -54,3 +54,48 @@ export function inkMass(img: RgbaImage): number {
   for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) sum += Math.abs(luma(rgbAt(img, x, y)) - surface) / 255;
   return Math.round(sum * 10) / 10;
 }
+
+const contrastOf = (a: readonly number[], b: readonly number[]) => {
+  const lin = (v: number) => {
+    const c = v / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const lum = (c: readonly number[]) => 0.2126 * lin(c[0]!) + 0.7152 * lin(c[1]!) + 0.0722 * lin(c[2]!);
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+  return Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100;
+};
+
+/**
+ * One element on a fixed layout (Task 8 R3-3): its surface (mode), its ink (the pixel farthest in brightness), the
+ * WCAG ratio between them, and whether the ink is a solid colour — at least 20 pixels within 2 levels of it — rather
+ * than one anti-aliased edge.
+ */
+export function elementStats(img: RgbaImage, box: Box) {
+  const clipped = { x0: Math.max(0, box.x0), y0: Math.max(0, box.y0), x1: Math.min(img.width, box.x1), y1: Math.min(img.height, box.y1) };
+  const { surface, ink } = regionStats(img, clipped);
+  let atExtreme = 0;
+  for (let y = clipped.y0; y < clipped.y1; y++) {
+    for (let x = clipped.x0; x < clipped.x1; x++) {
+      const c = rgbAt(img, x, y);
+      if (Math.max(...c.map((v, i) => Math.abs(v - ink[i]!))) <= 2) atExtreme++;
+    }
+  }
+  return { box: clipped, surface, ink, ratio: contrastOf(ink, surface), atExtreme, solid: atExtreme >= 20 };
+}
+
+/** The selected row in a sidebar column: the band of rows whose fill differs from the column's surface. */
+export function selectionBand(img: RgbaImage, box: Box) {
+  const surface = modeColour(img, box);
+  let band: { y0: number; y1: number } | null = null;
+  for (let y = box.y0; y < box.y1; y++) {
+    const fill = modeColour(img, { x0: box.x0, y0: y, x1: box.x1, y1: y + 1 });
+    const differs = Math.max(...fill.map((v, i) => Math.abs(v - surface[i]!))) > 8;
+    if (differs) {
+      if (band && band.y1 === y) band.y1 = y + 1;
+      else if (!band || band.y1 - band.y0 < 12) band = { y0: y, y1: y + 1 };
+    }
+  }
+  if (!band || band.y1 - band.y0 < 12) return null;
+  const row = { x0: box.x0, y0: band.y0, x1: box.x1, y1: band.y1 };
+  return { band, ...elementStats(img, row) };
+}

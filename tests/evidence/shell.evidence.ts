@@ -21,10 +21,10 @@ import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/s
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import {
-  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, nativeWindowShot, platformFonts, pngCentroid, pngPixels, tryExec,
-  windowIdOf, windowShotById, writeJson,
+  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, nativeWindowShot, outFile, platformFonts, pngCentroid, pngPixels, record,
+  tryExec, windowIdOf, windowShotById, writeJson,
 } from './capture';
-import { inkMass, regionStats } from './image-stats';
+import { elementStats, inkMass, regionStats, selectionBand } from './image-stats';
 import { findMenuPanel, menuRows } from './menu-rows';
 import { decodePng } from './png';
 
@@ -117,12 +117,64 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
   const chrome = await s.page.evaluate(() => {
     const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
-    return { cursor: css('[data-testid="nav-library"]').boxShadow, title: css('[data-testid="toolbar-title"]').color, rowIcon: css('[data-testid="nav-library"] > .icon').color };
+    const probe = document.createElement('span');
+    document.body.append(probe);
+    const token = (v: string) => ((probe.style.color = `var(${v})`), getComputedStyle(probe).color);
+    const tokens = { inactive: token('--text-inactive'), accentInactive: token('--accent-text-inactive') };
+    probe.remove();
+    const titleBox = document.querySelector('[data-testid="toolbar-title"]')!.getBoundingClientRect();
+    return {
+      notKey: document.documentElement.hasAttribute('data-window-inactive'),
+      notMain: document.documentElement.hasAttribute('data-window-not-main'),
+      cursor: css('[data-testid="nav-library"]').boxShadow,
+      title: css('[data-testid="toolbar-title"]').color,
+      count: css('[data-testid="toolbar-count"]').color,
+      toggle: css('[data-testid="sidebar-toggle"]').color,
+      section: css('.sidebar .section-label').color,
+      rowIcon: css('[data-testid="nav-library"] > .icon').color,
+      tokens,
+      titleBox: { x0: Math.round(titleBox.x), y0: Math.round(titleBox.y), x1: Math.round(titleBox.right), y1: Math.round(titleBox.bottom) },
+    };
   });
+  // The drawn title, measured like Finder's (finderRef): ink and ratio on its surface.
+  const titleInk = shot.file ? elementStats(decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))), chrome.titleBox) : null;
   await bringAppToFront(s.app);
   await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
-  return { frontmostAtShot, closeButton, navRow, chrome };
+  return { frontmostAtShot, closeButton, navRow, chrome, titleInk };
 }
+/** The open tooltip's box (page coordinates) and its background, or null. */
+const tooltipBox = (page: Page) =>
+  page.evaluate(() => {
+    const t = document.querySelector('[role="tooltip"]');
+    if (!t) return null;
+    const r = t.getBoundingClientRect();
+    return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), bg: getComputedStyle(t).backgroundColor };
+  });
+
+/**
+ * Whether a tooltip is drawn in a capture (R3-6: judge the pixels, not the DOM): the share of pixels inside its box
+ * (inset 3, shifted by `offset` — 0 for a window shot, the content origin for a screen shot, and cut at `clipRight`)
+ * that carry the tooltip's own background. Only used in dark, where nothing under it shares that colour.
+ */
+function tooltipInCapture(shot: string, box: { x: number; y: number; width: number; height: number; bg: string }, offset = { x: 0, y: 0 }, clipRight = Infinity) {
+  const img = decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot)));
+  const bg = parseColor(box.bg);
+  const want = [bg.r, bg.g, bg.b].map((v) => Math.round(v * 255));
+  const x0 = offset.x + box.x + 3;
+  const x1 = Math.min(offset.x + box.x + box.width - 3, clipRight);
+  let n = 0;
+  let hits = 0;
+  for (let y = offset.y + box.y + 3; y < offset.y + box.y + box.height - 3; y++) {
+    for (let x = x0; x < x1; x++) {
+      if (x < 0 || y < 0 || x >= img.width || y >= img.height) continue;
+      n++;
+      const i = (y * img.width + x) * 4;
+      if (Math.max(Math.abs(img.data[i]! - want[0]!), Math.abs(img.data[i + 1]! - want[1]!), Math.abs(img.data[i + 2]! - want[2]!)) <= 6) hits++;
+    }
+  }
+  return { pixels: n, share: n ? Math.round((hits / n) * 100) / 100 : 0, bg: want };
+}
+
 /**
  * Rows of an open 보기 menu counted from its click capture (Task 8 R2-1): the panel is found from a seed in its top
  * padding (from System Events' frame of the open menu when it gave one), and every text row below the first one is a
@@ -138,6 +190,21 @@ function openMenuRowCount(shot: string | null, frame: { x: number; y: number } |
   const m = menuRows(img, panel);
   return { panel: m.panel, rows: m.rows.length, separators: m.separators.length, fullScreenRows: Math.max(0, m.rows.length - 1) };
 }
+
+interface InactiveChrome {
+  notKey: boolean;
+  notMain: boolean;
+  cursor: string;
+  title: string;
+  count: string;
+  toggle: string;
+  section: string;
+  rowIcon: string;
+  tokens: { inactive: string; accentInactive: string };
+}
+/** R3-2: not key and not main, and every dimmed role resolves to the inactive tokens. */
+const chromeDimmed = (c: InactiveChrome) =>
+  c.notKey && c.notMain && [c.title, c.count, c.toggle, c.section].every((v) => v === c.tokens.inactive) && c.rowIcon === c.tokens.accentInactive;
 
 /** Grey: no channel stands out (the active close button is red #ff5f57). */
 const isGrey = (rgb: readonly number[] | null) => rgb !== null && Math.max(...rgb) - Math.min(...rgb) <= 24;
@@ -278,6 +345,10 @@ test('M3 chrome: empty library — traffic lights centred in the 52 px bar insid
         probe[`${text}@${w}`] = { faces: fonts.fonts.map((f) => `${f.postScriptName ?? f.familyName}×${f.glyphCount}`), ink };
       }
     }
+    // R3-6: the strip itself, so the weights are seen, not only measured.
+    const strip = outFile('m3-16-weight-probe.page.png');
+    await s.page.locator('#weight-probe').screenshot({ path: strip.abs });
+    record({ file: strip.rel, kind: 'page', description: 'n6 probe: "sample" and "라이브러리" at 500 / 590 / 600 / 700 in the app font stack' });
     await s.page.evaluate(() => document.getElementById('weight-probe')?.remove());
     results['fontWeightProbe'] = probe;
   });
@@ -297,8 +368,9 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
   if (IS_MAC) {
     await guard('inactive window: grey lights, neutral selection, no keyboard cursor (light)', async () => {
       inactive['light'] = await inactiveShot('m3-02b-library-light-inactive', 'library, light, window inactive (Finder in front)');
-      const v = inactive['light'] as { closeButton: number[] | null; navRow: string; chrome: { cursor: string } };
+      const v = inactive['light'] as { closeButton: number[] | null; navRow: string; chrome: InactiveChrome };
       check('inactive window: grey lights, neutral selection, no keyboard cursor (light)', isGrey(v.closeButton) && v.navRow !== activeRow && v.chrome.cursor === 'none', { ...v, activeRow });
+      check('not main: the chrome dims to --text-inactive and the row icon to --accent-text-inactive (light, R3-2)', chromeDimmed(v.chrome), v.chrome);
     });
   }
 
@@ -323,8 +395,9 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
     }
     await guard('inactive window: grey lights, neutral selection, no keyboard cursor (dark)', async () => {
       inactive['dark'] = await inactiveShot('m3-03b-library-dark-inactive', 'library, dark, window inactive (Finder in front)');
-      const v2 = inactive['dark'] as { closeButton: number[] | null; navRow: string; chrome: { cursor: string } };
+      const v2 = inactive['dark'] as { closeButton: number[] | null; navRow: string; chrome: InactiveChrome };
       check('inactive window: grey lights, neutral selection, no keyboard cursor (dark)', isGrey(v2.closeButton) && v2.navRow !== (await navRow()) && v2.chrome.cursor === 'none', v2);
+      check('not main: the chrome dims to --text-inactive and the row icon to --accent-text-inactive (dark, R3-2)', chromeDimmed(v2.chrome), v2.chrome);
     });
     // R2-6b: a tooltip crossing the dark material (raised surface over the sidebar).
     await guard('tooltip over the dark material', async () => {
@@ -335,12 +408,12 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       await s.page.getByTestId('nav-library').focus();
       await s.page.keyboard.press('Shift+Tab');
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
-      const shown = await s.page.getByRole('tooltip').count();
       await sleep(400); // the tooltip's fade-in
-      await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
-      const afterShot = await s.page.getByRole('tooltip').count();
-      results['tooltipDark'] = { shown, afterShot };
-      check('tooltip over the dark material is captured', shown === 1 && afterShot === 1, results['tooltipDark']);
+      const box = await tooltipBox(s.page);
+      const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
+      const drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
+      results['tooltipDark'] = { box, drawn };
+      check('tooltip over the dark material is in the capture (pixels, R3-6)', (drawn?.share ?? 0) >= 0.5, results['tooltipDark']);
     });
   }
   results['inactive'] = { ...inactive, activeRowLight: activeRow };
@@ -467,6 +540,26 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
   await s.page.waitForTimeout(800); // sheet slide-in
   await fullScreenShot('m3-07-sheet-duplicate', 'duplicate sheet (macOS centres it over the window and dims the parent)');
+  // R3-4: under one of our sheets the window is not key (no ring, neutral selection) but stays main (chrome undimmed).
+  await guard('under a sheet the window stays main', async () => {
+    await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 3_000 });
+    const v = await s.page.evaluate(() => ({
+      notKey: document.documentElement.hasAttribute('data-window-inactive'),
+      notMain: document.documentElement.hasAttribute('data-window-not-main'),
+      title: getComputedStyle(document.querySelector('[data-testid="toolbar-title"]')!).color,
+      cursor: getComputedStyle(document.querySelector('[data-testid="nav-library"]')!).boxShadow,
+    }));
+    const primary = await s.page.evaluate(() => {
+      const p = document.createElement('span');
+      document.body.append(p);
+      p.style.color = 'var(--text-primary)';
+      const c = getComputedStyle(p).color;
+      p.remove();
+      return c;
+    });
+    results['underSheet'] = { ...v, primary };
+    check('under a sheet the window stays main: not key, chrome undimmed (R3-4)', v.notKey && !v.notMain && v.title === primary && v.cursor === 'none', results['underSheet']);
+  });
   await guard('real ↩ on the duplicate sheet skips', async () => {
     const r = await closeSheetNatively(dup, KEY_CODE.return, 'Escape');
     const again = await activeAgain('duplicate');
@@ -536,38 +629,37 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     return { ...captured, ...v };
   };
 
-  // A tooltip open by keyboard focus, then the 보기 menu opens over it: the tooltip closes (main's nativeMenu event).
   const startFacts = await windowFacts();
   results['menuTestStart'] = startFacts;
-  // In front before the tooltip opens; the menu capture below then does not refocus the window (that blurred it and
-  // closed the tooltip before the menu opened in run 39642950406).
   await bringAppToFront(s.app).catch(() => {});
-  let tooltipBefore = -1;
-  let tooltipOpenedAt = 0;
-  await guard('keyboard focus opens the toggle tooltip (before the menu)', async () => {
-    await s.page.getByTestId('nav-library').focus();
-    await s.page.keyboard.press('Shift+Tab'); // keyboard focus back onto the sidebar toggle: its tooltip opens at once
-    await expect(s.page.getByTestId('sidebar-toggle')).toBeFocused({ timeout: 5_000 });
-    await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
-    tooltipBefore = await s.page.getByRole('tooltip').count();
-    tooltipOpenedAt = await s.page.evaluate(() => Math.round(performance.now()));
-    const v = { tooltipBefore, ...(await windowFacts()) };
-    check('keyboard focus opens the toggle tooltip (before the menu)', tooltipBefore === 1, v);
-  });
   await guard('보기 (sidebar shown)', async () => {
-    results['menuView'] = await viewMenu('m3-09-menu-view', '보기 menu open, sidebar shown', '사이드바 가리기', '전체 화면 시작', false);
+    results['menuView'] = await viewMenu('m3-09-menu-view', '보기 menu open, sidebar shown', '사이드바 가리기', '전체 화면 시작');
   });
-  await guard('a menu-bar menu closes an open tooltip', async () => {
+
+  // R3-6: a tooltip open by keyboard focus, then 보기 opened by click over it: the tooltip must be gone from the capture
+  // (pixels, in dark where nothing under it shares its colour), closed by the menu and not by a blur first.
+  await guard('a menu-bar menu closes an open tooltip (pixels)', async () => {
+    await setTheme(s.page, 'dark');
+    await bringAppToFront(s.app);
+    await s.page.getByTestId('nav-library').focus();
+    await s.page.keyboard.press('Shift+Tab'); // keyboard focus onto the sidebar toggle: its tooltip opens at once
+    await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
+    await sleep(400);
+    const box = await tooltipBox(s.page);
+    const openedAt = await s.page.evaluate(() => Math.round(performance.now()));
+    const content = await (await mainWindow(s.app)).evaluate((w) => w.getContentBounds());
+    const captured = await captureOpenMenu(s.app, pid, 5, 'm3-18-tooltip-under-menu-dark', '보기 opened by click over an open tooltip (dark)', { focus: false });
+    const counted = openMenuRowCount(captured.click.shot, captured.keyboard.open.frame);
+    const drawn = box && captured.click.shot ? tooltipInCapture(captured.click.shot, box, { x: content.x, y: content.y }, (counted?.panel.x0 ?? Infinity) - 20) : null;
     const pushes = await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? []);
-    const menuPushes = pushes.filter(([k]) => k === 'nativeMenu.open');
-    // The menu, not a blur, must be what closed it: no "unfocused" push between the tooltip and the first menu opening.
-    const firstOpen = menuPushes.find(([, on]) => on)?.[2] ?? Infinity;
-    const blurBeforeMenu = pushes.some(([k, on, t]) => k === 'windowState.focused' && !on && t >= tooltipOpenedAt && t < firstOpen);
-    const v = { before: tooltipBefore, after: await s.page.getByRole('tooltip').count(), menuPushes, blurBeforeMenu, ...(await windowFacts()) };
+    const firstOpen = pushes.find(([k, on, t]) => k === 'nativeMenu.open' && on && t >= openedAt)?.[2] ?? Infinity;
+    const blurBeforeMenu = pushes.some(([k, on, t]) => k === 'windowState.focused' && !on && t >= openedAt && t < firstOpen);
+    const v = { box, drawn, menuOpenedAt: firstOpen === Infinity ? null : firstOpen, blurBeforeMenu, ...(await windowFacts()) };
     results['tooltipUnderMenu'] = v;
-    check('a menu-bar menu closes an open tooltip', v.before === 1 && v.after === 0 && menuPushes.some(([, on]) => on) && !blurBeforeMenu, v);
+    check('a menu-bar menu closes an open tooltip: none in the capture (pixels, R3-6)', box !== null && drawn !== null && drawn.pixels > 150 && drawn.share < 0.2 && firstOpen !== Infinity && !blurBeforeMenu, v);
+    await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await setTheme(s.page, 'light');
   });
-  await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
 
   await guard('보기 (sidebar hidden)', async () => {
     await runMenuCommand(s.app, 'view.toggleSidebar');
@@ -577,16 +669,44 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
   if ((await s.page.getByTestId('shell').getAttribute('data-sidebar')) === 'hidden') await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
 
-  // 보기 in full screen: the item says 전체 화면 종료 (a real ⌃⌘F in, and out again).
+  // 보기 in full screen: the item says 전체 화면 종료 (a real ⌃⌘F in, and out again). R3-1: the round trip must bring the
+  // window back to the frame it had, inside the work area (runs 39640208719 and 39642950406 came back 1440 wide, 416
+  // pt off the left edge of the 1024-pt screen, and nothing checked it).
+  const boundsNow = () =>
+    s.app.evaluate(({ BrowserWindow, screen }) => {
+      const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=main'))!;
+      const b = w.getBounds();
+      return { bounds: b, workArea: screen.getDisplayMatching(b).workArea };
+    });
   await guard('보기 in full screen', async () => {
     const isFull = async () => (await mainWindow(s.app)).evaluate((w) => w.isFullScreen());
+    const before = await boundsNow();
     await nativeKeystroke(s.app, 'f', ['control', 'command']);
     await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
     await sleep(1500); // the full-screen animation ends before menus open (M0: no toggling during the transition)
     results['menuViewFullScreen'] = await viewMenu('m3-09f-menu-view-fullscreen', '보기 menu open in full screen', '사이드바 가리기', '전체 화면 종료');
+    // R3-5: full screen, sidebar hidden, nothing revealed at the top — the toolbar starts at the normal padding.
+    await runMenuCommand(s.app, 'view.toggleSidebar');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await sleep(600);
+    const fsToolbar = await padding(s.page);
+    await nativeWindowShot(s.app, 'm3-09h-fullscreen-sidebar-hidden', 'full screen, sidebar hidden (no traffic lights, no 84 inset)', { focus: false });
+    await fullScreenShot('m3-09h-fullscreen-sidebar-hidden', 'full screen, sidebar hidden');
+    check('full screen with the sidebar hidden: the toolbar starts at 12 (no lights to clear)', fsToolbar.left === 12, fsToolbar);
+    await runMenuCommand(s.app, 'view.toggleSidebar');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await nativeKeystroke(s.app, 'f', ['control', 'command']);
     await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
-    await sleep(1500);
+    await sleep(1500); // AppKit's restore, then ours
+    const after = await boundsNow();
+    await nativeWindowShot(s.app, 'm3-09g-after-fullscreen', 'after leaving full screen: the window back at its frame', { focus: false });
+    await fullScreenShot('m3-09g-after-fullscreen', 'after leaving full screen');
+    const b = after.bounds;
+    const a = after.workArea;
+    const inside = b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width && b.y + b.height <= a.y + a.height;
+    const same = JSON.stringify(before.bounds) === JSON.stringify(b);
+    results['fullScreenRoundTrip'] = { before, after, same, inside };
+    check('a full-screen round trip returns the window to its frame, inside the work area (R3-1)', same && inside, results['fullScreenRoundTrip']);
   });
   if (await (await mainWindow(s.app)).evaluate((w) => w.isFullScreen())) {
     await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
@@ -598,6 +718,14 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     results['menuEdit'] = { ...(await captureOpenMenu(s.app, pid, 4, 'm3-12-menu-edit', '편집 menu open')), names: await menuItemNames(pid, 4) };
     results['menuFile'] = { names: await menuItemNames(pid, 3) };
     check('파일 says 윈도우 닫기 (n4)', ((results['menuFile'] as { names: string[] | null }).names ?? []).includes('윈도우 닫기'), results['menuFile']);
+  });
+  // R3-6: 윈도우 open — macOS 15 adds its own window items there; none of them may be a second full-screen command.
+  await guard('윈도우 has no full-screen item', async () => {
+    const captured = await captureOpenMenu(s.app, pid, 7, 'm3-17-menu-window', '윈도우 menu open');
+    const names = [...(captured.keyboard.open.names ?? []), ...((await menuItemNames(pid, 7)) ?? [])];
+    const fullScreen = names.filter((n) => /^(전체 화면( 시작| 종료)?|Enter Full Screen|Exit Full Screen|Toggle Full Screen)$/.test(n));
+    results['menuWindow'] = { openNames: captured.keyboard.open.names, names: [...new Set(names)], fullScreen, shots: [captured.click.shot, captured.keyboard.shot] };
+    check('윈도우 has no full-screen item (R3-6)', names.length > 0 && fullScreen.length === 0, results['menuWindow']);
   });
   save();
 });
@@ -756,8 +884,9 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     results['finder'] = value;
     check('Finder에서 보기 brings Finder to the front', value.frontmost === 'Finder' && value.revealCalls === 1 && !value.errorToast, value);
   });
-  // R2-6e: Finder's own window as the reference for the inactive look (R2-2, R2-3), active and inactive, light and
-  // dark (the system appearance, switched on the throwaway CI machine only).
+  // R2-6e, R3-3, R3-6: Finder's own window as the reference for the inactive look — a window opened at Downloads (its
+  // sidebar row selected), active and inactive, light and dark (the system appearance is switched on CI only).
+  // Measured per element on Finder's fixed layout; a value is a solid colour only if ≥ 20 pixels sit at the extreme.
   await guard('Finder reference captured', async () => {
     const finderRef: Record<string, unknown> = {};
     const measure = async (name: string) => {
@@ -771,8 +900,13 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
       return {
         file: shot.file,
         size: [w, h],
-        titleBar: regionStats(img, { x0: 90, y0: 0, x1: w - 10, y1: Math.min(52, h) }),
-        sidebar: regionStats(img, { x0: 0, y0: 60, x1: Math.min(Math.round(w * 0.25), 220), y1: h - 10 }),
+        toolbarFill: regionStats(img, { x0: 200, y0: 2, x1: w - 10, y1: 50 }).surface,
+        title: elementStats(img, { x0: 230, y0: 12, x1: 340, y1: 38 }),
+        toolbarGlyphs: elementStats(img, { x0: 580, y0: 12, x1: 628, y1: 38 }),
+        sectionHeader: elementStats(img, { x0: 14, y0: 55, x1: 70, y1: 70 }),
+        rowText: elementStats(img, { x0: 38, y0: 77, x1: 118, y1: 122 }),
+        rowIcons: elementStats(img, { x0: 14, y0: 77, x1: 36, y1: 122 }),
+        selectedRow: selectionBand(img, { x0: 8, y0: 52, x1: 150, y1: h - 10 }),
       };
     };
     const finderFront = async () => {
@@ -787,6 +921,7 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     };
     const appearance = (dark: boolean) =>
       tryExec('osascript', ['-e', `tell application "System Events" to tell appearance preferences to set dark mode to ${dark}`], 20_000);
+    osascript('tell application "Finder" to make new Finder window to (path to downloads folder)');
     for (const dark of process.env['CI'] ? [false, true] : [false]) {
       const theme = dark ? 'dark' : 'light';
       if (dark) await appearance(true);

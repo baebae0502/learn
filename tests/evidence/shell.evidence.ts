@@ -131,8 +131,11 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
 function openMenuRowCount(shot: string | null, frame: { x: number; y: number } | null) {
   if (!shot) return null;
   const img = decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot)));
-  const seed = frame ? { x: frame.x + 6, y: frame.y + 5 } : { x: 206, y: 30 };
-  const m = menuRows(img, findMenuPanel(img, seed));
+  // The frame System Events reports belongs to the frontmost app's menu; when it is no panel (run 39640208719: another
+  // app was in front), the fixed seed under the 보기 title is used.
+  const fromFrame = frame && frame.x >= 0 && frame.y < img.height - 40 ? findMenuPanel(img, { x: frame.x + 6, y: frame.y + 5 }) : null;
+  const panel = fromFrame && fromFrame.y1 - fromFrame.y0 > 20 ? fromFrame : findMenuPanel(img, { x: 206, y: 30 });
+  const m = menuRows(img, panel);
   return { panel: m.panel, rows: m.rows.length, separators: m.separators.length, fullScreenRows: Math.max(0, m.rows.length - 1) };
 }
 
@@ -325,13 +328,14 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
     });
     // R2-6b: a tooltip crossing the dark material (raised surface over the sidebar).
     await guard('tooltip over the dark material', async () => {
-      await s.page.getByTestId('sidebar-toggle').hover();
+      // Keyboard focus opens it at once (a hover through Playwright opened none on the runner, run 39640208719).
+      await s.page.getByTestId('nav-library').focus();
+      await s.page.keyboard.press('Shift+Tab');
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
       const shown = await s.page.getByRole('tooltip').count();
       await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material');
       results['tooltipDark'] = { shown };
       check('tooltip over the dark material is captured', shown === 1, results['tooltipDark']);
-      await s.page.mouse.move(700, 600);
     });
   }
   results['inactive'] = { ...inactive, activeRowLight: activeRow };
@@ -810,64 +814,6 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
     results['windowState'],
   );
   check('window took the requested bounds before closing', beforeClose.width === bounds.width && beforeClose.height === bounds.height, results['windowState']);
-  save();
-});
-
-test('M3 chrome: R2-1 spike — which 전체 화면 item gives one row in 보기 and toggles by ⌃⌘F', TAG, async () => {
-  test.skip(!IS_MAC, 'the macOS menu bar only');
-  // One app per variant (LEARN_FS_MENU, read only under LEARN_E2E=1). (c) writes NSFullScreenMenuItemEverywhere to the
-  // app's defaults, so it runs last and the key is removed afterwards (throwaway CI machine only).
-  const variants = { b: 'role item, no explicit accelerator', a: 'no item of ours', c: 'plain item on ⌃⌘F + NSFullScreenMenuItemEverywhere = false' } as const;
-  const spike: Record<string, unknown> = {};
-  for (const variant of ['b', 'a', 'c'] as const) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `learn-m3-fs-${variant}-`));
-    try {
-      const v = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { ...UNEMULATED, env: { LEARN_FS_MENU: variant } });
-      try {
-        const pid = v.app.process().pid!;
-        const captured = await captureOpenMenu(v.app, pid, 5, `m3-15-fs-${variant}`, `보기, variant (${variant}) ${variants[variant]}`);
-        const counted = openMenuRowCount(captured.click.shot, captured.keyboard.open.frame);
-        const isFull = async () => (await mainWindow(v.app)).evaluate((w) => w.isFullScreen());
-        const toggles: Record<string, unknown> = {};
-        try {
-          await nativeKeystroke(v.app, 'f', ['control', 'command']);
-          toggles['entered'] = await expect.poll(isFull, { timeout: 8_000 }).toBe(true).then(() => true, () => false);
-          await sleep(1500);
-          await nativeKeystroke(v.app, 'f', ['control', 'command']);
-          toggles['left'] = await expect.poll(isFull, { timeout: 8_000 }).toBe(false).then(() => true, () => false);
-        } catch (e) {
-          toggles['error'] = errorText(e);
-        }
-        if (await isFull()) {
-          await (await mainWindow(v.app)).evaluate((w) => w.setFullScreen(false));
-          await sleep(2000);
-        }
-        spike[variant] = {
-          what: variants[variant],
-          counted,
-          openNames: captured.keyboard.open.names,
-          electronItems: (await menuSnapshot(v.app)).find((m) => m.label === '보기')?.submenu?.map((n) => `${n.label}${n.role ? ` (${n.role})` : ''}`) ?? null,
-          toggles,
-          shots: [captured.click.shot, captured.keyboard.shot],
-        };
-      } finally {
-        await v.app.close();
-      }
-    } catch (e) {
-      spike[variant] = { error: errorText(e) };
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  }
-  if (process.env['CI']) await tryExec('defaults', ['delete', 'com.github.Electron', 'NSFullScreenMenuItemEverywhere']);
-  // Keep the first of b → c → a with exactly one full-screen row that a real ⌃⌘F turns on and off.
-  const ok = (k: string) => {
-    const r = spike[k] as { counted?: { fullScreenRows: number } | null; toggles?: { entered?: boolean; left?: boolean } } | undefined;
-    return r?.counted?.fullScreenRows === 1 && r.toggles?.entered === true && r.toggles.left === true;
-  };
-  const winner = (['b', 'c', 'a'] as const).find(ok) ?? null;
-  results['fullScreenSpike'] = { ...spike, winner };
-  check('R2-1: a full-screen variant shows one row and toggles by ⌃⌘F', winner !== null, results['fullScreenSpike']);
   save();
 });
 

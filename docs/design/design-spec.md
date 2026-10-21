@@ -51,7 +51,7 @@
 ## 2. 창과 패널 격자
 
 ### 2.1 공통
-- 창: 기본 1440×900, 최소 960×600(`tokens.layout.windowMin*`). `titleBarStyle: 'hidden'`, `trafficLightPosition: {x: 18, y: 18}`(macOS 러너로 확인, run 39618864364), `vibrancy: 'sidebar'`. Linux/Windows는 `titleBarOverlay`(색은 `tokens.generated.ts`, 높이 51 — 도구 막대 아래 1px 경계선을 덮지 않는다).
+- 창: 기본 1440×900, 작업 영역보다 크면 작업 영역에 맞춘다(가운데, 최소 크기가 우선). 최소 960×600(`tokens.layout.windowMin*`). 저장된 크기·위치가 있으면 그것으로 연다. 전체 화면에서 나오면 들어가기 전 크기·위치로 돌아온다. `titleBarStyle: 'hidden'`, `trafficLightPosition: {x: 18, y: 18}`(macOS 러너로 확인, run 39618864364), `vibrancy: 'sidebar'`. Linux/Windows는 `titleBarOverlay`(색은 `tokens.generated.ts`, 높이 51 — 도구 막대 아래 1px 경계선을 덮지 않는다).
 - 신호등: 12px 원 3개, 간격 8, `trafficLightPosition` (18, 18)에서 원은 x 19–71, y 20–32pt, 닫기 중심 (25, 26) — 52px 막대 세로 가운데(run 39618864364 측정). 왼쪽 **84px**(`--traffic-light-inset`)은 신호등 전용이다. 신호등은 네이티브이므로 웹 내용(스크림, 드롭 오버레이)이 덮거나 흐리게 할 수 없다. 창이 비활성이면 회색.
 - 비활성 창(키 창이 아님): 신호등은 시스템이 회색으로, 선택은 중립 채움(`--fill-selected`), 도구 막대 제목은 `--text-secondary`, 도구 막대의 아이콘 버튼은 `--text-tertiary`(도구 막대 위 3:1 이상), 사이드바 행 아이콘은 `--text-secondary`로 흐려진다(AppKit과 같다). 포커스 링과 키보드 커서는 키 창에서만 그린다(AppKit과 같다). 창이 다시 활성이 되면 같은 자리에 돌아온다.
 - 도구 막대 52, 패널 머리 44, 표 머리 28, 컨트롤 28(작게 22·24, 크게 32), 아이콘 히트 영역 28.

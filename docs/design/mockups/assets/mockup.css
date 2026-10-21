@@ -2340,8 +2340,12 @@ h2,
   display: grid;
   grid-template-columns: 30% 1fr;
 }
+/* 2 px ring 2 px off the picture with a real, transparent gap (the group shows through in both themes; a painted
+   --bg-control gap was white 10 % over the ring in dark). The app draws it as a frame border (screens/settings.css,
+   critic T10-m1) in --accent-ring, which keeps 3:1 on the group in dark where --accent does not. */
 .theme-tile.is-on .preview {
-  box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--accent);
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
 }
 .theme-tile.is-on {
   color: var(--text-primary);

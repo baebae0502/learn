@@ -129,6 +129,50 @@ test('the cursor is on a row whenever the list has rows: on open and after every
   }
 });
 
+test('ARIA: a combobox over a listbox, unique option ids, nothing to point at with no rows, a polite result count, Tab stays inside', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const input = page.getByTestId('palette-input');
+  const status = page.getByTestId('palette-status');
+  try {
+    await runMenuCommand(app, 'app.palette');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute('role', 'combobox');
+    await expect(input).toHaveAttribute('aria-autocomplete', 'list');
+    await expect(input).toHaveAttribute('aria-expanded', 'true');
+    const listbox = page.getByRole('listbox', { name: '명령' });
+    await expect(listbox).toHaveCount(1);
+    await expect(input).toHaveAttribute('aria-controls', (await listbox.getAttribute('id'))!);
+    const ids = await listbox.getByRole('option').evaluateAll((els) => els.map((e) => e.id));
+    expect(ids.length).toBe(4);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.every((id) => id.length > 0)).toBe(true);
+    await expect(listbox.getByRole('option', { selected: true })).toHaveCount(1);
+    // The result count is a polite status, and a cursor move does not change it.
+    await expect(status).toHaveAttribute('role', 'status');
+    await expect(status).toHaveText('명령 4개');
+    await page.keyboard.press('ArrowDown');
+    await expect(status).toHaveText('명령 4개');
+    await input.fill('ㄱㅈ');
+    await expect(status).toHaveText('명령 1개');
+    // No rows: collapsed, nothing controlled or active, the status reads the notice's title.
+    await input.fill('효소 억제제');
+    await expect(input).toHaveAttribute('aria-expanded', 'false');
+    await expect(input).not.toHaveAttribute('aria-activedescendant', /.*/);
+    await expect(input).not.toHaveAttribute('aria-controls', /.*/);
+    await expect(page.getByRole('listbox', { name: '명령' })).toHaveCount(0);
+    await expect(status).toHaveText('‘효소 억제제’에 맞는 명령이 없습니다');
+    // Tab and ⇧Tab keep the focus inside the palette (the options are not tab stops; RAC's FocusScope contains it).
+    await input.fill('');
+    for (const key of ['Tab', 'Tab', 'Shift+Tab']) {
+      await page.keyboard.press(key);
+      expect(await page.evaluate(() => document.activeElement?.closest('[data-testid="palette"]') !== null)).toBe(true);
+    }
+    await expect(input).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
 test('the pointer: hovering a row moves the cursor there, a click runs it once', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
@@ -176,7 +220,9 @@ test('the list follows what can run while the palette is open: a drop that start
     // Nothing can run now: no rows, and the notice says why (not "no match").
     await expect(page.getByTestId('palette')).toBeVisible();
     await expect(page.getByTestId('palette-item')).toHaveCount(0);
-    await expect(page.getByTestId('palette-empty')).toHaveText('진행 중인 작업이 끝나면 쓸 수 있습니다');
+    await expect(page.getByTestId('palette-empty').locator('.pe-title')).toHaveText('지금은 명령을 실행할 수 없습니다');
+    await expect(page.getByTestId('palette-empty').locator('.pe-text')).toHaveText('진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.');
+    await expect(page.getByTestId('palette-status')).toHaveText('지금은 명령을 실행할 수 없습니다');
     await closeSheet(sheet, 'Escape'); // 건너뛰기: the import ends
     await expect(page.locator('[data-testid="palette-item"][data-command-id="file.importManaged"]')).toHaveCount(1);
     await expect.poll(() => cursorRow(page)).toBe('file.importManaged');

@@ -102,6 +102,9 @@ function PaletteDialog() {
   const optionId = (index: number) => `${ids}-option-${index}`;
 
   // Keep the cursor row in view when ↑ ↓ move it past the list's edge.
+  // Read out politely when the result changes (the count, or the notice that replaces the list); a cursor move or an
+  // edit that leaves the same count changes nothing here, so nothing is re-announced.
+  const status = ranked.length > 0 ? t.palette.resultCount(ranked.length) : env.blocked ? t.palette.busyTitle : t.palette.emptyTitle(query.trim());
   const cursorElementId = cursor >= 0 ? optionId(cursor) : null;
   useLayoutEffect(() => {
     if (cursorElementId) document.getElementById(cursorElementId)?.scrollIntoView({ block: 'nearest' });
@@ -192,7 +195,10 @@ function PaletteDialog() {
             <div className="p-empty" data-testid="palette-empty">
               {env.blocked ? (
                 // An import or a sheet holds the window: nothing can run until it ends (not "no match").
-                <div className="pe-title">{t.common.busy}</div>
+                <>
+                  <div className="pe-title">{t.palette.busyTitle}</div>
+                  <div className="pe-text">{t.palette.busyBody}</div>
+                </>
               ) : (
                 <>
                   <div className="pe-title">{t.palette.emptyTitle(query.trim())}</div>
@@ -202,6 +208,9 @@ function PaletteDialog() {
             </div>
           )}
         </div>
+      </div>
+      <div role="status" className="visually-hidden" data-testid="palette-status">
+        {status}
       </div>
       {/* Key hints for what the keys do now: with no rows only esc does anything (palette.html ?state=none). */}
       <div className="p-foot">

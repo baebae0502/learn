@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, menuItemEnabled, openItem, runMenuCommand } from '../helpers';
+import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand } from '../helpers';
 import { THEMES, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -148,6 +148,29 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
     await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
     await shoot(s.page, 'palette-inactive-light', { mask: dates() });
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    // A file dropped while the palette is up starts an import; a duplicate keeps it waiting in its sheet, which holds the
+    // window: nothing can run, and the notice says so (critic T9-n5). The file comes from a file input, as from Finder.
+    await input.fill('');
+    await s.page.evaluate(() => {
+      const picker = document.createElement('input');
+      picker.type = 'file';
+      picker.id = 'drop-source';
+      picker.hidden = true;
+      document.body.append(picker);
+    });
+    await s.page.locator('#drop-source').setInputFiles(path.join(FIXTURES, 'sample.pdf'));
+    const dup = await expectWindow(s.app, 'sheet', () =>
+      s.page.evaluate(() => {
+        const dt = new DataTransfer();
+        dt.items.add((document.getElementById('drop-source') as HTMLInputElement).files![0]!);
+        document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      }),
+    );
+    await expect(s.page.getByTestId('palette-empty')).toContainText('지금은 명령을 실행할 수 없습니다');
+    await shoot(s.page, 'palette-blocked-light', { mask: dates() });
+    await closeSheet(dup, 'Escape');
   } finally {
     await s.app.close();
   }

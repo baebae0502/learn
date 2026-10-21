@@ -26,6 +26,7 @@ M1 목업은 가상화된 정렬 표, 중첩 트리, 탭, 메뉴·팝오버·시
 - **Base UI**(MIT, 1.x): 원시 컴포넌트 품질은 좋지만 가상화된 표·트리, 표의 키보드 탐색·다중 선택·DnD가 없다. 그리드 시맨틱을 직접 만들어야 해 Zotero 수준까지 비용이 크다.
 - **Radix UI**: 표·트리가 없고, 메뉴·대화상자만으로는 핵심 화면(표·트리)이 해결되지 않는다. 여러 라이브러리를 섞으면 포커스 관리가 이중이 된다.
 - **cmdk**: 팔레트 전용. RAC `Autocomplete` + `ListBox`가 같은 일을 하고 포커스·IME 처리를 RAC 한 곳에 모은다.
+  - **M3 편차(Task 9)**: 팔레트의 목록은 RAC `Autocomplete`·`Menu`가 아니라 자체 WAI-ARIA 콤보박스(`input role="combobox"`, `aria-activedescendant`) + 리스트박스(`role="listbox"`/`option`)다. RAC는 `Modal`·`Dialog`(포커스 가두기, esc, 스크림 닫기)만 맡는다. 이유: react-aria 3.53.1의 `useAutocomplete`가 지우기·붙여넣기·실행 취소 입력에서 가상 포커스를 지우고(`clearVirtualFocus`) 열 때도 커서를 두지 않아, "목록에 행이 있으면 언제나 커서 행이 있고 ↩가 그것을 실행한다"(디자인 비평 T9-M1)를 지킬 수 없었다. 커서·↑↓·↩·IME 가드는 `palette/Palette.tsx`가 직접 처리하고 E2E(`palette.spec.ts`, `ime.spec.ts`)가 검사한다. VoiceOver로 읽히는지는 Mac 실기 수동 확인으로 남는다.
 - **dnd-kit**: 포인터 이벤트 기반이라 Finder ↔ 창 파일 드래그(OS 네이티브 DnD)를 처리하지 못한다. RAC는 HTML5 네이티브 DnD 위에서 키보드 DnD까지 제공한다.
 - **Tailwind**: 토큰이 이미 CSS 변수다. 유틸리티 클래스는 상태 스타일(선택·포커스·다크)을 마크업에 흩어 놓고, 한국어 타이포 규칙과 컴포넌트 단위 시각 비평을 어렵게 한다.
 - **MUI·Chakra 등 디자인 시스템 포함 라이브러리**: 웹 대시보드 외형이 기본값이라 Mac 네이티브 목표와 맞지 않고 덮어쓰기 비용이 크다.
@@ -38,5 +39,5 @@ M1 목업은 가상화된 정렬 표, 중첩 트리, 탭, 메뉴·팝오버·시
 ## 결과와 위험
 - 번들 크기가 늘어난다(RAC는 트리 셰이킹 가능, 쓰는 컴포넌트만 포함). M3에서 렌더러 번들 크기를 기록한다.
 - RAC `Virtualizer`의 열 크기 조절·고정 머리 조합은 M4 스파이크 전까지 확인되지 않았다(위의 대체안).
-- IME: RAC 입력 컴포넌트의 조합 중 키 처리(Enter·화살표)를 M3 `ime` E2E(CDP `Input.imeSetComposition`)로 검증한다.
+- IME: RAC 입력 컴포넌트의 조합 중 키 처리(Enter·화살표)를 M3 `ime` E2E(CDP `Input.imeSetComposition`)로 검증한다. 팔레트는 자체 콤보박스라(위 M3 편차) 조합 중 키(`isComposing`, keyCode 229)를 캡처 단계에서 직접 막고, 같은 E2E가 가드 없이는 실패함을 확인했다.
 - 재검토 조건: 스파이크 실패가 표 밖(트리·DnD)까지 번지거나, RAC 주요 버전이 비호환 변경을 낼 때.

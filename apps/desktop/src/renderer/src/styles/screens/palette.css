@@ -123,8 +123,8 @@
     color: var(--accent-text);
     font-weight: var(--weight-semibold);
   }
-  /* The list cursor (RAC virtual focus): the one accent selection on screen while the palette is up (3.1). Not the
-     key window: a neutral selection like every other one, the row keeping its own colours (3.1, 8.3). */
+  /* The list cursor: the one accent selection on screen while the palette is up (3.1). Not the key window: a neutral
+     selection like every other one, the row keeping its own colours (3.1, 8.3). */
   :root:not([data-window-inactive]) .palette .p-item[data-focused] {
     background: var(--accent);
     color: var(--text-on-accent);

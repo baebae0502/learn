@@ -43,7 +43,7 @@ async function importOnePdf(page: Page): Promise<string> {
 test('menu: Korean top-level menus built from the registry, no reload or developer tools', async ({}, testInfo) => {
   const { app } = await session(testInfo);
   try {
-    // M2's App reports blocked: true on its first render, so the library context may land just after launch().
+    // launch() returns after the first context report; poll anyway so a report that lands a moment later is not a failure.
     await expect.poll(() => menuItemEnabled(app, 'file.importManaged')).toBe(true);
     const menu = await menuSnapshot(app);
     expect(menu.map((m) => m.label)).toEqual([...(IS_MAC ? ['Learn'] : []), '파일', '편집', '보기', '이동', '윈도우']);

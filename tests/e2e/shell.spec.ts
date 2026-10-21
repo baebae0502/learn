@@ -1,6 +1,7 @@
 // Layout B shell (design-spec 2.1, 2.3): fixed sidebar top, shared width, resize/collapse/persist, auto-fold.
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { Channels } from '../../packages/domain/src/ipc-channels';
 import { FIXTURES, importPaths, launch, openItem, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -13,6 +14,22 @@ const box = async (page: Page, testId: string) => {
 };
 const sidebarWidth = async (page: Page) => Math.round((await box(page, 'sidebar')).width);
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
+const zoom = (app: ElectronApplication, f: number) => app.evaluate(({ BrowserWindow }, f) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(f), f);
+/** The stored layout.panes setting (null while nothing was ever saved), read after the 300 ms save debounce. */
+const savedPanes = async (page: Page): Promise<unknown> => {
+  await page.waitForTimeout(600);
+  return page.evaluate(async () => {
+    const r = await window.learn.settings.get({ key: 'layout.panes' });
+    if (!r.ok) throw new Error(`settings.get failed: ${r.code}`);
+    return r.data;
+  });
+};
+/** Replace one IPC handler in main with a canned reply (then reload the window to boot against it). */
+const stubHandler = (app: ElectronApplication, channel: string, reply: unknown) =>
+  app.evaluate(({ ipcMain }, [channel, reply]) => {
+    ipcMain.removeHandler(channel as string);
+    ipcMain.handle(channel as string, () => reply);
+  }, [channel, reply] as const);
 
 test('layout B: full-height 240 px sidebar, 52 px bars, navigator from y 88', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
@@ -23,6 +40,13 @@ test('layout B: full-height 240 px sidebar, 52 px bars, navigator from y 88', as
     expect(await box(page, 'toolbar')).toMatchObject({ x: 240, y: 0, height: 52 });
     expect(Math.round((await page.locator('.sidebar .section-label').boundingBox())!.y)).toBe(88);
     await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    // The boundary line is the sidebar's last column: the toggle sits 12 and the row fill 8 inside it (mockup border-right).
+    const right = async (testId: string) => {
+      const b = await box(page, testId);
+      return b.x + b.width;
+    };
+    expect(await right('sidebar-toggle')).toBe(240 - 13);
+    expect(await right('nav-library')).toBe(240 - 9);
   } finally {
     await app.close();
   }
@@ -55,6 +79,55 @@ test('keyboard: the toggle that takes over keeps the focus; the resize handle is
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
     await expect(page.getByRole('separator')).toHaveAccessibleName('사이드바');
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌃⌘S with the focus inside the sidebar hands it to the toolbar toggle', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await page.getByTestId('nav-library').focus();
+    await expect(page.getByTestId('nav-library')).toBeFocused();
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('arrow keys on the separator: 5 % steps clamped at 360 and 180, one more step collapses (aria-valuenow follows)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const separator = page.getByRole('separator');
+  const aria = async (name: 'aria-valuenow' | 'aria-valuemax') => Number(await separator.getAttribute(name));
+  try {
+    const groupWidth = await page.evaluate(() => innerWidth);
+    const step = groupWidth * 0.05; // 72 px at 1440 (Linux), 51.2 on the 1024 px macOS runner
+    const percent = (px: number) => (px / groupWidth) * 100;
+    let expected = 240;
+    const press = async (key: 'ArrowLeft' | 'ArrowRight') => {
+      await page.keyboard.press(key);
+      expected = Math.min(360, Math.max(180, expected + (key === 'ArrowRight' ? step : -step)));
+      await expect.poll(async () => Math.abs((await sidebarWidth(page)) - expected)).toBeLessThanOrEqual(1);
+      await expect.poll(async () => Math.abs((await aria('aria-valuenow')) - percent(expected))).toBeLessThan(0.1);
+    };
+    await separator.focus();
+    expect(await aria('aria-valuenow')).toBeCloseTo(percent(240), 1);
+    while (expected < 360) await press('ArrowRight');
+    await press('ArrowRight'); // at the maximum: stays
+    expect(await sidebarWidth(page)).toBe(360);
+    expect(await aria('aria-valuenow')).toBe(await aria('aria-valuemax'));
+    while (expected > 180) await press('ArrowLeft');
+    expect(await sidebarWidth(page)).toBe(180); // a step below the minimum stops at it first
+    // From the minimum, one more step collapses: the user's collapse (stored), and the focus leaves the vanishing handle.
+    await page.keyboard.press('ArrowLeft');
+    await expect.poll(() => sidebarWidth(page)).toBe(0);
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
+    expect(await savedPanes(page)).toEqual({ sidebar: 180, sidebarCollapsed: 1 });
   } finally {
     await app.close();
   }
@@ -97,14 +170,33 @@ test('the separator resizes within 180–360, collapses past the minimum, and bo
 
 test('200 % zoom folds the sidebar away without sideways scrolling; it comes back at 100 % (not a user choice)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
-  const zoom = (f: number) => app.evaluate(({ BrowserWindow }, f) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(f), f);
   try {
-    await zoom(2);
+    await zoom(app, 2);
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(760); // 720 at 1440 px (Linux), 512 on the 1024 px macOS runner
     await expect.poll(() => sidebarWidth(page)).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await zoom(1);
+    expect(await savedPanes(page)).toBeNull(); // automatic folding is never stored (M-5)
+    await zoom(app, 1);
     await expect.poll(() => sidebarWidth(page)).toBe(240);
+    expect(await savedPanes(page)).toBeNull();
+  } finally {
+    await app.close();
+  }
+});
+
+test('in a narrow window, showing the sidebar and folding it again is not a user collapse (nothing saved; full width shows it)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await zoom(app, 2);
+    await expect.poll(() => sidebarWidth(page)).toBe(0);
+    await runMenuCommand(app, 'view.toggleSidebar'); // shown on demand
+    await expect.poll(() => sidebarWidth(page)).toBe(240);
+    await runMenuCommand(app, 'view.toggleSidebar'); // folded again: back to the automatic fold
+    await expect.poll(() => sidebarWidth(page)).toBe(0);
+    expect(await savedPanes(page)).toBeNull();
+    await zoom(app, 1);
+    await expect.poll(() => sidebarWidth(page)).toBe(240);
+    expect(await savedPanes(page)).toBeNull();
   } finally {
     await app.close();
   }
@@ -132,6 +224,58 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     for (const [name, shot] of [['library', library], ['pdf', pdf], ['video', video]] as const) expect(shot.equals(empty), name).toBe(true);
     expect(pdfWidth).toBe(240);
     expect(await sidebarWidth(page)).toBe(240);
+
+    // Folded: the toolbar head that took the toggle over (x 0–44: inset, toggle, gap) is the same in every view too.
+    const foldedHead = async () => {
+      await page.mouse.move(900, 700);
+      return page.screenshot({ clip: { x: 0, y: 0, width: 44, height: 52 }, animations: 'disabled', caret: 'hide' });
+    };
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect.poll(() => sidebarWidth(page)).toBe(0);
+    const foldedVideo = await foldedHead();
+    await runMenuCommand(app, 'nav.back');
+    await expect(page.getByTestId('item-row')).toHaveCount(2);
+    const foldedLibrary = await foldedHead();
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    const foldedPdf = await foldedHead();
+    for (const [name, shot] of [['library', foldedLibrary], ['pdf', foldedPdf]] as const) expect(shot.equals(foldedVideo), `folded ${name}`).toBe(true);
+    // Shown again (from the PDF view): the sidebar top is still the one from the empty library.
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect.poll(() => sidebarWidth(page)).toBe(240);
+    expect((await top88()).equals(empty), 'shown again').toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test('boot: a failed prefs read still opens the shell (defaults; the warning carries the code only)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await stubHandler(app, Channels.prefs.get, { ok: false, code: 'INTERNAL', message: 'stubbed prefs failure', retryable: false });
+    const warnings: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'warning') warnings.push(m.text());
+    });
+    await page.reload();
+    await expect(page.getByTestId('app-ready')).toBeAttached();
+    await expect(page.getByTestId('shell')).toBeVisible();
+    await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    expect(warnings).toContain('[prefs] reading prefs failed: INTERNAL');
+    expect(warnings.join('\n')).not.toContain('stubbed prefs failure');
+  } finally {
+    await app.close();
+  }
+});
+
+test('boot: a render-time failure in the main window shows the fatal screen, not a blank window', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await stubHandler(app, Channels.library.list, { ok: true, data: 5 }); // not a list: the old library view throws while rendering
+    await page.reload();
+    await expect(page.getByTestId('app-ready')).toBeAttached();
+    await expect(page.getByRole('alert')).toContainText('화면을 표시하지 못했습니다');
+    await expect(page.getByTestId('shell')).toHaveCount(0);
   } finally {
     await app.close();
   }

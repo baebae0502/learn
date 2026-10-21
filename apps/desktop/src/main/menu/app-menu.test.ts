@@ -38,14 +38,15 @@ const build = (
 
 const SEP = { type: 'separator' };
 
-const FILE: Shape = {
+const FILE = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.file', label: '파일', submenu: [
     { id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' },
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
     SEP,
-    { label: '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },
+    // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
+    { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },
   ],
-};
+});
 const EDIT: Shape = {
   id: 'menu.edit', label: '편집', submenu: [
     { label: '실행 취소', role: 'undo' },
@@ -90,7 +91,7 @@ describe('buildAppMenu', () => {
           { label: 'Learn 종료', role: 'quit' },
         ],
       },
-      FILE,
+      FILE('darwin'),
       EDIT,
       VIEW('darwin'),
       GO,
@@ -109,7 +110,7 @@ describe('buildAppMenu', () => {
   it('Linux/Windows: same menus without the macOS app menu', () => {
     for (const platform of ['linux', 'win32'] as const) {
       expect(shape(build(platform))).toEqual([
-        FILE,
+        FILE(platform),
         EDIT,
         VIEW(platform),
         GO,

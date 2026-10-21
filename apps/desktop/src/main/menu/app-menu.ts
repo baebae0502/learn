@@ -85,7 +85,9 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       [{ role: 'quit', label: 'Learn 종료' }],
     ),
   };
-  const file: Item = { id: 'menu.file', label: '파일', submenu: join(reg('file'), [{ role: 'close', label: '창 닫기', accelerator: 'CmdOrCtrl+W' }]) };
+  // Apple Korean names the item after the 윈도우 menu ("윈도우 닫기"); Linux/Windows keep the body-copy word 창.
+  const close: Item = { role: 'close', label: mac ? '윈도우 닫기' : '창 닫기', accelerator: 'CmdOrCtrl+W' };
+  const file: Item = { id: 'menu.file', label: '파일', submenu: join(reg('file'), [close]) };
   const edit: Item = {
     id: 'menu.edit',
     label: '편집',
@@ -95,6 +97,8 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       reg('edit'),
     ),
   };
+  // One 전체 화면 item on macOS: main registers NSFullScreenMenuItemEverywhere = false (index.ts), so AppKit does not add
+  // its own next to this role item (Electron's role uses a selector AppKit does not recognise as full screen).
   const view: Item = {
     id: 'menu.view',
     label: '보기',

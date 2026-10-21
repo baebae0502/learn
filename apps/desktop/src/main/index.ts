@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, BrowserWindow, Menu, type WebContents } from 'electron';
+import { app, BrowserWindow, Menu, systemPreferences, type WebContents } from 'electron';
 import {
   COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
 } from '@learn/domain';
@@ -26,6 +26,11 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 // Same app name (and thus userData path) whether launched via `electron .` or the built entry.
 app.setName('Learn');
+
+// macOS: AppKit adds its own "Enter Full Screen" item (fn F) to the 보기 menu unless an item uses its selector, and
+// Electron's togglefullscreen role does not; the registration domain (not saved to the user's defaults) turns that
+// off so 보기 has exactly one 전체 화면 (Task 8 critique n5, run 39618864364 showed two).
+if (process.platform === 'darwin') systemPreferences.registerDefaults({ NSFullScreenMenuItemEverywhere: false });
 
 // E2E and multi-profile runs isolate userData (also scopes the single-instance lock).
 if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEARN_USER_DATA_DIR']);

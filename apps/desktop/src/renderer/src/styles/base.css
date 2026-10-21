@@ -64,6 +64,9 @@
   .t-title3 { font: var(--type-title3); }
   .t-title2 { font: var(--type-title2); }
   .t-title1 { font: var(--type-title1); letter-spacing: -0.01em; }
+  /* Colour helpers live in base, below components: a component rule that sets an element's colour wins over them.
+     Components must not put .c-* directly on an element whose colour the component itself sets — wrap the element
+     in a span with the .c-* class instead (the table row's link glyph: <span class="c-tertiary"><svg/></span>). */
   .c-secondary { color: var(--text-secondary); }
   .c-tertiary { color: var(--text-tertiary); }
   .c-accent { color: var(--accent-text); }

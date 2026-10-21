@@ -5,6 +5,8 @@ describe('readWindowParams', () => {
   it('reads the flags main put on the URL', () => {
     expect(readWindowParams('?window=settings&platform=darwin&det=1')).toEqual({ window: 'settings', platform: 'darwin', deterministic: true, vibrancy: false, demo: false, part: 1 });
     expect(readWindowParams('?window=gallery&part=2&platform=linux')).toMatchObject({ window: 'gallery', part: 2 });
+    expect(readWindowParams('?window=gallery&part=3')).toMatchObject({ window: 'gallery', part: 3 });
+    expect(readWindowParams('?window=gallery&part=9')).toMatchObject({ part: 1 });
   });
   it('falls back to the main window on Linux', () => {
     expect(readWindowParams('')).toEqual({ window: 'main', platform: 'linux', deterministic: false, vibrancy: false, demo: false, part: 1 });

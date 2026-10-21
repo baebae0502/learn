@@ -17,9 +17,41 @@
   .field .placeholder {
     color: var(--text-tertiary);
   }
-  .field:is([data-focus-visible], [data-focus-within], [data-force~='focus']) {
+  .field:is([data-focus-visible], [data-focus-within], [data-force~='focus']),
+  .field:has(> .field-input:focus) {
     outline: none;
     box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  .field.small {
+    height: 24px; /* local: compact filter fields */
+    font: var(--type-footnote);
+    border-radius: var(--radius-sm);
+  }
+  /* SearchField (ui/SearchField.tsx): the input fills the field; the clear button sits at its end. */
+  .field .field-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    appearance: none;
+  }
+  .field .field-input::placeholder {
+    color: var(--text-tertiary);
+    opacity: 1;
+  }
+  .field .field-input::-webkit-search-cancel-button,
+  .field .field-input::-webkit-search-decoration {
+    appearance: none;
+  }
+  .field .icon-btn.sm {
+    margin-left: auto;
+    margin-right: -4px; /* local: optical — the circle sits 4 px from the field edge */
+    color: var(--text-tertiary);
   }
   /* ⌘K launcher: a field-shaped button (design-spec 6 검색 필드·실행기). */
   .launcher {
@@ -27,10 +59,10 @@
     cursor: default;
     -webkit-app-region: no-drag;
   }
-  .launcher:is([data-hovered], [data-force~='hover']) {
+  .launcher:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
     background-image: linear-gradient(var(--fill-hover), var(--fill-hover));
   }
-  .launcher:is([data-pressed], [data-force~='pressed']) {
+  .launcher:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
     background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
   }
   .launcher .kbd-group {

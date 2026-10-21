@@ -1,4 +1,8 @@
 @layer components {
+  /* Escape listener around the portalled region (ui/toasts.tsx); no box of its own. */
+  .toast-keys {
+    display: contents;
+  }
   .toasts {
     position: fixed;
     z-index: 45;
@@ -14,6 +18,7 @@
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr) auto;
     column-gap: var(--space-12);
+    row-gap: var(--space-4);
     align-items: start;
     padding: var(--space-12) var(--space-12) var(--space-12) var(--space-16);
     border-radius: var(--radius-lg);
@@ -30,10 +35,11 @@
     display: grid;
     margin-top: 1px;
   }
+  /* Title 18 + body 16 with no gap: one line = 12 + 18 + 12 = 42, two lines = 58 (mockup .toast). */
   .toast .t-text {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: 0;
     min-width: 0;
   }
   .toast .t-title {
@@ -43,6 +49,14 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
     white-space: pre-line;
+  }
+  /* Progress toast (M6): bar + % on the row under title and file name, across the text and action columns. */
+  .toast .t-progress {
+    grid-column: 2 / 4;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
   }
   .spinner {
     display: inline-block;

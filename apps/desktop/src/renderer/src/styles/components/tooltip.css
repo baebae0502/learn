@@ -3,12 +3,12 @@
     display: flex;
     gap: var(--space-8);
     max-width: 280px;
-    padding: var(--space-4) var(--space-8);
-    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-8);
+    border-radius: var(--radius-sm);
     background: var(--bg-raised);
     box-shadow: var(--shadow-e1);
     color: var(--text-primary);
-    font: var(--type-footnote);
+    font: var(--type-caption);
   }
   .tooltip[data-entering] {
     animation: fade-in var(--duration-fast) var(--ease-standard);

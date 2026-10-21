@@ -8,6 +8,7 @@ export type NoticeTone = 'neutral' | 'warning' | 'accent';
 /**
  * Stage notice (design-spec 6): 56 px tile — neutral = error/unavailable, warning = user-fixable,
  * accent = invitation; title2 heading, paragraph, optional file line, one row of actions.
+ * A polite status, not an alert: it replaces a screen's content and stays (role=alert is for transient failures).
  */
 export function Notice(props: {
   tone?: NoticeTone;
@@ -21,7 +22,7 @@ export function Notice(props: {
 }) {
   const tone = props.tone ?? 'neutral';
   return (
-    <div className="notice" role="alert" data-testid={props.testId}>
+    <div className="notice" role="status" data-testid={props.testId}>
       <div className={cx('glyph', tone !== 'neutral' && tone)}>
         <Icon icon={props.icon} size="xl" />
       </div>

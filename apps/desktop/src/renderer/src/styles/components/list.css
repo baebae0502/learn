@@ -144,7 +144,8 @@
     padding-left: 0;
     color: var(--text-primary);
   }
-  .table-row .td > .icon {
+  /* The kind icon (first in the title cell); later glyphs carry their own colour wrapper (.c-tertiary, .inline-flag). */
+  .table-row .td > .icon:first-child {
     color: var(--text-secondary);
   }
   .table-row .td.end,

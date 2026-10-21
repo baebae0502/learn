@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
 import { ratio, restoreVideoSeconds } from './positionSaver';
-import { CodecNotice, ReaderTitleRow } from './ReaderNotices';
+import { CodecNotice } from './ReaderNotices';
 import { usePosition } from './usePosition';
 
 const TIME_SAVE = { kind: 'throttle', ms: 2000 } as const;
@@ -42,27 +42,24 @@ export function VideoViewer({ item }: { item: LibraryItem }) {
     console.warn(`[video] playback error code ${err?.code ?? 0}`);
     setError({ unsupported: err?.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED });
   };
-  // The 44 px title row appears only in the final state (design-spec 6, dialogs.html?scene=codec); the <video> keeps
-  // its place in the tree (hidden, not unmounted) so the evidence harness can still read video.error.
+  // The <video> keeps its place (hidden, not unmounted) so the evidence harness can still read video.error; the notice
+  // takes the same stage, which never moves (no row is inserted when the error arrives).
   return (
-    <div className="reader">
-      {error && <ReaderTitleRow item={item} />}
-      <div className="video-stage">
-        <video
-          ref={(el) => { if (el) videoRef.current = el; }}
-          data-testid="video"
-          src={assetUrl(item.assetId)}
-          controls
-          preload="metadata"
-          hidden={error !== null}
-          onError={onError}
-          onLoadedMetadata={(e) => tryRestore(e.currentTarget)}
-          onTimeUpdate={(e) => record(e.currentTarget, false)}
-          onPause={(e) => record(e.currentTarget, true)}
-          onSeeked={(e) => record(e.currentTarget, true)}
-        />
-        {error && <CodecNotice item={item} unsupported={error.unsupported} />}
-      </div>
+    <div className="video-stage">
+      <video
+        ref={(el) => { if (el) videoRef.current = el; }}
+        data-testid="video"
+        src={assetUrl(item.assetId)}
+        controls
+        preload="metadata"
+        hidden={error !== null}
+        onError={onError}
+        onLoadedMetadata={(e) => tryRestore(e.currentTarget)}
+        onTimeUpdate={(e) => record(e.currentTarget, false)}
+        onPause={(e) => record(e.currentTarget, true)}
+        onSeeked={(e) => record(e.currentTarget, true)}
+      />
+      {error && <CodecNotice item={item} unsupported={error.unsupported} />}
     </div>
   );
 }

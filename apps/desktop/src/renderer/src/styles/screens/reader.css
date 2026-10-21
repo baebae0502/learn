@@ -23,11 +23,6 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
-  /* Final states (PDF open failure, missing original, unplayable video): the 44 px row keeps only the title and
-     kind · size (mockup reader-pdf ?state=error|missing, dialogs ?scene=codec; title + 4 margin + 4 gap). */
-  .reader-toolbar.title-row {
-    gap: var(--space-8);
-  }
   .zoom-select {
     display: inline-flex;
     align-items: center;
@@ -35,9 +30,22 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
+  /* The native arrow is replaced by the 12 px chevron every other disclosure uses (spec 5; mockup .zoom-btn). */
+  .zoom-select .select-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .zoom-select .select-wrap .icon {
+    position: absolute;
+    right: var(--space-6);
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
   .zoom-select select {
+    appearance: none;
     height: var(--control-height-small);
-    padding: 0 var(--space-8);
+    padding: 0 var(--space-20) 0 var(--space-8);
     border: 0;
     border-radius: var(--radius-sm);
     background: var(--bg-control);

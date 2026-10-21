@@ -7,8 +7,8 @@ import { Toolbar } from '../shell/Toolbar';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 
-/** "PDF · 4.2 MB · 외부 연결": the toolbar count and the 44 px title row of a final state (ReaderTitleRow). */
-export const readerMeta = (item: LibraryItem): string =>
+/** "PDF · 4.2 MB · 외부 연결": the toolbar's count while reading (no tab strip, no pane header until M7). */
+const readerMeta = (item: LibraryItem): string =>
   [t.library.type[item.type], formatSize(item.size), item.storageMode === 'linked' ? t.reader.linkedMeta : null].filter(Boolean).join(' · ');
 
 /** Unified toolbar while reading (no tab strip until M7): back to the library (⌘1), title, kind · size. */

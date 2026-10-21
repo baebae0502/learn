@@ -19,7 +19,7 @@ export class RenderBoundary extends Component<{ children: ReactNode }, { failed:
   }
 
   override render(): ReactNode {
-    if (this.state.failed) return <FatalScreen kind="render" code="INTERNAL" libraryRoot={null} />;
+    if (this.state.failed) return <FatalScreen kind="render" code="INTERNAL" />;
     return this.props.children;
   }
 }

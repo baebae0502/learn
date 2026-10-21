@@ -21,9 +21,12 @@ export function Boot() {
     if (prefsFailure) console.warn(`[prefs] reading prefs failed: ${prefsFailure}`);
   }, [prefsFailure]);
   // Code only: main's message can carry a path or engine text (C-8); FatalScreen says it in our own words.
-  if (info.isError) return <FatalScreen code={codeOf(info.error)} libraryRoot={null} />;
+  if (info.isError) return <FatalScreen code={codeOf(info.error)} />;
   if (info.isPending || prefs.isPending) return null;
-  if (info.data.libraryError) return <FatalScreen code={info.data.libraryError.code} libraryRoot={info.data.libraryRoot} />;
+  if (info.data.libraryError) {
+    const { libraryError, libraryRoot, backupFile, homeDir } = info.data;
+    return <FatalScreen code={libraryError.code} libraryRoot={libraryRoot} backupFile={backupFile} homeDir={homeDir} />;
+  }
   return <PanesGate info={info.data} />;
 }
 

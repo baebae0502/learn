@@ -46,6 +46,6 @@ M0에서 GitHub macOS 러너(M1 VM)로 확인한 항목은 [`mac-verification.md
 
 - 컬렉션 복원이 따로 삭제해 둔 하위 항목까지 되살린다 → **M6**(휴지통/복원 정책에서 하위 컬렉션을 어떻게 다룰지 정하고 고친다).
 - `itemIdsForAsset`이 휴지통에 있는 항목을 제외한다 → **M6**(휴지통 복원 시 같은 자산을 쓰는 항목 처리와 함께 확인).
-- 리더의 위치 저장이 `libraryChanged`로 `openedAt`·진행률을 알리지 않는다. M2 렌더러가 이 값을 표시하지 않아 보류 → **M3/M7**(목록에 진행률·마지막 연 시각을 표시할 때 같이 처리). 같은 건에서 `actionError`를 지우는 시점도 다시 본다.
+- 리더의 위치 저장과 열기(`reader.open`)가 `libraryChanged`로 `openedAt`·진행률을 알리지 않는다. M2 렌더러가 이 값을 표시하지 않아 보류 → **M3/M7**(목록에 진행률·마지막 연 시각을 표시할 때 같이 처리). `openedAt` 자체는 최종 리뷰 수정부터 열 때마다 기록된다(ADR-0007 §1). 같은 건에서 `actionError`를 지우는 시점도 다시 본다.
 - `isDevBuild`(개발 빌드에서만 개발자 도구 메뉴를 넣는 판정)에 직접 단위 테스트가 없다. E2E "menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구"로만 덮인다.
-- ⌘O 정확히 1회 처리(`platform.spec.ts`)와 한국어 메뉴 막대 스크린샷, M2 읽기 위치 복원은 M2 macOS 실행에서 확인한다([`acceptance.md`](acceptance.md) 해당 행은 "M2 macOS 실행 대기").
+- ~~⌘O 정확히 1회 처리(`platform.spec.ts`)와 한국어 메뉴 막대 스크린샷, M2 읽기 위치 복원은 M2 macOS 실행에서 확인한다.~~ → M2 macOS 실행(run 39534378577)에서 확인했다([`mac-verification.md`](mac-verification.md) "M2 실행", [`acceptance.md`](acceptance.md) AC06·AC18). 최종 리뷰 수정에서 더한 E2E 2개(`openedAt` 기록, `ui.windowState()`)는 다음 macOS 실행(M3)에서 같이 돌린다.

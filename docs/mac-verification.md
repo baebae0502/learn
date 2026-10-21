@@ -46,7 +46,10 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 | 7 | [39617644850](https://github.com/baebae0502/learn/actions/runs/39617644850) | evidence / macos-15 / 아니오 (label `m3-chrome`) | 212초 → 4분 | 실패 | M3 창 크롬 1회차: 증거 12 통과 · 1 skip(패키지 스파이크) · 판정 테스트 1 실패 — 하네스 원인 2건(비교 창 빈 캡처, 화면보다 넓은 복원 요청), 아래 "M3 창 크롬" |
 | 8 | [39618864364](https://github.com/baebae0502/learn/actions/runs/39618864364) | evidence / macos-15 / 아니오 (label `m3-chrome`) | 144초 → 3분 | 실패 | 하네스 수정 후 2회차: 증거 12 통과 · 1 skip · 판정 테스트 1 실패 — 앱 판정 16개 모두 통과, 하네스 원인 1건(최소 폭보다 좁은 복원 요청)은 9b7a1a5에서 고침(확인은 Task 14 실행) |
 
-**합계: macOS 8회(M0 5 · M2 1 · M3 2), 30분(포함 분 300분 차감).** M0은 예산 8회 중 5회. M3은 계획 2회(Task 8 · Task 14)와 무료 한도 안 추가 1회 가운데 Task 8이 2회(계획 1 + 하네스 수정 재실행 1)를 써서 Task 14의 1회가 남았다(C-9: 지출 한도 $0이라 과금 없음). fixture 잡(ubuntu)은 run마다 1분(×1). Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
+| 9 | [39629607271](https://github.com/baebae0502/learn/actions/runs/39629607271) | evidence / macos-15 / 아니오 (label `m3-chrome-2`) | 176초 → 3분 | 실패 | Task 8 수정 1회차: 메뉴 테스트의 하드 단언(툴팁이 열려야 함)이 실패해 직렬 모드에서 뒤 테스트 7개가 건너뛰어짐(하네스). 그 앞 판정은 모두 통과 |
+| 10 | [39631541294](https://github.com/baebae0502/learn/actions/runs/39631541294) | evidence / macos-15 / 아니오 (label `m3-chrome-2`) | 171초 → 3분 | 실패 | 하네스 수정 후: 테스트 전부 실행. 판정 29개 중 26개 통과, 3개는 앱 결함 하나(시트가 닫힌 뒤 창이 비활성으로 남음 — 38e3a9e에서 고침, 확인은 Task 14) 때문 — 아래 "M3 창 크롬 수정 1회차" |
+
+**합계: macOS 10회(M0 5 · M2 1 · M3 4), 36분(포함 분 360분 차감).** M0은 예산 8회 중 5회. M3은 Task 8이 2회, Task 8 수정 1회차가 2회(통제자 허용, 무료 한도 안 — C-9: 지출 한도 $0이라 과금 없음)를 썼다. Task 14의 1회가 남았다. fixture 잡(ubuntu)은 run마다 1분(×1). Linux CI(ci.yml): [39438095006](https://github.com/baebae0502/learn/actions/runs/39438095006)(main push), [39441722726](https://github.com/baebae0502/learn/actions/runs/39441722726), [39443445899](https://github.com/baebae0502/learn/actions/runs/39443445899), [39444840391](https://github.com/baebae0502/learn/actions/runs/39444840391), [39446596760](https://github.com/baebae0502/learn/actions/runs/39446596760), [39451860358](https://github.com/baebae0502/learn/actions/runs/39451860358) 모두 성공.
 
 ## 기준선 실측
 
@@ -145,6 +148,23 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 - 보기 메뉴의 "전체 화면" 중복(`fn F`, `⌃⌘F`).
 - 같은 자리에 겹친 두 번째 앱의 창은 캡처가 늦게 갱신된다(2회차 비교 창 캡처에 첫 그림의 빈 목록이 찍힘. 표본 두 점은 빈 영역이라 판정에는 영향 없음).
 - Linux E2E는 Xvfb 화면을 1920×1200으로 키웠다: 숨긴 제목 막대(프레임 없는 창)는 화면과 크기가 같으면 Chromium이 1px 줄여, 1440×900 화면에서는 투어의 1440×900 뷰포트를 만들 수 없다. 증거 하네스(Linux)는 1440×900 그대로.
+
+## M3 창 크롬 수정 1회차 (run 39629607271 · 39631541294, 2026-10-21, macos-15 arm64, `suite=evidence`, 3분 + 3분)
+
+디자인 비평(critic-t8 round1)의 M1(다크·비활성 캡처가 없었음) 이후 다시 잰 값. 아래는 run 39631541294, 증거는 `evidence/m3-chrome-2/39631541294/`.
+
+- **정직한 다크**: 모든 실행이 `colorScheme: null`로 페이지가 테마 설정을 따른다. 다크 `.page.png`의 내용 면 = 다크 `--bg-content`(24,26,27). 이전 두 실행의 "다크"는 다크 재질 위의 라이트 페이지였다.
+- **신호등(기하 중심, n3)**: 닫기 (25.0, 26.0), 확대 x 65.0 — 52px 막대 세로 가운데. 토큰 그대로.
+- **비브런시 재질과 사이드바 글자(M2)**: 라이트 재질 246,246,246 · 다크 56,56,56(`#383838`). 다크에서 3차 글자 4.39:1(기본 토큰이면 2.74:1), 선택 행 개수 6.57:1, 1차 9.84:1. 라이트 3차 3.65:1, 선택 행 개수 5.08:1. 모두 8.3 기준 이상.
+- **비활성 창**(Finder를 앞으로, 창에 포커스를 주지 않고 캡처): 닫기 단추 회색(라이트 219,219,219 · 다크 53,53,53), 사이드바 목록의 강조 선택이 중립 채움으로 바뀜. 다크 비활성에서는 재질이 거의 검정으로 어두워진다(`m3-03b`).
+- **메뉴**: 보기에 **전체 화면이 하나**(`NSFullScreenMenuItemEverywhere` = false 등록, n5), 이름은 상태에 따라 "사이드바 가리기"/"사이드바 보기"(m2, System Events와 Electron이 같은 값). 파일은 "윈도우 닫기"(n4). AppKit이 스스로 붙이는 항목은 비패키지 앱이라 영어: 파일 "Close All"(⌥ 대체 항목), 편집 "AutoFill", "Start Dictation…", "Emoji & Symbols" — 한국어 지역화를 선언한 패키지 앱(P6)에서 다시 본다.
+- **툴팁(m1)**: 메뉴로 사이드바를 두 번 접고 펴도 툴팁 없음. 메뉴 막대 메뉴가 열리면 `nativeMenu` 신호가 오고 닫힘까지 짝이 맞는다(열기·닫기 3쌍).
+- **실제 키**: 중복 시트 ↩ 133ms(건너뛰기, 키를 보낸 뒤에 닫힌 것만 인정), 단축키 시트 esc 76ms, 라이브러리의 비활성 ⌘1 무시, ⌃⌘S·⌘1 `ok`, Finder에서 보기 139ms.
+- **창 상태**: 닫기 직전 (40, 65, 960×604) = 재시작 후. 9b7a1a5의 요청도 그대로 받아들여짐.
+- **글꼴(n6)**: 600 Latin 제목("sample")이 `.SFNS-Bold`로 그려진다(한글은 Apple SD Gothic Neo SemiBold) — Chromium이 600을 SF Bold로 고른다. 디자인 판단 필요.
+- **리더 열기 지연(보고만)**: PDF 23ms, 재생할 수 없는 동영상 안내 652ms.
+- **찾은 앱 결함**: 시트가 닫힌 뒤 메인 창이 키 창(`isFocused()` true)인데 마지막 windowState 푸시는 "비활성" — macOS는 시트가 끝날 때 부모를 다시 키 창으로 만들면서 Electron 'focus'를 내지 않는다. 그 결과 선택이 중립색으로 남고 툴팁이 막혔다(판정 3개 실패의 원인). 38e3a9e: 시트 창이 닫히면 main이 부모 상태를 다시 읽어 보낸다. macOS 확인은 Task 14 실행.
+- VoiceOver는 여전히 실기 수동 확인 항목이다.
 
 ## 알려진 한계
 

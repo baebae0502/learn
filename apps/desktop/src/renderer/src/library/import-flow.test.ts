@@ -7,7 +7,7 @@ const imported = (path: string, id: string): ImportOutcome => ({ status: 'import
 const dup = (path: string, existingItemId: string): ImportOutcome => ({ status: 'duplicate', path, existingItemId });
 const failed = (path: string, message: string): ImportOutcome => ({ status: 'failed', path, code: 'UNSUPPORTED_TYPE', message });
 
-const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.';
+const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4·MOV·WebM)을 가져올\u00a0수 있습니다.';
 
 describe('settleImport', () => {
   it('counts imports and failures and asks about each duplicate in order', async () => {
@@ -34,20 +34,21 @@ describe('settleImport', () => {
 });
 
 describe('failureLines', () => {
-  it('lists up to three files with their cause and counts the rest', () => {
+  it('lists up to three files as name + cause (the name may be cut, the cause stays) and counts the rest', () => {
     const f = ['a', 'b', 'c', 'd', 'e'].map((n) => ({ name: `${n}.txt`, message: '지원하지 않는 형식입니다.' }));
-    expect(failureLines(f)).toEqual({ lines: ['a.txt: 지원하지 않는 형식입니다.', 'b.txt: 지원하지 않는 형식입니다.', 'c.txt: 지원하지 않는 형식입니다.', '외 2개'], hints: [] });
-    expect(failureLines(f.slice(0, 1))).toEqual({ lines: ['a.txt: 지원하지 않는 형식입니다.'], hints: [] });
+    const cause = '지원하지 않는 형식입니다.';
+    expect(failureLines(f)).toEqual({ lines: [{ name: 'a.txt', cause }, { name: 'b.txt', cause }, { name: 'c.txt', cause }, '외 2개'], hints: [] });
+    expect(failureLines(f.slice(0, 1))).toEqual({ lines: [{ name: 'a.txt', cause }], hints: [] });
   });
   it('gives each next step once, after the list (cause + next step, design-spec 9)', () => {
     const f = [
       ...['a', 'b', 'c', 'd'].map((n) => ({ name: `${n}.txt`, message: UNSUPPORTED })),
-      { name: 'dir', message: '일반 파일만 가져올 수 있습니다.' },
+      { name: 'dir', message: '일반 파일만 가져올\u00a0수 있습니다.' },
       { name: 'x.pdf', message: '파일을 읽지 못했습니다. 다시 가져오세요.' },
     ];
     expect(failureLines(f)).toEqual({
-      lines: ['a.txt: 지원하지 않는 형식입니다.', 'b.txt: 지원하지 않는 형식입니다.', 'c.txt: 지원하지 않는 형식입니다.', '외 3개'],
-      hints: ['지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.', '다시 가져오세요.'],
+      lines: [...['a.txt', 'b.txt', 'c.txt'].map((name) => ({ name, cause: '지원하지 않는 형식입니다.' })), '외 3개'],
+      hints: ['지금은 PDF와\u00a0동영상(MP4·MOV·WebM)을 가져올\u00a0수 있습니다.', '다시 가져오세요.'],
     });
   });
 });

@@ -12,11 +12,17 @@ import { IconButton } from './Button';
 import { Icon } from './Icon';
 
 export type ToastKind = 'success' | 'error' | 'info';
+/** A toast row about one file: the name is cut with an ellipsis before the cause is (the cause is what to read). */
+export interface ToastFileLine {
+  name: string;
+  cause: string;
+}
+
 export interface ToastData {
   kind: ToastKind;
   title: string;
-  /** One line each, cut with an ellipsis (file names): the toast keeps its height whatever the names are. */
-  lines?: readonly string[];
+  /** One line each, never wrapped (file rows, "외 N개"): the toast keeps its height whatever the names are. */
+  lines?: readonly (ToastFileLine | string)[];
   /** A paragraph under the lines (the next step); wraps. */
   body?: string;
   testId?: string;
@@ -26,12 +32,19 @@ export interface ToastData {
 export function ToastLines({ data }: { data: Pick<ToastData, 'lines' | 'body'> }) {
   return (
     <>
-      {data.lines?.map((line, i) => (
-        <span key={i} className="t-line ellipsis" title={line}>
-          {line}
-        </span>
-      ))}
-      {data.body && <span className="t-body ui-prose">{data.body}</span>}
+      {data.lines?.map((line, i) =>
+        typeof line === 'string' ? (
+          <span key={i} className="t-line">
+            {line}
+          </span>
+        ) : (
+          <span key={i} className="t-line" title={`${line.name}: ${line.cause}`}>
+            <span className="t-name ellipsis">{line.name}</span>
+            <span className="t-cause">: {line.cause}</span>
+          </span>
+        ),
+      )}
+      {data.body && <span className="t-hint ui-prose">{data.body}</span>}
     </>
   );
 }

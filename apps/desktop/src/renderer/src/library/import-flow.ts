@@ -50,12 +50,18 @@ const splitMessage = (m: string): [string, string] => {
   return i < 0 ? [m, ''] : [m.slice(0, i + 1), m.slice(i + 2)];
 };
 
+/** A failure toast row: the file name (cut first when the row is too long) and its cause (kept visible). */
+export interface FailureLine {
+  name: string;
+  cause: string;
+}
+
 /**
- * Failure toast body: one "name: cause" line per file (at most `max`, then "외 N개"), and the next steps once each
- * after the list, so five files with the same cause do not repeat the same advice five times.
+ * Failure toast body: one name + cause row per file (at most `max`, then the plain line "외 N개"), and the next steps
+ * once each after the list, so five files with the same cause do not repeat the same advice five times.
  */
-export function failureLines(failed: ImportReport['failed'], max = 3): { lines: string[]; hints: string[] } {
-  const lines = failed.slice(0, max).map((f) => `${f.name}: ${splitMessage(f.message)[0]}`);
+export function failureLines(failed: ImportReport['failed'], max = 3): { lines: Array<FailureLine | string>; hints: string[] } {
+  const lines: Array<FailureLine | string> = failed.slice(0, max).map((f) => ({ name: f.name, cause: splitMessage(f.message)[0] }));
   if (failed.length > max) lines.push(t.toast.more(failed.length - max));
   const hints = [...new Set(failed.map((f) => splitMessage(f.message)[1]).filter(Boolean))];
   return { lines, hints };

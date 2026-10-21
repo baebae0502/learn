@@ -49,7 +49,7 @@
   .toast .t-title {
     font: var(--type-headline);
   }
-  /* Description: one-line ellipsis rows (file names, never re-wrapped), then the paragraph (next step, pretty). */
+  /* Description: one-line rows (file name + cause, never re-wrapped), then the paragraph (next step, pretty). */
   .toast .t-desc {
     display: flex;
     flex-direction: column;
@@ -57,15 +57,27 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
+  /* A long file name gives way first (down to 3em); the cause keeps its width and is cut only past what is left. */
   .toast .t-line {
-    display: block;
+    display: flex;
+    white-space: nowrap;
+    min-width: 0;
   }
-  .toast .t-body {
+  .toast .t-name {
+    flex: 0 1 auto;
+    min-width: 3em;
+  }
+  .toast .t-cause {
+    flex: 0 0 auto;
+    max-width: calc(100% - 3em);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast .t-hint {
     display: block;
-    font: var(--type-footnote);
     white-space: pre-line;
   }
-  .toast .t-line + .t-body {
+  .toast .t-line + .t-hint {
     margin-top: var(--space-4);
   }
   /* Progress toast (M6): bar + % on the row under title and file name, across the text and action columns. */

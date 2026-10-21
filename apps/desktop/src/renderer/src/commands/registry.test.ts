@@ -78,18 +78,24 @@ describe('renderer command registry', () => {
       expect(e.openSettings).toHaveBeenCalledTimes(1);
     }
   });
-  it('steps the text size: ⌘+ / ⌘− one point within 12–15, ⌘0 back to 13, in the library only', () => {
+  it('steps the text size: ⌘+ / ⌘− one point within 12–15 from the latest size (a functional update), ⌘0 back to 13, in the library only', () => {
     const at = (textSize: 12 | 13 | 14 | 15, view: 'library' | 'viewer' = 'library') => env({ textSize, view });
+    /** The update a command passed, applied to `current` (the newest size, which may be ahead of env.textSize). */
+    const applied = (e: CommandEnv, current: 12 | 13 | 14 | 15) => vi.mocked(e.setTextSize).mock.calls.at(-1)![0](current);
     let e = at(13);
     expect(runCommand('view.textBigger', e)).toBe(true);
-    expect(e.setTextSize).toHaveBeenCalledWith(14);
+    expect(applied(e, 13)).toBe(14);
+    expect(applied(e, 14)).toBe(15); // a second ⌘+ before prefsChanged came back steps on from 14
+    expect(applied(e, 15)).toBe(15);
     e = at(13);
     expect(runCommand('view.textSmaller', e)).toBe(true);
-    expect(e.setTextSize).toHaveBeenCalledWith(12);
+    expect(applied(e, 13)).toBe(12);
+    expect(applied(e, 12)).toBe(12);
     e = at(15);
     expect(runCommand('view.textBigger', e)).toBe(false);
     expect(runCommand('view.textReset', e)).toBe(true);
-    expect(e.setTextSize).toHaveBeenCalledExactlyOnceWith(13);
+    expect(applied(e, 15)).toBe(13);
+    expect(e.setTextSize).toHaveBeenCalledTimes(1);
     e = at(12);
     expect(runCommand('view.textSmaller', e)).toBe(false);
     expect(runCommand('view.textReset', at(13))).toBe(false);

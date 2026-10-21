@@ -22,6 +22,7 @@ const { registerUiIpc } = await import('./ui');
 
 const MAIN = { id: 1 };
 const SHEET = { id: 2 };
+const SETTINGS = { id: 3 };
 const ITEM_ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt: '2026-10-20T11:40:00.000Z', storageMode: 'managed' };
 const opened: unknown[] = [];
@@ -41,6 +42,7 @@ registerUiIpc(
       resolve: () => {},
     },
     windows: { openSettings, asSheet: (_owner, show) => show() },
+    isSettingsWindow: (sender) => sender === (SETTINGS as never),
   }),
 );
 
@@ -69,11 +71,12 @@ describe('sheets are opened over the main window only', () => {
 });
 
 describe('ui.openSettings (the main-owned ⌘, behind the fatal screen\'s 설정 열기)', () => {
-  it('opens (or brings forward) the settings window from any of our windows', async () => {
+  it('opens (or brings forward) the settings window from the main or the settings window; a sheet is refused', async () => {
     openSettings.mockClear();
     expect(await invoke('ui:openSettings', MAIN)).toEqual({ ok: true, data: undefined });
-    expect(await invoke('ui:openSettings', SHEET)).toEqual({ ok: true, data: undefined });
+    expect(await invoke('ui:openSettings', SETTINGS)).toEqual({ ok: true, data: undefined });
     expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(await invoke('ui:openSettings', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await invoke('ui:openSettings', MAIN, { x: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(openSettings).toHaveBeenCalledTimes(2);
   });

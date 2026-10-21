@@ -1,5 +1,6 @@
 import { isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
+import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
@@ -20,11 +21,10 @@ export interface CommandEnv extends CommandContextState {
   openExternally(itemId: string): void;
   /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
   openSettings(): void;
-  /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref. */
-  setTextSize(size: TextSize): void;
+  /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
+  setTextSize(update: TextSizeUpdate): void;
 }
 
-type TextSize = CommandContextState['textSize'];
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
 
 export interface CommandTarget {
@@ -46,9 +46,9 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
-  'view.textBigger': (env) => env.setTextSize(clampTextSize(env.textSize + 1)),
-  'view.textSmaller': (env) => env.setTextSize(clampTextSize(env.textSize - 1)),
-  'view.textReset': (env) => env.setTextSize(13),
+  'view.textBigger': (env) => env.setTextSize((size) => clampTextSize(size + 1)),
+  'view.textSmaller': (env) => env.setTextSize((size) => clampTextSize(size - 1)),
+  'view.textReset': (env) => env.setTextSize(() => 13),
 };
 
 /** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */

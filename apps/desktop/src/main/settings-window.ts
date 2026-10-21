@@ -1,6 +1,7 @@
 import { BrowserWindow } from 'electron';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { contentHeight, followContentHeight, markSized } from './measure';
+import { mainStrings } from './strings';
 import { currentTheme } from './theme';
 import { trackWindowState } from './window-state';
 
@@ -35,7 +36,7 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         height: 560, // measured at this height first, then fitted to the content
         useContentSize: true,
         show: false,
-        title: '설정',
+        title: mainStrings.settingsWindow.title,
         resizable: false,
         minimizable: false,
         maximizable: false,
@@ -70,9 +71,10 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
           }
           await markSized(created.webContents);
           created.show();
-          // A message that appears (a refused folder) or goes makes the window as tall as its content again.
+          // A message that appears (a refused folder) or goes makes the window as tall as its content again; on macOS the
+          // bottom edge slides as AppKit's own windows do (`animate` is ignored elsewhere).
           followContentHeight(created.webContents, '[data-settings-root]', height, (next) => {
-            if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, next);
+            if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, next, true);
           });
         })().catch(() => {
           // Only a window closed mid-measure gets here; otherwise show it unsized rather than not at all.

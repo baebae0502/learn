@@ -18,6 +18,18 @@ const settingsWindow = (app: ElectronApplication) =>
     return w;
   });
 const inactive = (page: Page) => page.evaluate(() => document.documentElement.hasAttribute('data-window-inactive'));
+/** A CSS colour token as the page computes it. */
+const token = (page: Page, name: string) =>
+  page.evaluate((v) => {
+    const probe = document.createElement('span');
+    document.body.append(probe);
+    probe.style.color = `var(${v})`;
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  }, name);
+/** The selection ring of a theme tile: its frame's border colour (critic T10-m1: a 2 px gap that shows the group). */
+const ring = (settings: Page, theme: string) => settings.getByTestId(`theme-tile-${theme}`).locator('.frame').evaluate((el) => getComputedStyle(el).borderTopColor);
 /** The settings window is shown exactly as tall as its content (design-spec 6), also after a message appeared in it. */
 const fitsContent = async (app: ElectronApplication, settings: Page) =>
   (await (await settingsWindow(app)).evaluate((w) => w.isVisible() && w.getContentSize()[1])) ===
@@ -42,9 +54,17 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await (await settingsWindow(app)).evaluate((w) => w.focus());
     await expect.poll(() => inactive(page)).toBe(true);
     await expect.poll(() => inactive(settings)).toBe(false);
+    // The selected tile's ring is the accent ring, 2 px off the picture with nothing painted between; the others have none.
+    expect(await ring(settings, 'system')).toBe(await token(settings, '--accent-ring'));
+    expect(await ring(settings, 'dark')).toBe('rgba(0, 0, 0, 0)');
+    expect(await settings.getByTestId('theme-tile-system').locator('.frame').evaluate((el) => [getComputedStyle(el).padding, getComputedStyle(el).backgroundColor])).toEqual(['2px', 'rgba(0, 0, 0, 0)']);
     await (await mainWindow(app)).evaluate((w) => w.focus());
     await expect.poll(() => inactive(page)).toBe(false);
     await expect.poll(() => inactive(settings)).toBe(true);
+    // Not key: the selection turns neutral (design-spec 2.1, 3.1).
+    expect(await ring(settings, 'system')).toBe(await token(settings, '--border-strong'));
+    // Each text size names its value in pt in a tooltip (settings.html, design-spec 10.6).
+    for (const size of [12, 13, 14, 15]) await expect(settings.locator(`[title="${size}pt"]`).getByTestId(`font-size-${size}`)).toHaveCount(1);
 
     await settings.getByTestId('theme-tile-dark').click();
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('dark');
@@ -102,6 +122,9 @@ test('R4: the renderer cannot set the library path; main picks, checks, confirms
   const { app, page } = await launch(lib, ud);
   try {
     expect(await page.evaluate(() => window.learn.prefs.set({ libraryRoot: '/tmp/x' } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    // Only the settings window asks for the library location (review minor 5): the main window is refused before any dialog.
+    expect(await page.evaluate(() => window.learn.app.chooseLibraryFolder())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await page.evaluate(() => window.learn.app.showLibraryFolder())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     // It takes no input at all: a path sent anyway is refused before any dialog.
     expect(await page.evaluate(() => (window.learn.app.chooseLibraryFolder as (input: unknown) => Promise<unknown>)({ path: '/tmp/x' }))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
@@ -178,15 +201,39 @@ test('settings opens from the fatal screen when the library cannot be opened', a
   const { app, page } = await launch(lib, testInfo.outputPath('userdata'));
   try {
     expect(await menuItemEnabled(app, 'app.settings')).toBe(true); // main-owned: enabled with nothing else
+    // Secondary: the notice's sentence asks for something else (restart, or the backup) — critic T10-m3.
+    await expect(page.getByTestId('fatal-settings')).toHaveClass(/btn-secondary/);
     const settings = await expectWindow(app, 'settings', () => page.getByTestId('fatal-settings').click());
     await expect(settings.getByTestId('library-choose')).toBeVisible();
     await expect(settings.getByTestId('library-path')).toHaveAttribute('title', lib);
+    // When main refuses, the screen says so (review minor 6) instead of a button that does nothing.
+    await settings.close();
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('ui:openSettings');
+      ipcMain.handle('ui:openSettings', () => ({ ok: false, code: 'INTERNAL', message: '설정 창을 열지 못했습니다.', retryable: false }));
+    });
+    await page.getByTestId('fatal-settings').click();
+    await expect(page.getByTestId('action-error')).toContainText('설정 창을 열지 못했습니다.');
   } finally {
     await app.close();
   }
 });
 
-test('with only the settings window left, activate (dock click) opens a new main window (R-22)', async ({}, testInfo) => {
+test('Linux/Windows: closing the main window closes the settings window too, and the app quits (review minor 2)', async ({}, testInfo) => {
+  test.skip(process.platform === 'darwin', 'macOS keeps the app and the settings window open (the next test)');
+  const { app } = await launch(...dirs(testInfo));
+  try {
+    await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const quit = app.waitForEvent('close');
+    await (await mainWindow(app)).evaluate((w) => w.close());
+    await quit; // window-all-closed: no settings window was left behind to keep the app alive
+  } finally {
+    await app.close().catch(() => {});
+  }
+});
+
+test('macOS: with only the settings window left, activate (dock click) opens a new main window (R-22)', async ({}, testInfo) => {
+  test.skip(process.platform !== 'darwin', 'Linux/Windows quit with the main window (the test above)');
   const { app } = await launch(...dirs(testInfo));
   try {
     await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));

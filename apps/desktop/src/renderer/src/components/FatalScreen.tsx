@@ -1,11 +1,18 @@
 import { useEffect } from 'react';
 import { DatabaseZap, MonitorX } from 'lucide-react';
-import { api } from '../api';
+import { api, unwrap } from '../api';
 import { homeRelative } from '../format';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
 import { currentPlatform } from '../ui/platform';
+import { Toasts, showToast } from '../ui/toasts';
+
+/** 설정 열기 failed (main answered !ok): said in a toast like any other failed action; main's message is Korean. */
+const openSettings = () =>
+  void unwrap(api().ui.openSettings()).catch((e: unknown) =>
+    showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' }),
+  );
 
 export interface FatalScreenProps {
   /** `library`: the library could not be opened; `render`: the main window failed to render (RenderBoundary). */
@@ -41,8 +48,9 @@ export function FatalScreen({ kind = 'library', code, libraryRoot = null, backup
             fileTitle={backup ? `${backup} (${code})` : undefined}
             testId="fatal-notice"
             actions={
-              // The library's location can still be changed: the settings window is main's (app.settings), not the library's.
-              <Button variant="primary" testId="fatal-settings" onPress={() => void api().ui.openSettings()}>
+              // The library's location can still be changed: the settings window is main's (app.settings), not the
+              // library's. Secondary: the sentence's own next step (restore the backup, restart) is not this (T10-m3).
+              <Button testId="fatal-settings" onPress={openSettings}>
                 {t.fatal.openSettings}
               </Button>
             }
@@ -55,6 +63,7 @@ export function FatalScreen({ kind = 'library', code, libraryRoot = null, backup
           </Notice>
         )}
       </div>
+      <Toasts />
       <div data-testid="app-ready" hidden />
     </div>
   );

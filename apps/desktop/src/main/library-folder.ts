@@ -1,4 +1,7 @@
 import fs from 'node:fs';
+import { mainStrings } from './strings';
+
+const copy = mainStrings.libraryFolder;
 
 export type FolderCheck = { ok: true } | { ok: false; message: string };
 
@@ -8,13 +11,13 @@ export function checkLibraryFolder(dir: string): FolderCheck {
   try {
     stat = fs.statSync(dir);
   } catch {
-    return { ok: false, message: '폴더를 찾을 수 없습니다. 다른\u00a0폴더를 고르세요.' };
+    return { ok: false, message: copy.missing };
   }
-  if (!stat.isDirectory()) return { ok: false, message: '폴더가 아닙니다. 다른\u00a0폴더를 고르세요.' };
+  if (!stat.isDirectory()) return { ok: false, message: copy.notFolder };
   try {
     fs.accessSync(dir, fs.constants.W_OK);
   } catch {
-    return { ok: false, message: '이\u00a0폴더에는 쓸 수 없습니다. 쓰기 권한이 있는 폴더를 고르세요.' };
+    return { ok: false, message: copy.notWritable };
   }
   return { ok: true };
 }

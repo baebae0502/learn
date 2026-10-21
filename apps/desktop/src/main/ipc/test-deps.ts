@@ -13,6 +13,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     uiContext: { report: () => {}, current: () => ({ view: 'library', blocked: false, textSize: 13 }) },
     sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {} },
     isMainWindow: () => true,
+    isSettingsWindow: () => true,
     windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },
     relaunch: () => {},
     ...over,

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { COMMANDS } from '@learn/domain';
+import { mainStrings } from '../../../main/strings';
 import { t } from './index';
 
 /** Every string reachable from `t` (functions are called with sample arguments), plus the command labels. */
@@ -16,6 +17,8 @@ function collect(node: unknown, at: string, out: Array<{ at: string; text: strin
 }
 const copy: Array<{ at: string; text: string }> = [];
 collect(t, 't', copy);
+// Main's own copy module (native dialogs, messages that reach the screen): the same rules as the renderer's (review minor 7).
+collect(mainStrings, 'mainStrings', copy);
 for (const c of COMMANDS) copy.push({ at: `command ${c.id}`, text: c.label });
 
 /** Renderer sources (no tests) under src/, relative paths. */
@@ -98,6 +101,11 @@ function mainProcessCopy(): Array<{ at: string; text: string }> {
 
 describe('main-process and library copy users see (N-3, C-4)', () => {
   const main = mainProcessCopy();
+  it('main\'s strings module is collected with the renderer copy (the settings window\'s folder dialog and its checks)', () => {
+    const fromMain = copy.filter((s) => s.at.startsWith('mainStrings.'));
+    expect(fromMain.map((s) => s.text)).toEqual(expect.arrayContaining(['라이브러리 폴더 선택', '다시 시작', '취소']));
+    expect(fromMain.some((s) => s.text.includes('쓸 수 없습니다'))).toBe(true);
+  });
   it('finds the copy (the walk reaches both trees)', () => {
     expect(main.some((s) => s.at.startsWith(path.join('apps', 'desktop', 'src', 'main')))).toBe(true);
     expect(main.some((s) => s.at.startsWith(path.join('packages', 'library', 'src')))).toBe(true);

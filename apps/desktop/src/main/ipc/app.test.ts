@@ -62,10 +62,16 @@ registerAppIpc(
       },
     },
     relaunch,
+    isSettingsWindow: (sender) => sender === (SETTINGS_PAGE as never),
   }),
 );
 
-const invoke = (channel: string, raw?: unknown) => handlers.get(channel)!({ sender: {}, senderFrame: { url: 'learn://app/index.html?window=settings' } }, raw);
+/** The settings window's webContents, and the main window's (allowed by the URL check, refused by the sender check). */
+const SETTINGS_PAGE = { id: 20 };
+const MAIN_PAGE = { id: 10 };
+const invokeFrom = (sender: unknown, channel: string, raw?: unknown) =>
+  handlers.get(channel)!({ sender, senderFrame: { url: 'learn://app/index.html?window=main' } }, raw);
+const invoke = (channel: string, raw?: unknown) => invokeFrom(SETTINGS_PAGE, channel, raw);
 const choose = () => invoke('app:chooseLibraryFolder');
 
 beforeEach(() => {
@@ -115,6 +121,17 @@ describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and r
     picked = [other];
     expect(await invoke('app:chooseLibraryFolder', { path: other })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(calls).toEqual([]);
+  });
+});
+
+describe('only the settings window may ask for the library folder (defence in depth, review minor 5)', () => {
+  it('another window of ours is PERMISSION_DENIED before any dialog, reveal or write', async () => {
+    picked = [other];
+    expect(await invokeFrom(MAIN_PAGE, 'app:chooseLibraryFolder')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invokeFrom(MAIN_PAGE, 'app:showLibraryFolder')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(calls).toEqual([]);
+    expect(saved).toEqual([]);
+    expect(relaunch).not.toHaveBeenCalled();
   });
 });
 

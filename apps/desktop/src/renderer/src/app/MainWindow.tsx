@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { AppInfo, Result, StorageMode } from '@learn/domain';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { AppInfo, Prefs, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
@@ -15,6 +15,7 @@ import { LibraryTable } from '../library/LibraryTable';
 import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
+import { createTextSizeSetter } from '../settings/textSize';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { Launcher } from '../shell/Launcher';
 import { Shell } from '../shell/Shell';
@@ -65,6 +66,18 @@ export function MainWindow(_props: { info: AppInfo }) {
       setSheetOpen(false);
     }
   }, []);
+
+  // ⌘+ / ⌘− / ⌘0 step from the newest size (also before prefsChanged has come back); applied through prefsChanged
+  // (useApplyPrefs), like a change made in the settings window; a refused write is a toast.
+  const setTextSize = useMemo(
+    () =>
+      createTextSizeSetter({
+        known: () => queryClient.getQueryData<Prefs>(keys.prefs)?.fontSize ?? 13,
+        write: (fontSize) => unwrap(api().prefs.set({ fontSize })),
+        failed: actionFailed,
+      }),
+    [],
+  );
 
   const relink = useCallback(async (itemId: string) => {
     try {
@@ -130,8 +143,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
-    // Applied through prefsChanged (useApplyPrefs), like a change made in the settings window; a refused write is a toast.
-    setTextSize: (fontSize) => void unwrap(api().prefs.set({ fontSize })).catch(actionFailed),
+    setTextSize,
   };
   useMenuCommands(env);
   useReportContext(env);

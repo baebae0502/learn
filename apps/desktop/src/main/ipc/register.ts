@@ -16,6 +16,8 @@ export interface IpcDeps {
   sheets: SheetHost;
   /** Whether `sender` is the main window's renderer (sheets and the settings window are not). */
   isMainWindow(sender: WebContents): boolean;
+  /** Whether `sender` is the settings window's renderer (the only caller of the library-location channels). */
+  isSettingsWindow(sender: WebContents): boolean;
   windows: {
     /** ⌘, (main-owned): opens the settings window, or brings it to the front. */
     openSettings(): void;

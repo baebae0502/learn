@@ -69,6 +69,9 @@ function openMainWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
+    // Linux/Windows: closing the main window ends the app (window-all-closed), so the settings window goes with it;
+    // there is no dock to bring a main window back. macOS keeps the app, and the settings window, open (R-22).
+    if (process.platform !== 'darwin') settingsWindow.current()?.close();
     // No renderer left to act on menu commands (macOS keeps the app running): back to the pre-report state.
     setUiContext(BEFORE_FIRST_REPORT);
     refreshFullScreenItem();
@@ -160,6 +163,11 @@ function setUiContext(next: CommandContextState): void {
 
 /** The main window's renderer (sheets and the settings window are other windows). */
 const isMainWindow = (sender: WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender.id === mainWindow.webContents.id;
+/** The settings window's renderer: the only caller of the library-location channels. */
+const isSettingsWindow = (sender: WebContents): boolean => {
+  const win = settingsWindow.current();
+  return win !== null && !win.webContents.isDestroyed() && sender.id === win.webContents.id;
+};
 
 /**
  * Menu clicks and accelerators act on the main window (also when a settings or sheet window is focused), except the
@@ -247,6 +255,7 @@ if (!app.requestSingleInstanceLock()) {
         current: () => uiContext,
       },
       isMainWindow,
+      isSettingsWindow,
       sheets: createSheetHost({
         preload: path.join(here, '../preload/index.cjs'),
         url: () => windowUrl(rendererBase, 'sheet', urlOptions),

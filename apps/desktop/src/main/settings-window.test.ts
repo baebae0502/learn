@@ -14,6 +14,8 @@ class FakeWindow extends EventEmitter {
   shown = false;
   focused = 0;
   contentSize: [number, number];
+  /** Whether the last content-size change asked AppKit to animate it. */
+  animated = false;
   position: [number, number] | null = null;
   url = '';
   readonly webContents = {
@@ -32,7 +34,10 @@ class FakeWindow extends EventEmitter {
   isDestroyed = () => this.destroyed;
   isFocused = () => this.focused > 0;
   isFullScreen = () => false;
-  setContentSize = (w: number, h: number) => void (this.contentSize = [w, h]);
+  setContentSize = (w: number, h: number, animate = false) => {
+    this.contentSize = [w, h];
+    this.animated = animate;
+  };
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   show = () => void (this.shown = true);
   focus = () => void this.focused++;
@@ -84,9 +89,11 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     const w = host().open() as unknown as FakeWindow;
     await ready(w);
     expect(w.contentSize).toEqual([600, 412]);
+    expect(w.animated).toBe(false); // sized while hidden
     heightChanged!(440); // a refused folder's message under the buttons
     await new Promise((r) => setTimeout(r, 0));
     expect(w.contentSize).toEqual([600, 440]);
+    expect(w.animated).toBe(true); // the bottom edge slides on macOS (critic T10-n3; ignored elsewhere)
     heightChanged!(412); // the message went (the next try)
     await new Promise((r) => setTimeout(r, 0));
     expect(w.contentSize).toEqual([600, 412]);

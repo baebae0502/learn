@@ -64,8 +64,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
   });
 
-  // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library and no main window.
-  handle(Channels.ui.openSettings, emptyInput, () => {
+  // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library. From the main window or
+  // the settings window only (a sheet has no reason to).
+  handle(Channels.ui.openSettings, emptyInput, (_input, event) => {
+    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
     deps.windows.openSettings();
   });
 }

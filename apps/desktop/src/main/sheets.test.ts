@@ -6,6 +6,8 @@ import type { BrowserWindow, WebContents } from 'electron';
 class FakeWindow extends EventEmitter {
   static all: FakeWindow[] = [];
   static nextId = 1;
+  /** The natural height of the fake sheet page. */
+  static pageHeight = 200;
   destroyed = false;
   shown = false;
   contentSize: [number, number];
@@ -18,7 +20,7 @@ class FakeWindow extends EventEmitter {
     const contents = new EventEmitter() as FakeWindow['webContents'];
     contents.id = FakeWindow.nextId++;
     // contentHeight polls in the page; markSized sets a flag. The fake page is 200 px tall.
-    contents.executeJavaScript = async (script: string) => (script.includes('getBoundingClientRect') ? 200 : undefined);
+    contents.executeJavaScript = async (script: string) => (script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : undefined);
     this.webContents = contents;
     FakeWindow.all.push(this);
   }
@@ -43,8 +45,8 @@ vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUse
 const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
-const parent = (id = 1): FakeParent =>
-  ({ id, isDestroyed: () => false, focus: vi.fn(), getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: 900 }) }) as unknown as FakeParent;
+const parent = (id = 1, height = 900): FakeParent =>
+  ({ id, isDestroyed: () => false, focus: vi.fn(), getContentBounds: () => ({ x: 100, y: 50, width: 1440, height }) }) as unknown as FakeParent;
 const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
@@ -55,6 +57,7 @@ async function ready(w: FakeWindow): Promise<void> {
 
 beforeEach(() => {
   FakeWindow.all = [];
+  FakeWindow.pageHeight = 200;
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -82,6 +85,26 @@ describe('sheet host', () => {
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
     expect(w.destroyed).toBe(true);
     expect(p.focus).toHaveBeenCalledTimes(1); // keyboard focus goes back to the window the sheet hung over
+  });
+
+  // Critic T12-m1: the ⌘/ sheet (743 tall) in the default window of a 1440 × 900 Mac with the Dock (about 806).
+  it('clamps the height to the room the platform leaves: 16 above and below a centred macOS sheet, 60 + 16 elsewhere', async () => {
+    const shown = async (platform: NodeJS.Platform, parentHeight: number) => {
+      FakeWindow.all = [];
+      const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform });
+      void h.open(parent(1, parentHeight), { kind: 'shortcuts' });
+      await tick();
+      const w = FakeWindow.all[0]!;
+      await ready(w);
+      return { height: w.contentSize[1], measuredAt: w.options.height, position: w.position };
+    };
+    FakeWindow.pageHeight = 743;
+    // macOS centres the sheet over its parent (no setSheetOffset): the room is the parent's height less 16 at each end.
+    expect(await shown('darwin', 806)).toEqual({ height: 743, measuredAt: 806 - 32, position: null });
+    expect(await shown('darwin', 760)).toEqual({ height: 760 - 32, measuredAt: 760 - 32, position: null });
+    // Linux / Windows hang it 60 down (8 under the 52 px toolbar) and keep 16 below.
+    expect(await shown('linux', 806)).toEqual({ height: 806 - SHEET_TOP - 16, measuredAt: 806 - SHEET_TOP - 16, position: [100 + (1440 - 560) / 2, 50 + SHEET_TOP] });
+    expect((await shown('win32', 900)).height).toBe(743);
   });
 
   it('tells main when the sheet shows and once its window has closed (sheetOpen; macOS sends no focus event on close)', async () => {

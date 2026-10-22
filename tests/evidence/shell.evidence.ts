@@ -710,6 +710,25 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   const keys = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
   await s.page.waitForTimeout(800);
   await fullScreenShot('m3-08-sheet-shortcuts', '⌘/ shortcut sheet');
+  // Critic T12-m1: the sheet is as tall as its content up to the room its platform leaves. macOS centres a sheet over
+  // its parent (16 kept above and below); elsewhere it hangs 60 down (16 kept below). The body scrolls only beyond that.
+  await guard('the ⌘/ sheet is as tall as its content, up to the room the platform leaves (T12-m1)', async () => {
+    const bounds = await s.app.evaluate(({ BrowserWindow }) => {
+      const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+      const of = (kind: string) => all.find((w) => w.webContents.getURL().includes(`window=${kind}`))!.getContentBounds();
+      return { sheet: of('sheet'), parent: of('main') };
+    });
+    const natural = await keys.evaluate(() => {
+      const root = document.querySelector('[data-sheet-root]')!;
+      const body = root.querySelector('.d-body');
+      return Math.ceil(root.getBoundingClientRect().height + (body ? body.scrollHeight - body.clientHeight : 0));
+    });
+    const expected = Math.min(natural, Math.max(160, bounds.parent.height - (IS_MAC ? 2 * 16 : 60 + 16)));
+    const centreOffset = bounds.sheet.y + bounds.sheet.height / 2 - (bounds.parent.y + bounds.parent.height / 2);
+    const v = { ...bounds, natural, expected, scrolls: natural > bounds.sheet.height, centreOffset };
+    results['shortcutSheetBounds'] = v;
+    check('the ⌘/ sheet is as tall as its content, up to the room the platform leaves (T12-m1)', bounds.sheet.height === expected, v);
+  });
   await guard('real esc closes the shortcut sheet', async () => {
     const r = await closeSheetNatively(keys, KEY_CODE.escape, 'Escape');
     const again = await activeAgain('shortcut');

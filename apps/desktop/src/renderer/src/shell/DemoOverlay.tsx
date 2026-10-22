@@ -17,8 +17,9 @@ const EXIT_MS = Math.round(motion.base * 0.75);
 
 /**
  * Script-only input for recordings, as window CustomEvents (the overlay exists only in demo builds, so nothing else
- * listens): `learn:demo-caption` (detail: the chapter title, or { text, ms, place }) shows it as a caption for `ms`,
- * bottom-left or (place 'top') at the top, where the bottom holds the page's own text (the settings window);
+ * listens): `learn:demo-caption` (detail: the chapter title, or { text, ms, place, top, maxWidth }) shows it as a caption
+ * for `ms`, bottom-left (at most `maxWidth` wide: beside a settings window) or (place 'top', `top` px down) at the top,
+ * where the bottom holds the page's own text (the settings window);
  * `learn:demo-tag` (detail: a short text, or null) shows it as a lasting tag until cleared ("스크립트로 재현" while a
  * scripted gesture is on screen); `learn:demo-pointer` (detail: { hidden?, mode? }) hides the drawn pointer (the
  * pointer is in another window), or sets what it draws: 'follow', a disc where the pointer is (synthetic input, no
@@ -80,7 +81,7 @@ function useTransient<T>(): [Shown<T> | null, (value: T, ms: number | null) => v
  */
 export function DemoOverlay() {
   const [pill, showPill, endPill] = useTransient<DemoPill>();
-  const [caption, showCaption] = useTransient<{ text: string; place: 'bottom' | 'top' }>();
+  const [caption, showCaption] = useTransient<{ text: string; place: 'bottom' | 'top'; top?: number; maxWidth?: number }>();
   const [pointer, setPointer] = useState<DrawnPointer | null>(null);
   const [pointerHidden, setPointerHidden] = useState(false);
   const [mode, setMode] = useState<PointerMode>('follow');
@@ -166,8 +167,14 @@ export function DemoOverlay() {
     dropPointer.current = gone;
     const onCaption = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
-      const { text, ms, place } = typeof detail === 'object' && detail !== null ? (detail as { text?: unknown; ms?: unknown; place?: unknown }) : { text: detail, ms: undefined, place: undefined };
-      showCaption({ text: String(text ?? ''), place: place === 'top' ? 'top' : 'bottom' }, typeof ms === 'number' && ms > 0 ? ms : CAPTION_MS);
+      const d: { text?: unknown; ms?: unknown; place?: unknown; top?: unknown; maxWidth?: unknown } = typeof detail === 'object' && detail !== null ? detail : { text: detail };
+      const px = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : undefined);
+      const top = px(d.top);
+      const maxWidth = px(d.maxWidth);
+      showCaption(
+        { text: String(d.text ?? ''), place: d.place === 'top' ? 'top' : 'bottom', ...(top !== undefined ? { top } : {}), ...(maxWidth !== undefined ? { maxWidth } : {}) },
+        typeof d.ms === 'number' && d.ms > 0 ? d.ms : CAPTION_MS,
+      );
     };
     const onTag = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
@@ -229,6 +236,7 @@ export function DemoOverlay() {
           data-place={caption.place}
           data-leaving={caption.leaving ? '' : undefined}
           data-testid="demo-caption"
+          style={{ ...(caption.top !== undefined ? { top: caption.top } : {}), ...(caption.maxWidth !== undefined ? { maxWidth: caption.maxWidth } : {}) }}
         >
           {caption.text}
         </div>

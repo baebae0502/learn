@@ -88,3 +88,22 @@ describe('the macOS cursor scripts (critique mac1 m1, round 3 n4)', () => {
     expect(r.elapsed).toBeGreaterThanOrEqual(80 + 600 + 50);
   });
 });
+
+describe('the demo desktop picture (re-review minor 2, Mac risk 6)', () => {
+  it('puts back only the pictures a desktop had; a null or missing one is skipped, not restored as "null"', async () => {
+    const { restorePlan } = await import('./demo-mac');
+    expect(restorePlan(['/a.heic', null, '', 'null', '/b.png'])).toEqual({
+      set: [
+        [0, '/a.heic'],
+        [4, '/b.png'],
+      ],
+      skipped: [1, 2, 3],
+    });
+  });
+  it('reads the picture back after setting it: a desktop that kept its own is named', async () => {
+    const { unchangedDesktops } = await import('./demo-mac');
+    const stone = '/System/Library/Desktop Pictures/Solid Colors/Stone.png';
+    expect(unchangedDesktops(stone, [stone, stone])).toEqual([]);
+    expect(unchangedDesktops(stone, [stone, '/Library/old.heic', null])).toEqual([1, 2]);
+  });
+});

@@ -67,23 +67,51 @@ export async function hideDock(): Promise<() => Promise<void>> {
 /** Built-in solid desktop pictures, the first one present is used: neutral, so a dark window's edge and shadow show. */
 const DESKTOP_PICTURES = ['Stone.png', 'Silver.png', 'Space Gray.png'].map((f) => `/System/Library/Desktop Pictures/Solid Colors/${f}`);
 
+/** What restoring the desktops' pictures can do: put back the ones that had a picture; skip (and say) the others. */
+export function restorePlan(was: ReadonlyArray<string | null>): { set: Array<[number, string]>; skipped: number[] } {
+  const set: Array<[number, string]> = [];
+  const skipped: number[] = [];
+  was.forEach((picture, i) => (typeof picture === 'string' && picture.length > 0 && picture !== 'null' ? set.push([i, picture]) : skipped.push(i)));
+  return { set, skipped };
+}
+
+/** The desktops whose picture did not become `picture` (read back after setting it: macOS may ignore it silently). */
+export const unchangedDesktops = (picture: string, readBack: ReadonlyArray<string | null>): number[] => readBack.flatMap((p, i) => (p === picture ? [] : [i]));
+
 /**
  * Critique mac1 n3: a neutral built-in desktop picture behind the demo instead of the runner's black one. Returns the
- * restore, which puts every desktop's own picture back. Throws on failure (the demo notes it and carries on).
+ * restore, which puts back every desktop's own picture, and notes for what did not go as asked: a desktop whose picture
+ * did not change (read back), one with no picture of its own to put back (null / missing value). Throws when it could
+ * not set the picture at all (after trying to put back the ones it may have changed).
  */
-export async function neutralDesktop(): Promise<() => Promise<void>> {
+export async function neutralDesktop(): Promise<{ restore: () => Promise<string[]>; notes: string[] }> {
   const picture = DESKTOP_PICTURES.find((f) => fs.existsSync(f));
   if (!picture) throw new Error('no built-in solid desktop picture found');
-  const read = await tryExec('osascript', ['-l', 'JavaScript', '-e', "JSON.stringify(Application('System Events').desktops().map(function (d) { return d.picture(); }))"], OSASCRIPT_MS);
-  if (!read.ok) throw fail('desktop picture (read)', read);
-  const was = JSON.parse(read.stdout.trim()) as string[];
-  const setAll = async (pictures: (i: number) => string) => {
-    const lines = was.map((_, i) => `Application('System Events').desktops()[${i}].picture = ${JSON.stringify(pictures(i))};`);
+  const read = async () => {
+    const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', "JSON.stringify(Application('System Events').desktops().map(function (d) { return d.picture(); }))"], OSASCRIPT_MS);
+    if (!r.ok) throw fail('desktop picture (read)', r);
+    return (JSON.parse(r.stdout.trim()) as Array<string | null>).map((p) => (typeof p === 'string' ? p : null));
+  };
+  const setEach = async (pairs: Array<[number, string]>) => {
+    if (pairs.length === 0) return;
+    const lines = pairs.map(([i, p]) => `Application('System Events').desktops()[${i}].picture = ${JSON.stringify(p)};`);
     const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', [...lines, 'true'].join(' ')], OSASCRIPT_MS);
     if (!r.ok) throw fail('desktop picture (set)', r);
   };
-  await setAll(() => picture);
-  return () => setAll((i) => was[i]!);
+  const was = await read();
+  const plan = restorePlan(was);
+  const restore = async () => {
+    await setEach(plan.set);
+    return plan.skipped.map((i) => `desktop ${i + 1} had no picture of its own to put back: it keeps the neutral one`);
+  };
+  try {
+    await setEach(was.map((_, i) => [i, picture] as [number, string]));
+  } catch (e) {
+    await restore().catch(() => {}); // a desktop set before the failure goes back
+    throw e;
+  }
+  const notes = unchangedDesktops(picture, await read().catch(() => was)).map((i) => `desktop ${i + 1}: its picture did not change to ${path.basename(picture)}`);
+  return { restore, notes };
 }
 
 const jxa = async (script: string | string[], timeout = OSASCRIPT_MS) => {

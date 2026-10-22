@@ -11,9 +11,10 @@
    - pill: centred, bottom 40, 52 tall (bottom band 40–92); aside (data-aside: a command that opens a sheet, or any
      pill shown while one hangs over the window's middle — a macOS sheet at 1024 × 743 is nearly as tall as the
      window), bottom-left, at left 24, where the sheet leaves room. Fixed when the pill appears;
-   - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows; or
-     (data-place top) 12 from the top, in the settings window when it covers the main window's caption box, since its
-     bottom is the 라이브러리 위치 card (critique mac1 m3);
+   - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows; beside
+     a settings window that covers that box, narrower (an inline max-width, left of it); only when even that leaves no
+     room, in the settings window at the top (data-place top, 12 down or under its theme tiles), since its bottom is the
+     라이브러리 위치 card (critique mac1 m3, concern 4);
    - tag ("스크립트로 재현" while a scripted gesture is on screen): top-left, 16 below the toolbar;
    - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
      least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom; while a
@@ -114,12 +115,13 @@
     inset-inline: var(--space-24) auto;
     margin-inline: 0;
   }
+  /* It comes up with the drop overlay it sits on, in the overlay's own fade (T13R4-n1). */
   .demo-tag {
     left: var(--space-24);
     top: calc(var(--toolbar-height) + var(--space-16));
     padding: var(--space-6) var(--space-12);
     font: var(--type-footnote);
-    animation: none;
+    animation: fade-in var(--duration-slow) var(--ease-standard);
   }
   .demo-caption {
     left: var(--space-24);

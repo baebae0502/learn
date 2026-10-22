@@ -86,15 +86,20 @@ export function mainWindow(app: ElectronApplication) {
 }
 
 /** Replace the native file dialog in the main process for the next calls; resets the call counter. */
-export async function stubOpenDialog(app: ElectronApplication, filePaths: string[]): Promise<void> {
-  await app.evaluate(({ dialog }, paths) => {
-    const g = globalThis as { __learnOpenDialogCalls?: number };
-    g.__learnOpenDialogCalls = 0;
-    dialog.showOpenDialog = (async () => {
-      g.__learnOpenDialogCalls = (g.__learnOpenDialogCalls ?? 0) + 1;
-      return { canceled: false, filePaths: paths };
-    }) as typeof dialog.showOpenDialog;
-  }, filePaths);
+export async function stubOpenDialog(app: ElectronApplication, filePaths: string[], opts: { once?: boolean } = {}): Promise<void> {
+  await app.evaluate(
+    ({ dialog }, { paths, once }) => {
+      const g = globalThis as { __learnOpenDialogCalls?: number };
+      g.__learnOpenDialogCalls = 0;
+      dialog.showOpenDialog = (async () => {
+        g.__learnOpenDialogCalls = (g.__learnOpenDialogCalls ?? 0) + 1;
+        // `once`: the files the first time only; any later call is a cancel (a late ⌘O then imports nothing twice).
+        if (once && g.__learnOpenDialogCalls > 1) return { canceled: true, filePaths: [] };
+        return { canceled: false, filePaths: paths };
+      }) as typeof dialog.showOpenDialog;
+    },
+    { paths: filePaths, once: opts.once === true },
+  );
 }
 
 /**

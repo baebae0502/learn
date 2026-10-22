@@ -47,7 +47,9 @@ for n in $(seq 99 160); do
   if [[ ! -e /tmp/.X11-unix/X$n && ! -e /tmp/.X$n-lock ]]; then DISP=:$n; break; fi
 done
 [[ -n $DISP ]] || { echo "no free X display number" >&2; exit 1; }
-Xvfb "$DISP" -screen 0 "${SW}x${SH}x24" -nolisten tcp >"$OUT/xvfb.log" 2>&1 &
+# -noreset: Xvfb otherwise resets when its last client leaves, putting its pointer back at the screen's centre between
+# the parking below and the app's start; a new window then drew its first disc there (T13R4-n2).
+Xvfb "$DISP" -screen 0 "${SW}x${SH}x24" -nolisten tcp -noreset >"$OUT/xvfb.log" 2>&1 &
 XVFB=$!
 # Also the test's ffmpeg grabbing this display, should the run end abnormally (review minor 3).
 cleanup() {

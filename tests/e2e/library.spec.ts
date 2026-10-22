@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, openItem, releaseOpenDialog, stubOpenDialog, type Session } from './helpers';
+import { expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -257,6 +257,26 @@ test('a title opens on click, ↩ or Space, a row on double-click; the keyboard-
     await back();
     await row.locator('[data-col="added"]').dblclick();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('first');
+  } finally {
+    await s.app.close();
+  }
+});
+
+// The demo's ⌘O fallback (residual polish, re-review minor 1): a stub that answers with the files once makes a late
+// second ⌘O a cancel, so nothing is imported twice.
+test('an open-dialog stub with once answers the files the first time only; a second ⌘O imports nothing', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const pdf = fakePdf(testInfo.outputPath('src'), 'Once.pdf', 'once');
+    await stubOpenDialog(s.app, [pdf], { once: true });
+    await runMenuCommand(s.app, 'file.importManaged');
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    await expect.poll(() => s.page.evaluate(() => document.documentElement.innerText.includes('가져오는 중'))).toBe(false);
+    await runMenuCommand(s.app, 'file.importManaged');
+    await expect.poll(() => openDialogCalls(s.app)).toBe(2);
+    await s.page.waitForTimeout(500);
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    await expect(s.page.getByTestId('import-failures')).toHaveCount(0);
   } finally {
     await s.app.close();
   }

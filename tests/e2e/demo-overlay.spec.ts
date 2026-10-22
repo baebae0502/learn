@@ -152,6 +152,14 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await expect(caption).toHaveAttribute('data-place', 'top');
     expect((await caption.boundingBox())!.y).toBeLessThan(40); // 12 from the top (8 more while it rises in)
     await expect(caption).toHaveCount(0, { timeout: 1500 });
+    // Further down (under a settings window's theme tiles), or narrower (beside a settings window): as the script says.
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '타일 아래에', ms: 900, place: 'top', top: 300 } })));
+    await expect.poll(async () => (await caption.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(300);
+    await expect(caption).toHaveCount(0, { timeout: 2000 });
+    const long = '설정 창 옆에서는 캡션이 더 좁게, 여러 줄로 나옵니다. 설정 창을 가리지 않습니다.';
+    await page.evaluate((text) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text, ms: 900, maxWidth: 300 } })), long);
+    expect((await caption.boundingBox())!.width).toBeLessThanOrEqual(300);
+    await expect(caption).toHaveCount(0, { timeout: 2000 });
     // A lasting tag while a scripted gesture is on screen, until it is cleared.
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: '스크립트로 재현' })));
     const tag = page.getByTestId('demo-tag');

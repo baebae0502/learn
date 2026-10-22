@@ -35,6 +35,8 @@ import {
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo } from './display-mac';
+import { captionSpot, desktopSpot } from './demo-geometry';
+import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
 import { PDF_FOOTER, READ_TITLE, UNPLAYABLE_TITLE, writeDemoMedia } from './demo-media';
 import { mergeEnv } from './env';
@@ -47,8 +49,11 @@ const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
  * outran it fails at the end, after its files are written.
  */
 const RECORD_SECONDS = 280;
-/** The recording starts this long before the demo: its first frames show the painted first screen (mac1 m2). */
-const PRE_ROLL_MS = 1500;
+/**
+ * The recording starts this long before the demo: its first frames show the painted first screen (mac1 m2).
+ * screencapture warmed up on frozen frames for about 1.1 s on the runner: 2.5 s there (Mac risk 2).
+ */
+const PRE_ROLL_MS = IS_MAC ? 2500 : 1500;
 /** One PDF printed by Chromium may take this long; then the rest are fixture copies (re-review Important 1). */
 const PRINT_MS = 20_000;
 /** The overlay's pill: shown 1.9 s (DemoOverlay PILL_MS), then an exit of 0.75 × --duration-base. */
@@ -167,7 +172,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
   // Widened on purpose: glide() changes it from inside a closure, where narrowing cannot see.
   let cursor = (IS_MAC ? 'system' : 'synthetic') as CursorMode;
   let restoreDock: (() => Promise<void>) | null = null;
-  let restoreDesktop: (() => Promise<void>) | null = null;
+  let restoreDesktop: (() => Promise<string[]>) | null = null;
   const osascriptBefore = osascriptLimits.timeoutMs;
   if (IS_MAC) osascriptLimits.timeoutMs = OSASCRIPT_MS; // T13R2-m7: a stuck Apple Event may freeze the picture 5 s at most
   /** A macOS-only step: any failure is a note, then `recover` puts a known state back (review minor 2). */
@@ -192,7 +197,9 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       restoreDock = await hideDock();
     });
     await macStep('a neutral desktop picture (the runner\'s own stays)', async () => {
-      restoreDesktop = await neutralDesktop();
+      const desktop = await neutralDesktop();
+      restoreDesktop = desktop.restore;
+      notes.push(...desktop.notes);
     });
     await macStep('the app copy named Learn (the plain Electron binary runs instead)', async () => {
       const executablePath = await renamedElectron(path.join(work, 'app'));
@@ -329,12 +336,19 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       else await glide(p, kind, w - 40, 18);
     };
     /**
-     * A caption on a page (an empty text clears it): bottom-left, above the pill band, or at the top (`place`) where
-     * the bottom holds the page's own text (the settings window's 라이브러리 위치 card, mac1 m3).
+     * A caption on a page (an empty text clears it): bottom-left, above the pill band, at most `maxWidth` wide; or at
+     * the top (`place`, `top` px down) where the bottom holds the page's own text (the settings window's 라이브러리
+     * 위치 card, mac1 m3).
      */
-    type Captioned = { target: Page; place?: 'top' };
-    const caption = ({ target, place }: Captioned, text: string) =>
-      target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), { text, ms: text ? captionMs(text) : 1, ...(place ? { place } : {}) });
+    type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
+    const caption = ({ target, place, top, maxWidth }: Captioned, text: string) =>
+      target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), {
+        text,
+        ms: text ? captionMs(text) : 1,
+        ...(place ? { place } : {}),
+        ...(top !== undefined ? { top } : {}),
+        ...(maxWidth !== undefined ? { maxWidth } : {}),
+      });
     let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
     const chapter = async (title: string, where: Page | Captioned = page) => {
@@ -344,18 +358,23 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       await caption(lastCaptioned, title);
     };
     /**
-     * Where a settings chapter is captioned (mac1 m3): in the main window while the settings window leaves its caption
-     * box free (it shows a caption while not key), else in the settings window, at its top.
+     * Where a settings chapter is captioned (mac1 m3, concern 4; demo-geometry.ts): in the main window (it shows a
+     * caption while not key) where the settings window leaves its caption box free, else there at a narrower width,
+     * left of the settings window; only when even that leaves no room, at the top of the settings window. A chapter
+     * that clicks a theme tile (`clicksTiles`) then has it under the tiles, never over 외관 or a tile.
      */
-    const captionFor = async (settings: Page): Promise<Captioned> => {
+    const captionFor = async (settings: Page, opts: { clicksTiles?: boolean } = {}): Promise<Captioned> => {
       // Its bounds once it is shown: before that it still has the height it was created with (measured, then sized).
       await expect
         .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings') && x.isVisible())))
         .toBe(true);
       const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
-      const box = { x: m.x + 24, y: m.y + m.height - 108 - 72, w: 560, h: 72 }; // a two-line caption
-      const covered = w.x < box.x + box.w && w.x + w.width > box.x && w.y < box.y + box.h && w.y + w.height > box.y;
-      return covered ? { target: settings, place: 'top' } : { target: page };
+      const spot = captionSpot(m, w);
+      if (spot.target === 'main') return { target: page, ...(spot.maxWidth !== undefined ? { maxWidth: spot.maxWidth } : {}) };
+      notes.push('a settings chapter is captioned in the settings window (it covers the main window\'s caption room)');
+      if (!opts.clicksTiles) return { target: settings, place: 'top' };
+      const tiles = (await settings.locator('.theme-tiles').boundingBox())!;
+      return { target: settings, place: 'top', top: Math.round(tiles.y + tiles.height + 12) };
     };
     /** T13R2-m7: a Mac-only chapter that failed after it was captioned leaves no claim behind. */
     const dropChapter = async (title: string) => {
@@ -368,34 +387,35 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     const scriptedTag = (text: string | null) => page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
     /**
      * A shortcut: the real key through System Events on macOS (NSMenu sees it), else the menu item's own click().
-     * Returns when the key went out (for afterKey). A key System Events refuses, or that runs past its 5 s limit, is a
-     * note and the menu item instead: the run goes on (round 3 m2). A late key may still land: `landed` (the state the
-     * key brings about) is checked first, after a second, so the command does not run twice.
+     * Returns when the key went out (for afterKey). On macOS (demo-keys.ts): a key System Events refuses, or that runs
+     * past its 5 s limit, is a note and the menu item instead, so the run goes on (round 3 m2). `there` is the state
+     * the chapter needs: a late key that brought it already is not run again, the menu item runs only while it is not
+     * there (never toggling past it), and 2 s after a fallback a key that landed later still and undid it is undone
+     * (re-review minor 1).
      */
-    const press = async (k: string, modifiers: KeyModifier[], fallback: CommandId | (() => Promise<unknown>), landed?: () => Promise<boolean>) => {
+    const press = async (k: string, modifiers: KeyModifier[], menu: CommandId | (() => Promise<unknown>), there?: () => Promise<boolean>) => {
       const at = Date.now();
-      if (IS_MAC) {
-        try {
-          await nativeKeystroke(app, k, modifiers);
-          input.native++;
-          return at;
-        } catch (e) {
-          const shortcut = `${modifiers.join('+')}+${k}`;
-          if (e instanceof NativeInputNotPermitted) notes.push(`System Events refused ${shortcut} (${e.message}): the menu item instead`);
-          else {
-            notes.push(`${shortcut} through System Events failed (${errorText(e)}): the menu item instead`);
-            await sleep(1000);
-            if (landed && (await landed().catch(() => false))) {
-              notes.push(`${shortcut} had landed late: not run again`);
-              input.native++;
-              return at;
-            }
-          }
-        }
+      const run = () => (typeof menu === 'function' ? menu() : runMenuCommand(app, menu));
+      if (!IS_MAC) {
+        input.menu++;
+        await run();
+        return at;
       }
-      input.menu++;
-      if (typeof fallback === 'function') await fallback();
-      else await runMenuCommand(app, fallback);
+      const fallback = async () => {
+        if (there && (await there().catch(() => false))) return;
+        await run();
+      };
+      const how = await pressKey({
+        name: `${modifiers.join('+')}+${k}`,
+        native: () => nativeKeystroke(app, k, modifiers),
+        fallback,
+        ...(there ? { landed: there, settle: { holds: there, restore: fallback } } : {}),
+        isNotPermitted: (e) => e instanceof NativeInputNotPermitted,
+        note: (text) => notes.push(text),
+        sleep: async (ms) => void (await sleep(ms)),
+        errorText,
+      });
+      input[how === 'menu' ? 'menu' : 'native']++;
       return at;
     };
     /** A key in the page (Playwright's, which the renderer keymap and the overlay see); returns when it went out. */
@@ -488,8 +508,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
 
     // 3. Dropped: copies imported (the empty library says it is bringing them in), the result in a toast.
     await chapter('놓으면 사본으로 가져오고, 결과를 알림으로 보여 줍니다.');
+    await scriptedTag(null); // with the drop that ends the overlay, never a frame after it (T13R4-n1)
     await drag(page, 'drop', 'source');
-    await scriptedTag(null);
     await expect(rows).toHaveCount(media.drop.length);
     await expect(page.getByTestId('import-done')).toBeVisible();
     await park(page, 'main');
@@ -497,7 +517,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
 
     // 4. ⌘O, one file: the one F6 and ↩ will open. The file panel is skipped (said in the chapter line and caption).
     //    The pointer goes to the result toast and holds it there (a toast waits while the pointer is on it).
-    await stubOpenDialog(app, [media.read]);
+    await stubOpenDialog(app, [media.read], { once: true }); // a late second ⌘O is a cancel: nothing imported twice
     await chapter(`${key('CmdOrCtrl+O')} 키로도 가져올 수 있습니다. (데모에서는 파일 선택 창을 건너뜁니다)`);
     const dialogCalls = () => app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
     const importedAt = await press('o', ['command'], 'file.importManaged', async () => (await dialogCalls()) > 0);
@@ -722,7 +742,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     }
 
     // 11c. The theme changes both windows together.
-    await chapter('테마는 두 창이 함께 바뀝니다.', await captionFor(settings));
+    await chapter('테마는 두 창이 함께 바뀝니다.', await captionFor(settings, { clicksTiles: true }));
     await glideClick(settings, 'settings', settings.getByTestId('theme-tile-dark'));
     await park(settings, 'settings');
     await expect.poll(() => isDark(page)).toBe(true);
@@ -772,9 +792,9 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
           await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
           await chapter(title);
           if (cursor !== 'synthetic') {
-            // The arrow rests in the window's empty lower part, under the list: off the file names.
+            // The arrow rests on the desktop, off both windows (not on the Finder window's path or status bar).
             await pointerTo('elsewhere');
-            await glideCursor({ x: left + 320, y: top + 345 }, { warpOnly: cursor === 'warp' });
+            await glideCursor(desktopSpot(d, b, { x: left, y: top, width: 600, height: 380 }), { warpOnly: cursor === 'warp' });
           }
           await pause(4000);
           closeFinderWindow();
@@ -811,9 +831,9 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     await pause(5000);
     await closeSheet(sheet, 'Enter');
 
-    // 15. The end: the populated library in dark, held.
-    await chapter('Learn 둘러보기를 마칩니다.');
+    // 15. The end: the populated library in dark, held. The pointer parks first, so it never crosses the final caption.
     await park(page, 'main');
+    await chapter('Learn 둘러보기를 마칩니다.');
     await pause(3000);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
@@ -826,7 +846,12 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     const entry = stopRec ? await stopRec() : rec ? await rec.done : null;
     await s?.app.close().catch(() => {});
     if (restoreDock) await (restoreDock as () => Promise<void>)().catch((e: unknown) => notes.push(`restoring the Dock failed: ${errorText(e)}`));
-    if (restoreDesktop) await (restoreDesktop as () => Promise<void>)().catch((e: unknown) => notes.push(`restoring the desktop picture failed: ${errorText(e)}`));
+    if (restoreDesktop) {
+      await (restoreDesktop as () => Promise<string[]>)().then(
+        (skipped) => notes.push(...skipped),
+        (e: unknown) => notes.push(`restoring the desktop picture failed: ${errorText(e)}`),
+      );
+    }
     await display.restore();
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });

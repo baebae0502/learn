@@ -37,6 +37,9 @@ export function keepFocusAcross(willHide: boolean, from: Element | null = docume
     return;
   }
   requestAnimationFrame(() => {
+    // The user moved on within the frame (F6 right after the fold, Task 12): the focus they placed stays.
+    const now = document.activeElement;
+    if (now instanceof HTMLElement && now !== document.body && now !== active && now.closest('[inert]') === null) return;
     const next = launcher
       ? document.querySelector<HTMLElement>(`${willHide ? '.titlebar' : '.sidebar-inner'} .launcher`)
       : document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar);

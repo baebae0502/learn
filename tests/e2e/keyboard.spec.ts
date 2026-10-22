@@ -301,6 +301,34 @@ test('a menu toggle after the palette closed moves no focus and pops no tooltip'
   }
 });
 
+// F6 right after ⌃⌘S folds the sidebar: the rescue (a frame later) must not take back the focus F6 just placed (CI run
+// 39703278904). The page's animation frames are held so the order is the late one every time.
+test('a fold rescue that arrives after F6 leaves the focus where F6 put it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('sidebar');
+    await page.evaluate(() => {
+      const held: FrameRequestCallback[] = [];
+      (window as unknown as { __held: FrameRequestCallback[] }).__held = held;
+      window.requestAnimationFrame = (cb) => held.push(cb);
+    });
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('content');
+    const released = await page.evaluate(() => {
+      const held = (window as unknown as { __held: FrameRequestCallback[] }).__held;
+      for (const cb of held.splice(0)) cb(performance.now());
+      return held.length === 0;
+    });
+    expect(released).toBe(true);
+    expect(await inPane(page)).toBe('content');
+  } finally {
+    await app.close();
+  }
+});
+
 // Carried from the Task 4/5 ledger: when the sidebar folds by itself (the content column would get narrower than 520:
 // 200 % zoom, design-spec 8.3; the 960 px minimum window alone never folds a 240 px sidebar), a keyboard user's focus
 // inside it goes to the toolbar's toggle, never to <body>; when it comes back, to the sidebar's own toggle.

@@ -219,6 +219,14 @@ test('the drawn pointer: a disc that follows, or only a click ring; gone when th
     await expect(pointer).toBeVisible();
     await page.evaluate(() => dispatchEvent(new FocusEvent('blur')));
     await expect(pointer).toHaveCount(0);
+    await page.mouse.move(135, h - 72);
+    await expect(pointer).toBeVisible();
+    // Another window taking the focus (main's windowState push: the page's own blur is emulated away here) hides it too.
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect(pointer).toHaveCount(0);
+    await settings.close();
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    await (await mainWindow(app)).evaluate((w) => w.focus());
     // A made-up move (no movement, elsewhere) does not bring it back.
     await page.evaluate(() => dispatchEvent(new PointerEvent('pointermove', { clientX: 720, clientY: 450 })));
     await expect(pointer).toHaveCount(0);

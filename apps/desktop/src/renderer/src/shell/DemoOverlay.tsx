@@ -91,7 +91,14 @@ export function DemoOverlay() {
   const [tag, setTag] = useState<string | null>(null);
   // A sheet hangs over the middle of this window: a pill shown now starts bottom-left, where the sheet leaves room.
   const sheetOpen = useRef(false);
-  useLearnEvent('windowState', (state) => void (sheetOpen.current = state.sheetOpen));
+  /** Drops the drawn pointer until the next real move (set by the listeners' effect). */
+  const dropPointer = useRef<() => void>(() => {});
+  useLearnEvent('windowState', (state) => {
+    sheetOpen.current = state.sheetOpen;
+    // Another window took the focus (a sheet, the settings window, another app): main says so even where the page's own
+    // blur never comes (a Playwright-driven page keeps its focus emulated).
+    if (!state.focused) dropPointer.current();
+  });
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const ringTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
   // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
@@ -156,6 +163,7 @@ export function DemoOverlay() {
       clearRing();
       setPointer(null);
     };
+    dropPointer.current = gone;
     const onCaption = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
       const { text, ms, place } = typeof detail === 'object' && detail !== null ? (detail as { text?: unknown; ms?: unknown; place?: unknown }) : { text: detail, ms: undefined, place: undefined };

@@ -348,6 +348,10 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
      * box free (it shows a caption while not key), else in the settings window, at its top.
      */
     const captionFor = async (settings: Page): Promise<Captioned> => {
+      // Its bounds once it is shown: before that it still has the height it was created with (measured, then sized).
+      await expect
+        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings') && x.isVisible())))
+        .toBe(true);
       const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
       const box = { x: m.x + 24, y: m.y + m.height - 108 - 72, w: 560, h: 72 }; // a two-line caption
       const covered = w.x < box.x + box.w && w.x + w.width > box.x && w.y < box.y + box.h && w.y + w.height > box.y;

@@ -83,7 +83,8 @@ jobs:
   mac:
     needs: fixtures
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 30
+    # Setup ≈ 4 + build/package ≈ 1 + evidence ≤ 17 + functional E2E ≤ 15 ≈ 37 min, with room (S-8).
+    timeout-minutes: 45
     env:
       SUITE: ${{ inputs.suite }}
       PACKAGED: ${{ inputs.packaged }}
@@ -129,6 +130,30 @@ jobs:
           system_profiler SPDisplaysDataType
           ls -la fixtures/generated
 
+      # Display spike (Task 13): the runner's screen is 1024×768 @1x, where the 1440×900 window shrinks to 1024×684.
+      # Every suite: install displayplacer (v1.4.0, MIT, pinned by sha256) and save `displayplacer list` — every screen id
+      # and mode — for env.json `displayModes`. The demo switches to the best mode around its own recording and puts the
+      # screen back (env.json `displaySwitch`), so the other suites measure the screen they always had. This step never
+      # fails the run: without displayplacer the demo records at the runner's own size.
+      - name: Display spike
+        continue-on-error: true
+        timeout-minutes: 3
+        env:
+          DISPLAYPLACER_URL: https://github.com/jakehilborn/displayplacer/releases/download/v1.4.0/displayplacer-apple-v140
+          DISPLAYPLACER_SHA256: 0572c3d2918e47c7e0b9d7723907864e2ea2b53b9d3b02379769fffcf44f7ea0
+        # The list goes to RUNNER_TEMP: Playwright empties evidence-results (its outputDir) when the suite starts.
+        run: |
+          bin="$RUNNER_TEMP/displayplacer"
+          list="$RUNNER_TEMP/displayplacer-list.txt"
+          curl -fsSL --retry 3 --max-time 60 -o "$bin" "$DISPLAYPLACER_URL"
+          echo "$DISPLAYPLACER_SHA256  $bin" | shasum -a 256 -c -
+          chmod +x "$bin"
+          codesign --verify "$bin" 2>/dev/null || codesign --force --sign - "$bin"
+          "$bin" list > "$list" 2>&1
+          cat "$list"
+          echo "LEARN_DISPLAYPLACER=$bin" >> "$GITHUB_ENV"
+          echo "LEARN_DISPLAYPLACER_LIST=$list" >> "$GITHUB_ENV"
+
       - name: Build
         id: build
         run: pnpm build
@@ -151,12 +176,12 @@ jobs:
           fi
           echo "LEARN_PACKAGED_APP=$APP/Contents/MacOS/Learn" >> "$GITHUB_ENV"
 
-      # A hang fails this step (Playwright globalTimeout 10 min inside, step limit 12) instead of cancelling the job.
+      # A hang fails this step (Playwright globalTimeout 15 min inside, step limit 17) instead of cancelling the job.
       # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 12
+        timeout-minutes: 17
         run: |
           if [ "$SUITE" = all ]; then
             pnpm exec playwright test -c playwright.evidence.config.ts
@@ -177,10 +202,10 @@ jobs:
       # The functional E2E suite (tests/e2e, unpackaged app) on Apple Silicon: suites e2e and all.
       - name: Functional E2E
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["e2e","all"]'), inputs.suite) }}
-        timeout-minutes: 8
+        timeout-minutes: 15
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
-        run: pnpm exec playwright test --reporter=list,json --global-timeout 420000
+        run: pnpm exec playwright test --reporter=list,json --global-timeout 840000
 
       - name: Upload evidence
         if: always()

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { api } from '../api';
 import { lastInput } from '../ui/inputModality';
+import { quietUntilInput } from '../ui/tooltipGate';
 import { useShell } from '../state/shell-store';
 import { serializePanes, sidebarHidden, toggledSidebar } from './layout';
 import { useViewportWidth } from './useViewportWidth';
@@ -43,7 +44,9 @@ export function keepFocusAcross(willHide: boolean, from: Element | null = docume
     const next = launcher
       ? document.querySelector<HTMLElement>(`${willHide ? '.titlebar' : '.sidebar-inner'} .launcher`)
       : document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar);
-    next?.focus();
+    if (!next) return;
+    quietUntilInput(); // its ring, but no tooltip popping up on it (critique m1)
+    next.focus();
   });
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { installInputModality, isNavigationKey, lastInput, noteKey, notePointer } from './inputModality';
-import { setTooltipBlock, tooltipsBlocked } from './tooltipGate';
+import { quietUntilInput, setTooltipBlock, tooltipsBlocked } from './tooltipGate';
 
 const key = (key: string, mods: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey', boolean>> = {}) => ({ key, metaKey: false, ctrlKey: false, altKey: false, ...mods });
 
@@ -41,6 +41,35 @@ describe('input modality (focus rings and tooltips after code-moved focus)', () 
     setTooltipBlock('modal', true); // the ⌘K palette
     expect(tooltipsBlocked()).toBe(true);
     setTooltipBlock('modal', false);
+    expect(tooltipsBlocked()).toBe(false);
+  });
+  it('a focus the app moved is quiet until a navigation key or real pointer input (critique m1)', () => {
+    const fake = () => {
+      const listeners = new Map<string, (e: unknown) => void>();
+      const doc = {
+        addEventListener: (type: string, fn: (e: unknown) => void) => listeners.set(type, fn),
+        removeEventListener: (type: string) => listeners.delete(type),
+      } as unknown as Document;
+      return { doc, listeners };
+    };
+    let { doc, listeners } = fake();
+    quietUntilInput(doc);
+    quietUntilInput(doc); // a second rescue before any input: one set of listeners
+    expect(tooltipsBlocked()).toBe(true);
+    listeners.get('keydown')!(key('s', { ctrlKey: true, metaKey: true })); // ⌃⌘S again: a command, still quiet
+    listeners.get('pointermove')!({ type: 'pointermove', movementX: 0, movementY: 0 }); // a move that does not move
+    expect(tooltipsBlocked()).toBe(true);
+    listeners.get('keydown')!(key('Tab'));
+    expect(tooltipsBlocked()).toBe(false);
+    expect(listeners.size).toBe(0);
+
+    ({ doc, listeners } = fake());
+    quietUntilInput(doc);
+    listeners.get('pointermove')!({ type: 'pointermove', movementX: 3, movementY: 0 });
+    expect(tooltipsBlocked()).toBe(false);
+    ({ doc, listeners } = fake());
+    quietUntilInput(doc);
+    listeners.get('pointerdown')!({ type: 'pointerdown', movementX: 0, movementY: 0 });
     expect(tooltipsBlocked()).toBe(false);
   });
 });

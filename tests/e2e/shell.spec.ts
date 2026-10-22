@@ -93,8 +93,10 @@ test('keyboard: the toggle that takes over keeps the focus; the resize handle is
   }
 });
 
-test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar toggle', async ({}, testInfo) => {
+test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar toggle, with its ring and no tooltip', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
+  const tip = page.getByRole('tooltip');
+  const ring = (id: string) => page.getByTestId(id).evaluate((el) => getComputedStyle(el).outlineStyle !== 'none');
   try {
     await page.getByTestId('nav-library').focus();
     await page.keyboard.press('ArrowDown'); // a keyboard user: the one row stays current
@@ -102,9 +104,22 @@ test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
+    // Mac run 39779536146 (critique m1): the rescued focus keeps its ring but pops no tooltip, as a menu shortcut
+    // never does on the Mac, and none comes up later while the focus rests there.
+    expect(await ring('toolbar-sidebar-toggle')).toBe(true);
+    await page.waitForTimeout(900);
+    await expect(tip).toHaveCount(0);
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    expect(await ring('sidebar-toggle')).toBe(true);
+    await page.waitForTimeout(900);
+    await expect(tip).toHaveCount(0);
+    // The next navigation key lifts that: keyboard focus on a control shows its tooltip at once again.
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await expect(tip).toHaveText(/사이드바 가리기/);
   } finally {
     await app.close();
   }

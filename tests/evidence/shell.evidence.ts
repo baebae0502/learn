@@ -672,12 +672,24 @@ test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈㅇ, light and
 
 test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and esc)', TAG, async () => {
   const tooltips = () => s.page.getByRole('tooltip').count();
-  // The menu toggles below come after pointer input (Task 8 m1: no tooltip or ring unless the keyboard was in use). The
-  // palette test before this one ended with real keys, so press the pointer on an empty spot of the content again: the
-  // precondition this check assumes (Mac run 39779536146 measured [1, 1] without it, correctly for keyboard input).
+  // m1 (Mac run 39779536146: [1, 1], the toggle's tooltip then over every later screen): with the keyboard in use and
+  // its focus on the sidebar toggle (tooltip open), two menu toggles hand the focus on with its ring but pop no
+  // tooltip, also after a while; then, after pointer input (Task 8 m1), the same for the captures below.
+  const afterToggles: number[] = [];
+  const keyboardRun: Record<string, unknown> = { toggleFocused: await keyboardToSidebarToggle() };
+  keyboardRun['tooltipBefore'] = await s.page.getByRole('tooltip').textContent({ timeout: 2000 }).catch(() => null);
+  for (const [shown, rescued] of [['hidden', 'toolbar-sidebar-toggle'], ['shown', 'sidebar-toggle']] as const) {
+    await runMenuCommand(s.app, 'view.toggleSidebar');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', shown);
+    await s.page.waitForTimeout(900); // past the hover delay too
+    afterToggles.push(await tooltips());
+    keyboardRun[`${shown}Focus`] = await s.page.getByTestId(rescued).evaluate((el) => el === document.activeElement);
+  }
+  results['tooltipsAfterKeyboardMenuToggles'] = keyboardRun;
+  check('keyboard in use: the menu toggles hand the focus on (sidebar toggle → toolbar toggle → back)', keyboardRun['toggleFocused'] === true && keyboardRun['hiddenFocus'] === true && keyboardRun['shownFocus'] === true, keyboardRun);
+  // The captures below come after pointer input: no ring and no tooltip in them.
   await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await s.page.mouse.click(700, 600);
-  const afterToggles: number[] = [];
   await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
   await s.page.waitForTimeout(300);
@@ -695,9 +707,10 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
   await s.page.waitForTimeout(300);
   afterToggles.push(await tooltips());
-  // m1: a menu toggle pops no tooltip on the toggle (the run before showed one through every later capture).
+  // m1: a menu toggle pops no tooltip on the toggle (the run before showed one through every later capture):
+  // two with the keyboard in use, two after pointer input.
   results['tooltipsAfterMenuToggles'] = afterToggles;
-  check('no tooltip after menu toggles of the sidebar', afterToggles.every((n) => n === 0), afterToggles);
+  check('no tooltip after menu toggles of the sidebar (keyboard ×2, pointer ×2)', afterToggles.length === 4 && afterToggles.every((n) => n === 0), afterToggles);
 
   // f. Reader open latency (report only): from the click to the reader or notice, timed in the page.
   const latency: Record<string, unknown> = {};
@@ -1290,10 +1303,11 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       outcome['libraryRootAfter'] = await s.page.evaluate(() => window.learn.prefs.get().then((r) => (r.ok ? (r.data.libraryRoot ?? null) : 'error')));
       results['settingsSheets'] = outcome;
       for (const kind of ['folder', 'restart'] as const) {
-        const v = outcome[kind] as { shown: boolean; underSheet: { notMain: boolean }; gone: boolean; after: { notKey: boolean; notMain: boolean } };
+        const v = outcome[kind] as { shown: boolean; underSheet: { notKey: boolean; notMain: boolean }; gone: boolean; after: { notKey: boolean; notMain: boolean } };
+        // m2 (Mac run 39779536146): under its own sheet the settings window is not key (no ring), as the main window is.
         check(
-          `settings: the ${kind === 'folder' ? 'folder panel' : 'restart confirmation'} is a sheet on the settings window, which stays main under it; a real esc cancels it and the window is active again (Task 10)`,
-          v.shown && !v.underSheet.notMain && v.gone && !v.after.notKey && !v.after.notMain,
+          `settings: the ${kind === 'folder' ? 'folder panel' : 'restart confirmation'} is a sheet on the settings window, which stays main but not key under it (no ring, m2); a real esc cancels it and the window is active again (Task 10)`,
+          v.shown && v.underSheet.notKey && !v.underSheet.notMain && v.gone && !v.after.notKey && !v.after.notMain,
           v,
         );
       }

@@ -406,6 +406,22 @@ export async function bringAppToFront(app: ElectronApplication, timeoutMs = 10_0
   }
 }
 
+/**
+ * darwin only: make Finder the frontmost application — the app's windows become inactive, as behind any other app —
+ * and wait (up to `timeoutMs`) until System Events reports it. Returns the frontmost process then (Finder, unless the
+ * wait ran out).
+ */
+export async function bringFinderToFront(timeoutMs = 5_000): Promise<FrontmostProcess> {
+  osascript('tell application "Finder" to activate');
+  const deadline = Date.now() + timeoutMs;
+  let front = frontmostProcess();
+  while (front.name !== 'Finder' && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    front = frontmostProcess();
+  }
+  return front;
+}
+
 export type KeyModifier = 'command' | 'control' | 'option' | 'shift';
 
 export interface NativeKeystroke {

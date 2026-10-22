@@ -210,6 +210,57 @@ export function startRecording(seconds: number, name: string, description: strin
   return { file, done };
 }
 
+export interface StoppableRecording extends Recording {
+  /** Ends the recording (ffmpeg writes the file out) and resolves with its manifest entry. */
+  stop(): Promise<ManifestEntry>;
+}
+
+/**
+ * Linux, for scripts/record-demo-linux.sh: the X screen in $DISPLAY through ffmpeg x11grab — the `grab` region at 30
+ * fps, H.264 yuv420p CRF 18, without the X pointer (the demo overlay draws the synthetic one) — until stop(), at most
+ * `maxSeconds`. Resolves once ffmpeg has opened the screen and its output file.
+ */
+export async function startX11Recording(
+  grab: { width: number; height: number; x: number; y: number },
+  name: string,
+  description: string,
+  maxSeconds: number,
+): Promise<StoppableRecording> {
+  const { abs: target, rel: file } = outFile(`${name}.mp4`);
+  fs.rmSync(target, { force: true });
+  const display = process.env['DISPLAY'] ?? ':0';
+  const args = [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '30', '-video_size', `${grab.width}x${grab.height}`, '-thread_queue_size', '1024',
+    '-i', `${display}+${grab.x},${grab.y}`,
+    '-t', String(maxSeconds),
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    target,
+  ];
+  let stderr = '';
+  const child = spawn('ffmpeg', args, { stdio: ['pipe', 'ignore', 'pipe'] });
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  const what = `${description} (ffmpeg x11grab ${grab.width}x${grab.height}+${grab.x},${grab.y} of ${display}, 30 fps, H.264 CRF 18)`;
+  const done = new Promise<ManifestEntry>((resolve) => {
+    child.on('error', (e) => resolve(record({ file: null, kind: 'recording', description: what, error: e.message })));
+    child.on('exit', (code, signal) => {
+      const ok = code === 0 && fs.existsSync(target) && fs.statSync(target).size > 0;
+      resolve(ok ? record({ file, kind: 'recording', description: what }) : record({ file: null, kind: 'recording', description: what, error: `ffmpeg exit ${code ?? signal}: ${stderr.trim().slice(0, 500)}` }));
+    });
+  });
+  const deadline = Date.now() + 10_000;
+  while (!fs.existsSync(target) && child.exitCode === null && Date.now() < deadline) await sleep(50);
+  return {
+    file,
+    done,
+    stop() {
+      if (child.exitCode === null && child.signalCode === null) child.stdin?.end('q');
+      const kill = setTimeout(() => child.kill('SIGINT'), 30_000);
+      return done.finally(() => clearTimeout(kill));
+    },
+  };
+}
+
 export interface Screencast {
   stop(): Promise<ManifestEntry>;
 }

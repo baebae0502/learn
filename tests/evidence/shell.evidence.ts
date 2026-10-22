@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
   launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, runMenuCommand, stubContextMenu, type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
@@ -148,9 +148,7 @@ function mainChrome() {
  * the close button's colour and the current sidebar row's fill, then bring the app back.
  */
 async function inactiveShot(name: string, description: string): Promise<Record<string, unknown>> {
-  osascript('tell application "Finder" to activate');
-  const t0 = Date.now();
-  while (frontmostProcess().name !== 'Finder' && Date.now() - t0 < 5_000) await sleep(200);
+  await bringFinderToFront();
   await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
   await sleep(500); // the material and the lights repaint as inactive
   const shot = await nativeWindowShot(s.app, name, description, { focus: false });
@@ -1163,9 +1161,7 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
       };
     };
     const finderFront = async () => {
-      osascript('tell application "Finder" to activate');
-      const t0 = Date.now();
-      while (frontmostProcess().name !== 'Finder' && Date.now() - t0 < 5_000) await sleep(200);
+      await bringFinderToFront();
       await sleep(700);
     };
     const appFront = async () => {

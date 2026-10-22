@@ -306,19 +306,36 @@ export interface DemoMedia {
 }
 
 /**
- * Writes the demo's files into `dir` (created; emptied first). `printPdf` prints an HTML file to PDF bytes (A4, the
- * page's own @page size and margins, PDF_FOOTER as the footer).
+ * The fallback for a document Chromium could not print: the three-page fixture PDF, made distinct per document (a
+ * comment after %%EOF, which readers ignore) so that the import never takes two of them for one file.
  */
-export async function writeDemoMedia(dir: string, printPdf: (htmlFile: string) => Promise<Buffer>): Promise<DemoMedia> {
+export const fallbackPdf = (index: number): Buffer => Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from(`\n% Learn demo fallback ${index}\n`)]);
+
+/**
+ * Writes the demo's files into `dir` (created; emptied first). `printPdf` prints an HTML file to PDF bytes (A4, the
+ * page's own @page size and margins, PDF_FOOTER as the footer). Should it fail (or time out), that document and the
+ * ones after it are fixture copies under the same names (fallbackPdf), and `note` says so once (re-review Important 1).
+ */
+export async function writeDemoMedia(dir: string, printPdf: (htmlFile: string) => Promise<Buffer>, note: (text: string) => void = () => {}): Promise<DemoMedia> {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   const pages = path.join(dir, '.pages');
   fs.mkdirSync(pages);
   const font = fs.readFileSync(FONT).toString('base64');
+  let printing = true;
   for (const [i, doc] of DOCS.entries()) {
     const page = path.join(pages, `${i}.html`);
     fs.writeFileSync(page, html(doc, font));
-    fs.writeFileSync(path.join(dir, doc.file), await printPdf(page));
+    let pdf: Buffer | null = null;
+    if (printing) {
+      try {
+        pdf = await printPdf(page);
+      } catch (e) {
+        printing = false;
+        note(`printing the demo PDFs failed at "${doc.file}" (${e instanceof Error ? e.message.split('\n')[0] : String(e)}): it and the rest are copies of the fixture PDF`);
+      }
+    }
+    fs.writeFileSync(path.join(dir, doc.file), pdf ?? fallbackPdf(i));
   }
   fs.rmSync(pages, { recursive: true, force: true });
   for (const [from, to] of VIDEOS) fs.copyFileSync(path.join(FIXTURES, from), path.join(dir, to));

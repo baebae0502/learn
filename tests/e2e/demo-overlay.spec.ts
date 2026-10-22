@@ -147,6 +147,11 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '짧게', ms: 600 } })));
     await expect(caption).toHaveText('짧게');
     await expect(caption).toHaveCount(0, { timeout: 1500 });
+    // Or at the top, where the bottom holds the page's own text (the settings window, mac1 m3).
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '위에', ms: 600, place: 'top' } })));
+    await expect(caption).toHaveAttribute('data-place', 'top');
+    expect((await caption.boundingBox())!.y).toBeLessThan(40); // 12 from the top (8 more while it rises in)
+    await expect(caption).toHaveCount(0, { timeout: 1500 });
     // A lasting tag while a scripted gesture is on screen, until it is cleared.
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: '스크립트로 재현' })));
     const tag = page.getByTestId('demo-tag');

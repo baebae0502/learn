@@ -9,10 +9,13 @@
 //   whose result is the point keeps 2.5 s on the result after its pill has gone (afterKey); a caption stays as long as
 //   it takes to read. The pointer glides to what it clicks, rests on it, and parks clear of the pill, the caption and
 //   the toasts.
-// - On macOS one pointer: the system cursor moves (posted CGEvents) and the overlay's cursor follows it; the app is a
-//   copy named Learn; the Dock is hidden. A Mac-only chapter is captioned only once it has visibly started, and is
-//   dropped with a note if it fails; every Apple Event may take 5 s at most. The core chapters keep their assertions.
-// - The recording runs RECORD_SECONDS and is trimmed to the demo afterwards, with the start offset measured here.
+// - On macOS one pointer: the system cursor moves (posted CGEvents, on a 120 Hz schedule), and the overlay draws only
+//   a ring while a button is down (critique mac1 M1); with synthetic input (Linux) the overlay's disc is the pointer.
+//   The app is a copy named Learn; the Dock is hidden; a neutral built-in desktop picture is behind it. A Mac-only
+//   chapter is captioned only once it has visibly started, and is dropped with a note if it fails; every Apple Event
+//   may take 5 s at most, and a core shortcut that times out runs from its menu item instead (round 3 m2).
+// - The recording starts 1.5 s before the demo (screencapture warms up on a frozen frame, mac1 m2), runs
+//   RECORD_SECONDS and is trimmed to the demo afterwards, with the start offset (negative: the pre-roll) measured here.
 //
 // Display spike (Task 13): before launching, the demo switches the main screen to the best mode displayplacer lists
 // (display.ts) and puts it back afterwards; env.json records displayModes and displaySwitch.
@@ -32,7 +35,7 @@ import {
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo } from './display-mac';
-import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
+import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
 import { PDF_FOOTER, READ_TITLE, UNPLAYABLE_TITLE, writeDemoMedia } from './demo-media';
 import { mergeEnv } from './env';
 
@@ -44,6 +47,10 @@ const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
  * outran it fails at the end, after its files are written.
  */
 const RECORD_SECONDS = 280;
+/** The recording starts this long before the demo: its first frames show the painted first screen (mac1 m2). */
+const PRE_ROLL_MS = 1500;
+/** One PDF printed by Chromium may take this long; then the rest are fixture copies (re-review Important 1). */
+const PRINT_MS = 20_000;
 /** The overlay's pill: shown 1.9 s (DemoOverlay PILL_MS), then an exit of 0.75 × --duration-base. */
 const PILL_GONE_MS = 1900 + Math.round(motion.base * 0.75);
 const SCALE = !IS_MAC && /^[1-4]$/.test(process.env['LEARN_DEMO_SCALE'] ?? '') ? Number(process.env['LEARN_DEMO_SCALE']) : 1;
@@ -83,34 +90,57 @@ function libraryFolder(work: string): string {
 
 /**
  * Prints an HTML file to PDF in the launched app: a hidden window loads it, waits for its fonts, and Chromium prints it
- * with the page's own size and margins and a page-number footer. Chromium subsets the font (T13R2-n1).
+ * with the page's own size and margins and a page-number footer. Chromium subsets the font (T13R2-n1). At most
+ * PRINT_MS: a print that takes longer throws, and its hidden window is destroyed from here (every window this made is
+ * kept in a list for that); one that fails destroys its own.
  */
 const printPdfWith = (app: ElectronApplication) => async (htmlFile: string): Promise<Buffer> => {
-  const b64 = await app.evaluate(
+  const print = app.evaluate(
     async ({ BrowserWindow }, { file, footer }) => {
+      const g = globalThis as { __learnDemoPrints?: Electron.BrowserWindow[] };
       const w = new BrowserWindow({ show: false, width: 820, height: 1160, webPreferences: { sandbox: true } });
+      (g.__learnDemoPrints ??= []).push(w);
       try {
         await w.loadFile(file);
         await w.webContents.executeJavaScript('document.fonts.ready.then(() => true)', true);
         const pdf = await w.webContents.printToPDF({ preferCSSPageSize: true, printBackground: true, displayHeaderFooter: true, headerTemplate: '<span></span>', footerTemplate: footer });
         return Buffer.from(pdf).toString('base64');
       } finally {
-        w.destroy();
+        if (!w.isDestroyed()) w.destroy();
       }
     },
     { file: htmlFile, footer: PDF_FOOTER },
   );
-  return Buffer.from(b64, 'base64');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`printing took over ${PRINT_MS / 1000} s`)), PRINT_MS);
+  });
+  try {
+    return Buffer.from(await Promise.race([print, limit]), 'base64');
+  } catch (e) {
+    void print.catch(() => {}); // it may still settle after the limit
+    await app
+      .evaluate(() => {
+        for (const w of (globalThis as { __learnDemoPrints?: Electron.BrowserWindow[] }).__learnDemoPrints ?? []) if (!w.isDestroyed()) w.destroy();
+      })
+      .catch(() => {});
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 };
 
 type WindowKind = 'main' | 'settings';
 /**
- * How the demo moves the pointer. synthetic: Playwright's mouse, drawn by the overlay (Linux; macOS when the system
- * cursor cannot be moved at all). system: macOS, the system cursor through posted CGEvents, which the overlay's cursor
- * follows (one pointer, T13-M8 a). warp: macOS when posting is refused: the system cursor is warped along the same path
- * and the overlay's cursor hidden (T13-M8 b); Playwright's mouse still gives the hover.
+ * How the demo moves the pointer. synthetic: Playwright's mouse, drawn by the overlay as a disc that follows it (Linux;
+ * macOS when the system cursor cannot be moved at all). system: macOS, the system cursor through posted CGEvents; the
+ * overlay draws only a ring while a button is down, the arrow is the one pointer (T13-M8 a, mac1 M1). warp: macOS when
+ * posting is refused: the system cursor is warped along the same path (T13-M8 b), the overlay as for system;
+ * Playwright's mouse still gives the hover.
  */
 type CursorMode = 'synthetic' | 'system' | 'warp';
+/** What the overlay draws for a cursor mode (DemoOverlay PointerMode). */
+const overlayMode = (mode: CursorMode) => (mode === 'synthetic' ? 'follow' : 'clicks');
 
 test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
   test.setTimeout(600_000);
@@ -130,11 +160,14 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
   let stopRec: StoppableRecording['stop'] | null = null;
   let started = Date.now();
   let recordingExitMs: number | null = null;
+  /** Linux x11grab: when ffmpeg had opened the screen (macOS: derived from screencapture's exit). */
+  let recordingStartMs: number | null = null;
   let demoSeconds = 0;
   let screen: unknown = null;
   // Widened on purpose: glide() changes it from inside a closure, where narrowing cannot see.
   let cursor = (IS_MAC ? 'system' : 'synthetic') as CursorMode;
   let restoreDock: (() => Promise<void>) | null = null;
+  let restoreDesktop: (() => Promise<void>) | null = null;
   const osascriptBefore = osascriptLimits.timeoutMs;
   if (IS_MAC) osascriptLimits.timeoutMs = OSASCRIPT_MS; // T13R2-m7: a stuck Apple Event may freeze the picture 5 s at most
   /** A macOS-only step: any failure is a note, then `recover` puts a known state back (review minor 2). */
@@ -158,6 +191,9 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     await macStep('Dock autohide', async () => {
       restoreDock = await hideDock();
     });
+    await macStep('a neutral desktop picture (the runner\'s own stays)', async () => {
+      restoreDesktop = await neutralDesktop();
+    });
     await macStep('the app copy named Learn (the plain Electron binary runs instead)', async () => {
       const executablePath = await renamedElectron(path.join(work, 'app'));
       launchOptions = { ...launchOptions, executablePath, args: [path.join(ROOT, 'apps/desktop')] };
@@ -168,8 +204,9 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     s = await launch(libraryDir, userData, launchOptions);
     const app = s.app;
     const page = s.page;
-    // The study material, printed by Chromium in the launched app before anything is recorded.
-    const media = await writeDemoMedia(materialDir, printPdfWith(app));
+    // The study material, printed by Chromium in the launched app before anything is recorded; if printing fails or
+    // takes too long, fixture copies under the same names (a note says so; the demo stays the same).
+    const media = await writeDemoMedia(materialDir, printPdfWith(app), (text) => notes.push(text));
     // The screen as Electron reads it now (after a display switch: the re-read the spike asks for).
     screen = await app.evaluate(({ BrowserWindow, screen }) => {
       const d = screen.getPrimaryDisplay();
@@ -204,11 +241,15 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
         if (!w) throw new Error(`no ${kind} window`);
         return w.getContentBounds();
       }, kind);
-    const drawnCursor = (p: Page, shown: boolean) =>
-      p.isClosed() ? Promise.resolve() : p.evaluate((hidden) => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail: { hidden } })), !shown).catch(() => {});
-    /** Hides the overlay's own cursor in every demo window (the system cursor is the one pointer, T13-M8 b). */
-    const hideDrawnCursor = async () => {
-      for (const p of [page, ...settingsPages]) await drawnCursor(p, false);
+    const pointerEvent = (p: Page, detail: { hidden?: boolean; mode?: 'follow' | 'clicks' }) =>
+      p.isClosed() ? Promise.resolve() : p.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail })), detail).catch(() => {});
+    const drawnCursor = (p: Page, shown: boolean) => pointerEvent(p, { hidden: !shown });
+    /** Tells a window's overlay what to draw for the current cursor mode (a disc that follows, or click rings only). */
+    const drawFor = (p: Page) => pointerEvent(p, { mode: overlayMode(cursor) });
+    /** The cursor mode changed: every window's overlay follows. */
+    const switchCursor = async (next: CursorMode) => {
+      cursor = next;
+      for (const p of [page, ...settingsPages]) await drawFor(p);
     };
     /**
      * One pointer across windows: the window the pointer is in draws it, the one it left does not (each window's overlay
@@ -221,7 +262,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       const left = pageOf(pointerIn);
       if (left) await drawnCursor(left, false);
       const entered = pageOf(kind);
-      if (entered && cursor !== 'warp') await drawnCursor(entered, true);
+      if (entered) await drawnCursor(entered, true);
       pointerIn = kind;
     };
     /** Where Playwright's mouse is in each page (it moves only when told): the start of the next synthetic glide. */
@@ -234,22 +275,29 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       await pointerTo(kind);
       if (cursor !== 'synthetic') {
         const o = await originOf(kind);
-        const r = await glideCursor({ x: o.x + x, y: o.y + y }).catch((e: unknown) => {
-          notes.push(`moving the system cursor failed (${errorText(e)}): the drawn cursor only`);
-          return { moved: false, warped: false };
-        });
-        if (cursor === 'system' && !r.moved) {
-          cursor = r.warped ? 'warp' : 'synthetic';
+        const to = { x: o.x + x, y: o.y + y };
+        const once = () => glideCursor(to, { warpOnly: cursor === 'warp' });
+        // A glide that throws (a stuck Apple Event) is tried once more before the mode changes (round 3 m2).
+        const r = await once()
+          .catch(async (e: unknown) => {
+            notes.push(`moving the system cursor failed (${errorText(e)}): tried once more`);
+            return once();
+          })
+          .catch((e: unknown) => {
+            notes.push(`moving the system cursor failed again (${errorText(e)}): the drawn cursor only`);
+            return { moved: false, warped: false };
+          });
+        if ((cursor === 'system' && !r.moved) || (cursor === 'warp' && !r.warped)) {
+          await switchCursor(r.warped ? 'warp' : 'synthetic');
           notes.push(
             r.warped
-              ? 'posting mouse events was refused: the system cursor glides by warps and the drawn cursor is hidden (T13-M8 b)'
-              : 'the system cursor could not be moved: the drawn cursor only (two pointers may show)',
+              ? 'posting mouse events was refused: the system cursor glides by warps; the overlay still draws click rings only (T13-M8 b)'
+              : 'the system cursor could not be moved: the drawn cursor follows Playwright\'s mouse (two pointers may show)',
           );
-          if (cursor === 'warp') await hideDrawnCursor();
         }
         if (cursor === 'system') return;
         if (cursor === 'warp') {
-          await p.mouse.move(x, y); // the hover only: the drawn cursor is hidden
+          await p.mouse.move(x, y); // the hover only: the system cursor is the pointer
           mouseAt.set(p, { x, y });
           return;
         }
@@ -280,29 +328,47 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       if (kind === 'main') await glide(p, kind, 120, h - 72);
       else await glide(p, kind, w - 40, 18);
     };
-    /** A caption on a page (an empty text clears it). */
-    const caption = (target: Page, text: string) =>
-      target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), { text, ms: text ? captionMs(text) : 1 });
+    /**
+     * A caption on a page (an empty text clears it): bottom-left, above the pill band, or at the top (`place`) where
+     * the bottom holds the page's own text (the settings window's 라이브러리 위치 card, mac1 m3).
+     */
+    type Captioned = { target: Page; place?: 'top' };
+    const caption = ({ target, place }: Captioned, text: string) =>
+      target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), { text, ms: text ? captionMs(text) : 1, ...(place ? { place } : {}) });
+    let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
-    const chapter = async (title: string, target: Page = page) => {
+    const chapter = async (title: string, where: Page | Captioned = page) => {
       const ms = Date.now() - started;
       chapters.push({ at: Math.floor(ms / 1000), ms, title });
-      await caption(target, title);
+      lastCaptioned = 'target' in where ? where : { target: where };
+      await caption(lastCaptioned, title);
+    };
+    /**
+     * Where a settings chapter is captioned (mac1 m3): in the main window while the settings window leaves its caption
+     * box free (it shows a caption while not key), else in the settings window, at its top.
+     */
+    const captionFor = async (settings: Page): Promise<Captioned> => {
+      const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
+      const box = { x: m.x + 24, y: m.y + m.height - 108 - 72, w: 560, h: 72 }; // a two-line caption
+      const covered = w.x < box.x + box.w && w.x + w.width > box.x && w.y < box.y + box.h && w.y + w.height > box.y;
+      return covered ? { target: settings, place: 'top' } : { target: page };
     };
     /** T13R2-m7: a Mac-only chapter that failed after it was captioned leaves no claim behind. */
-    const dropChapter = async (title: string, target: Page = page) => {
+    const dropChapter = async (title: string) => {
       if (chapters.at(-1)?.title !== title) return;
       chapters.pop();
-      await caption(target, '');
+      await caption(lastCaptioned, '');
       notes.push(`the chapter "${title}" was dropped`);
     };
     /** The lasting "스크립트로 재현" tag while a scripted gesture is on screen (T13R2-m3). */
     const scriptedTag = (text: string | null) => page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
     /**
      * A shortcut: the real key through System Events on macOS (NSMenu sees it), else the menu item's own click().
-     * Returns when the key went out (for afterKey).
+     * Returns when the key went out (for afterKey). A key System Events refuses, or that runs past its 5 s limit, is a
+     * note and the menu item instead: the run goes on (round 3 m2). A late key may still land: `landed` (the state the
+     * key brings about) is checked first, after a second, so the command does not run twice.
      */
-    const press = async (k: string, modifiers: KeyModifier[], fallback: CommandId | (() => Promise<unknown>)) => {
+    const press = async (k: string, modifiers: KeyModifier[], fallback: CommandId | (() => Promise<unknown>), landed?: () => Promise<boolean>) => {
       const at = Date.now();
       if (IS_MAC) {
         try {
@@ -310,8 +376,17 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
           input.native++;
           return at;
         } catch (e) {
-          if (!(e instanceof NativeInputNotPermitted)) throw e;
-          notes.push(`System Events refused a key (${e.message}): menu click instead`);
+          const shortcut = `${modifiers.join('+')}+${k}`;
+          if (e instanceof NativeInputNotPermitted) notes.push(`System Events refused ${shortcut} (${e.message}): the menu item instead`);
+          else {
+            notes.push(`${shortcut} through System Events failed (${errorText(e)}): the menu item instead`);
+            await sleep(1000);
+            if (landed && (await landed().catch(() => false))) {
+              notes.push(`${shortcut} had landed late: not run again`);
+              input.native++;
+              return at;
+            }
+          }
         }
       }
       input.menu++;
@@ -365,15 +440,19 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     const indicator = page.getByTestId('pdf-page-indicator');
 
     if (IS_MAC) await bringAppToFront(app);
+    await drawFor(page);
     await park(page, 'main');
     if (GRAB) {
       const x11 = await startX11Recording(GRAB, 'm3-demo', 'M3 shell demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
+      recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
     } else {
       rec = startRecording(RECORD_SECONDS, 'm3-demo', 'M3 shell demo (2–4 min)');
-      void rec.done.then(() => (recordingExitMs = Date.now()));
+      if (rec.file) void rec.done.then(() => (recordingExitMs = Date.now())); // not for a skipped one (Linux CI)
     }
+    // mac1 m2: the recording first shows the painted first screen; the opening caption then gets its whole time.
+    await sleep(PRE_ROLL_MS);
     started = Date.now();
 
     // 1. First run: the empty library says how to bring files in.
@@ -386,11 +465,12 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     await dropSource(page, media.drop);
     await chapter(`파일을 창으로 끌어 오면 창 전체가 놓을 곳이 됩니다. ${key('Alt')} 키를 누르고 있으면 연결로 바뀝니다. (끌기는 스크립트로 재현합니다)`);
-    await scriptedTag('스크립트로 재현');
     const overlay = page.getByTestId('drop-overlay');
     await glide(page, 'main', 14, mainH * 0.55); // the pointer comes in from the window's left edge
     await drag(page, 'dragenter', 'source');
     await expect(overlay).toHaveAttribute('data-mode', 'copy');
+    // On the drop overlay, for exactly as long as it is up (mac1 m4): never over the toolbar or the sidebar.
+    await scriptedTag('스크립트로 재현');
     await glide(page, 'main', mainW * 0.5, mainH * 0.78); // under the cards, on the overlay's empty part
     await pause(3500);
     await page.keyboard.down('Alt'); // the held ⌥ pill (T13-m1); the drag itself carries the modifier
@@ -405,8 +485,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     // 3. Dropped: copies imported (the empty library says it is bringing them in), the result in a toast.
     await chapter('놓으면 사본으로 가져오고, 결과를 알림으로 보여 줍니다.');
     await drag(page, 'drop', 'source');
-    await expect(rows).toHaveCount(media.drop.length);
     await scriptedTag(null);
+    await expect(rows).toHaveCount(media.drop.length);
     await expect(page.getByTestId('import-done')).toBeVisible();
     await park(page, 'main');
     await pause(3500);
@@ -415,7 +495,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     //    The pointer goes to the result toast and holds it there (a toast waits while the pointer is on it).
     await stubOpenDialog(app, [media.read]);
     await chapter(`${key('CmdOrCtrl+O')} 키로도 가져올 수 있습니다. (데모에서는 파일 선택 창을 건너뜁니다)`);
-    const importedAt = await press('o', ['command'], 'file.importManaged');
+    const dialogCalls = () => app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
+    const importedAt = await press('o', ['command'], 'file.importManaged', async () => (await dialogCalls()) > 0);
     await expect(rows).toHaveCount(media.drop.length + 1);
     await expect(firstTitle).toHaveAttribute('data-title', READ_TITLE);
     // The drop's toast can still be up: this one is the ⌘O result (one item).
@@ -456,7 +537,17 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
 
     // 7. macOS: full screen, where the title strip shows the window title, which follows the view; then back to the
     //    frame. Captioned once the window is in full screen (T13R2-m7). Elsewhere: back to the library.
+    /** The library is on screen (⌘1 landed). */
+    const inLibrary = () => page.getByTestId('library-table').isVisible();
+    /** ⌘1 back to the library, its own chapter, held (Linux; macOS when full screen failed). */
+    const backByKey = async () => {
+      await chapter(`${key('CmdOrCtrl+1')} 키를 누르면 라이브러리로 돌아갑니다.`);
+      const backAt = await press('1', ['command'], 'nav.back', inLibrary);
+      await expect(page.getByTestId('library-table')).toBeVisible();
+      await afterKey(backAt);
+    };
     if (IS_MAC) {
+      let revealed = false;
       const title = `${key('Ctrl+Cmd+F')} 키로 전체 화면에 들어가도 위쪽 제목 띠에 지금 보는 화면의 이름이 나옵니다.`;
       const isFull = async () => (await win()).evaluate((w) => w.isFullScreen());
       // The full-screen animation is over when the window's frame is the screen's.
@@ -477,44 +568,42 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
         'full screen',
         async () => {
           const before = await (await win()).evaluate((w) => w.getBounds());
-          const enteredAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(true)));
-          await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
-          await settle('full screen fills the screen', fillsScreen);
+          const enteredAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(true)), isFull);
+          await expect.poll(isFull, { timeout: 4000 }).toBe(true);
+          await settle('full screen fills the screen', fillsScreen, 3000);
           await chapter(title);
           await reveal(); // the strip says "세포 신호 전달 개요"
+          revealed = true;
           await afterKey(enteredAt, 3500);
           await park(page, 'main');
           await pause(1000);
-          const backAt = await press('1', ['command'], 'nav.back');
+          const backAt = await press('1', ['command'], 'nav.back', inLibrary);
           await expect(page.getByTestId('library-table')).toBeVisible();
           await reveal(); // the strip now says 내 라이브러리
           await afterKey(backAt, 3000);
           await park(page, 'main');
-          const leftAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(false)));
-          await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
-          await settle('the window is back at its frame', async () => JSON.stringify(await (await win()).evaluate((w) => w.getBounds())) === JSON.stringify(before));
+          const leftAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(false)), async () => !(await isFull()));
+          await expect.poll(isFull, { timeout: 4000 }).toBe(false);
+          await settle('the window is back at its frame', async () => JSON.stringify(await (await win()).evaluate((w) => w.getBounds())) === JSON.stringify(before), 3000);
           await park(page, 'main');
           await afterKey(leftAt);
         },
         async () => {
-          await dropChapter(title);
+          // A chapter whose strip was shown stays (it happened); one that never got there goes (round 3 n3).
+          if (!revealed) await dropChapter(title);
           if (await isFull()) {
             await (await win()).evaluate((w) => w.setFullScreen(false));
-            await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
+            await expect.poll(isFull, { timeout: 4000 }).toBe(false);
             await sleep(1500);
           }
           await bringAppToFront(app);
-          await backToLibrary();
           await park(page, 'main');
+          // Still in the reader: the Linux chapter instead, ⌘1 back to the library with its hold.
+          if (!(await inLibrary())) await backByKey();
         },
       );
       await backToLibrary();
-    } else {
-      await chapter(`${key('CmdOrCtrl+1')} 키를 누르면 라이브러리로 돌아갑니다.`);
-      const backAt = await press('1', ['command'], 'nav.back');
-      await expect(page.getByTestId('library-table')).toBeVisible();
-      await afterKey(backAt);
-    }
+    } else await backByKey();
 
     // 8. A video this platform cannot play: why, and what to do next; then ⌘1 back, held (T13R2-M1).
     await chapter(`재생할 수 없는 동영상은 이유를 알리고 ‘${label('item.showInFolder')}’와 ‘${label('item.openExternally')}’를 권합니다.`);
@@ -527,17 +616,19 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     await pause(1600);
     await park(page, 'main');
     await pause(1200);
-    const backFromVideoAt = await press('1', ['command'], 'nav.back');
+    const backFromVideoAt = await press('1', ['command'], 'nav.back', inLibrary);
     await expect(page.getByTestId('library-table')).toBeVisible();
     await afterKey(backFromVideoAt);
 
     // 9. ⌃⌘S folds the sidebar and shows it again; then the boundary dragged wider and back.
     await chapter(`${key('Ctrl+Cmd+S')} 키로 사이드바를 접고, 경계를 끌어 폭을 바꿉니다.`);
     const shell = page.getByTestId('shell');
-    const foldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar');
+    // A late ⌃⌘S is seen in the sidebar's state before the menu item toggles it again (round 3 m2).
+    const sidebarIs = (state: 'hidden' | 'shown') => async () => (await shell.getAttribute('data-sidebar')) === state;
+    const foldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar', sidebarIs('hidden'));
     await expect(shell).toHaveAttribute('data-sidebar', 'hidden');
     await afterKey(foldedAt);
-    const unfoldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar');
+    const unfoldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar', sidebarIs('shown'));
     await expect(shell).toHaveAttribute('data-sidebar', 'shown');
     await afterKey(unfoldedAt);
     const sidebarWidth = () => page.locator('.sidebar').evaluate((el) => Math.round(el.getBoundingClientRect().width));
@@ -574,7 +665,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
 
     // 10. ⌘K: with an empty query the first row has the cursor; 초성 ㅅㅈ finds 설정…, and ↩ runs it.
     await chapter(`${key('CmdOrCtrl+K')} 키로 여는 명령 팔레트는 초성으로도 찾습니다: ㅅㅈ → 설정.`);
-    const paletteAt = await press('k', ['command'], 'app.palette');
+    const paletteOpen = () => page.getByTestId('palette').isVisible();
+    const paletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
     await expect(page.getByTestId('palette-input')).toBeFocused();
     const paletteCursor = page.locator('[data-testid="palette-item"][data-focused]');
     await expect(paletteCursor).toHaveAttribute('data-command-id', 'file.importManaged');
@@ -588,19 +680,20 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     await pause(2000);
     const settings = await expectWindow(app, 'settings', () => page.keyboard.press('Enter'));
     settingsPages.push(settings);
-    if (cursor === 'warp') await hideDrawnCursor();
+    await drawFor(settings);
 
     // 11a. The settings window is a window of its own: the main window behind it is not main, so its chrome dims.
-    //      The settings chapters are captioned in the settings window, which would cover the main window's caption.
-    await chapter('설정은 따로 뜨는 창이고, 뒤의 메인 창은 흐려집니다.', settings);
+    //      Each settings chapter is captioned in the main window unless the settings window covers its caption box
+    //      (then at the top of the settings window, clear of its 라이브러리 위치 card; mac1 m3).
+    await chapter('설정은 따로 뜨는 창이고, 뒤의 메인 창은 흐려집니다.', await captionFor(settings));
     if (IS_MAC) await expect(html).toHaveAttribute('data-window-not-main', '');
     else await settle('the main window is not main behind the settings window', async () => (await html.getAttribute('data-window-not-main')) !== null, 3000);
     await park(settings, 'settings');
     await pause(3500);
 
     // 11b. Density and text size reach the main window at once. The settings window moves aside first, as a user may,
-    //      so the list behind it shows the change (animated on macOS; a jump on Linux, T13R2-n2).
-    await chapter('밀도와 글자 크기는 메인 창에 바로 반영됩니다.', settings);
+    //      so the list behind it shows the change (animated on macOS; a jump on Linux, T13R2-n2). Shortened (mac1 n2):
+    //      density back in one click here; the text size back with ⌘0 in the dark act, where the main window is key.
     await app.evaluate(({ BrowserWindow }) => {
       const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
       const main = all.find((w) => w.webContents.getURL().includes('window=main'))!;
@@ -610,13 +703,13 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       set.setBounds({ ...b, x: Math.max(m.x, m.x + m.width - b.width - 24) }, process.platform === 'darwin');
     });
     await pause(400); // the move
+    await chapter('밀도와 글자 크기는 메인 창에 바로 반영됩니다.', await captionFor(settings));
     await park(settings, 'settings');
     await pause(800);
     for (const [id, attr, value, look] of [
-      ['density-compact', 'data-density', 'compact', 3000],
-      ['font-size-15', 'data-font-size', '15', 3000],
-      ['density-regular', 'data-density', 'regular', 1500],
-      ['font-size-13', 'data-font-size', '13', 1500],
+      ['density-compact', 'data-density', 'compact', 2800],
+      ['font-size-15', 'data-font-size', '15', 2800],
+      ['density-regular', 'data-density', 'regular', 1200],
     ] as const) {
       await glideClick(settings, 'settings', settings.getByTestId(id));
       await park(settings, 'settings'); // off the segment: its "pt" tooltip never opens
@@ -625,7 +718,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     }
 
     // 11c. The theme changes both windows together.
-    await chapter('테마는 두 창이 함께 바뀝니다.', settings);
+    await chapter('테마는 두 창이 함께 바뀝니다.', await captionFor(settings));
     await glideClick(settings, 'settings', settings.getByTestId('theme-tile-dark'));
     await park(settings, 'settings');
     await expect.poll(() => isDark(page)).toBe(true);
@@ -637,16 +730,20 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     await pause(2500);
 
     // 12. Dark: the same screens and information — the document (it reopens on page 2, its diagram), the list, the palette.
+    //     First ⌘0, the text size of 11b back to 기본 (the main window is key again).
     await chapter('다크 모드에서도 같은 화면, 같은 정보입니다.');
+    const resetAt = await press('0', ['command'], 'view.textReset', async () => (await html.getAttribute('data-font-size')) === '13');
+    await expect(html).toHaveAttribute('data-font-size', '13');
+    await afterKey(resetAt, 1200);
     await glideClick(page, 'main', page.locator(`[data-testid="open-item"][data-title="${READ_TITLE}"]`));
     await park(page, 'main');
     await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expect(indicator).not.toHaveText(pageOne ?? '');
     await pause(3000);
-    const darkBackAt = await press('1', ['command'], 'nav.back');
+    const darkBackAt = await press('1', ['command'], 'nav.back', inLibrary);
     await expect(page.getByTestId('library-table')).toBeVisible();
     await afterKey(darkBackAt);
-    const darkPaletteAt = await press('k', ['command'], 'app.palette');
+    const darkPaletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
     await expect(page.getByTestId('palette-input')).toBeFocused();
     await afterKey(darkPaletteAt);
     const escAt = await keyIn(page, 'Escape');
@@ -663,15 +760,17 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
         async () => {
           const b = await (await win()).evaluate((w) => w.getBounds());
           const d = shownDisplay.bounds;
-          const left = Math.min(b.x + b.width * 0.5, d.x + d.width - 440);
-          const top = Math.min(b.y + b.height * 0.3, d.y + d.height - 320);
-          openFinderWindow(materialDir, [left, top, left + 420, top + 300]);
+          // 600 × 380, list view: every file and the sidebar readable (mac1 m5).
+          const left = Math.max(d.x + 20, Math.min(b.x + b.width * 0.45, d.x + d.width - 620));
+          const top = Math.max(d.y + 40, Math.min(b.y + b.height * 0.3, d.y + d.height - 400));
+          openFinderWindow(materialDir, [left, top, left + 600, top + 380]);
           finderOpened = true;
           await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
           await chapter(title);
           if (cursor !== 'synthetic') {
+            // The arrow rests in the window's empty lower part, under the list: off the file names.
             await pointerTo('elsewhere');
-            await glideCursor({ x: left + 210, y: top + 150 });
+            await glideCursor({ x: left + 320, y: top + 345 }, { warpOnly: cursor === 'warp' });
           }
           await pause(4000);
           closeFinderWindow();
@@ -702,11 +801,11 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
     await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
     await pause(2500);
-    const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts'));
+    const sheetUp = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=sheet')));
+    const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts', sheetUp));
     await expect(sheet.getByTestId('shortcut-row').filter({ hasText: 'F6' }).first()).toBeVisible();
     await pause(5000);
     await closeSheet(sheet, 'Enter');
-    await pause(2500);
 
     // 15. The end: the populated library in dark, held.
     await chapter('Learn 둘러보기를 마칩니다.');
@@ -723,13 +822,20 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     const entry = stopRec ? await stopRec() : rec ? await rec.done : null;
     await s?.app.close().catch(() => {});
     if (restoreDock) await (restoreDock as () => Promise<void>)().catch((e: unknown) => notes.push(`restoring the Dock failed: ${errorText(e)}`));
+    if (restoreDesktop) await (restoreDesktop as () => Promise<void>)().catch((e: unknown) => notes.push(`restoring the desktop picture failed: ${errorText(e)}`));
     await display.restore();
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(libraryDir, { recursive: true, force: true });
     fs.rmSync(path.join(work, 'app'), { recursive: true, force: true }); // the macOS app copy (re-review minor 5)
-    // macOS: the recording began when screencapture's first frame did, RECORD_SECONDS before it exited (T13-m9).
-    const offset = recordingExitMs !== null ? Math.max(0, Math.round(((recordingExitMs - started) / 1000 - RECORD_SECONDS) * 10) / 10) : 0;
+    // macOS: the recording began when screencapture's first frame did, RECORD_SECONDS before it exited (T13-m9); Linux:
+    // when ffmpeg had opened the screen. Negative: the recording started before the chapters' zero (the pre-roll).
+    const offset =
+      recordingExitMs !== null
+        ? Math.round(((recordingExitMs - started) / 1000 - RECORD_SECONDS) * 10) / 10
+        : recordingStartMs !== null
+          ? Math.round(((recordingStartMs - started) / 1000) * 10) / 10
+          : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
     const txt = outFile('m3-demo.chapters.txt');

@@ -14,7 +14,8 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, runMenuCommand, stubContextMenu, type LaunchOptions,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, runMenuCommand, stubContextMenu, stubOpenDialog,
+  type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
 import { COMMANDS } from '../../packages/domain/src/commands';
@@ -207,6 +208,17 @@ const tooltipBox = (page: Page) =>
     const r = t.getBoundingClientRect();
     return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), bg: getComputedStyle(t).backgroundColor };
   });
+
+/**
+ * Keyboard focus on the sidebar toggle, whose tooltip opens on keyboard focus: Shift+Tab from the ⌘K launcher. Since
+ * Task 9 the launcher sits between the toggle and the sidebar rows, so Shift+Tab from 내 라이브러리 lands on the
+ * launcher (which has no tooltip; Mac run 39779536146). Returns whether the toggle has the focus.
+ */
+async function keyboardToSidebarToggle(): Promise<boolean> {
+  await s.page.getByTestId('launcher').focus();
+  await s.page.keyboard.press('Shift+Tab');
+  return s.page.getByTestId('sidebar-toggle').evaluate((el) => el === document.activeElement);
+}
 
 /**
  * macOS: whether System Events sees a sheet on our window titled `title` (AppKit's AXSheet: a panel or alert attached to
@@ -545,14 +557,13 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       // app is brought to the front first and the shot does not refocus: refocusing closed the tooltip before the
       // capture in run 39642950406 (a blur/focus push in between).
       await bringAppToFront(s.app);
-      await s.page.getByTestId('nav-library').focus();
-      await s.page.keyboard.press('Shift+Tab');
+      const toggleFocused = await keyboardToSidebarToggle();
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
       await sleep(400); // the tooltip's fade-in
       const box = await tooltipBox(s.page);
       const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
       const drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
-      results['tooltipDark'] = { box, drawn };
+      results['tooltipDark'] = { toggleFocused, box, drawn };
       check('tooltip over the dark material is in the capture (pixels, R3-6)', (drawn?.share ?? 0) >= 0.5, results['tooltipDark']);
     });
   }
@@ -661,6 +672,11 @@ test('M3 chrome: ⌘K palette from a real keystroke, 초성 ㄱㅈㅇ, light and
 
 test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and esc)', TAG, async () => {
   const tooltips = () => s.page.getByRole('tooltip').count();
+  // The menu toggles below come after pointer input (Task 8 m1: no tooltip or ring unless the keyboard was in use). The
+  // palette test before this one ended with real keys, so press the pointer on an empty spot of the content again: the
+  // precondition this check assumes (Mac run 39779536146 measured [1, 1] without it, correctly for keyboard input).
+  await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await s.page.mouse.click(700, 600);
   const afterToggles: number[] = [];
   await runMenuCommand(s.app, 'view.toggleSidebar');
   await expect(s.page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
@@ -861,8 +877,7 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
   await guard('a menu-bar menu closes an open tooltip (pixels)', async () => {
     await setTheme(s.page, 'dark');
     await bringAppToFront(s.app);
-    await s.page.getByTestId('nav-library').focus();
-    await s.page.keyboard.press('Shift+Tab'); // keyboard focus onto the sidebar toggle: its tooltip opens at once
+    const toggleFocused = await keyboardToSidebarToggle(); // its tooltip opens at once
     await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
     await sleep(400);
     const box = await tooltipBox(s.page);
@@ -874,7 +889,7 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     const pushes = await s.page.evaluate(() => (window as unknown as { __pushes?: Array<[string, boolean, number]> }).__pushes ?? []);
     const firstOpen = pushes.find(([k, on, t]) => k === 'nativeMenu.open' && on && t >= openedAt)?.[2] ?? Infinity;
     const blurBeforeMenu = pushes.some(([k, on, t]) => k === 'windowState.focused' && !on && t >= openedAt && t < firstOpen);
-    const v = { box, drawn, menuOpenedAt: firstOpen === Infinity ? null : firstOpen, blurBeforeMenu, ...(await windowFacts()) };
+    const v = { toggleFocused, box, drawn, menuOpenedAt: firstOpen === Infinity ? null : firstOpen, blurBeforeMenu, ...(await windowFacts()) };
     results['tooltipUnderMenu'] = v;
     check('a menu-bar menu closes an open tooltip: none in the capture (pixels, R3-6)', box !== null && drawn !== null && drawn.pixels > 150 && drawn.share < 0.2 && firstOpen !== Infinity && !blurBeforeMenu, v);
     await s.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -1198,6 +1213,13 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
     const outcome: Record<string, unknown> = { libraryRootBefore: before };
     try {
       await expect.poll(async () => (await settingsWindow()).evaluate((w) => w.isVisible()), { timeout: 5_000 }).toBe(true);
+      // The real panel: importFiles earlier in this session stubbed the open dialog with a PDF (Mac run 39779536146:
+      // 다른 폴더 선택… got the PDF, refused it as not a folder, and no panel showed).
+      await restoreOpenDialog(s.app);
+      outcome['realPanel'] = await s.app.evaluate(({ dialog }) => {
+        const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+        return g.__learnRealOpenDialog === undefined || dialog.showOpenDialog === g.__learnRealOpenDialog;
+      });
       await sleep(600);
       /** One dialog through the 다른 폴더 선택… button: it must show as a sheet of 설정, and a real esc must cancel it. */
       const asSheet = async (name: string, what: string) => {
@@ -1262,11 +1284,7 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       };
       outcome['folder'] = await asSheet('m3-15c-settings-folder-sheet', 'settings: the 다른 폴더 선택… panel as a sheet on the settings window');
       // The restart confirmation comes only after a folder is picked: the panel answers with an empty folder.
-      await s.app.evaluate(({ dialog }, dir) => {
-        const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
-        g.__learnRealOpenDialog ??= dialog.showOpenDialog;
-        dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as typeof dialog.showOpenDialog;
-      }, scratch);
+      await stubOpenDialog(s.app, [scratch]);
       outcome['restart'] = await asSheet('m3-15d-settings-restart-sheet', 'settings: the restart confirmation as a sheet on the settings window');
       outcome['relaunchRequested'] = await s.app.evaluate(() => (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested ?? false);
       outcome['libraryRootAfter'] = await s.page.evaluate(() => window.learn.prefs.get().then((r) => (r.ok ? (r.data.libraryRoot ?? null) : 'error')));
@@ -1281,10 +1299,7 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       }
       check('settings: cancelling both sheets relaunches nothing and keeps the library location (Task 10)', outcome['relaunchRequested'] === false && outcome['libraryRootAfter'] === null, outcome);
     } finally {
-      await s.app.evaluate(({ dialog }) => {
-        const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
-        if (g.__learnRealOpenDialog) dialog.showOpenDialog = g.__learnRealOpenDialog;
-      });
+      await restoreOpenDialog(s.app).catch(() => {});
       // A sheet that esc did not dismiss would keep the settings window open: take it down with its window.
       if ((await hasSheet(pid, '설정')) === true) {
         await pressEscape();

@@ -40,8 +40,16 @@ export function findMenuPanel(img: RgbaImage, seed: { x: number; y: number }, to
 
 /**
  * Text rows and separators inside a menu panel. Ink: a pixel whose brightness differs from the panel's by more than
- * 60 (glyphs, shortcuts). A separator: a row whose pixels mostly differ by a little (8–60) and carry no ink.
+ * INK (glyphs, shortcuts, and a disabled item's grey text). A separator: a row whose pixels mostly differ by a little
+ * (8–INK) and carry no ink.
  */
+/**
+ * Ink threshold. A disabled item (기본 글자 크기 at the default size) is grey text that peaks 61–62 from the panel on
+ * the macos-15 runner, so the old 60 split its band into slivers and the row went uncounted (run 39779536146 counted 5
+ * of 6). Separators peak at 24–26, regular text at about 195: 40 sits clear of both.
+ */
+export const INK = 40;
+
 export function menuRows(img: RgbaImage, panel: Box): MenuRows {
   const bg = luma(rgbAt(img, panel.x0 + 2, panel.y0 + 2));
   const x0 = panel.x0 + 3;
@@ -54,7 +62,7 @@ export function menuRows(img: RgbaImage, panel: Box): MenuRows {
     let faint = 0;
     for (let x = x0; x < x1; x++) {
       const d = Math.abs(luma(rgbAt(img, x, y)) - bg);
-      if (d > 60) ink++;
+      if (d > INK) ink++;
       else if (d > 8) faint++;
     }
     if (ink >= 2) {

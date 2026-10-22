@@ -27,4 +27,17 @@ describe('open-menu row counter (Task 8 R2-1)', () => {
     for (let y = 66; y < 88; y++) for (let x = 12; x < 176; x++) one.data.set(bg, (y * one.width + x) * 4);
     expect(rowsBelowFirstSeparator(menuRows(one, findMenuPanel(one, { x: 15, y: 10 })))).toBe(1);
   });
+  it('counts a disabled item, whose grey text peaks about 61 from the panel (run 39779536146: 기본 글자 크기)', () => {
+    // The second full-screen row redrawn as disabled: its ink lifted to 55 below the panel's brightness.
+    const grey = { ...fixture, data: Uint8Array.from(fixture.data) };
+    const bgAt = (10 * fixture.width + 15) * 4;
+    const bg = fixture.data[bgAt]!;
+    for (let y = 66; y < 88; y++) {
+      for (let x = 12; x < 176; x++) {
+        const i = (y * grey.width + x) * 4;
+        if (bg - grey.data[i]! > 60) for (const c of [0, 1, 2]) grey.data[i + c] = bg - 55;
+      }
+    }
+    expect(rowsBelowFirstSeparator(menuRows(grey, findMenuPanel(grey, { x: 15, y: 10 })))).toBe(2);
+  });
 });

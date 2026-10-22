@@ -13,6 +13,7 @@
   - 백업과 복원은 모두 전부 성공 또는 전부 무효다. 형제 임시 폴더에 쓴 뒤 rename하며, 실패 시 임시 폴더를 정리한다.
   - 라이브 라이브러리에서 관리형 파일이 사라져 있으면 백업은 실패하지 않고 그 자산을 `included:false`로 기록한다. 복원 시 해당 자산은 missing으로 표시된다.
 - 비밀키는 DB에 저장하지 않는다(OS keychain, P3).
+  - (2026-10-22) 튜터는 ACP로 사용자의 에이전트를 띄우고 로그인은 각 공급사 CLI가 맡는다. 그래서 Learn이 비밀을 다루는 것은 나중의 API 키 어댑터부터다(ADR-0010, `docs/spec-amendments.md`). 규칙(DB에 두지 않고 키체인에 둔다)은 그대로다.
 
 ## 스키마 v2 (M2, `packages/db/src/migrations/002-organize.ts`)
 v1은 `001`의 테이블 그대로다(`items`, `assets`, `item_assets`, `source_revisions`, `collections`, `collection_items`, `tags`, `item_tags`, `anchors`, `annotations`, `jobs`, `settings`). v2는 열·인덱스·테이블을 더하는 마이그레이션이라 v1 데이터는 그대로 남는다. 예외는 하나다. v1의 `tags.name UNIQUE`는 대소문자를 구분했으므로, 대소문자만 다른 이름의 태그는 가장 먼저 만든 태그(가장 작은 rowid)로 합친다. 할당(`item_tags`)은 그 태그로 옮기고(중복은 하나만) 나머지 태그는 지운다. 그래야 `tags_name_nocase`를 만들 수 있다. 적용 전에는 스냅샷 `library.sqlite.pre-v<N>.bak`을 남긴다(N은 첫 대기 마이그레이션 버전이므로 v1→v2에서는 `library.sqlite.pre-v2.bak`).

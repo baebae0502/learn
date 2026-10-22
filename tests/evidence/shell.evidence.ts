@@ -203,11 +203,38 @@ function redLightPixels(shot: string) {
 /** The open tooltip's box (page coordinates) and its background, or null. */
 const tooltipBox = (page: Page) =>
   page.evaluate(() => {
-    const t = document.querySelector('[role="tooltip"]');
+    const all = document.querySelectorAll('[role="tooltip"]');
+    const t = all[0];
     if (!t) return null;
     const r = t.getBoundingClientRect();
-    return { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height), bg: getComputedStyle(t).backgroundColor };
+    const cs = getComputedStyle(t);
+    return {
+      x: Math.round(r.x),
+      y: Math.round(r.y),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+      bg: cs.backgroundColor,
+      // Diagnostics (t14-diag5 found one in the page but none in the capture): how many, whether it is painted at full
+      // opacity, its animations, and whether the page is visible at all.
+      count: all.length,
+      opacity: cs.opacity,
+      animations: t.getAnimations().map((a) => `${a.playState}@${Math.round(Number(a.currentTime ?? 0))}`),
+      states: [...t.attributes].filter((x) => x.name.startsWith('data-')).map((x) => x.name),
+      visibility: document.visibilityState,
+    };
   });
+
+/**
+ * Waits (bounded, 3 s) until every open tooltip's fade-in has ended: t14-diag5 found one in the page but not in the
+ * capture, a window just brought to the front not animating at once. Then a frame's margin.
+ */
+async function tooltipFadedIn(): Promise<void> {
+  await expect
+    .poll(() => s.page.evaluate(() => [...document.querySelectorAll('[role="tooltip"]')].every((t) => getComputedStyle(t).opacity === '1' && t.getAnimations().length === 0)), { timeout: 3_000 })
+    .toBe(true)
+    .catch(() => {});
+  await sleep(200);
+}
 
 /**
  * Keyboard focus on the sidebar toggle, whose tooltip opens on keyboard focus: Shift+Tab from the ⌘K launcher. Since
@@ -562,7 +589,7 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       await bringAppToFront(s.app);
       const toggleFocused = await keyboardToSidebarToggle();
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
-      await sleep(400); // the tooltip's fade-in
+      await tooltipFadedIn();
       const box = await tooltipBox(s.page);
       const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
       const drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
@@ -895,7 +922,7 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     await bringAppToFront(s.app);
     const toggleFocused = await keyboardToSidebarToggle(); // its tooltip opens at once
     await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 5_000 }).catch(() => {});
-    await sleep(400);
+    await tooltipFadedIn(); // drawn before the menu opens, so "none in the capture" means the menu closed it
     const box = await tooltipBox(s.page);
     const openedAt = await s.page.evaluate(() => Math.round(performance.now()));
     const content = await (await mainWindow(s.app)).evaluate((w) => w.getContentBounds());

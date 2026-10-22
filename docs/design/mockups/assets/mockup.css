@@ -1537,7 +1537,7 @@ h2,
 }
 .drop-mode.is-off {
   /* Not the current mode: same surface, no ring, quieter glyph. Text keeps body contrast. */
-  box-shadow: inset 0 0 0 1px var(--separator), var(--shadow-e1);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface), var(--shadow-e1);
 }
 .drop-mode.is-off .icon {
   color: var(--text-tertiary);

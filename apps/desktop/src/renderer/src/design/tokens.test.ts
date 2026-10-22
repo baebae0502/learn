@@ -111,11 +111,12 @@ describe('colour tokens', () => {
 
         it('dividers on grouped and raised surfaces (--separator-on-surface, critic T14-m2) keep one visible contrast', () => {
           // Where it is drawn: a settings group's ring and rows (bgControl on bgWindow), a sheet card's ring and rows
-          // (fillHover on bgRaised), the palette's rules and a web menu's separators (bgRaised).
+          // (fillHover on bgRaised), the palette's rules, a web menu's separators and the drop overlay's off card ring
+          // (bgRaised).
           const surfaces = [
             ['settings group', onLayers(c, ['bgControl'], 'bgWindow')],
             ['sheet card', onLayers(c, ['fillHover'], 'bgRaised')],
-            ['palette / menu', c('bgRaised')],
+            ['palette / menu / drop card', c('bgRaised')],
           ] as const;
           for (const [label, bg] of surfaces) {
             const line = c('separatorOnSurface');

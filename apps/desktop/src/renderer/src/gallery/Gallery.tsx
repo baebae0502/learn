@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Bookmark, Copy, FileText, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { commandById, commandLabel } from '@learn/domain';
 import { t } from '../strings';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
 import { MENU_SEPARATOR, MenuButton, MenuList, type MenuEntry } from '../ui/MenuButton';
 import { NoticeGlyph } from '../ui/Notice';
-import { readWindowParams } from '../ui/platform';
+import { currentPlatform, readWindowParams } from '../ui/platform';
 import { SearchField } from '../ui/SearchField';
 import { Segmented } from '../ui/Segmented';
 import { Spinner } from '../ui/Spinner';
@@ -102,7 +103,8 @@ function Part1() {
           <Button size="large" variant="primary">
             파일 가져오기…
           </Button>
-          <Button icon={FolderSearch}>Finder에서 보기</Button>
+          {/* The registry's name for the platform, as the screens show it (critic T14 fix2 N2): 폴더에서 보기 off macOS. */}
+          <Button icon={FolderSearch}>{commandLabel(commandById('item.showInFolder'), currentPlatform())}</Button>
         </div>
         <div className="g-row">
           {/* Disabled with a reason and keyboard-focused: dimmed body, full-strength ring (design-spec 8.3). */}

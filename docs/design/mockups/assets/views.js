@@ -562,21 +562,21 @@
       }[state];
       const tabs = M.standardTabs(doc.id, { more: [{ id: doc.id, title: doc.title, icon: 'file-text' }] });
       const stage = {
-        error: `<div class="notice" role="alert" ${ms('M7', 'PDF 열기 실패(손상)')}>
+        error: `<div class="notice" role="status" ${ms('M7', 'PDF 열기 실패(손상)')}>
             <div class="glyph">${icon('file-x', 'xl')}</div>
             <h2>이&nbsp;PDF를 열 수 없습니다</h2>
             <p>파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본&nbsp;파일은 그대로 보관됩니다. 다른&nbsp;사본이 있으면 다시 가져오세요.</p>
             <div class="file">ion-channels-excitable.pdf · 2.3 MB</div>
             <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
           </div>`,
-        locked: `<div class="notice" role="alert" ${ms('M7', '암호로 보호된 PDF(암호 입력)')}>
+        locked: `<div class="notice" role="status" ${ms('M7', '암호로 보호된 PDF(암호 입력)')}>
             <div class="glyph">${icon('lock', 'xl')}</div>
             <h2>암호로 보호된 PDF입니다</h2>
             <p>암호를 입력하면 이&nbsp;탭에서 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.</p>
             <div class="file">receptor-tyrosine-kinases.pdf · 5.6 MB</div>
             <div class="actions"><div class="btn primary" title="↩">암호 입력…</div><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div></div>
           </div>`,
-        missing: `<div class="notice" role="alert" ${ms('M3', '원본 없음(다시 연결)')}>
+        missing: `<div class="notice" role="status" ${ms('M3', '원본 없음(다시 연결)')}>
             <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
             <h2>원본&nbsp;파일을 찾을 수 없습니다</h2>
             <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
@@ -728,7 +728,7 @@
     </div>`;
     if (codec) {
       return `${head}<div class="video-stage">
-        <div class="codec-notice" role="alert" ${ms('M3', '재생 불가 안내(Finder에서 보기·기본 앱으로 열기)')}>
+        <div class="codec-notice" role="status" ${ms('M3', '재생 불가 안내(Finder에서 보기·기본 앱으로 열기)')}>
           <div class="glyph">${icon('video-off', 'xl')}</div>
           <h2>이&nbsp;동영상은 재생할 수 없습니다</h2>
           <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)&#8288;로 변환한 파일을 가져오면 재생할 수 있습니다. 원본&nbsp;파일은 그대로 보관됩니다.</p>

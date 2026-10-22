@@ -86,6 +86,20 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
   }
 });
 
+test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await setTheme(s.page, 'light');
+    await s.page.keyboard.press('F6');
+    await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-col="added"]')] });
+    await s.page.keyboard.press('F6');
+    await shoot(s.page, 'focus-row-light', { mask: [s.page.locator('[data-col="added"]')] });
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {

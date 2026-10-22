@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import type { CommandId } from '../../packages/domain/src/commands';
+import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
 
@@ -265,6 +265,13 @@ export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]
     const menu = Menu.getApplicationMenu() as { items: LiveItem[] } | null;
     return menu ? walk(menu.items) : [];
   });
+}
+
+/** Registry commands enabled in the application menu right now (hidden ⌘= twins excluded). */
+export async function enabledMenuCommands(app: ElectronApplication): Promise<CommandId[]> {
+  const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
+  const ids = new Set<string>(COMMANDS.map((c) => c.id));
+  return flat(await menuSnapshot(app)).filter((n) => n.enabled && n.id !== null && ids.has(n.id)).map((n) => n.id as CommandId);
 }
 
 /**

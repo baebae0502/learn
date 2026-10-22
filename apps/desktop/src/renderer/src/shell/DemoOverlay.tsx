@@ -8,17 +8,20 @@ import { useSidebarHidden } from './useSidebar';
 
 /** How long a pill stays (a new one replaces it at once); a held ⌥ stays until released. */
 const PILL_MS = 1900;
-/** How long a chapter caption stays. */
+/** How long a chapter caption stays when the script names no duration. */
 const CAPTION_MS = 3500;
 /** Exits run at 0.75 × the base duration (design-spec 8.1), as the CSS does. */
 const EXIT_MS = Math.round(motion.base * 0.75);
 
 /**
  * Script-only input for recordings, as window CustomEvents (the overlay exists only in demo builds, so nothing else
- * listens): `learn:demo-caption` (detail: the chapter title) shows it as a caption; `learn:demo-pointer` (detail:
- * { hidden }) hides the drawn pointer when the recording shows the system's own cursor instead (macOS fallback).
+ * listens): `learn:demo-caption` (detail: the chapter title, or { text, ms }) shows it as a caption for `ms`;
+ * `learn:demo-tag` (detail: a short text, or null) shows it as a lasting tag until cleared ("스크립트로 재현" while a
+ * scripted gesture is on screen); `learn:demo-pointer` (detail: { hidden }) hides the drawn pointer when the
+ * recording shows the system's own cursor instead (macOS fallback) or the pointer is in another window.
  */
 export const DEMO_CAPTION_EVENT = 'learn:demo-caption';
+export const DEMO_TAG_EVENT = 'learn:demo-tag';
 export const DEMO_POINTER_EVENT = 'learn:demo-pointer';
 
 type Shown<T> = T & { at: number; leaving: boolean };
@@ -66,6 +69,10 @@ export function DemoOverlay() {
   const [caption, showCaption] = useTransient<{ text: string }>();
   const [pointer, setPointer] = useState<{ x: number; y: number; down: boolean; resize: boolean } | null>(null);
   const [pointerHidden, setPointerHidden] = useState(false);
+  const [tag, setTag] = useState<string | null>(null);
+  // A sheet hangs over the middle of this window: the pill moves to the bottom-left, where the sheet leaves room.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  useLearnEvent('windowState', (state) => setSheetOpen(state.sheetOpen));
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
   // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
   const hidden = useSidebarHidden();
@@ -98,7 +105,15 @@ export function DemoOverlay() {
       lastPointer.current = next;
       setPointer(next);
     };
-    const onCaption = (e: Event) => showCaption({ text: String((e as CustomEvent<unknown>).detail ?? '') }, CAPTION_MS);
+    const onCaption = (e: Event) => {
+      const detail = (e as CustomEvent<unknown>).detail;
+      const { text, ms } = typeof detail === 'object' && detail !== null ? (detail as { text?: unknown; ms?: unknown }) : { text: detail, ms: undefined };
+      showCaption({ text: String(text ?? '') }, typeof ms === 'number' && ms > 0 ? ms : CAPTION_MS);
+    };
+    const onTag = (e: Event) => {
+      const detail = (e as CustomEvent<unknown>).detail;
+      setTag(typeof detail === 'string' && detail ? detail : null);
+    };
     const onPointer = (e: Event) => setPointerHidden(Boolean((e as CustomEvent<{ hidden?: boolean }>).detail?.hidden));
     const types = ['pointermove', 'pointerdown', 'pointerup'] as const;
     const opts = { capture: true, passive: true } as const;
@@ -106,18 +121,20 @@ export function DemoOverlay() {
     addEventListener('keyup', up, opts);
     for (const type of types) addEventListener(type, move, opts);
     addEventListener(DEMO_CAPTION_EVENT, onCaption);
+    addEventListener(DEMO_TAG_EVENT, onTag);
     addEventListener(DEMO_POINTER_EVENT, onPointer);
     return () => {
       removeEventListener('keydown', down, { capture: true });
       removeEventListener('keyup', up, { capture: true });
       for (const type of types) removeEventListener(type, move, { capture: true });
       removeEventListener(DEMO_CAPTION_EVENT, onCaption);
+      removeEventListener(DEMO_TAG_EVENT, onTag);
       removeEventListener(DEMO_POINTER_EVENT, onPointer);
     };
     // Installed once: the handlers only reach state setters and refs.
   }, []);
   return (
-    <div className="demo-overlay" aria-hidden="true" data-testid="demo-overlay">
+    <div className="demo-overlay" aria-hidden="true" data-testid="demo-overlay" data-sheet={sheetOpen ? '' : undefined}>
       {pointer && !pointerHidden && (
         <span
           className="demo-pointer"
@@ -125,6 +142,11 @@ export function DemoOverlay() {
           data-resize={pointer.resize ? '' : undefined}
           style={{ left: pointer.x, top: pointer.y }}
         />
+      )}
+      {tag && (
+        <div className="demo-hud demo-tag" data-testid="demo-tag">
+          {tag}
+        </div>
       )}
       {caption && caption.text && (
         <div className="demo-hud demo-caption" key={caption.at} data-leaving={caption.leaving ? '' : undefined} data-testid="demo-caption">

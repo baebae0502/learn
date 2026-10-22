@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { drag, expectWindow, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
+import { closeSheet, drag, expectWindow, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
 
 const IS_MAC = process.platform === 'darwin';
 const DEMO = { env: { LEARN_DEMO_OVERLAY: '1' } };
@@ -143,6 +143,26 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await expect(caption).toHaveText('설정은 따로 뜨는 창입니다.');
     expect(await page.getByTestId('demo-overlay').evaluate((el) => el.querySelectorAll('[tabindex], button, [title]').length)).toBe(0);
     await expect(caption).toHaveCount(0, { timeout: 6000 });
+    // The script may name the duration (a long caption stays longer, T13R2-m3).
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '짧게', ms: 600 } })));
+    await expect(caption).toHaveText('짧게');
+    await expect(caption).toHaveCount(0, { timeout: 1500 });
+    // A lasting tag while a scripted gesture is on screen, until it is cleared.
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: '스크립트로 재현' })));
+    const tag = page.getByTestId('demo-tag');
+    await expect(tag).toHaveText('스크립트로 재현');
+    await page.waitForTimeout(2500);
+    await expect(tag).toBeVisible();
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: null })));
+    await expect(tag).toHaveCount(0);
+
+    // While a sheet hangs over the window, the pill moves to the bottom-left, out from under it (T13R2-m6).
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
+    await expect(page.getByTestId('demo-overlay')).toHaveAttribute('data-sheet', '');
+    await expect(pill).toContainText('단축키 도움말');
+    expect((await pill.boundingBox())!.x).toBeLessThan(40);
+    await closeSheet(sheet, 'Escape');
+    await expect(page.getByTestId('demo-overlay')).not.toHaveAttribute('data-sheet', '');
 
     // 설정… is run by main itself (no menuCommand): main tells the overlay. The settings window has its own, as inert.
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));

@@ -150,3 +150,27 @@ describe('the settings window and its fonts (T13-m6)', () => {
     expect(Date.now() - t0).toBeLessThan(1000);
   });
 });
+
+describe('the settings window measures twice, the second time briefly (re-review minor 1)', () => {
+  it('re-measures with its font for at most 500 ms, keeping the first height when the page gives none', async () => {
+    const w = host().open() as unknown as FakeWindow;
+    const asked: string[] = [];
+    let measures = 0;
+    const answer = (script: string): Promise<number | undefined> => {
+      if (script.includes('ResizeObserver')) return new Promise(() => {}); // following the height afterwards
+      if (script.includes('getBoundingClientRect')) {
+        asked.push(script);
+        measures++;
+        return Promise.resolve(measures === 1 ? 412 : 0); // the second answer: nothing (a page gone blank)
+      }
+      return Promise.resolve(undefined); // the fonts: no answer counts as not ready, and the window still shows
+    };
+    w.webContents.executeJavaScript = answer;
+    await ready(w);
+    expect(w.shown).toBe(true);
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toContain('> 5000');
+    expect(asked[1]).toContain('> 500)');
+    expect(w.contentSize).toEqual([SETTINGS_WIDTH, 412]);
+  });
+});

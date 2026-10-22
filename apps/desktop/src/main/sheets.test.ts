@@ -87,6 +87,27 @@ describe('sheet host', () => {
     expect(p.focus).toHaveBeenCalledTimes(1); // keyboard focus goes back to the window the sheet hung over
   });
 
+  // Re-review minor 1 (Task 13 fix round 1): measured, fonts loaded, then measured again for at most 500 ms, keeping the
+  // first height when the second gives none, so the show watchdog (10 s) never wins against two 5 s measurements.
+  it('re-measures with its font for at most 500 ms, keeping the first height when the page gives none', async () => {
+    const h = host();
+    void h.open(parent(), { kind: 'shortcuts' });
+    await tick();
+    const w = FakeWindow.all[0]!;
+    const asked: string[] = [];
+    w.webContents.executeJavaScript = async (script: string) => {
+      if (!script.includes('getBoundingClientRect')) return true;
+      asked.push(script);
+      return asked.length === 1 ? 300 : 0;
+    };
+    await ready(w);
+    expect(w.shown).toBe(true);
+    expect(asked).toHaveLength(2);
+    expect(asked[0]).toContain('> 5000');
+    expect(asked[1]).toContain('> 500)');
+    expect(w.contentSize).toEqual([560, 300]);
+  });
+
   // Critic T12-m1: the ⌘/ sheet (743 tall) in the default window of a 1440 × 900 Mac with the Dock (about 806).
   it('clamps the height to the room the platform leaves: 16 above and below a centred macOS sheet, 60 + 16 elsewhere', async () => {
     const shown = async (platform: NodeJS.Platform, parentHeight: number) => {

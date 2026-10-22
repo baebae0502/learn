@@ -1,7 +1,7 @@
 import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import { LearnError, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
-import { contentHeight, fontsReady, markSized } from './measure';
+import { REMEASURE_MS, contentHeight, fontsReady, markSized } from './measure';
 
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
 /**
@@ -125,9 +125,10 @@ export function createSheetHost(opts: {
       win.once('ready-to-show', () => {
         void (async () => {
           // Rendered, its font loaded (at most 300 ms more), then measured: never boxes with no text (T13-m6).
-          await contentHeight(win.webContents, '[data-sheet-root]');
+          const rendered = await contentHeight(win.webContents, '[data-sheet-root]');
           await fontsReady(win.webContents, '[data-sheet-root]');
-          const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]'), maxHeight);
+          // Re-measured briefly, keeping the first height otherwise: the show watchdog never loses this race.
+          const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]', rendered, REMEASURE_MS), maxHeight);
           if (win.isDestroyed()) return;
           win.setContentSize(width, height);
           if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);

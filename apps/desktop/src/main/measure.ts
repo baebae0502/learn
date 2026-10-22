@@ -1,6 +1,12 @@
 import type { WebContents } from 'electron';
 
 /**
+ * A second measurement's limit, once the page has rendered and its font has loaded (it answers at once): a page that
+ * never renders keeps the first measurement's height and is shown within that one's timeout.
+ */
+export const REMEASURE_MS = 500;
+
+/**
  * Natural height (CSS px, rounded up) of the first element matching `selector` in a not-yet-shown window.
  * Polls with timers (hidden windows get no animation frames); 0 → `fallback`.
  */

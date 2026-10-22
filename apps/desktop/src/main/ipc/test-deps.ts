@@ -15,6 +15,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     isMainWindow: () => true,
     isSettingsWindow: () => true,
     windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },
+    theme: { changed: () => {}, shown: () => {} },
     relaunch: () => {},
     ...over,
   };

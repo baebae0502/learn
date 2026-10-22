@@ -24,6 +24,7 @@ import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
 import { createSheetHost } from './sheets';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
+import { createThemeFollower, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
@@ -177,6 +178,23 @@ function demoShortcut(accelerator: string, label: string): void {
   if (urlOptions.demo && mainWindow && !mainWindow.isDestroyed()) sendEvent(mainWindow.webContents, 'demoShortcut', { accelerator, label });
 }
 
+/**
+ * The steps of the last theme changes (theme-follow.ts marks and nativeTheme 'updated'), for the evidence run's
+ * theme-switch.json: unpackaged builds only, the last 40.
+ */
+type ThemeLogEntry = Omit<ThemeMark, 'event'> & { event: ThemeMark['event'] | 'updated'; window?: 'main' | 'settings' | null };
+function themeLog(): { push(entry: ThemeLogEntry): void } | null {
+  if (app.isPackaged) return null;
+  const g = globalThis as { __learnThemeLog?: ThemeLogEntry[] };
+  const log = (g.__learnThemeLog ??= []);
+  return {
+    push(entry) {
+      log.push(entry);
+      if (log.length > 40) log.splice(0, log.length - 40);
+    },
+  };
+}
+
 /** The main window's renderer (sheets and the settings window are other windows). */
 const isMainWindow = (sender: WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender.id === mainWindow.webContents.id;
 /** The settings window's renderer: the only caller of the library-location channels. */
@@ -222,9 +240,28 @@ if (!app.requestSingleInstanceLock()) {
     applyTheme(prefs.get().theme); // before the first window, so native chrome starts in the right theme
     app.setAboutPanelOptions(aboutPanelOptions(app.getVersion(), process.versions.electron));
     onThemeChange(() => {
+      const log = themeLog();
+      if (log) log.push({ event: 'updated', theme: currentTheme(), at: Date.now() });
       if (mainWindow && !mainWindow.isDestroyed()) applyChromeTheme(mainWindow, chrome());
       // The settings window has the standard frame: only its background (seen while it resizes) follows.
       settingsWindow.current()?.setBackgroundColor(windowBackground[currentTheme()]);
+    });
+    // A theme picked in a page: the pages change first, then each window's chrome, then the native theme (T13R4-m1).
+    const pageOf = (id: number): 'main' | 'settings' | null => {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents.id === id) return 'main';
+      const settings = settingsWindow.current();
+      return settings && settings.webContents.id === id ? 'settings' : null;
+    };
+    const themeFollower = createThemeFollower({
+      applySource: applyTheme,
+      applyWindowChrome(id, shade) {
+        const page = pageOf(id);
+        if (page === 'main') applyChromeTheme(mainWindow!, { ...chrome(), theme: shade });
+        if (page === 'settings') settingsWindow.current()?.setBackgroundColor(windowBackground[shade]);
+      },
+      followers: () =>
+        [mainWindow, settingsWindow.current()].flatMap((w) => (w && !w.isDestroyed() && !w.webContents.isDestroyed() ? [w.webContents.id] : [])),
+      mark: (m: ThemeMark) => themeLog()?.push({ ...m, window: m.windowId !== undefined ? pageOf(m.windowId) : undefined }),
     });
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
@@ -292,6 +329,10 @@ if (!app.requestSingleInstanceLock()) {
             if (!owner.isDestroyed()) onSheetClosed(owner);
           }
         },
+      },
+      theme: {
+        changed: (theme) => themeFollower.pageChanged(theme),
+        shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
       relaunch() {
         if (process.env['LEARN_E2E'] === '1') {

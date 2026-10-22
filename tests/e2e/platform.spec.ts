@@ -247,7 +247,8 @@ test('prefs: theme dark survives a restart and drives nativeTheme.themeSource', 
   try {
     expect(await page.evaluate(() => window.learn.prefs.get())).toMatchObject({ ok: true, data: { theme: 'system' } });
     expect(await page.evaluate(() => window.learn.prefs.set({ theme: 'dark' }))).toMatchObject({ ok: true, data: { theme: 'dark' } });
-    expect(await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('dark');
+    // The native theme follows the page once it shows the change (T13R4-m1), within THEME_FOLLOW_MS at most.
+    await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), { timeout: 2000 }).toBe('dark');
     await app.close();
 
     ({ app, page } = await launch(lib, ud));

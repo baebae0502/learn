@@ -33,6 +33,7 @@ const ITEM_ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt: '2026-10-20T11:40:00.000Z', storageMode: 'managed' };
 const opened: unknown[] = [];
 const openSettings = vi.fn();
+const themeShown = vi.fn();
 registerUiIpc(
   createHandle(null),
   stubDeps({
@@ -50,6 +51,7 @@ registerUiIpc(
     },
     windows: { openSettings, asSheet: (_owner, show) => show() },
     isSettingsWindow: (sender) => sender === (SETTINGS as never),
+    theme: { changed: () => {}, shown: themeShown },
   }),
 );
 
@@ -114,5 +116,21 @@ describe('ui.windowState (query; the windowState push stays)', () => {
     win.destroyed = true;
     expect(await call()).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     expect(await call({ extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+  });
+});
+
+describe('ui.themeShown (T13R4-m1: the native theme follows the pages)', () => {
+  it('takes the shade a main or settings page shows; a sheet is PERMISSION_DENIED; anything but light / dark is refused', async () => {
+    themeShown.mockClear();
+    expect(await invoke('ui:themeShown', MAIN, { shade: 'dark' })).toEqual({ ok: true, data: undefined });
+    expect(await invoke('ui:themeShown', SETTINGS, { shade: 'light' })).toEqual({ ok: true, data: undefined });
+    expect(themeShown.mock.calls).toEqual([
+      [MAIN, 'dark'],
+      [SETTINGS, 'light'],
+    ]);
+    expect(await invoke('ui:themeShown', SHEET, { shade: 'dark' })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:themeShown', MAIN, { shade: 'system' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await invoke('ui:themeShown', MAIN, { shade: 'dark', at: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(themeShown).toHaveBeenCalledTimes(2);
   });
 });

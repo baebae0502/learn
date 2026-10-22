@@ -52,6 +52,8 @@ export const prefsPatchInput = z.object(prefsFields).partial().strict();
 export type PrefsPatch = z.input<typeof prefsPatchInput>;
 /** What the renderer may change: everything but the library location, which only app.chooseLibraryFolder sets (R4). */
 export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true }).partial().strict();
+/** ui.themeShown: the theme a page now shows (its own resolution of the pref; T13R4-m1). */
+export const themeShownInput = z.object({ shade: z.enum(['light', 'dark']) }).strict();
 export const savePositionInput = z.object({
   itemId: z.uuid(),
   revisionId: z.uuid(),
@@ -106,6 +108,7 @@ export type TogglePositionInput = z.input<typeof togglePositionInput>;
 export type SettingGetInput = z.input<typeof settingGetInput>;
 export type SettingSetInput = z.input<typeof settingSetInput>;
 export type PrefsSetInput = z.input<typeof prefsSetInput>;
+export type ThemeShownInput = z.input<typeof themeShownInput>;
 export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
@@ -185,6 +188,11 @@ export interface LearnApi {
     showShortcuts(): Promise<Result<void>>;
     /** ⌘, : opens the settings window, or brings it to the front (the main-owned app.settings command). */
     openSettings(): Promise<Result<void>>;
+    /**
+     * The calling page (the main or the settings window) now shows `shade`, after a theme change: main lets the
+     * native theme follow it (T13R4-m1). Other windows are PERMISSION_DENIED.
+     */
+    themeShown(input: ThemeShownInput): Promise<Result<void>>;
   };
   /** Only callable from an open sheet window. */
   sheet: {

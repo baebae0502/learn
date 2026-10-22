@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
-import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, toLearnError, type LibraryItem } from '@learn/domain';
+import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
 import { windowStateOf } from '../window-state';
@@ -72,5 +72,12 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.openSettings, emptyInput, (_input, event) => {
     if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
     deps.windows.openSettings();
+  });
+
+  // The pages that draw the theme themselves (the main and the settings window) say when they show a change; the native
+  // theme follows them (T13R4-m1). Sheets follow the native theme and report nothing.
+  handle(Channels.ui.themeShown, themeShownInput, ({ shade }, event) => {
+    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    deps.theme.shown(event.sender, shade);
   });
 }

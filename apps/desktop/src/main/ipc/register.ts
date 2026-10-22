@@ -1,6 +1,6 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import type { z } from 'zod';
-import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Result } from '@learn/domain';
+import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Prefs, type Result } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
@@ -28,6 +28,11 @@ export interface IpcDeps {
      */
     asSheet<T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T>;
   };
+  /**
+   * Theme changes made in a page: the native theme follows the pages' reports (theme-follow.ts, T13R4-m1). `changed`
+   * is called by prefs.set when the theme pref changed; `shown` when a page reports the theme it shows.
+   */
+  theme: { changed(theme: Prefs['theme']): void; shown(sender: WebContents, shade: 'light' | 'dark'): void };
   /** Restarts into the library location just saved. Under E2E (LEARN_E2E=1) it only records the request. */
   relaunch(): void;
 }

@@ -1,6 +1,7 @@
 // @perf — cold start (process start → app-ready) and renderer bundle size (ADR-0004: "recorded in M3"). Budget 1.5 s
 // on the reference Mac (quality spec); runner values are reported only. Linux CI fails only beyond 2× the budget.
-// Also the time from the menu command to the ⌘/ sheet or the settings window on screen (T13M-n4), reported only.
+// Also the time from the menu command to the ⌘/ sheet or the settings window on screen (T13M-n4), reported only; and
+// the order of a theme switch (T13R4-m1), reported only.
 //
 // Marks (epoch ms, main/perf.ts): processStart (performance.timeOrigin of the main process), ready (app 'ready'),
 // firstPaint (the main window's first 'ready-to-show': its page has painted, the window code shows it then),
@@ -9,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { ROOT, closeSheet, expectWindow, launch } from '../e2e/helpers';
+import { ROOT, closeSheet, expectWindow, launch, runMenuCommand } from '../e2e/helpers';
 import { writeJson } from './capture';
 
 interface Marks {
@@ -121,6 +122,65 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     };
     writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4)');
     console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs));
+  } finally {
+    await s.app.close();
+  }
+});
+
+interface ThemeLogEntry {
+  event: 'requested' | 'shown' | 'chrome' | 'source' | 'updated';
+  window?: 'main' | 'settings' | null;
+  reason?: string;
+  theme?: string;
+  at: number;
+}
+
+// T13R4-m1: a theme picked in the settings window. The pages lead (each says when it shows the change: after its
+// crossfade's update, or after the next frame), each window's chrome follows its page, the app-wide native theme
+// follows both, and nativeTheme's 'updated' comes last. Times from the click, per window; reported only.
+test('theme switch order: click → each page shows it → its chrome → the native theme → nativeTheme updated', { tag: '@perf' }, async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  try {
+    const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+    await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL().includes('window=settings') && w.isVisible()))).toBe(true);
+    const switches: Array<Record<string, unknown>> = [];
+    for (const theme of ['dark', 'light', 'dark'] as const) {
+      await s.app.evaluate(() => void ((globalThis as { __learnThemeLog?: unknown[] }).__learnThemeLog = []));
+      // The click, on the page's clock (epoch ms, as main's).
+      const clickAt = await settings.evaluate((t) => {
+        const at = performance.timeOrigin + performance.now();
+        document.querySelector<HTMLElement>(`[data-testid="theme-tile-${t}"]`)!.click();
+        return at;
+      }, theme);
+      await expect.poll(() => s.app.evaluate(() => ((globalThis as { __learnThemeLog?: ThemeLogEntry[] }).__learnThemeLog ?? []).some((e) => e.event === 'updated'))).toBe(true);
+      await settings.waitForTimeout(400);
+      const log = await s.app.evaluate(() => (globalThis as { __learnThemeLog?: ThemeLogEntry[] }).__learnThemeLog ?? []);
+      const ms = (pick: (e: ThemeLogEntry) => boolean) => {
+        const e = log.find(pick);
+        return e ? Math.round(e.at - clickAt) : null;
+      };
+      switches.push({
+        to: theme,
+        msFromClick: {
+          requested: ms((e) => e.event === 'requested'),
+          shown: { settings: ms((e) => e.event === 'shown' && e.window === 'settings'), main: ms((e) => e.event === 'shown' && e.window === 'main') },
+          chrome: { settings: ms((e) => e.event === 'chrome' && e.window === 'settings'), main: ms((e) => e.event === 'chrome' && e.window === 'main') },
+          nativeApplied: ms((e) => e.event === 'source'),
+          nativeThemeUpdated: ms((e) => e.event === 'updated'),
+        },
+        nativeAppliedBecause: log.find((e) => e.event === 'source')?.reason ?? null,
+        log: log.map((e) => ({ ...e, at: Math.round(e.at - clickAt) })),
+      });
+    }
+    const result = {
+      switches,
+      followMs: 250,
+      platform: `${process.platform}-${process.arch}`,
+      ci: process.env['CI'] ?? null,
+    };
+    writeJson('theme-switch.json', result, 'M3 theme switch: click → each page shows it → its chrome → native theme → nativeTheme updated (T13R4-m1)');
+    console.log('[measure] theme switch', JSON.stringify(switches.map((w) => ({ to: w['to'], ...(w['msFromClick'] as object), because: w['nativeAppliedBecause'] }))));
   } finally {
     await s.app.close();
   }

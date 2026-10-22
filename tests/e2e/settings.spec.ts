@@ -69,7 +69,8 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     // T13M-m6: the tile is selected by the click itself, before the pref's round trip through main: checked after
     // microtasks only (React renders a click's update in one), where no IPC answer can arrive. Both pages then take the
     // theme (html[data-theme]).
-    // Each page crossfades the change (a View Transition): counted here.
+    // On macOS each page crossfades the change (a View Transition, to cover AppKit's late repaint); elsewhere it is
+    // instant (T13R4-m1). Counted here.
     const countTransitions = () => {
       const w = window as unknown as { __transitions: number };
       const start = document.startViewTransition.bind(document);
@@ -96,8 +97,24 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await expect(settings.getByTestId('theme-tile-dark')).toHaveAttribute('data-selected', 'true');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(settings.locator('html')).toHaveAttribute('data-theme', 'dark');
-    expect(await transitions(page)).toBe(1);
-    expect(await transitions(settings)).toBe(1);
+    const crossfades = process.platform === 'darwin' ? 1 : 0;
+    expect(await transitions(page)).toBe(crossfades);
+    expect(await transitions(settings)).toBe(crossfades);
+    // T13R4-m1: the native theme followed the pages. Each page said it shows the change (after its crossfade's update),
+    // its window's chrome followed it, and the app-wide native theme came last, once both had (not by the fallback).
+    const steps = await app.evaluate(() =>
+      ((globalThis as { __learnThemeLog?: Array<{ event: string; window?: string | null; reason?: string; at: number }> }).__learnThemeLog ?? []).map(
+        (e) => `${e.event}${e.window ? `:${e.window}` : ''}${e.reason ? `:${e.reason}` : ''}`,
+      ),
+    );
+    const from = steps.lastIndexOf('requested');
+    const change = steps.slice(from);
+    expect(change[0]).toBe('requested');
+    for (const w of ['main', 'settings']) {
+      expect(change.indexOf(`chrome:${w}`), w).toBeGreaterThan(change.indexOf(`shown:${w}`));
+      expect(change.indexOf('source:shown'), w).toBeGreaterThan(change.indexOf(`chrome:${w}`));
+    }
+    expect(change).not.toContain('source:timeout');
     // Both windows' native backgrounds follow the theme by name (not only the main window's).
     await expect.poll(async () => (await (await settingsWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);
     await expect.poll(async () => (await (await mainWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);

@@ -84,6 +84,12 @@
       --toast-distance: 0px;
     }
   }
+  /* A theme change (settings/theme.ts) crossfades the whole page: the default View Transition, at --duration-base. */
+  ::view-transition-group(root),
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--duration-base);
+  }
   @keyframes fade-in {
     from {
       opacity: 0;

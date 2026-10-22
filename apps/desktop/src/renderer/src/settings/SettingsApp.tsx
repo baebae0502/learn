@@ -13,6 +13,7 @@ import { Icon } from '../ui/Icon';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Segmented } from '../ui/Segmented';
 import { ThemePreview } from './ThemePreview';
+import { pickSettled, shownTheme, useApplyTheme } from './theme';
 
 const THEMES = ['system', 'light', 'dark'] as const;
 const DENSITIES = ['compact', 'regular', 'comfortable'] as const;
@@ -37,12 +38,27 @@ export function SettingsApp() {
   useEffect(() => {
     document.title = t.settings.title; // the window title follows the page title in Electron
   }, []);
+  // The theme tile just picked: selected, and this window's theme changed, on the click (T13M-m6). It gives way to the
+  // saved pref once that has come round to it, or when the write fails.
+  const [pickedTheme, setPickedTheme] = useState<Prefs['theme'] | null>(null);
+  const savedTheme = prefsQuery.data?.theme;
+  useEffect(() => {
+    if (pickSettled(pickedTheme, savedTheme)) setPickedTheme(null);
+  }, [pickedTheme, savedTheme]);
+  useApplyTheme(pickedTheme ?? savedTheme);
   if (prefsQuery.isPending || info.isPending) return null;
   const prefs = prefsQuery.data ?? DEFAULT_PREFS;
 
-  const set = (patch: Partial<Omit<Prefs, 'libraryRoot'>>) => {
+  const set = (patch: Partial<Omit<Prefs, 'libraryRoot'>>, failed?: () => void) => {
     setPrefsError(null);
-    void unwrap(api().prefs.set(patch)).catch((e: unknown) => setPrefsError(messageOf(e)));
+    void unwrap(api().prefs.set(patch)).catch((e: unknown) => {
+      failed?.();
+      setPrefsError(messageOf(e));
+    });
+  };
+  const pickTheme = (theme: Prefs['theme']) => {
+    setPickedTheme(theme);
+    set({ theme }, () => setPickedTheme((picked) => (picked === theme ? null : picked)));
   };
   const library = async (run: () => Promise<unknown>) => {
     setLibraryError(null);
@@ -68,8 +84,8 @@ export function SettingsApp() {
               <RadioGroup
                 aria-labelledby="l-theme"
                 orientation="horizontal"
-                value={prefs.theme}
-                onChange={(v) => set({ theme: v as Prefs['theme'] })}
+                value={shownTheme(pickedTheme, prefs.theme)}
+                onChange={(v) => pickTheme(v as Prefs['theme'])}
                 className="theme-tiles"
               >
                 {THEMES.map((v) => (

@@ -18,6 +18,7 @@ import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
+import { useApplyTheme } from '../settings/theme';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DemoOverlay } from '../shell/DemoOverlay';
 import { DropOverlay } from '../shell/DropOverlay';
@@ -47,6 +48,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   usePanePersistence();
   const items = useItems();
   const prefs = usePrefs().data;
+  useApplyTheme(prefs?.theme);
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);

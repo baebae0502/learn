@@ -66,11 +66,38 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     // Each text size names its value in pt in a tooltip (settings.html, design-spec 10.6).
     for (const size of [12, 13, 14, 15]) await expect(settings.locator(`[title="${size}pt"]`).getByTestId(`font-size-${size}`)).toHaveCount(1);
 
-    await settings.getByTestId('theme-tile-dark').click();
+    // T13M-m6: the tile is selected by the click itself, before the pref's round trip through main: checked after
+    // microtasks only (React renders a click's update in one), where no IPC answer can arrive. Both pages then take the
+    // theme (html[data-theme]).
+    // Each page crossfades the change (a View Transition): counted here.
+    const countTransitions = () => {
+      const w = window as unknown as { __transitions: number };
+      const start = document.startViewTransition.bind(document);
+      w.__transitions = 0;
+      document.startViewTransition = ((update: () => void) => {
+        w.__transitions++;
+        return start(update);
+      }) as typeof document.startViewTransition;
+    };
+    await page.evaluate(countTransitions);
+    await settings.evaluate(countTransitions);
+    const transitions = (p: Page) => p.evaluate(() => (window as unknown as { __transitions: number }).__transitions);
+    expect(
+      await settings.evaluate(async () => {
+        const tile = document.querySelector<HTMLElement>('[data-testid="theme-tile-dark"]')!;
+        tile.click();
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+        return tile.dataset['selected'] ?? null;
+      }),
+    ).toBe('true');
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('dark');
     await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
     await expect.poll(() => settings.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
     await expect(settings.getByTestId('theme-tile-dark')).toHaveAttribute('data-selected', 'true');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(settings.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await transitions(page)).toBe(1);
+    expect(await transitions(settings)).toBe(1);
     // Both windows' native backgrounds follow the theme by name (not only the main window's).
     await expect.poll(async () => (await (await settingsWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);
     await expect.poll(async () => (await (await mainWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);

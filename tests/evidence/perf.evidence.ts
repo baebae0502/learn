@@ -1,7 +1,7 @@
 // @perf — cold start (process start → app-ready) and renderer bundle size (ADR-0004: "recorded in M3"). Budget 1.5 s
 // on the reference Mac (quality spec); runner values are reported only. Linux CI fails only beyond 2× the budget.
-// Also the time from the menu command to the ⌘/ sheet or the settings window on screen (T13M-n4), reported only; and
-// the order of a theme switch (T13R4-m1), reported only.
+// Also the time from the menu command to the ⌘/ sheet or the settings window on screen (T13M-n4): reported, and on
+// Linux CI failing only beyond 2× its 250 ms target; and the order of a theme switch (T13R4-m1), reported only.
 //
 // Marks (epoch ms, main/perf.ts): processStart (performance.timeOrigin of the main process), ready (app 'ready'),
 // firstPaint (the main window's first 'ready-to-show': its page has painted, the window code shows it then),
@@ -122,6 +122,11 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     };
     writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4)');
     console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs));
+    // The plan's CI rule (re-review minor 3): runner values are reported; Linux CI fails only beyond 2× the target.
+    if (process.platform === 'linux' && process.env['CI']) {
+      expect(result.medianMs.sheet, 'the ⌘/ sheet: median open, ms').toBeLessThanOrEqual(2 * result.targetMs);
+      expect(result.medianMs.settings, 'the settings window: median open, ms').toBeLessThanOrEqual(2 * result.targetMs);
+    }
   } finally {
     await s.app.close();
   }

@@ -11,11 +11,21 @@ import { releaseWhenKey } from './sheet-release';
  * which the parent still counts as main (windowState.sheetOpen) but the sheet is gone (isSheetOpen).
  */
 const sheets = new WeakMap<BrowserWindow, 'open' | 'releasing'>();
+/**
+ * Windows a native dialog (an open panel, an alert) hangs on now. The dialog is the key window, but Electron sends its
+ * parent no 'blur' for it on macOS (Mac run 39779536146: the settings window kept its focus ring under its own
+ * restart sheet, `underSheet.notKey` false; critique m2), so the parent counts as not key while it is up.
+ */
+const nativeSheets = new WeakSet<BrowserWindow>();
 const releases = new WeakMap<BrowserWindow, () => void>();
 const pushers = new WeakMap<BrowserWindow, () => void>();
 
 /** What the windowState push and the ui.windowState query report. */
-export const windowStateOf = (win: BrowserWindow): WindowState => ({ fullscreen: win.isFullScreen(), focused: win.isFocused(), sheetOpen: sheets.has(win) });
+export const windowStateOf = (win: BrowserWindow): WindowState => ({
+  fullscreen: win.isFullScreen(),
+  focused: win.isFocused() && !nativeSheets.has(win),
+  sheetOpen: sheets.has(win),
+});
 
 /** Whether one of our sheets is attached to `win` now. */
 export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) === 'open';
@@ -51,9 +61,13 @@ export function resyncWindowState(win: BrowserWindow): void {
   pushers.get(win)?.();
 }
 
-/** A sheet is about to show on `win` (any window: main, settings): it stays main (design-spec 2.1); a pending release is cancelled. */
-export function sheetShown(win: BrowserWindow): void {
+/**
+ * A sheet is about to show on `win` (any window: main, settings): it stays main (design-spec 2.1); a pending release is
+ * cancelled. `native`: a native dialog, which leaves `win` not key until sheetClosed (nativeSheets).
+ */
+export function sheetShown(win: BrowserWindow, opts: { native?: boolean } = {}): void {
   if (win.isDestroyed()) return;
+  if (opts.native) nativeSheets.add(win);
   releases.get(win)?.();
   releases.delete(win);
   sheets.set(win, 'open');
@@ -65,6 +79,7 @@ export function sheetShown(win: BrowserWindow): void {
  * between the two (polish minor 1; sheet-release.ts); the window state is re-read then.
  */
 export function sheetClosed(win: BrowserWindow): void {
+  nativeSheets.delete(win);
   if (win.isDestroyed() || !sheets.has(win)) return;
   sheets.set(win, 'releasing');
   releases.get(win)?.();

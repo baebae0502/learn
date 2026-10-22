@@ -59,4 +59,22 @@ describe('window state per window (main and settings each get their own)', () =>
     expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
     expect(main.pushes()).toEqual([]); // the main window's state is untouched throughout
   });
+
+  it('a native dialog on a window: not key under it although no blur comes (macOS), key again once it is gone (critique m2)', () => {
+    const settings = new FakeWindow();
+    trackWindowState(win(settings));
+    settings.focused = true;
+    settings.emit('focus');
+    sheetShown(win(settings), { native: true });
+    // Electron still says focused and sends no 'blur' on macOS: the push says not key, still main.
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    expect(windowStateOf(win(settings)).focused).toBe(false);
+    sheetClosed(win(settings)); // the dialog resolved; the window is key (isFocused) at once
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+
+    // Our own sheet window takes the key itself (its parent gets 'blur'): not marked, the parent's own focus counts.
+    sheetShown(win(settings));
+    expect(windowStateOf(win(settings))).toEqual({ fullscreen: false, focused: true, sheetOpen: true });
+    sheetClosed(win(settings));
+  });
 });

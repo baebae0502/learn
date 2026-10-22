@@ -278,8 +278,8 @@ if (!app.requestSingleInstanceLock()) {
     // A sheet — our sheet window or a native dialog — keeps its parent the main window (chrome undimmed) until the parent
     // is key again, re-read within 250 ms (no 'focus' event comes for it on macOS); 전체 화면 waits for the main
     // window's sheet.
-    const onSheetShown = (parent: BrowserWindow) => {
-      sheetShown(parent);
+    const onSheetShown = (parent: BrowserWindow, opts: { native?: boolean } = {}) => {
+      sheetShown(parent, opts);
       refreshFullScreenItem();
     };
     const onSheetClosed = (parent: BrowserWindow) => {
@@ -324,7 +324,7 @@ if (!app.requestSingleInstanceLock()) {
       windows: {
         openSettings: () => void settingsWindow.open(),
         async asSheet(owner, show) {
-          onSheetShown(owner);
+          onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
           try {
             return await show();
           } finally {

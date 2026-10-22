@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
-import { FIXTURES, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand } from './helpers';
+import { FIXTURES, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -219,6 +219,31 @@ test('R4: the renderer cannot set the library path; main picks, checks, confirms
     expect(await app.evaluate(() => (globalThis as { __asked?: number }).__asked)).toBe(1);
     expect(prefsFile(ud)['libraryRoot']).toBe(target);
     await expect(settings.getByTestId('library-error')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('under its own folder dialog the settings window is not key (its ring goes) but stays main; key again after (critique m2)', async ({}, testInfo) => {
+  const { app } = await launch(...dirs(testInfo));
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect.poll(() => inactive(settings)).toBe(false);
+    const choose = settings.getByTestId('library-choose');
+    const ringed = () => choose.evaluate((el) => getComputedStyle(el).outlineStyle !== 'none' && el === document.activeElement);
+    await choose.focus();
+    await settings.keyboard.press('Shift+Tab');
+    await settings.keyboard.press('Tab'); // keyboard focus: its ring
+    await expect.poll(ringed).toBe(true);
+    await holdOpenDialog(app, []);
+    await settings.keyboard.press('Enter'); // the folder dialog hangs on the settings window (a sheet on macOS)
+    const html = settings.locator('html');
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await expect(html).not.toHaveAttribute('data-window-not-main', ''); // still main: the chrome does not dim
+    expect(await ringed()).toBe(false);
+    await releaseOpenDialog(app); // cancelled
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expect.poll(ringed).toBe(true);
   } finally {
     await app.close();
   }

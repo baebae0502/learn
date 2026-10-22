@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, expectDisabledReason, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -576,7 +576,12 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
     await expect.poll(async () => (await looks()).cursor).toBe('none');
     const underSheet = await looks();
-    expect(underSheet).toMatchObject({ notKey: true, notMain: false, cursor: 'none', title: active.title, toggle: active.toggle, toggleOpacity: '1', section: active.section, rowIconOpacity: '1' });
+    expect(underSheet).toMatchObject({ notKey: true, notMain: false, cursor: 'none', title: active.title, section: active.section, rowIconOpacity: '1' });
+    // The sheet holds the window, so the toggle's command is refused: it is disabled with the reason like 가져오기
+    // beside it (critique n1), at the disabled strength, not the not-main fade.
+    await expectDisabledReason(page.getByTestId('sidebar-toggle'), '진행 중인 작업이 끝나면 쓸 수 있습니다');
+    await expectDisabledReason(page.getByTestId('import-menu'), '진행 중인 작업이 끝나면 쓸 수 있습니다');
+    expect(underSheet.toggleOpacity).toBe('0.4'); // an icon button's glyph disabled with a reason (button.css)
     expect(underSheet.rowIcon).toBe(await token('--accent-text')); // the neutral selection's icon, not faded
     expect(underSheet.selectedRowText).toBe(await token('--text-primary'));
     await closeSheet(sheet, 'Escape');

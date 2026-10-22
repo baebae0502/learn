@@ -1,17 +1,20 @@
 import { PanelLeft } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
+import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { currentPlatform } from '../ui/platform';
 import { TOGGLE_IDS, useSidebarHidden } from './useSidebar';
 
 /**
  * In the sidebar top while it is shown; in the toolbar (after the traffic-light inset) while it is hidden. Both run the
- * registry command, whose handler (useToggleSidebar) hands the focus to the copy that takes over.
+ * registry command, whose handler (useToggleSidebar) hands the focus to the copy that takes over. While a sheet or an
+ * import holds the window the command is refused, so the toggle is disabled with the reason, like 가져오기 and the
+ * launcher beside it: the toolbar recedes in one step under a sheet (critique n1, T13M-n4).
  */
 export function SidebarToggle({ place }: { place: keyof typeof TOGGLE_IDS }) {
   const hidden = useSidebarHidden();
-  const { run } = useCommands();
+  const { run, isEnabled } = useCommands();
   const command = commandById('view.toggleSidebar');
   return (
     <IconButton
@@ -21,6 +24,8 @@ export function SidebarToggle({ place }: { place: keyof typeof TOGGLE_IDS }) {
       label={commandLabel(command, currentPlatform(), { sidebar: hidden ? 'hidden' : 'shown' })}
       accelerator={command.accelerator}
       onPress={() => run('view.toggleSidebar')}
+      isDisabled={!isEnabled('view.toggleSidebar')}
+      disabledReason={t.common.busy}
       aria-expanded={!hidden}
       aria-controls="sidebar"
       testId={TOGGLE_IDS[place]}

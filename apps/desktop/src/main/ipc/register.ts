@@ -24,7 +24,8 @@ export interface IpcDeps {
     /**
      * Runs a native dialog that macOS attaches to `owner` as a sheet (showOpenDialog / showMessageBox with a parent):
      * `owner` stays the main window meanwhile, and its window state is re-read once it is key again (38e3a9e) —
-     * whichever window it is (the settings window's folder dialog and restart confirmation).
+     * whichever window it is: the settings window's folder dialog and restart confirmation, the main window's open
+     * panels (파일 가져오기, 다시 연결…). Every dialog with a parent window goes through it.
      */
     asSheet<T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T>;
   };

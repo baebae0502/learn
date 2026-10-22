@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { clickToCloseSheet, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
+import { clickToCloseSheet, drag, dropSource, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -113,13 +113,36 @@ test('while an import runs, its controls are disabled with the reason as their t
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const pdf = fakePdf(testInfo.outputPath('src'), 'held.pdf', 'held');
   try {
-    await holdOpenDialog(s.app, [pdf]);
     const managed = s.page.getByTestId('import-managed');
+    // A dropped file's import runs while the window stays key (held in main here): the controls are disabled with the
+    // reason, which is their tooltip on hover.
+    await s.app.evaluate(({ ipcMain }) => {
+      const g = globalThis as { __learnReleaseImport?: () => void };
+      ipcMain.removeHandler('library:import');
+      ipcMain.handle('library:import', () => new Promise((resolve) => (g.__learnReleaseImport = () => resolve({ ok: true, data: [] }))));
+    });
+    await dropSource(s.page, [pdf]);
+    await drag(s.page, 'dragenter', 'source');
+    await drag(s.page, 'drop', 'source', { repeat: false });
+    // The first-run screen gives way to the import's progress; the toolbar's 가져오기 stays.
+    await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
+    await s.page.mouse.move(700, 880);
+    await s.page.getByTestId('import-menu').hover();
+    await expect(s.page.getByRole('tooltip')).toHaveText(BUSY);
+    await s.app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
+    await expectDisabledReason(managed, null); // nothing imported: the first-run screen is back
+    await s.page.mouse.move(700, 880);
+
+    // The import from 파일 가져오기… waits on its open panel, a sheet on the window (follow-up D): the controls are
+    // disabled with the reason as well, but the window is not key under the panel, so no tooltip shows on hover.
+    await holdOpenDialog(s.app, [pdf]);
     await managed.click();
     for (const id of ['import-managed', 'import-linked', 'import-menu']) await expectDisabledReason(s.page.getByTestId(id), BUSY);
-    await s.page.mouse.move(700, 880); // leave the button the click pressed, then come back: the tooltip opens on hover
+    await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await s.page.mouse.move(700, 880); // leave the button the click pressed, then come back
     await managed.hover();
-    await expect(s.page.getByRole('tooltip')).toHaveText(BUSY);
+    await s.page.waitForTimeout(900); // past the 600 ms hover delay
+    await expect(s.page.getByRole('tooltip')).toHaveCount(0);
     await releaseOpenDialog(s.app);
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
@@ -149,6 +172,49 @@ test('while an import runs, its controls are disabled with the reason as their t
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
     await title.click();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
+  } finally {
+    await s.app.close();
+  }
+});
+
+/** The 전체 화면 menu item (macOS only: elsewhere it is the togglefullscreen role, always there). */
+const fullScreenItemEnabled = (s: Session) =>
+  s.app.evaluate(({ Menu }) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById('menu.view.fullScreen');
+    return item ? item.enabled : null;
+  });
+
+test('under its own open panel (⌘O) the main window is not key — no ring, no tooltip — but stays main and held; after it, key again with its focus back (follow-up D)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const html = s.page.locator('html');
+  const managed = s.page.getByTestId('import-managed');
+  const ringed = () => managed.evaluate((el) => el === document.activeElement && getComputedStyle(el).outlineStyle !== 'none');
+  try {
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await managed.focus();
+    await s.page.keyboard.press('Shift+Tab');
+    await s.page.keyboard.press('Tab'); // keyboard focus on 파일 가져오기…: its ring
+    await expect.poll(ringed).toBe(true);
+    if (process.platform === 'darwin') expect(await fullScreenItemEnabled(s)).toBe(true);
+
+    // The panel is held open (a user still choosing): it hangs on the window as a sheet, as our own sheets do.
+    await holdOpenDialog(s.app, []);
+    await runMenuCommand(s.app, 'file.importManaged'); // ⌘O from the menu bar
+    await expect(html).toHaveAttribute('data-window-inactive', ''); // not key: no rings, no keyboard cursor
+    await expect(html).not.toHaveAttribute('data-window-not-main', ''); // still main: the chrome does not dim
+    expect(await html.getAttribute('data-tooltip-block')).toContain('inactive');
+    expect(await ringed()).toBe(false); // the focus stays on the button, without its ring
+    await expectDisabledReason(s.page.getByTestId('sidebar-toggle'), BUSY); // the window is held (n1)
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(false);
+    if (process.platform === 'darwin') expect(await fullScreenItemEnabled(s)).toBe(false); // 전체 화면 waits for the sheet
+
+    await releaseOpenDialog(s.app); // cancelled
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expect(managed).toBeFocused();
+    await expect.poll(ringed).toBe(true); // the ring is back where it was
+    await expectDisabledReason(s.page.getByTestId('sidebar-toggle'), null);
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
+    if (process.platform === 'darwin') await expect.poll(() => fullScreenItemEnabled(s)).toBe(true);
   } finally {
     await s.app.close();
   }

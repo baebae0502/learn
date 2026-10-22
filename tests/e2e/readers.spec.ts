@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, importPaths, launch, mainWindow, menuSnapshot, openItem, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -323,6 +323,37 @@ test('missing linked original: 다시 연결… first in the context menu and in
     await s.page.getByTestId('relink').click();
     await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expect(s.page.getByTestId('missing-notice')).toHaveCount(0);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('under 다시 연결…\'s open panel the window is held as under a sheet: not key, controls and menu refused; all back after (follow-up D)', async ({}, testInfo) => {
+  const src = testInfo.outputPath('src');
+  fs.mkdirSync(src, { recursive: true });
+  const file = path.join(src, 'linked.pdf');
+  fs.copyFileSync(PDF, file);
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const html = s.page.locator('html');
+  const busy = '진행 중인 작업이 끝나면 쓸 수 있습니다';
+  try {
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    fs.renameSync(file, path.join(src, 'moved.pdf'));
+    await openItem(s.page, 'linked');
+    await expect(s.page.getByTestId('missing-notice')).toBeVisible();
+    await expect.poll(() => menuItemEnabled(s.app, 'nav.back')).toBe(true);
+    await holdOpenDialog(s.app, []);
+    await s.page.getByTestId('relink').click();
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await expect(html).not.toHaveAttribute('data-window-not-main', '');
+    await expectDisabledReason(s.page.getByTestId('sidebar-toggle'), busy);
+    await expect.poll(() => menuItemEnabled(s.app, 'nav.back')).toBe(false); // ⌘1 waits for the panel, as for a sheet
+    await releaseOpenDialog(s.app); // cancelled: the notice stays
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expectDisabledReason(s.page.getByTestId('sidebar-toggle'), null);
+    await expect.poll(() => menuItemEnabled(s.app, 'nav.back')).toBe(true);
+    await expect(s.page.getByTestId('missing-notice')).toBeVisible();
   } finally {
     await s.app.close();
   }

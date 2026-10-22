@@ -71,6 +71,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     }
   }, []);
   const runImport = useImport(confirm);
+  /** 다시 연결…'s open panel is up: a sheet on this window (follow-up D), which holds it like ours do (blocked). */
+  const [relinking, setRelinking] = useState(false);
   /** ⌘/ asked for and not answered yet: from the request until the sheet has closed. */
   const [sheetRequested, setSheetRequested] = useState(false);
   /** Main says one of our sheets hangs over this window: pushed when it shows (windowState.sheetOpen). */
@@ -81,9 +83,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   // T13M-n4: until the sheet is on screen nothing greys — the window would read as lagging — but every command is
   // refused already (env.held), main's menu included.
   const held = sheetRequested && !sheetShown;
-  // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag. The registry
-  // (env.blocked), main's menu and the window's drop target follow this one value.
-  const blocked = importing || sheetOpen;
+  // Duplicate sheets wait inside the import, so `importing` covers them, and so is the open panel of 파일 가져오기…;
+  // the ⌘/ sheet and 다시 연결…'s open panel have their own flags. The registry (env.blocked), main's menu and the
+  // window's drop target follow this one value.
+  const blocked = importing || sheetOpen || relinking;
   // The one modal predicate (Task 12 polish): a surface that owns the keyboard — a sheet (⌘/ or a duplicate question),
   // the palette, the drop overlay. Work in progress is not one: during an import F6 still moves between panes, and only
   // these stop it. The keymap's `active` and the registry's `duringWork` rule both read this value, so they cannot
@@ -120,7 +123,12 @@ export function MainWindow(_props: { info: AppInfo }) {
         void queryClient.invalidateQueries({ queryKey: keys.items });
         return;
       }
-      await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+      setRelinking(true);
+      try {
+        await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+      } finally {
+        setRelinking(false);
+      }
     } catch (e) {
       actionFailed(e);
     }

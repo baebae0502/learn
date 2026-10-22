@@ -13,9 +13,15 @@ const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: '모든\u00a0파일', extensions: ['*'] },
 ];
 
-async function showOpen(event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
+/**
+ * The open panel, hung on the asking window as a sheet (macOS) through windows.asSheet, like the settings window's
+ * dialogs: the window stays main but is not key under it (no rings, no tooltips, 전체 화면 waits), and is re-read once
+ * it is key again (follow-up D: before, the main window kept its rings under its own ⌘O panel). Without a window the
+ * panel stands alone, as before.
+ */
+async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
   const win = BrowserWindow.fromWebContents(event.sender);
-  const res = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  const res = win ? await deps.windows.asSheet(win, () => dialog.showOpenDialog(win, options)) : await dialog.showOpenDialog(options);
   return res.canceled ? [] : res.filePaths;
 }
 
@@ -29,7 +35,7 @@ function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     const ctx = deps.getContext();
-    const paths = await showOpen(event, { title: '파일 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(deps, event, { title: '파일 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
     return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
   });
 
@@ -42,7 +48,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();
-    const [picked] = await showOpen(event, { title: '원본\u00a0파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
+    const [picked] = await showOpen(deps, event, { title: '원본\u00a0파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
     await relinkAsset(ctx.repo, assetId, picked);
     const itemIds = ctx.repo.itemIdsForAsset(assetId);

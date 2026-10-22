@@ -1108,6 +1108,18 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
     const prev = s.page.getByTestId('pdf-prev');
+    // What may hold a tooltip back (tooltipGate), and whether the page counts the window as key: before the key, when
+    // the tooltip is read, and after the capture (diagnostic run t14-diag3 drew the tooltip in the capture but read
+    // none within 3 s).
+    const gate = () =>
+      s.page.evaluate(() => ({
+        block: document.documentElement.dataset['tooltipBlock'] ?? null,
+        inactive: document.documentElement.hasAttribute('data-window-inactive'),
+        tooltips: document.querySelectorAll('[role="tooltip"]').length,
+      }));
+    // The window is key before the key press (the page says so); a window stuck inactive fails here, as in run 39631541294.
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+    const gateBefore = await gate();
     await s.page.getByTestId('pdf-next').focus();
     await s.page.keyboard.press('Shift+Tab');
     await expect(prev).toBeFocused();
@@ -1125,12 +1137,13 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
     const before = await ring();
     // R2-6c: the reason tooltip opens on keyboard focus (missing in run 39631541294 while the window was stuck inactive).
     await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
-    const reasonTooltip = await s.page.getByRole('tooltip').textContent().catch(() => null);
+    const gateAtRead = await gate();
+    const reasonTooltip = await s.page.getByRole('tooltip').first().textContent({ timeout: 1_000 }).catch(() => null);
     await nativeWindowShot(s.app, 'm3-10-soft-disabled-focus', 'PDF page 1: 이전 쪽 disabled with a reason, keyboard focus ring and its reason tooltip');
     const after = await ring();
-    results['softDisabledFocus'] = { before, afterWindowShot: after, reasonTooltip };
+    results['softDisabledFocus'] = { before, afterWindowShot: after, reasonTooltip, gate: { before: gateBefore, atRead: gateAtRead, afterShot: await gate() } };
     check('soft-disabled focus ring at full strength', before.focusVisible && before.outline.startsWith('solid') && before.opacity === '1' && after.focusVisible, { before, after });
-    check('the disabled reason shows as a tooltip (m3-10)', reasonTooltip?.includes('첫 쪽입니다') ?? false, { reasonTooltip });
+    check('the disabled reason shows as a tooltip (m3-10)', (reasonTooltip?.includes('첫 쪽입니다') ?? false) && gateAtRead.tooltips === 1, { reasonTooltip, gateAtRead });
   });
   if (await menuItemEnabled(s.app, 'nav.back')) await runMenuCommand(s.app, 'nav.back');
   await expect(s.page.getByTestId('library-table')).toBeVisible();

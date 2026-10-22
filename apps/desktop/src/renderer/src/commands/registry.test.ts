@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, type CommandId, type CommandTargetInfo } from '@learn/domain';
-import { COMMAND_HANDLERS, contextOf, isCommandEnabled, runCommand, runPicked, type CommandEnv } from './registry';
+import { COMMAND_HANDLERS, contextOf, isCommandEnabled, reportedContext, runCommand, runPicked, type CommandEnv } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const missingLinked: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
@@ -154,6 +154,24 @@ describe('renderer command registry', () => {
     expect(runPicked('item.relink', e, [ID])).toBe(true);
     expect(e.relink).toHaveBeenCalledWith(ID);
     expect(runPicked('item.open', env({ blocked: true }), [ID])).toBe(false);
+  });
+  it('a held window (a sheet asked for, not up yet) refuses what the sheet will refuse, but draws nothing disabled', () => {
+    const held = env({ held: true });
+    // Drawn as before: the toolbar and the list do not grey ahead of the sheet (T13M-n4).
+    expect(isCommandEnabled('file.importManaged', held)).toBe(true);
+    expect(isCommandEnabled('app.palette', held)).toBe(true);
+    // Judged as the blocked, modal window it is about to be.
+    for (const id of ['file.importManaged', 'app.palette', 'app.shortcuts', 'view.toggleSidebar', 'view.nextPane'] as const) {
+      expect(runCommand(id, held), id).toBe(false);
+    }
+    expect(held.importFiles).not.toHaveBeenCalled();
+    expect(held.showShortcuts).not.toHaveBeenCalled();
+    expect(held.focusPane).not.toHaveBeenCalled();
+    expect(runCommand('app.settings', held)).toBe(true); // main-owned: allowed under a sheet as well
+    expect(runPicked('item.relink', held, [ID])).toBe(false);
+    // Main's menu bar refuses them too.
+    expect(reportedContext(held)).toEqual({ view: 'library', blocked: true, textSize: 13 });
+    expect(reportedContext(env())).toEqual(contextOf(env()));
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);

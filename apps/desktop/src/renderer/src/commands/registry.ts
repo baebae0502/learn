@@ -30,6 +30,12 @@ export interface CommandEnv extends CommandContextState {
    * reported to main; it tells an import (blocked alone) from a modal surface for `duringWork` commands.
    */
   modal: boolean;
+  /**
+   * A sheet was asked for and is not on screen yet (T13M-n4). Commands are judged as in the blocked, modal window it
+   * is about to be, and main's menu bar is told so (reportedContext), but nothing is drawn disabled: the window does
+   * not grey before the sheet appears.
+   */
+  held?: boolean;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -65,6 +71,12 @@ export function contextOf(env: CommandEnv): CommandContextState {
   return { view: env.view, blocked: env.blocked, textSize: env.textSize, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
 }
 
+/** The window a command is judged in: a held one counts as the blocked, modal window it is about to be. */
+const judged = (env: CommandEnv): CommandEnv => (env.held ? { ...env, blocked: true, modal: true } : env);
+
+/** What main is told (ui.reportContext): a held window as blocked, so the menu bar refuses what the sheet will. */
+export const reportedContext = (env: CommandEnv): CommandContextState => contextOf(judged(env));
+
 export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
   if (!Object.hasOwn(COMMAND_HANDLERS, id)) return false;
   const itemIds = target.itemIds ?? [];
@@ -73,7 +85,7 @@ export function isCommandEnabled(id: CommandId, env: CommandEnv, target: Command
 
 /** Runs a command if it is available now; returns whether it ran. */
 export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
-  if (!isCommandEnabled(id, env, target)) return false;
+  if (!isCommandEnabled(id, judged(env), target)) return false;
   COMMAND_HANDLERS[id](env, target.itemIds ?? []);
   return true;
 }
@@ -83,7 +95,7 @@ export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget
  * one libraryChanged behind), so only the window-level block is checked here.
  */
 export function runPicked(id: CommandId, env: CommandEnv, itemIds: readonly string[]): boolean {
-  if (!Object.hasOwn(COMMAND_HANDLERS, id) || env.blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
+  if (!Object.hasOwn(COMMAND_HANDLERS, id) || judged(env).blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
   COMMAND_HANDLERS[id](env, itemIds);
   return true;
 }

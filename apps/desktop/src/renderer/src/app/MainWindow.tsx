@@ -17,6 +17,7 @@ import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
+import { useLearnEvent } from '../events';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DemoOverlay } from '../shell/DemoOverlay';
 import { DropOverlay } from '../shell/DropOverlay';
@@ -68,8 +69,16 @@ export function MainWindow(_props: { info: AppInfo }) {
     }
   }, []);
   const runImport = useImport(confirm);
+  /** ⌘/ asked for and not answered yet: from the request until the sheet has closed. */
+  const [sheetRequested, setSheetRequested] = useState(false);
+  /** Main says one of our sheets hangs over this window: pushed when it shows (windowState.sheetOpen). */
+  const [sheetShown, setSheetShown] = useState(false);
+  useLearnEvent('windowState', (state) => setSheetShown(state.sheetOpen));
   /** The ⌘/ sheet is modal: commands (and drops) stay disabled until it closes. */
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetOpen = sheetRequested && sheetShown;
+  // T13M-n4: until the sheet is on screen nothing greys — the window would read as lagging — but every command is
+  // refused already (env.held), main's menu included.
+  const held = sheetRequested && !sheetShown;
   // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag. The registry
   // (env.blocked), main's menu and the window's drop target follow this one value.
   const blocked = importing || sheetOpen;
@@ -79,13 +88,13 @@ export function MainWindow(_props: { info: AppInfo }) {
   // drift apart.
   const modal = sheetOpen || questionOpen || overlayOpen;
   const showShortcuts = useCallback(async () => {
-    setSheetOpen(true);
+    setSheetRequested(true);
     try {
       await unwrap(api().ui.showShortcuts());
     } catch (e) {
       actionFailed(e);
     } finally {
-      setSheetOpen(false);
+      setSheetRequested(false);
     }
   }, []);
 
@@ -147,6 +156,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const env: CommandEnv = {
     view: view.kind === 'reader' ? 'viewer' : 'library',
     blocked,
+    held,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
@@ -228,7 +238,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           <>
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
-            <DropOverlay enabled={view.kind === 'library' && !blocked} onDrop={onDrop} />
+            <DropOverlay enabled={view.kind === 'library' && !blocked && !held} onDrop={onDrop} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}

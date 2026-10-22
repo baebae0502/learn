@@ -137,6 +137,38 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
   }
 });
 
+test('the window greys only when the ⌘/ sheet is on screen; until then its commands are already refused (T13M-n4)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    // The next window's page becomes ready 1.5 s late: the sheet is asked for but not on screen yet.
+    await s.app.evaluate(({ app }) => {
+      app.once('browser-window-created', (_event, win) => {
+        const once = win.once.bind(win) as (event: string, listener: (...args: unknown[]) => void) => typeof win;
+        (win as unknown as { once: typeof once }).once = (event, listener) =>
+          once(event, event === 'ready-to-show' ? (...args) => void setTimeout(() => listener(...args), 1500) : listener);
+      });
+    });
+    const importMenu = s.page.getByTestId('import-menu');
+    await expect(importMenu).toBeEnabled();
+    const opened = s.app.waitForEvent('window');
+    await runMenuCommand(s.app, 'app.shortcuts');
+    // Main's menu bar refuses at once (the context says blocked) …
+    await expect.poll(() => menuItemEnabled(s.app, 'app.palette')).toBe(false);
+    expect(await menuItemEnabled(s.app, 'file.importManaged')).toBe(false);
+    // … but nothing in the window is drawn disabled before the sheet appears.
+    await expect(importMenu).toBeEnabled();
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive');
+    const sheet = await opened;
+    await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL().includes('window=sheet') && w.isVisible()))).toBe(true);
+    await expect(importMenu).toBeDisabled();
+    await closeSheet(sheet, 'Enter');
+    await expect(importMenu).toBeEnabled();
+    await expect.poll(() => menuItemEnabled(s.app, 'app.palette')).toBe(true);
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('sheet IPC refuses a caller that is not an open sheet', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

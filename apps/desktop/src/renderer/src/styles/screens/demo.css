@@ -1,0 +1,44 @@
+/* Demo overlay (LEARN_DEMO_OVERLAY=1, unpackaged builds only): pointer ring and shortcut pills for screen recordings. */
+@layer screens {
+  .demo-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100; /* local: above every surface, the palette (40), toasts (45) and the drop overlay (50) */
+    pointer-events: none;
+  }
+  .demo-pointer {
+    position: absolute;
+    width: 22px; /* local: demo only */
+    height: 22px; /* local: demo only */
+    margin: -11px 0 0 -11px; /* local: centred on the pointer */
+    border-radius: 50%;
+    box-shadow: 0 0 0 2px var(--focus), 0 0 0 4px color-mix(in oklch, var(--focus) 30%, transparent); /* local: demo only */
+  }
+  .demo-pointer[data-down] {
+    background: color-mix(in oklch, var(--focus) 35%, transparent);
+  }
+  /* Centred with auto margins, not a translate: rise-in animates translate, which would slide it in sideways. */
+  .demo-pill {
+    position: absolute;
+    inset-inline: 0;
+    bottom: var(--space-40);
+    width: max-content;
+    margin-inline: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    padding: var(--space-12) var(--space-20);
+    border-radius: var(--radius-pill);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e2);
+    color: var(--text-primary);
+    font: var(--type-title3);
+    animation: rise-in var(--duration-base) var(--ease-standard);
+  }
+  .demo-pill .kbd {
+    min-width: 28px; /* local: demo only, keycaps readable in a recording */
+    height: 28px; /* local: demo only */
+    padding: 0 var(--space-6);
+    font: var(--type-title3);
+  }
+}

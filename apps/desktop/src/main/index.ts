@@ -2,18 +2,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
 import {
-  COMMANDS, LearnError, availableMenuCommands, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId, type ErrorCode,
+  COMMANDS, LearnError, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId,
+  type ErrorCode,
 } from '@learn/domain';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
+import { isDemoOverlay } from './demo';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { DETERMINISTIC_SWITCHES, isDeterministic } from './deterministic';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
@@ -48,7 +50,7 @@ if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.comma
 /** Every window loads the same renderer; `?window=` picks what it shows (main, settings, sheet). */
 const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
 const vibrancy = shouldUseVibrancy(process.platform, process.env);
-const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: false };
+const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: isDemoOverlay(app.isPackaged, process.env) };
 const chrome = (): ChromeOptions => ({ platform: process.platform, theme: currentTheme(), vibrancy });
 
 registerAppScheme();
@@ -131,7 +133,10 @@ function installAppMenu(): void {
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
       fullScreenAvailable: mainWindow !== null && !mainWindow.isDestroyed() && !isSheetOpen(mainWindow),
       onToggleFullScreen: () => {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setFullScreen(!mainWindow.isFullScreen());
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+        const fullscreen = mainWindow.isFullScreen();
+        demoShortcut('Ctrl+Cmd+F', FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed']);
+        mainWindow.setFullScreen(!fullscreen);
       },
     }),
   );
@@ -161,6 +166,14 @@ function setUiContext(next: CommandContextState): void {
   if (relabel) applyMenuLabels(appMenu, process.platform, { ...(next.sidebar ? { sidebar: next.sidebar } : {}) });
 }
 
+/**
+ * Demo recordings only: a menu item main runs itself ran (no menuCommand reaches the renderer for it), so the main
+ * window's demo overlay shows its shortcut. Nothing is sent without the overlay.
+ */
+function demoShortcut(accelerator: string, label: string): void {
+  if (urlOptions.demo && mainWindow && !mainWindow.isDestroyed()) sendEvent(mainWindow.webContents, 'demoShortcut', { accelerator, label });
+}
+
 /** The main window's renderer (sheets and the settings window are other windows). */
 const isMainWindow = (sender: WebContents): boolean => mainWindow !== null && !mainWindow.isDestroyed() && sender.id === mainWindow.webContents.id;
 /** The settings window's renderer: the only caller of the library-location channels. */
@@ -175,6 +188,8 @@ const isSettingsWindow = (sender: WebContents): boolean => {
  */
 function dispatchMenuCommand(commandId: CommandId): void {
   if (commandId === 'app.settings') {
+    const c = commandById('app.settings');
+    demoShortcut(c.accelerator!, commandLabel(c, process.platform));
     settingsWindow.open();
     return;
   }

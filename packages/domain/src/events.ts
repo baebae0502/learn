@@ -30,4 +30,9 @@ export interface LearnEventMap {
   prefsChanged: { prefs: Prefs };
   /** A menu-bar menu opened or closed (the window stays key on macOS): tooltips close while one is open. */
   nativeMenu: { open: boolean };
+  /**
+   * Demo recordings only (LEARN_DEMO_OVERLAY=1, unpackaged): a menu item that main runs itself — 설정… and the macOS
+   * 전체 화면, which send no menuCommand — ran, so the demo overlay can show its shortcut. Never sent otherwise.
+   */
+  demoShortcut: { accelerator: string; label: string };
 }

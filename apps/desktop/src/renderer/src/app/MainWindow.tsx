@@ -18,6 +18,7 @@ import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
+import { DemoOverlay } from '../shell/DemoOverlay';
 import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
@@ -27,6 +28,7 @@ import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell
 import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
+import { readWindowParams } from '../ui/platform';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
@@ -228,6 +230,8 @@ export function MainWindow(_props: { info: AppInfo }) {
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
             <DropOverlay enabled={view.kind === 'library' && !blocked} onDrop={onDrop} />
             <Toasts />
+            {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
+            {readWindowParams(location.search).demo && <DemoOverlay />}
           </>
         }
       >

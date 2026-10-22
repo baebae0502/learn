@@ -6,6 +6,7 @@ export const EventChannels = {
   settingsChanged: 'evt:settings-changed',
   prefsChanged: 'evt:prefs-changed',
   nativeMenu: 'evt:native-menu',
+  demoShortcut: 'evt:demo-shortcut',
 } as const;
 
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

@@ -25,6 +25,17 @@
     flex-wrap: wrap;
     gap: var(--space-8);
   }
+  .gallery .g-notices {
+    gap: var(--space-24);
+  }
+  .gallery .g-notice {
+    margin: 0;
+    gap: var(--space-8);
+  }
+  .gallery .g-notice figcaption {
+    font: var(--type-footnote);
+    color: var(--text-secondary);
+  }
   .gallery .g-label {
     width: 120px;
     color: var(--text-tertiary);

@@ -151,6 +151,10 @@
   .settings .theme-tile .lights b:nth-child(3) {
     background: #28c840; /* local: macOS zoom */
   }
+  /* Only a Mac window has traffic lights: elsewhere the miniature has none either (critic T14-n6). */
+  :root:not([data-platform='darwin']) .settings .theme-tile .lights {
+    display: none;
+  }
 
   /* Library location: a read-only path (no field chrome), the full path in its tooltip, cut at the end. */
   .settings .path-box {

@@ -23,7 +23,8 @@ const MAC_KEY: Readonly<Record<string, string>> = {
   Plus: '+', '-': '−', Enter: '↩', Return: '↩', Escape: 'esc', Esc: 'esc', Backspace: '⌫', Delete: '⌦', Tab: '⇥',
   Up: '↑', Down: '↓', Left: '←', Right: '→',
 };
-const OTHER_KEY: Readonly<Record<string, string>> = { Plus: '+', Return: 'Enter', Escape: 'Esc', Up: '↑', Down: '↓', Left: '←', Right: '→' };
+/** The minus key shows as U+2212 everywhere, beside + (critic T14-n5); display only, the accelerators stay '-'. */
+const OTHER_KEY: Readonly<Record<string, string>> = { Plus: '+', '-': '−', Return: 'Enter', Escape: 'Esc', Up: '↑', Down: '↓', Left: '←', Right: '→' };
 
 const split = (acc: string): { mods: string[]; key: string } => {
   const parts = acc.split('+');

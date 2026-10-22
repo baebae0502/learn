@@ -38,7 +38,7 @@ describe('accelerators', () => {
     expect(acceleratorKeys('Alt+CmdOrCtrl+O', 'linux')).toEqual(['Ctrl', 'Alt', 'O']);
     expect(acceleratorKeys('Ctrl+Cmd+S', 'linux')).toEqual(['Ctrl', 'Shift', 'S']);
     expect(acceleratorKeys('CmdOrCtrl+Plus', 'win32')).toEqual(['Ctrl', '+']);
-    expect(acceleratorKeys('CmdOrCtrl+-', 'linux')).toEqual(['Ctrl', '-']);
+    expect(acceleratorKeys('CmdOrCtrl+-', 'linux')).toEqual(['Ctrl', '−']); // U+2212, as on macOS (display only)
     expect(acceleratorLabel('Alt+CmdOrCtrl+O', 'linux')).toBe('Ctrl+Alt+O');
   });
   it('draws a modifier held on its own (⌥ on a drop links) as its keycap', () => {

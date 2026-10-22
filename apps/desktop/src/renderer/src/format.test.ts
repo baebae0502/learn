@@ -27,10 +27,17 @@ describe('format (design-spec 9)', () => {
     expect(msUntilMidnight(new Date(2026, 9, 21, 0, 0, 0, 0))).toBe(24 * 3600 * 1000);
     expect(msUntilMidnight(new Date(2026, 11, 31, 12, 0))).toBe(12 * 3600 * 1000);
   });
-  it('keeps one decimal below 10 units', () => {
-    expect(formatSize(4_404_019)).toBe('4.2 MB');
-    expect(formatSize(2_576_980_378)).toBe('2.4 GB');
+  it('decimal units as Finder shows them, one decimal below 10 (critic T14-n8)', () => {
     expect(formatSize(512)).toBe('512 B');
+    expect(formatSize(999)).toBe('999 B');
+    expect(formatSize(1000)).toBe('1.0 KB');
+    expect(formatSize(1761)).toBe('1.8 KB'); // the fixture PDF
+    expect(formatSize(204_293)).toBe('204 KB'); // Finder says 204 KB (binary units said 200 KB)
+    expect(formatSize(4_404_019)).toBe('4.4 MB');
+    expect(formatSize(2_576_980_378)).toBe('2.6 GB');
+    expect(formatSize(9_960)).toBe('10 KB'); // rounds to 10: whole, not "10.0"
+    expect(formatSize(999_600)).toBe('1.0 MB'); // never "1000 KB"
+    expect(formatSize(1_000_000_000_000)).toBe('1.0 TB');
   });
 });
 

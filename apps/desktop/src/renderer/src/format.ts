@@ -1,15 +1,22 @@
 import { t } from './strings';
 
+/**
+ * A file size in decimal units, as Finder shows it (macOS since 10.6) on every platform: 1 KB = 1000 B (critic
+ * T14-n8; Finder에서 보기 is one click away). One decimal under 10, none above; a value that rounds up to 1000 moves
+ * to the next unit ("1.0 MB", never "1000 KB").
+ */
 export function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1000) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
-  let v = bytes / 1024;
+  /** The number as shown: one decimal while it reads under 10 once rounded, else whole. */
+  const shown = (x: number) => (Number(x.toFixed(1)) < 10 ? x.toFixed(1) : x.toFixed(0));
+  let v = bytes / 1000;
   let i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
+  while (Number(shown(v)) >= 1000 && i < units.length - 1) {
+    v /= 1000;
     i++;
   }
-  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+  return `${shown(v)} ${units[i]}`;
 }
 
 /** The local calendar day of `d` (what 오늘/어제 compare). */

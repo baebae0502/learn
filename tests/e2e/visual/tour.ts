@@ -24,6 +24,24 @@ export async function launchTour(dir: string, env: Record<string, string> = {}):
   return s;
 }
 
+/**
+ * A video fixture zero-extended to a fixed size, kept under its own name (the title comes from it). The fixtures are
+ * encoded by the machine's ffmpeg, whose output size differs between this server's Debian and CI's Ubuntu, and the
+ * table shows sizes in decimal units (critic T14-n8), where a few hundred bytes can change the figure. The header is
+ * intact, so it imports as the same kind (and the MPEG-4 Part 2 file is still refused by the player).
+ */
+export function fixedSizeCopy(src: string, dir: string, bytes: number): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const copy = path.join(dir, path.basename(src));
+  fs.copyFileSync(src, copy);
+  if (fs.statSync(copy).size > bytes) throw new Error(`${path.basename(src)} outgrew its tour size (${bytes} B)`);
+  fs.truncateSync(copy, bytes);
+  return copy;
+}
+
+/** The tour's video sizes: 4.2 MB and 300 KB wherever they are shown. */
+export const TOUR_VIDEO_BYTES = { h264: 4_200_000, mpeg4: 300_000 } as const;
+
 export async function setTheme(page: Page, theme: TourTheme): Promise<void> {
   await page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
   await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');

@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
-import { THEMES, launchTour, setTheme, shoot } from './tour';
+import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
 
@@ -26,7 +26,14 @@ test('component state board (gallery parts 1–2)', async ({}, testInfo) => {
   }
 });
 
-const LIBRARY = ['sample.pdf', '한글 경로 (테스트) #1.pdf', 'sample-h264-aac.mp4', 'sample-mpeg4part2.mp4'].map((f) => path.join(FIXTURES, f));
+/** The video fixtures at fixed sizes in `dir` (their table sizes read the same on every machine). */
+const h264 = (dir: string) => fixedSizeCopy(path.join(FIXTURES, 'sample-h264-aac.mp4'), dir, TOUR_VIDEO_BYTES.h264);
+const library = (dir: string) => [
+  path.join(FIXTURES, 'sample.pdf'),
+  path.join(FIXTURES, '한글 경로 (테스트) #1.pdf'),
+  h264(dir),
+  fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), dir, TOUR_VIDEO_BYTES.mpeg4),
+];
 
 test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
@@ -36,6 +43,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
       await setTheme(s.page, theme);
       await shoot(s.page, `empty-${theme}`);
     }
+    const LIBRARY = library(testInfo.outputPath('videos'));
     await importPaths(s.page, LIBRARY);
     // A linked file that went missing: the row shows the link mark and the 파일 없음 flag.
     const gone = testInfo.outputPath('gone.pdf');
@@ -89,7 +97,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
 test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {
-    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     await setTheme(s.page, 'light');
     await s.page.keyboard.press('F6');
     await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-col="added"]')] });
@@ -221,7 +229,7 @@ test('settings window (light, dark, focus, not key, a refused folder), compact d
   const s = await launchTour(path.join(home, 'Library', 'Application Support', 'Learn'), { HOME: home });
   const dates = () => [s.page.locator('[data-col="added"]')];
   try {
-    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
@@ -280,12 +288,8 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
   const home = tourHome(testInfo.outputPath());
   const s = await launchTour(home, { HOME: home });
   try {
-    // The unplayable fixture is encoded by the machine's ffmpeg (its size differs between Debian and CI's Ubuntu):
-    // a copy zero-extended to a fixed size shows the same "293 KB" everywhere and is still refused as MPEG-4 Part 2.
-    const unplayable = path.join(home, 'sample-mpeg4part2.mp4');
-    fs.copyFileSync(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), unplayable);
-    if (fs.statSync(unplayable).size >= 300_000) throw new Error('the MPEG-4 fixture outgrew the tour size');
-    fs.truncateSync(unplayable, 300_000);
+    // The unplayable fixture at a fixed size: "300 KB" everywhere, still refused as MPEG-4 Part 2.
+    const unplayable = fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), home, TOUR_VIDEO_BYTES.mpeg4);
     const broken = path.join(home, 'broken.pdf');
     fs.writeFileSync(broken, '%PDF-1.4\n% not a real document\n%%EOF\n'); // passes the import's type check, pdf.js rejects it
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), unplayable, broken]);

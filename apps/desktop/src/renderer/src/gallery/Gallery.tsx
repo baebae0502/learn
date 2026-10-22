@@ -5,7 +5,7 @@ import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
 import { MENU_SEPARATOR, MenuButton, MenuList, type MenuEntry } from '../ui/MenuButton';
-import { Notice } from '../ui/Notice';
+import { NoticeGlyph } from '../ui/Notice';
 import { readWindowParams } from '../ui/platform';
 import { SearchField } from '../ui/SearchField';
 import { Segmented } from '../ui/Segmented';
@@ -159,9 +159,10 @@ function Part1() {
           <Kbd accelerator="Alt+CmdOrCtrl+O" />
           <Kbd accelerator="Ctrl+Cmd+S" />
           <Kbd accelerator="CmdOrCtrl+/" />
-          <Kbd keys={['↑', '↓']} />
-          <Kbd keys={['↩']} />
-          <Kbd keys={['esc']} />
+          {/* As the screens draw them (critic T14-n4): the platform's spelling through acceleratorKeys, ↑ ↓ as alternatives. */}
+          <Kbd keys={['↑', '↓']} alternatives />
+          <Kbd accelerator="Enter" />
+          <Kbd accelerator="Escape" />
         </div>
       </section>
       <section>
@@ -223,10 +224,20 @@ function Part2() {
       </section>
       <section>
         <h2 className="g-title">안내 타일</h2>
-        <div className="g-row">
-          <Notice icon={VideoOff} title="재생할 수 없습니다" />
-          <Notice tone="warning" icon={Link2Off} title="원본 없음" />
-          <Notice tone="accent" icon={LibraryBig} title="빈 라이브러리" />
+        {/* The three meanings of the 56 px tile, each captioned in footnote (critic T14-n4: title2 captions ran together). */}
+        <div className="g-row g-notices">
+          {(
+            [
+              ['neutral', VideoOff, '중립 · 재생 불가'],
+              ['warning', Link2Off, '주의 · 원본 없음'],
+              ['accent', LibraryBig, '강조 · 빈 라이브러리'],
+            ] as const
+          ).map(([tone, icon, caption]) => (
+            <figure className="notice g-notice" key={tone}>
+              <NoticeGlyph tone={tone} icon={icon} />
+              <figcaption>{caption}</figcaption>
+            </figure>
+          ))}
         </div>
       </section>
       <section>

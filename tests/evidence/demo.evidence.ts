@@ -164,14 +164,29 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
         if (!w) throw new Error(`no ${kind} window`);
         return w.getContentBounds();
       }, kind);
+    const drawnCursor = (p: Page, shown: boolean) =>
+      p.isClosed() ? Promise.resolve() : p.evaluate((hidden) => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail: { hidden } })), !shown).catch(() => {});
     /** Hides the overlay's own cursor in every demo window (the system cursor is the one pointer, T13-M8 b). */
     const hideDrawnCursor = async () => {
-      for (const p of [page, ...settingsPages]) {
-        if (!p.isClosed()) await p.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail: { hidden: true } }))).catch(() => {});
-      }
+      for (const p of [page, ...settingsPages]) await drawnCursor(p, false);
+    };
+    /**
+     * One pointer across windows: the window the pointer is in draws it, the one it left does not (each window's overlay
+     * keeps its last position, so it would show a second cursor there). 'elsewhere': another app's window (Finder).
+     */
+    let pointerIn: WindowKind | 'elsewhere' = 'main';
+    const pageOf = (kind: WindowKind | 'elsewhere') => (kind === 'main' ? page : kind === 'settings' ? settingsPages.at(-1) : undefined);
+    const pointerTo = async (kind: WindowKind | 'elsewhere') => {
+      if (kind === pointerIn) return;
+      const left = pageOf(pointerIn);
+      if (left) await drawnCursor(left, false);
+      const entered = pageOf(kind);
+      if (entered && cursor !== 'warp') await drawnCursor(entered, true);
+      pointerIn = kind;
     };
     /** Moves the pointer to (x, y) of a window's page, as the current cursor mode does it. */
     const glide = async (p: Page, kind: WindowKind, x: number, y: number) => {
+      await pointerTo(kind);
       if (cursor !== 'synthetic') {
         const o = await originOf(kind);
         const r = await glideCursor({ x: o.x + x, y: o.y + y }).catch((e: unknown) => {
@@ -540,7 +555,10 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
           const top = Math.min(b.y + b.height * 0.3, d.y + d.height - 320);
           openFinderWindow([left, top, left + 420, top + 300]);
           await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
-          if (cursor !== 'synthetic') await glideCursor({ x: left + 210, y: top + 150 });
+          if (cursor !== 'synthetic') {
+            await pointerTo('elsewhere');
+            await glideCursor({ x: left + 210, y: top + 150 });
+          }
           await pause(4000);
           closeFinderWindow();
           await bringAppToFront(app);

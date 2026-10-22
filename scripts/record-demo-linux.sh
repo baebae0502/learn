@@ -115,7 +115,7 @@ d = json.load(open(sys.argv[1], encoding='utf-8'))
 offset, end = float(d.get('offset') or 0), float(sys.argv[2])
 starts = [max(0.0, c['ms'] / 1000 - offset) for c in d['chapters']]
 picks = [min(s + 3, (s + (starts[i + 1] if i + 1 < len(starts) else end)) / 2) for i, s in enumerate(starts)]
-print('+'.join(f'between(t,{t:.3f},{t + 1 / 30:.3f})' for t in picks))
+print('+'.join(f'gte(t,{t:.4f})*lt(t,{t + 1 / 30:.4f})' for t in picks))  # [t, t + 1 frame): exactly one frame each
 PY
 )
 ffmpeg -v error -y -i "$VIDEO" -vf "select='$SELECT'" -fps_mode vfr -start_number 1 "$OUT/frames/ch-%02d.png"

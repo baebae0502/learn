@@ -66,3 +66,26 @@ export function failureLines(failed: ImportReport['failed'], max = 3): { lines: 
   const hints = [...new Set(failed.map((f) => splitMessage(f.message)[1]).filter(Boolean))];
   return { lines, hints };
 }
+
+/** How long an import waits for the list to show what it brought before it ends anyway (re-review minor 2). */
+export const LIST_REFRESH_WAIT_MS = 3000;
+
+/**
+ * Resolves when `work` settles (either way) or after `ms`, whichever is first: a list read that never answers cannot
+ * hold the import, and with it the window's commands, for good.
+ */
+export async function settledWithin(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  try {
+    const settled = work.then(
+      () => undefined,
+      () => undefined,
+    );
+    await Promise.race([settled, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ImportOutcome, LibraryItem } from '@learn/domain';
-import { failureLines, settleImport } from './import-flow';
+import { LIST_REFRESH_WAIT_MS, failureLines, settleImport, settledWithin } from './import-flow';
 
 const item = (id: string) => ({ id }) as LibraryItem;
 const imported = (path: string, id: string): ImportOutcome => ({ status: 'imported', path, item: item(id) });
@@ -50,5 +50,26 @@ describe('failureLines', () => {
       lines: [...['a.txt', 'b.txt', 'c.txt'].map((name) => ({ name, cause: '지원하지 않는 형식입니다.' })), '외 3개'],
       hints: ['지금은 PDF와\u00a0동영상(MP4·MOV·WebM)을 가져올\u00a0수 있습니다.', '다시 가져오세요.'],
     });
+  });
+});
+
+describe('settledWithin (the list refresh at the end of an import)', () => {
+  it('resolves with the work, whether it succeeds or fails', async () => {
+    await expect(settledWithin(Promise.resolve(1), 1000)).resolves.toBeUndefined();
+    await expect(settledWithin(Promise.reject(new Error('read failed')), 1000)).resolves.toBeUndefined();
+  });
+  it('resolves after the limit when the work never answers (3 s for the list)', async () => {
+    vi.useFakeTimers();
+    try {
+      let done = false;
+      void settledWithin(new Promise(() => {}), LIST_REFRESH_WAIT_MS).then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(LIST_REFRESH_WAIT_MS - 1);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(LIST_REFRESH_WAIT_MS).toBe(3000);
   });
 });

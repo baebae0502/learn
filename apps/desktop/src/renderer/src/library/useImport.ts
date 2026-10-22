@@ -6,7 +6,7 @@ import { queryClient } from '../data/query-client';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { showToast } from '../ui/toasts';
-import { failureLines, settleImport, type ImportFlowDeps } from './import-flow';
+import { LIST_REFRESH_WAIT_MS, failureLines, settleImport, settledWithin, type ImportFlowDeps } from './import-flow';
 
 /** Runs one import end to end: dialog/copy in main, duplicate questions, result toasts; commands stay disabled meanwhile. */
 export function useImport(confirm: ImportFlowDeps['confirm']) {
@@ -24,7 +24,8 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
         });
         // The import ends when the list shows what it brought: otherwise the empty library's own screen (with its
         // buttons) flashes between the busy screen and the first rows (critique T13R2-m1).
-        if (report.imported > 0) await queryClient.invalidateQueries({ queryKey: keys.items });
+        // At most LIST_REFRESH_WAIT_MS: a wedged list read must never hold the import (and the window) for good.
+        if (report.imported > 0) await settledWithin(queryClient.invalidateQueries({ queryKey: keys.items }), LIST_REFRESH_WAIT_MS);
         if (report.imported > 0) showToast({ kind: 'success', title: (mode === 'linked' ? t.toast.linked : t.toast.imported)(report.imported), testId: 'import-done' });
         if (report.failed.length > 0) {
           const { lines, hints } = failureLines(report.failed);

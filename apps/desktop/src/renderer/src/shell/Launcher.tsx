@@ -1,6 +1,6 @@
 import { Search } from 'lucide-react';
 import { Button as AriaButton } from 'react-aria-components';
-import { acceleratorLabel, commandById } from '@learn/domain';
+import { ariaKeyShortcuts, commandById } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { t } from '../strings';
 import { useDisabledReason, withoutPresses } from '../ui/disabledReason';
@@ -19,6 +19,7 @@ export function Launcher({ testId = 'launcher' }: { testId?: string }) {
   const command = commandById('app.palette');
   const accelerator = command.accelerator!;
   const reason = useDisabledReason(!isEnabled(command.id), t.common.busy);
+  const keyShortcuts = ariaKeyShortcuts(accelerator, currentPlatform());
   return (
     <>
       <Tooltip label={t.common.busy} isDisabled={!reason.soft}>
@@ -26,8 +27,11 @@ export function Launcher({ testId = 'launcher' }: { testId?: string }) {
           {...withoutPresses({ onPress: () => run(command.id) }, reason.soft)}
           {...reason.controlProps}
           className="field launcher"
-          aria-label={`${t.shell.launcher} (${acceleratorLabel(accelerator, currentPlatform())})`}
           aria-haspopup="dialog"
+          // Named by its visible text (WCAG 2.5.3, axe label-content-name-mismatch: a name that adds "(⌘K)" while the
+          // keycaps are drawn as "⌘K" beside the text does not contain the label as shown); the shortcut has its own
+          // attribute, which RAC does not pass through, and the menu bar lists it too.
+          render={(props) => <button {...props} aria-keyshortcuts={keyShortcuts} />}
           data-testid={testId}
         >
           <Icon icon={Search} size="sm" />

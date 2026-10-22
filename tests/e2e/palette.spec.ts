@@ -40,7 +40,9 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
     await stubOpenDialog(app, []);
     // M3 finds commands only, and the launcher says so, like the palette's own field (critic T9-m1).
     await expect(page.getByTestId('launcher')).toContainText('명령 검색');
-    await expect(page.getByTestId('launcher')).toHaveAccessibleName(`명령 검색 (${IS_MAC ? '⌘K' : 'Ctrl+K'})`);
+    // Named by its visible text (WCAG 2.5.3, axe); the shortcut is aria-keyshortcuts (Task 12).
+    await expect(page.getByTestId('launcher')).toHaveAccessibleName('명령 검색');
+    await expect(page.getByTestId('launcher')).toHaveAttribute('aria-keyshortcuts', IS_MAC ? 'Meta+K' : 'Control+K');
     await page.getByTestId('launcher').click();
     await expect(page.getByTestId('palette')).toBeVisible();
     await expect(page.getByTestId('palette-input')).toHaveAttribute('placeholder', '명령 검색');

@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { acceleratorKeys, acceleratorLabel, keySpecKeys, platformAccelerator } from '../src/accelerator';
+import { acceleratorKeys, acceleratorLabel, ariaKeyShortcuts, keySpecKeys, platformAccelerator } from '../src/accelerator';
 
 describe('accelerators', () => {
+  it('spells an accelerator for aria-keyshortcuts (KeyboardEvent.key names, Meta for ⌘)', () => {
+    expect(ariaKeyShortcuts('CmdOrCtrl+K', 'darwin')).toBe('Meta+K');
+    expect(ariaKeyShortcuts('CmdOrCtrl+K', 'linux')).toBe('Control+K');
+    expect(ariaKeyShortcuts('Alt+CmdOrCtrl+O', 'darwin')).toBe('Alt+Meta+O');
+    expect(ariaKeyShortcuts('Ctrl+Cmd+S', 'darwin')).toBe('Control+Meta+S');
+    expect(ariaKeyShortcuts('Ctrl+Cmd+S', 'win32')).toBe('Control+Shift+S');
+    expect(ariaKeyShortcuts('CmdOrCtrl+Plus', 'darwin')).toBe('Meta+Plus');
+    expect(ariaKeyShortcuts('CmdOrCtrl+/', 'linux')).toBe('Control+/');
+    expect(ariaKeyShortcuts('Escape', 'darwin')).toBe('Escape');
+  });
   it('maps ⌃⌘ combinations to Ctrl+Shift off macOS and leaves the rest', () => {
     expect(platformAccelerator('Ctrl+Cmd+S', 'linux')).toBe('Ctrl+Shift+S');
     expect(platformAccelerator('Ctrl+Cmd+S', 'darwin')).toBe('Ctrl+Cmd+S');

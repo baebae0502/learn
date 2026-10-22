@@ -62,6 +62,21 @@ export function acceleratorLabel(accelerator: string, platform: string): string 
   return platform === 'darwin' ? keys.join('') : keys.join('+');
 }
 
+const ARIA_MODIFIER: Readonly<Record<string, string>> = {
+  Ctrl: 'Control', Control: 'Control', Alt: 'Alt', Option: 'Alt', Shift: 'Shift', Cmd: 'Meta', Command: 'Meta', Super: 'Meta', Meta: 'Meta',
+};
+
+/**
+ * The accelerator as `aria-keyshortcuts` spells it (KeyboardEvent.key names joined by "+", ⌘ is Meta, "+" itself is
+ * Plus): how a control whose label stays the visible text tells assistive technology its shortcut.
+ */
+export function ariaKeyShortcuts(accelerator: string, platform: string): string {
+  const { mods, key } = split(platformAccelerator(accelerator, platform));
+  const either = platform === 'darwin' ? 'Meta' : 'Control';
+  const names = mods.map((m) => (m === 'CmdOrCtrl' || m === 'CommandOrControl' ? either : (ARIA_MODIFIER[m] ?? m)));
+  return [...names, key.length === 1 ? key.toUpperCase() : key].join('+');
+}
+
 export function keySpecKeys(key: KeySpec, platform: string): string[] {
   const name = key.code.startsWith('Key') ? key.code.slice(3) : key.code.startsWith('Digit') ? key.code.slice(5) : key.code;
   return key.shift ? [platform === 'darwin' ? '⇧' : 'Shift', name] : [name];

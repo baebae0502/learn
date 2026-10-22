@@ -145,7 +145,9 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
           </span>
         </label>
       </div>
-      <div className="pdf-stage" tabIndex={0} aria-label={t.reader.pdfStage}>
+      {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing
+          (axe aria-prohibited-attr). */}
+      <div className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage}>
         <div className="pdf-page-wrap">
           <canvas ref={canvasRef} data-testid="pdf-canvas" data-rendered={rendered} />
         </div>

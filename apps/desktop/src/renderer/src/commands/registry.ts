@@ -23,6 +23,8 @@ export interface CommandEnv extends CommandContextState {
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
   setTextSize(update: TextSizeUpdate): void;
+  /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
+  focusPane(direction: 1 | -1): void;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -49,6 +51,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.textBigger': (env) => env.setTextSize((size) => clampTextSize(size + 1)),
   'view.textSmaller': (env) => env.setTextSize((size) => clampTextSize(size - 1)),
   'view.textReset': (env) => env.setTextSize(() => 13),
+  'view.nextPane': (env) => env.focusPane(1),
+  'view.previousPane': (env) => env.focusPane(-1),
 };
 
 /** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */

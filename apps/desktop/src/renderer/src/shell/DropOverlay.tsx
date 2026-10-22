@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, Download, Link } from 'lucide-react';
 import { api } from '../api';
 import { closePalette } from '../palette/Palette';
@@ -26,6 +26,12 @@ export function DropOverlay({ enabled, onDrop }: { enabled: boolean; onDrop: Win
   useEffect(() => {
     onDropRef.current = onDrop;
   });
+  // While it covers the window it owns the keyboard: the keymap's F6 does nothing (MainWindow, commands/keymap.ts).
+  const shown = state !== null;
+  useLayoutEffect(() => {
+    useShell.getState().setDropOverlay(shown);
+    return () => useShell.getState().setDropOverlay(false);
+  }, [shown]);
   useEffect(() => {
     if (!enabled) return;
     const target = windowDropTarget({

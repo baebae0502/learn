@@ -12,11 +12,14 @@ export interface ShellState {
   paletteOpen: boolean;
   /** What had the focus when this opening of the palette began (a picked command runs from it); null while closed. */
   paletteOpener: Element | null;
+  /** Files are being dragged over the window and the drop overlay covers it (shell/DropOverlay.tsx). */
+  dropOverlay: boolean;
   setView(view: View): void;
   setSidebar(sidebar: SidebarState): void;
   setImporting(importing: boolean): void;
   /** Opening records the opener; closing forgets it. */
   setPaletteOpen(open: boolean, opener?: Element | null): void;
+  setDropOverlay(shown: boolean): void;
 }
 
 export const useShell = create<ShellState>()((set) => ({
@@ -25,8 +28,10 @@ export const useShell = create<ShellState>()((set) => ({
   importing: false,
   paletteOpen: false,
   paletteOpener: null,
+  dropOverlay: false,
   setView: (view) => set({ view }),
   setSidebar: (sidebar) => set({ sidebar }),
   setImporting: (importing) => set({ importing }),
   setPaletteOpen: (paletteOpen, opener = null) => set({ paletteOpen, paletteOpener: paletteOpen ? opener : null }),
+  setDropOverlay: (dropOverlay) => set({ dropOverlay }),
 }));

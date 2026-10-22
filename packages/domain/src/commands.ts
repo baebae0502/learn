@@ -20,7 +20,9 @@ export type CommandId =
   | 'app.settings'
   | 'view.textBigger'
   | 'view.textSmaller'
-  | 'view.textReset';
+  | 'view.textReset'
+  | 'view.nextPane'
+  | 'view.previousPane';
 /** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
@@ -100,6 +102,10 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'], keywords: ['글자', '크게', '확대', 'font', 'bigger'] },
   { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'], keywords: ['글자', '작게', '축소', 'font', 'smaller'] },
   { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'], keywords: ['글자', '기본', 'font', 'reset'] },
+  // F6 / ⇧F6 (design-spec 8.3): the renderer keymap moves the focus between panes, also out of a text field. No menu
+  // item and not in the palette; the ⌘/ sheet lists them under 앱.
+  { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false },
+  { id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false },
   // Last (R-10): menu-bar and palette lists keep this order; `menu` puts it at the head of 보기. Not in its own list.
   { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];

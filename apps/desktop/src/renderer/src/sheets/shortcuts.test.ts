@@ -19,9 +19,14 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(dialogKeys('darwin')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['↩'], '↩'], ['닫기', ['esc'], 'esc']]);
     expect(dialogKeys('linux')).toEqual([['이동', ['↑', '↓'], '↑ ↓'], ['실행', ['Enter'], 'Enter'], ['닫기', ['Esc'], 'Esc']]);
   });
-  it('lists the app commands in design-spec 7.4 order (⌘, ⌘K ⌘/ ⌃⌘S), whatever the registry order (R-10)', () => {
+  it('lists the app commands in design-spec 7.4 order (⌘, ⌘K ⌘/ ⌃⌘S), whatever the registry order (R-10), then F6 / ⇧F6 (8.3)', () => {
     const app = shortcutGroups('darwin')[0]!;
-    expect(app.rows.map((r) => r.label)).toEqual(['설정…', '명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기']);
+    expect(app.rows.map((r) => r.label)).toEqual(['설정…', '명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기', '다음 패널로 이동', '이전 패널로 이동']);
+    expect(app.rows.slice(-2)).toEqual([
+      { label: '다음 패널로 이동', keys: ['F6'], spoken: 'F6' },
+      { label: '이전 패널로 이동', keys: ['⇧', 'F6'], spoken: '⇧F6' },
+    ]);
+    expect(shortcutGroups('linux')[0]!.rows.at(-1)).toEqual({ label: '이전 패널로 이동', keys: ['Shift', 'F6'], spoken: 'Shift+F6' });
     expect(app.rows[0]).toEqual({ label: '설정…', keys: ['⌘', ','], spoken: '⌘,' });
     expect(app.rows[1]).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
   });

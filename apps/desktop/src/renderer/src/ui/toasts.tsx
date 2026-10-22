@@ -89,7 +89,8 @@ function closeOnEscape(e: KeyboardEvent): void {
 export function Toasts() {
   return (
     <div className="toast-keys" onKeyDown={closeOnEscape}>
-      <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications}>
+      {/* The last F6 pane while a toast is visible (shell/panes.ts, R-1); RAC passes data-* through to the region. */}
+      <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
         {({ toast }) => (
           <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
             <ToastIcon kind={toast.content.kind} />

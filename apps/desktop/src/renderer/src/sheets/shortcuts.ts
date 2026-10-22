@@ -42,7 +42,9 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .map((c): ShortcutRow => {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
-        return { label: commandLabel(c, platform), keys, spoken: c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join('+') };
+        // A single key is spoken like an accelerator: ⇧F6 on macOS, Shift+F6 elsewhere.
+        const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');
+        return { label: commandLabel(c, platform), keys, spoken };
       }),
   })).filter((g) => g.rows.length > 0);
   const dialogs: ShortcutGroup = {

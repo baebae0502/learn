@@ -81,7 +81,7 @@ describe('command registry', () => {
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back',
-      'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleSidebar',
+      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
@@ -99,6 +99,9 @@ describe('command registry', () => {
     expect(commandById('view.textBigger')).toMatchObject({ label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'] });
     expect(commandById('view.textSmaller')).toMatchObject({ label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'] });
     expect(commandById('view.textReset')).toMatchObject({ label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'] });
+    // F6 / ⇧F6 (design-spec 8.3): renderer keymap keys, also from a text field; no menu item and not in the palette.
+    expect(commandById('view.nextPane')).toEqual({ id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false });
+    expect(commandById('view.previousPane')).toEqual({ id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false });
     // ⌘K heads 보기; last in the registry (R-10: menu-bar and palette lists keep the registry order).
     expect(commandById('app.palette')).toMatchObject({
       label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false,

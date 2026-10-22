@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { AppInfo, Prefs, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
+import { useKeymap } from '../commands/keymap';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
@@ -19,6 +20,7 @@ import { createTextSizeSetter } from '../settings/textSize';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
+import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
@@ -45,6 +47,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);
+  // Modal surfaces own the keyboard: the keymap (F6 / ⇧F6) is off while the palette or the drop overlay is up.
+  const keyboardOwned = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
   const sidebarHidden = useSidebarHidden();
   // Cold-start mark (Task 13 perf): the first render in which the library list has settled, not the mount (R-18).
@@ -145,9 +149,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
+    focusPane,
   };
   useMenuCommands(env);
   useReportContext(env);
+  useKeymap(env, !keyboardOwned);
   const envRef = useRef(env);
   useEffect(() => {
     envRef.current = env;

@@ -153,7 +153,10 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
 /**
  * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. A sheet is
  * returned once main has shown it at its measured size (hidden → sized to its content → shown), and the page's
- * viewport has that size: geometry and screenshots never see the first, full-height layout.
+ * viewport has that size: geometry and screenshots never see the first, full-height layout. The settings window is
+ * returned once it is shown and has the focus: it shows only after its measure and font wait, 120–150 ms after its
+ * page renders, and until then the main window keeps the focus (the CI race fixed in 0ae8aba). When no window of
+ * ours has the focus (the app itself is not the active one, which macOS 14+ may refuse to change), shown is enough.
  */
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
   const opened = app.waitForEvent('window', { timeout: 15_000 });
@@ -172,6 +175,18 @@ export async function expectWindow(app: ElectronApplication, kind: 'settings' | 
           return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
         },
         { message: 'the sheet is shown at its measured size' },
+      )
+      .toBe(true);
+  }
+  if (kind === 'settings') {
+    await expect
+      .poll(
+        () =>
+          app.evaluate(({ BrowserWindow }, url) => {
+            const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL() === url);
+            return Boolean(w?.isVisible() && (w.isFocused() || BrowserWindow.getFocusedWindow() === null));
+          }, page.url()),
+        { message: 'the settings window is shown and has the focus' },
       )
       .toBe(true);
   }

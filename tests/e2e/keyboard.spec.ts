@@ -279,9 +279,7 @@ test('the settings window is one pane: F6 neither throws nor moves the focus to 
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     settings.on('pageerror', (e) => errors.push(e.message));
     page.on('pageerror', (e) => errors.push(e.message));
-    // expectWindow returns once the page has rendered; the window shows (and takes the focus) after its measure and font
-    // wait, 120–150 ms later here. Start from there: the question is whether F6 moves the focus away from it.
-    await expect.poll(() => focusedWindow(app)).toBe('settings');
+    // expectWindow returns the settings window shown and focused: F6 must keep the focus there.
     await settings.keyboard.press('Tab');
     const before = await settings.evaluate(() => document.activeElement?.closest('[data-testid]')?.getAttribute('data-testid') ?? null);
     expect(before).toMatch(/^theme-tile-/);

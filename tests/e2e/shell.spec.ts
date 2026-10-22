@@ -450,6 +450,7 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
       const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
       return {
         cursor: css('[data-testid="nav-library"]').boxShadow,
+        rowFill: css('[data-testid="nav-library"]').backgroundColor,
         title: css('[data-testid="toolbar-title"]').color,
         toggle: css('[data-testid="sidebar-toggle"]').color,
         toggleOpacity: css('[data-testid="sidebar-toggle"] > .icon').opacity,
@@ -479,7 +480,18 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     await page.keyboard.press('ArrowDown'); // keyboard cursor on the current row
     const active = await looks();
     expect(active).toMatchObject({ notKey: false, notMain: false, toggleOpacity: '1', rowIconOpacity: '1' });
-    expect(active.cursor).not.toBe('none');
+    // The single-selection sidebar draws no cursor ring on its accent-filled row: the fill shows the focus (critic
+    // T12-n1, design-spec 6).
+    expect(active.cursor).toBe('none');
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      document.body.append(probe);
+      probe.style.backgroundColor = 'var(--accent)';
+      const out = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return out;
+    });
+    expect(active.rowFill).toBe(accent);
 
     // Another window takes the key: not key and not main.
     await app.evaluate(({ BrowserWindow }) => {
@@ -494,6 +506,7 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     const background = await looks();
     // Text dims to the translucent token; glyphs keep a solid colour and fade as a whole (N4-1).
     expect(background).toMatchObject({ notKey: true, notMain: true, cursor: 'none', title: inactive, section: inactive, toggleOpacity: '0.3', rowIconOpacity: '0.3' });
+    expect(background.rowFill).not.toBe(active.rowFill); // the neutral selection
     expect(background.toggle).toBe(await token('--text-primary'));
     expect(background.rowIcon).toBe(await token('--accent-text'));
     expect(background.selectedRowText).toBe(await token('--text-inactive-selected')); // Finder dims the selected row too

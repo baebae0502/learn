@@ -239,7 +239,7 @@ function Part2() {
               ['선택(포커스 없음)', 'selected'],
               ['선택(포커스)', 'selected focused'],
               ['키보드 커서', 'cursor'],
-              ['선택 + 커서', 'selected focused cursor'],
+              ['선택(포커스) + 커서: 링 없음', 'selected focused cursor'],
             ] as const
           ).map(([name, force]) => (
             <div key={name} className="nav-row" data-force={force}>

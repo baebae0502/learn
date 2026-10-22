@@ -2405,15 +2405,19 @@ h2,
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* Keyboard cursor (the row that arrow keys move from): 2 px inset focus ring. */
+/* Keyboard cursor (the row that arrow keys move from): 2 px inset focus ring. On a filled row: white 75 % in a
+   multi-select table (it tells the cursor from the other filled rows); none in the single-selection sidebar, where
+   the accent fill already shows the focus (design-spec 6). */
 .table-row.is-cursor,
 .nav-row.is-cursor,
 .cue.is-cursor {
   box-shadow: inset 0 0 0 2px var(--focus);
 }
-.table-row.is-selected.is-focused.is-cursor,
-.nav-row.is-selected.is-focused.is-cursor {
+.table-row.is-selected.is-focused.is-cursor {
   box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
+}
+.nav-row.is-selected.is-focused.is-cursor {
+  box-shadow: none;
 }
 .chip.is-hover {
   background: var(--fill-pressed);

@@ -250,7 +250,8 @@ const DOCS: Doc[] = [
   },
 ];
 
-const VIDEOS: Array<[string, string]> = [
+/** The fixture videos the demo copies in (from fixtures/generated), and their demo names. */
+export const VIDEOS: ReadonlyArray<readonly [string, string]> = [
   ['sample-h264-aac.mp4', '광합성 실험 영상.mp4'],
   ['sample-mpeg4part2.mp4', `${UNPLAYABLE_TITLE}.mp4`],
 ];
@@ -309,14 +310,21 @@ export interface DemoMedia {
  * The fallback for a document Chromium could not print: the three-page fixture PDF, made distinct per document (a
  * comment after %%EOF, which readers ignore) so that the import never takes two of them for one file.
  */
-export const fallbackPdf = (index: number): Buffer => Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from(`\n% Learn demo fallback ${index}\n`)]);
+export const fallbackPdf = (index: number, fixtures = FIXTURES): Buffer =>
+  Buffer.concat([fs.readFileSync(path.join(fixtures, 'sample.pdf')), Buffer.from(`\n% Learn demo fallback ${index}\n`)]);
 
 /**
  * Writes the demo's files into `dir` (created; emptied first). `printPdf` prints an HTML file to PDF bytes (A4, the
  * page's own @page size and margins, PDF_FOOTER as the footer). Should it fail (or time out), that document and the
  * ones after it are fixture copies under the same names (fallbackPdf), and `note` says so once (re-review Important 1).
  */
-export async function writeDemoMedia(dir: string, printPdf: (htmlFile: string) => Promise<Buffer>, note: (text: string) => void = () => {}): Promise<DemoMedia> {
+export async function writeDemoMedia(
+  dir: string,
+  printPdf: (htmlFile: string) => Promise<Buffer>,
+  note: (text: string) => void = () => {},
+  /** Where the fixture PDF and videos are (fixtures/generated; a test passes its own). */
+  fixtures = FIXTURES,
+): Promise<DemoMedia> {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
   const pages = path.join(dir, '.pages');
@@ -335,10 +343,10 @@ export async function writeDemoMedia(dir: string, printPdf: (htmlFile: string) =
         note(`printing the demo PDFs failed at "${doc.file}" (${e instanceof Error ? e.message.split('\n')[0] : String(e)}): it and the rest are copies of the fixture PDF`);
       }
     }
-    fs.writeFileSync(path.join(dir, doc.file), pdf ?? fallbackPdf(i));
+    fs.writeFileSync(path.join(dir, doc.file), pdf ?? fallbackPdf(i, fixtures));
   }
   fs.rmSync(pages, { recursive: true, force: true });
-  for (const [from, to] of VIDEOS) fs.copyFileSync(path.join(FIXTURES, from), path.join(dir, to));
+  for (const [from, to] of VIDEOS) fs.copyFileSync(path.join(fixtures, from), path.join(dir, to));
   const read = path.join(dir, `${READ_TITLE}.pdf`);
   const drop = [...DOCS.map((d) => path.join(dir, d.file)), ...VIDEOS.map(([, to]) => path.join(dir, to))].filter((f) => f !== read);
   return { read, drop };

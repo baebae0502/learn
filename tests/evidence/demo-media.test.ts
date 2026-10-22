@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { READ_TITLE, writeDemoMedia } from './demo-media';
+import { READ_TITLE, VIDEOS, writeDemoMedia } from './demo-media';
 
 const pdfsIn = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.pdf'));
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -11,11 +11,15 @@ const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)
 describe('the demo material when Chromium cannot print (re-review Important 1)', () => {
   it('falls back to distinct fixture copies under the demo names, says so once, and stops trying to print', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-media-'));
+    // Stand-ins for fixtures/generated, which `pnpm test` runs without (CI generates it later).
+    const fixtures = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-fixtures-'));
+    fs.writeFileSync(path.join(fixtures, 'sample.pdf'), '%PDF-1.7\n% three pages\n%%EOF\n');
+    for (const [from] of VIDEOS) fs.writeFileSync(path.join(fixtures, from), 'video');
     try {
       const notes: string[] = [];
       const printed = Buffer.from('%PDF-1.7\n% printed\n');
       const printPdf = vi.fn().mockResolvedValueOnce(printed).mockRejectedValue(new Error('printing took over 20 s'));
-      const media = await writeDemoMedia(dir, printPdf, (text) => notes.push(text));
+      const media = await writeDemoMedia(dir, printPdf, (text) => notes.push(text), fixtures);
       const pdfs = pdfsIn(dir);
       expect(pdfs.length).toBe(7);
       expect(printPdf).toHaveBeenCalledTimes(2); // the first printed, the second failed, the rest not tried
@@ -29,6 +33,7 @@ describe('the demo material when Chromium cannot print (re-review Important 1)',
       expect(fs.existsSync(path.join(dir, '.pages'))).toBe(false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(fixtures, { recursive: true, force: true });
     }
   });
 });

@@ -6,6 +6,7 @@ import { FIXTURES, expectDisabledReason, importPaths, launch, mainWindow, menuSn
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
+const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
 const REVEAL = process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기';
 
 test.beforeAll(() => {
@@ -184,6 +185,87 @@ test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and
     await expect(toast).toContainText('기본 앱으로 열지 못했습니다');
     await expect(toast).toContainText('설치되어 있는지 확인하세요');
     await expect(toast).not.toContainText('No application');
+  } finally {
+    await s.app.close();
+  }
+});
+
+/**
+ * Records, on every DOM change while a reader is open (the library's toolbar has gone), what the content column paints:
+ * the background of its stage (the column's own when there is none yet), whether a <video> shows without a decoded
+ * frame and no error (a bare player: grey with native controls), and whether a PDF canvas shows before its first page.
+ * A MutationObserver sees every committed state, also one that lasted less than a frame.
+ */
+const recordOpening = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { __opening: Array<{ empty: boolean; bg: string; bareVideo: boolean; blankCanvas: boolean }> };
+    w.__opening = [];
+    const content = document.querySelector('[data-testid="content"]')!;
+    new MutationObserver(() => {
+      if (!document.querySelector('[data-testid="viewer-back"]')) return; // still the library
+      const stage = content.firstElementChild as HTMLElement | null;
+      const video = content.querySelector('video');
+      const canvas = content.querySelector('canvas');
+      w.__opening.push({
+        empty: stage === null,
+        bg: getComputedStyle(stage ?? content).backgroundColor,
+        bareVideo: video !== null && video.checkVisibility({ visibilityProperty: true }) && video.readyState < 2 && video.error === null,
+        blankCanvas: canvas !== null && canvas.dataset['rendered'] === '0' && canvas.checkVisibility({ visibilityProperty: true }),
+      });
+    }).observe(document.body, { subtree: true, childList: true, attributes: true });
+  });
+const openingStates = (page: Page) =>
+  page.evaluate(() => (window as unknown as { __opening: Array<{ empty: boolean; bg: string; bareVideo: boolean; blankCanvas: boolean }> }).__opening);
+/** A CSS colour token as the page resolves it. */
+const tokenColour = (page: Page, token: string) =>
+  page.evaluate((token) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${token})`;
+    document.body.append(probe);
+    const c = getComputedStyle(probe).color;
+    probe.remove();
+    return c;
+  }, token);
+
+// T13-m6: opening a video was white (the reader waiting for its item) → grey (a bare player with its controls) → black.
+test('opening a video paints the dark stage from the first state: no light column, no bare player before a frame', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [MPEG4, MP4]);
+    const stage = await tokenColour(s.page, '--video-stage');
+    for (const [title, ready] of [['sample-mpeg4part2', 'video-error'], ['sample-h264-aac', 'video']] as const) {
+      await recordOpening(s.page);
+      await openItem(s.page, title);
+      await expect(s.page.getByTestId(ready)).toBeVisible();
+      const states = await openingStates(s.page);
+      expect(states.length, title).toBeGreaterThan(0);
+      expect(states.filter((x) => x.empty), `${title}: the column is never empty`).toEqual([]);
+      expect(states.filter((x) => x.bg !== stage), `${title}: every state paints the video stage`).toEqual([]);
+      expect(states.filter((x) => x.bareVideo), `${title}: no player before its first frame`).toEqual([]);
+      await runMenuCommand(s.app, 'nav.back');
+      await expect(s.page.getByTestId('library-table')).toBeVisible();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// T13-m6: the PDF canvas showed at its default 300 × 150 (a small white box) until the first page had rendered.
+test('opening a PDF shows no canvas before its first page, and the stage is the reader\'s from the first state', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [PDF]);
+    const sunken = await tokenColour(s.page, '--bg-sunken');
+    await recordOpening(s.page);
+    await openItem(s.page, 'sample');
+    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-canvas')).toBeVisible();
+    const states = await openingStates(s.page);
+    expect(states.length).toBeGreaterThan(0);
+    expect(states.filter((x) => x.blankCanvas), 'no canvas before the first page').toEqual([]);
+    // The reader's frame (its toolbar strip and the sunken stage) from the first state: the column is never empty white.
+    expect(states.filter((x) => x.empty), 'the column is never empty').toEqual([]);
+    expect(await s.page.locator('.pdf-stage').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(sunken);
   } finally {
     await s.app.close();
   }

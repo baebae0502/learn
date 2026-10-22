@@ -1,3 +1,5 @@
+import { VIDEO_FORMATS } from '@learn/domain';
+
 export const library = {
   table: '자료 목록',
   listFailed: '자료 목록을 불러오지 못했습니다',
@@ -16,7 +18,5 @@ export const library = {
   emptyBody2: '원본은 그대로 두고 라이브러리에 사본을 만듭니다.',
   /** The empty library while a drop's files are being brought in (critique T13R2-m1). */
   importingTitle: (n: number) => `자료 ${n}개를 가져오는 중…`,
-  hintImport: '파일 가져오기',
-  hintPalette: '명령 팔레트',
-  formats: 'PDF와 MP4 · MOV · WebM 동영상을 지원합니다.',
+  formats: `PDF와 ${VIDEO_FORMATS} 동영상을 지원합니다.`,
 } as const;

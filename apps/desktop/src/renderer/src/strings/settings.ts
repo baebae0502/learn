@@ -9,7 +9,8 @@ export const settings = {
   densities: { compact: '촘촘하게', regular: '보통', comfortable: '여유 있게' },
   fontSize: '글자 크기',
   // Only what M3 does: the native menus keep the system size (the mockup said "목록·메뉴·패널"), and reader zoom is M7.
-  fontSizeHint: '목록과 패널의 글자 크기입니다.',
+  // The same form as densityHint, one group up: what it sets, then its values (critic T14-n7; spec 9 "7 / 12").
+  fontSizeHint: '목록과 패널의 글자 크기 · 12 / 13 / 14 / 15pt',
   fontSizes: { 12: '작게', 13: '기본', 14: '크게', 15: '아주 크게' },
   /** Each size's value, in its segment's tooltip (settings.html, design-spec 10.6 "12·13·14·15pt"). */
   fontSizePt: (size: number) => `${size}pt`,

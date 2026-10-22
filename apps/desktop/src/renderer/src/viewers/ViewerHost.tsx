@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { LibraryItem } from '@learn/domain';
+import { commandById, type LibraryItem } from '@learn/domain';
 import { FileX } from 'lucide-react';
 import { api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
@@ -37,7 +37,7 @@ export function ViewerHost({ itemId }: { itemId: string }) {
             testId="open-failed"
             actions={
               <Button testId="open-failed-back" isDisabled={!isEnabled('nav.back')} disabledReason={t.common.busy} onPress={() => run('nav.back')}>
-                {t.reader.showLibrary}
+                {commandById('nav.back').label}
               </Button>
             }
           >

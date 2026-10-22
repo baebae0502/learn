@@ -1,12 +1,13 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { LibraryBig } from 'lucide-react';
-import { commandById } from '@learn/domain';
+import { commandById, commandMention } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
+import { currentPlatform } from '../ui/platform';
 import { Spinner } from '../ui/Spinner';
 import { useFocusOnLeave } from './focusOnLeave';
 
@@ -63,12 +64,13 @@ export function EmptyLibrary(props: {
           {linked.label}
         </Button>
       </div>
+      {/* An action list with its shortcuts: name first, as in a menu (design-spec 7.4). Named without "…" (prose). */}
       <div className="hints">
         <div className="row">
-          <span>{t.library.hintImport}</span>
+          <span>{commandMention(managed, currentPlatform())}</span>
           <Kbd accelerator={managed.accelerator} />
           <span className="gap" />
-          <span>{t.library.hintPalette}</span>
+          <span>{commandMention(commandById('app.palette'), currentPlatform())}</span>
           <Kbd accelerator={commandById('app.palette').accelerator} />
         </div>
         <div className="row">{t.library.formats}</div>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
-import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, inPalette, isCommandAvailable, sameCommandContext, type CommandContextState, type CommandTargetInfo } from '../src/commands';
+import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, sameCommandContext, type CommandContextState, type CommandTargetInfo } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
 import { TAG_COLORS } from '../src/tag-colors';
@@ -205,6 +205,18 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     // The sidebar state never decides availability.
     expect(isCommandAvailable('view.toggleSidebar', { ...LIB, sidebar: 'hidden' })).toBe(true);
     expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리로 돌아가기');
+  });
+
+  it('prose names a command by its label without the trailing ellipsis (critic T14-n2)', () => {
+    // The labels keep "…" where the command asks for more input (menus, buttons, the palette, the ⌘/ sheet).
+    expect(commandById('file.importManaged').label).toBe('파일 가져오기…');
+    expect(commandMention(commandById('file.importManaged'), 'darwin')).toBe('파일 가져오기');
+    expect(commandMention(commandById('app.palette'), 'linux')).toBe('명령 팔레트');
+    expect(commandMention(commandById('app.settings'), 'darwin')).toBe('설정');
+    // Platform names and state names come through as commandLabel gives them; a label without "…" is unchanged.
+    expect(commandMention(commandById('item.showInFolder'), 'linux')).toBe('폴더에서 보기');
+    expect(commandMention(commandById('view.toggleSidebar'), 'darwin', { sidebar: 'shown' })).toBe('사이드바 가리기');
+    expect(commandMention(commandById('nav.back'), 'darwin')).toBe('라이브러리로 돌아가기');
   });
   it('names macOS apps only on macOS', () => {
     const c = { ...commandById('file.importManaged'), labelOff: '다른 이름' };

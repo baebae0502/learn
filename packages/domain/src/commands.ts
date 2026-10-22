@@ -132,6 +132,15 @@ export function commandLabel(c: CommandSpec, platform: string, state: Pick<Comma
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
+/**
+ * How a sentence or a hint names a command (critic T14-n2): its label without the trailing "…". The label keeps the
+ * ellipsis where the command asks for more input (macOS HIG), in menus, buttons, the palette and the ⌘/ sheet; prose
+ * that only names the command drops it (Apple Style Guide), and is built from the label so the two cannot drift.
+ */
+export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
+  return commandLabel(c, platform, state).replace(/…$/, '');
+}
+
 /** Commands main runs itself: always available, even before (or without) a renderer. */
 export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['app.settings']);
 

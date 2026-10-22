@@ -95,3 +95,9 @@ export interface AppInfo {
 /** Renderer and assets share this origin so asset reads are same-origin (no CORS). */
 export const APP_ORIGIN = 'learn://app';
 export const assetUrl = (assetId: string): string => `${APP_ORIGIN}/asset/${encodeURIComponent(assetId)}`;
+
+/**
+ * The video formats Learn imports, as every screen writes them (critic T14-n1): the empty library's formats line and
+ * the import's "not supported" advice say the same list the same way, spaced middots as in every other list.
+ */
+export const VIDEO_FORMATS = 'MP4 · MOV · WebM';

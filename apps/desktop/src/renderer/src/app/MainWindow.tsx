@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { AppInfo, Prefs, Result, StorageMode } from '@learn/domain';
+import { commandById, commandMention, type AppInfo, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
@@ -30,7 +30,7 @@ import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell
 import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { readWindowParams } from '../ui/platform';
+import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
@@ -129,7 +129,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const onDrop = useCallback(
     (paths: string[], mode: StorageMode, unresolved: number) => {
       // Files without a location on disk are named in a toast; the others are still imported.
-      if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody, testId: 'drop-failed' });
+      if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody(commandMention(commandById('file.importManaged'), currentPlatform())), testId: 'drop-failed' });
       if (paths.length > 0) void runImport(() => api().library.import({ paths, mode }), mode, paths.length);
     },
     [runImport],

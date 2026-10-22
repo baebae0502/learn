@@ -271,7 +271,7 @@ test('opening a PDF shows no canvas before its first page, and the stage is the 
   }
 });
 
-test('missing linked original: 다시 연결… first in the context menu and in the notice; 라이브러리에서 보기 goes back', async ({}, testInfo) => {
+test('missing linked original: 다시 연결… first in the context menu and in the notice; 라이브러리로 돌아가기 goes back', async ({}, testInfo) => {
   const { home, env } = testHome(testInfo.outputPath());
   const src = path.join(home, 'Downloads');
   fs.mkdirSync(src, { recursive: true });

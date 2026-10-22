@@ -6,7 +6,8 @@ export const palette = {
   group: '명령',
   emptyTitle: (query: string) => `‘${query}’에 맞는 명령이 없습니다`,
   // The 초성 example finds one command, in every view: ㅅㅈ → 설정… (critic T10-m2; ㄱㅈ also finds 글자 크게 / 작게).
-  emptyBody: '초성으로도 찾을 수 있습니다. 예: ㅅㅈ → 설정',
+  // `settings` is that command as prose names it (commandMention: no "…", critic T14-n2).
+  emptyBody: (settings: string) => `초성으로도 찾을 수 있습니다. 예: ㅅㅈ → ${settings}`,
   /** While an import or a sheet holds the window (critic T9-n5): what is unavailable, then why and what next. */
   busyTitle: '지금은 명령을 실행할 수 없습니다',
   busyBody: '진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.',
@@ -23,5 +24,5 @@ export const palette = {
   footMove: '이동',
   footRun: '실행',
   footClose: '닫기',
-  footHint: '초성 검색 지원 · ㅅㅈ → 설정',
+  footHint: (settings: string) => `초성 검색 지원 · ㅅㅈ → ${settings}`,
 } as const;

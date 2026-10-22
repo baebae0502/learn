@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useState, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
-import { COMMANDS, commandLabel, inPalette, type CommandId } from '@learn/domain';
+import { COMMANDS, commandById, commandLabel, commandMention, inPalette, type CommandId } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { COMMAND_ICONS } from '../commands/icons';
 import { useShell } from '../state/shell-store';
@@ -89,6 +89,8 @@ function PaletteDialog() {
   const [cursorId, setCursorId] = useState<CommandId | null>(null);
   const ids = useId();
   const platform = currentPlatform();
+  /** 설정 as the hints name it: ㅅㅈ → 설정 (critic T14-n2). */
+  const settingsName = commandMention(commandById('app.settings'), platform);
   const state = env.sidebar ? { sidebar: env.sidebar } : {};
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
   // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
@@ -220,7 +222,7 @@ function PaletteDialog() {
             (busy || (
               <div className="p-empty" data-testid="palette-empty">
                 <div className="pe-title">{t.palette.emptyTitle(query.trim())}</div>
-                <div className="pe-text">{t.palette.emptyBody}</div>
+                <div className="pe-text">{t.palette.emptyBody(settingsName)}</div>
               </div>
             ))
           )}
@@ -250,7 +252,7 @@ function PaletteDialog() {
         {ranked.length > 0 && (
           <>
             <span className="spacer" />
-            <span className="row">{t.palette.footHint}</span>
+            <span className="row">{t.palette.footHint(settingsName)}</span>
           </>
         )}
       </div>

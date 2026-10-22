@@ -27,6 +27,5 @@ export const reader = {
   missingLinkedBody: '외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새\u00a0위치를 지정하세요.',
   missingManagedBody:
     '라이브러리 안의 사본을 찾을 수 없습니다. 원본\u00a0파일이 있으면 다시 가져오세요. 이미 있는 자료로 표시되면 ‘새\u00a0자료로 추가’를 고르세요.',
-  showLibrary: '라이브러리에서 보기',
   openFailedTitle: '자료를 열 수 없습니다',
 } as const;

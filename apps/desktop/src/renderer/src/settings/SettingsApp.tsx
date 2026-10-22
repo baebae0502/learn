@@ -114,7 +114,7 @@ export function SettingsApp() {
             <div className="form-row">
               <span className="fr-label">
                 <span id="l-font">{t.settings.fontSize}</span>
-                <span className="hint ui-prose">{t.settings.fontSizeHint}</span>
+                <span className="hint">{t.settings.fontSizeHint}</span>
               </span>
               <Segmented
                 aria-labelledby="l-font"

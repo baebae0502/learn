@@ -581,7 +581,7 @@
             <h2>원본&nbsp;파일을 찾을 수 없습니다</h2>
             <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
             <div class="file mono" title="/Users/seojin/Downloads/papers/calcium-signaling.pdf">~/Downloads/papers/calcium-signaling.pdf</div>
-            <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리에서 보기</div></div>
+            <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리로 돌아가기</div></div>
           </div>`,
       }[state];
       const main = `<div class="reader-toolbar"><span class="t-headline ellipsis media-title">${esc(doc.title)}</span><span class="c-tertiary t-footnote ellipsis">${doc.meta}</span></div>
@@ -843,7 +843,7 @@
               <div class="segmented"><span class="seg">촘촘하게</span><span class="seg is-on">보통</span><span class="seg">여유 있게</span></div>
             </div>
             <div class="form-row">
-              <span class="fr-label">글자 크기<span class="hint">목록·메뉴·패널의 글자 크기입니다. 자료 본문은 리더에서 따로 확대합니다.</span></span>
+              <span class="fr-label">글자 크기<span class="hint">목록과 패널의 글자 크기 · 12 / 13 / 14 / 15pt</span></span>
               <div class="segmented" role="radiogroup" aria-label="글자 크기"><span class="seg" title="12pt">작게</span><span class="seg is-on" title="13pt">기본</span><span class="seg" title="14pt">크게</span><span class="seg" title="15pt">아주 크게</span></div>
             </div>
           </div>

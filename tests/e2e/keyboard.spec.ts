@@ -372,6 +372,26 @@ test('a fold rescue that arrives after F6 leaves the focus where F6 put it', asy
   }
 });
 
+// Review minor 3: the rescue moves only a focus the fold took. A sidebar row the user had already left (a click on
+// nothing) is not "rescued" onto the toggle by a later fold, even when the keyboard was used since.
+test('a fold after the user left the sidebar row moves no focus', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const zoom = async (f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
+  try {
+    await page.keyboard.press('F6');
+    expect(await focusedTestId(page)).toBe('nav-library');
+    await page.getByTestId('content').click({ position: { x: 300, y: 300 } }); // nothing there takes the focus
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    await page.keyboard.press('ArrowDown'); // the keyboard is in use again, on nothing
+    await zoom(2);
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 // Carried from the Task 4/5 ledger: when the sidebar folds by itself (the content column would get narrower than 520:
 // 200 % zoom, design-spec 8.3; the 960 px minimum window alone never folds a 240 px sidebar), a keyboard user's focus
 // inside it goes to the toolbar's toggle, never to <body>; when it comes back, to the sidebar's own toggle.

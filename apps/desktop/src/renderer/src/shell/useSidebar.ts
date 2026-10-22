@@ -61,26 +61,44 @@ export function useToggleSidebar(): () => void {
 const takenByFold = (el: Element): boolean =>
   el.closest('.sidebar-inner, .pane-separator') !== null || el.id === TOGGLE_IDS.toolbar || (el.matches('.launcher') && el.closest('.titlebar') !== null);
 
+/** Gone from the page, or under an inert ancestor: nothing can hold the focus there. */
+const takenAway = (el: Element): boolean => !el.isConnected || el.closest('[inert]') !== null;
+
 /**
  * Whatever folds or shows the sidebar — ⌃⌘S, a drag, or the window (or the zoom) changing its width so that it folds or
  * comes back by itself (design-spec 2.1, M-5) — the focus that it took along gets the same rescue (keepFocusAcross),
- * once the change is on screen. An inert sidebar may still hold the focus. A copy that unmounted has dropped it, and
- * maybe a commit earlier: the toolbar re-renders with the new width before the shell does when anything re-renders it
- * first. So the last element a fold can take that lost the focus to nowhere, and is gone or inert, is remembered until
- * the focus lands anywhere. Nothing else is: the palette's field, gone as the palette closed, is never "rescued" onto
- * a toggle (Task 8 critique m1). The commands that know beforehand (useToggleSidebar, the separator) have rescued it
- * already; a second rescue moves it to the same place.
+ * once the change is on screen. An inert sidebar may still hold the focus. A copy that unmounted has dropped it, maybe
+ * a commit before the shell's: the toolbar sees the new width first when anything re-renders it.
+ *
+ * So an element a fold can take (takenByFold) that loses the focus to nowhere is a candidate, and it is judged after
+ * the fact: kept only if it is then gone or inert, i.e. the change took it. The judgement runs once the task that
+ * dropped the focus is over (a microtask), or in the fold's own commit when that came first. A row the user left —
+ * a click on nothing, ⎋ — is still there and usable then, so a later fold never "rescues" it onto a toggle; nor is
+ * the palette's field ever a candidate (Task 8 critique m1). Any focus that lands clears the memory. The commands
+ * that know beforehand (useToggleSidebar, the separator) have rescued it already; a second rescue moves it to the
+ * same place.
  */
 export function useKeepFocusAcrossFold(hidden: boolean): void {
+  /** The focus a change took (judged), kept until the shell's fold reads it or the focus lands anywhere. */
   const lost = useRef<Element | null>(null);
+  /** Dropped to nowhere in the running task, not judged yet. */
+  const dropped = useRef<Element | null>(null);
   useEffect(() => {
     let held: Element | null = null; // the focused element, when a fold can take it along (read while connected)
     const into = (e: FocusEvent) => {
       lost.current = null;
+      dropped.current = null;
       held = e.target instanceof Element && takenByFold(e.target) ? e.target : null;
     };
     const out = (e: FocusEvent) => {
-      if (e.relatedTarget === null && e.target === held) lost.current = held;
+      const el = held;
+      if (e.relatedTarget !== null || el === null || e.target !== el) return;
+      dropped.current = el;
+      queueMicrotask(() => {
+        if (dropped.current !== el) return; // landed elsewhere, or already judged by the fold's commit
+        dropped.current = null;
+        if (takenAway(el)) lost.current = el;
+      });
     };
     document.addEventListener('focusin', into, true);
     document.addEventListener('focusout', out, true);
@@ -89,14 +107,16 @@ export function useKeepFocusAcrossFold(hidden: boolean): void {
       document.removeEventListener('focusout', out, true);
     };
   }, []);
-  const shown = useRef(hidden);
+  const lastHidden = useRef(hidden);
   useLayoutEffect(() => {
-    if (shown.current === hidden) return;
-    shown.current = hidden;
+    if (lastHidden.current === hidden) return;
+    lastHidden.current = hidden;
     const active = document.activeElement;
-    const gone = lost.current !== null && (!lost.current.isConnected || lost.current.closest('[inert]') !== null) ? lost.current : null;
+    // After the change has applied: a candidate counts only if the change took it.
+    const candidate = [dropped.current, lost.current].find((el) => el !== null && takenAway(el)) ?? null;
     lost.current = null;
-    keepFocusAcross(hidden, active !== null && active !== document.body ? active : gone);
+    dropped.current = null;
+    keepFocusAcross(hidden, active !== null && active !== document.body ? active : candidate);
   }, [hidden]);
 }
 

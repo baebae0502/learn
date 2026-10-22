@@ -49,9 +49,47 @@
     display: inline-block;
     max-width: 100%;
   }
+  /* The file a notice is about, by name and size ("seminar-0915.avi · 1.3 GB"): not a path, so no mono (spec 6 "경로만
+     mono"); footnote with tabular figures, wrapping anywhere in a long name. */
+  .notice .file-name {
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
   .notice .actions {
     display: flex;
     gap: var(--space-8);
     margin-top: var(--space-4);
+  }
+
+  /* The unplayable video's stage is near-black in both themes (--video-stage): the same notice, only its colours are
+     fixed light-on-dark values (mockup.css .codec-notice). Tile, sizes and rhythm are the notice's own (critic T14-m1). */
+  .notice.stage-dark {
+    color: oklch(92% 0.004 250); /* local: always-dark video stage */
+  }
+  .notice.stage-dark .glyph {
+    background: oklch(100% 0 0 / 0.08); /* local: always-dark video stage */
+    box-shadow: none;
+    color: oklch(85% 0.004 250); /* local: always-dark video stage */
+  }
+  .notice.stage-dark h2 {
+    color: oklch(97% 0 0); /* local: always-dark video stage */
+  }
+  .notice.stage-dark :is(p, .file) {
+    color: oklch(78% 0.006 250); /* local: always-dark video stage */
+  }
+  .notice.stage-dark .btn {
+    background: oklch(100% 0 0 / 0.12); /* local: always-dark video stage */
+    color: oklch(96% 0 0); /* local: always-dark video stage */
+    box-shadow: none;
+  }
+  /* The rule above replaces the components layer's hover/press fills (a background-image): light ones instead. */
+  .notice.stage-dark .btn:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
+    background: oklch(100% 0 0 / 0.18); /* local: always-dark video stage */
+  }
+  .notice.stage-dark .btn:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
+    background: oklch(100% 0 0 / 0.24); /* local: always-dark video stage */
+  }
+  .notice.stage-dark .btn .icon {
+    color: oklch(85% 0 0); /* local: always-dark video stage */
   }
 }

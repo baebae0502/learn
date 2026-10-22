@@ -5,7 +5,6 @@ import { useAppInfo } from '../data/queries';
 import { formatSize, homeRelative } from '../format';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
 import { Notice } from '../ui/Notice';
 import { currentPlatform } from '../ui/platform';
 
@@ -81,7 +80,7 @@ export function PdfErrorNotice({ item }: { item: LibraryItem }) {
   return (
     <div className="reader-stage">
       <div className="stage-center">
-        <Notice icon={FileX} title={t.reader.pdfErrorTitle} file={fileOf(item)} testId="pdf-error" actions={<FileButtons item={item} testIds={{ reveal: 'pdf-reveal', open: 'pdf-open' }} />}>
+        <Notice icon={FileX} title={t.reader.pdfErrorTitle} fileName={fileOf(item)} testId="pdf-error" actions={<FileButtons item={item} testIds={{ reveal: 'pdf-reveal', open: 'pdf-open' }} />}>
           {t.reader.pdfErrorBody}
         </Notice>
       </div>
@@ -89,19 +88,21 @@ export function PdfErrorNotice({ item }: { item: LibraryItem }) {
   );
 }
 
-/** Unplayable video (dialogs.html?scene=codec): the stage stays dark; Finder에서 보기 · 기본 앱으로 열기. */
+/**
+ * Unplayable video (dialogs.html?scene=codec): the shared notice on the always-dark video stage (critic T14-m1: one
+ * notice, 56 px tile, 440 wide, the same file line as the PDF error); Finder에서 보기 · 기본 앱으로 열기.
+ */
 export function CodecNotice({ item, unsupported }: { item: LibraryItem; unsupported: boolean }) {
   return (
-    <div className="codec-notice" role="alert" data-testid="video-error">
-      <div className="glyph">
-        <Icon icon={VideoOff} size="xl" />
-      </div>
-      <h2 className="ui-balance">{unsupported ? t.reader.videoUnsupportedTitle : t.reader.videoErrorTitle}</h2>
-      <p className="ui-balance">{unsupported ? t.reader.videoUnsupportedBody : t.reader.videoErrorBody}</p>
-      <div className="file">{fileOf(item)}</div>
-      <div className="actions">
-        <FileButtons item={item} testIds={{ reveal: 'codec-reveal', open: 'codec-open' }} />
-      </div>
-    </div>
+    <Notice
+      stage="dark"
+      icon={VideoOff}
+      title={unsupported ? t.reader.videoUnsupportedTitle : t.reader.videoErrorTitle}
+      fileName={fileOf(item)}
+      testId="video-error"
+      actions={<FileButtons item={item} testIds={{ reveal: 'codec-reveal', open: 'codec-open' }} />}
+    >
+      {unsupported ? t.reader.videoUnsupportedBody : t.reader.videoErrorBody}
+    </Notice>
   );
 }

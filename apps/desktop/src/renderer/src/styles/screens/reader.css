@@ -114,60 +114,6 @@
   .video-stage video:not([data-frame]) {
     visibility: hidden;
   }
-  /* The stage is near-black in both themes, so this notice uses fixed light-on-dark values (mockup.css). */
-  .codec-notice {
-    max-width: 460px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-12);
-    text-align: center;
-    color: oklch(92% 0.004 250); /* local: always-dark video stage */
-  }
-  .codec-notice .glyph {
-    width: 52px; /* local: mockup codec tile */
-    height: 52px;
-    border-radius: var(--radius-xl);
-    display: grid;
-    place-items: center;
-    background: oklch(100% 0 0 / 0.08); /* local: always-dark video stage */
-    color: oklch(85% 0.004 250); /* local: always-dark video stage */
-  }
-  .codec-notice h2 {
-    font: var(--type-title2);
-    color: oklch(97% 0 0); /* local: always-dark video stage */
-  }
-  .codec-notice p {
-    font: var(--type-paragraph);
-    color: oklch(78% 0.006 250); /* local: always-dark video stage */
-  }
-  .codec-notice .file {
-    padding: var(--space-8) var(--space-12);
-    border-radius: var(--radius-md);
-    background: oklch(100% 0 0 / 0.06); /* local: always-dark video stage */
-    font: var(--type-footnote);
-    color: oklch(78% 0.006 250); /* local: always-dark video stage */
-  }
-  .codec-notice .actions {
-    display: flex;
-    gap: var(--space-8);
-    margin-top: var(--space-4);
-  }
-  .codec-notice .btn {
-    background: oklch(100% 0 0 / 0.12); /* local: always-dark video stage */
-    color: oklch(96% 0 0); /* local: always-dark video stage */
-    box-shadow: none;
-  }
-  /* The rule above replaces the components layer's hover/press fills (a background-image): light ones instead. */
-  .codec-notice .btn:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
-    background: oklch(100% 0 0 / 0.18); /* local: always-dark video stage */
-  }
-  .codec-notice .btn:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
-    background: oklch(100% 0 0 / 0.24); /* local: always-dark video stage */
-  }
-  .codec-notice .btn .icon {
-    color: oklch(85% 0 0); /* local: always-dark video stage */
-  }
   .fatal {
     position: relative;
     height: 100vh;

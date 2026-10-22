@@ -16,10 +16,23 @@ export function pathParts(file: string): { folders: string[]; base: string } {
   return { folders: parts, base };
 }
 
+/** The notice's 56 px tile alone (the component board shows the three meanings side by side). */
+export function NoticeGlyph({ tone = 'neutral', icon }: { tone?: NoticeTone; icon: LucideIcon }) {
+  return (
+    <div className={cx('glyph', tone !== 'neutral' && tone)}>
+      <Icon icon={icon} size="xl" />
+    </div>
+  );
+}
+
 /**
  * Stage notice (design-spec 6): 56 px tile — neutral = error/unavailable, warning = user-fixable,
  * accent = invitation; title2 heading, paragraph, optional file line, one row of actions.
  * A polite status, not an alert: it replaces a screen's content and stays (role=alert is for transient failures).
+ *
+ * The file line is either a path (`file`: mono, wrapping only after a separator) or the file's name and size
+ * (`fileName`, "seminar-0915.avi · 1.3 GB": footnote with tabular figures). Mono is for paths only (spec 6).
+ * `stage="dark"` is the unplayable video's always-dark stage: the same notice, only its colours change.
  */
 export function Notice(props: {
   tone?: NoticeTone;
@@ -28,18 +41,22 @@ export function Notice(props: {
   children?: ReactNode;
   file?: string;
   fileTitle?: string;
+  fileName?: string;
   actions?: ReactNode;
+  stage?: 'dark';
   testId?: string;
 }) {
-  const tone = props.tone ?? 'neutral';
   return (
-    <div className="notice" role="status" data-testid={props.testId}>
-      <div className={cx('glyph', tone !== 'neutral' && tone)}>
-        <Icon icon={props.icon} size="xl" />
-      </div>
+    <div className={cx('notice', props.stage === 'dark' && 'stage-dark')} role="status" data-testid={props.testId}>
+      <NoticeGlyph tone={props.tone} icon={props.icon} />
       <h2 className="ui-balance">{props.title}</h2>
       {props.children && <p className="ui-balance">{props.children}</p>}
       {props.file && <FileLine file={props.file} title={props.fileTitle ?? props.file} />}
+      {props.fileName && (
+        <div className="file file-name" title={props.fileName}>
+          {props.fileName}
+        </div>
+      )}
       {props.actions && <div className="actions">{props.actions}</div>}
     </div>
   );

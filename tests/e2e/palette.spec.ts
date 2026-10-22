@@ -316,6 +316,10 @@ test('opening the palette closes an open tooltip, and none opens while it is up'
   const { app, page } = await launch(...dirs(testInfo));
   const tooltip = page.getByRole('tooltip');
   try {
+    // A hover tooltip needs the key window (none shows over an inactive one): on the Mac runner the window launched by
+    // Playwright may become key only after the first hover (Mac run t14-diag2). Make it key first.
+    await (await mainWindow(app)).evaluate((w) => w.focus());
+    await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
     await page.getByTestId('sidebar-toggle').hover();
     await expect(tooltip).toHaveText(/사이드바 가리기/); // after the 600 ms hover delay
     await runMenuCommand(app, 'app.palette'); // ⌘K from the menu bar

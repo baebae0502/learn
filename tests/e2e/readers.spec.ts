@@ -48,7 +48,8 @@ const tilde = (p: string, home: string) => (p === home || p.startsWith(home + pa
 /**
  * A notice's path line (design-spec 4: no middle elision): every character is shown, the line wraps only after a
  * separator (no folder or name is broken), the file name is whole on one line, and the line stays inside the notice.
- * Returns the number of lines.
+ * A folder name wider than the whole line cannot be whole: it wraps inside itself and still never overflows (the Mac
+ * runner's real home puts the long test-folder name in the path, Mac run t14-diag2). Returns the number of lines.
  */
 async function expectPathLine(notice: Locator, shown: string, base: string): Promise<number> {
   const line = notice.locator('.file');
@@ -59,8 +60,16 @@ async function expectPathLine(notice: Locator, shown: string, base: string): Pro
     const parts = [...el.querySelectorAll<HTMLElement>('.file-part')];
     const box = el.getBoundingClientRect();
     const notice = el.parentElement!.getBoundingClientRect();
+    /** The part's width on one line, unbroken. */
+    const natural = (p: HTMLElement) => {
+      const { maxWidth, whiteSpace } = p.style;
+      Object.assign(p.style, { maxWidth: 'none', whiteSpace: 'nowrap' });
+      const w = p.getBoundingClientRect().width;
+      Object.assign(p.style, { maxWidth, whiteSpace });
+      return w;
+    };
     return {
-      partsWhole: parts.every((p) => Math.round(p.getBoundingClientRect().height) === lh),
+      partsWhole: parts.every((p) => Math.round(p.getBoundingClientRect().height) === lh || natural(p) > el.clientWidth),
       noOverflow: el.scrollWidth <= el.clientWidth,
       inside: box.left >= notice.left - 0.5 && box.right <= notice.right + 0.5,
       selectable: getComputedStyle(el).userSelect === 'text',

@@ -193,14 +193,31 @@ test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a
     expect(last!.y + last!.height).toBeLessThanOrEqual(bodyBox!.y + bodyBox!.height);
     await closeSheet(sheet, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
-    // A window tall enough for the whole list: the body is no stop, no region.
+    const fitsNoStop = async (fitting: Page) => {
+      const b = fitting.locator('.d-body');
+      expect(await b.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
+      await expect(b).not.toHaveAttribute('tabindex');
+      await expect(b).not.toHaveAttribute('role');
+      expect(await fitting.evaluate(() => [getComputedStyle(document.querySelector('.sheet > .d-title')!).borderBottomColor, getComputedStyle(document.querySelector('.sheet > .d-foot')!).borderTopColor])).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+    };
+    // A sheet that fits is no stop, no region, and draws no edges: the duplicate sheet fits on every screen.
+    await importPaths(s.page, [PDF]);
+    const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
+    await expect(dup.getByTestId('sheet-root')).toHaveAttribute('data-kind', 'duplicate');
+    await fitsNoStop(dup);
+    await closeSheet(dup, 'Escape');
+    await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    // The ⌘/ sheet as well, in a window tall enough for the whole list (1440 × 900). The 768-tall Mac runner has no such
+    // room (its work area is 684 tall): there the list scrolls at any size, which the first half covers; an ≈806-tall
+    // parent stays a manual check (critique, m3-08b-806).
     await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
+    const room = await (await mainWindow(s.app)).evaluate((w) => w.getContentSize()[1] ?? 0);
     sheet = await open();
-    body = sheet.locator('.d-body');
-    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
-    await expect(body).not.toHaveAttribute('tabindex');
-    await expect(body).not.toHaveAttribute('role');
-    expect(await sheet.evaluate(() => [getComputedStyle(document.querySelector('.sheet > .d-title')!).borderBottomColor, getComputedStyle(document.querySelector('.sheet > .d-foot')!).borderTopColor])).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+    if (room >= 900) await fitsNoStop(sheet);
+    else {
+      expect(process.platform, 'only the Mac runner lacks the room').toBe('darwin');
+      await expect(sheet.locator('.d-body')).toHaveAttribute('role', 'region');
+    }
     await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();

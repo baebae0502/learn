@@ -1,7 +1,7 @@
 import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import { LearnError, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
-import { contentHeight, markSized } from './measure';
+import { contentHeight, fontsReady, markSized } from './measure';
 
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
 /**
@@ -124,6 +124,9 @@ export function createSheetHost(opts: {
       win.on('responsive', () => clearTimeout(hung));
       win.once('ready-to-show', () => {
         void (async () => {
+          // Rendered, its font loaded (at most 300 ms more), then measured: never boxes with no text (T13-m6).
+          await contentHeight(win.webContents, '[data-sheet-root]');
+          await fontsReady(win.webContents, '[data-sheet-root]');
           const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]'), maxHeight);
           if (win.isDestroyed()) return;
           win.setContentSize(width, height);

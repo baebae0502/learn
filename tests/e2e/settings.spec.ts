@@ -92,6 +92,33 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
   }
 });
 
+// T13-m6: the settings window was shown while Pretendard was still loading (130–170 ms with boxes and no text on Linux)
+// and, in dark, one light frame was seen. Recorded in main at the window's 'show': the page's font loading and the
+// native background colour it was created with.
+test('the settings window shows with its fonts loaded, and opened in dark it is dark from its first frame', async ({}, testInfo) => {
+  const [lib, ud] = dirs(testInfo);
+  const { app, page } = await launch(lib, ud, { colorScheme: null });
+  try {
+    await page.evaluate(() => window.learn.prefs.set({ theme: 'dark' }));
+    await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
+    await app.evaluate(({ app: electronApp }) => {
+      const g = globalThis as { __atShow?: Array<{ fonts: string; background: string }> };
+      g.__atShow = [];
+      electronApp.on('browser-window-created', (_e, w) => {
+        w.once('show', () => {
+          const background = w.getBackgroundColor().toLowerCase();
+          void w.webContents.executeJavaScript('document.fonts.status', true).then((fonts: string) => g.__atShow!.push({ fonts, background }));
+        });
+      });
+    });
+    await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect.poll(() => app.evaluate(() => (globalThis as { __atShow?: unknown[] }).__atShow?.length ?? 0)).toBe(1);
+    expect(await app.evaluate(() => (globalThis as { __atShow?: unknown[] }).__atShow)).toEqual([{ fonts: 'loaded', background: windowBackground.dark }]);
+  } finally {
+    await app.close();
+  }
+});
+
 test('⌘+ / ⌘− / ⌘0 step the text size within 12–15 (library only)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   const size = () => page.evaluate(() => document.documentElement.dataset['fontSize']);

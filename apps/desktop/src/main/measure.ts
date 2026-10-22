@@ -20,6 +20,36 @@ export async function contentHeight(contents: WebContents, selector: string, fal
   return height > 0 ? height : fallback;
 }
 
+/**
+ * Loads the fonts the first element matching `selector` draws its text with (`document.fonts.load` for its font and
+ * text, then `document.fonts.ready`), at most `capMs`. Call it once the element has rendered: until text is laid out
+ * no face is even requested, and `document.fonts.ready` alone resolves at once. A window shown before this draws its
+ * boxes with no text for a moment (Pretendard, T13-m6); a font that never loads must not keep a window hidden.
+ * True when the fonts were ready in time.
+ */
+export async function fontsReady(contents: WebContents, selector: string, capMs = 300): Promise<boolean> {
+  const script = `(async () => {
+    const el = document.querySelector(${JSON.stringify(selector)}) ?? document.body;
+    const cs = getComputedStyle(el);
+    await document.fonts.load(cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily, (el.textContent || 'A').slice(0, 400));
+    await document.fonts.ready;
+    return true;
+  })()`;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const cap = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), capMs);
+  });
+  const ready = contents.executeJavaScript(script, true).then(
+    (value) => value === true,
+    () => false,
+  );
+  try {
+    return await Promise.race([ready, cap]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** After sizing: the page may now cap itself to the window and scroll inside (CSS :root[data-sized]). */
 export async function markSized(contents: WebContents): Promise<void> {
   await contents.executeJavaScript("document.documentElement.dataset.sized = '1'", true);

@@ -6,6 +6,8 @@ import { windowBackground } from '../renderer/src/design/tokens.generated';
 
 /** The page's height changes, as main's ResizeObserver call would report them (one pending call at a time). */
 let heightChanged: ((height: number) => void) | null = null;
+/** The page's `document.fonts.ready` (already loaded unless a test holds it). */
+let fontsLoaded: Promise<boolean> = Promise.resolve(true);
 
 /** A BrowserWindow stand-in: records what the settings window does with it. The page is 412 px tall. */
 class FakeWindow extends EventEmitter {
@@ -24,7 +26,9 @@ class FakeWindow extends EventEmitter {
     executeJavaScript: (script: string) =>
       script.includes('ResizeObserver')
         ? new Promise<number>((resolve) => void (heightChanged = resolve))
-        : Promise.resolve(script.includes('getBoundingClientRect') ? 412 : undefined),
+        : script.includes('document.fonts')
+          ? fontsLoaded
+          : Promise.resolve(script.includes('getBoundingClientRect') ? 412 : undefined),
   };
   constructor(readonly options: Record<string, unknown>) {
     super();
@@ -60,6 +64,7 @@ async function ready(w: FakeWindow): Promise<void> {
 
 beforeEach(() => {
   FakeWindow.all = [];
+  fontsLoaded = Promise.resolve(true);
 });
 
 describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
@@ -119,5 +124,29 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     w.focused = 1;
     w.emit('focus');
     expect(w.webContents.send).toHaveBeenCalledWith(EventChannels.windowState, { fullscreen: false, focused: true, sheetOpen: false });
+  });
+});
+
+describe('the settings window and its fonts (T13-m6)', () => {
+  it('is shown only once its fonts have loaded', async () => {
+    let loaded!: (v: boolean) => void;
+    fontsLoaded = new Promise<boolean>((resolve) => void (loaded = resolve));
+    const w = host().open() as unknown as FakeWindow;
+    await ready(w);
+    expect(w.shown).toBe(false);
+    loaded(true);
+    await ready(w);
+    expect(w.shown).toBe(true);
+  });
+  it('is shown after at most 300 ms when a font never loads', async () => {
+    fontsLoaded = new Promise<boolean>(() => {});
+    const w = host().open() as unknown as FakeWindow;
+    const t0 = Date.now();
+    await ready(w);
+    expect(w.shown).toBe(false);
+    await new Promise((r) => setTimeout(r, 340));
+    await ready(w);
+    expect(w.shown).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(1000);
   });
 });

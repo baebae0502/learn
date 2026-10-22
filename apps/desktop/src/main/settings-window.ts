@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
-import { contentHeight, followContentHeight, markSized } from './measure';
+import { contentHeight, followContentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
 import { currentTheme } from './theme';
 import { trackWindowState } from './window-state';
@@ -61,6 +61,11 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
       trackWindowState(created);
       created.once('ready-to-show', () => {
         void (async () => {
+          // Rendered, then its font loaded (at most 300 ms more), then measured and shown: never boxes with no text
+          // (T13-m6), and the height is the one its own font gives.
+          await contentHeight(created.webContents, '[data-settings-root]', 480);
+          await fontsReady(created.webContents, '[data-settings-root]');
+          if (created.isDestroyed()) return;
           const height = await contentHeight(created.webContents, '[data-settings-root]', 480);
           if (created.isDestroyed()) return;
           created.setContentSize(SETTINGS_WIDTH, height);

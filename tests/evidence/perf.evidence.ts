@@ -1,5 +1,6 @@
 // @perf — cold start (process start → app-ready) and renderer bundle size (ADR-0004: "recorded in M3"). Budget 1.5 s
 // on the reference Mac (quality spec); runner values are reported only. Linux CI fails only beyond 2× the budget.
+// Also the time from the menu command to the ⌘/ sheet or the settings window on screen (T13M-n4), reported only.
 //
 // Marks (epoch ms, main/perf.ts): processStart (performance.timeOrigin of the main process), ready (app 'ready'),
 // firstPaint (the main window's first 'ready-to-show': its page has painted, the window code shows it then),
@@ -8,7 +9,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { ROOT, launch } from '../e2e/helpers';
+import { ROOT, closeSheet, expectWindow, launch } from '../e2e/helpers';
 import { writeJson } from './capture';
 
 interface Marks {
@@ -67,4 +68,60 @@ test('cold start to app-ready, 5 launches, and the renderer bundle', { tag: '@pe
   writeJson('perf.json', result, 'M3 cold start (process start → app-ready) and renderer bundle size');
   console.log('[measure] perf', JSON.stringify(result.medianMs), JSON.stringify(result.bundleBytes));
   if (process.platform === 'linux' && process.env['CI']) expect(result.medianMs.appReady).toBeLessThan(2 * BUDGET_MS);
+});
+
+const OPENS = 5;
+
+test('opening the ⌘/ sheet and the settings window: menu command → window shown, 5 times each', { tag: '@perf' }, async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    // t0 when the menu item is clicked in main, shown at the window's 'show' (both main-process clocks).
+    await s.app.evaluate(({ app }) => {
+      const g = globalThis as { __learnOpen?: { t0: number; shown?: number } };
+      app.on('browser-window-created', (_event, win) => {
+        win.once('show', () => {
+          if (g.__learnOpen && g.__learnOpen.shown === undefined) g.__learnOpen.shown = Date.now();
+        });
+      });
+    });
+    const click = (id: string) =>
+      s.app.evaluate(({ BrowserWindow, Menu }, id) => {
+        (globalThis as { __learnOpen?: { t0: number } }).__learnOpen = { t0: Date.now() };
+        Menu.getApplicationMenu()!.getMenuItemById(id)!.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined);
+      }, id);
+    const elapsed = async () => {
+      await expect.poll(() => s.app.evaluate(() => (globalThis as { __learnOpen?: { shown?: number } }).__learnOpen?.shown ?? 0)).toBeGreaterThan(0);
+      return s.app.evaluate(() => {
+        const o = (globalThis as { __learnOpen?: { t0: number; shown?: number } }).__learnOpen!;
+        return o.shown! - o.t0;
+      });
+    };
+    const sheetMs: number[] = [];
+    const settingsMs: number[] = [];
+    for (let i = 0; i < OPENS; i++) {
+      const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
+      sheetMs.push(await elapsed());
+      await closeSheet(sheet, 'Escape');
+      await s.page.waitForTimeout(300);
+    }
+    for (let i = 0; i < OPENS; i++) {
+      const settings = await expectWindow(s.app, 'settings', () => click('app.settings'));
+      settingsMs.push(await elapsed());
+      await settings.close();
+      await s.page.waitForTimeout(300);
+    }
+    const result = {
+      runsMs: { sheet: sheetMs, settings: settingsMs },
+      medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
+      // The first open of each is the first such window of the session; the target is the median.
+      targetMs: 250,
+      platform: `${process.platform}-${process.arch}`,
+      ci: process.env['CI'] ?? null,
+    };
+    writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4)');
+    console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs));
+  } finally {
+    await s.app.close();
+  }
 });

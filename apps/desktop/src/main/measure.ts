@@ -27,17 +27,15 @@ export async function contentHeight(contents: WebContents, selector: string, fal
 }
 
 /**
- * Loads the fonts the first element matching `selector` draws its text with (`document.fonts.load` for its font and
- * text, then `document.fonts.ready`), at most `capMs`. Call it once the element has rendered: until text is laid out
- * no face is even requested, and `document.fonts.ready` alone resolves at once. A window shown before this draws its
- * boxes with no text for a moment (Pretendard, T13-m6); a font that never loads must not keep a window hidden.
- * True when the fonts were ready in time.
+ * Waits, at most `capMs`, for the fonts the first element matching `selector` is drawn with. Call it once the element
+ * has rendered: laying it out requests exactly the faces its text needs (Pretendard on Linux; none on a Mac, where the
+ * system fonts come first in the stack), and `document.fonts.ready` then waits for those loads only. A window shown
+ * before this draws its boxes with no text for a moment (Pretendard, T13-m6); a font that never loads must not keep a
+ * window hidden. True when the fonts were ready in time.
  */
 export async function fontsReady(contents: WebContents, selector: string, capMs = 300): Promise<boolean> {
   const script = `(async () => {
-    const el = document.querySelector(${JSON.stringify(selector)}) ?? document.body;
-    const cs = getComputedStyle(el);
-    await document.fonts.load(cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily, (el.textContent || 'A').slice(0, 400));
+    void (document.querySelector(${JSON.stringify(selector)}) ?? document.body).offsetHeight; // laid out: its faces requested
     await document.fonts.ready;
     return true;
   })()`;

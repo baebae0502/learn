@@ -43,7 +43,8 @@ export function contentTypeFor(file: string): string {
 /** Must run before app 'ready'. corsEnabled is only exercised in dev (renderer on the Vite server). */
 export function registerAppScheme(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } },
+    // codeCache: V8 keeps the compiled renderer bundle for the next window (settings, sheets), which then opens faster.
+    { scheme: APP_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true, codeCache: true } },
   ]);
 }
 

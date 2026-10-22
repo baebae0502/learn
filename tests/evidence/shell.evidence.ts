@@ -429,6 +429,9 @@ test.beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-'));
   s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), UNEMULATED);
   await recordPushes(s.page);
+  // Critique n2: the demo before this file leaves the pointer on the Dock's bottom edge, whose tooltip ("Messages") then
+  // sat in 16 screen captures. Park it on the same neutral spot m3-09h uses, over nothing that hovers.
+  if (IS_MAC) results['pointerParked'] = await movePointer(512, 620);
 });
 test.afterAll(async () => {
   // A test that timed out skips the rest of this serial file, the verdict included: write what was measured until then.

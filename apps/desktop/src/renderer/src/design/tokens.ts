@@ -82,6 +82,13 @@ export const colors = {
   /** Hairlines between panes, table header rule. */
   separator: { light: 'oklch(89.5% 0.004 250)', dark: 'oklch(33% 0.005 250)' },
   /**
+   * Dividers drawn on a grouped or raised surface: settings groups, a sheet's cards, the palette, web menus. Translucent,
+   * as AppKit's separatorColor, so one value keeps about 1.36:1 on every surface it crosses in both themes (critic
+   * T14-m2: the opaque dark --separator turned darker than those surfaces, 1.08–1.12:1). tokens.test.ts keeps it in
+   * 1.25–1.45:1 on each of them.
+   */
+  separatorOnSurface: { light: 'oklch(23% 0.01 250 / 0.15)', dark: 'oklch(100% 0 0 / 0.1)' },
+  /**
    * macOS, a window that is not main: the sidebar's edge and the toolbar's hairline. Black in dark, as Finder draws
    * them (critic N4-4, run 39653189858); light keeps --separator.
    */
@@ -156,6 +163,7 @@ export type ColorToken = keyof typeof colors;
 /** `prefers-contrast: more` overrides: stronger lines and secondary text, no translucent borders. */
 export const colorsContrastMore = {
   separator: { light: 'oklch(62% 0.008 250)', dark: 'oklch(60% 0.008 250)' },
+  separatorOnSurface: { light: 'oklch(62% 0.008 250)', dark: 'oklch(64% 0.008 250)' }, // 3:1 on the lighter dark groups too
   border: { light: 'oklch(58% 0.008 250)', dark: 'oklch(64% 0.008 250)' },
   textSecondary: { light: 'oklch(36% 0.01 250)', dark: 'oklch(87% 0.006 250)' },
   textTertiary: { light: 'oklch(46% 0.01 250)', dark: 'oklch(74% 0.008 250)' },

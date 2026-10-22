@@ -59,7 +59,7 @@
   .sheet .card {
     border-radius: var(--radius-lg);
     background: var(--fill-hover);
-    box-shadow: inset 0 0 0 1px var(--separator);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
   }
   .sheet .item-card {
     display: grid;
@@ -111,7 +111,7 @@
     padding: 0 var(--space-12) 0 var(--space-16);
   }
   .sheet .shortcut-row + .shortcut-row {
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--separator-on-surface);
   }
   .sheet .shortcut-row .sr-label {
     flex: 1 1 auto;

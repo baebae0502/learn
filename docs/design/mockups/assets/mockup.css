@@ -1146,7 +1146,7 @@ h2,
 .menu .msep {
   height: 1px;
   margin: 5px var(--space-8);
-  background: var(--separator);
+  background: var(--separator-on-surface);
 }
 .menu .mhead {
   padding: var(--space-4) var(--space-8) 2px 28px; /* local: lines up with item labels (4 + 16 check column + 8 gap) */
@@ -1284,13 +1284,13 @@ h2,
   padding: var(--space-12) var(--space-20) var(--space-16);
 }
 .dialog .d-foot.bordered {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
   padding-top: var(--space-12);
 }
 .card {
   border-radius: var(--radius-lg);
   background: var(--fill-hover);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
 }
 .item-card {
   display: grid;
@@ -1376,7 +1376,7 @@ h2,
   padding: var(--space-12) var(--space-16);
 }
 .check-item + .check-item {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
 }
 .check-item .ci-title {
   font: var(--type-headline);
@@ -2164,7 +2164,7 @@ h2,
   gap: var(--space-12);
   height: 52px;
   padding: 0 var(--space-16) 0 var(--space-20);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator-on-surface);
   font: var(--type-title3);
   font-weight: 400;
 }
@@ -2241,7 +2241,7 @@ h2,
   gap: var(--space-16);
   height: 36px;
   padding: 0 var(--space-16) 0 var(--space-20);
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
   color: var(--text-tertiary);
   font: var(--type-caption);
 }
@@ -2278,7 +2278,7 @@ h2,
 .form-group {
   border-radius: var(--radius-lg);
   background: var(--bg-control);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
 }
 .form-row {
   display: flex;
@@ -2288,7 +2288,7 @@ h2,
   padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
 }
 .form-row + .form-row {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
 }
 .form-row .fr-label {
   flex: 1 1 auto;

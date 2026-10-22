@@ -109,6 +109,29 @@ describe('colour tokens', () => {
           expectContrast('borderStrong ring/settings group', c('borderStrong'), group, 3);
         });
 
+        it('dividers on grouped and raised surfaces (--separator-on-surface, critic T14-m2) keep one visible contrast', () => {
+          // Where it is drawn: a settings group's ring and rows (bgControl on bgWindow), a sheet card's ring and rows
+          // (fillHover on bgRaised), the palette's rules and a web menu's separators (bgRaised).
+          const surfaces = [
+            ['settings group', onLayers(c, ['bgControl'], 'bgWindow')],
+            ['sheet card', onLayers(c, ['fillHover'], 'bgRaised')],
+            ['palette / menu', c('bgRaised')],
+          ] as const;
+          for (const [label, bg] of surfaces) {
+            const line = c('separatorOnSurface');
+            const ratio = contrast(line.a < 1 ? composite(line, bg) : line, bg);
+            if (mode === 'default') {
+              // Visible but quiet, the same in both themes (the light --separator measures 1.36:1 on white).
+              expect(ratio, `${label}: ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(1.25);
+              expect(ratio, `${label}: ${ratio.toFixed(2)}`).toBeLessThanOrEqual(1.45);
+            } else {
+              expect(ratio, `${label} (more contrast): ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+            }
+          }
+          // Why it exists: the opaque --separator turns darker than the dark grouped surfaces (1.08–1.09:1).
+          if (theme === 'dark' && mode === 'default') expect(contrast(c('separator'), onLayers(c, ['bgControl'], 'bgWindow'))).toBeLessThan(1.25);
+        });
+
         it('tertiary text and icons ≥ 3:1 on base surfaces (non-essential text only)', () => {
           for (const s of SURFACES) expectContrast(`textTertiary/${s}`, c('textTertiary'), c(s), 3);
         });

@@ -16,7 +16,7 @@
   .settings .form-group {
     border-radius: var(--radius-lg);
     background: var(--bg-control);
-    box-shadow: inset 0 0 0 1px var(--separator);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
   }
   .settings .form-row {
     display: flex;
@@ -26,7 +26,7 @@
     padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
   }
   .settings .form-row + .form-row {
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--separator-on-surface);
   }
   .settings .fr-label {
     flex: 1 1 auto;

@@ -50,7 +50,7 @@
     gap: var(--space-12);
     height: var(--toolbar-height);
     padding: 0 var(--space-16) 0 var(--space-20);
-    border-bottom: 1px solid var(--separator);
+    border-bottom: 1px solid var(--separator-on-surface);
     color: var(--text-secondary);
   }
   .palette .p-input > .icon {
@@ -160,7 +160,7 @@
     gap: var(--space-16);
     height: 36px; /* local: palette footer */
     padding: 0 var(--space-16) 0 var(--space-20);
-    border-top: 1px solid var(--separator);
+    border-top: 1px solid var(--separator-on-surface);
     color: var(--text-tertiary);
     font: var(--type-caption);
   }

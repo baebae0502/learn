@@ -98,6 +98,7 @@ export const assetUrl = (assetId: string): string => `${APP_ORIGIN}/asset/${enco
 
 /**
  * The video formats Learn imports, as every screen writes them (critic T14-n1): the empty library's formats line and
- * the import's "not supported" advice say the same list the same way, spaced middots as in every other list.
+ * the import's "not supported" advice say the same list the same way, spaced middots as in every other list. The
+ * spaces are U+00A0, so the list never breaks inside, nor starts a line with "·" ("(MP4 · MOV · WebM)").
  */
-export const VIDEO_FORMATS = 'MP4 · MOV · WebM';
+export const VIDEO_FORMATS = 'MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM';

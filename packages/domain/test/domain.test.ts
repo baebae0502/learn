@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
-  nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
+  VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
 describe('ids', () => {
@@ -89,5 +89,12 @@ describe('ipc contract', () => {
     const long = '가'.repeat(200);
     expect(nameSchema.parse(long.normalize('NFD'))).toBe(long);
     expect(nameSchema.safeParse('가'.repeat(201).normalize('NFD')).success).toBe(false);
+  });
+});
+
+describe('copy shared across screens', () => {
+  it('the video formats list never breaks inside (no breakable space; U+00A0 around each middot)', () => {
+    expect(VIDEO_FORMATS.replace(/\u00a0/g, ' ')).toBe('MP4 · MOV · WebM');
+    expect(VIDEO_FORMATS).not.toMatch(/[ \t]/);
   });
 });

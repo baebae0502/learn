@@ -7,7 +7,7 @@ const imported = (path: string, id: string): ImportOutcome => ({ status: 'import
 const dup = (path: string, existingItemId: string): ImportOutcome => ({ status: 'duplicate', path, existingItemId });
 const failed = (path: string, message: string): ImportOutcome => ({ status: 'failed', path, code: 'UNSUPPORTED_TYPE', message });
 
-const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4 · MOV · WebM)을 가져올\u00a0수 있습니다.';
+const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM)을 가져올\u00a0수 있습니다.';
 
 describe('settleImport', () => {
   it('counts imports and failures and asks about each duplicate in order', async () => {
@@ -48,7 +48,7 @@ describe('failureLines', () => {
     ];
     expect(failureLines(f)).toEqual({
       lines: [...['a.txt', 'b.txt', 'c.txt'].map((name) => ({ name, cause: '지원하지 않는 형식입니다.' })), '외 3개'],
-      hints: ['지금은 PDF와\u00a0동영상(MP4 · MOV · WebM)을 가져올\u00a0수 있습니다.', '다시 가져오세요.'],
+      hints: ['지금은 PDF와\u00a0동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM)을 가져올\u00a0수 있습니다.', '다시 가져오세요.'],
     });
   });
 });

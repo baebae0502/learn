@@ -126,14 +126,17 @@ const jxa = async (script: string | string[], timeout = OSASCRIPT_MS) => {
  * 120 Hz: each tick puts the cursor where the curve is at that moment, so the travel takes `ms` however long a post
  * takes; then it waits 50 ms (the event queue) and says whether the cursor arrived.
  */
-const PRELUDE = [
+/** How often the cursor scripts post a move while gliding or dragging (Hz). */
+export const GLIDE_HZ = 120;
+
+const prelude = (hz: number = GLIDE_HZ) => [
   "ObjC.import('CoreGraphics'); ObjC.import('Foundation');",
   'function loc() { var p = $.CGEventGetLocation($.CGEventCreate(null)); return { x: p.x, y: p.y }; }',
   'function ease(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }',
   'function near(a, b) { return Math.abs(a.x - b.x) < 2 && Math.abs(a.y - b.y) < 2; }',
   'function nap(s) { if (s > 0) $.NSThread.sleepForTimeInterval(s); }',
   'function path(from, to, ms, move) {',
-  '  var start = Date.now(), tick = 1000 / 120, k = 0;',
+  `  var start = Date.now(), tick = 1000 / ${hz}, k = 0;`,
   '  for (;;) {',
   '    var t = Math.min(1, (Date.now() - start) / ms), e = ease(t);',
   '    move({ x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e });',
@@ -151,20 +154,20 @@ const PRELUDE = [
 
 /**
  * T13-M8: glides the system cursor to a screen point (top-left global points) in one osascript call, posting
- * kCGEventMouseMoved along an eased path in `ms` (PRELUDE path), so the app sees a real pointer move (its hover).
+ * kCGEventMouseMoved along an eased path in `ms` (prelude path), so the app sees a real pointer move (its hover).
  * `moved` is false when posting was refused (the cursor did not arrive); the cursor then goes the same eased way by
  * warps (`warped`), which needs no permission but sends the app no event. `warpOnly` goes by warps at once, for a
  * run where posting was already refused (no glide spent on the refused path first, round 3 n4).
  */
-export async function glideCursor(to: { x: number; y: number }, opts: { ms?: number; warpOnly?: boolean } = {}): Promise<{ moved: boolean; warped: boolean }> {
+export async function glideCursor(to: { x: number; y: number }, opts: { ms?: number; warpOnly?: boolean; hz?: number } = {}): Promise<{ moved: boolean; warped: boolean }> {
   const r = await jxa(glideScript(to, opts));
   return { moved: r['moved'] === true, warped: r['warped'] === true };
 }
 
 /** The JXA of glideCursor (exported for its unit test, which runs it against a simulated CoreGraphics). */
-export function glideScript(to: { x: number; y: number }, opts: { ms?: number; warpOnly?: boolean } = {}): string {
+export function glideScript(to: { x: number; y: number }, opts: { ms?: number; warpOnly?: boolean; hz?: number } = {}): string {
   return [
-    ...PRELUDE,
+    ...prelude(opts.hz),
     `var to = { x: ${Math.round(to.x)}, y: ${Math.round(to.y)} }, ms = ${Math.round(opts.ms ?? 420)};`,
     `var moved = ${opts.warpOnly ? 'false' : 'path(loc(), to, ms, function (p) { post($.kCGEventMouseMoved, p); })'};`,
     'var warped = moved ? false : path(loc(), to, ms, warp);',
@@ -174,7 +177,7 @@ export function glideScript(to: { x: number; y: number }, opts: { ms?: number; w
 
 /** Re-review minor 2: lets the left button go where the cursor is (after a press-drag that failed half-way). */
 export async function releaseMouse(): Promise<void> {
-  await jxa([...PRELUDE, 'post($.kCGEventLeftMouseUp, loc());', "JSON.stringify({ ok: true });"]);
+  await jxa([...prelude(), 'post($.kCGEventLeftMouseUp, loc());', "JSON.stringify({ ok: true });"]);
 }
 
 /**
@@ -188,7 +191,7 @@ export async function dragCursor(from: { x: number; y: number }, to: { x: number
 /** The JXA of dragCursor (exported for its unit test). */
 export function dragScript(from: { x: number; y: number }, to: { x: number; y: number }, ms = 600): string {
   return [
-    ...PRELUDE,
+    ...prelude(),
     `var from = { x: ${Math.round(from.x)}, y: ${Math.round(from.y)} }, to = { x: ${Math.round(to.x)}, y: ${Math.round(to.y)} };`,
     'post($.kCGEventLeftMouseDown, from);',
     'nap(0.08);',

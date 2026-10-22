@@ -37,7 +37,7 @@ const build = (
 ) => buildAppMenu({ isDev, platform, commands, enabled, onCommand });
 
 const SEP = { type: 'separator' };
-/** ⌘, (S-2): the macOS app menu after Learn 정보; at the end of 파일 elsewhere. */
+/** ⌘, (S-2): the macOS app menu after Learn에 관하여; at the end of 파일 elsewhere. */
 const SETTINGS: Shape = { id: 'app.settings', label: '설정…', accelerator: 'CmdOrCtrl+,' };
 
 const FILE = (platform: NodeJS.Platform): Shape => ({
@@ -92,7 +92,7 @@ describe('buildAppMenu', () => {
     expect(shape(build('darwin'))).toEqual([
       {
         id: 'menu.app', label: 'Learn', submenu: [
-          { label: 'Learn 정보', role: 'about' },
+          { label: 'Learn에 관하여', role: 'about' },
           SEP,
           SETTINGS,
           SEP,
@@ -224,7 +224,7 @@ describe('menu state and placement (M3)', () => {
   it('puts "app" commands in the macOS app menu, at the end of 파일 elsewhere', () => {
     const extra: CommandSpec = { id: 'nav.back', label: '설정…', accelerator: 'CmdOrCtrl+,', menu: { menu: 'app', group: 2, order: 1 }, contexts: ['app'] };
     expect(shape(build('darwin', false, vi.fn(), ALL, [extra]))[0]!.submenu!.map((s) => s.label ?? s.type)).toEqual([
-      'Learn 정보', 'separator', '설정…', 'separator', '서비스', 'separator', 'Learn 가리기', '기타 가리기', '모두 보기', 'separator', 'Learn 종료',
+      'Learn에 관하여', 'separator', '설정…', 'separator', '서비스', 'separator', 'Learn 가리기', '기타 가리기', '모두 보기', 'separator', 'Learn 종료',
     ]);
     expect(shape(build('linux', false, vi.fn(), ALL, [extra])).find((m) => m.id === 'menu.file')!.submenu!.map((s) => s.label ?? s.type)).toEqual(['설정…', 'separator', '창 닫기']);
   });

@@ -87,11 +87,11 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         }),
       ]);
     }
-    // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn 정보 in the app menu.
+    // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
       [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
-    if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn 정보'], ['-', ''], [null, '설정…'], ['-', '']]);
+    if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
     // The text size group; the second 글자 크게 is ⌘+'s hidden ⌘= twin (menuSnapshot does not carry `visible`).
     expect(entries(topMenu(menu, '보기'))).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);

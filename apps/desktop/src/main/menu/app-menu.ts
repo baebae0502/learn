@@ -110,7 +110,8 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
     id: 'menu.app',
     label: 'Learn',
     submenu: join(
-      [{ role: 'about', label: 'Learn 정보' }],
+      // Apple Korean: "<앱>에 관하여" (Finder에 관하여, 이 Mac에 관하여); "정보" is the Windows Help › About wording (critique m4).
+      [{ role: 'about', label: 'Learn에 관하여' }],
       reg('app'),
       [{ role: 'services', label: '서비스' }],
       [{ role: 'hide', label: 'Learn 가리기' }, { role: 'hideOthers', label: '기타 가리기' }, { role: 'unhide', label: '모두 보기' }],
@@ -146,7 +147,7 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       reg('window'),
     ),
   };
-  // macOS keeps Learn 정보 in the app menu; elsewhere it ends 도움말 (S-2).
+  // macOS keeps Learn에 관하여 in the app menu; elsewhere Learn 정보 ends 도움말 (S-2).
   const help: Item = { id: 'menu.help', label: '도움말', role: 'help', submenu: join(reg('help'), mac ? [] : [{ role: 'about', label: 'Learn 정보' }]) };
   return [...(mac ? [appMenu] : []), file, edit, view, go, windowMenu, help].filter((m) => Array.isArray(m.submenu) && m.submenu.length > 0);
 }

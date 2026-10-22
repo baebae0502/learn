@@ -52,7 +52,9 @@ export function Tooltip({
     setOpen(next);
   };
   return (
-    <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled} isOpen={open} onOpenChange={onOpenChange}>
+    // Blocked: RAC's trigger is off too, so a focus or hover meanwhile starts nothing in it. A veto alone (below) left
+    // its state half-run: a later blur then drew the old tooltip again, for good (Linux evidence, after a quiet focus).
+    <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled || blocked} isOpen={open} onOpenChange={onOpenChange}>
       {children}
       <AriaTooltip className="tooltip" placement="bottom" offset={6}>
         <TooltipText label={label} accelerator={accelerator} reason={reason} />

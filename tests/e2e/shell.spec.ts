@@ -125,6 +125,43 @@ test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar
   }
 });
 
+test('the toggle\'s open tooltip goes with ⌃⌘S and never comes back, also once the focus is let go (m1, Linux evidence)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const tip = page.getByRole('tooltip');
+  try {
+    // Keyboard focus on the sidebar toggle: its tooltip is open (as the evidence harness starts).
+    await page.getByTestId('launcher').focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await expect(tip).toHaveText(/사이드바 가리기/);
+    for (const state of ['hidden', 'shown']) {
+      await runMenuCommand(app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', state);
+      await page.waitForTimeout(900);
+      await expect(tip).toHaveCount(0);
+    }
+    // Before the fix, letting the focus go drew the toggle's old tooltip again here, and it stayed through the next
+    // toggles (the trigger's state was left half-run by the vetoed open).
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.waitForTimeout(300);
+    await expect(tip).toHaveCount(0);
+    await page.mouse.click(700, 600);
+    for (const state of ['hidden', 'shown']) {
+      await runMenuCommand(app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', state);
+      await page.waitForTimeout(900);
+      await expect(tip).toHaveCount(0);
+    }
+    // Tooltips still work: keyboard focus on the toggle opens its tooltip at once.
+    await page.getByTestId('launcher').focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+    await expect(tip).toHaveText(/사이드바 가리기/);
+  } finally {
+    await app.close();
+  }
+});
+
 test('arrow keys on the separator: 5 % steps clamped at 360 and 180, one more step collapses (aria-valuenow follows)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   const separator = page.getByRole('separator');

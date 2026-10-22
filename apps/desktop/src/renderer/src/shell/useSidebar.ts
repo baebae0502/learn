@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { api } from '../api';
 import { lastInput } from '../ui/inputModality';
 import { quietUntilInput } from '../ui/tooltipGate';
@@ -45,7 +46,8 @@ export function keepFocusAcross(willHide: boolean, from: Element | null = docume
       ? document.querySelector<HTMLElement>(`${willHide ? '.titlebar' : '.sidebar-inner'} .launcher`)
       : document.getElementById(willHide ? TOGGLE_IDS.toolbar : TOGGLE_IDS.sidebar);
     if (!next) return;
-    quietUntilInput(); // its ring, but no tooltip popping up on it (critique m1)
+    // Its ring, but no tooltip popping up on it (critique m1): the tooltips are off (rendered so) before it moves.
+    flushSync(() => quietUntilInput());
     next.focus();
   });
 }

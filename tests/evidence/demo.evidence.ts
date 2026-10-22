@@ -33,8 +33,8 @@ import {
   NativeInputNotPermitted, ROOT, bringAppToFront, closeSheet, drag, dropSource, expectWindow, launch, mainWindow, nativeKeystroke, osascript, osascriptLimits,
   runMenuCommand, stubOpenDialog, type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
-import { IS_MAC, outFile, record, startRecording, startX11Recording, type Recording, type StoppableRecording } from './capture';
-import { savedDisplayModes, switchDisplayForDemo } from './display-mac';
+import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
+import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
 import { captionSpot, desktopSpot } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
@@ -64,8 +64,47 @@ const GRAB = (() => {
   return m ? { width: Number(m[1]), height: Number(m[2]), x: Number(m[3]), y: Number(m[4]) } : null;
 })();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** Time to look at a settled state (not a wait for one: those are expect / waitFor). */
-const pause = (ms: number) => sleep(ms * PACE);
+
+/**
+ * One way to take the recording. Mac run 39779536146 lost it: screencapture exited 8 s in, at 1600 × 900 ("capture
+ * error"), while the same image recorded 280 s in that mode before (run 39729419115) and 10 s at 1024 × 768 later the
+ * same run. So a lost recording stops the attempt at its next step and the demo runs again: once in the same mode,
+ * then in the runner's own mode, and last through the main window's CDP screencast, which needs nothing installed
+ * (its frames are encoded on the server by scripts/evidence.sh); each only while the demo's budget holds a full run.
+ */
+interface DemoPlan {
+  display: 'switch' | 'native';
+  capture: 'screencapture' | 'screencast';
+  why: string;
+}
+const PLANS: readonly DemoPlan[] = IS_MAC
+  ? [
+      { display: 'switch', capture: 'screencapture', why: 'the first attempt' },
+      { display: 'switch', capture: 'screencapture', why: 'once more in the same display mode after a lost recording' },
+      { display: 'native', capture: 'screencapture', why: "in the runner's own display mode after two lost recordings" },
+      { display: 'native', capture: 'screencast', why: 'the main window only (CDP screencast) after three lost recordings' },
+    ]
+  : [{ display: 'switch', capture: 'screencapture', why: 'the only attempt' }];
+/**
+ * The demo's whole budget, attempts included. With the rest of `all` (about 290 s of evidence on the Mac) the step
+ * stays under its 16-minute cap: worst case about 290 + 560 + 20 s ≈ 14.5 min.
+ */
+const DEMO_BUDGET_MS = 560_000;
+/** One full attempt: set-up, the fixed-length recording, teardown (Mac run 39779536146: 304 s). */
+const FULL_ATTEMPT_MS = 320_000;
+class RecordingLost extends Error {
+  override name = 'RecordingLost';
+}
+/** Set when this attempt's recording ended early (screencapture exited before RECORD_SECONDS). */
+let lostRecording: string | null = null;
+const stopIfLost = () => {
+  if (lostRecording) throw new RecordingLost(lostRecording);
+};
+/** Time to look at a settled state (not a wait for one: those are expect / waitFor). A lost recording stops here. */
+const pause = async (ms: number) => {
+  await sleep(ms * PACE);
+  stopIfLost();
+};
 /**
  * T13R2-m2: after a key whose result is the point (open, close, fold, theme, ⌘O, ⌘1, ⌘K), the result stays on screen
  * 2.5 s once its pill has gone, counted from when the key went out. Stops inside a typed sequence (the 초성 letters,
@@ -147,8 +186,8 @@ type CursorMode = 'synthetic' | 'system' | 'warp';
 /** What the overlay draws for a cursor mode (DemoOverlay PointerMode). */
 const overlayMode = (mode: CursorMode) => (mode === 'synthetic' ? 'follow' : 'clicks');
 
-test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
-  test.setTimeout(600_000);
+async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<{ lost: string | null }> {
+  lostRecording = null;
   const work = path.join(os.tmpdir(), 'learn-demo');
   fs.mkdirSync(work, { recursive: true });
   const libraryDir = libraryFolder(work);
@@ -185,7 +224,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     }
   };
 
-  const display = await switchDisplayForDemo();
+  const display: { result: DisplaySwitch; restore(): Promise<void> } =
+    plan.display === 'switch' ? await switchDisplayForDemo() : { result: { status: 'skipped', reason: plan.why }, restore: async () => {} };
   let launchOptions: LaunchOptions = {
     env: { LEARN_DEMO_OVERLAY: '1' },
     // The page follows the theme pref through nativeTheme, as on a user's Mac (no light emulation; Task 8 M1).
@@ -352,6 +392,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
     const chapter = async (title: string, where: Page | Captioned = page) => {
+      stopIfLost();
       const ms = Date.now() - started;
       chapters.push({ at: Math.floor(ms / 1000), ms, title });
       lastCaptioned = 'target' in where ? where : { target: where };
@@ -471,9 +512,23 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
       recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
+    } else if (plan.capture === 'screencast') {
+      // The last resort: the main window's page through CDP (no native chrome, menus, sheets or Finder in it).
+      const cast = await startScreencast(page, 'm3-demo', 'M3 shell demo: the main window page only (CDP screencast)');
+      recordingStartMs = Date.now();
+      stopRec = () => cast.stop();
+      notes.push('the recording is the main window page only (CDP screencast): screencapture was lost three times');
     } else {
       rec = startRecording(RECORD_SECONDS, 'm3-demo', 'M3 shell demo (2–4 min)');
-      if (rec.file) void rec.done.then(() => (recordingExitMs = Date.now())); // not for a skipped one (Linux CI)
+      const recordingFrom = Date.now();
+      if (rec.file) {
+        // Not for a skipped one (Linux CI). An exit well before RECORD_SECONDS without a file is a lost recording.
+        void rec.done.then((entry) => {
+          recordingExitMs = Date.now();
+          const after = (recordingExitMs - recordingFrom) / 1000;
+          if (!entry.file && after < RECORD_SECONDS - 5) lostRecording = `screencapture ended after ${after.toFixed(1)} s without a file (${(entry.error ?? 'no error').split('\n').at(-1)})`;
+        });
+      }
     }
     // mac1 m2: the recording first shows the painted first screen; the opening caption then gets its whole time.
     await sleep(PRE_ROLL_MS);
@@ -838,10 +893,15 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
     if (!stopRec && rec?.file) {
-      // screencapture -V stops by itself; finish-demo.sh trims the rest away.
+      // screencapture -V stops by itself; finish-demo.sh trims the rest away. A recording lost meanwhile ends the wait.
       const left = RECORD_SECONDS - (Date.now() - started) / 1000;
-      if (left > 0) await sleep(left * 1000 + 1000);
-    } else await pause(2000); // the tail of an x11grab recording
+      if (left > 0) await Promise.race([rec.done, sleep(left * 1000 + 1000)]);
+      if (lostRecording) await sleep(100); // the exit handler has run
+      stopIfLost();
+    } else await pause(2000); // the tail of an x11grab recording or a screencast
+  } catch (e) {
+    if (!(e instanceof RecordingLost)) throw e;
+    notes.push(`attempt (${plan.why}): ${e.message}; the demo stopped there`);
   } finally {
     const entry = stopRec ? await stopRec() : rec ? await rec.done : null;
     await s?.app.close().catch(() => {});
@@ -890,7 +950,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
           cursor,
           screen,
           displaySwitch: display.result,
-          notes,
+          attempt: plan,
+          notes: [...history, ...notes],
           chapters,
         },
         null,
@@ -901,6 +962,33 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     record({ file: json.rel, kind: 'data', description: 'M3 demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
+  if (lostRecording) return { lost: lostRecording };
   // A demo longer than the fixed macOS recording lost its end: say so (the files above are written either way).
   if (IS_MAC && rec?.file) expect(demoSeconds, 'the demo fits the recording (RECORD_SECONDS)').toBeLessThanOrEqual(RECORD_SECONDS);
+  return { lost: null };
+}
+
+test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
+  test.setTimeout(DEMO_BUDGET_MS + 60_000);
+  const began = Date.now();
+  const history: string[] = [];
+  for (const [i, plan] of PLANS.entries()) {
+    const { lost } = await demoAttempt(plan, history);
+    if (!lost) return;
+    history.push(`attempt ${i + 1} (${plan.why}; ${plan.display === 'switch' ? 'switched display' : "runner's display"}, ${plan.capture}): ${lost}`);
+    const left = DEMO_BUDGET_MS - (Date.now() - began);
+    if (i + 1 < PLANS.length && left < FULL_ATTEMPT_MS) {
+      history.push(`no attempt ${i + 2}: ${Math.round(left / 1000)} s of the demo's budget left, a full run takes ${FULL_ATTEMPT_MS / 1000} s`);
+      break;
+    }
+  }
+  // Every attempt lost its recording: the last attempt's chapters.json carries the history; the run reports it.
+  const json = outFile('m3-demo.chapters.json').abs;
+  try {
+    const written = JSON.parse(fs.readFileSync(json, 'utf8')) as { notes: string[] };
+    fs.writeFileSync(json, `${JSON.stringify({ ...written, notes: [...history, ...written.notes.filter((n) => !history.includes(n))] }, null, 2)}\n`);
+  } catch {
+    /* nothing written: the error below says it */
+  }
+  throw new Error(`the demo recording was lost every time: ${history.join(' | ')}`);
 });

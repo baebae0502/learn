@@ -29,6 +29,8 @@ export interface ManifestEntry {
   bytes?: number;
   skipped?: string;
   error?: string;
+  /** What the recorder wrote to stderr (kept for a successful recording too, to tell noise from a cause). */
+  stderr?: string;
   at: string;
 }
 
@@ -219,7 +221,7 @@ export function startRecording(seconds: number, name: string, description: strin
       const ok = fs.existsSync(target) && fs.statSync(target).size > 0;
       resolve(
         ok
-          ? record({ file, kind: 'recording', description: `${description} (${seconds}s, exit ${code ?? signal})` })
+          ? record({ file, kind: 'recording', description: `${description} (${seconds}s, exit ${code ?? signal})`, ...(stderr.trim() ? { stderr: stderr.trim().slice(0, 500) } : {}) })
           : record({ file: null, kind: 'recording', description, error: `screencapture exit ${code ?? signal}: ${stderr.trim()}` }),
       );
     });

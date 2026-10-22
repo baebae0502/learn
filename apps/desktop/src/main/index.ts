@@ -1,3 +1,6 @@
+// First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
+// performance.timeOrigin either way).
+import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
@@ -209,6 +212,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
+    markPerf('ready');
     // First, before any await: Electron's default menu (English, with Reload) must never be live. Needs no library.
     // Registry items stay disabled until the main window's renderer reports its context.
     installAppMenu();

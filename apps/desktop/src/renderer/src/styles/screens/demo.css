@@ -9,7 +9,8 @@
    - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows;
    - tag ("스크립트로 재현" while a scripted gesture is on screen): top-left, 16 below the toolbar;
    - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
-     least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom.
+     least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom; while a
+     sheet is open (the pill then bottom-left), 240 from the bottom, above the caption.
    Separate windows are another matter: the settings window carries its own overlay (the script sends the settings
    chapters' captions there), and the ⌘/ chapter shows its caption before the sheet opens. */
 @layer screens {

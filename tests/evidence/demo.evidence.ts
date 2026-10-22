@@ -38,12 +38,12 @@ import { mergeEnv } from './env';
 
 const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
 /**
- * The macOS recording's fixed length (screencapture -V): longer than any plausible demo (Linux at full pace: see the
- * Task 13 report; macOS adds the full-screen and Finder chapters and System Events), then trimmed on the server to
- * the demo plus 3 s (scripts/finish-demo.sh, from chapters.json `demoSeconds` and `offset`). A demo that still outran
- * it fails at the end, after its files are written.
+ * The macOS recording's fixed length (screencapture -V): longer than any plausible demo (Linux at full pace 152 s in fix
+ * round 2; macOS adds the full-screen and Finder chapters and System Events, about 3:10), then trimmed on the server
+ * to the demo plus 3 s (scripts/finish-demo.sh, from chapters.json `demoSeconds` and `offset`). A demo that still
+ * outran it fails at the end, after its files are written.
  */
-const RECORD_SECONDS = 220;
+const RECORD_SECONDS = 280;
 /** The overlay's pill: shown 1.9 s (DemoOverlay PILL_MS), then an exit of 0.75 × --duration-base. */
 const PILL_GONE_MS = 1900 + Math.round(motion.base * 0.75);
 const SCALE = !IS_MAC && /^[1-4]$/.test(process.env['LEARN_DEMO_SCALE'] ?? '') ? Number(process.env['LEARN_DEMO_SCALE']) : 1;
@@ -699,6 +699,8 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     // 14. ⌘/: the shortcut sheet as it is (F6 / ⇧F6 under 앱); ↩ closes it. The caption is read before the sheet comes
     //     (at 1024 × 743 the sheet covers the window's middle, T13R2-m6).
     await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('F6')} / ${key('Shift+F6')}도 있습니다.`);
+    // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
+    await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
     await pause(2500);
     const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts'));
     await expect(sheet.getByTestId('shortcut-row').filter({ hasText: 'F6' }).first()).toBeVisible();

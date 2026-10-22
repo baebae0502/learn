@@ -1,28 +1,37 @@
 #!/usr/bin/env bash
 # Record the M3 demo on Linux at @2x, as a supplement to the macOS recording (a script, not a CI step):
 # Xvfb, the @demo test at full pace (LEARN_DEMO_PACE=1) with --force-device-scale-factor=2, and ffmpeg x11grab of
-# exactly the window to H.264 (yuv420p, CRF 18, 30 fps), started and stopped by the test (capture.ts startX11Recording).
+# exactly the window, started and stopped by the test (capture.ts startX11Recording); then scripts/finish-demo.sh embeds
+# the chapters and burns in the corner tag "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)".
 #
-#   scripts/record-demo-linux.sh [width height]    default 2880 1800: the 1440 × 900 window at @2x
+#   scripts/record-demo-linux.sh [--force] [width height]    default 2880 1800: the 1440 × 900 window at @2x
+#
+# Playwright empties evidence-results/ (its outputDir) when it starts, as every evidence run does: this refuses to start
+# while evidence-results/ holds anything, unless --force.
 #
 # Output (gitignored): evidence/demo-linux/<UTC timestamp>/
-#   m3-demo-linux.mp4          the recording; label it "Linux, Pretendard, no native chrome"
-#   m3-demo.chapters.txt/.json the chapter list (m:ss from the start of the video), input, screen and window bounds
-#   frames/ch-NN.png           one frame per chapter, 3 s in (ffmpeg select), to check the video at a glance
-#   run.log                    the Playwright run
-# Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node and pnpm. Builds the app first. Like every
-# evidence run, Playwright empties evidence-results/ (its outputDir) when it starts.
+#   m3-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
+#   m3-demo.chapters.txt/.json the chapter list (m:ss in the video), input, screen and window bounds, notes
+#   frames/ch-NN.png           one frame per chapter: 3 s in, or halfway through a shorter chapter
+#   run.log, build.log         the Playwright run and the build
+# Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node, pnpm and python3. Builds the app first.
 set -euo pipefail
 
+FORCE=false
+if [[ ${1:-} == --force ]]; then FORCE=true; shift; fi
 W=${1:-2880}
 H=${2:-1800}
 SCALE=2
-[[ $W =~ ^[0-9]+$ && $H =~ ^[0-9]+$ && $((W % (2 * SCALE))) -eq 0 && $((H % (2 * SCALE))) -eq 0 ]] || { echo "usage: $0 [width height] (multiples of $((2 * SCALE)))" >&2; exit 2; }
-for tool in Xvfb xdpyinfo ffmpeg ffprobe node pnpm git; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }; done
+[[ $W =~ ^[0-9]+$ && $H =~ ^[0-9]+$ && $((W % (2 * SCALE))) -eq 0 && $((H % (2 * SCALE))) -eq 0 ]] || { echo "usage: $0 [--force] [width height] (multiples of $((2 * SCALE)))" >&2; exit 2; }
+for tool in Xvfb xdpyinfo ffmpeg ffprobe node pnpm git python3; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }; done
 ffmpeg -hide_banner -devices 2>/dev/null | grep -q x11grab || { echo "ffmpeg has no x11grab device" >&2; exit 1; }
 
 ROOT=$(git rev-parse --show-toplevel)
 cd "$ROOT"
+if [[ $FORCE != true && -d evidence-results ]] && [[ -n $(ls -A evidence-results) ]]; then
+  echo "evidence-results/ is not empty, and Playwright would empty it: move it away, or pass --force" >&2
+  exit 2
+fi
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 OUT="evidence/demo-linux/$TS"
 LABEL="demo-linux-$TS"
@@ -40,9 +49,40 @@ done
 [[ -n $DISP ]] || { echo "no free X display number" >&2; exit 1; }
 Xvfb "$DISP" -screen 0 "${SW}x${SH}x24" -nolisten tcp >"$OUT/xvfb.log" 2>&1 &
 XVFB=$!
-trap 'kill "$XVFB" 2>/dev/null || true' EXIT
+# Also the test's ffmpeg grabbing this display, should the run end abnormally (review minor 3).
+cleanup() {
+  pkill -f -- "x11grab.*-i ${DISP}[+]" 2>/dev/null || true
+  kill "$XVFB" 2>/dev/null || true
+}
+trap cleanup EXIT
 for _ in $(seq 1 100); do xdpyinfo -display "$DISP" >/dev/null 2>&1 && break; sleep 0.1; done
 xdpyinfo -display "$DISP" >/dev/null 2>&1 || { echo "Xvfb did not start on $DISP" >&2; cat "$OUT/xvfb.log" >&2; exit 1; }
+# The X server's own pointer (not drawn: x11grab -draw_mouse 0) starts in the middle of the screen, over the window:
+# when a window opens, closes or moves, X sends the window under it a real pointer move, and the overlay's cursor
+# would jump there. Parked in the screen's corner, outside every window (they start at 1 DIP), it sends nothing.
+python3 -I - "$DISP" <<'PY' || echo "could not park the X pointer: the drawn cursor may jump when windows change" >&2
+import ctypes, sys
+x = ctypes.CDLL('libX11.so.6')
+x.XOpenDisplay.restype = ctypes.c_void_p
+x.XOpenDisplay.argtypes = [ctypes.c_char_p]
+x.XDefaultRootWindow.restype = ctypes.c_ulong
+x.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+x.XWarpPointer.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_ulong] + [ctypes.c_int] * 2 + [ctypes.c_uint] * 2 + [ctypes.c_int] * 2
+x.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+x.XQueryPointer.argtypes = [ctypes.c_void_p, ctypes.c_ulong] + [ctypes.c_void_p] * 7
+x.XCloseDisplay.argtypes = [ctypes.c_void_p]
+d = x.XOpenDisplay(sys.argv[1].encode())
+if not d:
+    sys.exit(1)
+root = x.XDefaultRootWindow(d)
+x.XWarpPointer(d, 0, root, 0, 0, 0, 0, 0, 0)
+x.XSync(d, 0)
+v = [ctypes.c_ulong(), ctypes.c_ulong()] + [ctypes.c_int() for _ in range(4)] + [ctypes.c_uint()]
+x.XQueryPointer(d, root, *[ctypes.byref(a) for a in v])
+x.XCloseDisplay(d)
+print(f'X pointer parked at ({v[2].value}, {v[3].value})')
+sys.exit(0 if (v[2].value, v[3].value) == (0, 0) else 1)
+PY
 echo "Xvfb $DISP ${SW}x${SH}; window ${W}x${H} at @${SCALE}; output $OUT"
 
 [[ -f fixtures/generated/sample.pdf ]] || pnpm fixtures
@@ -60,16 +100,24 @@ if [[ ! -s $SRC/m3-demo.mp4 ]]; then
   echo "no recording in $SRC (test exit $STATUS)" >&2
   exit 1
 fi
-mv "$SRC/m3-demo.mp4" "$OUT/m3-demo-linux.mp4"
 VIDEO="$OUT/m3-demo-linux.mp4"
+scripts/finish-demo.sh "$SRC/m3-demo.mp4" "$OUT/m3-demo.chapters.json" "$VIDEO" "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)"
+rm -f "$SRC/m3-demo.mp4"
 
 ffprobe -v error -select_streams v:0 -show_entries stream=width,height,pix_fmt,r_frame_rate,codec_name -show_entries format=duration -of default=nw=1 "$VIDEO" | tee "$OUT/ffprobe.txt"
+ffprobe -v error -show_chapters -of csv=p=0 "$VIDEO" | wc -l | xargs -I{} echo "embedded chapters: {}" | tee -a "$OUT/ffprobe.txt"
 
-# One frame per chapter, 3 s after it starts (the state has settled by then).
-SELECT=$(node -e '
-  const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).chapters;
-  console.log(c.map((x) => `between(t,${(x.ms / 1000 + 3).toFixed(3)},${(x.ms / 1000 + 3 + 1 / 30).toFixed(3)})`).join("+"));
-' "$OUT/m3-demo.chapters.json")
+# One frame per chapter: 3 s in, or halfway to the next chapter when it is shorter (n3).
+DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$VIDEO")
+SELECT=$(python3 -I - "$OUT/m3-demo.chapters.json" "$DURATION" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1], encoding='utf-8'))
+offset, end = float(d.get('offset') or 0), float(sys.argv[2])
+starts = [max(0.0, c['ms'] / 1000 - offset) for c in d['chapters']]
+picks = [min(s + 3, (s + (starts[i + 1] if i + 1 < len(starts) else end)) / 2) for i, s in enumerate(starts)]
+print('+'.join(f'between(t,{t:.3f},{t + 1 / 30:.3f})' for t in picks))
+PY
+)
 ffmpeg -v error -y -i "$VIDEO" -vf "select='$SELECT'" -fps_mode vfr -start_number 1 "$OUT/frames/ch-%02d.png"
 
 # The window fills the frame: the outermost 2 px on each side are the app's, not the black X root.

@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { FIXTURES, launch, mainWindow, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
-import { EVIDENCE_ROOT, IS_MAC, captureOpenMenu, focusApp, fullScreenShot, menuBarNames, nativeWindowShot, pageShot, pressEscape, startRecording, startScreencast, tryExec, writeJson } from './capture';
+import { EVIDENCE_ROOT, IS_MAC, captureOpenMenu, focusApp, fullScreenShot, menuBarNames, menuItemNames, nativeWindowShot, pageShot, pressEscape, startRecording, startScreencast, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -282,4 +282,122 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
   } finally {
     await closeSession(s);
   }
+});
+
+/** A menu item name that reads English: Latin letters and no Hangul (a separator is "-"; "Learn" is the app's name). */
+const readsEnglish = (name: string) => name !== '-' && name !== 'Learn' && /[A-Za-z]{2}/.test(name) && !/[\u3131-\u318e\uac00-\ud7a3]/.test(name);
+
+/** Info.plist values of an app bundle (PlistBuddy prints arrays as `Array {` … `}`); null when the key is absent. */
+async function plistValue(appDir: string, key: string): Promise<string | string[] | null> {
+  const r = await tryExec('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, path.join(appDir, 'Contents', 'Info.plist')]);
+  if (!r.ok) return null;
+  const out = r.stdout.trim();
+  if (!out.startsWith('Array {')) return out;
+  return out.split('\n').slice(1, -1).map((l) => l.trim()).filter(Boolean);
+}
+
+async function bundleLocalization(appDir: string) {
+  const resources = path.join(appDir, 'Contents', 'Resources');
+  return {
+    lproj: fs.existsSync(resources) ? fs.readdirSync(resources).filter((n) => n.endsWith('.lproj')).sort() : [],
+    developmentRegion: await plistValue(appDir, 'CFBundleDevelopmentRegion'),
+    localizations: await plistValue(appDir, 'CFBundleLocalizations'),
+  };
+}
+
+// Task 14: AppKit's own items in 편집 and 윈도우 (AutoFill, Start Dictation…, Emoji & Symbols, Close All …) came out in
+// English on the runner (Task 8), whose system language is English. The packaged app is launched once with
+// `-AppleLanguages (ko)` (a user whose Mac is in Korean). If those items are still English, it is launched once more
+// from a copy whose Info.plist says what electron-builder's `extendInfo` would (CFBundleDevelopmentRegion ko,
+// CFBundleLocalizations [ko, en]) with a ko.lproj in its Resources if the bundle had none, so one run tells whether the
+// bundle needs it. The 편집 menu is captured open each time. Data, like every spike: only a launch failure fails it.
+test('spike 6: AppKit menu items in Korean (packaged, -AppleLanguages (ko))', TAG, async () => {
+  test.skip(!PACKAGED || !IS_MAC, 'the packaged macOS app (workflow input packaged=true)');
+  test.setTimeout(240_000);
+  const bundle = path.resolve(PACKAGED, '../../..');
+  const attempt = async (executablePath: string, label: string) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-ko-'));
+    const errors: string[] = [];
+    let s: Session | null = null;
+    let attempts = 0;
+    for (attempts = 1; attempts <= 3 && !s; attempts++) {
+      try {
+        s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), { executablePath, args: ['-AppleLanguages', '(ko)'] });
+      } catch (e) {
+        errors.push(String((e as Error).message ?? e).slice(0, 300));
+      }
+    }
+    attempts -= 1;
+    try {
+      if (!s) return { launched: false, attempts, errors };
+      await focusApp(s.app);
+      const pid = s.app.process().pid!;
+      const locale = await s.app.evaluate(({ app }) => ({ locale: app.getLocale(), preferred: app.getPreferredSystemLanguages(), system: app.getSystemLocale() }));
+      const bar = await menuBarNames('Learn');
+      const edit = await menuItemNames(pid, 4);
+      const windowMenu = await menuItemNames(pid, 7);
+      const opened = await captureOpenMenu(s.app, pid, 4, `spike6-ko-${label}-menu-edit`, `packaged, -AppleLanguages (ko), ${label}: 편집 open`);
+      const english = [...new Set([...(edit ?? []), ...(windowMenu ?? [])].filter(readsEnglish))];
+      return {
+        launched: true,
+        attempts,
+        errors,
+        locale,
+        menuBar: bar.ok ? bar.stdout.trim() : `error: ${bar.stderr.trim()}`,
+        edit,
+        window: windowMenu,
+        english,
+        shots: [opened.click.shot, opened.keyboard.shot],
+      };
+    } finally {
+      await s?.app.close().catch(() => {});
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+  type Attempt = Awaited<ReturnType<typeof attempt>>;
+  const englishLeft = (a: Attempt) => !a.launched || (a as { english: string[] }).english.length > 0 || !(a as { edit: string[] | null }).edit;
+
+  const asBuilt = { bundle: await bundleLocalization(bundle), ...(await attempt(PACKAGED, 'as-built')) };
+  let withKo: Record<string, unknown> | null = null;
+  if (asBuilt.launched && englishLeft(asBuilt)) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-ko-app-'));
+    try {
+      const copy = path.join(dir, 'Learn.app');
+      const steps: Record<string, boolean | string> = {};
+      const run = async (name: string, cmd: string, args: string[], ms = 60_000) => {
+        const r = await tryExec(cmd, args, ms);
+        steps[name] = r.ok ? true : (r.stderr || r.stdout).trim().split('\n')[0] ?? 'failed';
+        return r.ok;
+      };
+      const plist = path.join(copy, 'Contents', 'Info.plist');
+      let ok = await run('ditto', 'ditto', [bundle, copy], 180_000);
+      if (ok) {
+        await run('delete CFBundleLocalizations', '/usr/libexec/PlistBuddy', ['-c', 'Delete :CFBundleLocalizations', plist]); // absent is fine
+        ok =
+          ((await run('set CFBundleDevelopmentRegion', '/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleDevelopmentRegion ko', plist])) ||
+            (await run('add CFBundleDevelopmentRegion', '/usr/libexec/PlistBuddy', ['-c', 'Add :CFBundleDevelopmentRegion string ko', plist]))) &&
+          (await run('add CFBundleLocalizations', '/usr/libexec/PlistBuddy', ['-c', 'Add :CFBundleLocalizations array', '-c', 'Add :CFBundleLocalizations:0 string ko', '-c', 'Add :CFBundleLocalizations:1 string en', plist]));
+        const ko = path.join(copy, 'Contents', 'Resources', 'ko.lproj');
+        if (ok && !fs.existsSync(ko)) {
+          fs.mkdirSync(ko);
+          steps['mkdir ko.lproj'] = true;
+        }
+        if (ok) ok = await run('codesign', 'codesign', ['--force', '--deep', '--sign', '-', copy], 300_000);
+      }
+      withKo = ok ? { bundle: await bundleLocalization(copy), steps, ...(await attempt(path.join(copy, 'Contents', 'MacOS', path.basename(PACKAGED)), 'info-plist-ko')) } : { steps };
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const verdict = !asBuilt.launched
+    ? 'could not launch the packaged app'
+    : !englishLeft(asBuilt)
+      ? 'Korean as built: no bundle change needed'
+      : !withKo || !(withKo as { launched?: boolean }).launched
+        ? 'English as built; the Info.plist ko copy could not be tried (see steps)'
+        : englishLeft(withKo as Attempt)
+          ? 'English even with Info.plist ko: AppKit follows the system language the runner has (manual on a Korean Mac, P6 packaging)'
+          : 'Korean only with Info.plist ko: add extendInfo (CFBundleDevelopmentRegion, CFBundleLocalizations) to electron-builder.yml';
+  saveSpike('6-menu-language', { result: verdict, args: ['-AppleLanguages', '(ko)'], asBuilt, withInfoPlistKo: withKo });
+  expect(asBuilt.launched, `the packaged app did not start: ${(asBuilt as { errors: string[] }).errors.join(' | ')}`).toBe(true);
 });

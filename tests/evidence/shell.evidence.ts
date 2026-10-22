@@ -22,9 +22,10 @@ import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/s
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import {
-  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, outFile, platformFonts, pngCentroid, pngPixels, record,
-  tryExec, windowIdOf, windowShotById, writeJson,
+  EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, cgWindowId, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, outFile, platformFonts, pngCentroid, pngPixels,
+  pressEscape, record, tryExec, windowIdOf, windowOnScreen, windowShotById, writeJson,
 } from './capture';
+import { switchDisplayForDemo } from './display-mac';
 import { elementStats, inkMass, regionStats, selectionBand } from './image-stats';
 import { findMenuPanel, menuRows } from './menu-rows';
 import { decodePng } from './png';
@@ -190,6 +191,16 @@ const tooltipBox = (page: Page) =>
   });
 
 /**
+ * macOS: whether System Events sees a sheet on our window titled `title` (AppKit's AXSheet: a panel or alert attached to
+ * it). Null when System Events fails (no such window, or no access).
+ */
+async function hasSheet(pid: number, title: string): Promise<boolean | null> {
+  const r = await tryExec('osascript', ['-e', `tell application "System Events" to tell (first process whose unix id is ${pid}) to return (exists sheet 1 of window ${JSON.stringify(title)})`], 10_000);
+  const out = r.stdout.trim();
+  return r.ok && (out === 'true' || out === 'false') ? out === 'true' : null;
+}
+
+/**
  * Whether a tooltip is drawn in a capture (R3-6: judge the pixels, not the DOM): the share of pixels inside its box
  * (inset 3, shifted by `offset` — 0 for a window shot, the content origin for a screen shot, and cut at `clipRight`)
  * that carry the tooltip's own background. Only used in dark, where nothing under it shares that colour.
@@ -270,6 +281,27 @@ const toolbarIsMaterial = (rgb: readonly number[] | null, theme: 'light' | 'dark
 
 /** Grey: no channel stands out (the active close button is red #ff5f57). */
 const isGrey = (rgb: readonly number[] | null) => rgb !== null && Math.max(...rgb) - Math.min(...rgb) <= 24;
+/**
+ * Critic T12-m1: the open ⌘/ sheet's and its parent's content bounds, the sheet's natural height (its content without
+ * scrolling) and the height the platform's room allows. macOS centres a sheet over its parent (16 kept above and
+ * below); elsewhere it hangs 60 down (16 kept below). The body scrolls only beyond that.
+ */
+async function shortcutSheetFit(keys: Page) {
+  const bounds = await s.app.evaluate(({ BrowserWindow }) => {
+    const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+    const of = (kind: string) => all.find((w) => w.webContents.getURL().includes(`window=${kind}`))!.getContentBounds();
+    return { sheet: of('sheet'), parent: of('main') };
+  });
+  const natural = await keys.evaluate(() => {
+    const root = document.querySelector('[data-sheet-root]')!;
+    const body = root.querySelector('.d-body');
+    return Math.ceil(root.getBoundingClientRect().height + (body ? body.scrollHeight - body.clientHeight : 0));
+  });
+  const expected = Math.min(natural, Math.max(160, bounds.parent.height - (IS_MAC ? 2 * 16 : 60 + 16)));
+  const centreOffset = bounds.sheet.y + bounds.sheet.height / 2 - (bounds.parent.y + bounds.parent.height / 2);
+  return { ...bounds, natural, expected, scrolls: natural > bounds.sheet.height, centreOffset };
+}
+
 /** The main session's profile: every test here, including the restart in the last one, uses this one folder. */
 let tmp = '';
 let s: Session;
@@ -711,21 +743,9 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   // Critic T12-m1: the sheet is as tall as its content up to the room its platform leaves. macOS centres a sheet over
   // its parent (16 kept above and below); elsewhere it hangs 60 down (16 kept below). The body scrolls only beyond that.
   await guard('the ⌘/ sheet is as tall as its content, up to the room the platform leaves (T12-m1)', async () => {
-    const bounds = await s.app.evaluate(({ BrowserWindow }) => {
-      const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
-      const of = (kind: string) => all.find((w) => w.webContents.getURL().includes(`window=${kind}`))!.getContentBounds();
-      return { sheet: of('sheet'), parent: of('main') };
-    });
-    const natural = await keys.evaluate(() => {
-      const root = document.querySelector('[data-sheet-root]')!;
-      const body = root.querySelector('.d-body');
-      return Math.ceil(root.getBoundingClientRect().height + (body ? body.scrollHeight - body.clientHeight : 0));
-    });
-    const expected = Math.min(natural, Math.max(160, bounds.parent.height - (IS_MAC ? 2 * 16 : 60 + 16)));
-    const centreOffset = bounds.sheet.y + bounds.sheet.height / 2 - (bounds.parent.y + bounds.parent.height / 2);
-    const v = { ...bounds, natural, expected, scrolls: natural > bounds.sheet.height, centreOffset };
+    const v = await shortcutSheetFit(keys);
     results['shortcutSheetBounds'] = v;
-    check('the ⌘/ sheet is as tall as its content, up to the room the platform leaves (T12-m1)', bounds.sheet.height === expected, v);
+    check('the ⌘/ sheet is as tall as its content, up to the room the platform leaves (T12-m1)', v.sheet.height === v.expected, v);
   });
   await guard('real esc closes the shortcut sheet', async () => {
     const r = await closeSheetNatively(keys, KEY_CODE.escape, 'Escape');
@@ -901,6 +921,44 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
     await sleep(2000);
   }
+  // Task 8 polish minor 2: a zoomed window (the green button, 윈도우 › 확대/축소) is left to AppKit by the frame keeper:
+  // ⌃⌘F twice brings it back zoomed, and un-zooming then gives back the frame it had before the zoom.
+  await guard('a zoomed window comes back zoomed from full screen (polish minor 2)', async () => {
+    const win = await mainWindow(s.app);
+    const isFull = () => win.evaluate((w) => w.isFullScreen());
+    const zoomed = () => win.evaluate((w) => w.isMaximized());
+    const restore = (await boundsNow()).bounds;
+    await win.evaluate((w) => w.setBounds({ x: 40, y: 65, width: 960, height: 604 })); // a user frame, smaller than the zoomed one
+    await sleep(800);
+    const userFrame = (await boundsNow()).bounds;
+    await win.evaluate((w) => w.maximize()); // macOS: zoom
+    await expect.poll(zoomed, { timeout: 5_000 }).toBe(true);
+    await sleep(800);
+    const before = { ...(await boundsNow()), zoomed: await zoomed() };
+    await bringAppToFront(s.app);
+    await nativeKeystroke(s.app, 'f', ['control', 'command']);
+    await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
+    await sleep(1500);
+    await nativeKeystroke(s.app, 'f', ['control', 'command']);
+    await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
+    await sleep(1500);
+    const after = { ...(await boundsNow()), zoomed: await zoomed() };
+    await fullScreenShot('m3-09j-after-fullscreen-zoomed', 'after a full-screen round trip from a zoomed window: back zoomed');
+    await win.evaluate((w) => w.unmaximize());
+    await sleep(1000);
+    const unzoomed = (await boundsNow()).bounds;
+    const same = JSON.stringify(before.bounds) === JSON.stringify(after.bounds);
+    results['fullScreenRoundTripZoomed'] = { userFrame, before, after, same, unzoomed };
+    check('a zoomed window comes back zoomed from a full-screen round trip, at its zoomed frame (polish minor 2)', before.zoomed && after.zoomed && same, results['fullScreenRoundTripZoomed']);
+    check('un-zooming after that round trip gives back the frame from before the zoom (polish minor 2)', JSON.stringify(unzoomed) === JSON.stringify(userFrame), results['fullScreenRoundTripZoomed']);
+    await win.evaluate((w, r) => w.setBounds(r), restore);
+    await sleep(800);
+  });
+  if (await (await mainWindow(s.app)).evaluate((w) => w.isFullScreen())) {
+    await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
+    await sleep(2000);
+  }
+  if (await (await mainWindow(s.app)).evaluate((w) => w.isMaximized())) await (await mainWindow(s.app)).evaluate((w) => w.unmaximize());
 
   // n5: AppKit adds items to 편집 too (dictation, emoji); see what it shows.
   await guard('편집 and 파일 menus', async () => {
@@ -1057,6 +1115,145 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
     });
   }
   await setTheme(s.page, 'light');
+  if (!IS_MAC) return void save();
+  const pid = s.app.process().pid!;
+  /** The settings window's page: key (no data-window-inactive) and main (no data-window-not-main). */
+  const settingsState = (page: Page) =>
+    page.evaluate(() => ({ notKey: document.documentElement.hasAttribute('data-window-inactive'), notMain: document.documentElement.hasAttribute('data-window-not-main') }));
+  const closeSettings = async (page: Page) => {
+    await page.close().catch(() => {});
+    await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))), { timeout: 5_000 }).toBe(false).catch(() => {});
+  };
+
+  // Task 10 carry-forward: the settings window's own dialogs hang on it as sheets (asSheet): the folder panel, and the
+  // restart confirmation once a folder is picked. Real AppKit panels, captured, then cancelled with a real esc, which
+  // System Events sends to the key window (the sheet) without bringing the main window forward. Nothing is relaunched.
+  await guard('settings sheets: the folder panel and the restart confirmation hang on the settings window (Task 10)', async () => {
+    await bringAppToFront(s.app).catch(() => {});
+    const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m3-other-library-'));
+    const before = await s.page.evaluate(() => window.learn.app.info().then((r) => (r.ok ? r.data.libraryRoot : null)));
+    const outcome: Record<string, unknown> = { libraryRootBefore: before };
+    try {
+      await expect.poll(async () => (await settingsWindow()).evaluate((w) => w.isVisible()), { timeout: 5_000 }).toBe(true);
+      await sleep(600);
+      /** One dialog through the 다른 폴더 선택… button: it must show as a sheet of 설정, and a real esc must cancel it. */
+      const asSheet = async (name: string, what: string) => {
+        await settings.getByTestId('library-choose').click();
+        const t0 = Date.now();
+        let shown = await hasSheet(pid, '설정');
+        while (shown !== true && Date.now() - t0 < 8_000) {
+          await sleep(250);
+          shown = await hasSheet(pid, '설정');
+        }
+        const shownMs = shown ? Date.now() - t0 : null;
+        await sleep(700); // the sheet's slide-in
+        const under = await settingsState(settings);
+        const shot = await fullScreenShot(name, what);
+        const esc = await pressEscape();
+        const t1 = Date.now();
+        let gone = (await hasSheet(pid, '설정')) === false;
+        while (!gone && Date.now() - t1 < 5_000) {
+          await sleep(250);
+          gone = (await hasSheet(pid, '설정')) === false;
+        }
+        // Back to an active settings window, as after any sheet (38e3a9e).
+        await expect.poll(() => settingsState(settings).then((v) => !v.notKey && !v.notMain), { timeout: 2_000 }).toBe(true).catch(() => {});
+        return { shown: shown === true, shownMs, underSheet: under, shot: shot.file, escape: esc.ok, gone, after: await settingsState(settings) };
+      };
+      outcome['folder'] = await asSheet('m3-15c-settings-folder-sheet', 'settings: the 다른 폴더 선택… panel as a sheet on the settings window');
+      // The restart confirmation comes only after a folder is picked: the panel answers with an empty folder.
+      await s.app.evaluate(({ dialog }, dir) => {
+        const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+        g.__learnRealOpenDialog ??= dialog.showOpenDialog;
+        dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as typeof dialog.showOpenDialog;
+      }, scratch);
+      outcome['restart'] = await asSheet('m3-15d-settings-restart-sheet', 'settings: the restart confirmation as a sheet on the settings window');
+      outcome['relaunchRequested'] = await s.app.evaluate(() => (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested ?? false);
+      outcome['libraryRootAfter'] = await s.page.evaluate(() => window.learn.prefs.get().then((r) => (r.ok ? (r.data.libraryRoot ?? null) : 'error')));
+      results['settingsSheets'] = outcome;
+      for (const kind of ['folder', 'restart'] as const) {
+        const v = outcome[kind] as { shown: boolean; underSheet: { notMain: boolean }; gone: boolean; after: { notKey: boolean; notMain: boolean } };
+        check(
+          `settings: the ${kind === 'folder' ? 'folder panel' : 'restart confirmation'} is a sheet on the settings window, which stays main under it; a real esc cancels it and the window is active again (Task 10)`,
+          v.shown && !v.underSheet.notMain && v.gone && !v.after.notKey && !v.after.notMain,
+          v,
+        );
+      }
+      check('settings: cancelling both sheets relaunches nothing and keeps the library location (Task 10)', outcome['relaunchRequested'] === false && outcome['libraryRootAfter'] === null, outcome);
+    } finally {
+      await s.app.evaluate(({ dialog }) => {
+        const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+        if (g.__learnRealOpenDialog) dialog.showOpenDialog = g.__learnRealOpenDialog;
+      });
+      // A sheet that esc did not dismiss would keep the settings window open: take it down with its window.
+      if ((await hasSheet(pid, '설정')) === true) {
+        await pressEscape();
+        await sleep(500);
+        if ((await hasSheet(pid, '설정')) === true) await (await settingsWindow()).evaluate((w) => w.destroy()).catch(() => {});
+      }
+      await closeSettings(settings);
+      fs.rmSync(scratch, { recursive: true, force: true });
+      await bringAppToFront(s.app).catch(() => {});
+    }
+  });
+
+  // Task 10 carry-forward: ⌘, while the main window is in full screen. The settings window must open where the user is
+  // (on the full-screen Space, over the main window), not on a desktop Space out of sight.
+  await guard('⌘, in full screen (Task 10)', async () => {
+    const win = await mainWindow(s.app);
+    const isFull = () => win.evaluate((w) => w.isFullScreen());
+    await bringAppToFront(s.app);
+    await nativeKeystroke(s.app, 'f', ['control', 'command']);
+    await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
+    await sleep(1500);
+    let via = 'keystroke';
+    const settings = await expectWindow(s.app, 'settings', async () => {
+      try {
+        await nativeKeystroke(s.app, ',', ['command']);
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        via = 'menu';
+        await runMenuCommand(s.app, 'app.settings');
+      }
+    });
+    try {
+      await expect.poll(async () => (await settingsWindow()).evaluate((w) => w.isVisible()), { timeout: 5_000 }).toBe(true);
+      await sleep(1200); // a Space change, if AppKit makes one, ends
+      const facts = await s.app.evaluate(({ BrowserWindow, screen }) => {
+        const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+        const of = (kind: string) => all.find((w) => w.webContents.getURL().includes(`window=${kind}`));
+        const set = of('settings');
+        const main = of('main');
+        return {
+          settings: set ? { bounds: set.getBounds(), visible: set.isVisible(), focused: set.isFocused() } : null,
+          main: main ? { bounds: main.getBounds(), fullScreen: main.isFullScreen() } : null,
+          display: screen.getPrimaryDisplay().bounds,
+        };
+      });
+      const onScreen = await windowOnScreen(await cgWindowId(s.app, 'settings'));
+      const shot = await fullScreenShot('m3-15e-settings-over-fullscreen', '⌘, while the main window is in full screen: the settings window over it');
+      const b = facts.settings?.bounds;
+      const d = facts.display;
+      const inside = !!b && b.x >= d.x && b.y >= d.y && b.x + b.width <= d.x + d.width && b.y + b.height <= d.y + d.height;
+      const v = { via, ...facts, onScreen, inside, page: await settingsState(settings), shot: shot.file, frontmost: frontmostProcess().name };
+      results['settingsInFullScreen'] = v;
+      check(
+        '⌘, in full screen: the settings window opens visible on the full-screen Space, key, inside the screen, and the main window stays in full screen (Task 10)',
+        via === 'keystroke' && facts.settings?.visible === true && facts.settings.focused && onScreen === true && inside && facts.main?.fullScreen === true,
+        v,
+      );
+    } finally {
+      await closeSettings(settings);
+      await bringAppToFront(s.app).catch(() => {});
+      if (await isFull()) {
+        await nativeKeystroke(s.app, 'f', ['control', 'command']).catch(() => {});
+        await expect.poll(isFull, { timeout: 10_000 }).toBe(false).catch(() => {});
+        if (await isFull()) await win.evaluate((w) => w.setFullScreen(false));
+        await sleep(1500);
+      }
+    }
+  });
   save();
 });
 
@@ -1211,6 +1408,76 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
     results['windowState'],
   );
   check('window took the requested bounds before closing', beforeClose.width === bounds.width && beforeClose.height === bounds.height, results['windowState']);
+  save();
+});
+
+// Critic T12-m1 on a parent that matters: a 1440 × 900 Mac with the Dock leaves a window ≈ 806 tall, where the ⌘/
+// sheet's content (≈ 743) fits under the darwin clamp (room − 2 × 16) and must not scroll. The runner's 1024 × 768
+// screen allows a parent only as tall as its work area (≈ 684, measured too). For the 806 case the main screen is
+// switched to the mode the demo records in (displayplacer, display-mac.ts) when the runner offers one, and put back
+// right after. It runs last, so no other check measures the switched screen.
+test("M3 chrome: the ⌘/ sheet in a parent as tall as a 1440 × 900 Mac's work area (T12-m1)", TAG, async () => {
+  test.skip(!IS_MAC, 'the darwin clamp: Linux runs its own formula in the sheets test above');
+  const TALL = 806;
+  const out: Record<string, unknown> = {};
+  results['shortcutSheetTall'] = out;
+  // Everything inside guards: a throw here must not skip the verdict below (serial mode).
+  await guard('the ⌘/ sheet with a tall parent: setup (T12-m1)', async () => {
+    const win = await mainWindow(s.app);
+    const restore = await win.evaluate((w) => w.getBounds());
+    /** The main window as tall as `TALL` or the work area allows, 1440 wide or the work area's width, at its top. */
+    const tallest = async () => {
+      const workArea = await s.app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+      const width = Math.min(1440, workArea.width);
+      const height = Math.min(TALL, workArea.height);
+      await win.evaluate((w, b) => w.setBounds(b), { x: workArea.x + Math.floor((workArea.width - width) / 2), y: workArea.y, width, height });
+      await sleep(800);
+      return { workArea, window: await win.evaluate((w) => w.getBounds()) };
+    };
+    const measure = async (label: string, what: string) => {
+      await bringAppToFront(s.app).catch(() => {});
+      const keys = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      try {
+        await s.page.waitForTimeout(800); // the sheet's slide-in
+        const fit = await shortcutSheetFit(keys);
+        const shot = await fullScreenShot(`m3-08b-sheet-shortcuts-${label}`, what);
+        return { ...fit, shot: shot.file };
+      } finally {
+        await closeSheet(keys, 'Escape');
+        await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts'), { timeout: 5_000 }).toBe(true);
+      }
+    };
+    await guard('the ⌘/ sheet in the tallest parent the runner screen allows (T12-m1)', async () => {
+      const frame = await tallest();
+      const fit = await measure('runner', `⌘/ sheet over the tallest main window the runner screen allows (${frame.window.height} pt)`);
+      out['runner'] = { ...frame, fit };
+      check('the ⌘/ sheet in the tallest parent the runner screen allows is as tall as the darwin room allows (T12-m1)', fit.sheet.height === fit.expected, out['runner']);
+    });
+    const display = await switchDisplayForDemo();
+    out['display'] = display.result;
+    try {
+      if (display.result.status === 'switched' || display.result.status === 'current') {
+        await guard(`the ⌘/ sheet in a ${TALL} pt parent (T12-m1)`, async () => {
+          const frame = await tallest();
+          const fit = await measure(String(TALL), `⌘/ sheet over a ${frame.window.height} pt main window (a 1440 × 900 Mac with the Dock leaves ≈ ${TALL})`);
+          out['tall'] = { ...frame, fit };
+          if (fit.parent.height < TALL) {
+            out['tallNote'] = `the switched screen leaves only ${fit.parent.height} pt: the ${TALL} pt case stays a manual check`;
+            check('the ⌘/ sheet in the tallest parent the switched screen allows is as tall as the darwin room allows (T12-m1)', fit.sheet.height === fit.expected, out['tall']);
+          } else {
+            // centreOffset is recorded, not judged: AppKit places the sheet (sheets.ts sets no offset).
+            check(`the ⌘/ sheet in a ${TALL} pt parent shows its whole content, with no scrolling (T12-m1)`, fit.sheet.height === fit.expected && !fit.scrolls, out['tall']);
+          }
+        });
+      } else {
+        out['tallNote'] = `no display mode for a ${TALL} pt parent (${display.result.status}): the ${TALL} pt case stays a manual check`;
+      }
+    } finally {
+      await display.restore();
+      await win.evaluate((w, b) => w.setBounds(b), restore).catch(() => {});
+      await sleep(800);
+    }
+  });
   save();
 });
 

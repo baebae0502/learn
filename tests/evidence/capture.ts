@@ -96,10 +96,11 @@ export async function focusApp(app: ElectronApplication): Promise<void> {
   await sleep(400);
 }
 
-/** CGWindowID of the main window: getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
-export async function cgWindowId(app: ElectronApplication): Promise<string> {
+/** CGWindowID of the main window (or another of ours): getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
+export async function cgWindowId(app: ElectronApplication, kind: 'main' | 'settings' = 'main'): Promise<string> {
   const sourceId = await app.evaluate(
-    ({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))?.getMediaSourceId() ?? '',
+    ({ BrowserWindow }, k) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(`window=${k}`))?.getMediaSourceId() ?? '',
+    kind,
   );
   const m = /^window:(\d+):/.exec(sourceId);
   if (!m) throw new Error(`unexpected media source id: ${JSON.stringify(sourceId)}`);
@@ -121,6 +122,22 @@ export async function windowShotById(id: string, name: string, description: stri
   } catch (e) {
     return record({ file: null, kind: 'window', description, error: String((e as Error).message ?? e) });
   }
+}
+
+/**
+ * Whether the window with this CGWindowID is on screen now (CGWindowListCopyWindowInfo, on-screen only): a window on
+ * another Space (say, the desktop behind a full-screen window) is not. Null when the query fails.
+ */
+export async function windowOnScreen(id: string): Promise<boolean | null> {
+  if (!/^\d+$/.test(id)) return null;
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'var info = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));',
+    `String(info.some(function (x) { return x.kCGWindowNumber === ${id}; }));`,
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  const out = r.stdout.trim();
+  return r.ok && (out === 'true' || out === 'false') ? out === 'true' : null;
 }
 
 /** CGWindowID of an app's frontmost normal window by owner name (JXA + CGWindowListCopyWindowInfo), or null. */

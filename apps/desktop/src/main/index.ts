@@ -282,8 +282,8 @@ if (!app.requestSingleInstanceLock()) {
       sheetShown(parent, opts);
       refreshFullScreenItem();
     };
-    const onSheetClosed = (parent: BrowserWindow) => {
-      sheetClosed(parent);
+    const onSheetClosed = (parent: BrowserWindow, opts: { native?: boolean } = {}) => {
+      sheetClosed(parent, opts);
       refreshFullScreenItem();
     };
 
@@ -328,7 +328,7 @@ if (!app.requestSingleInstanceLock()) {
           try {
             return await show();
           } finally {
-            if (!owner.isDestroyed()) onSheetClosed(owner);
+            if (!owner.isDestroyed()) onSheetClosed(owner, { native: true });
           }
         },
       },

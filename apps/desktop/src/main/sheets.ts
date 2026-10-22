@@ -49,7 +49,8 @@ export function createSheetHost(opts: {
   onSheetShown?(parent: BrowserWindow): void;
   /**
    * The sheet's window has closed and the parent has the focus back. macOS makes the parent key again without a
-   * 'focus' event (run 39631541294), so main re-reads the parent's window state here.
+   * 'focus' event (run 39631541294), so main re-reads the parent's window state here. Only for a sheet that was shown
+   * (onSheetShown): the two come in pairs, as main counts the sheets on a window.
    */
   onSheetClosed?(parent: BrowserWindow): void;
 }): SheetHost {
@@ -107,9 +108,16 @@ export function createSheetHost(opts: {
         if (!parent.isDestroyed()) parent.focus();
       };
       pending.set(id, { payload, settle });
+      /** onSheetShown ran for this sheet: only then does its closing tell the parent (shown and closed come in pairs). */
+      let announced = false;
+      const announce = () => {
+        if (announced || parent.isDestroyed()) return;
+        announced = true;
+        opts.onSheetShown?.(parent);
+      };
       win.on('closed', () => {
         settle(null);
-        if (!parent.isDestroyed()) opts.onSheetClosed?.(parent);
+        if (announced && !parent.isDestroyed()) opts.onSheetClosed?.(parent);
       });
       // A sheet whose page never comes up, or stops answering, must not hold the import (or the window) forever: it
       // ends unanswered.
@@ -134,13 +142,13 @@ export function createSheetHost(opts: {
           if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
           await markSized(win.webContents);
           clearTimeout(watchdog);
-          if (!parent.isDestroyed()) opts.onSheetShown?.(parent);
+          announce();
           win.show();
         })().catch(() => {
           // Only a window closed mid-measure gets here (settled already); otherwise show it unsized rather than lose the question.
           if (win.isDestroyed()) return;
           clearTimeout(watchdog);
-          if (!parent.isDestroyed()) opts.onSheetShown?.(parent);
+          announce();
           win.show();
         });
       });

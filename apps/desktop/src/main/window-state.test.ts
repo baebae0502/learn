@@ -69,12 +69,35 @@ describe('window state per window (main and settings each get their own)', () =>
     // Electron still says focused and sends no 'blur' on macOS: the push says not key, still main.
     expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
     expect(windowStateOf(win(settings)).focused).toBe(false);
-    sheetClosed(win(settings)); // the dialog resolved; the window is key (isFocused) at once
+    sheetClosed(win(settings), { native: true }); // the dialog resolved; the window is key (isFocused) at once
     expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
 
     // Our own sheet window takes the key itself (its parent gets 'blur'): not marked, the parent's own focus counts.
     sheetShown(win(settings));
     expect(windowStateOf(win(settings))).toEqual({ fullscreen: false, focused: true, sheetOpen: true });
     sheetClosed(win(settings));
+  });
+
+  it('two native dialogs in flight on one window: it stays under a sheet, not key, until the last one closes (re-review m7)', () => {
+    const main = new FakeWindow();
+    trackWindowState(win(main));
+    main.focused = true;
+    main.emit('focus');
+    sheetShown(win(main), { native: true });
+    sheetShown(win(main), { native: true });
+    sheetClosed(win(main), { native: true }); // the first resolves
+    expect(isSheetOpen(win(main))).toBe(true);
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    vi.advanceTimersByTime(500);
+    expect(main.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true }); // nothing released meanwhile
+    sheetClosed(win(main), { native: true }); // the last one: released at once (the window is key)
+    expect(isSheetOpen(win(main))).toBe(false);
+    expect(main.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+    // A close with nothing open changes nothing, and does not leave a debt for the next sheet.
+    sheetClosed(win(main), { native: true });
+    sheetShown(win(main), { native: true });
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    sheetClosed(win(main), { native: true });
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
   });
 });

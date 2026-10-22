@@ -145,6 +145,15 @@ describe('sheet host', () => {
     h.resolve(contentsOf(w), { kind: 'shortcuts' });
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
     expect(onSheetClosed).toHaveBeenCalledExactlyOnceWith(p);
+
+    // A sheet that never showed (its page failed) closes without telling: shown and closed come in pairs, as main
+    // counts the sheets on a window (re-review m7).
+    const failed = h.open(p, { kind: 'shortcuts' });
+    await tick();
+    FakeWindow.all[1]!.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'learn://app/index.html', true);
+    await expect(failed).resolves.toBeNull();
+    expect(onSheetShown).toHaveBeenCalledTimes(1);
+    expect(onSheetClosed).toHaveBeenCalledTimes(1);
   });
 
   it('answers only an open sheet: anyone else is PERMISSION_DENIED, a result of the wrong kind VALIDATION_FAILED', async () => {

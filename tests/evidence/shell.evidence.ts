@@ -163,19 +163,26 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   const titleInk = img ? elementStats(img, chrome.titleBox) : null;
   const selectedInk = img ? elementStats(img, chrome.selectedLabelBox) : null;
   const toolbarPixel = shot.file ? (await pngPixels(s.page, shot.file, [[600, 26]]))[0] ?? null : null;
-  // N4-4: the sidebar's edge (its last column, below the rows) and the toolbar's hairline (its last row, mid-way).
-  const edgePoints = await s.page.evaluate(() => {
+  await bringAppToFront(s.app);
+  await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+  // N4-4: the sidebar's edge (its last column, below the rows) and the toolbar's hairline (its last row, mid-way), read
+  // from the capture taken above. The geometry is read with the app back in front (it does not change with the
+  // window's state); the points are CSS px, the capture is device px: scaled by the capture's own width over the
+  // window's (1 on the runner, 2 on a Retina screen).
+  const geometry = await s.page.evaluate(() => {
     const sb = document.querySelector('.sidebar')!.getBoundingClientRect();
     const tb = document.querySelector('[data-testid="toolbar"]')!.getBoundingClientRect();
     return {
-      sidebarEdge: [Math.round(sb.right) - 1, Math.round(sb.top + sb.height * 0.6)] as [number, number],
-      toolbarLine: [Math.round(tb.left + tb.width / 2), Math.round(tb.bottom) - 1] as [number, number],
+      width: innerWidth,
+      sidebarEdge: [sb.right - 1, sb.top + sb.height * 0.6] as [number, number],
+      toolbarLine: [tb.left + tb.width / 2, tb.bottom - 1] as [number, number],
     };
   });
-  const edgeRgb = shot.file ? await pngPixels(s.page, shot.file, [edgePoints.sidebarEdge, edgePoints.toolbarLine]) : null;
-  const edges = { points: edgePoints, sidebarEdge: edgeRgb?.[0] ?? null, toolbarLine: edgeRgb?.[1] ?? null };
-  await bringAppToFront(s.app);
-  await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+  const scale = img ? img.width / geometry.width : 1;
+  const px = ([x, y]: readonly [number, number]) => [Math.round(x * scale), Math.round(y * scale)] as const;
+  const points = { sidebarEdge: px(geometry.sidebarEdge), toolbarLine: px(geometry.toolbarLine) };
+  const edgeRgb = shot.file ? await pngPixels(s.page, shot.file, [points.sidebarEdge, points.toolbarLine]) : null;
+  const edges = { scale, points, sidebarEdge: edgeRgb?.[0] ?? null, toolbarLine: edgeRgb?.[1] ?? null };
   return { frontmostAtShot, closeButton, navRow, chrome, titleInk, selectedInk, toolbarPixel, edges };
 }
 /** Close-button red (#ff5f57) pixels in a capture's top-left corner, where the traffic lights are drawn. */
@@ -313,6 +320,23 @@ async function shortcutSheetFit(keys: Page) {
   return { ...bounds, natural, expected, scrolls: natural > bounds.sheet.height, centreOffset };
 }
 
+/**
+ * Leaves full screen if the main window is in it: a real ⌃⌘F first (as a user would), then setFullScreen(false).
+ * Bounded waits, never a throw (cleanup in a finally). Returns whether the window is out of full screen.
+ */
+async function leaveFullScreen(win: Awaited<ReturnType<typeof mainWindow>>): Promise<boolean> {
+  const isFull = () => win.evaluate((w) => w.isFullScreen()).catch(() => false);
+  if (!(await isFull())) return true;
+  await nativeKeystroke(s.app, 'f', ['control', 'command']).catch(() => {});
+  await expect.poll(isFull, { timeout: 6_000 }).toBe(false).catch(() => {});
+  if (await isFull()) {
+    await win.evaluate((w) => w.setFullScreen(false)).catch(() => {});
+    await expect.poll(isFull, { timeout: 6_000 }).toBe(false).catch(() => {});
+  }
+  await sleep(1500); // AppKit's restore, then ours
+  return !(await isFull());
+}
+
 /** The main session's profile: every test here, including the restart in the last one, uses this one folder. */
 let tmp = '';
 let s: Session;
@@ -395,6 +419,12 @@ test.beforeAll(async () => {
   await recordPushes(s.page);
 });
 test.afterAll(async () => {
+  // A test that timed out skips the rest of this serial file, the verdict included: write what was measured until then.
+  try {
+    save();
+  } catch (e) {
+    console.error(`[evidence] m3-shell.json could not be written: ${errorText(e)}`);
+  }
   await s?.app.close().catch(() => {});
   if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -786,6 +816,8 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
 });
 
 test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in full screen, the 편집 menu, no tooltip under a menu', TAG, async () => {
+  // Four full-screen round trips, six open-menu captures: about 70 s, more when System Events stalls.
+  test.setTimeout(300_000);
   results['menu'] = (await menuSnapshot(s.app)).map((m) => m.label);
   if (!IS_MAC) return void save();
   const pid = s.app.process().pid!; // System Events by pid: unambiguous when several apps are called "Electron"
@@ -942,37 +974,41 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
     const isFull = () => win.evaluate((w) => w.isFullScreen());
     const zoomed = () => win.evaluate((w) => w.isMaximized());
     const restore = (await boundsNow()).bounds;
-    await win.evaluate((w) => w.setBounds({ x: 40, y: 65, width: 960, height: 604 })); // a user frame, smaller than the zoomed one
-    await sleep(800);
-    const userFrame = (await boundsNow()).bounds;
-    await win.evaluate((w) => w.maximize()); // macOS: zoom
-    await expect.poll(zoomed, { timeout: 5_000 }).toBe(true);
-    await sleep(800);
-    const before = { ...(await boundsNow()), zoomed: await zoomed() };
-    await bringAppToFront(s.app);
-    await nativeKeystroke(s.app, 'f', ['control', 'command']);
-    await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
-    await sleep(1500);
-    await nativeKeystroke(s.app, 'f', ['control', 'command']);
-    await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
-    await sleep(1500);
-    const after = { ...(await boundsNow()), zoomed: await zoomed() };
-    await fullScreenShot('m3-09j-after-fullscreen-zoomed', 'after a full-screen round trip from a zoomed window: back zoomed');
-    await win.evaluate((w) => w.unmaximize());
-    await sleep(1000);
-    const unzoomed = (await boundsNow()).bounds;
-    const same = JSON.stringify(before.bounds) === JSON.stringify(after.bounds);
-    results['fullScreenRoundTripZoomed'] = { userFrame, before, after, same, unzoomed };
-    check('a zoomed window comes back zoomed from a full-screen round trip, at its zoomed frame (polish minor 2)', before.zoomed && after.zoomed && same, results['fullScreenRoundTripZoomed']);
-    check('un-zooming after that round trip gives back the frame from before the zoom (polish minor 2)', JSON.stringify(unzoomed) === JSON.stringify(userFrame), results['fullScreenRoundTripZoomed']);
-    await win.evaluate((w, r) => w.setBounds(r), restore);
-    await sleep(800);
+    try {
+      await win.evaluate((w) => w.setBounds({ x: 40, y: 65, width: 960, height: 604 })); // a user frame, smaller than the zoomed one
+      await sleep(800);
+      const userFrame = (await boundsNow()).bounds;
+      await win.evaluate((w) => w.maximize()); // macOS: zoom
+      await expect.poll(zoomed, { timeout: 5_000 }).toBe(true);
+      await sleep(800);
+      const before = { ...(await boundsNow()), zoomed: await zoomed() };
+      await bringAppToFront(s.app);
+      await nativeKeystroke(s.app, 'f', ['control', 'command']);
+      await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
+      await sleep(1500);
+      await nativeKeystroke(s.app, 'f', ['control', 'command']);
+      await expect.poll(isFull, { timeout: 10_000 }).toBe(false);
+      await sleep(1500);
+      const after = { ...(await boundsNow()), zoomed: await zoomed() };
+      await fullScreenShot('m3-09j-after-fullscreen-zoomed', 'after a full-screen round trip from a zoomed window: back zoomed');
+      await win.evaluate((w) => w.unmaximize());
+      await sleep(1000);
+      const unzoomed = (await boundsNow()).bounds;
+      const same = JSON.stringify(before.bounds) === JSON.stringify(after.bounds);
+      results['fullScreenRoundTripZoomed'] = { userFrame, before, after, same, unzoomed };
+      check('a zoomed window comes back zoomed from a full-screen round trip, at its zoomed frame (polish minor 2)', before.zoomed && after.zoomed && same, results['fullScreenRoundTripZoomed']);
+      check('un-zooming after that round trip gives back the frame from before the zoom (polish minor 2)', JSON.stringify(unzoomed) === JSON.stringify(userFrame), results['fullScreenRoundTripZoomed']);
+    } finally {
+      // Whatever failed: out of full screen, not zoomed, back at the frame from before (bounded waits, never a throw).
+      await leaveFullScreen(win);
+      if (await zoomed().catch(() => false)) {
+        await win.evaluate((w) => w.unmaximize()).catch(() => {});
+        await sleep(800);
+      }
+      await win.evaluate((w, r) => w.setBounds(r), restore).catch(() => {});
+      await sleep(800);
+    }
   });
-  if (await (await mainWindow(s.app)).evaluate((w) => w.isFullScreen())) {
-    await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
-    await sleep(2000);
-  }
-  if (await (await mainWindow(s.app)).evaluate((w) => w.isMaximized())) await (await mainWindow(s.app)).evaluate((w) => w.unmaximize());
 
   // n5: AppKit adds items to 편집 too (dictation, emoji); see what it shows.
   await guard('편집 and 파일 menus', async () => {
@@ -1073,6 +1109,8 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
 // Task 10: ⌘, opens the settings window over the main window, which is then neither key nor main (design-spec 6 설정 창:
 // grey traffic lights, neutral selection; no ring or keyboard cursor, R2-2; dimmed chrome, R2-3). Light, then dark.
 test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG, async () => {
+  // Two themes, two real sheets, a full-screen round trip: about 60 s, more on a degraded path (AX, screencapture).
+  test.setTimeout(300_000);
   const settingsWindow = () =>
     s.app.evaluateHandle(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))!);
   for (const theme of ['light', 'dark'] as const) {
@@ -1134,6 +1172,16 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
   /** The settings window's page: key (no data-window-inactive) and main (no data-window-not-main). */
   const settingsState = (page: Page) =>
     page.evaluate(() => ({ notKey: document.documentElement.hasAttribute('data-window-inactive'), notMain: document.documentElement.hasAttribute('data-window-not-main') }));
+  /** The app in front with the settings window key (not the main window: a sheet on 설정 must get the next esc). */
+  const settingsToFront = () =>
+    s.app
+      .evaluate(({ app, BrowserWindow }) => {
+        app.focus({ steal: true });
+        BrowserWindow.getAllWindows()
+          .find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))
+          ?.focus();
+      })
+      .catch(() => {});
   const closeSettings = async (page: Page) => {
     await page.close().catch(() => {});
     await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=settings'))), { timeout: 5_000 }).toBe(false).catch(() => {});
@@ -1171,9 +1219,46 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
           await sleep(250);
           gone = (await hasSheet(pid, '설정')) === false;
         }
+        // Review M1: a real panel can raise a system prompt (folder access through TCC, UserNotificationCenter,
+        // CoreServicesUIAgent …) that takes the key, and the esc went to it. Name it, dismiss it once with a bounded
+        // esc, put the key back on the settings window and try the sheet's esc once more, so the next step starts
+        // from a known state.
+        const front = (() => {
+          try {
+            return frontmostProcess();
+          } catch {
+            return null;
+          }
+        })();
+        let foreignFront: string | null = null;
+        if (front && front.pid !== pid) {
+          foreignFront = front.name;
+          await pressEscape(); // bounded (10 s): System Events sends it to that process, the frontmost
+          await sleep(500);
+          await settingsToFront();
+          await sleep(500);
+          if (!gone) {
+            await pressEscape();
+            const t2 = Date.now();
+            while (!gone && Date.now() - t2 < 3_000) {
+              await sleep(250);
+              gone = (await hasSheet(pid, '설정')) === false;
+            }
+          }
+        }
         // Back to an active settings window, as after any sheet (38e3a9e).
         await expect.poll(() => settingsState(settings).then((v) => !v.notKey && !v.notMain), { timeout: 2_000 }).toBe(true).catch(() => {});
-        return { shown: shown === true, shownMs, underSheet: under, shot: shot.file, escape: esc.ok, gone, after: await settingsState(settings) };
+        return {
+          shown: shown === true,
+          shownMs,
+          underSheet: under,
+          shot: shot.file,
+          escape: esc.ok,
+          gone,
+          after: await settingsState(settings),
+          frontmostAfterEsc: front?.name ?? null,
+          ...(foreignFront ? { foreignFront, note: `${foreignFront} was in front after the esc: dismissed with one esc, the key put back on 설정` } : {}),
+        };
       };
       outcome['folder'] = await asSheet('m3-15c-settings-folder-sheet', 'settings: the 다른 폴더 선택… panel as a sheet on the settings window');
       // The restart confirmation comes only after a folder is picked: the panel answers with an empty folder.
@@ -1213,27 +1298,21 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
   });
 
   // Task 10 carry-forward: ⌘, while the main window is in full screen. The settings window must open where the user is
-  // (on the full-screen Space, over the main window), not on a desktop Space out of sight.
+  // (on the full-screen Space, over the main window), not on a desktop Space out of sight. Everything after the first
+  // key is inside the try: whatever fails (the window never shows, a poll runs out mid-transition), the finally closes
+  // the settings window, leaves full screen and waits for the main window back at its frame, so the later tests (the
+  // restart, the tall ⌘/ parent) never start from a full-screen window. A failure is the check failing, with a note.
   await guard('⌘, in full screen (Task 10)', async () => {
+    const NAME = '⌘, in full screen: the settings window opens visible on the full-screen Space, key, inside the screen, and the main window stays in full screen (Task 10)';
     const win = await mainWindow(s.app);
     const isFull = () => win.evaluate((w) => w.isFullScreen());
-    await bringAppToFront(s.app);
-    await nativeKeystroke(s.app, 'f', ['control', 'command']);
-    await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
-    await sleep(1500);
-    let via = 'keystroke';
-    const settings = await expectWindow(s.app, 'settings', async () => {
-      try {
-        await nativeKeystroke(s.app, ',', ['command']);
-      } catch (e) {
-        if (!(e instanceof NativeInputNotPermitted)) throw e;
-        via = 'menu';
-        await runMenuCommand(s.app, 'app.settings');
-      }
-    });
-    try {
-      await expect.poll(async () => (await settingsWindow()).evaluate((w) => w.isVisible()), { timeout: 5_000 }).toBe(true);
-      await sleep(1200); // a Space change, if AppKit makes one, ends
+    const frame = await win.evaluate((w) => w.getBounds());
+    const v: Record<string, unknown> = { frameBefore: frame };
+    results['settingsInFullScreen'] = v;
+    let stage = 'enter full screen';
+    let settings: Page | null = null;
+    /** The two windows as main sees them, whether the settings window is on screen in this Space, and a capture. */
+    const observe = async () => {
       const facts = await s.app.evaluate(({ BrowserWindow, screen }) => {
         const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
         const of = (kind: string) => all.find((w) => w.webContents.getURL().includes(`window=${kind}`));
@@ -1245,27 +1324,54 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
           display: screen.getPrimaryDisplay().bounds,
         };
       });
-      const onScreen = await windowOnScreen(await cgWindowId(s.app, 'settings'));
+      const onScreen = facts.settings ? await windowOnScreen(await cgWindowId(s.app, 'settings')) : null;
       const shot = await fullScreenShot('m3-15e-settings-over-fullscreen', '⌘, while the main window is in full screen: the settings window over it');
       const b = facts.settings?.bounds;
       const d = facts.display;
       const inside = !!b && b.x >= d.x && b.y >= d.y && b.x + b.width <= d.x + d.width && b.y + b.height <= d.y + d.height;
-      const v = { via, ...facts, onScreen, inside, page: await settingsState(settings), shot: shot.file, frontmost: frontmostProcess().name };
-      results['settingsInFullScreen'] = v;
-      check(
-        '⌘, in full screen: the settings window opens visible on the full-screen Space, key, inside the screen, and the main window stays in full screen (Task 10)',
-        via === 'keystroke' && facts.settings?.visible === true && facts.settings.focused && onScreen === true && inside && facts.main?.fullScreen === true,
-        v,
-      );
+      return { ...facts, onScreen, inside, shot: shot.file, frontmost: frontmostProcess().name };
+    };
+    try {
+      await bringAppToFront(s.app);
+      await nativeKeystroke(s.app, 'f', ['control', 'command']);
+      await expect.poll(isFull, { timeout: 10_000 }).toBe(true);
+      await sleep(1500);
+      stage = '⌘, opens the settings window';
+      let via = 'keystroke';
+      settings = await expectWindow(s.app, 'settings', async () => {
+        try {
+          await nativeKeystroke(s.app, ',', ['command']);
+        } catch (e) {
+          if (!(e instanceof NativeInputNotPermitted)) throw e;
+          via = 'menu';
+          await runMenuCommand(s.app, 'app.settings');
+        }
+      });
+      stage = 'the settings window over full screen';
+      await sleep(1200); // a Space change, if AppKit makes one, ends
+      const seen = await observe();
+      Object.assign(v, { via, ...seen, page: await settingsState(settings) });
+      check(NAME, via === 'keystroke' && seen.settings?.visible === true && seen.settings.focused && seen.onScreen === true && seen.inside && seen.main?.fullScreen === true, v);
+    } catch (e) {
+      // What there was to see when it failed (a settings window on another Space, or none): the facts and a capture.
+      const seen = await observe().catch((err: unknown) => ({ observeError: errorText(err) }));
+      Object.assign(v, { error: errorText(e), notPermitted: e instanceof NativeInputNotPermitted, note: `failed at: ${stage}`, ...seen });
+      check(NAME, false, v);
     } finally {
-      await closeSettings(settings);
+      if (settings) await closeSettings(settings);
+      // A settings window that showed after expectWindow gave up has no page handle here: close it by its window.
+      await s.app
+        .evaluate(({ BrowserWindow }) => {
+          for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed() && w.webContents.getURL().includes('window=settings')) w.close();
+        })
+        .catch(() => {});
       await bringAppToFront(s.app).catch(() => {});
-      if (await isFull()) {
-        await nativeKeystroke(s.app, 'f', ['control', 'command']).catch(() => {});
-        await expect.poll(isFull, { timeout: 10_000 }).toBe(false).catch(() => {});
-        if (await isFull()) await win.evaluate((w) => w.setFullScreen(false));
-        await sleep(1500);
-      }
+      const out = await leaveFullScreen(win);
+      const backAtFrame = await expect
+        .poll(() => win.evaluate((w) => JSON.stringify(w.getBounds())).catch(() => ''), { timeout: 5_000 })
+        .toBe(JSON.stringify(frame))
+        .then(() => true, () => false);
+      v['cleanup'] = { outOfFullScreen: out, backAtFrame, frameAfter: await win.evaluate((w) => w.getBounds()).catch(() => null) };
     }
   });
   save();
@@ -1431,6 +1537,8 @@ test('M3 chrome: window bounds survive a restart on macOS', TAG, async () => {
 // switched to the mode the demo records in (displayplacer, display-mac.ts) when the runner offers one, and put back
 // right after. It runs last, so no other check measures the switched screen.
 test("M3 chrome: the ⌘/ sheet in a parent as tall as a 1440 × 900 Mac's work area (T12-m1)", TAG, async () => {
+  // A display switch and its restore (displayplacer calls of up to 30 s each, 10 s polls) around two sheets.
+  test.setTimeout(300_000);
   test.skip(!IS_MAC, 'the darwin clamp: Linux runs its own formula in the sheets test above');
   const TALL = 806;
   const out: Record<string, unknown> = {};

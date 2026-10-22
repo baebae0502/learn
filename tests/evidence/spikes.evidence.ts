@@ -313,14 +313,18 @@ async function bundleLocalization(appDir: string) {
 // bundle needs it. The 편집 menu is captured open each time. Data, like every spike: only a launch failure fails it.
 test('spike 6: AppKit menu items in Korean (packaged, -AppleLanguages (ko))', TAG, async () => {
   test.skip(!PACKAGED || !IS_MAC, 'the packaged macOS app (workflow input packaged=true)');
-  test.setTimeout(240_000);
+  // Review M5: every inner step is bounded by what is left before this deadline, 30 s inside the test's own timeout,
+  // so no step outlasts the test and the spikes.json entry is always written. The as-built result is written first.
+  test.setTimeout(300_000);
+  const deadline = Date.now() + 270_000;
+  const left = () => deadline - Date.now();
   const bundle = path.resolve(PACKAGED, '../../..');
   const attempt = async (executablePath: string, label: string) => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-ko-'));
     const errors: string[] = [];
     let s: Session | null = null;
     let attempts = 0;
-    for (attempts = 1; attempts <= 3 && !s; attempts++) {
+    for (attempts = 1; attempts <= 3 && !s && left() > 60_000; attempts++) {
       try {
         s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), { executablePath, args: ['-AppleLanguages', '(ko)'] });
       } catch (e) {
@@ -358,19 +362,23 @@ test('spike 6: AppKit menu items in Korean (packaged, -AppleLanguages (ko))', TA
   const englishLeft = (a: Attempt) => !a.launched || (a as { english: string[] }).english.length > 0 || !(a as { edit: string[] | null }).edit;
 
   const asBuilt = { bundle: await bundleLocalization(bundle), ...(await attempt(PACKAGED, 'as-built')) };
+  saveSpike('6-menu-language', { result: 'as built only so far (the run stopped before the verdict)', args: ['-AppleLanguages', '(ko)'], asBuilt });
   let withKo: Record<string, unknown> | null = null;
-  if (asBuilt.launched && englishLeft(asBuilt)) {
+  // The copy (ditto ≤ 60 s, codesign ≤ 120 s, a launch and the menus) needs about 2.5 min at worst: skipped, with a
+  // note, when less is left.
+  if (asBuilt.launched && englishLeft(asBuilt) && left() < 150_000) withKo = { skipped: `only ${Math.round(left() / 1000)} s left before the spike's deadline` };
+  else if (asBuilt.launched && englishLeft(asBuilt)) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-ko-app-'));
     try {
       const copy = path.join(dir, 'Learn.app');
       const steps: Record<string, boolean | string> = {};
-      const run = async (name: string, cmd: string, args: string[], ms = 60_000) => {
-        const r = await tryExec(cmd, args, ms);
+      const run = async (name: string, cmd: string, args: string[], ms = 15_000) => {
+        const r = await tryExec(cmd, args, Math.max(5_000, Math.min(ms, left() - 90_000)));
         steps[name] = r.ok ? true : (r.stderr || r.stdout).trim().split('\n')[0] ?? 'failed';
         return r.ok;
       };
       const plist = path.join(copy, 'Contents', 'Info.plist');
-      let ok = await run('ditto', 'ditto', [bundle, copy], 180_000);
+      let ok = await run('ditto', 'ditto', [bundle, copy], 60_000);
       if (ok) {
         await run('delete CFBundleLocalizations', '/usr/libexec/PlistBuddy', ['-c', 'Delete :CFBundleLocalizations', plist]); // absent is fine
         ok =
@@ -382,7 +390,7 @@ test('spike 6: AppKit menu items in Korean (packaged, -AppleLanguages (ko))', TA
           fs.mkdirSync(ko);
           steps['mkdir ko.lproj'] = true;
         }
-        if (ok) ok = await run('codesign', 'codesign', ['--force', '--deep', '--sign', '-', copy], 300_000);
+        if (ok) ok = await run('codesign', 'codesign', ['--force', '--deep', '--sign', '-', copy], 120_000);
       }
       withKo = ok ? { bundle: await bundleLocalization(copy), steps, ...(await attempt(path.join(copy, 'Contents', 'MacOS', path.basename(PACKAGED)), 'info-plist-ko')) } : { steps };
     } finally {

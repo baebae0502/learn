@@ -731,7 +731,7 @@
         <div class="codec-notice" role="alert" ${ms('M3', '재생 불가 안내(Finder에서 보기·기본 앱으로 열기)')}>
           <div class="glyph">${icon('video-off', 'xl')}</div>
           <h2>이&nbsp;동영상은 재생할 수 없습니다</h2>
-          <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)로 변환한 파일을 가져오면 재생할 수 있습니다. 원본&nbsp;파일은 그대로 보관됩니다.</p>
+          <p>Learn의 재생 엔진이 이&nbsp;파일의 형식을 지원하지 않습니다. MP4(H.264/AAC)&#8288;로 변환한 파일을 가져오면 재생할 수 있습니다. 원본&nbsp;파일은 그대로 보관됩니다.</p>
           <div class="file">seminar-0915.avi · 1.3 GB</div>
           <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
         </div>

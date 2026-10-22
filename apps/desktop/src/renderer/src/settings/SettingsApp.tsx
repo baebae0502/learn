@@ -5,11 +5,12 @@ import { DEFAULT_PREFS, type Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useAppInfo, usePrefs, usePrefsSync } from '../data/queries';
 import { homeRelative } from '../format';
+import { DemoOverlay } from '../shell/DemoOverlay';
 import { useWindowState } from '../shell/useWindowState';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
-import { currentPlatform } from '../ui/platform';
+import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Segmented } from '../ui/Segmented';
 import { ThemePreview } from './ThemePreview';
 
@@ -53,98 +54,103 @@ export function SettingsApp() {
   };
 
   return (
-    <div className="settings" data-settings-root="" data-testid="settings-root">
-      <section aria-labelledby="g-appearance">
-        <h2 className="group-label" id="g-appearance">
-          {t.settings.appearance}
-        </h2>
-        <div className="form-group">
-          <div className="form-row stacked">
-            <span className="fr-label" id="l-theme">
-              {t.settings.theme}
-            </span>
-            <RadioGroup
-              aria-labelledby="l-theme"
-              orientation="horizontal"
-              value={prefs.theme}
-              onChange={(v) => set({ theme: v as Prefs['theme'] })}
-              className="theme-tiles"
-            >
-              {THEMES.map((v) => (
-                <Radio key={v} value={v} className="theme-tile" data-testid={`theme-tile-${v}`}>
-                  {/* The selection ring is the frame's border, 2 px off the picture with the group showing through. */}
-                  <span className="frame">
-                    <ThemePreview kind={v} />
-                  </span>
-                  <span>{t.settings.themes[v]}</span>
-                </Radio>
-              ))}
-            </RadioGroup>
-          </div>
-          <div className="form-row">
-            <span className="fr-label">
-              <span id="l-density">{t.settings.density}</span>
-              <span className="hint">{t.settings.densityHint}</span>
-            </span>
-            <Segmented
-              aria-labelledby="l-density"
-              value={prefs.density}
-              onChange={(density) => set({ density })}
-              options={DENSITIES.map((v) => ({ value: v, label: t.settings.densities[v], testId: `density-${v}` }))}
-            />
-          </div>
-          <div className="form-row">
-            <span className="fr-label">
-              <span id="l-font">{t.settings.fontSize}</span>
-              <span className="hint ui-prose">{t.settings.fontSizeHint}</span>
-            </span>
-            <Segmented
-              aria-labelledby="l-font"
-              value={String(prefs.fontSize)}
-              onChange={(v) => set({ fontSize: Number(v) as Prefs['fontSize'] })}
-              options={SIZES.map((v) => ({ value: String(v), label: t.settings.fontSizes[v], title: t.settings.fontSizePt(v), testId: `font-size-${v}` }))}
-            />
-          </div>
-        </div>
-        {prefsError && (
-          <p className="field-error" role="alert" data-testid="prefs-error">
-            {prefsError}
-          </p>
-        )}
-      </section>
-      {info.data && (
-        <section aria-labelledby="g-library">
-          <h2 className="group-label" id="g-library">
-            {t.settings.library}
+    <>
+      <div className="settings" data-settings-root="" data-testid="settings-root">
+        <section aria-labelledby="g-appearance">
+          <h2 className="group-label" id="g-appearance">
+            {t.settings.appearance}
           </h2>
           <div className="form-group">
             <div className="form-row stacked">
-              <span className="fr-label">
-                <span>{t.settings.location}</span>
-                <span className="hint ui-prose">{t.settings.locationHint}</span>
+              <span className="fr-label" id="l-theme">
+                {t.settings.theme}
               </span>
-              {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the end is cut, never the middle. */}
-              <div className="path-box" title={info.data.libraryRoot} data-testid="library-path">
-                <Icon icon={Folder} size="sm" />
-                <span className="ellipsis">{homeRelative(info.data.libraryRoot, info.data.homeDir)}</span>
-              </div>
-              <div className="row-actions">
-                <Button icon={FolderSearch} testId="library-reveal" onPress={() => void library(() => unwrap(api().app.showLibraryFolder()))}>
-                  {currentPlatform() === 'darwin' ? t.settings.reveal.darwin : t.settings.reveal.other}
-                </Button>
-                <Button testId="library-choose" onPress={() => void library(() => unwrap(api().app.chooseLibraryFolder()))}>
-                  {t.settings.choose}
-                </Button>
-              </div>
-              {libraryError && (
-                <p className="field-error" role="alert" data-testid="library-error">
-                  {libraryError}
-                </p>
-              )}
+              <RadioGroup
+                aria-labelledby="l-theme"
+                orientation="horizontal"
+                value={prefs.theme}
+                onChange={(v) => set({ theme: v as Prefs['theme'] })}
+                className="theme-tiles"
+              >
+                {THEMES.map((v) => (
+                  <Radio key={v} value={v} className="theme-tile" data-testid={`theme-tile-${v}`}>
+                    {/* The selection ring is the frame's border, 2 px off the picture with the group showing through. */}
+                    <span className="frame">
+                      <ThemePreview kind={v} />
+                    </span>
+                    <span>{t.settings.themes[v]}</span>
+                  </Radio>
+                ))}
+              </RadioGroup>
+            </div>
+            <div className="form-row">
+              <span className="fr-label">
+                <span id="l-density">{t.settings.density}</span>
+                <span className="hint">{t.settings.densityHint}</span>
+              </span>
+              <Segmented
+                aria-labelledby="l-density"
+                value={prefs.density}
+                onChange={(density) => set({ density })}
+                options={DENSITIES.map((v) => ({ value: v, label: t.settings.densities[v], testId: `density-${v}` }))}
+              />
+            </div>
+            <div className="form-row">
+              <span className="fr-label">
+                <span id="l-font">{t.settings.fontSize}</span>
+                <span className="hint ui-prose">{t.settings.fontSizeHint}</span>
+              </span>
+              <Segmented
+                aria-labelledby="l-font"
+                value={String(prefs.fontSize)}
+                onChange={(v) => set({ fontSize: Number(v) as Prefs['fontSize'] })}
+                options={SIZES.map((v) => ({ value: String(v), label: t.settings.fontSizes[v], title: t.settings.fontSizePt(v), testId: `font-size-${v}` }))}
+              />
             </div>
           </div>
+          {prefsError && (
+            <p className="field-error" role="alert" data-testid="prefs-error">
+              {prefsError}
+            </p>
+          )}
         </section>
-      )}
-    </div>
+        {info.data && (
+          <section aria-labelledby="g-library">
+            <h2 className="group-label" id="g-library">
+              {t.settings.library}
+            </h2>
+            <div className="form-group">
+              <div className="form-row stacked">
+                <span className="fr-label">
+                  <span>{t.settings.location}</span>
+                  <span className="hint ui-prose">{t.settings.locationHint}</span>
+                </span>
+                {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the end is cut, never the middle. */}
+                <div className="path-box" title={info.data.libraryRoot} data-testid="library-path">
+                  <Icon icon={Folder} size="sm" />
+                  <span className="ellipsis">{homeRelative(info.data.libraryRoot, info.data.homeDir)}</span>
+                </div>
+                <div className="row-actions">
+                  <Button icon={FolderSearch} testId="library-reveal" onPress={() => void library(() => unwrap(api().app.showLibraryFolder()))}>
+                    {currentPlatform() === 'darwin' ? t.settings.reveal.darwin : t.settings.reveal.other}
+                  </Button>
+                  <Button testId="library-choose" onPress={() => void library(() => unwrap(api().app.chooseLibraryFolder()))}>
+                    {t.settings.choose}
+                  </Button>
+                </div>
+                {libraryError && (
+                  <p className="field-error" role="alert" data-testid="library-error">
+                    {libraryError}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+      </div>
+      {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build); fixed, outside the
+          measured root. */}
+      {readWindowParams(location.search).demo && <DemoOverlay />}
+    </>
   );
 }

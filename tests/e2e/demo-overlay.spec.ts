@@ -5,10 +5,36 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { expectWindow, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
+import { drag, expectWindow, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
 
 const IS_MAC = process.platform === 'darwin';
 const DEMO = { env: { LEARN_DEMO_OVERLAY: '1' } };
+
+/**
+ * The overlay of `page` is inert: aria-hidden, no pointer events, nothing focusable or with a tooltip, no data-pane, not
+ * inside a pane; the drawn cursor takes no hit and uses none of the app's focus colour (T13-M4).
+ */
+async function expectInert(page: Page, at: { x: number; y: number }): Promise<void> {
+  const overlay = page.getByTestId('demo-overlay');
+  await expect(overlay).toHaveAttribute('aria-hidden', 'true');
+  expect(await overlay.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+  expect(await overlay.evaluate((el) => el.querySelectorAll('a, button, input, select, textarea, [tabindex], [data-pane], [title], [role="tooltip"]').length)).toBe(0);
+  expect(await overlay.evaluate((el) => el.closest('[data-pane]'))).toBeNull();
+  await page.mouse.move(at.x, at.y);
+  const cursor = page.locator('.demo-pointer');
+  await expect(cursor).toBeVisible();
+  expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-testid="demo-overlay"]') ?? null, at)).toBeNull();
+  const colours = await cursor.evaluate((el) => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--focus)';
+    document.body.append(probe);
+    const focus = getComputedStyle(probe).color;
+    probe.remove();
+    const cs = getComputedStyle(el);
+    return { focus, used: [cs.borderTopColor, cs.backgroundColor, cs.boxShadow, cs.outlineColor].join(' | ') };
+  });
+  expect(colours.used).not.toContain(colours.focus);
+}
 
 /** Where the focus is: its data-pane and the test id of it (or of its nearest ancestor with one). */
 const focus = (page: Page) =>
@@ -54,22 +80,20 @@ test('without LEARN_DEMO_OVERLAY there is no overlay and no demo flag on the URL
     await runMenuCommand(app, 'app.palette');
     await expect(page.getByTestId('palette')).toBeVisible();
     await expect(page.getByTestId('demo-overlay')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    expect(settings.url()).not.toContain('demo=1');
+    await expect(settings.getByTestId('demo-overlay')).toHaveCount(0);
   } finally {
     await app.close();
   }
 });
 
-test('with LEARN_DEMO_OVERLAY=1 the overlay is inert: aria-hidden, no pointer events, nothing focusable, no pane', async ({}, testInfo) => {
+test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings windows, and shows pills and captions', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), DEMO);
   try {
     expect(page.url()).toContain('demo=1');
-    const overlay = page.getByTestId('demo-overlay');
-    await expect(overlay).toHaveAttribute('aria-hidden', 'true');
-    expect(await overlay.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
-    // The pointer ring follows the pointer and takes no hit: what is under it is the window's own control.
-    await page.mouse.move(400, 300);
-    await expect(page.locator('.demo-pointer')).toBeVisible();
-    expect(await page.evaluate(() => document.elementFromPoint(400, 300)?.closest('[data-testid="demo-overlay"]') ?? null)).toBeNull();
+    await expectInert(page, { x: 400, y: 300 });
 
     // A menu command shows a pill: its keys in this platform's glyphs and its menu label.
     await runMenuCommand(app, 'app.palette');
@@ -78,13 +102,16 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert: aria-hidden, no pointer ev
     await expect(pill.locator('.kbd')).toHaveText(IS_MAC ? ['⌘', 'K'] : ['Ctrl', 'K']);
     // The palette's input keeps the focus the command gave it; the pill takes none and has nothing that could.
     await expect(page.getByTestId('palette-input')).toBeFocused();
-    expect(await overlay.evaluate((el) => el.querySelectorAll('a, button, input, select, textarea, [tabindex], [data-pane]').length)).toBe(0);
-    expect(await overlay.evaluate((el) => el.closest('[data-pane]'))).toBeNull();
-    expect(await overlay.evaluate((el) => el.querySelectorAll('[title], [role="tooltip"]').length)).toBe(0);
     await expectNoSeriousA11y(page, 'demo overlay with a pill, palette open');
+    // Window keys are named by what they do there (the palette footer's words).
+    await page.keyboard.press('ArrowDown');
+    await expect(pill).toContainText('이동');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect(pill.locator('.kbd')).toHaveText(IS_MAC ? ['esc'] : ['Esc']);
+    await expect(pill).toContainText('닫기');
+    // It fades out by itself (1.9 s, then the exit).
+    await expect(pill).toHaveCount(0, { timeout: 4000 });
 
     // ⌃⌘S names what it did: the state it found.
     await runMenuCommand(app, 'view.toggleSidebar');
@@ -92,12 +119,36 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert: aria-hidden, no pointer ev
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(pill).toContainText('사이드바 보기');
 
-    // 설정… is run by main itself (no menuCommand): main tells the overlay. Only the main window has an overlay.
+    // A held ⌥ / Alt while files are dragged over the window: shown until released, naming the link.
+    await drag(page, 'dragenter', [['a.pdf', 'application/pdf']]);
+    await page.keyboard.down('Alt');
+    await expect(pill.locator('.kbd')).toHaveText(IS_MAC ? ['⌥'] : ['Alt']);
+    await expect(pill).toContainText('외부 파일로 연결');
+    await page.waitForTimeout(2500); // past a pill's own 1.9 s
+    await expect(pill).toContainText('외부 파일로 연결');
+    await page.keyboard.up('Alt');
+    await expect(pill).toHaveCount(0, { timeout: 2000 });
+    await drag(page, 'dragleave', [['a.pdf', 'application/pdf']]);
+
+    // A chapter caption, sent by the demo script: shown, then gone after its 3.5 s.
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: '설정은 따로 뜨는 창입니다.' })));
+    const caption = page.getByTestId('demo-caption');
+    await expect(caption).toHaveText('설정은 따로 뜨는 창입니다.');
+    expect(await page.getByTestId('demo-overlay').evaluate((el) => el.querySelectorAll('[tabindex], button, [title]').length)).toBe(0);
+    await expect(caption).toHaveCount(0, { timeout: 6000 });
+
+    // 설정… is run by main itself (no menuCommand): main tells the overlay. The settings window has its own, as inert.
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     await expect(pill).toContainText('설정…');
     await expect(pill.locator('.kbd')).toHaveText(IS_MAC ? ['⌘', ','] : ['Ctrl', ',']);
-    expect(settings.url()).not.toContain('demo=1');
-    await expect(settings.getByTestId('demo-overlay')).toHaveCount(0);
+    expect(settings.url()).toContain('demo=1');
+    await expectInert(settings, { x: 300, y: 120 });
+    await expectNoSeriousA11y(settings, 'settings window with the demo overlay');
+    // Its height is its content's: the fixed overlay is outside the measured root.
+    const fits = async () =>
+      (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=settings'))!.getContentSize()[1])) ===
+      (await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height)));
+    await expect.poll(fits).toBe(true);
     await settings.close();
   } finally {
     await app.close();

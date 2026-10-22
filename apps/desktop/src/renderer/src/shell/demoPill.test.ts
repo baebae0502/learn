@@ -28,15 +28,30 @@ describe('demo pills', () => {
     expect(shortcutPill({ accelerator: 'CmdOrCtrl+,', label: '설정…' }, 'linux')).toEqual({ keys: ['Ctrl', ','], label: '설정…' });
   });
   it('show the window keys the menu does not own, with ⇧ when held', () => {
-    expect(keyPill(key('F6'), 'darwin')).toEqual({ keys: ['F6'], label: '' });
-    expect(keyPill(key('F6', { shiftKey: true }), 'darwin')).toEqual({ keys: ['⇧', 'F6'], label: '' });
-    expect(keyPill(key('F6', { shiftKey: true }), 'linux')).toEqual({ keys: ['Shift', 'F6'], label: '' });
+    expect(keyPill(key('F6'), 'darwin')).toEqual({ keys: ['F6'], label: '다음 패널로 이동' });
+    expect(keyPill(key('F6', { shiftKey: true }), 'darwin')).toEqual({ keys: ['⇧', 'F6'], label: '이전 패널로 이동' });
+    expect(keyPill(key('F6', { shiftKey: true }), 'linux')).toEqual({ keys: ['Shift', 'F6'], label: '이전 패널로 이동' });
     expect(keyPill(key('Enter'), 'darwin')!.keys).toEqual(['↩']);
     expect(keyPill(key('Enter'), 'linux')!.keys).toEqual(['Enter']);
     expect(keyPill(key('Escape'), 'darwin')!.keys).toEqual(['esc']);
     expect(keyPill(key('Escape'), 'linux')!.keys).toEqual(['Esc']);
     expect(keyPill(key('Tab'), 'darwin')!.keys).toEqual(['⇥']);
     expect(keyPill(key('ArrowDown'), 'darwin')!.keys).toEqual(['↓']);
+  });
+  it('name a window key by what it does where it was pressed: the registry, the palette footer, the item command', () => {
+    expect(keyPill(key('Enter'), 'darwin', 'row')!.label).toBe('열기');
+    expect(keyPill(key('Enter'), 'darwin', 'palette')!.label).toBe('실행');
+    expect(keyPill(key('ArrowDown'), 'darwin', 'palette')!.label).toBe('이동');
+    expect(keyPill(key('Escape'), 'darwin', 'palette')!.label).toBe('닫기');
+    expect(keyPill(key('Escape'), 'darwin')!.label).toBe('닫기');
+    expect(keyPill(key('Enter'), 'darwin')!.label).toBe('');
+    expect(keyPill(key('Tab'), 'darwin', 'palette')!.label).toBe('');
+  });
+  it('hold a lone ⌥ / Alt until it is released, naming the link while files are dragged over the window', () => {
+    expect(keyPill(key('Alt', { altKey: true }), 'darwin', 'dropping')).toEqual({ keys: ['⌥'], label: '외부 파일로 연결', held: true });
+    expect(keyPill(key('Alt', { altKey: true }), 'linux')).toEqual({ keys: ['Alt'], label: '', held: true });
+    expect(keyPill(key('Alt', { altKey: true, metaKey: true }), 'darwin')).toBeNull(); // part of a chord
+    expect(keyPill(key('Alt', { altKey: true, repeat: true }), 'darwin')).toBeNull();
   });
   it('show no letters, no menu chords, no IME composition and no key repeat', () => {
     expect(keyPill(key('a'), 'darwin')).toBeNull();

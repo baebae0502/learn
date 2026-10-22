@@ -1,44 +1,92 @@
-/* Demo overlay (LEARN_DEMO_OVERLAY=1, unpackaged builds only): pointer ring and shortcut pills for screen recordings. */
+/* Demo overlay (LEARN_DEMO_OVERLAY=1, unpackaged builds only): a presentation cursor, shortcut pills and chapter
+   captions for screen recordings (shell/DemoOverlay.tsx). Nothing here may read as the app's own UI: no --focus, no
+   app surface colours; the pill and the caption share one dark HUD look in both themes.
+
+   Places, in CSS px from the window's bottom-left, chosen so the three never overlap each other at 1024 or 1440 wide
+   (and stay clear of the bottom-right toast column, 16 from the right, 360 wide):
+   - pill: centred, bottom 40, 52 tall (bottom band 40–92);
+   - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows;
+   - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
+     least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom. */
 @layer screens {
   .demo-overlay {
+    --demo-hud-bg: rgb(28 28 30 / 0.86); /* local: demo HUD, the same in both themes */
+    --demo-hud-text: rgb(255 255 255 / 0.96); /* local: demo HUD */
+    --demo-hud-key: rgb(255 255 255 / 0.14); /* local: demo HUD keycap fill */
+    --demo-pill-bottom: var(--space-40);
+    --demo-pill-height: 52px; /* local: 12 + 28 keycap + 12 */
     position: fixed;
     inset: 0;
     z-index: 100; /* local: above every surface, the palette (40), toasts (45) and the drop overlay (50) */
     pointer-events: none;
   }
+  /* A presentation cursor: a translucent disc with a white rim, unlike any control or focus ring of the app. */
   .demo-pointer {
     position: absolute;
-    width: 22px; /* local: demo only */
-    height: 22px; /* local: demo only */
-    margin: -11px 0 0 -11px; /* local: centred on the pointer */
+    width: 28px; /* local: demo only */
+    height: 28px; /* local: demo only */
+    margin: -14px 0 0 -14px; /* local: centred on the pointer */
     border-radius: 50%;
-    box-shadow: 0 0 0 2px var(--focus), 0 0 0 4px color-mix(in oklch, var(--focus) 30%, transparent); /* local: demo only */
+    background: rgb(0 0 0 / 0.14); /* local: demo cursor */
+    border: 2px solid rgb(255 255 255 / 0.95); /* local: demo cursor */
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.25); /* local: demo cursor */
+    transition: scale var(--duration-fast) var(--ease-standard);
   }
   .demo-pointer[data-down] {
-    background: color-mix(in oklch, var(--focus) 35%, transparent);
+    scale: 0.82;
+    background: rgb(0 0 0 / 0.28); /* local: demo cursor, pressed */
+  }
+  /* Over a resize handle (col-resize): a ↔ in the disc. */
+  .demo-pointer[data-resize]::after {
+    content: '↔';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: rgb(255 255 255 / 0.96); /* local: demo cursor */
+    font: var(--type-body);
+  }
+  .demo-hud {
+    position: absolute;
+    border-radius: var(--radius-pill);
+    background: var(--demo-hud-bg);
+    -webkit-backdrop-filter: blur(12px); /* local: demo HUD */
+    backdrop-filter: blur(12px); /* local: demo HUD */
+    box-shadow: var(--shadow-e2);
+    color: var(--demo-hud-text);
+    font: var(--type-title3);
+    animation: rise-in var(--duration-base) var(--ease-standard);
+  }
+  .demo-hud[data-leaving] {
+    opacity: 0;
+    transition: opacity calc(var(--duration-base) * 0.75) var(--ease-standard);
   }
   /* Centred with auto margins, not a translate: rise-in animates translate, which would slide it in sideways. */
   .demo-pill {
-    position: absolute;
     inset-inline: 0;
-    bottom: var(--space-40);
+    bottom: var(--demo-pill-bottom);
     width: max-content;
+    height: var(--demo-pill-height);
     margin-inline: auto;
     display: flex;
     align-items: center;
     gap: var(--space-12);
-    padding: var(--space-12) var(--space-20);
-    border-radius: var(--radius-pill);
-    background: var(--bg-raised);
-    box-shadow: var(--shadow-e2);
-    color: var(--text-primary);
-    font: var(--type-title3);
-    animation: rise-in var(--duration-base) var(--ease-standard);
+    padding: 0 var(--space-20);
   }
   .demo-pill .kbd {
     min-width: 28px; /* local: demo only, keycaps readable in a recording */
     height: 28px; /* local: demo only */
     padding: 0 var(--space-6);
+    background: var(--demo-hud-key);
+    box-shadow: none;
+    color: var(--demo-hud-text);
     font: var(--type-title3);
+  }
+  .demo-caption {
+    left: var(--space-24);
+    bottom: calc(var(--demo-pill-bottom) + var(--demo-pill-height) + var(--space-16));
+    max-width: min(560px, calc(100vw - 2 * var(--space-24))); /* local: demo caption measure */
+    padding: var(--space-12) var(--space-20);
+    border-radius: var(--radius-lg);
   }
 }

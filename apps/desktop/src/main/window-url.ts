@@ -6,7 +6,7 @@ export interface WindowUrlOptions {
   deterministic: boolean;
   /** macOS sidebar vibrancy is on: the main window's page keeps its sidebar transparent. */
   vibrancy: boolean;
-  /** LEARN_DEMO_OVERLAY=1 in an unpackaged build: key and pointer overlay for demo recordings. */
+  /** LEARN_DEMO_OVERLAY=1 in an unpackaged build: key and pointer overlay for demo recordings (main and settings). */
   demo: boolean;
 }
 
@@ -17,6 +17,7 @@ export function windowUrl(base: string, kind: WindowKind, o: WindowUrlOptions): 
   url.searchParams.set('platform', o.platform);
   if (o.deterministic) url.searchParams.set('det', '1');
   if (kind === 'main' && o.vibrancy) url.searchParams.set('vibrancy', '1');
-  if (kind === 'main' && o.demo) url.searchParams.set('demo', '1');
+  // The settings window too: the demo clicks in it, and those clicks must be seen (T13-M5). Sheets have none.
+  if ((kind === 'main' || kind === 'settings') && o.demo) url.searchParams.set('demo', '1');
   return url.toString();
 }

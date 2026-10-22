@@ -4,7 +4,7 @@ import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { SIDEBAR, afterViewportChange, clampSidebar, sidebarHidden } from './layout';
 import { SidebarToggle } from './SidebarToggle';
-import { keepFocusAcross } from './useSidebar';
+import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
 import { useViewportWidth } from './useViewportWidth';
 
 /**
@@ -18,6 +18,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
   const setSidebar = useShell((s) => s.setSidebar);
   const viewportWidth = useViewportWidth();
   const hidden = sidebarHidden(sidebar, viewportWidth);
+  useKeepFocusAcrossFold(hidden);
   // Mount-time size only: a changing defaultSize re-registers the panel; later changes go through the imperative effect.
   const [initialSize] = useState(() => (hidden ? 0 : sidebar.width));
 

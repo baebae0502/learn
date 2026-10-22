@@ -119,7 +119,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     (paths: string[], mode: StorageMode, unresolved: number) => {
       // Files without a location on disk are named in a toast; the others are still imported.
       if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody, testId: 'drop-failed' });
-      if (paths.length > 0) void runImport(() => api().library.import({ paths, mode }), mode);
+      if (paths.length > 0) void runImport(() => api().library.import({ paths, mode }), mode, paths.length);
     },
     [runImport],
   );

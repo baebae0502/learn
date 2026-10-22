@@ -1,11 +1,13 @@
-import { useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { LibraryBig } from 'lucide-react';
 import { commandById } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
+import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
+import { Spinner } from '../ui/Spinner';
 import { useFocusOnLeave } from './focusOnLeave';
 
 /** First run (design-spec 10.2, library-empty.html). The two buttons run the same registry commands as ⌘O / ⌥⌘O. */
@@ -18,6 +20,29 @@ export function EmptyLibrary(props: {
   const linked = commandById('file.importLinked');
   const root = useRef<HTMLDivElement>(null);
   useFocusOnLeave(root, props.focusOnLeave);
+  // A drop is bringing files in (the count is known): the screen says so, with nothing to press (T13R2-m1). The
+  // dialog flow keeps this screen, whose buttons are disabled with a reason while the dialog is up.
+  const busyCount = useShell((s) => (s.importing ? s.importCount : null));
+  // A focus inside goes with the buttons: the screen itself keeps it, so the list can still take it over afterwards.
+  const focusInside = root.current !== null && root.current.contains(document.activeElement);
+  const keepFocus = useRef(false);
+  keepFocus.current = focusInside;
+  useLayoutEffect(() => {
+    if (busyCount !== null && keepFocus.current && (document.activeElement === null || document.activeElement === document.body)) root.current?.focus();
+  }, [busyCount]);
+  if (busyCount !== null) {
+    return (
+      <div className="empty-state" data-testid="empty-state" data-busy="" ref={root} tabIndex={-1} role="status">
+        <div className="glyph">
+          <Icon icon={LibraryBig} size="xl" />
+        </div>
+        <h2 className="ui-balance busy-title">
+          <Spinner />
+          {t.library.importingTitle(busyCount)}
+        </h2>
+      </div>
+    );
+  }
   return (
     <div className="empty-state" data-testid="empty-state" ref={root}>
       <div className="glyph">

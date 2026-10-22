@@ -1,6 +1,8 @@
 import { useCallback } from 'react';
 import type { ImportOutcome, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
+import { keys } from '../data/queries';
+import { queryClient } from '../data/query-client';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { showToast } from '../ui/toasts';
@@ -11,14 +13,18 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
   const setImporting = useShell((s) => s.setImporting);
   const setView = useShell((s) => s.setView);
   return useCallback(
-    async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode) => {
-      setImporting(true);
+    /** `count`: how many files the request brings in, when known before it runs (a drop). */
+    async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode, count?: number) => {
+      setImporting(true, count ?? null);
       try {
         const outcomes = await unwrap(request());
         const report = await settleImport(outcomes, mode, {
           confirm,
           importAgain: (path, m) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true })),
         });
+        // The import ends when the list shows what it brought: otherwise the empty library's own screen (with its
+        // buttons) flashes between the busy screen and the first rows (critique T13R2-m1).
+        if (report.imported > 0) await queryClient.invalidateQueries({ queryKey: keys.items });
         if (report.imported > 0) showToast({ kind: 'success', title: (mode === 'linked' ? t.toast.linked : t.toast.imported)(report.imported), testId: 'import-done' });
         if (report.failed.length > 0) {
           const { lines, hints } = failureLines(report.failed);

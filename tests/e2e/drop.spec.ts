@@ -87,6 +87,53 @@ test('a drop imports a copy; with ⌥ held it links the original', async ({}, te
   }
 });
 
+// Critique T13R2-m1: while a drop's copies are being made into an empty library, the screen said "아직 자료가 없습니다"
+// with disabled buttons. The copy is held in main (the importer's fs.copyFile waits) so the import stays open.
+test('a first drop into an empty library says it is bringing N items in: no empty state, no buttons, until the rows', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await app.evaluate(() => {
+      const fsp = process.getBuiltinModule('node:fs/promises');
+      const copy = fsp.copyFile;
+      const g = globalThis as { __learnReleaseCopy?: () => void };
+      const held = new Promise<void>((resolve) => (g.__learnReleaseCopy = resolve));
+      fsp.copyFile = (async (...args: Parameters<typeof copy>) => {
+        await held;
+        return copy(...args);
+      }) as typeof copy;
+    });
+    // Every painted frame from the drop event on (an animation frame runs before each paint; commits that the same
+    // task replaces are never seen, so they are not counted).
+    await page.evaluate(() => {
+      const w = window as unknown as { __screens: string[]; __dropped?: boolean };
+      w.__screens = [];
+      addEventListener('drop', () => (w.__dropped = true), true);
+      const frame = () => {
+        const empty = document.querySelector('[data-testid="empty-state"]');
+        if (w.__dropped && empty) w.__screens.push(`${empty.hasAttribute('data-busy') ? 'busy' : 'empty'}:${empty.querySelectorAll('button').length}`);
+        if (!document.querySelector('[data-testid="item-row"]')) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await dropSource(page, [PDF, path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await dropReal(page);
+    const empty = page.getByTestId('empty-state');
+    await expect(empty).toHaveAttribute('data-busy', '');
+    await expect(empty.getByRole('heading')).toHaveText('자료 2개를 가져오는 중…');
+    await expect(empty.getByRole('button')).toHaveCount(0);
+    await page.waitForTimeout(300); // held: it stays the busy screen
+    await expect(empty).toHaveAttribute('data-busy', '');
+    await app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
+    await expect(page.getByTestId('item-row')).toHaveCount(2);
+    // From the drop on, every painted frame of the empty library was the busy screen (no flash of the buttons).
+    const screens = await page.evaluate(() => (window as unknown as { __screens: string[] }).__screens);
+    expect(screens.length).toBeGreaterThan(0);
+    expect(screens.filter((x) => x !== 'busy:0')).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
 test('no overlay while reading; the drag gets the no-drop cursor and a drop there imports nothing', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

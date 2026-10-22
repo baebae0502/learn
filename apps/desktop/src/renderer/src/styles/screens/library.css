@@ -53,6 +53,15 @@
   .empty-state h2 {
     font: var(--type-title2);
   }
+  /* The busy variant (a drop being brought in): the spinner leads the title. */
+  .empty-state .busy-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+  .empty-state[data-busy]:focus {
+    outline: none; /* holds a keyboard focus for the list that follows; not a control */
+  }
   .empty-state p {
     max-width: 520px;
     color: var(--text-secondary);

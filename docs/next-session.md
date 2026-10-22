@@ -2,6 +2,37 @@
 
 첫 세션(P0 + 자료 기반 최소 수직선)의 리뷰에서 나왔지만 이번 범위 밖으로 미룬 항목과, Mac에서 확인할 목록이다. 진행 상태는 [`acceptance.md`](acceptance.md), 실측은 [`p0-verification.md`](p0-verification.md).
 
+## 제품 방향 (2026-10-22 합의)
+
+소유자가 2026-10-22에 승인했다. 제품 원칙은 [`design/design-spec.md`](design/design-spec.md) 1.1(비평 고정 항목은 [`review-rubric.md`](design/review-rubric.md) 0절), 명세 변경은 [`spec-amendments.md`](spec-amendments.md), 결정은 [ADR-0009](decisions/0009-anchor-hub-and-links.md)(앵커 허브, 제안)·[ADR-0010](decisions/0010-tutor-backend-acp.md)(튜터 백엔드 ACP, 제안)·[ADR-0011](decisions/0011-license-agpl.md)(AGPL, 채택). 이후 계획의 Global Constraints에는 "새 데이터 객체는 모두 앵커로 주소를 가질 수 있다"를 넣는다.
+
+### 로드맵 M3 → M14 (T1 포함)
+| 마일스톤 | 범위 |
+|---|---|
+| M3 | 셸 마무리. 인계 문서와 PR은 이 합의를 승인한 뒤 |
+| M4 | 라이브러리 표 + 빠른 검색 + 모드가 있는 인스펙터 |
+| M5 | 컬렉션·태그·DnD·컨텍스트 메뉴. 튜터 목업을 병행해 만들고 소유자가 승인 |
+| M6 | 휴지통·가져오기 큐·복구/백업·강화. P1 게이트 |
+| M7 | 리더 v2(PDF) + 이미지. 첫 작업은 앵커 ADR(ADR-0009) 스파이크 |
+| T1 | 작은 튜터: ACP 클라이언트·에이전트 감지, 읽기 MCP 도구(PDF 쪽, 현재 선택), conversations·messages·message_sources·conversation_context 테이블, 인용 검증 → 칩 → 이동(AC10), 인스펙터 튜터 모드·세션 목록, 동의와 보낸 범위 표시, 가짜 백엔드·오프라인 초안 |
+| M8 | 영상 v2 + 자막 + 오디오, 대본 도구 |
+| M9 | 필기(P2 게이트) + 튜터 제안 카드(노트·확인 문제) |
+| M10 | 기억·복습(명세 P4) |
+| M11 | GitHub 저장소 + 코드 투어 + README용 Markdown 렌더러 |
+| M12 | 재배치 계열: 웹 스냅샷·Markdown·EPUB, 샌드박스 viewer·웹 앵커 |
+| M13 | Chrome 커넥터: 먼저 macOS Native Messaging 스파이크, 그다음 네 가지 캡처와 세션 시작 |
+| M14 | 전사·OCR·PPTX, 제품화·공개: 서명, AGPL 고지·CLA, Anthropic 서면 확인, 출시 |
+
+### M4 입력
+- **항목 패널 = 모드가 있는 인스펙터.** 모드를 담는 그릇으로 만들고, 튜터가 생기기 전에는 모드 전환을 그리지 않는다(가짜 금지). 정보 모드 폭 320(260–480), 자동 접힘 순서(오른쪽 슬롯 → 사이드바)는 그대로다. [디자인 명세 2.5](design/design-spec.md).
+
+### 튜터 목업
+- M5와 병행해 만들고 소유자가 승인한다. M1처럼 실제 토큰 위의 HTML 목업, 라이트·다크, 내부 비평 뒤 소유자 승인.
+- 다룰 것: 동의, 에이전트 선택(설치·로그인 상태), 스트리밍, 도구 칩·인용 칩, 제안 카드(노트·확인 문제·기억), 오프라인·에이전트 실패와 초안 유지, 요청마다 보낸 자료·발췌·기억을 알리는 줄, 세션 목록, 다크 모드. 튜터 모드 폭의 범위도 이때 정한다.
+
+### 소유자 할 일
+- **공개 전 Anthropic 서면 확인.** 사용자의 Claude 구독으로 Claude 에이전트를 ACP로 실행하는 방식에 대한 Anthropic의 입장이 문서상 모호하다([ADR-0010](decisions/0010-tutor-backend-acp.md) 5절). 넓은 공개(M14 출시) 전에 받는다.
+
 ## P1 첫 작업 후보 (명세 13절 P1 게이트: "가져오기 중 종료 복구와 빈 프로필 restore")
 
 - 복구 리포트 UI: `library.recoveryReport`는 계산만 하고 화면이 없다. `staging/*.part`와 격리된 `staging/corrupt-<sha>-<uuid>` 파일을 보여 주고, 사용자가 확인한 뒤 정리한다(앱 staging 파일만 삭제 가능).

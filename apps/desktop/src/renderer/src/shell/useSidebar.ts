@@ -54,27 +54,36 @@ export function useToggleSidebar(): () => void {
   }, []);
 }
 
+/** Whether folding or showing the sidebar can take this element away: the sidebar's contents, or the toolbar copies. */
+const takenByFold = (el: Element): boolean =>
+  el.closest('.sidebar-inner, .pane-separator') !== null || el.id === TOGGLE_IDS.toolbar || (el.matches('.launcher') && el.closest('.titlebar') !== null);
+
 /**
  * Whatever folds or shows the sidebar — ⌃⌘S, a drag, or the window (or the zoom) changing its width so that it folds or
  * comes back by itself (design-spec 2.1, M-5) — the focus that it took along gets the same rescue (keepFocusAcross),
- * once the change is on screen. A copy that unmounted dropped the focus during the commit, so the element that lost
- * the focus to nowhere is remembered; an inert sidebar may still hold it. The commands that know beforehand
- * (useToggleSidebar, the separator) have rescued it already; a second rescue moves it to the same place.
+ * once the change is on screen. An inert sidebar may still hold the focus. A copy that unmounted has dropped it, and
+ * maybe a commit earlier: the toolbar re-renders with the new width before the shell does when anything re-renders it
+ * first. So the last element a fold can take that lost the focus to nowhere, and is gone or inert, is remembered until
+ * the focus lands anywhere. Nothing else is: the palette's field, gone as the palette closed, is never "rescued" onto
+ * a toggle (Task 8 critique m1). The commands that know beforehand (useToggleSidebar, the separator) have rescued it
+ * already; a second rescue moves it to the same place.
  */
 export function useKeepFocusAcrossFold(hidden: boolean): void {
   const lost = useRef<Element | null>(null);
   useEffect(() => {
-    const out = (e: FocusEvent) => {
-      if (e.relatedTarget === null && e.target instanceof Element) lost.current = e.target;
-    };
-    const into = () => {
+    let held: Element | null = null; // the focused element, when a fold can take it along (read while connected)
+    const into = (e: FocusEvent) => {
       lost.current = null;
+      held = e.target instanceof Element && takenByFold(e.target) ? e.target : null;
     };
-    document.addEventListener('focusout', out, true);
+    const out = (e: FocusEvent) => {
+      if (e.relatedTarget === null && e.target === held) lost.current = held;
+    };
     document.addEventListener('focusin', into, true);
+    document.addEventListener('focusout', out, true);
     return () => {
-      document.removeEventListener('focusout', out, true);
       document.removeEventListener('focusin', into, true);
+      document.removeEventListener('focusout', out, true);
     };
   }, []);
   const shown = useRef(hidden);

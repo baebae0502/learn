@@ -280,6 +280,27 @@ test('fatal screen: Tab reaches 설정 열기, Enter opens the settings window; 
   }
 });
 
+// The rescue takes only what a fold takes away: the palette's field, gone as the palette closed, is not "rescued" by
+// the next fold onto the toolbar toggle (with its keyboard tooltip) — Task 8 critique m1, evidence m3-04.
+test('a menu toggle after the palette closed moves no focus and pops no tooltip', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await runMenuCommand(app, 'app.palette');
+    await page.keyboard.type('ㄱㅈㅇ');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('palette')).toHaveCount(0);
+    for (const state of ['hidden', 'shown']) {
+      await runMenuCommand(app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', state);
+      await page.waitForTimeout(300);
+      expect(await page.getByRole('tooltip').count()).toBe(0);
+      expect(await page.evaluate(() => document.activeElement?.id ?? null)).not.toMatch(/sidebar-toggle$/);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 // Carried from the Task 4/5 ledger: when the sidebar folds by itself (the content column would get narrower than 520:
 // 200 % zoom, design-spec 8.3; the 960 px minimum window alone never folds a 240 px sidebar), a keyboard user's focus
 // inside it goes to the toolbar's toggle, never to <body>; when it comes back, to the sidebar's own toggle.

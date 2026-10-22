@@ -1,7 +1,8 @@
 // Visual tour: Linux baseline screenshots of every shell state, light and dark (quality spec M3).
-// Baselines: tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png. Update with
-//   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots
-// @2x captures for the design critic: LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
+// Baselines: tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png. Update with the 1x run (README "시각 투어 기준 PNG"):
+//   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all, then restore any jitter-only rewrite.
+// @2x captures for the design critic, without updating (the baselines stay as committed):
+//   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';

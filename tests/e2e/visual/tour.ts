@@ -58,7 +58,8 @@ export async function settle(page: Page): Promise<void> {
 
 /**
  * Optional @2x capture for the critic (LEARN_TOUR_2X=1) + committed 1x baseline (Linux). The @2x shot comes first:
- * a state that differs from its baseline still reaches the critic (R-2); the critic loop runs with --update-snapshots.
+ * a state that differs from its baseline still reaches the critic (R-2). Critic captures run without updating; the
+ * baselines are updated by the 1x run only (README).
  */
 export async function shoot(page: Page, name: string, opts: { mask?: Locator[] } = {}): Promise<void> {
   if (TOUR_2X) await capture2x(page, name);

@@ -30,11 +30,14 @@
 E2E 스크립트는 빌드 후 `pnpm fixtures`를 자동으로 실행한다. fixture를 다시 만들려면 `node fixtures/generate.mjs --force`. E2E 스크린샷과 trace는 `test-results/`에 남는다.
 
 ### 시각 투어 기준 PNG
-`tests/e2e/visual/tour.spec.ts`는 셸의 모든 상태를 라이트·다크로 찍어 Linux 기준 PNG(`tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png`)와 비교한다. 화면이 바뀌는 수정 뒤에는 기준을 다시 찍고, 바뀐 PNG를 눈으로 확인한 뒤, 갱신 없이 한 번 더 돌려 결정적인지 확인한다.
+`tests/e2e/visual/tour.spec.ts`는 셸의 모든 상태를 라이트·다크로 찍어 Linux 기준 PNG(`tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png`)와 비교한다. 화면이 바뀌는 수정 뒤에는 1x 기준을 다시 찍고, 바뀐 PNG를 하나씩 눈으로 확인한 뒤, 갱신 없이 한 번 더 돌려 결정적인지 확인한다.
 
-    pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all   # 기준 PNG 갱신
-    pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts                          # 갱신 없이 확인
-    LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all   # 디자인 비평용 @2x 캡처 → test-results/tour/
+    pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all   # 1x 기준 PNG를 모두 다시 찍는다
+    git status --short tests/e2e/visual/tour.spec.ts-snapshots           # 바뀐 파일을 하나씩 확인한다
+    pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts                          # 갱신 없이 한 번 더(결정성)
+
+- 화면이 바뀌지 않아도 1x 갱신은 `fatal-light`, `focus-sidebar-light`, `settings-focus-light` 세 파일의 바이트를 다시 쓴다(글자 래스터 차이, 허용 오차 안). 실제 변화가 없는 파일은 `git checkout -- <파일>`로 되돌리고, 확인한 실제 변화만 커밋한다.
+- 디자인 비평용 @2x 캡처(`LEARN_TOUR_2X=1`)는 비평 입력 전용이고 기준 PNG를 건드리지 않는다. 기준을 맞춘 뒤 갱신 없이 돌린다: `LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts` → `test-results/tour/`. `--update-snapshots`와 함께 쓰지 않는다.
 
 허용 오차는 300픽셀이라 몇 글자가 밀린 것도 숨길 수 있다. 문구·줄바꿈이 바뀌는 수정 뒤에는 `=all`로 다시 찍고 차이를 직접 본다.
 

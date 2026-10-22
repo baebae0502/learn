@@ -176,7 +176,7 @@ jobs:
           fi
           echo "LEARN_PACKAGED_APP=$APP/Contents/MacOS/Learn" >> "$GITHUB_ENV"
 
-      # A hang fails this step (Playwright globalTimeout 15 min inside, step limit 17) instead of cancelling the job.
+      # A hang fails this step (Playwright globalTimeout 16 min inside, step limit 17) instead of cancelling the job.
       # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence

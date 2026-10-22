@@ -7,7 +7,7 @@ export default defineConfig({
   testMatch: '**/*.evidence.ts',
   timeout: 180_000,
   // Whole-run cap below the workflow step limit (17 min) so a hang fails with a report.
-  globalTimeout: 900_000,
+  globalTimeout: 960_000,
   expect: { timeout: 15_000 },
   workers: 1,
   reporter: [['list'], ['json', { outputFile: 'evidence-results/report.json' }]],

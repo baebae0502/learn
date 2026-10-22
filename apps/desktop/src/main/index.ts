@@ -11,8 +11,8 @@ import {
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
-import { isDemoOverlay } from './demo';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
+import { isDemoOverlay } from './demo';
 import { DETERMINISTIC_SWITCHES, isDeterministic } from './deterministic';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';

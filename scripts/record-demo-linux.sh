@@ -10,7 +10,8 @@
 #   m3-demo.chapters.txt/.json the chapter list (m:ss from the start of the video), input, screen and window bounds
 #   frames/ch-NN.png           one frame per chapter, 3 s in (ffmpeg select), to check the video at a glance
 #   run.log                    the Playwright run
-# Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node and pnpm. Builds the app first.
+# Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node and pnpm. Builds the app first. Like every
+# evidence run, Playwright empties evidence-results/ (its outputDir) when it starts.
 set -euo pipefail
 
 W=${1:-2880}

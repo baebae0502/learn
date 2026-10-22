@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Clapperboard, Copy, FileText } from 'lucide-react';
 import type { DuplicateChoice, SheetPayload } from '@learn/domain';
 import { formatDate, formatSize } from '../format';
@@ -5,12 +6,15 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { resolveSheet } from './SheetApp';
+import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
 /** dialogs.html?scene=duplicate. ↩ = 건너뛰기 (the safe default), esc = 건너뛰기, 기존 자료 열기 on the left. */
 export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { kind: 'duplicate' }> }) {
   const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice });
   const keys = useSheetKeys(() => choose('skip'), () => choose('skip'));
+  const body = useRef<HTMLDivElement>(null);
+  const region = useScrollRegion(body, 'sheet-title');
   const e = payload.existing;
   return (
     <div
@@ -24,15 +28,15 @@ export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { k
       data-testid="sheet-root"
       {...keys}
     >
-      <div className="d-body">
-        <div className="d-title">
-          <span className="badge-icon">
-            <Icon icon={Copy} />
-          </span>
-          <h2 id="sheet-title" className="ui-balance">
-            {t.sheets.duplicateTitle}
-          </h2>
-        </div>
+      <div className="d-title">
+        <span className="badge-icon">
+          <Icon icon={Copy} />
+        </span>
+        <h2 id="sheet-title" className="ui-balance">
+          {t.sheets.duplicateTitle}
+        </h2>
+      </div>
+      <div className="d-body" ref={body} {...region}>
         <p className="d-text ui-prose" id="sheet-text">
           <b data-testid="dup-file">{payload.fileName}</b>
           {t.sheets.duplicateBody}

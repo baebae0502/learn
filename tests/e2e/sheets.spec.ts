@@ -1,7 +1,8 @@
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Locator } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, menuItemEnabled, runMenuCommand } from './helpers';
+import { expectNoSeriousA11y } from './a11y';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -132,6 +133,75 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     await mainHasFocus(s.app);
+  } finally {
+    await s.app.close();
+  }
+});
+
+/** A CSS colour token as `page` computes it. */
+const tokenIn = (page: Page, name: string) =>
+  page.evaluate((v) => {
+    const p = document.createElement('span');
+    document.body.append(p);
+    p.style.color = `var(${v})`;
+    const c = getComputedStyle(p).color;
+    p.remove();
+    return c;
+  }, name);
+
+test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a name and a ring, between a fixed title and foot with scroll edges; one that fits is no stop', async ({}, testInfo) => {
+  // Mac run 39779536146: on the 768-tall runner the sheet's body scrolled but no key could reach it (axe
+  // scrollable-region-focusable, serious). A window as short as the minimum makes it scroll here too.
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const open = () => expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+  try {
+    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1200, 600));
+    let sheet = await open();
+    let body = sheet.locator('.d-body');
+    await expect.poll(() => body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await expect(body).toHaveAttribute('tabindex', '0');
+    await expect(body).toHaveAttribute('role', 'region');
+    await expect(body).toHaveAccessibleName('단축키'); // the sheet's title
+    await expectNoSeriousA11y(sheet, 'shortcut sheet, scrolling');
+    // The keyboard reaches it (before 완료 in the tab order), shows the ring and scrolls it.
+    await expect(sheet.getByTestId('shortcuts-done')).toBeFocused();
+    await sheet.keyboard.press('Shift+Tab');
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+    expect(await body.evaluate((el) => getComputedStyle(el).outlineColor)).toBe(await tokenIn(sheet, '--focus'));
+    // Critique m3: the ring is inside the scroll area, the title and the foot stay put outside it, and each edge
+    // draws its hairline only while content is under it.
+    expect(await body.evaluate((el) => getComputedStyle(el).outlineOffset)).toBe('-2px');
+    await expect(body.locator('#sheet-title')).toHaveCount(0);
+    const edges = () =>
+      sheet.evaluate(() => ({
+        title: getComputedStyle(document.querySelector('.sheet > .d-title')!).borderBottomColor,
+        foot: getComputedStyle(document.querySelector('.sheet > .d-foot')!).borderTopColor,
+      }));
+    const line = await tokenIn(sheet, '--separator-on-surface');
+    const none = 'rgba(0, 0, 0, 0)';
+    expect(await edges()).toEqual({ title: none, foot: line }); // at the top: content under the foot only
+    const titleAt = (await sheet.locator('#sheet-title').boundingBox())!.y;
+    await sheet.keyboard.press('PageDown');
+    await expect.poll(() => body.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    await expect.poll(edges).toEqual({ title: line, foot: line });
+    await sheet.keyboard.press('End');
+    await expect.poll(edges).toEqual({ title: line, foot: none }); // at the end: nothing under the foot
+    expect((await sheet.locator('#sheet-title').boundingBox())!.y).toBe(titleAt);
+    // The last row is whole above the foot's edge once scrolled to the end.
+    const [last, bodyBox] = await Promise.all([sheet.getByTestId('shortcut-row').last().boundingBox(), body.boundingBox()]);
+    expect(last!.y + last!.height).toBeLessThanOrEqual(bodyBox!.y + bodyBox!.height);
+    await closeSheet(sheet, 'Escape');
+    await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    // A window tall enough for the whole list: the body is no stop, no region.
+    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
+    sheet = await open();
+    body = sheet.locator('.d-body');
+    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
+    await expect(body).not.toHaveAttribute('tabindex');
+    await expect(body).not.toHaveAttribute('role');
+    expect(await sheet.evaluate(() => [getComputedStyle(document.querySelector('.sheet > .d-title')!).borderBottomColor, getComputedStyle(document.querySelector('.sheet > .d-foot')!).borderTopColor])).toEqual(['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)']);
+    await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();
   }

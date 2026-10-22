@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Keyboard } from 'lucide-react';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
@@ -6,12 +7,16 @@ import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { shortcutGroups } from './shortcuts';
 import { resolveSheet } from './SheetApp';
+import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
 /** ⌘/ (design-spec 7.4), generated from the command registry; ↩ or esc closes it. */
 export function ShortcutsSheet() {
   const done = () => resolveSheet({ kind: 'shortcuts' });
   const keys = useSheetKeys(done, done);
+  // On a short screen (the 768-tall macOS runner) the list scrolls: then the body is a keyboard stop (scrollRegion.ts).
+  const body = useRef<HTMLDivElement>(null);
+  const region = useScrollRegion(body, 'sheet-title');
   return (
     <div
       className="sheet wide"
@@ -23,15 +28,15 @@ export function ShortcutsSheet() {
       data-testid="sheet-root"
       {...keys}
     >
-      <div className="d-body">
-        <div className="d-title">
-          <span className="badge-icon">
-            <Icon icon={Keyboard} />
-          </span>
-          <h2 id="sheet-title" className="ui-balance">
-            {t.sheets.shortcutsTitle}
-          </h2>
-        </div>
+      <div className="d-title">
+        <span className="badge-icon">
+          <Icon icon={Keyboard} />
+        </span>
+        <h2 id="sheet-title" className="ui-balance">
+          {t.sheets.shortcutsTitle}
+        </h2>
+      </div>
+      <div className="d-body" ref={body} {...region}>
         <div className="shortcut-groups">
           {shortcutGroups(currentPlatform()).map((g) => (
             <section key={g.title} aria-label={g.title}>

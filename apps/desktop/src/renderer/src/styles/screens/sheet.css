@@ -16,16 +16,33 @@
     min-height: 0;
     overflow-y: auto;
   }
-  .sheet .d-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-12);
-    padding: var(--space-20) var(--space-20) var(--space-16);
+  /* A body that scrolls is a keyboard stop (sheets/scrollRegion.ts): its focus ring is the usual 2 px --focus, drawn
+     inside the scroll area, between the title's and the foot's edges (design-spec 8.3: rings stay visible). */
+  .sheet .d-body[data-scrolls]:focus-visible {
+    outline-offset: calc(-1 * var(--focus-ring-width));
   }
+  /* The title row and the foot stay put; only the body between them scrolls (critique m3). Each edge is a hairline
+     that shows only while content is scrolled under it, as NSScrollView draws a sheet's scroll edges. The 1 px edges
+     come out of the 12 px gaps, so a sheet that fits is laid out exactly as before. */
   .sheet .d-title {
     display: flex;
     align-items: center;
     gap: var(--space-12);
+    flex: none;
+    padding: var(--space-20) var(--space-20) 0;
+    border-bottom: 1px solid transparent;
+  }
+  .sheet .d-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+    padding: calc(var(--space-12) - 1px) var(--space-20) var(--space-16);
+  }
+  .sheet:has(> .d-body[data-under-top]) > .d-title {
+    border-bottom-color: var(--separator-on-surface);
+  }
+  .sheet:has(> .d-body[data-under-bottom]) > .d-foot {
+    border-top-color: var(--separator-on-surface);
   }
   .sheet .d-title h2 {
     font: var(--type-title2);
@@ -53,7 +70,8 @@
     align-items: center;
     gap: var(--space-8);
     flex: none;
-    padding: var(--space-12) var(--space-20) var(--space-16);
+    padding: calc(var(--space-12) - 1px) var(--space-20) var(--space-16);
+    border-top: 1px solid transparent;
   }
   /* Sheet parts are scoped to .sheet: other screens may use these names for their own things. */
   .sheet .card {

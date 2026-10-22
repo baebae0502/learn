@@ -99,7 +99,7 @@ test('the empty-state buttons and the drop path need a real file location', asyn
       document.body.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }));
       document.body.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
     });
-    await expect(s.page.getByTestId('drop-failed')).toContainText('파일 › 파일 가져오기…');
+    await expect(s.page.getByTestId('drop-failed')).toContainText('파일 › 파일 가져오기로 다시 시도하세요.'); // the command named in prose: no "…" (critic T14-n2)
     await expect(s.page.getByTestId('empty-state')).toBeVisible();
   } finally {
     await s.app.close();

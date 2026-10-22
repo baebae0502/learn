@@ -52,7 +52,8 @@
     background: var(--demo-hud-bg);
     -webkit-backdrop-filter: blur(12px); /* local: demo HUD */
     backdrop-filter: blur(12px); /* local: demo HUD */
-    box-shadow: var(--shadow-e2);
+    /* A hairline keeps the HUD apart from a dark window too. */
+    box-shadow: var(--shadow-e2), 0 0 0 1px rgb(255 255 255 / 0.16); /* local: demo HUD hairline */
     color: var(--demo-hud-text);
     font: var(--type-title3);
     animation: rise-in var(--duration-base) var(--ease-standard);

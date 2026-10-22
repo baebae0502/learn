@@ -94,6 +94,13 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
   try {
     expect(page.url()).toContain('demo=1');
     await expectInert(page, { x: 400, y: 300 });
+    // A move the platform makes up when a window over this one moves (another place, no movement) leaves the cursor
+    // where the pointer is; a real move carries its movement.
+    const cursorAt = () => page.locator('.demo-pointer').evaluate((el) => [(el as HTMLElement).style.left, (el as HTMLElement).style.top]);
+    await page.evaluate(() => dispatchEvent(new PointerEvent('pointermove', { clientX: 720, clientY: 450 })));
+    expect(await cursorAt()).toEqual(['400px', '300px']);
+    await page.mouse.move(420, 310);
+    expect(await cursorAt()).toEqual(['420px', '310px']);
 
     // A menu command shows a pill: its keys in this platform's glyphs and its menu label.
     await runMenuCommand(app, 'app.palette');

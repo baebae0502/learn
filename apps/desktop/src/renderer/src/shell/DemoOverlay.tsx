@@ -66,6 +66,7 @@ export function DemoOverlay() {
   const [caption, showCaption] = useTransient<{ text: string }>();
   const [pointer, setPointer] = useState<{ x: number; y: number; down: boolean; resize: boolean } | null>(null);
   const [pointerHidden, setPointerHidden] = useState(false);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
   const hidden = useSidebarHidden();
   const drawnHidden = useRef(hidden);
@@ -88,8 +89,14 @@ export function DemoOverlay() {
       if (e.key === 'Alt' && pillRef.current?.held && !pillRef.current.leaving) endPill();
     };
     const move = (e: PointerEvent) => {
+      // A move to somewhere else with no movement is one the platform made up when a window over this one moved or
+      // closed (Chromium: the window's middle, movement 0); the pointer never went there, so the cursor stays put.
+      const last = lastPointer.current;
+      if (e.type === 'pointermove' && e.movementX === 0 && e.movementY === 0 && last && (last.x !== e.clientX || last.y !== e.clientY)) return;
       const cursor = e.target instanceof Element ? getComputedStyle(e.target).cursor : '';
-      setPointer({ x: e.clientX, y: e.clientY, down: e.buttons > 0, resize: cursor === 'col-resize' || cursor === 'ew-resize' });
+      const next = { x: e.clientX, y: e.clientY, down: e.buttons > 0, resize: cursor === 'col-resize' || cursor === 'ew-resize' };
+      lastPointer.current = next;
+      setPointer(next);
     };
     const onCaption = (e: Event) => showCaption({ text: String((e as CustomEvent<unknown>).detail ?? '') }, CAPTION_MS);
     const onPointer = (e: Event) => setPointerHidden(Boolean((e as CustomEvent<{ hidden?: boolean }>).detail?.hidden));

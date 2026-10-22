@@ -156,13 +156,24 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: null })));
     await expect(tag).toHaveCount(0);
 
-    // While a sheet hangs over the window, the pill moves to the bottom-left, out from under it (T13R2-m6).
+    // ⌘/ opens a sheet over the window's middle: its pill starts bottom-left, where the sheet leaves room, and stays
+    // there while the sheet comes (T13R2-m6; round 3 m1: a pill on screen never moves).
+    await expect(pill).toHaveCount(0, { timeout: 4000 });
     const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
-    await expect(page.getByTestId('demo-overlay')).toHaveAttribute('data-sheet', '');
     await expect(pill).toContainText('단축키 도움말');
-    expect((await pill.boundingBox())!.x).toBeLessThan(40);
+    await expect(pill).toHaveAttribute('data-aside', '');
+    const asideAt = (await pill.boundingBox())!;
+    expect(asideAt.x).toBeLessThan(40);
+    await page.waitForTimeout(400);
+    expect((await pill.boundingBox())!.x).toBe(asideAt.x);
     await closeSheet(sheet, 'Escape');
-    await expect(page.getByTestId('demo-overlay')).not.toHaveAttribute('data-sheet', '');
+    // Another command's pill is centred again.
+    await runMenuCommand(app, 'view.toggleSidebar');
+    await expect(pill).toContainText('사이드바 가리기');
+    await expect(pill).not.toHaveAttribute('data-aside', '');
+    const centred = (await pill.boundingBox())!;
+    expect(Math.abs(centred.x + centred.width / 2 - (await page.evaluate(() => innerWidth)) / 2)).toBeLessThan(2);
+    await runMenuCommand(app, 'view.toggleSidebar');
 
     // 설정… is run by main itself (no menuCommand): main tells the overlay. The settings window has its own, as inert.
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
@@ -177,6 +188,59 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
       (await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height)));
     await expect.poll(fits).toBe(true);
     await settings.close();
+  } finally {
+    await app.close();
+  }
+});
+
+// Critique mac1 M1: with the system's own arrow on screen (macOS), a disc following it was a second pointer. There the
+// overlay draws only a click ring while a button is down; with synthetic input (no cursor on screen) a disc follows.
+// Either way nothing is drawn once the pointer has left the window or another window has the focus, until it moves in.
+test('the drawn pointer: a disc that follows, or only a click ring; gone when the pointer leaves', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), DEMO);
+  try {
+    const overlay = page.getByTestId('demo-overlay');
+    const pointer = page.getByTestId('demo-pointer');
+    const at = () => pointer.evaluate((el) => [(el as HTMLElement).style.left, (el as HTMLElement).style.top]);
+    const h = await page.evaluate(() => innerHeight);
+    // Follow (the default): the disc is where the pointer is …
+    await expect(overlay).toHaveAttribute('data-pointer-mode', 'follow');
+    await page.mouse.move(120, h - 72);
+    await expect(pointer).toBeVisible();
+    // … until the pointer leaves the window or the window loses the focus; the next real move brings it back.
+    await page.evaluate(() => document.documentElement.dispatchEvent(new PointerEvent('pointerleave')));
+    await expect(pointer).toHaveCount(0);
+    await page.mouse.move(130, h - 72);
+    await expect(pointer).toBeVisible();
+    await page.evaluate(() => dispatchEvent(new FocusEvent('blur')));
+    await expect(pointer).toHaveCount(0);
+    // A made-up move (no movement, elsewhere) does not bring it back.
+    await page.evaluate(() => dispatchEvent(new PointerEvent('pointermove', { clientX: 720, clientY: 450 })));
+    await expect(pointer).toHaveCount(0);
+    await page.mouse.move(140, h - 72);
+    expect(await at()).toEqual(['140px', `${h - 72}px`]);
+
+    // Clicks: nothing while the pointer only moves (the system's arrow is the pointer) …
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail: { mode: 'clicks' } })));
+    await expect(overlay).toHaveAttribute('data-pointer-mode', 'clicks');
+    await expect(pointer).toHaveCount(0);
+    await page.mouse.move(120, h - 72);
+    await page.mouse.move(130, h - 80);
+    await expect(pointer).toHaveCount(0);
+    // … a ring at it while the button is down, following a drag, …
+    await page.mouse.down();
+    await expect(pointer).toBeVisible();
+    await expect(pointer).toHaveAttribute('data-down', '');
+    expect(await at()).toEqual(['130px', `${h - 80}px`]);
+    await page.mouse.move(150, h - 90);
+    expect(await at()).toEqual(['150px', `${h - 90}px`]);
+    // … fading once it is up (250 ms, then the exit).
+    await page.mouse.up();
+    await expect(pointer).not.toHaveAttribute('data-down', '');
+    await expect(pointer).toHaveCount(0, { timeout: 1500 });
+    await page.mouse.move(160, h - 90);
+    await page.waitForTimeout(300);
+    await expect(pointer).toHaveCount(0);
   } finally {
     await app.close();
   }

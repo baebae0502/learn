@@ -7,7 +7,15 @@ export interface DemoPill {
   label: string;
   /** A modifier held on its own: shown until it is released, not for a fixed time. */
   held?: true;
+  /**
+   * Shown bottom-left instead of centred: a command that opens a sheet over the window's middle (a macOS sheet is
+   * nearly as tall as a 1024 × 743 window), where the sheet leaves room. Fixed when the pill appears: it never moves.
+   */
+  aside?: true;
 }
+
+/** Commands that open a sheet over the window (their pill starts aside, before the sheet is there). */
+const SHEET_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['app.shortcuts']);
 
 /**
  * Where a window key was pressed, which decides what it does: on a library row's title (↩ opens it), in the ⌘K
@@ -23,7 +31,8 @@ export type KeyPlace = 'row' | 'palette' | 'dropping' | 'other';
 export function commandPill(id: CommandId, platform: string, sidebar?: SidebarState): DemoPill | null {
   const c = commandById(id);
   if (!c.accelerator) return null;
-  return { keys: acceleratorKeys(c.accelerator, platform), label: commandLabel(c, platform, sidebar ? { sidebar } : {}) };
+  const pill: DemoPill = { keys: acceleratorKeys(c.accelerator, platform), label: commandLabel(c, platform, sidebar ? { sidebar } : {}) };
+  return SHEET_COMMANDS.has(id) ? { ...pill, aside: true } : pill;
 }
 
 /** A menu item main runs itself (설정…, the macOS 전체 화면): the accelerator and label main sent. */

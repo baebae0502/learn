@@ -15,6 +15,11 @@ describe('demo pills', () => {
     expect(commandPill('view.toggleSidebar', 'darwin')!.keys.join('')).toBe(acceleratorLabel('Ctrl+Cmd+S', 'darwin'));
     expect(commandPill('view.toggleSidebar', 'linux')!.keys.join('+')).toBe(acceleratorLabel('Ctrl+Cmd+S', 'linux'));
   });
+  it('put the pill of a command that opens a sheet aside (bottom-left) from the start (critique round 3 m1)', () => {
+    expect(commandPill('app.shortcuts', 'darwin')).toEqual({ keys: ['⌘', '/'], label: '단축키 도움말', aside: true });
+    expect(commandPill('app.palette', 'darwin')!.aside).toBeUndefined();
+    expect(commandPill('view.toggleSidebar', 'darwin')!.aside).toBeUndefined();
+  });
   it('name a toggle by what it did: the state before the command ran', () => {
     expect(commandPill('view.toggleSidebar', 'darwin', 'shown')!.label).toBe('사이드바 가리기');
     expect(commandPill('view.toggleSidebar', 'darwin', 'hidden')!.label).toBe('사이드바 보기');

@@ -1,11 +1,16 @@
 /* Demo overlay (LEARN_DEMO_OVERLAY=1, unpackaged builds only): a presentation cursor, shortcut pills and chapter
    captions for screen recordings (shell/DemoOverlay.tsx). Nothing here may read as the app's own UI: no --focus, no
-   app surface colours; the pill and the caption share one dark HUD look in both themes.
+   app surface colours; the pill and the caption share one dark HUD look, a little lighter on a dark window so that it
+   reads as a HUD there and not as its hairline alone (critique mac1 n1).
+
+   The pointer: in 'follow' mode (synthetic input, no cursor on screen) a disc where the pointer is; in 'clicks' mode
+   (the system's own arrow is on screen) only a ring at the arrow while a button is down, fading after it is up.
 
    Places, in CSS px from the window's bottom-left, chosen so they never overlap each other at 1024 or 1440 wide
    (and stay clear of the bottom-right toast column, 16 from the right, 360 wide):
-   - pill: centred, bottom 40, 52 tall (bottom band 40–92); while a sheet hangs over the window's middle (a macOS
-     sheet at 1024 × 743 is nearly as tall as the window), bottom-left, at left 24, where the sheet leaves room;
+   - pill: centred, bottom 40, 52 tall (bottom band 40–92); aside (data-aside: a command that opens a sheet, or any
+     pill shown while one hangs over the window's middle — a macOS sheet at 1024 × 743 is nearly as tall as the
+     window), bottom-left, at left 24, where the sheet leaves room. Fixed when the pill appears;
    - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows;
    - tag ("스크립트로 재현" while a scripted gesture is on screen): top-left, 16 below the toolbar;
    - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
@@ -15,7 +20,7 @@
    chapters' captions there), and the ⌘/ chapter shows its caption before the sheet opens. */
 @layer screens {
   .demo-overlay {
-    --demo-hud-bg: rgb(28 28 30 / 0.86); /* local: demo HUD, the same in both themes */
+    --demo-hud-bg: light-dark(rgb(28 28 30 / 0.86), rgb(78 78 84 / 0.9)); /* local: demo HUD, lighter on a dark window */
     --demo-hud-text: rgb(255 255 255 / 0.96); /* local: demo HUD */
     --demo-hud-key: rgb(255 255 255 / 0.14); /* local: demo HUD keycap fill */
     --demo-pill-bottom: var(--space-40);
@@ -40,6 +45,20 @@
   .demo-pointer[data-down] {
     scale: 0.82;
     background: rgb(0 0 0 / 0.28); /* local: demo cursor, pressed */
+  }
+  /* With the system's arrow: a click ring around its tip, while the button is down. */
+  .demo-overlay[data-pointer-mode='clicks'] .demo-pointer {
+    width: 36px; /* local: demo click ring */
+    height: 36px; /* local: demo click ring */
+    margin: -18px 0 0 -18px; /* local: centred on the arrow's tip */
+    background: rgb(255 255 255 / 0.18); /* local: demo click ring */
+    border-width: 3px; /* local: demo click ring */
+    scale: 1;
+    animation: fade-in var(--duration-fast) var(--ease-standard);
+  }
+  .demo-pointer[data-leaving] {
+    opacity: 0;
+    transition: opacity calc(var(--duration-base) * 0.75) var(--ease-standard);
   }
   /* Over a resize handle (col-resize): a ↔ in the disc. */
   .demo-pointer[data-resize]::after {
@@ -88,7 +107,7 @@
     color: var(--demo-hud-text);
     font: var(--type-title3);
   }
-  .demo-overlay[data-sheet] .demo-pill {
+  .demo-pill[data-aside] {
     inset-inline: var(--space-24) auto;
     margin-inline: 0;
   }

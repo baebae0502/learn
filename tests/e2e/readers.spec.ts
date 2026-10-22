@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
@@ -30,14 +31,19 @@ const shellCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis 
 const heightOf = async (page: Page, testId: string) => Math.round((await page.getByTestId(testId).boundingBox())!.height);
 
 /**
- * A home folder inside the test folder, given to the app as HOME: the paths it shows read "~/…" exactly, whatever
- * the runner's folders are called (a long test-folder name would otherwise be the part that wraps).
+ * A home folder inside the test folder, given to the app as HOME: on Linux and Windows the paths it shows read "~/…"
+ * exactly, whatever the runner's folders are called (a long test-folder name would otherwise be the part that wraps).
+ * `appHome` is the home the app really uses: macOS ignores HOME for app.getPath('home') (it is the account's home, as
+ * for a user), so there it is the runner's home and the same paths read "~/work/…/home/…" (Mac run 39779536146).
  */
-function testHome(dir: string): { home: string; env: Record<string, string> } {
+function testHome(dir: string): { home: string; env: Record<string, string>; appHome: string } {
   const home = path.join(dir, 'home');
   fs.mkdirSync(home, { recursive: true });
-  return { home, env: { HOME: home } };
+  return { home, env: { HOME: home }, appHome: process.platform === 'darwin' ? os.homedir() : home };
 }
+
+/** A path as the app shows it: "~" for the home folder it reports (format.ts homeRelative). */
+const tilde = (p: string, home: string) => (p === home || p.startsWith(home + path.sep) ? `~${p.slice(home.length)}` : p);
 
 /**
  * A notice's path line (design-spec 4: no middle elision): every character is shown, the line wraps only after a
@@ -272,7 +278,7 @@ test('opening a PDF shows no canvas before its first page, and the stage is the 
 });
 
 test('missing linked original: 다시 연결… first in the context menu and in the notice; 라이브러리로 돌아가기 goes back', async ({}, testInfo) => {
-  const { home, env } = testHome(testInfo.outputPath());
+  const { home, env, appHome } = testHome(testInfo.outputPath());
   const src = path.join(home, 'Downloads');
   fs.mkdirSync(src, { recursive: true });
   const file = path.join(src, 'linked.pdf');
@@ -296,7 +302,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('원본 파일을 찾을 수 없습니다');
     await expect(notice).toContainText('새 위치를 지정하세요');
-    await expectPathLine(notice, '~/Downloads/linked.pdf', 'linked.pdf'); // where it was, home as ~
+    await expectPathLine(notice, tilde(file, appHome), 'linked.pdf'); // where it was, home as ~ ("~/Downloads/linked.pdf" off macOS)
     await expect(notice.locator('.file')).toHaveAttribute('title', file); // the full path
     await expectStageUnderToolbar(s.page, '.reader-stage');
     await expect(s.page.getByTestId('relink')).toHaveText('다시 연결…');
@@ -365,7 +371,7 @@ test('reopening an item whose file vanished silently shows the missing notice, n
 
 test('a library that cannot be opened: our own words, the newest real backup on a wrapping path line, every command disabled', async ({}, testInfo) => {
   // A folder as deep as the default macOS library (~/Library/Application Support/Learn/Library): the line must wrap.
-  const { home, env } = testHome(testInfo.outputPath());
+  const { home, env, appHome } = testHome(testInfo.outputPath());
   const lib = path.join(home, 'Library', 'Application Support', 'Learn', 'Library');
   fs.mkdirSync(lib, { recursive: true });
   fs.writeFileSync(path.join(lib, 'library.sqlite'), 'not a database');
@@ -381,7 +387,7 @@ test('a library that cannot be opened: our own words, the newest real backup on 
     const info = await s.page.evaluate(() => window.learn.app.info());
     if (!info.ok || !info.data.libraryError) throw new Error('expected a library error');
     expect(info.data.backupFile).toBeNull();
-    expect(info.data.homeDir).toBe(home);
+    expect(info.data.homeDir).toBe(appHome); // the test's HOME off macOS; the account's home on macOS
     await expect(notice).not.toContainText(info.data.libraryError.message);
     // The window can still be dragged by its top strip.
     expect(await s.page.locator('.fatal-drag').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
@@ -399,8 +405,11 @@ test('a library that cannot be opened: our own words, the newest real backup on 
     const notice = s.page.getByTestId('fatal-notice');
     await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 아래 위치의 업데이트 전 백업 파일로 복구할 수 있습니다.');
     const full = path.join(lib, 'library.sqlite.pre-v3.bak');
-    const lines = await expectPathLine(notice, '~/Library/Application Support/Learn/Library/library.sqlite.pre-v3.bak', 'library.sqlite.pre-v3.bak');
-    expect(lines).toBe(2); // wrapped after the last separator, not cut
+    const lines = await expectPathLine(notice, tilde(full, appHome), 'library.sqlite.pre-v3.bak');
+    // Wrapped after a separator, not cut. Off macOS the line reads "~/Library/Application Support/Learn/Library/
+    // library.sqlite.pre-v3.bak", which takes exactly 2; on macOS the account's home makes it longer, so more lines.
+    if (appHome === home) expect(lines).toBe(2);
+    else expect(lines).toBeGreaterThanOrEqual(2);
     await expect(notice.locator('.file')).toHaveAttribute('title', new RegExp(`^${full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\((INTERNAL|MIGRATION_FAILED|LIBRARY_UNAVAILABLE)\\)$`));
   } finally {
     await s.app.close();

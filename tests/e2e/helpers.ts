@@ -85,11 +85,16 @@ export function mainWindow(app: ElectronApplication) {
   });
 }
 
-/** Replace the native file dialog in the main process for the next calls; resets the call counter. */
+/**
+ * Replace the native file dialog in the main process for the next calls; resets the call counter. The real dialog is
+ * kept the first time (`restoreOpenDialog` puts it back): a stub otherwise stays for the rest of the session, and a later
+ * step that needs the real panel gets the stub's files instead (Mac run 39779536146: the settings folder panel got a PDF).
+ */
 export async function stubOpenDialog(app: ElectronApplication, filePaths: string[], opts: { once?: boolean } = {}): Promise<void> {
   await app.evaluate(
     ({ dialog }, { paths, once }) => {
-      const g = globalThis as { __learnOpenDialogCalls?: number };
+      const g = globalThis as { __learnOpenDialogCalls?: number; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+      g.__learnRealOpenDialog ??= dialog.showOpenDialog;
       g.__learnOpenDialogCalls = 0;
       dialog.showOpenDialog = (async () => {
         g.__learnOpenDialogCalls = (g.__learnOpenDialogCalls ?? 0) + 1;
@@ -108,13 +113,21 @@ export async function stubOpenDialog(app: ElectronApplication, filePaths: string
  */
 export const holdOpenDialog = (app: ElectronApplication, paths: string[]) =>
   app.evaluate(({ dialog }, paths) => {
-    const g = globalThis as { __learnReleaseDialog?: () => void };
+    const g = globalThis as { __learnReleaseDialog?: () => void; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    g.__learnRealOpenDialog ??= dialog.showOpenDialog;
     dialog.showOpenDialog = (() =>
       new Promise((resolve) => {
         g.__learnReleaseDialog = () => resolve({ canceled: paths.length === 0, filePaths: paths });
       })) as typeof dialog.showOpenDialog;
   }, paths);
 export const releaseOpenDialog = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseDialog?: () => void }).__learnReleaseDialog?.());
+
+/** Puts the real native file dialog back after `stubOpenDialog` / `holdOpenDialog` (a no-op when none was stubbed). */
+export const restoreOpenDialog = (app: ElectronApplication) =>
+  app.evaluate(({ dialog }) => {
+    const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    if (g.__learnRealOpenDialog) dialog.showOpenDialog = g.__learnRealOpenDialog;
+  });
 
 /** How many times the stubbed open dialog ran since the last `stubOpenDialog`. */
 export const openDialogCalls = (app: ElectronApplication): Promise<number> =>

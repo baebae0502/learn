@@ -115,9 +115,12 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
       expect(change.indexOf('source:shown'), w).toBeGreaterThan(change.indexOf(`chrome:${w}`));
     }
     expect(change).not.toContain('source:timeout');
-    // Both windows' native backgrounds follow the theme by name (not only the main window's).
+    // Both windows' native backgrounds follow the theme by name (not only the main window's). On macOS the main window
+    // has the sidebar vibrancy, which shows only through a clear window background (window-options.ts: #00000000, read
+    // back without its alpha), so it stays clear in both themes; the settings window has no vibrancy and follows.
     await expect.poll(async () => (await (await settingsWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);
-    await expect.poll(async () => (await (await mainWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);
+    const mainBackground = process.platform === 'darwin' ? '#000000' : windowBackground.dark;
+    await expect.poll(async () => (await (await mainWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(mainBackground);
 
     await settings.getByTestId('density-compact').click();
     await expect.poll(async () => (await page.getByTestId('item-row').boundingBox())?.height).toBe(24);

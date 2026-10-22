@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
@@ -326,7 +327,12 @@ test('frame: themed background (no white flash) that follows the theme; overlay 
 test('window bounds survive a restart (windowStatePersistence)', async ({}, testInfo) => {
   const [lib, ud] = dirs(testInfo);
   let s = await launch(lib, ud);
-  const bounds = { x: 40, y: 40, width: 1200, height: 760 };
+  // 1200 × 760 at (40, 40) where the screen has room (Xvfb 1920 × 1200); on a smaller one (the macOS runner's 1024 × 768,
+  // Mac run 39779536146) bounds that fit its work area, above the window's minimum size, as the evidence restart does.
+  const workArea = await s.app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea);
+  const width = Math.max(layout.windowMinWidth, Math.min(1200, workArea.width - 80));
+  const height = Math.max(layout.windowMinHeight, Math.min(760, workArea.height - 80));
+  const bounds = { x: workArea.x + Math.min(40, Math.max(0, workArea.width - width)), y: workArea.y + Math.min(40, Math.max(0, workArea.height - height)), width, height };
   await (await mainWindow(s.app)).evaluate((w, b) => w.setBounds(b), bounds);
   await s.page.waitForTimeout(1500);
   await s.app.close();
@@ -510,10 +516,17 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
     expect(background.toggle).toBe(await token('--text-primary'));
     expect(background.rowIcon).toBe(await token('--accent-text'));
     expect(background.selectedRowText).toBe(await token('--text-inactive-selected')); // Finder dims the selected row too
-    // Linux keeps its toolbar fill and lines (the controls overlay's colour is fixed).
-    expect(background).toMatchObject({ toolbarFill: active.toolbarFill, toolbarLine: active.toolbarLine, sidebarEdge: active.sidebarEdge });
-    // macOS (forced): the toolbar takes the inactive material, and in dark the chrome lines turn black.
     const platform = await page.evaluate(() => document.documentElement.getAttribute('data-platform'));
+    if (platform === 'darwin') {
+      // macOS: the toolbar takes the inactive material and its lines the inactive separator (polish Q2, N4-4; the Mac
+      // run 39779536146 read rgb(236, 236, 236), the material).
+      expect(background).toMatchObject({ toolbarFill: await token('--bg-chrome-inactive'), toolbarLine: await token('--separator-chrome-inactive') });
+      expect(background.sidebarEdge).toContain(await token('--separator-chrome-inactive'));
+    } else {
+      // Linux and Windows keep their toolbar fill and lines (the controls overlay's colour is fixed).
+      expect(background).toMatchObject({ toolbarFill: active.toolbarFill, toolbarLine: active.toolbarLine, sidebarEdge: active.sidebarEdge });
+    }
+    // macOS forced (on every platform): the toolbar takes the inactive material, and in dark the chrome lines turn black.
     await page.evaluate(() => document.documentElement.setAttribute('data-platform', 'darwin'));
     for (const theme of ['light', 'dark'] as const) {
       await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), theme);

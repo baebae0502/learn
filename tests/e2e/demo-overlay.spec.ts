@@ -180,6 +180,10 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await page.waitForTimeout(400);
     expect((await pill.boundingBox())!.x).toBe(asideAt.x);
     await closeSheet(sheet, 'Escape');
+    // A pill's place is fixed when it appears: the next one comes once main no longer counts a sheet over the window.
+    // On macOS that is when the window is key again (re-read within 250 ms, no focus event comes); Linux has it at once
+    // (Mac run 39779536146 ran the command first and got a pill aside, correctly for a window still under its sheet).
+    await expect.poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null)))).toBe(false);
     // Another command's pill is centred again.
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(pill).toContainText('사이드바 가리기');

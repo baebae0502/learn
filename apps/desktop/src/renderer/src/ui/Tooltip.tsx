@@ -56,9 +56,14 @@ export function Tooltip({
     // its state half-run: a later blur then drew the old tooltip again, for good (Linux evidence, after a quiet focus).
     <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled || blocked} isOpen={open} onOpenChange={onOpenChange}>
       {children}
-      <AriaTooltip className="tooltip" placement="bottom" offset={6}>
-        <TooltipText label={label} accelerator={accelerator} reason={reason} />
-      </AriaTooltip>
+      {/* Mounted only while open: closing removes it at once (there is no exit animation), so RAC's exit state can never
+          hold a closed tooltip in the page. On the Mac runner one stayed, unseen but counted (t14-diag5: two tooltips
+          at m3-10, one of them the sidebar toggle's from an earlier step). */}
+      {open && (
+        <AriaTooltip className="tooltip" placement="bottom" offset={6}>
+          <TooltipText label={label} accelerator={accelerator} reason={reason} />
+        </AriaTooltip>
+      )}
     </TooltipTrigger>
   );
 }

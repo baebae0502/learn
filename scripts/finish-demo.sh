@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Finish a demo recording: trim it to the demo plus 2 s and embed its chapters (Task 13 fix round 1, T13-M10, T13-m4).
+# Finish a demo recording: trim it to the demo plus 3 s and embed its chapters (Task 13 fix rounds 1–2, T13-M10, T13-m4,
+# T13R2-n7: screencapture's exit follows its file write, so the measured offset can be late; 3 s keeps the final hold).
 #
 #   scripts/finish-demo.sh <video> <chapters.json> <output> [corner-tag]
 #
 #   video          the raw recording (macOS m3-demo.mov from screencapture -V, or the Linux x11grab m3-demo.mp4)
 #   chapters.json  m3-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
-#                  recording's first frame) and chapters[].ms / .title
+#                  recording's first frame), recordSeconds (macOS) and chapters[].ms / .title
 #   output         the finished file (same container as <video>)
-#   corner-tag     optional text burned into the bottom-left corner (re-encodes; the Linux recording uses it)
+#   corner-tag     optional text burned into the bottom-left corner, inside the drop overlay's 12 px inset (x 40,
+#                  48 above the bottom, device px; re-encodes; the Linux recording uses it)
 #
 # The cut is the end only (-t), so stream copy cuts cleanly; without a tag it copies, and re-encodes (H.264 CRF 18,
 # yuv420p) only if copying fails. If both fail the untrimmed file is copied to <output> unchanged, and this says so on
@@ -33,7 +35,11 @@ data = json.load(open(sys.argv[1], encoding='utf-8'))
 raw = float(sys.argv[2])
 offset = float(data.get('offset') or 0)
 demo = float(data.get('demoSeconds') or 0)
-length = min(raw, demo - offset + 2) if demo > 0 else raw
+record = data.get('recordSeconds')
+if record:
+    # A sanity line: how much longer the file is than the recording asked for (screencapture's finish).
+    print(f'finish-demo: raw {raw:.2f}s vs recordSeconds {record}s: {raw - float(record):+.2f}s', file=sys.stderr)
+length = min(raw, demo - offset + 3) if demo > 0 else raw
 starts = [max(0.0, c['ms'] / 1000 - offset) for c in data.get('chapters', [])]
 def esc(s):
     return ''.join('\\' + ch if ch in '=;#\\\n' else ch for ch in s)
@@ -57,7 +63,7 @@ encode() { # re-encode with the chapters (and the tag, if any)
     font=$(ls "$ROOT"/apps/desktop/node_modules/pretendard/dist/public/static/alternative/Pretendard-Medium.ttf 2>/dev/null | head -n 1)
     [[ -n $font ]] || { echo "Pretendard-Medium.ttf not found (pnpm install)" >&2; return 1; }
     printf '%s' "$TAG" > "$WORK/tag.txt"
-    vf=(-vf "drawtext=fontfile=$font:textfile=$WORK/tag.txt:fontsize=h/80:fontcolor=white@0.85:box=1:boxcolor=black@0.45:boxborderw=10:x=18:y=h-th-28")
+    vf=(-vf "drawtext=fontfile=$font:textfile=$WORK/tag.txt:fontsize=h/80:fontcolor=white@0.85:box=1:boxcolor=black@0.45:boxborderw=10:x=40:y=h-th-48")
   fi
   ffmpeg -v error -y -i "$VIDEO" -i "$WORK/chapters.txt" -map 0 -map_metadata 1 -map_chapters 1 -t "$LENGTH" \
     "${vf[@]}" -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a copy -movflags +faststart "$OUT"

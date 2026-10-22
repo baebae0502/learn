@@ -8,6 +8,8 @@ import { ROOT, osascript } from '../e2e/helpers';
 import { tryExec } from './capture';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Every Apple Event the demo sends may take this long at most (T13R2-m7): a stuck one must not freeze the picture. */
+export const OSASCRIPT_MS = 5000;
 const fail = (what: string, r: { stderr: string; stdout: string }) => new Error(`${what}: ${(r.stderr || r.stdout).trim().split('\n')[0] ?? 'failed'}`);
 
 /**
@@ -44,11 +46,11 @@ export async function renamedElectron(dir: string): Promise<string> {
  * under it. Returns the restore, which puts the setting back and waits for the Dock to settle before the next suite.
  */
 export async function hideDock(): Promise<() => Promise<void>> {
-  const read = await tryExec('osascript', ['-e', 'tell application "System Events" to get autohide of dock preferences'], 20_000);
+  const read = await tryExec('osascript', ['-e', 'tell application "System Events" to get autohide of dock preferences'], OSASCRIPT_MS);
   if (!read.ok) throw fail('Dock autohide (read)', read);
   const was = read.stdout.trim() === 'true';
   const set = async (on: boolean) => {
-    const r = await tryExec('osascript', ['-e', `tell application "System Events" to set autohide of dock preferences to ${on}`], 20_000);
+    const r = await tryExec('osascript', ['-e', `tell application "System Events" to set autohide of dock preferences to ${on}`], OSASCRIPT_MS);
     if (!r.ok) throw fail('Dock autohide (set)', r);
   };
   if (!was) {
@@ -62,7 +64,7 @@ export async function hideDock(): Promise<() => Promise<void>> {
   };
 }
 
-const jxa = async (lines: string[], timeout = 20_000) => {
+const jxa = async (lines: string[], timeout = OSASCRIPT_MS) => {
   const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', lines.join(' ')], timeout);
   if (!r.ok) throw fail('osascript JavaScript', r);
   return JSON.parse(r.stdout.trim()) as Record<string, unknown>;
@@ -77,24 +79,35 @@ const PRELUDE = [
 
 /**
  * T13-M8: glides the system cursor to a screen point (top-left global points) in one osascript call, posting
- * kCGEventMouseMoved along an eased path, so the app sees a real pointer move (its hover, and the overlay's cursor that
- * follows pointermove). `moved` is false when posting was refused (the cursor did not arrive); the cursor is then
- * warped there (`warped`), which needs no permission but sends the app no event.
+ * kCGEventMouseMoved along an eased path (about 420 ms), so the app sees a real pointer move (its hover, and the
+ * overlay's cursor that follows pointermove). The arrival is checked 50 ms after the last post (the event queue).
+ * `moved` is false when posting was refused (the cursor did not arrive); the cursor then goes the same eased way by
+ * warps (`warped`), which needs no permission but sends the app no event.
  */
-export async function glideCursor(to: { x: number; y: number }, ms = 380, steps = 20): Promise<{ moved: boolean; warped: boolean }> {
+export async function glideCursor(to: { x: number; y: number }, ms = 420, steps = 20): Promise<{ moved: boolean; warped: boolean }> {
   const r = await jxa([
     ...PRELUDE,
-    `var to = { x: ${Math.round(to.x)}, y: ${Math.round(to.y)} }, from = loc(), n = ${steps};`,
-    'for (var i = 1; i <= n; i++) {',
-    '  var t = ease(i / n), p = { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t };',
-    '  $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, p, $.kCGMouseButtonLeft));',
-    `  delay(${(ms / steps / 1000).toFixed(4)});`,
+    `var to = { x: ${Math.round(to.x)}, y: ${Math.round(to.y)} }, from = loc(), n = ${steps}, dt = ${(ms / steps / 1000).toFixed(4)};`,
+    'function path(move) {',
+    '  for (var i = 1; i <= n; i++) {',
+    '    var t = ease(i / n);',
+    '    move({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });',
+    '    delay(dt);',
+    '  }',
+    '  delay(0.05);',
+    '  return near(loc(), to);',
     '}',
-    'var moved = near(loc(), to), warped = false;',
-    'if (!moved) { $.CGWarpMouseCursorPosition(to); warped = near(loc(), to); }',
+    'var moved = path(function (p) { $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, p, $.kCGMouseButtonLeft)); });',
+    'var warped = false;',
+    'if (!moved) { from = loc(); warped = path(function (p) { $.CGWarpMouseCursorPosition(p); }); }',
     'JSON.stringify({ moved: moved, warped: warped });',
   ]);
   return { moved: r['moved'] === true, warped: r['warped'] === true };
+}
+
+/** Re-review minor 2: lets the left button go where the cursor is (after a press-drag that failed half-way). */
+export async function releaseMouse(): Promise<void> {
+  await jxa([...PRELUDE, '$.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseUp, loc(), $.kCGMouseButtonLeft));', "JSON.stringify({ ok: true });"]);
 }
 
 /** T13-M8: presses at `from`, drags to `to` and releases, with the system cursor (posted mouse-down, dragged, up). */
@@ -117,11 +130,16 @@ export async function dragCursor(from: { x: number; y: number }, to: { x: number
 }
 
 /**
- * T13-m8: a small Finder window at known screen bounds [left, top, right, bottom], in front, so "another app in front"
- * shows another app. `closeFinderWindow` closes it again before Learn comes back.
+ * T13-m8 / T13R2-n6: a small Finder window on `folder` (the demo's own material, the files that were dragged in) at
+ * known screen bounds [left, top, right, bottom], in front, so "another app in front" shows another app.
+ * `closeFinderWindow` closes it again before Learn comes back.
  */
-export function openFinderWindow(bounds: readonly [number, number, number, number]): void {
-  osascript(['tell application "Finder"', 'make new Finder window to (path to home folder)', `set bounds of front window to {${bounds.map(Math.round).join(', ')}}`, 'activate', 'end tell'].join('\n'));
+export function openFinderWindow(folder: string, bounds: readonly [number, number, number, number]): void {
+  osascript(
+    ['tell application "Finder"', `make new Finder window to (POSIX file ${JSON.stringify(folder)})`, `set bounds of front window to {${bounds.map(Math.round).join(', ')}}`, 'activate', 'end tell'].join(
+      '\n',
+    ),
+  );
 }
 export function closeFinderWindow(): void {
   osascript('tell application "Finder" to close front window');

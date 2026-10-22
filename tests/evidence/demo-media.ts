@@ -1,15 +1,16 @@
 // Demo content (Task 13 fix round 1, T13-M3): study documents a viewer can believe, instead of test fixtures. Seven
 // upright PDFs of 3–5 pages, written for this demo (original text; invented titles, no real books, authors or
-// publishers), set in the bundled Pretendard (OFL) through pdf-lib + fontkit; and the two video fixtures copied under
-// readable names. Every file differs, so duplicate detection never fires. The test fixtures stay as they are.
+// publishers), and the two video fixtures copied under readable names. Every file differs, so duplicate detection never
+// fires. The test fixtures stay as they are.
+//
+// The PDFs are HTML pages set in the bundled Pretendard (OFL) and printed by Chromium (round 2, T13R2-n1): the caller
+// passes `printPdf`, which prints a page in the launched app (a hidden window's printToPDF). Chromium subsets the font,
+// so the files are tens of kilobytes and of different sizes, as real notes are.
 import fs from 'node:fs';
 import path from 'node:path';
-import fontkit from '@pdf-lib/fontkit';
-import { PDFDocument, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { FIXTURES, ROOT } from '../e2e/helpers';
 
-/** Pretendard's TrueType builds: fontkit 1.1.1 cannot read the CFF outlines of its .otf files. */
-const FONT_DIR = path.join(ROOT, 'apps/desktop/node_modules/pretendard/dist/public/static/alternative');
+const FONT = path.join(ROOT, 'apps/desktop/src/renderer/src/design/fonts/PretendardVariable.woff2');
 
 interface Section {
   heading: string;
@@ -254,115 +255,48 @@ const VIDEOS: Array<[string, string]> = [
   ['sample-mpeg4part2.mp4', `${UNPLAYABLE_TITLE}.mp4`],
 ];
 
-const A4 = { width: 595, height: 842 };
-const MARGIN = 64;
-const INK = rgb(0.13, 0.14, 0.16);
-const MUTED = rgb(0.45, 0.47, 0.5);
-const ACCENT = rgb(0.06, 0.45, 0.42);
-const RULE = rgb(0.85, 0.86, 0.87);
-
-/** Lines of `text` at `size` that fit `width`: broken at spaces, a word longer than the line by characters. */
-function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
-  const lines: string[] = [];
-  let line = '';
-  const fits = (s: string) => font.widthOfTextAtSize(s, size) <= width;
-  for (const word of text.split(' ')) {
-    const next = line ? `${line} ${word}` : word;
-    if (fits(next)) {
-      line = next;
-      continue;
-    }
-    if (line) lines.push(line);
-    line = '';
-    let rest = word;
-    while (!fits(rest)) {
-      let n = rest.length - 1;
-      while (n > 1 && !fits(rest.slice(0, n))) n--;
-      lines.push(rest.slice(0, n));
-      rest = rest.slice(n);
-    }
-    line = rest;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
+const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Receptor → G protein → adenylyl cyclase → cAMP → PKA, as boxes and arrows (page 2 of the opened PDF). */
-function drawDiagram(page: PDFPage, font: PDFFont, top: number): number {
-  const labels = ['수용체 (GPCR)', 'G 단백질', '아데닐산 고리화 효소', 'cAMP', 'PKA'];
-  const w = 84;
-  const h = 40;
-  const gap = (A4.width - 2 * MARGIN - labels.length * w) / (labels.length - 1);
-  const y = top - h;
-  labels.forEach((label, i) => {
-    const x = MARGIN + i * (w + gap);
-    page.drawRectangle({ x, y, width: w, height: h, borderColor: ACCENT, borderWidth: 1.2, color: rgb(0.93, 0.97, 0.96) });
-    const lines = wrap(label, font, 9, w - 10);
-    lines.forEach((l, j) => {
-      const tw = font.widthOfTextAtSize(l, 9);
-      page.drawText(l, { x: x + (w - tw) / 2, y: y + h / 2 + (lines.length - 1) * 5.5 - j * 11 - 3, size: 9, font, color: INK });
-    });
-    if (i < labels.length - 1) {
-      const ax = x + w + 3;
-      const bx = x + w + gap - 3;
-      page.drawLine({ start: { x: ax, y: y + h / 2 }, end: { x: bx, y: y + h / 2 }, thickness: 1.2, color: MUTED });
-      page.drawLine({ start: { x: bx - 5, y: y + h / 2 + 3.5 }, end: { x: bx, y: y + h / 2 }, thickness: 1.2, color: MUTED });
-      page.drawLine({ start: { x: bx - 5, y: y + h / 2 - 3.5 }, end: { x: bx, y: y + h / 2 }, thickness: 1.2, color: MUTED });
-    }
+const DIAGRAM = `<figure class="diagram">
+  <div class="flow">${['수용체 (GPCR)', 'G 단백질', '아데닐산 고리화 효소', 'cAMP', 'PKA'].map((x) => `<span class="box">${esc(x)}</span>`).join('<span class="arrow">→</span>')}</div>
+  <figcaption>그림 1. GPCR–cAMP 경로의 신호 증폭</figcaption>
+</figure>`;
+
+/** One study document as an A4 HTML page: the title page's kicker and title, a running title on the others, a page each. */
+function html(doc: Doc, font: string): string {
+  const sections = doc.pages.map((section, i) => {
+    const head = i === 0 ? `<p class="kicker">${esc(doc.subtitle)}</p><h1>${esc(doc.title)}</h1>` : `<p class="running">${esc(doc.title)}</p>`;
+    const body = section.paragraphs.map((p) => `<p>${esc(p)}</p>`).join('');
+    const bullets = section.bullets ? `<ul>${section.bullets.map((b) => `<li>${esc(b)}</li>`).join('')}</ul>` : '';
+    return `<section>${head}<h2>${esc(section.heading)}</h2>${doc.diagram === i ? DIAGRAM : ''}${body}${bullets}</section>`;
   });
-  const caption = '그림 1. GPCR–cAMP 경로의 신호 증폭';
-  page.drawText(caption, { x: MARGIN, y: y - 20, size: 9, font, color: MUTED });
-  return y - 44;
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(doc.title)}</title><style>
+@font-face { font-family: 'Pretendard'; src: url(data:font/woff2;base64,${font}) format('woff2'); font-weight: 45 920; }
+@page { size: A4; margin: 24mm 22mm 20mm; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: 'Pretendard', sans-serif; font-size: 11pt; line-height: 1.65; color: #212328; word-break: keep-all; }
+section { break-after: page; }
+section:last-child { break-after: auto; }
+.kicker { margin: 0 0 4pt; color: #0f736b; font-size: 10pt; }
+h1 { margin: 0 0 18pt; padding-bottom: 12pt; border-bottom: 0.8pt solid #dadcde; font-size: 24pt; font-weight: 650; line-height: 1.3; letter-spacing: -0.01em; }
+.running { margin: 0 0 14pt; color: #73777e; font-size: 8.5pt; }
+h2 { margin: 0 0 10pt; font-size: 14pt; font-weight: 600; }
+p { margin: 0 0 9pt; }
+ul { margin: 4pt 0 0; padding-left: 16pt; }
+li { margin: 0 0 4pt; }
+li::marker { color: #0f736b; }
+.diagram { margin: 6pt 0 14pt; }
+.flow { display: flex; align-items: center; gap: 6pt; }
+.box { flex: 1; padding: 9pt 4pt; border: 1.2pt solid #0f736b; border-radius: 4pt; background: #edf7f5; text-align: center; font-size: 9pt; line-height: 1.35; }
+.arrow { color: #73777e; font-size: 11pt; }
+figcaption { margin-top: 6pt; color: #73777e; font-size: 9pt; }
+</style></head><body>${sections.join('')}</body></html>`;
 }
 
-async function writePdf(doc: Doc, regular: Uint8Array, semibold: Uint8Array, file: string): Promise<void> {
-  const pdf = await PDFDocument.create();
-  pdf.registerFontkit(fontkit);
-  // Whole fonts: fontkit's subsetter drops most Hangul glyphs of Pretendard (they render blank).
-  const body = await pdf.embedFont(regular);
-  const bold = await pdf.embedFont(semibold);
-  pdf.setTitle(doc.title);
-  pdf.setSubject(doc.subtitle);
-  pdf.setCreator('Learn demo');
-  const width = A4.width - 2 * MARGIN;
-  doc.pages.forEach((section, index) => {
-    const page = pdf.addPage([A4.width, A4.height]);
-    let y = A4.height - MARGIN;
-    if (index === 0) {
-      page.drawText(doc.subtitle, { x: MARGIN, y: y - 10, size: 10, font: body, color: ACCENT });
-      y -= 40;
-      for (const line of wrap(doc.title, bold, 24, width)) {
-        page.drawText(line, { x: MARGIN, y, size: 24, font: bold, color: INK });
-        y -= 32;
-      }
-      page.drawLine({ start: { x: MARGIN, y: y + 8 }, end: { x: A4.width - MARGIN, y: y + 8 }, thickness: 0.8, color: RULE });
-      y -= 22;
-    } else {
-      page.drawText(doc.title, { x: MARGIN, y: y + 16, size: 8.5, font: body, color: MUTED });
-      y -= 10;
-    }
-    page.drawText(section.heading, { x: MARGIN, y, size: 14, font: bold, color: INK });
-    y -= 28;
-    if (doc.diagram === index) y = drawDiagram(page, body, y);
-    for (const paragraph of section.paragraphs) {
-      for (const line of wrap(paragraph, body, 11, width)) {
-        page.drawText(line, { x: MARGIN, y, size: 11, font: body, color: INK });
-        y -= 18;
-      }
-      y -= 10;
-    }
-    for (const bullet of section.bullets ?? []) {
-      wrap(bullet, body, 11, width - 16).forEach((line, i) => {
-        if (i === 0) page.drawCircle({ x: MARGIN + 4, y: y + 3.5, size: 1.8, color: ACCENT });
-        page.drawText(line, { x: MARGIN + 16, y, size: 11, font: body, color: INK });
-        y -= 18;
-      });
-    }
-    const folio = `${index + 1} / ${doc.pages.length}`;
-    page.drawText(folio, { x: A4.width - MARGIN - body.widthOfTextAtSize(folio, 9), y: MARGIN / 2, size: 9, font: body, color: MUTED });
-  });
-  fs.writeFileSync(file, await pdf.save());
-}
+/** The page footer Chromium prints on every page: "n / N" at the right. */
+export const PDF_FOOTER =
+  '<div style="width:100%;padding:0 22mm;font-size:8pt;color:#73777e;text-align:right;font-family:sans-serif"><span class="pageNumber"></span> / <span class="totalPages"></span></div>';
 
 export interface DemoMedia {
   /** Everything but the PDF to read: the drop (6 PDFs and the 2 videos). */
@@ -371,23 +305,24 @@ export interface DemoMedia {
   read: string;
 }
 
-/** Writes the demo's files into `dir` (created; emptied first). */
-export async function writeDemoMedia(dir: string): Promise<DemoMedia> {
+/**
+ * Writes the demo's files into `dir` (created; emptied first). `printPdf` prints an HTML file to PDF bytes (A4, the
+ * page's own @page size and margins, PDF_FOOTER as the footer).
+ */
+export async function writeDemoMedia(dir: string, printPdf: (htmlFile: string) => Promise<Buffer>): Promise<DemoMedia> {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
-  const regular = fs.readFileSync(path.join(FONT_DIR, 'Pretendard-Regular.ttf'));
-  const semibold = fs.readFileSync(path.join(FONT_DIR, 'Pretendard-SemiBold.ttf'));
-  const files: string[] = [];
-  for (const doc of DOCS) {
-    const file = path.join(dir, doc.file);
-    await writePdf(doc, regular, semibold, file);
-    files.push(file);
+  const pages = path.join(dir, '.pages');
+  fs.mkdirSync(pages);
+  const font = fs.readFileSync(FONT).toString('base64');
+  for (const [i, doc] of DOCS.entries()) {
+    const page = path.join(pages, `${i}.html`);
+    fs.writeFileSync(page, html(doc, font));
+    fs.writeFileSync(path.join(dir, doc.file), await printPdf(page));
   }
-  for (const [from, to] of VIDEOS) {
-    const file = path.join(dir, to);
-    fs.copyFileSync(path.join(FIXTURES, from), file);
-    files.push(file);
-  }
+  fs.rmSync(pages, { recursive: true, force: true });
+  for (const [from, to] of VIDEOS) fs.copyFileSync(path.join(FIXTURES, from), path.join(dir, to));
   const read = path.join(dir, `${READ_TITLE}.pdf`);
-  return { read, drop: files.filter((f) => f !== read) };
+  const drop = [...DOCS.map((d) => path.join(dir, d.file)), ...VIDEOS.map(([, to]) => path.join(dir, to))].filter((f) => f !== read);
+  return { read, drop };
 }

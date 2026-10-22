@@ -352,6 +352,12 @@ export class NativeInputNotPermitted extends Error {
 const NOT_PERMITTED = /\((?:1002|-1719|-1743|-25211)\)|not allowed|assistive access|not authori[sz]ed/i;
 
 /**
+ * The longest one osascript call may take. A run that must not freeze for long on a stuck Apple Event lowers it (the
+ * demo recording uses 5 s) and puts it back after.
+ */
+export const osascriptLimits = { timeoutMs: 15_000 };
+
+/**
  * darwin only: run an AppleScript (one `-e` per line) through /usr/bin/osascript and return its trimmed stdout.
  * Throws NativeInputNotPermitted when macOS refuses it, any other failure as a plain Error with osascript's stderr.
  */
@@ -361,7 +367,7 @@ export function osascript(script: string): string {
     return execFileSync('/usr/bin/osascript', script.split('\n').flatMap((line) => ['-e', line]), {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 15_000,
+      timeout: osascriptLimits.timeoutMs,
     }).trim();
   } catch (e) {
     const stderr = String((e as { stderr?: unknown }).stderr ?? '').trim();

@@ -225,6 +225,16 @@ const tooltipBox = (page: Page) =>
   });
 
 /**
+ * Asks the main window for a full repaint and waits (bounded, 2 s) for two frames in the page: whether frames came.
+ */
+async function freshFrame(): Promise<boolean> {
+  await (await mainWindow(s.app)).evaluate((w) => w.webContents.invalidate()).catch(() => {});
+  return s.page
+    .evaluate(() => Promise.race([new Promise<boolean>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(true)))), new Promise<boolean>((r) => setTimeout(() => r(false), 2000))]))
+    .catch(() => false);
+}
+
+/**
  * Waits (bounded, 3 s) until every open tooltip's fade-in has ended: t14-diag5 found one in the page but not in the
  * capture, a window just brought to the front not animating at once. Then a frame's margin.
  */
@@ -591,9 +601,19 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
       await tooltipFadedIn();
       const box = await tooltipBox(s.page);
-      const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
-      const drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
-      results['tooltipDark'] = { toggleFocused, box, drawn };
+      // The window server can hold an older frame for a moment after the app comes to the front: t14-diag6 captured the
+      // focus still on the launcher, before the Shift+Tab, with the tooltip open in the page. Ask for a repaint and two
+      // frames, and take the capture again (up to 3 times, 700 ms apart) while it does not show the page's state yet.
+      let drawn: ReturnType<typeof tooltipInCapture> | null = null;
+      const attempts: Array<{ share: number | null; framed: boolean }> = [];
+      for (let i = 0; i < 3 && (drawn?.share ?? 0) < 0.5; i++) {
+        if (i > 0) await sleep(700);
+        const framed = await freshFrame();
+        const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
+        drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
+        attempts.push({ share: drawn?.share ?? null, framed });
+      }
+      results['tooltipDark'] = { toggleFocused, box, drawn, attempts };
       check('tooltip over the dark material is in the capture (pixels, R3-6)', (drawn?.share ?? 0) >= 0.5, results['tooltipDark']);
     });
   }

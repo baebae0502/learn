@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator } from '@playwright/test';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
-import { FIXTURES, closeSheet, expectWindow, importFiles, importPaths, launch, menuItemEnabled, runMenuCommand } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, menuItemEnabled, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -56,7 +56,7 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
-    await sheet.getByTestId('dup-add').click();
+    await clickToCloseSheet(sheet, sheet.getByTestId('dup-add'));
     await expect(rows).toHaveCount(2);
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
@@ -72,7 +72,7 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     await mainHasFocus(s.app);
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
-    await sheet.getByTestId('dup-open').click();
+    await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
     await expect(s.page.getByTestId('viewer-title')).toHaveText('sample');
   } finally {
     await s.app.close();

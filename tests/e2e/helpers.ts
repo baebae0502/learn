@@ -183,6 +183,19 @@ export async function expectWindow(app: ElectronApplication, kind: 'settings' | 
  * sheet, so the window can be gone before Playwright sends the keyup: a press that failed because the page closed is
  * the expected end, any other failure is not.
  */
+/**
+ * Clicks a sheet button that answers the sheet (it closes at once), and waits for the close. The click can lose the
+ * race with its own window: the page may be gone before Playwright's click returns ("Target page … has been closed",
+ * CI run 39752290686); that is the click having worked, as in closeSheet.
+ */
+export async function clickToCloseSheet(sheet: Page, button: Locator): Promise<void> {
+  const closed = sheet.waitForEvent('close');
+  await button.click().catch((e: unknown) => {
+    if (!sheet.isClosed()) throw e;
+  });
+  await closed;
+}
+
 export async function closeSheet(sheet: Page, key: 'Escape' | 'Enter'): Promise<void> {
   const closed = sheet.waitForEvent('close');
   await sheet.keyboard.press(key).catch((e: unknown) => {

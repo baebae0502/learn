@@ -60,6 +60,12 @@ export interface CommandSpec {
   palette?: boolean;
   /** Extra palette search words: Korean first (초성 search applies), English for habit. */
   keywords?: readonly string[];
+  /**
+   * Moves the focus and changes no data (F6): it still runs while work in progress holds the window (an import), and
+   * only a modal surface stops it (isCommandAvailable's `surface`). Finder and VS Code never take focus movement away
+   * while a copy or a task runs.
+   */
+  duringWork?: true;
 }
 
 /** Electron accelerator grammar used by the registry (design-spec 7.4 keys included). */
@@ -104,8 +110,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'], keywords: ['글자', '기본', 'font', 'reset'] },
   // F6 / ⇧F6 (design-spec 8.3): the renderer keymap moves the focus between panes, also out of a text field. No menu
   // item and not in the palette; the ⌘/ sheet lists them under 앱.
-  { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false },
-  { id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false },
+  { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true },
+  { id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false, duringWork: true },
   // Last (R-10): menu-bar and palette lists keep this order; `menu` puts it at the head of 보기. Not in its own list.
   { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];
@@ -152,6 +158,15 @@ export interface CommandTargetInfo {
   availability: Availability;
 }
 
+/**
+ * What only the renderer knows, beside the reported context (never reported, so main's `blocked` stays as it is).
+ * `modal`: a modal surface owns the keyboard — a sheet, the ⌘K palette, the drop overlay. `blocked` without it is work
+ * in progress (an import), which stops every command but focus movement (`duringWork`).
+ */
+export interface CommandSurface {
+  modal: boolean;
+}
+
 type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'item.open': (_ctx, t) => t.length === 1,
@@ -163,12 +178,16 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'view.textReset': (c) => c.textSize !== 13,
 };
 
-/** The single availability predicate: main (menu bar, context menus) and the renderer (palette, toolbar, keymap). */
-export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = []): boolean {
+/**
+ * The single availability predicate: main (menu bar, context menus) and the renderer (palette, toolbar, keymap).
+ * `surface` is the renderer's: with it, a `duringWork` command is stopped by a modal surface only; without it (main),
+ * by `blocked` like every other command.
+ */
+export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = [], surface?: CommandSurface): boolean {
   const spec = COMMANDS.find((c) => c.id === id);
   if (!spec) return false;
   if (MAIN_OWNED_COMMANDS.has(id)) return true;
-  if (ctx.blocked) return false;
+  if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
   const inContext = spec.contexts.includes('item') ? targets.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view);
   return inContext && (RULES[id]?.(ctx, targets) ?? true);
 }

@@ -100,8 +100,10 @@ describe('command registry', () => {
     expect(commandById('view.textSmaller')).toMatchObject({ label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'] });
     expect(commandById('view.textReset')).toMatchObject({ label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'] });
     // F6 / ⇧F6 (design-spec 8.3): renderer keymap keys, also from a text field; no menu item and not in the palette.
-    expect(commandById('view.nextPane')).toEqual({ id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false });
-    expect(commandById('view.previousPane')).toEqual({ id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false });
+    expect(commandById('view.nextPane')).toEqual({ id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true });
+    expect(commandById('view.previousPane')).toEqual({ id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false, duringWork: true });
+    // Only focus movement runs during work in progress (Task 12 polish ruling); nothing that changes data.
+    expect(COMMANDS.filter((c) => c.duringWork).map((c) => c.id)).toEqual(['view.nextPane', 'view.previousPane']);
     // ⌘K heads 보기; last in the registry (R-10: menu-bar and palette lists keep the registry order).
     expect(commandById('app.palette')).toMatchObject({
       label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false,
@@ -151,6 +153,21 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
+  });
+  it('focus movement (duringWork) runs while work holds the window, never under a modal surface; main, which knows no surface, keeps blocked', () => {
+    const importing = { ...LIB, blocked: true };
+    for (const id of ['view.nextPane', 'view.previousPane'] as const) {
+      expect(isCommandAvailable(id, importing, [], { modal: false }), id).toBe(true); // an import runs: F6 still moves
+      expect(isCommandAvailable(id, importing, [], { modal: true }), id).toBe(false); // a sheet over it
+      expect(isCommandAvailable(id, LIB, [], { modal: true }), id).toBe(false); // the palette or the drop overlay
+      expect(isCommandAvailable(id, LIB, [], { modal: false }), id).toBe(true);
+      expect(isCommandAvailable(id, importing), id).toBe(false); // main's view: blocked is blocked
+      expect(isCommandAvailable(id, LIB), id).toBe(true);
+    }
+    // Everything else still stops while blocked, whatever the surface.
+    expect(isCommandAvailable('view.toggleSidebar', importing, [], { modal: false })).toBe(false);
+    expect(isCommandAvailable('file.importManaged', importing, [], { modal: false })).toBe(false);
+    expect(isCommandAvailable('view.toggleSidebar', LIB, [], { modal: true })).toBe(true); // a menu command closes the palette first
   });
   it('settings is main-owned: available even while blocked', () => {
     expect(MAIN_OWNED_COMMANDS.has('app.settings')).toBe(true);

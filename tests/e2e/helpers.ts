@@ -97,6 +97,20 @@ export async function stubOpenDialog(app: ElectronApplication, filePaths: string
   }, filePaths);
 }
 
+/**
+ * An open dialog that stays up until `releaseOpenDialog` (a user still choosing files): the import that asked for it
+ * is in progress meanwhile (the window is held). No paths = cancelled.
+ */
+export const holdOpenDialog = (app: ElectronApplication, paths: string[]) =>
+  app.evaluate(({ dialog }, paths) => {
+    const g = globalThis as { __learnReleaseDialog?: () => void };
+    dialog.showOpenDialog = (() =>
+      new Promise((resolve) => {
+        g.__learnReleaseDialog = () => resolve({ canceled: paths.length === 0, filePaths: paths });
+      })) as typeof dialog.showOpenDialog;
+  }, paths);
+export const releaseOpenDialog = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseDialog?: () => void }).__learnReleaseDialog?.());
+
 /** How many times the stubbed open dialog ran since the last `stubOpenDialog`. */
 export const openDialogCalls = (app: ElectronApplication): Promise<number> =>
   app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);

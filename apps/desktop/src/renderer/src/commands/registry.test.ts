@@ -21,6 +21,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
+  modal: false,
   ...over,
 });
 
@@ -73,16 +74,24 @@ describe('renderer command registry', () => {
     expect(runCommand('app.palette', blocked)).toBe(false);
     expect(blocked.openPalette).not.toHaveBeenCalled();
   });
-  it('F6 / ⇧F6 move to the next / previous pane in every view, but not while the window is blocked', () => {
+  it('F6 / ⇧F6 move to the next / previous pane in every view and during an import, never under a modal surface', () => {
     for (const view of ['library', 'viewer'] as const) {
       const e = env({ view });
       expect(runCommand('view.nextPane', e)).toBe(true);
       expect(runCommand('view.previousPane', e)).toBe(true);
       expect(vi.mocked(e.focusPane).mock.calls).toEqual([[1], [-1]]);
     }
-    const blocked = env({ blocked: true });
-    expect(runCommand('view.nextPane', blocked)).toBe(false);
-    expect(blocked.focusPane).not.toHaveBeenCalled();
+    // An import holds the window (blocked, nothing modal): F6 still moves the focus (Task 12 polish ruling).
+    const importing = env({ blocked: true });
+    expect(runCommand('view.nextPane', importing)).toBe(true);
+    expect(importing.focusPane).toHaveBeenCalledWith(1);
+    // A sheet, the palette or the drop overlay owns the keyboard: nothing moves.
+    for (const e of [env({ blocked: true, modal: true }), env({ modal: true })]) {
+      expect(runCommand('view.nextPane', e)).toBe(false);
+      expect(runCommand('view.previousPane', e)).toBe(false);
+      expect(e.focusPane).not.toHaveBeenCalled();
+    }
+    expect(contextOf(env({ modal: true }))).not.toHaveProperty('modal'); // never reported: main's blocked is unchanged
   });
   it('⌘, opens the settings window in every view, even while the window is blocked (main-owned)', () => {
     for (const e of [env(), env({ view: 'viewer' }), env({ blocked: true })]) {

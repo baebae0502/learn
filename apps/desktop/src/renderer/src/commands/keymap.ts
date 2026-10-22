@@ -32,8 +32,10 @@ export function isEditing(target: EventTarget | null): boolean {
  * Window-level keydown → registry, in the capture phase on window: ahead of react-aria's LandmarkManager, a document
  * capture listener that takes F6 while a toast is visible (R-1). A key the keymap handles stops here.
  *
- * `active` is false while a modal surface (the palette, the drop overlay) owns the keyboard. Its keys then do nothing
- * and still stop here, so that nothing else moves the focus out of that surface either (F6 to a toast).
+ * `active` is false while a modal surface (a sheet, the palette, the drop overlay: MainWindow's one modal predicate,
+ * also `env.modal`) owns the keyboard. Its keys then do nothing and still stop here, so that nothing else moves the
+ * focus out of that surface either (F6 to a toast). Otherwise the registry decides, an import included: F6 is a
+ * `duringWork` command.
  *
  * Because the keys it handles stop before the document, react-aria's focus-visible tracking and ours
  * (ui/inputModality.ts) never see them: both are told the keyboard is in use, as their own keydown would have done,
@@ -53,7 +55,7 @@ export function useKeymap(env: CommandEnv, active: boolean): void {
       if (id === null) return;
       noteKey(e);
       setInteractionModality('keyboard');
-      if (activeRef.current && !runCommand(id, envRef.current)) return; // unavailable now (blocked): not ours to stop
+      if (activeRef.current && !runCommand(id, envRef.current)) return; // unavailable now (another view's key): not ours to stop
       e.preventDefault();
       e.stopPropagation();
     };

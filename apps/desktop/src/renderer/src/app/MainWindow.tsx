@@ -47,22 +47,35 @@ export function MainWindow(_props: { info: AppInfo }) {
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);
-  // Modal surfaces own the keyboard: the keymap (F6 / ⇧F6) is off while the palette or the drop overlay is up.
-  const keyboardOwned = useShell((s) => s.paletteOpen || s.dropOverlay);
+  const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
   const sidebarHidden = useSidebarHidden();
   // Cold-start mark (Task 13 perf): the first render in which the library list has settled, not the mount (R-18).
   const readyAt = useRef(0);
   if (readyAt.current === 0 && (items.isSuccess || items.isError)) readyAt.current = Date.now();
 
+  /** A duplicate question is up (its sheet is modal over this window). */
+  const [questionOpen, setQuestionOpen] = useState(false);
   /** Each duplicate is asked in the native duplicate sheet (main); the import waits for the answer. */
-  const confirm = useCallback(async (dup: { path: string; existingItemId: string }) => (await unwrap(api().ui.confirmDuplicate(dup))).choice, []);
+  const confirm = useCallback(async (dup: { path: string; existingItemId: string }) => {
+    setQuestionOpen(true);
+    try {
+      return (await unwrap(api().ui.confirmDuplicate(dup))).choice;
+    } finally {
+      setQuestionOpen(false);
+    }
+  }, []);
   const runImport = useImport(confirm);
   /** The ⌘/ sheet is modal: commands (and drops) stay disabled until it closes. */
   const [sheetOpen, setSheetOpen] = useState(false);
   // Duplicate sheets wait inside the import, so `importing` covers them; the ⌘/ sheet has its own flag. The registry
-  // (env.blocked) and the window's drop target follow this one value.
+  // (env.blocked), main's menu and the window's drop target follow this one value.
   const blocked = importing || sheetOpen;
+  // The one modal predicate (Task 12 polish): a surface that owns the keyboard — a sheet (⌘/ or a duplicate question),
+  // the palette, the drop overlay. Work in progress is not one: during an import F6 still moves between panes, and only
+  // these stop it. The keymap's `active` and the registry's `duringWork` rule both read this value, so they cannot
+  // drift apart.
+  const modal = sheetOpen || questionOpen || overlayOpen;
   const showShortcuts = useCallback(async () => {
     setSheetOpen(true);
     try {
@@ -150,10 +163,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,
+    modal,
   };
   useMenuCommands(env);
   useReportContext(env);
-  useKeymap(env, !keyboardOwned);
+  useKeymap(env, !modal);
   const envRef = useRef(env);
   useEffect(() => {
     envRef.current = env;

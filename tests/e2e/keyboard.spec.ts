@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, closeSheet, drag, expectWindow, importPaths, launch, mainWindow, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -221,6 +221,49 @@ test('the palette, the drop overlay and the ⌘/ sheet keep the focus on F6 / �
     expect(await sheet.evaluate(() => document.activeElement?.outerHTML ?? null)).toBe(before);
     expect(await focusedWindow(app)).toBe('sheet');
     await closeSheet(sheet, 'Escape');
+  } finally {
+    await app.close();
+  }
+});
+
+// Task 12 polish ruling: an import holds the window but F6 / ⇧F6 only move the focus, so they keep working; a modal
+// surface over the import still swallows them.
+test('during an import F6 still moves between panes; the palette over an import keeps the focus', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await holdOpenDialog(app, []);
+    await runMenuCommand(app, 'file.importManaged'); // the import waits on its dialog: the window is held
+    await expect(page.getByTestId('import-managed')).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('sidebar');
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('content');
+    await page.keyboard.press('Shift+F6');
+    expect(await inPane(page)).toBe('sidebar');
+    await releaseOpenDialog(app); // cancelled
+    await expect(page.getByTestId('import-managed')).not.toHaveAttribute('aria-disabled', 'true');
+
+    // No UI opens the palette over an import (⌘K is refused while held; a menu command or a file drag closes it first,
+    // Task 11 ruling D). A drop without its dragenter, which no real drag sends, starts one under the open palette.
+    await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused();
+    await app.evaluate(({ ipcMain }) => {
+      const g = globalThis as { __learnReleaseImport?: () => void };
+      ipcMain.removeHandler('library:import');
+      ipcMain.handle('library:import', () => new Promise((resolve) => (g.__learnReleaseImport = () => resolve({ ok: true, data: [] }))));
+    });
+    await dropSource(page, [PDF]);
+    await drag(page, 'drop', 'source', { repeat: false });
+    await expect(page.getByTestId('palette-busy')).toBeVisible(); // the held palette (defensive branch, Task 11)
+    await expectNoSeriousA11y(page, 'palette while an import holds the window');
+    for (const key of ['F6', 'Shift+F6']) {
+      await page.keyboard.press(key);
+      await expect(page.getByTestId('palette-input')).toBeFocused();
+    }
+    await app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
+    await expect(page.getByTestId('palette-busy')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('palette')).toHaveCount(0);
   } finally {
     await app.close();
   }

@@ -25,6 +25,11 @@ export interface CommandEnv extends CommandContextState {
   setTextSize(update: TextSizeUpdate): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
+  /**
+   * A modal surface owns the keyboard: a sheet, the palette, the drop overlay (MainWindow derives it once). Not
+   * reported to main; it tells an import (blocked alone) from a modal surface for `duringWork` commands.
+   */
+  modal: boolean;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -63,7 +68,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
 export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
   if (!Object.hasOwn(COMMAND_HANDLERS, id)) return false;
   const itemIds = target.itemIds ?? [];
-  return isCommandAvailable(id, contextOf(env), env.targetsOf(itemIds));
+  return isCommandAvailable(id, contextOf(env), env.targetsOf(itemIds), { modal: env.modal });
 }
 
 /** Runs a command if it is available now; returns whether it ran. */

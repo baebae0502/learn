@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { expectDisabledReason, expectWindow, importFiles, importPaths, launch, openItem, stubOpenDialog, type Session } from './helpers';
+import { expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, openItem, releaseOpenDialog, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -106,16 +106,6 @@ test('the empty-state buttons and the drop path need a real file location', asyn
   }
 });
 
-/** An open dialog that stays up until `releaseOpenDialog` (a user still choosing files); no paths = cancelled. */
-const holdOpenDialog = (s: Session, paths: string[]) =>
-  s.app.evaluate(({ dialog }, paths) => {
-    const g = globalThis as { __learnReleaseDialog?: () => void };
-    dialog.showOpenDialog = (() =>
-      new Promise((resolve) => {
-        g.__learnReleaseDialog = () => resolve({ canceled: paths.length === 0, filePaths: paths });
-      })) as typeof dialog.showOpenDialog;
-  }, paths);
-const releaseOpenDialog = (s: Session) => s.app.evaluate(() => (globalThis as { __learnReleaseDialog?: () => void }).__learnReleaseDialog?.());
 /** Two frames: anything a click set off in React has rendered. */
 const frames = (s: Session) => s.page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
@@ -123,14 +113,14 @@ test('while an import runs, its controls are disabled with the reason as their t
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const pdf = fakePdf(testInfo.outputPath('src'), 'held.pdf', 'held');
   try {
-    await holdOpenDialog(s, [pdf]);
+    await holdOpenDialog(s.app, [pdf]);
     const managed = s.page.getByTestId('import-managed');
     await managed.click();
     for (const id of ['import-managed', 'import-linked', 'import-menu']) await expectDisabledReason(s.page.getByTestId(id), BUSY);
     await s.page.mouse.move(700, 880); // leave the button the click pressed, then come back: the tooltip opens on hover
     await managed.hover();
     await expect(s.page.getByRole('tooltip')).toHaveText(BUSY);
-    await releaseOpenDialog(s);
+    await releaseOpenDialog(s.app);
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
@@ -138,7 +128,7 @@ test('while an import runs, its controls are disabled with the reason as their t
     await expect(s.page.getByTestId('open-item').first()).toBeFocused();
 
     // Opening from the list goes through the registry (item.open), so it is refused while the import holds the window.
-    await holdOpenDialog(s, []);
+    await holdOpenDialog(s.app, []);
     await s.page.getByTestId('import-menu').click();
     await s.page.getByTestId('import-menu-managed').click();
     await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
@@ -155,7 +145,7 @@ test('while an import runs, its controls are disabled with the reason as their t
       await title.focus();
       await s.page.keyboard.press('Enter');
     });
-    await releaseOpenDialog(s); // cancelled: nothing imported, nothing to report
+    await releaseOpenDialog(s.app); // cancelled: nothing imported, nothing to report
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
     await title.click();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('held');

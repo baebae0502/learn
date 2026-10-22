@@ -1,11 +1,14 @@
 // No fake controls (quality spec): every registry command that is enabled in the library and in the reader runs
-// through its real menu item without a page error; the item context-menu commands run through the native menu path.
+// through its real menu item without a page error; the item context-menu commands run through the native menu path,
+// 기본 앱으로 열기 through its notice button. The rest of the registry is accounted for in COVERED_ELSEWHERE.
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, enabledMenuCommands, importPaths, launch, openItem, runMenuCommand, stubContextMenu, stubOpenDialog } from './helpers';
+import { FIXTURES, enabledMenuCommands, importPaths, launch, openDialogCalls, openItem, runMenuCommand, stubContextMenu, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
+const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 
 /** Closes what a command opened: sheets by Escape once they rendered, other windows directly, then the palette. */
 async function closeTransient(app: ElectronApplication, main: Page): Promise<void> {
@@ -40,7 +43,16 @@ const fontSize = (page: Page) =>
     return r.data.fontSize;
   });
 
-test('every enabled registry command runs without a page error (library, reader, item menu)', async ({}, testInfo) => {
+/**
+ * Commands this test does not run, each with the test that does (`<spec file> › <test title>`): F6 / ⇧F6 are keys of
+ * the renderer keymap, with no menu item to click.
+ */
+const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
+  'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
+  'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
+};
+
+test('every registry command runs without a page error (library and reader menus, item menu, notice buttons)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const errors: string[] = [];
   const watch = (p: Page) => {
@@ -70,11 +82,18 @@ test('every enabled registry command runs without a page error (library, reader,
   try {
     await importPaths(page, [PDF]);
     await stubOpenDialog(app, []); // import dialogs come back empty
+    // No Finder and no other app on CI: main's shell calls are recorded instead.
     await app.evaluate(({ dialog, shell }) => {
+      const g = globalThis as { __learnShell?: string[] };
+      g.__learnShell = [];
       dialog.showMessageBox = (async () => ({ response: 1, checkboxChecked: false })) as typeof dialog.showMessageBox;
-      shell.showItemInFolder = () => {};
-      shell.openPath = async () => '';
+      shell.showItemInFolder = () => void g.__learnShell!.push('reveal');
+      shell.openPath = async () => {
+        g.__learnShell!.push('open');
+        return '';
+      };
     });
+    const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
     const ran = new Set<CommandId>();
     for (const view of ['library', 'reader'] as const) {
       if (view === 'reader') await openItem(page, 'sample');
@@ -95,19 +114,52 @@ test('every enabled registry command runs without a page error (library, reader,
     await expect.poll(() => fontSize(page)).toBe(13);
     ran.add('view.textReset');
 
-    // Every menu command of the registry ran in one of the two views.
-    expect([...ran].sort()).toEqual(COMMANDS.filter((c) => c.menu).map((c) => c.id).sort());
+    // The item context menu, through the native menu path (runPicked): 열기 and Finder에서 보기 (design-spec 7.3, C-1).
+    await stubContextMenu(app, '열기');
+    await page.getByTestId('item-row').first().click({ button: 'right' });
+    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    ran.add('item.open');
+    await runMenuCommand(app, 'nav.back');
+    await stubContextMenu(app, process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기');
+    await page.getByTestId('item-row').first().click({ button: 'right' });
+    await expect.poll(shellCalls).toEqual(['reveal']);
+    ran.add('item.showInFolder');
 
-    // The item context menu has 열기 and Finder에서 보기 only (design-spec 7.3, C-1); 기본 앱으로 열기 is a notice button,
-    // covered by readers.spec (codec-open).
-    for (const label of ['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']) {
-      await stubContextMenu(app, label);
-      await page.getByTestId('item-row').first().click({ button: 'right' });
-      await closeTransient(app, page);
-      if (label === '열기') {
-        await expect(page.getByTestId('pdf-canvas')).toBeVisible();
-        await runMenuCommand(app, 'nav.back');
-      }
+    // 다시 연결… (first in the item menu for a linked item whose file is gone): the dialog picks the moved file.
+    const src = testInfo.outputPath('src');
+    fs.mkdirSync(src, { recursive: true });
+    const linked = path.join(src, 'linked.pdf');
+    fs.copyFileSync(PDF, linked);
+    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), linked);
+    await expect(page.getByTestId('item-row')).toHaveCount(2);
+    const moved = path.join(src, 'moved.pdf');
+    fs.renameSync(linked, moved);
+    await stubOpenDialog(app, [moved]);
+    await stubContextMenu(app, '다시 연결…');
+    await page.getByTestId('item-row').filter({ hasText: 'linked' }).click({ button: 'right' });
+    await expect.poll(() => openDialogCalls(app)).toBe(1);
+    await expect.poll(() => page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? r.data.filter((i) => i.storageMode === 'linked').map((i) => i.availability) : null;
+    })).toEqual(['available']);
+    ran.add('item.relink');
+
+    // 기본 앱으로 열기 is a notice button only (the unplayable video, 10.7); it runs the same registry command.
+    await importPaths(page, [MPEG4]);
+    await openItem(page, 'sample-mpeg4part2');
+    await page.getByTestId('codec-open').click();
+    await expect.poll(shellCalls).toEqual(['reveal', 'open']);
+    ran.add('item.openExternally');
+    await runMenuCommand(app, 'nav.back');
+
+    // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
+    // here until it is in one of the two; a ledger entry for a command that is gone fails too.
+    const all = COMMANDS.map((c) => c.id);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
+    expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);
+    for (const [id, where] of Object.entries(COVERED_ELSEWHERE)) {
+      const [file, title] = where.split(' › ') as [string, string];
+      expect(fs.readFileSync(path.join(import.meta.dirname, file), 'utf8'), `${id}: ${where}`).toContain(`test('${title}'`);
     }
     expect(errors).toEqual([]);
   } finally {

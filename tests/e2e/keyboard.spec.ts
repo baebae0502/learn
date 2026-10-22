@@ -73,10 +73,13 @@ test('import → open → page → back → palette → settings → shortcuts, 
       await page.keyboard.type('설정');
       await page.keyboard.press('Enter');
     });
-    await expectNoSeriousA11y(settings, 'settings window');
+    // Light, then dark, each picked by keyboard and checked on the page itself. (Not colorScheme: 'light' at launch:
+    // that emulation would hold the page light through the dark pick.)
     await settings.keyboard.press('Tab'); // the theme radio group
     await settings.keyboard.press('ArrowRight'); // 시스템 설정 → 라이트
     await expect.poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource)).toBe('light');
+    await expect.poll(() => settings.evaluate(() => matchMedia('(prefers-color-scheme: light)').matches)).toBe(true);
+    await expectNoSeriousA11y(settings, 'settings window, light');
     await settings.keyboard.press('ArrowRight'); // 다크
     await expect.poll(() => settings.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(true);
     await expectNoSeriousA11y(settings, 'settings window, dark');

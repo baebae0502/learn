@@ -163,9 +163,20 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   const titleInk = img ? elementStats(img, chrome.titleBox) : null;
   const selectedInk = img ? elementStats(img, chrome.selectedLabelBox) : null;
   const toolbarPixel = shot.file ? (await pngPixels(s.page, shot.file, [[600, 26]]))[0] ?? null : null;
+  // N4-4: the sidebar's edge (its last column, below the rows) and the toolbar's hairline (its last row, mid-way).
+  const edgePoints = await s.page.evaluate(() => {
+    const sb = document.querySelector('.sidebar')!.getBoundingClientRect();
+    const tb = document.querySelector('[data-testid="toolbar"]')!.getBoundingClientRect();
+    return {
+      sidebarEdge: [Math.round(sb.right) - 1, Math.round(sb.top + sb.height * 0.6)] as [number, number],
+      toolbarLine: [Math.round(tb.left + tb.width / 2), Math.round(tb.bottom) - 1] as [number, number],
+    };
+  });
+  const edgeRgb = shot.file ? await pngPixels(s.page, shot.file, [edgePoints.sidebarEdge, edgePoints.toolbarLine]) : null;
+  const edges = { points: edgePoints, sidebarEdge: edgeRgb?.[0] ?? null, toolbarLine: edgeRgb?.[1] ?? null };
   await bringAppToFront(s.app);
   await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
-  return { frontmostAtShot, closeButton, navRow, chrome, titleInk, selectedInk, toolbarPixel };
+  return { frontmostAtShot, closeButton, navRow, chrome, titleInk, selectedInk, toolbarPixel, edges };
 }
 /** Close-button red (#ff5f57) pixels in a capture's top-left corner, where the traffic lights are drawn. */
 function redLightPixels(shot: string) {
@@ -494,6 +505,9 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       check('inactive window: grey lights, neutral selection, no keyboard cursor (dark)', isGrey(v2.closeButton) && v2.navRow !== (await navRow()) && v2.chrome.cursor === 'none', v2);
       check('not main: the chrome recedes — text tokens, glyphs faded whole, the material toolbar (dark, R3-2, polish)', chromeDimmed(v2.chrome), v2.chrome);
       check('not main: the captured toolbar is the inactive material, 20 (dark, polish Q2)', toolbarIsMaterial((inactive['dark'] as { toolbarPixel: number[] | null }).toolbarPixel, 'dark'), inactive['dark']);
+      // N4-4: --separator-chrome-inactive is black in dark (run 39653189858 read 51,54,56 before the polish round).
+      const edges = (inactive['dark'] as { edges: { sidebarEdge: number[] | null; toolbarLine: number[] | null } }).edges;
+      check('not main: the sidebar edge and the toolbar hairline are black in the capture (dark, N4-4)', [edges.sidebarEdge, edges.toolbarLine].every((c) => c !== null && Math.max(...c) <= 8), edges);
     });
     // R2-6b: a tooltip crossing the dark material (raised surface over the sidebar).
     await guard('tooltip over the dark material', async () => {

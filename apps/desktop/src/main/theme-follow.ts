@@ -23,6 +23,11 @@ export interface ThemeFollowDeps {
   applyWindowChrome(windowId: number, shade: Shade): void;
   /** The open pages that draw the theme themselves and report it (the main and the settings window): webContents ids. */
   followers(): number[];
+  /**
+   * The shade the pages draw for `theme` now: the pref itself, and for 시스템 설정 the appearance they see while the
+   * native theme is still the old one (prefers-color-scheme follows nativeTheme.themeSource, which follows them).
+   */
+  shadeOf(theme: Prefs['theme']): Shade;
   mark?(mark: ThemeMark): void;
   now?(): number;
   setTimer?(fn: () => void, ms: number): unknown;
@@ -35,7 +40,10 @@ export interface ThemeFollower {
    * on screen (`shown`), and the app-wide native theme once every follower has (or after THEME_FOLLOW_MS).
    */
   pageChanged(theme: Prefs['theme']): void;
-  /** A follower's page now shows `shade` (after its crossfade's update, or at once without one). */
+  /**
+   * A follower's page now shows `shade` (after its crossfade's update, or at once without one). Only the report of the
+   * pending change counts: one in another shade is a late report of a change before it, and is ignored.
+   */
   shown(windowId: number, shade: Shade): void;
 }
 
@@ -45,13 +53,17 @@ export interface ThemeFollower {
  * change made in a page, main applies nothing native until the pages show it: never a native part already in the new
  * theme over web content still wholly in the old one. A page that never reports (hung, closed) holds it at most
  * THEME_FOLLOW_MS. A change no page made (startup, the system appearance) never comes here: main applies it at once.
+ *
+ * Each report names the shade it shows, and is taken only for the pending change's shade. With light → dark → light in
+ * quick succession, the dark change's report can arrive after the light one began; taken for it, that window's chrome
+ * would stay dark and the light report, its real one, would be ignored as a second.
  */
 export function createThemeFollower(deps: ThemeFollowDeps): ThemeFollower {
   const now = deps.now ?? Date.now;
   const setTimer = deps.setTimer ?? ((fn: () => void, ms: number) => setTimeout(fn, ms));
   const clearTimer = deps.clearTimer ?? ((timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>));
   const mark = (m: Omit<ThemeMark, 'at'>) => deps.mark?.({ ...m, at: now() });
-  let pending: { theme: Prefs['theme']; waiting: Set<number>; timer: unknown } | null = null;
+  let pending: { theme: Prefs['theme']; shade: Shade; waiting: Set<number>; timer: unknown } | null = null;
 
   const settle = (reason: 'shown' | 'timeout') => {
     if (!pending) return;
@@ -76,10 +88,10 @@ export function createThemeFollower(deps: ThemeFollowDeps): ThemeFollower {
         mark({ event: 'source', reason: 'shown', theme });
         return;
       }
-      pending = { theme, waiting, timer: setTimer(() => settle('timeout'), THEME_FOLLOW_MS) };
+      pending = { theme, shade: deps.shadeOf(theme), waiting, timer: setTimer(() => settle('timeout'), THEME_FOLLOW_MS) };
     },
     shown(windowId, shade) {
-      if (!pending || !pending.waiting.has(windowId)) return;
+      if (!pending || shade !== pending.shade || !pending.waiting.has(windowId)) return;
       mark({ event: 'shown', windowId, theme: shade });
       pending.waiting.delete(windowId);
       deps.applyWindowChrome(windowId, shade);

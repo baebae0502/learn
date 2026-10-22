@@ -261,6 +261,8 @@ if (!app.requestSingleInstanceLock()) {
       },
       followers: () =>
         [mainWindow, settingsWindow.current()].flatMap((w) => (w && !w.isDestroyed() && !w.webContents.isDestroyed() ? [w.webContents.id] : [])),
+      // Asked before the native theme moves: 시스템 설정 is drawn in the current appearance until it is applied.
+      shadeOf: (theme) => (theme === 'system' ? currentTheme() : theme),
       mark: (m: ThemeMark) => themeLog()?.push({ ...m, window: m.windowId !== undefined ? pageOf(m.windowId) : undefined }),
     });
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });

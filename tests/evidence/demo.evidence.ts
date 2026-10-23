@@ -55,6 +55,8 @@ const RECORD_SECONDS = 280;
  * screencapture warmed up on frozen frames for about 1.1 s on the runner: 2.5 s there (Mac risk 2).
  */
 const PRE_ROLL_MS = IS_MAC ? 2500 : 1500;
+/** The Finder window in front (chapter 13): wide enough for the list view's Name, Size and Kind (critique mac2 n4). */
+const FINDER_W = 680;
 /** One PDF printed by Chromium may take this long; then the rest are fixture copies (re-review Important 1). */
 const PRINT_MS = 20_000;
 /** The overlay's pill: shown 1.9 s (DemoOverlay PILL_MS), then an exit of 0.75 × --duration-base. */
@@ -567,8 +569,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         });
       }
     }
-    // mac1 m2: the recording first shows the painted first screen; the opening caption then gets its whole time.
+    // mac1 m2: the recording first shows the painted first screen; the opening caption then gets its whole time. The
+    // page must also be drawing again before chapter 1 (one frame's round trip): just after launch the renderer was busy
+    // and the first caption painted 1.2 s late (critique mac2 m2; the overlay now also counts from its first paint).
     await sleep(PRE_ROLL_MS);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     started = Date.now();
 
     // 1. First run: the empty library says how to bring files in.
@@ -808,17 +813,26 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3500);
 
     // 11b. Density and text size reach the main window at once. The settings window moves aside first, as a user may,
-    //      so the list behind it shows the change (animated on macOS; a jump on Linux, T13R2-n2). Shortened (mac1 n2):
-    //      density back in one click here; the text size back with ⌘0 in the dark act, where the main window is key.
-    await app.evaluate(({ BrowserWindow }) => {
+    //      so the list behind it shows the change. Shortened (mac1 n2): density back in one click here; the text size
+    //      back with ⌘0 in the dark act, where the main window is key. The move is 12 eased steps over 250 ms on every
+    //      platform (T13R2-n2's fallback): AppKit no longer animated setBounds(…, true), a 396 px jump in one frame
+    //      (Mac run 2, critique n1).
+    await app.evaluate(async ({ BrowserWindow }) => {
       const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
       const main = all.find((w) => w.webContents.getURL().includes('window=main'))!;
       const set = all.find((w) => w.webContents.getURL().includes('window=settings'))!;
       const m = main.getBounds();
       const b = set.getBounds();
-      set.setBounds({ ...b, x: Math.max(m.x, m.x + m.width - b.width - 24) }, process.platform === 'darwin');
+      const to = Math.max(m.x, m.x + m.width - b.width - 24);
+      const steps = 12;
+      for (let i = 1; i <= steps && !set.isDestroyed(); i++) {
+        const t = i / steps;
+        const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+        set.setPosition(Math.round(b.x + (to - b.x) * eased), b.y);
+        if (i < steps) await new Promise((r) => setTimeout(r, 250 / steps));
+      }
     });
-    await pause(400); // the move
+    await pause(400); // the move has ended; a moment to see where it went
     await chapter('밀도와 글자 크기는 메인 창에 바로 반영됩니다.', await captionFor(settings));
     await park(settings, 'settings');
     await pause(800);
@@ -876,17 +890,18 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         async () => {
           const b = await (await win()).evaluate((w) => w.getBounds());
           const d = shownDisplay.bounds;
-          // 600 × 380, list view: every file and the sidebar readable (mac1 m5).
-          const left = Math.max(d.x + 20, Math.min(b.x + b.width * 0.45, d.x + d.width - 620));
+          // 680 × 380, list view: every file, its size and the sidebar readable, no horizontal scroll bar (mac1 m5;
+          // 600 was cramped, Mac run 2 critique n4).
+          const left = Math.max(d.x + 20, Math.min(b.x + b.width * 0.45, d.x + d.width - FINDER_W - 20));
           const top = Math.max(d.y + 40, Math.min(b.y + b.height * 0.3, d.y + d.height - 400));
-          openFinderWindow(materialDir, [left, top, left + 600, top + 380]);
+          openFinderWindow(materialDir, [left, top, left + FINDER_W, top + 380]);
           finderOpened = true;
           await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
           await chapter(title);
           if (cursor !== 'synthetic') {
             // The arrow rests on the desktop, off both windows (not on the Finder window's path or status bar).
             await pointerTo('elsewhere');
-            await glideCursor(desktopSpot(d, b, { x: left, y: top, width: 600, height: 380 }), { warpOnly: cursor === 'warp' });
+            await glideCursor(desktopSpot(d, b, { x: left, y: top, width: FINDER_W, height: 380 }), { warpOnly: cursor === 'warp' });
           }
           await pause(4000);
           closeFinderWindow();

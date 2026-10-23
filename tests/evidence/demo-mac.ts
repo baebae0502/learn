@@ -204,7 +204,7 @@ export function dragScript(from: { x: number; y: number }, to: { x: number; y: n
 
 /**
  * T13-m8 / T13R2-n6 / critique mac1 m5: a Finder window on `folder` (the demo's own material, the files that were
- * dragged in) in list view at known screen bounds [left, top, right, bottom] (about 600 × 380: every file and the
+ * dragged in) in list view at known screen bounds [left, top, right, bottom] (about 680 × 380: every file and the
  * sidebar readable), in front, so "another app in front" shows another app. The folder is passed as an alias (re-review
  * minor 1). `closeFinderWindow` closes it again before Learn comes back.
  */

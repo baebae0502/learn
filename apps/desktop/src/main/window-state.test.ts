@@ -1,0 +1,103 @@
+import { EventEmitter } from 'node:events';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BrowserWindow } from 'electron';
+import { EventChannels } from '@learn/domain';
+
+vi.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
+const { isSheetOpen, sheetClosed, sheetShown, trackWindowState, windowStateOf } = await import('./window-state');
+
+/** A BrowserWindow stand-in: tests set focus and full screen, emit its events, and read the pushes it received. */
+class FakeWindow extends EventEmitter {
+  focused = false;
+  fullscreen = false;
+  destroyed = false;
+  readonly webContents = { isDestroyed: () => this.destroyed, send: vi.fn() };
+  isFocused = () => this.focused;
+  isFullScreen = () => this.fullscreen;
+  isDestroyed = () => this.destroyed;
+  /** The windowState payloads pushed to this window's renderer, oldest first. */
+  pushes = () => this.webContents.send.mock.calls.filter(([channel]) => channel === EventChannels.windowState).map(([, payload]) => payload);
+}
+const win = (w: FakeWindow) => w as unknown as BrowserWindow;
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+describe('window state per window (main and settings each get their own)', () => {
+  it('pushes a window its own state on a real change, and never another window\'s', () => {
+    const main = new FakeWindow();
+    const settings = new FakeWindow();
+    trackWindowState(win(main));
+    trackWindowState(win(settings));
+    settings.focused = true;
+    settings.emit('focus');
+    expect(settings.pushes()).toEqual([{ fullscreen: false, focused: true, sheetOpen: false }]);
+    expect(main.pushes()).toEqual([]); // the main window was not told about the settings window's focus
+    main.emit('blur'); // the main window's own event: its own state
+    settings.emit('focus'); // unchanged: nothing sent
+    expect(main.pushes()).toEqual([{ fullscreen: false, focused: false, sheetOpen: false }]);
+    expect(settings.pushes()).toHaveLength(1);
+  });
+
+  it('a native sheet on the settings window: it stays main under it, and is re-read once it is key again (38e3a9e for any owner)', () => {
+    const main = new FakeWindow();
+    const settings = new FakeWindow();
+    trackWindowState(win(main));
+    trackWindowState(win(settings));
+    settings.focused = true;
+    settings.emit('focus');
+    sheetShown(win(settings)); // the folder dialog / restart confirmation attaches to the settings window
+    expect(isSheetOpen(win(settings))).toBe(true);
+    settings.focused = false;
+    settings.emit('blur'); // the sheet is key now; the settings window is still main (sheetOpen)
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    sheetClosed(win(settings));
+    expect(isSheetOpen(win(settings))).toBe(false);
+    expect(windowStateOf(win(settings)).sheetOpen).toBe(true); // still main until it is key again: no dimmed flash
+    settings.focused = true; // AppKit makes it key again without a 'focus' event
+    vi.advanceTimersByTime(250);
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+    expect(main.pushes()).toEqual([]); // the main window's state is untouched throughout
+  });
+
+  it('a native dialog on a window: not key under it although no blur comes (macOS), key again once it is gone (critique m2)', () => {
+    const settings = new FakeWindow();
+    trackWindowState(win(settings));
+    settings.focused = true;
+    settings.emit('focus');
+    sheetShown(win(settings), { native: true });
+    // Electron still says focused and sends no 'blur' on macOS: the push says not key, still main.
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    expect(windowStateOf(win(settings)).focused).toBe(false);
+    sheetClosed(win(settings), { native: true }); // the dialog resolved; the window is key (isFocused) at once
+    expect(settings.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+
+    // Our own sheet window takes the key itself (its parent gets 'blur'): not marked, the parent's own focus counts.
+    sheetShown(win(settings));
+    expect(windowStateOf(win(settings))).toEqual({ fullscreen: false, focused: true, sheetOpen: true });
+    sheetClosed(win(settings));
+  });
+
+  it('two native dialogs in flight on one window: it stays under a sheet, not key, until the last one closes (re-review m7)', () => {
+    const main = new FakeWindow();
+    trackWindowState(win(main));
+    main.focused = true;
+    main.emit('focus');
+    sheetShown(win(main), { native: true });
+    sheetShown(win(main), { native: true });
+    sheetClosed(win(main), { native: true }); // the first resolves
+    expect(isSheetOpen(win(main))).toBe(true);
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    vi.advanceTimersByTime(500);
+    expect(main.pushes().at(-1)).toEqual({ fullscreen: false, focused: false, sheetOpen: true }); // nothing released meanwhile
+    sheetClosed(win(main), { native: true }); // the last one: released at once (the window is key)
+    expect(isSheetOpen(win(main))).toBe(false);
+    expect(main.pushes().at(-1)).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+    // A close with nothing open changes nothing, and does not leave a debt for the next sheet.
+    sheetClosed(win(main), { native: true });
+    sheetShown(win(main), { native: true });
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: false, sheetOpen: true });
+    sheetClosed(win(main), { native: true });
+    expect(windowStateOf(win(main))).toEqual({ fullscreen: false, focused: true, sheetOpen: false });
+  });
+});

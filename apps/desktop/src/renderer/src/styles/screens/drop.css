@@ -1,0 +1,100 @@
+@layer screens {
+  /* Window-wide drop overlay (design-spec 6 드롭 오버레이, 7.2; mockup library-empty.html?state=drop). Below the 52 px
+     bar: the traffic lights and the sidebar top stay visible. Opaque: nothing of the window shows through.
+     The ring, the tile and the current card mark a drop target, not the focus: none of the not-key / not-main rules
+     (utilities.css) reach them, so a drag from Finder onto a background window sees them at full strength. */
+  .drop-overlay {
+    position: absolute;
+    z-index: 50;
+    inset: var(--toolbar-height) 0 0 0;
+    display: grid;
+    place-items: center;
+    background: var(--bg-content);
+    color: var(--text-primary);
+    animation: fade-in var(--duration-slow) var(--ease-standard);
+  }
+  .drop-overlay .frame {
+    position: absolute;
+    inset: var(--space-12);
+    border-radius: 10px; /* local: follows the window corner */
+    box-shadow: inset 0 0 0 2px var(--focus);
+    background: color-mix(in oklch, var(--accent) 4%, transparent);
+    pointer-events: none;
+  }
+  .drop-panel {
+    position: relative;
+    width: 520px; /* local: mockup .drop-panel */
+    max-width: calc(100% - var(--space-48));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-12);
+    text-align: center;
+  }
+  /* The action happening now: the accent-filled tile (design-spec 6 안내 아이콘 타일), 56 / radius 12 like the empty state's. */
+  .drop-panel .glyph {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-xl);
+    display: grid;
+    place-items: center;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    box-shadow: var(--shadow-e1);
+  }
+  .drop-panel h2 {
+    margin-top: var(--space-4);
+    font: var(--type-title1);
+    letter-spacing: -0.01em;
+  }
+  .drop-panel .files {
+    color: var(--text-secondary);
+    font: var(--type-callout);
+  }
+  .drop-modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-12);
+    width: 100%;
+    margin-top: var(--space-12);
+  }
+  /* Not the current mode: same surface, a hairline instead of the ring, a quieter glyph; the text keeps its contrast. */
+  .drop-mode {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr); /* local: mockup .drop-mode icon column */
+    column-gap: var(--space-8);
+    row-gap: 2px; /* local: mockup .drop-mode */
+    padding: var(--space-12) var(--space-16);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface), var(--shadow-e1); /* a raised card: critic T14 fix2 N1 */
+    text-align: left;
+  }
+  /* The current mode: a 2 px accent ring that keeps 3:1 on the raised card in both themes (--accent-ring). */
+  .drop-mode[data-on] {
+    box-shadow: inset 0 0 0 2px var(--accent-ring), var(--shadow-e1);
+  }
+  .drop-mode .icon {
+    margin-top: 1px; /* local: optical, on the title's first line */
+    color: var(--text-tertiary);
+  }
+  .drop-mode[data-on] .icon {
+    color: var(--accent-text);
+  }
+  .drop-mode .dm-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    font: var(--type-headline);
+  }
+  .drop-mode .dm-title .kbd-group {
+    margin-left: auto;
+  }
+  .drop-mode .dm-text {
+    grid-column: 2;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    line-height: round(calc(18px * var(--text-scale)), 2px); /* local: mockup .dm-text, two lines read apart */
+    white-space: pre-line; /* a line per sentence (strings/drop.ts) */
+  }
+}

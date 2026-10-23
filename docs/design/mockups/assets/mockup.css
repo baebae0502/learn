@@ -900,8 +900,8 @@ h2,
   content: '';
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
+  top: 6px; /* a 16 px divider in the 27 px above the header's 1 px border (6 + 16 + 5) */
+  bottom: 5px;
   width: 1px;
   background: var(--separator);
 }
@@ -1146,10 +1146,10 @@ h2,
 .menu .msep {
   height: 1px;
   margin: 5px var(--space-8);
-  background: var(--separator);
+  background: var(--separator-on-surface);
 }
 .menu .mhead {
-  padding: var(--space-4) var(--space-8) 2px 24px;
+  padding: var(--space-4) var(--space-8) 2px 28px; /* local: lines up with item labels (4 + 16 check column + 8 gap) */
   color: var(--text-tertiary);
   font: var(--type-caption);
   font-weight: 600;
@@ -1284,13 +1284,13 @@ h2,
   padding: var(--space-12) var(--space-20) var(--space-16);
 }
 .dialog .d-foot.bordered {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
   padding-top: var(--space-12);
 }
 .card {
   border-radius: var(--radius-lg);
   background: var(--fill-hover);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
 }
 .item-card {
   display: grid;
@@ -1376,7 +1376,7 @@ h2,
   padding: var(--space-12) var(--space-16);
 }
 .check-item + .check-item {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
 }
 .check-item .ci-title {
   font: var(--type-headline);
@@ -1488,6 +1488,7 @@ h2,
 .drop-panel h1 {
   margin: var(--space-4) 0 0;
   font: var(--type-title1);
+  letter-spacing: -0.01em; /* the title1 role's tracking, as .t-title1 */
 }
 .drop-panel .files {
   color: var(--text-secondary);
@@ -1512,7 +1513,8 @@ h2,
   row-gap: 2px;
 }
 .drop-mode.is-on {
-  box-shadow: inset 0 0 0 2px var(--accent), var(--shadow-e1);
+  /* --accent-ring: 3:1 on the raised card in dark, where the accent fill (tuned for white text) is 2.37:1 (critic T11-n1). */
+  box-shadow: inset 0 0 0 2px var(--accent-ring), var(--shadow-e1);
 }
 .drop-mode .icon {
   color: var(--accent-text);
@@ -1535,7 +1537,7 @@ h2,
 }
 .drop-mode.is-off {
   /* Not the current mode: same surface, no ring, quieter glyph. Text keeps body contrast. */
-  box-shadow: inset 0 0 0 1px var(--separator), var(--shadow-e1);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface), var(--shadow-e1);
 }
 .drop-mode.is-off .icon {
   color: var(--text-tertiary);
@@ -2095,7 +2097,8 @@ h2,
   font: var(--type-footnote);
 }
 .codec-notice {
-  max-width: 460px;
+  /* The notice (.notice) on the always-dark video stage: the same tile, width and file line; only colours are fixed. */
+  max-width: 440px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2104,8 +2107,8 @@ h2,
   color: oklch(92% 0.004 250);
 }
 .codec-notice .glyph {
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: var(--radius-xl);
   display: grid;
   place-items: center;
@@ -2123,10 +2126,8 @@ h2,
   color: oklch(78% 0.006 250);
 }
 .codec-notice .file {
-  padding: var(--space-8) var(--space-12);
-  border-radius: var(--radius-md);
-  background: oklch(100% 0 0 / 0.06);
   font: var(--type-footnote);
+  font-variant-numeric: tabular-nums;
   color: oklch(78% 0.006 250);
 }
 .codec-notice .actions {
@@ -2163,7 +2164,7 @@ h2,
   gap: var(--space-12);
   height: 52px;
   padding: 0 var(--space-16) 0 var(--space-20);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator-on-surface);
   font: var(--type-title3);
   font-weight: 400;
 }
@@ -2230,7 +2231,7 @@ h2,
   color: var(--text-on-accent);
 }
 .palette .p-item.is-active .kbd {
-  background: oklch(100% 0 0 / 0.18);
+  background: var(--bg-kbd-on-accent); /* darkened: its white label 6.6 / 7.4:1 (critic T9-n1) */
   box-shadow: none;
   color: var(--text-on-accent);
 }
@@ -2240,7 +2241,7 @@ h2,
   gap: var(--space-16);
   height: 36px;
   padding: 0 var(--space-16) 0 var(--space-20);
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
   color: var(--text-tertiary);
   font: var(--type-caption);
 }
@@ -2277,7 +2278,7 @@ h2,
 .form-group {
   border-radius: var(--radius-lg);
   background: var(--bg-control);
-  box-shadow: inset 0 0 0 1px var(--separator);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
 }
 .form-row {
   display: flex;
@@ -2287,7 +2288,7 @@ h2,
   padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
 }
 .form-row + .form-row {
-  border-top: 1px solid var(--separator);
+  border-top: 1px solid var(--separator-on-surface);
 }
 .form-row .fr-label {
   flex: 1 1 auto;
@@ -2340,8 +2341,12 @@ h2,
   display: grid;
   grid-template-columns: 30% 1fr;
 }
+/* 2 px ring 2 px off the picture with a real, transparent gap (the group shows through in both themes; a painted
+   --bg-control gap was white 10 % over the ring in dark). The app draws it as a frame border (screens/settings.css,
+   critic T10-m1) in --accent-ring, which keeps 3:1 on the group in dark where --accent does not. */
 .theme-tile.is-on .preview {
-  box-shadow: 0 0 0 2px var(--bg-control), 0 0 0 4px var(--accent);
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
 }
 .theme-tile.is-on {
   color: var(--text-primary);
@@ -2399,15 +2404,19 @@ h2,
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* Keyboard cursor (the row that arrow keys move from): 2 px inset focus ring. */
+/* Keyboard cursor (the row that arrow keys move from): 2 px inset focus ring. On a filled row: white 75 % in a
+   multi-select table (it tells the cursor from the other filled rows); none in the single-selection sidebar, where
+   the accent fill already shows the focus (design-spec 6). */
 .table-row.is-cursor,
 .nav-row.is-cursor,
 .cue.is-cursor {
   box-shadow: inset 0 0 0 2px var(--focus);
 }
-.table-row.is-selected.is-focused.is-cursor,
-.nav-row.is-selected.is-focused.is-cursor {
+.table-row.is-selected.is-focused.is-cursor {
   box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
+}
+.nav-row.is-selected.is-focused.is-cursor {
+  box-shadow: none;
 }
 .chip.is-hover {
   background: var(--fill-pressed);
@@ -2624,8 +2633,13 @@ h2,
   color: var(--text-secondary);
 }
 .notice .file {
-  font: var(--type-mono);
+  /* The file by name and size ("broken.pdf · 37 B"): footnote, tabular figures. Mono is for paths only (.file.mono). */
+  font: var(--type-footnote);
+  font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
+}
+.notice .file.mono {
+  font: var(--type-mono);
 }
 .notice .actions {
   display: flex;

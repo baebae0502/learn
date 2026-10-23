@@ -13,24 +13,32 @@
     --bg-control: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.1));
     --bg-control-selected: light-dark(oklch(100% 0 0), oklch(100% 0 0 / 0.2));
     --bg-track: light-dark(oklch(23% 0.01 250 / 0.07), oklch(100% 0 0 / 0.08));
+    --bg-track-grouped: light-dark(oklch(23% 0.01 250 / 0.07), oklch(0% 0 0 / 0.12));
     --bg-scrim: light-dark(oklch(20% 0.01 250 / 0.24), oklch(0% 0 0 / 0.5));
+    --bg-chrome-inactive: light-dark(#ececec, #141414);
     --fill-hover: light-dark(oklch(23% 0.01 250 / 0.05), oklch(100% 0 0 / 0.06));
     --fill-pressed: light-dark(oklch(23% 0.01 250 / 0.09), oklch(100% 0 0 / 0.1));
     --fill-selected: light-dark(oklch(23% 0.01 250 / 0.13), oklch(100% 0 0 / 0.13));
     --separator: light-dark(oklch(89.5% 0.004 250), oklch(33% 0.005 250));
+    --separator-on-surface: light-dark(oklch(23% 0.01 250 / 0.15), oklch(100% 0 0 / 0.1));
+    --separator-chrome-inactive: light-dark(oklch(89.5% 0.004 250), oklch(0% 0 0));
     --border: light-dark(oklch(86% 0.005 250), oklch(100% 0 0 / 0.12));
     --border-strong: light-dark(oklch(60% 0.008 250), oklch(62% 0.008 250));
     --text-primary: light-dark(oklch(23% 0.008 250), oklch(94% 0.004 250));
     --text-secondary: light-dark(oklch(46% 0.01 250), oklch(78% 0.008 250));
     --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(58% 0.008 250));
     --text-on-accent: light-dark(oklch(100% 0 0), oklch(100% 0 0));
+    --text-inactive: light-dark(oklch(23% 0.008 250 / 0.3), oklch(94% 0.004 250 / 0.3));
+    --text-inactive-selected: light-dark(oklch(23% 0.008 250 / 0.35), oklch(94% 0.004 250 / 0.35));
     --accent: light-dark(oklch(53% 0.088 190), oklch(50% 0.084 190));
     --accent-hover: light-dark(oklch(49% 0.082 190), oklch(54% 0.09 190));
     --accent-pressed: light-dark(oklch(45% 0.076 190), oklch(46% 0.078 190));
     --accent-text: light-dark(oklch(49% 0.082 190), oklch(78% 0.1 190));
     --accent-soft: light-dark(oklch(53% 0.088 190 / 0.11), oklch(72% 0.1 190 / 0.16));
+    --bg-kbd-on-accent: light-dark(oklch(0% 0 0 / 0.16), oklch(0% 0 0 / 0.16));
     --focus: light-dark(oklch(57% 0.096 190), oklch(72% 0.11 190));
     --meter: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));
+    --accent-ring: light-dark(oklch(53% 0.088 190), oklch(66% 0.11 190));
     --danger: light-dark(oklch(56% 0.19 27), oklch(64% 0.18 25));
     --danger-text: light-dark(oklch(51% 0.18 27), oklch(76% 0.13 25));
     --danger-soft: light-dark(oklch(56% 0.19 27 / 0.1), oklch(64% 0.18 25 / 0.18));
@@ -73,51 +81,55 @@
     --shadow-e2: 0 0 0 0.5px light-dark(oklch(20% 0.01 250 / 0.16), oklch(100% 0 0 / 0.14)), inset 0 0.5px 0 0 light-dark(oklch(100% 0 0 / 0), oklch(100% 0 0 / 0.08)), 0 8px 24px 0 light-dark(oklch(20% 0.01 250 / 0.12), oklch(0% 0 0 / 0.4)), 0 24px 64px -8px light-dark(oklch(20% 0.01 250 / 0.18), oklch(0% 0 0 / 0.5));
     --shadow-e0: 0 0 0 0.5px light-dark(oklch(20% 0.01 250 / 0.12), oklch(100% 0 0 / 0.06)), inset 0 0.5px 0 0 light-dark(oklch(100% 0 0 / 0), oklch(100% 0 0 / 0.06)), 0 1px 2px 0 light-dark(oklch(20% 0.01 250 / 0.08), oklch(0% 0 0 / 0.24));
     --shadow-page: 0 0 0 0.5px light-dark(oklch(20% 0.01 250 / 0.1), oklch(0% 0 0 / 0.5)), 0 1px 3px 0 light-dark(oklch(20% 0.01 250 / 0.1), oklch(0% 0 0 / 0.4));
-    /* Typography */
+    /* Typography (roles scale with --text-scale: settings 글자 크기, main window only) */
     --font-system: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard Variable", system-ui, sans-serif;
     --font-pretendard: "Pretendard Variable", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", system-ui, sans-serif;
     --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, "DejaVu Sans Mono", monospace;
     --font-ui: var(--font-system);
-    --text-caption-size: 11px;
-    --text-caption-line: 14px;
+    --text-scale: 1;
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+    --text-caption-size: round(calc(11px * var(--text-scale)), 1px);
+    --text-caption-line: round(calc(14px * var(--text-scale)), 2px);
     --text-caption-weight: 400;
-    --type-caption: 400 11px/14px var(--font-ui);
-    --text-footnote-size: 12px;
-    --text-footnote-line: 16px;
+    --type-caption: 400 round(calc(11px * var(--text-scale)), 1px)/round(calc(14px * var(--text-scale)), 2px) var(--font-ui);
+    --text-footnote-size: round(calc(12px * var(--text-scale)), 1px);
+    --text-footnote-line: round(calc(16px * var(--text-scale)), 2px);
     --text-footnote-weight: 400;
-    --type-footnote: 400 12px/16px var(--font-ui);
-    --text-body-size: 13px;
-    --text-body-line: 18px;
+    --type-footnote: 400 round(calc(12px * var(--text-scale)), 1px)/round(calc(16px * var(--text-scale)), 2px) var(--font-ui);
+    --text-body-size: round(calc(13px * var(--text-scale)), 1px);
+    --text-body-line: round(calc(18px * var(--text-scale)), 2px);
     --text-body-weight: 400;
-    --type-body: 400 13px/18px var(--font-ui);
-    --text-headline-size: 13px;
-    --text-headline-line: 18px;
-    --text-headline-weight: 600;
-    --type-headline: 600 13px/18px var(--font-ui);
-    --text-paragraph-size: 13px;
-    --text-paragraph-line: 20px;
+    --type-body: 400 round(calc(13px * var(--text-scale)), 1px)/round(calc(18px * var(--text-scale)), 2px) var(--font-ui);
+    --text-headline-size: round(calc(13px * var(--text-scale)), 1px);
+    --text-headline-line: round(calc(18px * var(--text-scale)), 2px);
+    --text-headline-weight: var(--weight-semibold);
+    --type-headline: var(--weight-semibold) round(calc(13px * var(--text-scale)), 1px)/round(calc(18px * var(--text-scale)), 2px) var(--font-ui);
+    --text-paragraph-size: round(calc(13px * var(--text-scale)), 1px);
+    --text-paragraph-line: round(calc(20px * var(--text-scale)), 2px);
     --text-paragraph-weight: 400;
-    --type-paragraph: 400 13px/20px var(--font-ui);
-    --text-callout-size: 14px;
-    --text-callout-line: 22px;
+    --type-paragraph: 400 round(calc(13px * var(--text-scale)), 1px)/round(calc(20px * var(--text-scale)), 2px) var(--font-ui);
+    --text-callout-size: round(calc(14px * var(--text-scale)), 1px);
+    --text-callout-line: round(calc(22px * var(--text-scale)), 2px);
     --text-callout-weight: 400;
-    --type-callout: 400 14px/22px var(--font-ui);
-    --text-title3-size: 15px;
-    --text-title3-line: 20px;
-    --text-title3-weight: 600;
-    --type-title3: 600 15px/20px var(--font-ui);
-    --text-title2-size: 17px;
-    --text-title2-line: 22px;
-    --text-title2-weight: 600;
-    --type-title2: 600 17px/22px var(--font-ui);
-    --text-title1-size: 22px;
-    --text-title1-line: 28px;
-    --text-title1-weight: 600;
-    --type-title1: 600 22px/28px var(--font-ui);
-    --text-mono-size: 12px;
-    --text-mono-line: 16px;
+    --type-callout: 400 round(calc(14px * var(--text-scale)), 1px)/round(calc(22px * var(--text-scale)), 2px) var(--font-ui);
+    --text-title3-size: round(calc(15px * var(--text-scale)), 1px);
+    --text-title3-line: round(calc(20px * var(--text-scale)), 2px);
+    --text-title3-weight: var(--weight-semibold);
+    --type-title3: var(--weight-semibold) round(calc(15px * var(--text-scale)), 1px)/round(calc(20px * var(--text-scale)), 2px) var(--font-ui);
+    --text-title2-size: round(calc(17px * var(--text-scale)), 1px);
+    --text-title2-line: round(calc(22px * var(--text-scale)), 2px);
+    --text-title2-weight: var(--weight-semibold);
+    --type-title2: var(--weight-semibold) round(calc(17px * var(--text-scale)), 1px)/round(calc(22px * var(--text-scale)), 2px) var(--font-ui);
+    --text-title1-size: round(calc(22px * var(--text-scale)), 1px);
+    --text-title1-line: round(calc(28px * var(--text-scale)), 2px);
+    --text-title1-weight: var(--weight-semibold);
+    --type-title1: var(--weight-semibold) round(calc(22px * var(--text-scale)), 1px)/round(calc(28px * var(--text-scale)), 2px) var(--font-ui);
+    --text-mono-size: round(calc(12px * var(--text-scale)), 1px);
+    --text-mono-line: round(calc(16px * var(--text-scale)), 2px);
     --text-mono-weight: 400;
-    --type-mono: 400 12px/16px var(--font-mono);
+    --type-mono: 400 round(calc(12px * var(--text-scale)), 1px)/round(calc(16px * var(--text-scale)), 2px) var(--font-mono);
     /* Space (4 px grid; the name is the pixel value) */
     --space-2: 2px;
     --space-4: 4px;
@@ -175,6 +187,8 @@
     /* Focus */
     --focus-ring-width: 2px;
     --focus-ring-offset: 1px;
+    /* A window that is not main */
+    --opacity-inactive: 0.3;
   }
 
   :root[data-theme='light'] {
@@ -189,18 +203,42 @@
   :root[data-density='comfortable'] {
     --row-height: var(--row-height-comfortable);
   }
+  :root[data-font-size='12'] {
+    --text-scale: calc(12 / 13);
+  }
+  :root[data-font-size='14'] {
+    --text-scale: calc(14 / 13);
+  }
+  :root[data-font-size='15'] {
+    --text-scale: calc(15 / 13);
+  }
   :root[data-font='pretendard'] {
     --font-ui: var(--font-pretendard);
+  }
+
+  /* Sidebar text over the macOS vibrancy material (tokens.ts colorsVibrancySidebar). */
+  :root[data-vibrancy='1'] .sidebar {
+    --text-tertiary: light-dark(oklch(60% 0.008 250), oklch(70% 0.008 250));
+    --sidebar-count-selected: light-dark(oklch(46% 0.01 250), oklch(94% 0.004 250));
+    --field-placeholder: light-dark(oklch(60% 0.008 250), oklch(76% 0.008 250));
+    --kbd-text: light-dark(oklch(46% 0.01 250), oklch(94% 0.004 250));
   }
 
   @media (prefers-contrast: more) {
     :root {
       --separator: light-dark(oklch(62% 0.008 250), oklch(60% 0.008 250));
+      --separator-on-surface: light-dark(oklch(62% 0.008 250), oklch(64% 0.008 250));
       --border: light-dark(oklch(58% 0.008 250), oklch(64% 0.008 250));
       --text-secondary: light-dark(oklch(36% 0.01 250), oklch(87% 0.006 250));
       --text-tertiary: light-dark(oklch(46% 0.01 250), oklch(74% 0.008 250));
       --fill-selected: light-dark(oklch(23% 0.01 250 / 0.19), oklch(100% 0 0 / 0.22));
       --accent-text: light-dark(oklch(42% 0.072 190), oklch(84% 0.09 190));
+    }
+    :root[data-vibrancy='1'] .sidebar {
+      --text-tertiary: light-dark(oklch(46% 0.01 250), oklch(74% 0.008 250));
+      --sidebar-count-selected: light-dark(oklch(36% 0.01 250), oklch(94% 0.004 250));
+      --field-placeholder: light-dark(oklch(46% 0.01 250), oklch(87% 0.006 250));
+      --kbd-text: light-dark(oklch(36% 0.01 250), oklch(94% 0.004 250));
     }
   }
 

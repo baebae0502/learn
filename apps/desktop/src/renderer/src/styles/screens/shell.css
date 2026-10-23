@@ -1,0 +1,134 @@
+@layer screens {
+  .window {
+    position: relative;
+    height: 100vh;
+    overflow: hidden;
+    background: var(--bg-content);
+  }
+  .window-panes {
+    height: 100%;
+  }
+  /* Sidebar: full height, opaque fallback colour; transparent over macOS vibrancy. */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    background: var(--bg-sidebar);
+    box-shadow: inset -1px 0 0 var(--separator); /* the 1 px pane boundary, inside the 240 */
+  }
+  /* Vibrancy (macOS): the sidebar and every ancestor are clear so the window material shows through (R-4). Base
+     clears body; .window would otherwise paint --bg-content. The main column keeps its own opaque --bg-content. */
+  :root[data-vibrancy='1'],
+  :root[data-vibrancy='1'] .window,
+  :root[data-vibrancy='1'] .sidebar {
+    background: transparent;
+  }
+  .sidebar-inner {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    padding-right: 1px; /* the boundary line's column; children inset from the line, as mockup border-right */
+  }
+  /* Top 88 px, identical in every view: 0–52 traffic lights (84 inset) + toggle, 52–80 launcher, 80–88 gap. */
+  .sidebar-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: var(--toolbar-height);
+    flex: none;
+    padding: 0 var(--space-12) 0 var(--traffic-light-inset);
+    -webkit-app-region: drag;
+  }
+  /* Full screen has no traffic lights: no 84 px inset. */
+  :root[data-fullscreen] .sidebar-top {
+    padding-left: var(--space-12);
+  }
+  .launcher-wrap {
+    flex: none;
+    height: 36px; /* local: 28 launcher + 8 gap, so the view navigator starts at y 88 */
+    padding: 0 var(--space-8) var(--space-8);
+  }
+  .sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 var(--space-8) var(--space-12);
+  }
+  /* Resize handle: zero width on the boundary, ±4 px hit area; the line itself is the sidebar's inset shadow. */
+  .pane-separator {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 0px;
+    outline: none;
+  }
+  .pane-separator::after {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+  }
+  .pane-separator:focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0 -1px 0 -2px;
+    background: var(--focus);
+  }
+  .window[data-sidebar='hidden'] .pane-separator {
+    display: none;
+  }
+  .main-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    background: var(--bg-content);
+  }
+  /* Unified toolbar (design-spec 2.1): 52 px, --bg-window, hairline below. Left: 12, or the 84 px traffic-light
+     inset while the sidebar is hidden on macOS. Right: 12 plus the Linux/Windows window controls overlay. */
+  .titlebar {
+    /* Room for the window controls overlay at the right end (0 on macOS: no titlebar-area env values). */
+    --titlebar-controls: calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    height: var(--toolbar-height);
+    flex: none;
+    min-width: 0;
+    padding: 0 calc(var(--space-12) + var(--titlebar-controls, 0px)) 0 var(--titlebar-inset, var(--space-12));
+    background: var(--bg-window);
+    border-bottom: 1px solid var(--separator);
+    -webkit-app-region: drag;
+  }
+  /* macOS: the traffic lights sit in the toolbar while the sidebar is hidden (84 px), not in full screen. */
+  :root[data-platform='darwin']:not([data-fullscreen]) .window[data-sidebar='hidden'] .titlebar {
+    --titlebar-inset: var(--traffic-light-inset);
+  }
+  .tb-title {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+    min-width: 0;
+  }
+  .tb-title .title {
+    font: var(--type-title3);
+  }
+  .tb-title .count {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .tb-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-left: auto;
+  }
+  .content {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}

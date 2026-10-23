@@ -29,6 +29,8 @@ export interface ManifestEntry {
   bytes?: number;
   skipped?: string;
   error?: string;
+  /** What the recorder wrote to stderr (kept for a successful recording too, to tell noise from a cause). */
+  stderr?: string;
   at: string;
 }
 
@@ -88,7 +90,7 @@ export async function pageShot(page: Page, name: string, description: string): P
 export async function focusApp(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ app: a, BrowserWindow }) => {
     a.focus({ steal: true });
-    const w = BrowserWindow.getAllWindows()[0];
+    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=main'));
     w?.show();
     w?.focus();
     w?.moveTop();
@@ -96,9 +98,12 @@ export async function focusApp(app: ElectronApplication): Promise<void> {
   await sleep(400);
 }
 
-/** CGWindowID of the first window: getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
-export async function cgWindowId(app: ElectronApplication): Promise<string> {
-  const sourceId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getMediaSourceId() ?? '');
+/** CGWindowID of the main window (or another of ours): getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
+export async function cgWindowId(app: ElectronApplication, kind: 'main' | 'settings' = 'main'): Promise<string> {
+  const sourceId = await app.evaluate(
+    ({ BrowserWindow }, k) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(`window=${k}`))?.getMediaSourceId() ?? '',
+    kind,
+  );
   const m = /^window:(\d+):/.exec(sourceId);
   if (!m) throw new Error(`unexpected media source id: ${JSON.stringify(sourceId)}`);
   return m[1]!;
@@ -109,12 +114,56 @@ async function screencapture(args: string[], file: string): Promise<void> {
   if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`screencapture wrote no file: ${file}`);
 }
 
-/** macOS window capture via `screencapture -l<CGWindowID>`: includes title bar and traffic lights. */
-export async function nativeWindowShot(app: ElectronApplication, name: string, description: string): Promise<ManifestEntry> {
+/** Capture any window by its CGWindowID (e.g. Finder's, for a reference shot). macOS only; records a skip elsewhere. */
+export async function windowShotById(id: string, name: string, description: string): Promise<ManifestEntry> {
   if (!IS_MAC) return record({ file: null, kind: 'window', description, skipped: `screencapture needs darwin (running on ${process.platform})` });
   const { abs, rel } = outFile(`${name}.window.png`);
   try {
-    await focusApp(app);
+    await screencapture(['-x', '-o', `-l${id}`], abs);
+    return record({ file: rel, kind: 'window', description: `${description} (CGWindowID ${id})` });
+  } catch (e) {
+    return record({ file: null, kind: 'window', description, error: String((e as Error).message ?? e) });
+  }
+}
+
+/**
+ * Whether the window with this CGWindowID is on screen now (CGWindowListCopyWindowInfo, on-screen only): a window on
+ * another Space (say, the desktop behind a full-screen window) is not. Null when the query fails.
+ */
+export async function windowOnScreen(id: string): Promise<boolean | null> {
+  if (!/^\d+$/.test(id)) return null;
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'var info = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));',
+    `String(info.some(function (x) { return x.kCGWindowNumber === ${id}; }));`,
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  const out = r.stdout.trim();
+  return r.ok && (out === 'true' || out === 'false') ? out === 'true' : null;
+}
+
+/** CGWindowID of an app's frontmost normal window by owner name (JXA + CGWindowListCopyWindowInfo), or null. */
+export async function windowIdOf(ownerName: string): Promise<string | null> {
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'var info = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, 0)));',
+    `var w = info.filter(function (x) { return x.kCGWindowOwnerName === ${JSON.stringify(ownerName)} && x.kCGWindowLayer === 0 && x.kCGWindowBounds && x.kCGWindowBounds.Height > 150; })[0];`,
+    "w ? String(w.kCGWindowNumber) : '';",
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  const id = r.stdout.trim();
+  return r.ok && /^\d+$/.test(id) ? id : null;
+}
+
+/**
+ * macOS window capture via `screencapture -l<CGWindowID>`: includes title bar and traffic lights. The app is brought to
+ * the front first (active colours) unless `focus: false` — an inactive window as it looks behind another app.
+ */
+export async function nativeWindowShot(app: ElectronApplication, name: string, description: string, opts: { focus?: boolean } = {}): Promise<ManifestEntry> {
+  if (!IS_MAC) return record({ file: null, kind: 'window', description, skipped: `screencapture needs darwin (running on ${process.platform})` });
+  const { abs, rel } = outFile(`${name}.window.png`);
+  try {
+    if (opts.focus !== false) await focusApp(app);
     const id = await cgWindowId(app);
     await screencapture(['-x', '-o', `-l${id}`], abs);
     return record({ file: rel, kind: 'window', description: `${description} (CGWindowID ${id})` });
@@ -147,6 +196,8 @@ export interface Recording {
   file: string | null;
   /** Resolves when screencapture exits (after `seconds`). */
   done: Promise<ManifestEntry>;
+  /** Ends it early (SIGINT: screencapture writes out what it has). A no-op once it has ended or when skipped. */
+  cancel?(): void;
 }
 
 /**
@@ -172,12 +223,63 @@ export function startRecording(seconds: number, name: string, description: strin
       const ok = fs.existsSync(target) && fs.statSync(target).size > 0;
       resolve(
         ok
-          ? record({ file, kind: 'recording', description: `${description} (${seconds}s, exit ${code ?? signal})` })
+          ? record({ file, kind: 'recording', description: `${description} (${seconds}s, exit ${code ?? signal})`, ...(stderr.trim() ? { stderr: stderr.trim().slice(0, 500) } : {}) })
           : record({ file: null, kind: 'recording', description, error: `screencapture exit ${code ?? signal}: ${stderr.trim()}` }),
       );
     });
   });
-  return { file, done };
+  return { file, done, cancel: () => void (child.exitCode === null && child.signalCode === null && child.kill('SIGINT')) };
+}
+
+export interface StoppableRecording extends Recording {
+  /** Ends the recording (ffmpeg writes the file out) and resolves with its manifest entry. */
+  stop(): Promise<ManifestEntry>;
+}
+
+/**
+ * Linux, for scripts/record-demo-linux.sh: the X screen in $DISPLAY through ffmpeg x11grab — the `grab` region at 30
+ * fps, H.264 yuv420p CRF 18, without the X pointer (the demo overlay draws the synthetic one) — until stop(), at most
+ * `maxSeconds`. Resolves once ffmpeg has opened the screen and its output file.
+ */
+export async function startX11Recording(
+  grab: { width: number; height: number; x: number; y: number },
+  name: string,
+  description: string,
+  maxSeconds: number,
+): Promise<StoppableRecording> {
+  const { abs: target, rel: file } = outFile(`${name}.mp4`);
+  fs.rmSync(target, { force: true });
+  const display = process.env['DISPLAY'] ?? ':0';
+  const args = [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '30', '-video_size', `${grab.width}x${grab.height}`, '-thread_queue_size', '1024',
+    '-i', `${display}+${grab.x},${grab.y}`,
+    '-t', String(maxSeconds),
+    '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    target,
+  ];
+  let stderr = '';
+  const child = spawn('ffmpeg', args, { stdio: ['pipe', 'ignore', 'pipe'] });
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  const what = `${description} (ffmpeg x11grab ${grab.width}x${grab.height}+${grab.x},${grab.y} of ${display}, 30 fps, H.264 CRF 18)`;
+  const done = new Promise<ManifestEntry>((resolve) => {
+    child.on('error', (e) => resolve(record({ file: null, kind: 'recording', description: what, error: e.message })));
+    child.on('exit', (code, signal) => {
+      const ok = code === 0 && fs.existsSync(target) && fs.statSync(target).size > 0;
+      resolve(ok ? record({ file, kind: 'recording', description: what }) : record({ file: null, kind: 'recording', description: what, error: `ffmpeg exit ${code ?? signal}: ${stderr.trim().slice(0, 500)}` }));
+    });
+  });
+  const deadline = Date.now() + 10_000;
+  while (!fs.existsSync(target) && child.exitCode === null && Date.now() < deadline) await sleep(50);
+  return {
+    file,
+    done,
+    stop() {
+      if (child.exitCode === null && child.signalCode === null) child.stdin?.end('q');
+      const kill = setTimeout(() => child.kill('SIGINT'), 30_000);
+      return done.finally(() => clearTimeout(kill));
+    },
+  };
 }
 
 export interface Screencast {
@@ -255,5 +357,176 @@ export async function tryExec(cmd: string, args: string[], timeout = 30_000): Pr
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string; message: string };
     return { ok: false, stdout: String(err.stdout ?? ''), stderr: String(err.stderr ?? err.message), ms: Date.now() - t0 };
+  }
+}
+
+/** Names of the menu bar items System Events sees for `processName` (item 2 is the app menu). */
+/** A System Events process reference: by name, or by pid (unambiguous when several apps are called "Electron"). */
+const processRef = (target: string | number) => (typeof target === 'number' ? `(first process whose unix id is ${target})` : `process "${target}"`);
+
+export async function menuBarNames(processName: string) {
+  return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
+}
+
+/**
+ * The items of menu-bar menu `index` as System Events sees them (what AppKit shows, including items it adds itself),
+ * one entry per item; a separator is "-". Null when System Events refuses or fails.
+ */
+export async function menuItemNames(target: string | number, index: number): Promise<string[] | null> {
+  const script = [
+    'set out to {}',
+    'tell application "System Events"',
+    `tell ${processRef(target)}`,
+    `repeat with i in (menu items of menu 1 of menu bar item ${index} of menu bar 1)`,
+    'set n to name of i',
+    'if n is missing value then set n to "-"',
+    'set end of out to n',
+    'end repeat',
+    'end tell',
+    'end tell',
+    "set AppleScript's text item delimiters to linefeed",
+    'return out as text',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 20_000);
+  return r.ok ? r.stdout.trim().split('\n') : null;
+}
+
+export const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
+
+/**
+ * Open menu bar item `index` of `processName` two ways and capture the screen each time.
+ * Run 39443865113 showed that `click` under `ignoring application responses` returned at once but no
+ * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
+ * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
+ */
+export async function captureOpenMenu(app: ElectronApplication, target: string | number, index: number, prefix: string, what: string, opts: { focus?: boolean } = {}) {
+  // `focus: false` when the app is already in front: focusApp can blur and refocus the window (run 39642950406), which
+  // closes an open tooltip before the menu does.
+  if (opts.focus !== false) await focusApp(app);
+  const child = spawn('osascript', ['-e', `tell application "System Events" to tell ${processRef(target)} to click menu bar item ${index} of menu bar 1`], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
+  const exited = new Promise<string>((resolve) => child.on('exit', (code, signal) => resolve(`exit ${code ?? signal}`)));
+  await sleep(1500);
+  const runningAfterDelay = child.exitCode === null && child.signalCode === null;
+  const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
+  child.kill('SIGTERM');
+  // A pending AXPress keeps System Events busy; restart it only on throwaway CI machines.
+  const unblock = process.env['CI'] ? await tryExec('killall', ['System Events']) : { ok: false, skipped: 'not CI' };
+  await sleep(800);
+  await pressEscape();
+  await sleep(300);
+  const click = {
+    shot: clickShot.file,
+    osascriptStillRunningAfter1500ms: runningAfterDelay,
+    osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
+    stderr: stderr.trim(),
+    killallSystemEvents: 'skipped' in unblock ? unblock.skipped : unblock.ok,
+  };
+
+  await focusApp(app);
+  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
+  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
+  keys.push('key code 125', 'end tell');
+  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
+  await sleep(1200);
+  // While the menu is open (the keyboard path leaves System Events free): what AX lists in it, and its frame.
+  const open = await openMenuInfo(target, index);
+  const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
+  await pressEscape();
+  await pressEscape();
+  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim(), open };
+  return { click, keyboard };
+}
+
+/** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */
+export async function pngPixels(page: Page, rel: string, points: ReadonlyArray<readonly [number, number]>): Promise<number[][]> {
+  const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');
+  return page.evaluate(async ({ b64, points }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    return points.map(([x, y]) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]);
+  }, { b64, points });
+}
+
+/**
+ * Geometric centroid (device px: pixel i covers [i, i + 1), so the centre of pixels 19–30 is 25.0) and size of the
+ * pixels in `box` whose RGB satisfies `match` (e.g. the red close button).
+ */
+export async function pngCentroid(page: Page, rel: string, box: { x: number; y: number; w: number; h: number }, match: 'red' | 'green'): Promise<{ x: number; y: number; n: number; width: number } | null> {
+  const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');
+  return page.evaluate(async ({ b64, box, match }) => {
+    const img = new Image();
+    img.src = `data:image/png;base64,${b64}`;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d')!;
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(box.x, box.y, box.w, box.h).data;
+    // Fixed predicates (the page's CSP has no unsafe-eval): macOS close (#ff5f57-ish) and zoom (#28c840-ish) buttons.
+    const test = (r: number, g: number, b: number) => (match === 'red' ? r > 200 && g > 60 && g < 130 && b > 50 && b < 120 : r < 120 && g > 150 && b < 120);
+    let sx = 0, sy = 0, n = 0;
+    for (let y = 0; y < box.h; y++) for (let x = 0; x < box.w; x++) {
+      const i = (y * box.w + x) * 4;
+      if (test(d[i]!, d[i + 1]!, d[i + 2]!)) { sx += x; sy += y; n++; }
+    }
+    return n ? { x: box.x + sx / n + 0.5, y: box.y + sy / n + 0.5, n, width: img.naturalWidth } : null;
+  }, { b64, box, match });
+}
+
+/** Items and frame of an open menu-bar menu as System Events sees them (null parts when it cannot tell). */
+export async function openMenuInfo(target: string | number, index: number): Promise<{ names: string[] | null; frame: { x: number; y: number; width: number; height: number } | null }> {
+  const names = await menuItemNames(target, index);
+  const r = await tryExec(
+    'osascript',
+    [
+      'tell application "System Events"',
+      `tell ${processRef(target)}`,
+      `set m to menu 1 of menu bar item ${index} of menu bar 1`,
+      'set p to position of m',
+      'set z to size of m',
+      'end tell',
+      'end tell',
+      'return (item 1 of p as text) & "," & (item 2 of p as text) & "," & (item 1 of z as text) & "," & (item 2 of z as text)',
+    ].flatMap((l) => ['-e', l]),
+    20_000,
+  );
+  const n = r.ok ? r.stdout.trim().split(',').map(Number) : [];
+  const frame = n.length === 4 && n.every(Number.isFinite) ? { x: n[0]!, y: n[1]!, width: n[2]!, height: n[3]! } : null;
+  return { names, frame };
+}
+
+/**
+ * Moves the real pointer (macOS: a warp plus a posted mouse-moved event, so AppKit sees the pointer leave) and returns
+ * where it was and where it is (global top-left coordinates). In full screen the menu bar and the title strip are
+ * revealed while the pointer is at the top of the screen (Task 8 R3-5: m3-09h of run 39652039788 showed both).
+ */
+export async function movePointer(x: number, y: number): Promise<{ before: number[] | null; after: number[] | null; error?: string }> {
+  if (!IS_MAC) return { before: null, after: null, error: 'not darwin' };
+  const js = [
+    "ObjC.import('CoreGraphics');",
+    'function loc() { var p = $.CGEventGetLocation($.CGEventCreate(null)); return [Math.round(p.x), Math.round(p.y)]; }',
+    'var before = loc();',
+    `var to = { x: ${Math.round(x)}, y: ${Math.round(y)} };`,
+    '$.CGWarpMouseCursorPosition(to);',
+    '$.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, to, $.kCGMouseButtonLeft));',
+    'JSON.stringify({ before: before, after: loc() });',
+  ].join(' ');
+  const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 20_000);
+  if (!r.ok) return { before: null, after: null, error: 'osascript failed' };
+  try {
+    return JSON.parse(r.stdout.trim()) as { before: number[]; after: number[] };
+  } catch {
+    return { before: null, after: null, error: 'unparsable' };
   }
 }

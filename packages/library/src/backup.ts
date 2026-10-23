@@ -76,7 +76,7 @@ export async function createBackup(args: {
   layout: LibraryLayout; db: Db; repo: LibraryRepository; destDir: string; includeAssets: boolean;
 }): Promise<BackupManifest> {
   const { layout, db, repo, destDir, includeAssets } = args;
-  await assertEmptyDir(destDir, '백업 폴더가 비어 있지 않습니다. 새 폴더를 선택하세요.');
+  await assertEmptyDir(destDir, '백업 폴더가 비어 있지 않습니다. 새\u00a0폴더를 선택하세요.');
 
   const tempDir = `${path.resolve(destDir)}.partial-${newId()}`;
   await fs.mkdir(tempDir, { recursive: true });
@@ -157,7 +157,7 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
   const validatedManifest = parseResult.data;
 
   if (validatedManifest.schemaVersion > LATEST_SCHEMA_VERSION) {
-    throw new LearnError('VALIDATION_FAILED', '이 백업은 더 새로운 버전의 앱에서 만들어졌습니다.');
+    throw new LearnError('VALIDATION_FAILED', '이\u00a0백업은 더 새로운 버전의 앱에서 만들어졌습니다.');
   }
 
   await assertEmptyDir(args.targetRoot, '복원 대상 폴더가 비어 있지 않습니다. 빈 폴더를 선택하세요.');

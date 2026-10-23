@@ -27,6 +27,12 @@ export interface ThemePair {
 export const hues = { neutral: 250, accent: 190 } as const;
 
 /**
+ * The accent teal light enough to keep 3:1 against tracks and surfaces in dark, where the accent fill (tuned for white
+ * text on it) does not: meter fills and selection rings.
+ */
+const meterTeal: ThemePair = { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' };
+
+/**
  * Theme colours. Keys become CSS custom properties in kebab case
  * (`bgWindow` → `--bg-window`). Values are OKLCH (or hex for fixed palettes).
  */
@@ -52,8 +58,19 @@ export const colors = {
   bgControlSelected: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0 / 0.2)' },
   /** Track behind segmented controls and progress bars. */
   bgTrack: { light: 'oklch(23% 0.01 250 / 0.07)', dark: 'oklch(100% 0 0 / 0.08)' },
+  /**
+   * The track of a segmented control on a grouped surface (the settings window's --bg-control groups). Recessed in dark:
+   * the usual lighter track over the group's own white 10 % left its labels at 4.39:1 and the selected one at 4.23:1.
+   */
+  bgTrackGrouped: { light: 'oklch(23% 0.01 250 / 0.07)', dark: 'oklch(0% 0 0 / 0.12)' },
   /** Modal backdrop. */
   bgScrim: { light: 'oklch(20% 0.01 250 / 0.24)', dark: 'oklch(0% 0 0 / 0.5)' },
+  /**
+   * macOS, a window that is not main: the toolbar takes the inactive window material's colour, so the title-bar band
+   * and the sidebar are one surface as in Finder (measured on the macos-15 runner, run 39631541294; Finder's toolbar
+   * 255 → 236 light, 38 → 20 dark, run 39653189858). Also the opaque sidebar's fill then (vibrancy off).
+   */
+  bgChromeInactive: { light: '#ececec', dark: '#141414' },
 
   // ── State fills (translucent so they work on every surface) ────────────────
   fillHover: { light: 'oklch(23% 0.01 250 / 0.05)', dark: 'oklch(100% 0 0 / 0.06)' },
@@ -64,6 +81,18 @@ export const colors = {
   // ── Lines ───────────────────────────────────────────────────────────────────
   /** Hairlines between panes, table header rule. */
   separator: { light: 'oklch(89.5% 0.004 250)', dark: 'oklch(33% 0.005 250)' },
+  /**
+   * Dividers drawn on a grouped or raised surface: settings groups, a sheet's cards, the palette, web menus. Translucent,
+   * as AppKit's separatorColor, so one value keeps about 1.36:1 on every surface it crosses in both themes (critic
+   * T14-m2: the opaque dark --separator turned darker than those surfaces, 1.08–1.12:1). tokens.test.ts keeps it in
+   * 1.25–1.45:1 on each of them.
+   */
+  separatorOnSurface: { light: 'oklch(23% 0.01 250 / 0.15)', dark: 'oklch(100% 0 0 / 0.1)' },
+  /**
+   * macOS, a window that is not main: the sidebar's edge and the toolbar's hairline. Black in dark, as Finder draws
+   * them (critic N4-4, run 39653189858); light keeps --separator.
+   */
+  separatorChromeInactive: { light: 'oklch(89.5% 0.004 250)', dark: 'oklch(0% 0 0)' },
   /** Control and card borders. */
   border: { light: 'oklch(86% 0.005 250)', dark: 'oklch(100% 0 0 / 0.12)' },
   /** ≥ 3:1 boundary for controls that need one (checkbox, radio, high-contrast mode). */
@@ -76,6 +105,17 @@ export const colors = {
   /** Placeholders, counts, disabled. ≥ 3:1 — never for information-bearing body text. */
   textTertiary: { light: 'oklch(60% 0.008 250)', dark: 'oklch(58% 0.008 250)' },
   textOnAccent: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0)' },
+  /**
+   * Chrome text of a window that is not main (design-spec 2.1): primary at 30 % (`inactiveOpacity`), as AppKit dims
+   * Finder's (measured 172/236 light, 85/20 dark, run 39642950406). Translucent, so one value fits toolbar, material
+   * and fills. Glyphs keep their solid colour and fade as a whole instead (`--opacity-inactive`).
+   */
+  textInactive: { light: 'oklch(23% 0.008 250 / 0.3)', dark: 'oklch(94% 0.004 250 / 0.3)' },
+  /**
+   * The selected sidebar row's name and count in a window that is not main: primary at 35 %, on the selection fill
+   * (Finder's selected label 147/211 = 2.05:1 light, 111/46 = 2.70:1 dark, run 39653189858).
+   */
+  textInactiveSelected: { light: 'oklch(23% 0.008 250 / 0.35)', dark: 'oklch(94% 0.004 250 / 0.35)' },
 
   // ── Accent (base / accent / contrast) ──────────────────────────────────────
   accent: { light: 'oklch(53% 0.088 190)', dark: 'oklch(50% 0.084 190)' },
@@ -83,10 +123,21 @@ export const colors = {
   accentPressed: { light: 'oklch(45% 0.076 190)', dark: 'oklch(46% 0.078 190)' },
   accentText: { light: 'oklch(49% 0.082 190)', dark: 'oklch(78% 0.1 190)' },
   accentSoft: { light: 'oklch(53% 0.088 190 / 0.11)', dark: 'oklch(72% 0.1 190 / 0.16)' },
+  /**
+   * A keycap on an accent fill (the palette's cursor row): a darkened patch, so its white label reads 6.6:1 (light) and
+   * 7.4:1 (dark) instead of the 3.6 / 4.0:1 a lightened one gave (critic T9-n1).
+   */
+  bgKbdOnAccent: { light: 'oklch(0% 0 0 / 0.16)', dark: 'oklch(0% 0 0 / 0.16)' },
   focus: { light: 'oklch(57% 0.096 190)', dark: 'oklch(72% 0.11 190)' },
   /** Progress fills, spinner arcs, scrubber "played": ≥ 3:1 against the track in both themes
       (the dark accent fill is too dark for that; it is tuned for white text on it). */
-  meter: { light: 'oklch(53% 0.088 190)', dark: 'oklch(66% 0.11 190)' },
+  meter: meterTeal,
+  /**
+   * A 2 px selection ring drawn on a surface (the selected theme tile; later the current thumbnail and drop card): ≥ 3:1
+   * against the surfaces it sits on. The dark accent fill is tuned for white text on it and gave 1.95:1 on a settings
+   * group. The meter's teal by definition (an alias, so the two cannot drift).
+   */
+  accentRing: meterTeal,
 
   // ── Semantic ────────────────────────────────────────────────────────────────
   danger: { light: 'oklch(56% 0.19 27)', dark: 'oklch(64% 0.18 25)' },
@@ -112,12 +163,41 @@ export type ColorToken = keyof typeof colors;
 /** `prefers-contrast: more` overrides: stronger lines and secondary text, no translucent borders. */
 export const colorsContrastMore = {
   separator: { light: 'oklch(62% 0.008 250)', dark: 'oklch(60% 0.008 250)' },
+  separatorOnSurface: { light: 'oklch(62% 0.008 250)', dark: 'oklch(64% 0.008 250)' }, // 3:1 on the lighter dark groups too
   border: { light: 'oklch(58% 0.008 250)', dark: 'oklch(64% 0.008 250)' },
   textSecondary: { light: 'oklch(36% 0.01 250)', dark: 'oklch(87% 0.006 250)' },
   textTertiary: { light: 'oklch(46% 0.01 250)', dark: 'oklch(74% 0.008 250)' },
   fillSelected: { light: 'oklch(23% 0.01 250 / 0.19)', dark: 'oklch(100% 0 0 / 0.22)' },
   accentText: { light: 'oklch(42% 0.072 190)', dark: 'oklch(84% 0.09 190)' },
 } as const satisfies Partial<Record<ColorToken, ThemePair>>;
+
+/**
+ * Sidebar text over the macOS vibrancy material (`:root[data-vibrancy='1'] .sidebar`; the opaque fallback keeps the
+ * base tokens). The material is the system's: the macos-15 runner measured #f6f6f6 in light and #383838 in dark (run
+ * 39618864364). In dark that is far lighter than the opaque `--bg-sidebar`, so the dark tertiary text is lifted and a
+ * selected row's count uses primary text. tokens.test.ts checks every sidebar text role on worst-case materials
+ * (dark #404040, light #f6f6f6). `sidebarCountSelected` exists only here (the opaque sidebar uses --text-secondary).
+ *
+ * The ⌘K launcher is a field on that material (Task 9): its translucent dark fill lightens the material further, and
+ * its keycap's fill more again. So in dark a field's placeholder and glyph (`fieldPlaceholder`, the tertiary role:
+ * 3:1 on the field, hovered and pressed) are lifted past the sidebar's tertiary, and a keycap's label (`kbdText`, a
+ * shortcut: 3:1 like the menus' and tooltips' tertiary shortcuts) is primary, as the shortcut sheet's keycaps are. Both
+ * exist only here: components/field.css and kbd.css fall back to --text-tertiary and --text-secondary elsewhere.
+ */
+export const colorsVibrancySidebar = {
+  textTertiary: { light: colors.textTertiary.light, dark: 'oklch(70% 0.008 250)' },
+  sidebarCountSelected: { light: colors.textSecondary.light, dark: colors.textPrimary.dark },
+  fieldPlaceholder: { light: colors.textTertiary.light, dark: 'oklch(76% 0.008 250)' },
+  kbdText: { light: colors.textSecondary.light, dark: colors.textPrimary.dark },
+} as const satisfies Record<string, ThemePair>;
+
+/** The same under `prefers-contrast: more` (the sidebar's own values would otherwise shadow the stronger ones). */
+export const colorsVibrancySidebarContrastMore = {
+  textTertiary: colorsContrastMore.textTertiary,
+  sidebarCountSelected: { light: colorsContrastMore.textSecondary.light, dark: colors.textPrimary.dark },
+  fieldPlaceholder: { light: colorsContrastMore.textTertiary.light, dark: colorsContrastMore.textSecondary.dark },
+  kbdText: { light: colorsContrastMore.textSecondary.light, dark: colors.textPrimary.dark },
+} as const satisfies Record<keyof typeof colorsVibrancySidebar, ThemePair>;
 
 /**
  * Annotation and tag colours (positions 1–8, keys 1–8). Same values in both themes;
@@ -170,24 +250,38 @@ export const fonts = {
 } as const;
 
 /** Type roles: size / line height / weight. Body is 13/18 like macOS. Korean UI avoids 700. */
+/**
+ * Font weights. Korean UI never goes above 600 (design-spec 4). `semibold` is every title and emphasis role; it is a
+ * token so its value can follow what macOS actually draws (Task 8 n6: at 600 Chromium picks SF Bold for Latin next to
+ * Apple SD Gothic Neo SemiBold for Hangul).
+ */
+export const fontWeight = { regular: 400, medium: 500, semibold: 600 } as const;
+
 export const typeScale = {
-  caption: { size: 11, line: 14, weight: 400 },
-  footnote: { size: 12, line: 16, weight: 400 },
-  body: { size: 13, line: 18, weight: 400 },
-  headline: { size: 13, line: 18, weight: 600 },
+  caption: { size: 11, line: 14, weight: fontWeight.regular },
+  footnote: { size: 12, line: 16, weight: fontWeight.regular },
+  body: { size: 13, line: 18, weight: fontWeight.regular },
+  headline: { size: 13, line: 18, weight: fontWeight.semibold },
   /** Multi-line Korean at UI size (dialog messages, transcript, descriptions). */
-  paragraph: { size: 13, line: 20, weight: 400 },
+  paragraph: { size: 13, line: 20, weight: fontWeight.regular },
   /** Reading text: empty-state copy, notes; Korean paragraphs at 14/22. */
-  callout: { size: 14, line: 22, weight: 400 },
-  title3: { size: 15, line: 20, weight: 600 },
-  title2: { size: 17, line: 22, weight: 600 },
-  title1: { size: 22, line: 28, weight: 600 },
-  mono: { size: 12, line: 16, weight: 400 },
+  callout: { size: 14, line: 22, weight: fontWeight.regular },
+  title3: { size: 15, line: 20, weight: fontWeight.semibold },
+  title2: { size: 17, line: 22, weight: fontWeight.semibold },
+  title1: { size: 22, line: 28, weight: fontWeight.semibold },
+  mono: { size: 12, line: 16, weight: fontWeight.regular },
 } as const;
 
 /** List/table row heights by density. */
 export const density = { compact: 24, regular: 28, comfortable: 32 } as const;
 export const defaultDensity = 'regular' satisfies keyof typeof density;
+
+/**
+ * UI text sizes in pt (prefs.fontSize, settings 글자 크기). Every type role scales by size / 13, rounded to whole px
+ * (line heights to the 2 px half-grid); bars, controls and rows keep their heights. Main window only.
+ */
+export const uiTextSizes = [12, 13, 14, 15] as const;
+export const defaultUiTextSize = 13;
 
 /** Window and panel geometry (px). */
 export const layout = {
@@ -262,3 +356,9 @@ export const shadows = {
 
 /** Focus ring geometry: 2 px `--focus` outline offset 1 px on controls, inset on rows. */
 export const focusRing = { width: 2, offset: 1 } as const;
+
+/**
+ * How far a window that is not main fades its chrome (design-spec 2.1): the alpha of --text-inactive, and the
+ * opacity of its glyphs, which keep their colour and fade as a whole so overlapping strokes do not darken (N4-1).
+ */
+export const inactiveOpacity = 0.3;

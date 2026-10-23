@@ -51,7 +51,7 @@ window.Mockup = (() => {
   }
 
   const toggle = (cls) =>
-    `<div class="icon-btn ${cls}" title="사이드바 보기/숨기기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
+    `<div class="icon-btn ${cls}" title="사이드바 가리기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
 
   /**
    * Window shell. Same DOM for both layouts; CSS grid areas place the sidebar under the
@@ -165,7 +165,7 @@ window.Mockup = (() => {
    * User/document text (titles, subtitles, PDF pages) is out of scope.
    */
   const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files';
-  const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽'];
+  const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];
     for (const el of document.querySelectorAll(COPY)) {

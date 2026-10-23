@@ -1,13 +1,12 @@
 // M0 spikes (@evidence): what the macOS runner lets us capture, and the packaged app.
 // Each spike records its outcome in evidence-results/spikes.json; a failed capture is data, not a test failure,
 // unless the app itself misbehaves.
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, launch, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
-import { EVIDENCE_ROOT, IS_MAC, focusApp, fullScreenShot, nativeWindowShot, pageShot, startRecording, startScreencast, tryExec, writeJson } from './capture';
+import { FIXTURES, launch, mainWindow, openItem, stubOpenDialog, type LaunchOptions, type Session } from '../e2e/helpers';
+import { EVIDENCE_ROOT, IS_MAC, captureOpenMenu, focusApp, fullScreenShot, menuBarNames, menuItemNames, nativeWindowShot, pageShot, pressEscape, startRecording, startScreencast, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -36,58 +35,6 @@ async function pngSize(rel: string | null): Promise<string | null> {
   const h = /pixelHeight: (\d+)/.exec(r.stdout)?.[1];
   return w && h ? `${w}x${h}` : null;
 }
-
-/** Names of the menu bar items System Events sees for `processName` (item 2 is the app menu). */
-async function menuBarNames(processName: string) {
-  return tryExec('osascript', ['-e', `tell application "System Events" to get name of every menu bar item of menu bar 1 of process "${processName}"`], 20_000);
-}
-
-const pressEscape = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 53'], 10_000);
-
-/**
- * Open menu bar item `index` of `processName` two ways and capture the screen each time.
- * Run 39443865113 showed that `click` under `ignoring application responses` returned at once but no
- * open menu was captured, so: (a) the plain, blocking AXPress click run in the background, and
- * (b) the keyboard: ⌃F2 focuses the menu bar (Apple menu), → moves to item `index`, ↓ opens it.
- */
-async function captureOpenMenu(app: ElectronApplication, processName: string, index: number, prefix: string, what: string) {
-  await focusApp(app);
-  const child = spawn('osascript', ['-e', `tell application "System Events" to tell process "${processName}" to click menu bar item ${index} of menu bar 1`], {
-    stdio: ['ignore', 'ignore', 'pipe'],
-  });
-  let stderr = '';
-  child.stderr?.on('data', (d: Buffer) => (stderr += d.toString()));
-  const exited = new Promise<string>((resolve) => child.on('exit', (code, signal) => resolve(`exit ${code ?? signal}`)));
-  await sleep(1500);
-  const runningAfterDelay = child.exitCode === null && child.signalCode === null;
-  const clickShot = await fullScreenShot(`${prefix}-click`, `${what}: blocking System Events click, captured while it runs`);
-  child.kill('SIGTERM');
-  // A pending AXPress keeps System Events busy; restart it only on throwaway CI machines.
-  const unblock = process.env['CI'] ? await tryExec('killall', ['System Events']) : { ok: false, skipped: 'not CI' };
-  await sleep(800);
-  await pressEscape();
-  await sleep(300);
-  const click = {
-    shot: clickShot.file,
-    osascriptStillRunningAfter1500ms: runningAfterDelay,
-    osascript: await Promise.race([exited, sleep(5000).then(() => 'still running')]),
-    stderr: stderr.trim(),
-    killallSystemEvents: 'skipped' in unblock ? unblock.skipped : unblock.ok,
-  };
-
-  await focusApp(app);
-  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
-  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
-  keys.push('key code 125', 'end tell');
-  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
-  await sleep(1200);
-  const keyShot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ via System Events`);
-  await pressEscape();
-  await pressEscape();
-  const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim() };
-  return { click, keyboard };
-}
-
 
 async function freshSession(opts: LaunchOptions = {}): Promise<Session & { tmp: string }> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-'));
@@ -170,7 +117,8 @@ test('spike 3+4: native context menu and menu bar capture', TAG, async () => {
         { label: '휴지통으로 이동' },
       ]);
       (globalThis as { __evidenceMenu?: Electron.Menu }).__evidenceMenu = menu;
-      setTimeout(() => menu.popup({ window: BrowserWindow.getAllWindows()[0]!, x: 420, y: 260 }), 0);
+      const main = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=main'))!;
+      setTimeout(() => menu.popup({ window: main, x: 420, y: 260 }), 0);
     });
     await sleep(1200);
     const ctxShot = await fullScreenShot('spike3-context-menu', 'temporary native context menu opened with Menu.popup()');
@@ -243,11 +191,7 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
     ]);
     return { outcome, ms: Date.now() - t0 };
   };
-  const winState = () =>
-    s.app.evaluate(({ BrowserWindow }) => {
-      const w = BrowserWindow.getAllWindows()[0]!;
-      return { isFullScreen: w.isFullScreen(), bounds: w.getBounds() };
-    });
+  const winState = async () => (await mainWindow(s.app)).evaluate((w) => ({ isFullScreen: w.isFullScreen(), bounds: w.getBounds() }));
   const docFullscreen = async () => {
     const r = await Promise.race([s.page.evaluate(() => document.fullscreenElement !== null), sleep(5000).then(() => 'timeout')]);
     return r;
@@ -268,7 +212,7 @@ test('extra: HTML video fullscreen enter/exit', TAG, async () => {
       const afterExit = { window: await winState(), documentFullscreen: await docFullscreen() };
       let recovery: Record<string, unknown> | null = null;
       if (exit.outcome !== 'resolved' || afterExit.window.isFullScreen) {
-        await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setFullScreen(false));
+        await (await mainWindow(s.app)).evaluate((w) => w.setFullScreen(false));
         await sleep(3000);
         recovery = { via: 'BrowserWindow.setFullScreen(false)', window: await winState(), documentFullscreen: await docFullscreen() };
       }
@@ -338,4 +282,130 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
   } finally {
     await closeSession(s);
   }
+});
+
+/** A menu item name that reads English: Latin letters and no Hangul (a separator is "-"; "Learn" is the app's name). */
+const readsEnglish = (name: string) => name !== '-' && name !== 'Learn' && /[A-Za-z]{2}/.test(name) && !/[\u3131-\u318e\uac00-\ud7a3]/.test(name);
+
+/** Info.plist values of an app bundle (PlistBuddy prints arrays as `Array {` … `}`); null when the key is absent. */
+async function plistValue(appDir: string, key: string): Promise<string | string[] | null> {
+  const r = await tryExec('/usr/libexec/PlistBuddy', ['-c', `Print :${key}`, path.join(appDir, 'Contents', 'Info.plist')]);
+  if (!r.ok) return null;
+  const out = r.stdout.trim();
+  if (!out.startsWith('Array {')) return out;
+  return out.split('\n').slice(1, -1).map((l) => l.trim()).filter(Boolean);
+}
+
+async function bundleLocalization(appDir: string) {
+  const resources = path.join(appDir, 'Contents', 'Resources');
+  return {
+    lproj: fs.existsSync(resources) ? fs.readdirSync(resources).filter((n) => n.endsWith('.lproj')).sort() : [],
+    developmentRegion: await plistValue(appDir, 'CFBundleDevelopmentRegion'),
+    localizations: await plistValue(appDir, 'CFBundleLocalizations'),
+  };
+}
+
+// Task 14: AppKit's own items in 편집 and 윈도우 (AutoFill, Start Dictation…, Emoji & Symbols, Close All …) came out in
+// English on the runner (Task 8), whose system language is English. The packaged app is launched once with
+// `-AppleLanguages (ko)` (a user whose Mac is in Korean). If those items are still English, it is launched once more
+// from a copy whose Info.plist says what electron-builder's `extendInfo` would (CFBundleDevelopmentRegion ko,
+// CFBundleLocalizations [ko, en]) with a ko.lproj in its Resources if the bundle had none, so one run tells whether the
+// bundle needs it. The 편집 menu is captured open each time. Data, like every spike: only a launch failure fails it.
+test('spike 6: AppKit menu items in Korean (packaged, -AppleLanguages (ko))', TAG, async () => {
+  test.skip(!PACKAGED || !IS_MAC, 'the packaged macOS app (workflow input packaged=true)');
+  // Review M5: every inner step is bounded by what is left before this deadline, 30 s inside the test's own timeout,
+  // so no step outlasts the test and the spikes.json entry is always written. The as-built result is written first.
+  test.setTimeout(300_000);
+  const deadline = Date.now() + 270_000;
+  const left = () => deadline - Date.now();
+  const bundle = path.resolve(PACKAGED, '../../..');
+  const attempt = async (executablePath: string, label: string) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-spike-ko-'));
+    const errors: string[] = [];
+    let s: Session | null = null;
+    let attempts = 0;
+    for (attempts = 1; attempts <= 3 && !s && left() > 60_000; attempts++) {
+      try {
+        s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), { executablePath, args: ['-AppleLanguages', '(ko)'] });
+      } catch (e) {
+        errors.push(String((e as Error).message ?? e).slice(0, 300));
+      }
+    }
+    attempts -= 1;
+    try {
+      if (!s) return { launched: false, attempts, errors };
+      await focusApp(s.app);
+      const pid = s.app.process().pid!;
+      const locale = await s.app.evaluate(({ app }) => ({ locale: app.getLocale(), preferred: app.getPreferredSystemLanguages(), system: app.getSystemLocale() }));
+      const bar = await menuBarNames('Learn');
+      const edit = await menuItemNames(pid, 4);
+      const windowMenu = await menuItemNames(pid, 7);
+      const opened = await captureOpenMenu(s.app, pid, 4, `spike6-ko-${label}-menu-edit`, `packaged, -AppleLanguages (ko), ${label}: 편집 open`);
+      const english = [...new Set([...(edit ?? []), ...(windowMenu ?? [])].filter(readsEnglish))];
+      return {
+        launched: true,
+        attempts,
+        errors,
+        locale,
+        menuBar: bar.ok ? bar.stdout.trim() : `error: ${bar.stderr.trim()}`,
+        edit,
+        window: windowMenu,
+        english,
+        shots: [opened.click.shot, opened.keyboard.shot],
+      };
+    } finally {
+      await s?.app.close().catch(() => {});
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  };
+  type Attempt = Awaited<ReturnType<typeof attempt>>;
+  const englishLeft = (a: Attempt) => !a.launched || (a as { english: string[] }).english.length > 0 || !(a as { edit: string[] | null }).edit;
+
+  const asBuilt = { bundle: await bundleLocalization(bundle), ...(await attempt(PACKAGED, 'as-built')) };
+  saveSpike('6-menu-language', { result: 'as built only so far (the run stopped before the verdict)', args: ['-AppleLanguages', '(ko)'], asBuilt });
+  let withKo: Record<string, unknown> | null = null;
+  // The copy (ditto ≤ 60 s, codesign ≤ 120 s, a launch and the menus) needs about 2.5 min at worst: skipped, with a
+  // note, when less is left.
+  if (asBuilt.launched && englishLeft(asBuilt) && left() < 150_000) withKo = { skipped: `only ${Math.round(left() / 1000)} s left before the spike's deadline` };
+  else if (asBuilt.launched && englishLeft(asBuilt)) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-ko-app-'));
+    try {
+      const copy = path.join(dir, 'Learn.app');
+      const steps: Record<string, boolean | string> = {};
+      const run = async (name: string, cmd: string, args: string[], ms = 15_000) => {
+        const r = await tryExec(cmd, args, Math.max(5_000, Math.min(ms, left() - 90_000)));
+        steps[name] = r.ok ? true : (r.stderr || r.stdout).trim().split('\n')[0] ?? 'failed';
+        return r.ok;
+      };
+      const plist = path.join(copy, 'Contents', 'Info.plist');
+      let ok = await run('ditto', 'ditto', [bundle, copy], 60_000);
+      if (ok) {
+        await run('delete CFBundleLocalizations', '/usr/libexec/PlistBuddy', ['-c', 'Delete :CFBundleLocalizations', plist]); // absent is fine
+        ok =
+          ((await run('set CFBundleDevelopmentRegion', '/usr/libexec/PlistBuddy', ['-c', 'Set :CFBundleDevelopmentRegion ko', plist])) ||
+            (await run('add CFBundleDevelopmentRegion', '/usr/libexec/PlistBuddy', ['-c', 'Add :CFBundleDevelopmentRegion string ko', plist]))) &&
+          (await run('add CFBundleLocalizations', '/usr/libexec/PlistBuddy', ['-c', 'Add :CFBundleLocalizations array', '-c', 'Add :CFBundleLocalizations:0 string ko', '-c', 'Add :CFBundleLocalizations:1 string en', plist]));
+        const ko = path.join(copy, 'Contents', 'Resources', 'ko.lproj');
+        if (ok && !fs.existsSync(ko)) {
+          fs.mkdirSync(ko);
+          steps['mkdir ko.lproj'] = true;
+        }
+        if (ok) ok = await run('codesign', 'codesign', ['--force', '--deep', '--sign', '-', copy], 120_000);
+      }
+      withKo = ok ? { bundle: await bundleLocalization(copy), steps, ...(await attempt(path.join(copy, 'Contents', 'MacOS', path.basename(PACKAGED)), 'info-plist-ko')) } : { steps };
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  const verdict = !asBuilt.launched
+    ? 'could not launch the packaged app'
+    : !englishLeft(asBuilt)
+      ? 'Korean as built: no bundle change needed'
+      : !withKo || !(withKo as { launched?: boolean }).launched
+        ? 'English as built; the Info.plist ko copy could not be tried (see steps)'
+        : englishLeft(withKo as Attempt)
+          ? 'English even with Info.plist ko: AppKit follows the system language the runner has (manual on a Korean Mac, P6 packaging)'
+          : 'Korean only with Info.plist ko: add extendInfo (CFBundleDevelopmentRegion, CFBundleLocalizations) to electron-builder.yml';
+  saveSpike('6-menu-language', { result: verdict, args: ['-AppleLanguages', '(ko)'], asBuilt, withInfoPlistKo: withKo });
+  expect(asBuilt.launched, `the packaged app did not start: ${(asBuilt as { errors: string[] }).errors.join(' | ')}`).toBe(true);
 });

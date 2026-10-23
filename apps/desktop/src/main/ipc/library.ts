@@ -1,21 +1,28 @@
-import { BrowserWindow, dialog, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
 import {
-  Channels, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, LearnError, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
-import { relinkAsset } from '@learn/library';
+import { openableFile, relinkAsset, resolveAssetPath } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
+import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
 const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
-  { name: 'PDF·동영상', extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
-  { name: '모든 파일', extensions: ['*'] },
+  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
+  { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 
-async function showOpen(event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
+/**
+ * The open panel, hung on the asking window as a sheet (macOS) through windows.asSheet, like the settings window's
+ * dialogs: the window stays main but is not key under it (no rings, no tooltips, 전체 화면 waits), and is re-read once
+ * it is key again (follow-up D: before, the main window kept its rings under its own ⌘O panel). Without a window the
+ * panel stands alone, as before.
+ */
+async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenDialogOptions): Promise<string[]> {
   const win = BrowserWindow.fromWebContents(event.sender);
-  const res = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+  const res = win ? await deps.windows.asSheet(win, () => dialog.showOpenDialog(win, options)) : await dialog.showOpenDialog(options);
   return res.canceled ? [] : res.filePaths;
 }
 
@@ -29,7 +36,7 @@ function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     const ctx = deps.getContext();
-    const paths = await showOpen(event, { title: '자료 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(deps, event, { title: '파일 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
     return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
   });
 
@@ -42,7 +49,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();
-    const [picked] = await showOpen(event, { title: '원본 파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
+    const [picked] = await showOpen(deps, event, { title: '원본\u00a0파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
     await relinkAsset(ctx.repo, assetId, picked);
     const itemIds = ctx.repo.itemIdsForAsset(assetId);
@@ -78,4 +85,30 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.listTrash, emptyInput, () => deps.getContext().repo.listTrash());
 
   handle(Channels.library.duplicateGroups, emptyInput, () => deps.getContext().repo.duplicateGroups());
+
+  /**
+   * The file to hand the OS for an item, re-checked first (a missing file is reported, never revealed): a name the OS
+   * can open by its extension (openableFile: the named copy under derived/open/ for a managed asset, or for a linked file
+   * whose extension misleads; final review I1). The renderer never sees a path.
+   */
+  async function existingFile(itemId: string): Promise<string> {
+    const ctx = deps.getContext();
+    const item = await refreshItemAvailability(ctx, itemId);
+    const copy = mainStrings.itemFile;
+    if (item.availability === 'missing') throw new LearnError('NOT_FOUND', item.storageMode === 'managed' ? copy.managedMissing : copy.linkedMissing);
+    const asset = ctx.repo.getAsset(item.assetId);
+    if (!asset) throw new LearnError('NOT_FOUND', copy.noItem);
+    return openableFile(ctx.layout, asset, item.title, resolveAssetPath(ctx.layout, asset));
+  }
+
+  // Finder에서 보기 / 기본 앱으로 열기 (design-spec 7.3, 10.7): the renderer has no shell; main resolves the path itself.
+  handle(Channels.library.showInFolder, itemIdInput, async ({ itemId }) => {
+    shell.showItemInFolder(await existingFile(itemId));
+  });
+
+  handle(Channels.library.openExternally, itemIdInput, async ({ itemId }) => {
+    // openPath resolves with the OS's error text (English, may name the path): logged by code only, never shown.
+    const failure = await shell.openPath(await existingFile(itemId));
+    if (failure) throw new LearnError('INTERNAL', mainStrings.itemFile.noApp);
+  });
 }

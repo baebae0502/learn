@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { FIXTURES, launch, openItem, stubOpenDialog } from './helpers';
+import { FIXTURES, launch, mainWindow, openItem, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -14,15 +14,14 @@ test.beforeAll(() => {
 
 const IS_MAC = process.platform === 'darwin';
 
-const windowIsFullScreen = (app: ElectronApplication) =>
-  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isFullScreen());
+const windowIsFullScreen = async (app: ElectronApplication) => (await mainWindow(app)).evaluate((w) => w.isFullScreen());
 
 /** Arm a main-process flag that flips when the window's 'enter-full-screen' fires (end of the macOS transition). */
 async function armEnterFullScreen(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ BrowserWindow }) => {
+  await (await mainWindow(app)).evaluate((w) => {
     const g = globalThis as { __learnEnteredFullScreen?: boolean };
     g.__learnEnteredFullScreen = false;
-    BrowserWindow.getAllWindows()[0]!.once('enter-full-screen', () => {
+    w.once('enter-full-screen', () => {
       g.__learnEnteredFullScreen = true;
     });
   });
@@ -124,7 +123,7 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
 
   // Unsupported codec → explained, not silent
   await openItem(page, 'sample-mpeg4part2');
-  await expect(page.getByTestId('video-error')).toContainText('코덱');
+  await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   await page.screenshot({ path: testInfo.outputPath('04-unsupported.png') });
   await page.getByTestId('viewer-back').click();
 

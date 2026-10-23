@@ -1,0 +1,131 @@
+import { BrowserWindow, screen } from 'electron';
+import { windowBackground } from '../renderer/src/design/tokens.generated';
+import { REMEASURE_MS, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
+import { mainStrings } from './strings';
+import { currentTheme } from './theme';
+import { trackWindowState } from './window-state';
+
+export const SETTINGS_WIDTH = 600;
+/** Off a main window, the settings window opens this far below its top edge (centred across it). */
+const BELOW_MAIN_TOP = 96;
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Where the settings window goes over a main window: centred across it, BELOW_MAIN_TOP below its top, then moved to lie
+ * wholly inside the work area of its display (final review m4: a main window low on the screen, or on a second display,
+ * put it partly off screen; AppKit only keeps the title bar below the menu bar). Taller than the work area: its top.
+ */
+export function settingsPosition(main: Rect, size: { width: number; height: number }, workArea: Rect): { x: number; y: number } {
+  const x = Math.round(main.x + (main.width - size.width) / 2);
+  const y = main.y + BELOW_MAIN_TOP;
+  return {
+    x: Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - size.width)),
+    y: Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - size.height)),
+  };
+}
+
+export interface SettingsWindow {
+  /** ⌘, : opens the settings window, or brings the open one to the front. */
+  open(): BrowserWindow;
+  /** The open settings window, if any (theme changes reach it by name). */
+  current(): BrowserWindow | null;
+}
+
+/**
+ * ⌘, (design-spec 6 설정 창): one standard window with the title "설정", 600 wide, as tall as its content (also when a
+ * message appears in it), not resizable by hand. Changes apply at once; it has no 완료 or × button of its own (closed by
+ * its traffic light or ⌘W).
+ */
+export function createSettingsWindow(deps: { preload: string; url(): string; main(): BrowserWindow | null }): SettingsWindow {
+  let win: BrowserWindow | null = null;
+  /** Shown by its sized path: until then a second ⌘, shows nothing unsized (final review m4); the sized show comes soon. */
+  let sized = false;
+  return {
+    current: () => (win && !win.isDestroyed() ? win : null),
+    open(): BrowserWindow {
+      if (win && !win.isDestroyed()) {
+        if (!sized) return win; // still being measured: it shows itself, sized, in a moment (and takes the focus then)
+        win.show();
+        win.focus();
+        return win;
+      }
+      sized = false;
+      const created = new BrowserWindow({
+        width: SETTINGS_WIDTH,
+        height: 560, // measured at this height first, then fitted to the content
+        useContentSize: true,
+        show: false,
+        title: mainStrings.settingsWindow.title,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        fullscreenable: false,
+        autoHideMenuBar: true,
+        backgroundColor: windowBackground[currentTheme()],
+        webPreferences: {
+          preload: deps.preload,
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          webSecurity: true,
+          spellcheck: false,
+          backgroundThrottling: false,
+        },
+      });
+      win = created;
+      // ⌘W or the close light: off the screen first, then torn down. Closing tears the page down before AppKit takes the
+      // window away, which showed an empty body for 2 frames (Mac run 2, critique n2); hidden, that happens unseen.
+      created.on('close', () => {
+        if (!created.isDestroyed() && created.isVisible()) created.hide();
+      });
+      created.on('closed', () => {
+        if (win === created) win = null;
+      });
+      // Not key: no rings, neutral selection; under its own sheet it stays main (design-spec 2.1, Task 8 window states).
+      trackWindowState(created);
+      created.once('ready-to-show', () => {
+        void (async () => {
+          // Rendered, then its font loaded (at most 300 ms more), then measured and shown: never boxes with no text
+          // (T13-m6), and the height is the one its own font gives.
+          const rendered = await contentHeight(created.webContents, '[data-settings-root]', 480);
+          await fontsReady(created.webContents, '[data-settings-root]');
+          if (created.isDestroyed()) return;
+          // Re-measured with its own font; briefly (the page has rendered), keeping the first height otherwise, so a page
+          // that never renders still shows within the first measurement's 5 s.
+          const height = await contentHeight(created.webContents, '[data-settings-root]', rendered, REMEASURE_MS);
+          if (created.isDestroyed()) return;
+          created.setContentSize(SETTINGS_WIDTH, height);
+          const main = deps.main();
+          if (main && !main.isDestroyed()) {
+            const b = main.getBounds();
+            const size = created.getBounds(); // the frame, title bar included
+            // The display it would land on, then that display's work area.
+            const { workArea } = screen.getDisplayMatching({ x: Math.round(b.x + (b.width - size.width) / 2), y: b.y + BELOW_MAIN_TOP, width: size.width, height: size.height });
+            const at = settingsPosition(b, size, workArea);
+            created.setPosition(at.x, at.y);
+          }
+          await markSized(created.webContents);
+          sized = true;
+          created.show();
+          // A message that appears (a refused folder) or goes makes the window as tall as its content again; on macOS the
+          // bottom edge slides as AppKit's own windows do (`animate` is ignored elsewhere).
+          followContentHeight(created.webContents, '[data-settings-root]', height, (next) => {
+            if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, next, true);
+          });
+        })().catch(() => {
+          // Only a window closed mid-measure gets here; otherwise show it unsized rather than not at all.
+          sized = true;
+          if (!created.isDestroyed()) created.show();
+        });
+      });
+      void created.loadURL(deps.url());
+      return created;
+    },
+  };
+}

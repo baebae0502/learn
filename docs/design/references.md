@@ -2,6 +2,8 @@
 
 Learn은 아래 제품에서 **특성(구조·관례·수치)** 만 참고한다. 코드·이미지·아이콘·글꼴·문구는 가져오지 않았다. 특히 Zotero는 AGPL이므로 `reader`·`note-editor`·스타일시트를 열람해 옮기지 않았고, 공개 문서와 사용 관찰만 근거로 삼았다. SF Symbols는 라이선스상 쓰지 않는다.
 
+(2026-10-22) Learn은 AGPL-3.0-or-later로 공개하기로 했다(ADR-0011). 그래서 이제 AGPL 코드(예: SingleFile, Zotero 번역기)를 가져다 쓸 수 있다. 다만 이 문서는 여전히 UX 특성의 참고 목록이고, 가져다 쓰는 코드는 해당 마일스톤의 계획과 ADR이 정한다. 위 문장은 M1–M3에 대해 사실 그대로 둔다.
+
 ## Zotero 7 (데스크톱)
 출처: https://www.zotero.org/blog/zotero-7/ · https://www.zotero.org/support/collections_and_tags · https://www.zotero.org/support/sorting · https://www.zotero.org/support/pdf_reader · https://www.zotero.org/support/kb/keyboard_shortcuts · https://www.zotero.org/support/preferences/general
 

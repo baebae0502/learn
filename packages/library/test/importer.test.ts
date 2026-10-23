@@ -107,9 +107,14 @@ describe('failures', () => {
     const dir = tempDir('src');
     const txt = path.join(dir, 'notes.txt');
     fs.writeFileSync(txt, 'hello');
-    expect(await importer.importOne(txt, { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'UNSUPPORTED_TYPE' });
+    // Cause, then the next step; "PDF와 동영상" and "가져올 수" stay together (U+00A0) when a toast wraps the line.
+    expect(await importer.importOne(txt, { mode: 'managed' })).toMatchObject({
+      status: 'failed',
+      code: 'UNSUPPORTED_TYPE',
+      message: '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM)을 가져올\u00a0수 있습니다.',
+    });
     expect(await importer.importOne(path.join(dir, 'nope.pdf'), { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'NOT_FOUND' });
-    expect(await importer.importOne(dir, { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'UNSUPPORTED_TYPE' });
+    expect(await importer.importOne(dir, { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'UNSUPPORTED_TYPE', message: '일반 파일만 가져올\u00a0수 있습니다.' });
   });
 
   it('leaves no DB rows and no staging file when copying fails after staging', async () => {

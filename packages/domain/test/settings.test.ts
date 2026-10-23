@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
-import { parseSetting, prefsSchema } from '../src/settings';
+import { DEFAULT_PREFS, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
 const code = (fn: () => unknown): string | undefined => {
@@ -28,6 +28,9 @@ describe('settings registry', () => {
 describe('prefs', () => {
   it('has defaults', () => {
     expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null });
+    // What a window shows when reading prefs failed (renderer Boot falls back to it).
+    expect(DEFAULT_PREFS).toEqual(prefsSchema.parse({}));
+    expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
   });
   it('rejects invalid values', () => {
     expect(prefsSchema.safeParse({ theme: 'neon' }).success).toBe(false);
@@ -35,7 +38,7 @@ describe('prefs', () => {
   });
 });
 
-import { prefsSetInput } from '../src/ipc';
+import { prefsPatchInput, prefsSetInput } from '../src/ipc';
 
 describe('prefs patch input', () => {
   it('keeps omitted keys omitted', () => {
@@ -57,5 +60,13 @@ describe('prefs values follow the design spec', () => {
     for (const fontSize of [12, 13, 14, 15] as const) expect(prefsSetInput.parse({ fontSize })).toEqual({ fontSize });
     expect(prefsSetInput.safeParse({ density: 'cozy' }).success).toBe(false);
     expect(prefsSetInput.safeParse({ fontSize: 16 }).success).toBe(false);
+  });
+});
+
+describe('prefs inputs (R4)', () => {
+  it('the renderer cannot set libraryRoot; main can', () => {
+    expect(prefsSetInput.safeParse({ libraryRoot: '/tmp/lib' }).success).toBe(false);
+    expect(prefsSetInput.parse({ fontSize: 14, density: 'compact' })).toEqual({ fontSize: 14, density: 'compact' });
+    expect(prefsPatchInput.parse({ libraryRoot: '/tmp/lib' })).toEqual({ libraryRoot: '/tmp/lib' });
   });
 });

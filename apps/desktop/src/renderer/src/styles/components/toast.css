@@ -1,0 +1,112 @@
+@layer components {
+  /* Escape listener around the portalled region (ui/toasts.tsx); no box of its own. */
+  .toast-keys {
+    display: contents;
+  }
+  .toasts {
+    position: fixed;
+    z-index: 45;
+    right: var(--space-16);
+    bottom: var(--space-16);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    width: 360px;
+    outline: none;
+  }
+  .toast {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    column-gap: var(--space-12);
+    row-gap: var(--space-4);
+    align-items: start;
+    padding: var(--space-12) var(--space-12) var(--space-12) var(--space-16);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    outline: none;
+    animation: rise-in var(--duration-base) var(--ease-standard);
+  }
+  .toast[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  /* The 22 px close button sits on the 18 px title line: a title-only error toast stays 42, × centred on the line. */
+  .toast > .icon-btn.sm {
+    margin-block: -2px;
+  }
+  .toast .t-icon {
+    display: grid;
+    margin-top: 1px;
+  }
+  /* Title 18 + body 16 with no gap: one line = 12 + 18 + 12 = 42, two lines = 58 (mockup .toast). */
+  .toast .t-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+  }
+  .toast .t-title {
+    font: var(--type-headline);
+  }
+  /* Description: one-line rows (file name + cause, never re-wrapped), then the paragraph (next step, pretty). */
+  .toast .t-desc {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* A long file name gives way first (down to 3em); the cause keeps its width and is cut only past what is left. */
+  .toast .t-line {
+    display: flex;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .toast .t-name {
+    flex: 0 1 auto;
+    min-width: 3em;
+  }
+  .toast .t-cause {
+    flex: 0 0 auto;
+    max-width: calc(100% - 3em);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast .t-hint {
+    display: block;
+    white-space: pre-line;
+  }
+  .toast .t-line + .t-hint {
+    margin-top: var(--space-4);
+  }
+  /* Progress toast (M6): bar + % on the row under title and file name, across the text and action columns. */
+  .toast .t-progress {
+    grid-column: 2 / 4;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+  .spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-track);
+    border-top-color: var(--meter);
+    border-right-color: var(--meter);
+    flex: none;
+    animation: spin 900ms linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .spinner {
+      animation: none;
+    }
+  }
+  @keyframes spin {
+    to {
+      rotate: 1turn;
+    }
+  }
+}

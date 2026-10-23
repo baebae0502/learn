@@ -27,7 +27,7 @@ M2에서 테마·밀도·정렬·창 배치·읽기 위치를 저장하기 시�
 - 키를 추가하려면 레지스트리에 zod 스키마를 넣는다. DB 마이그레이션은 필요 없다.
 - 환경설정은 필드마다 따로 검증한다(`prefsFields`). 파일에 없는 필드는 기본값을 쓰고, 값이 잘못된 필드는 **그 필드만** 기본값으로 쓰며 로그에는 `PREFS_FIELD_INVALID <필드 이름>`만 남긴다. 나머지 필드, 특히 `libraryRoot`는 그대로 쓴다. 필드 하나 때문에 파일 전체를 기본값으로 되돌리거나 격리하지 않는다(§3).
 - 모르는 키는 앱에 노출하지 않지만 버리지도 않는다. 저장할 때 패치를 **파일에 저장돼 있던 객체 위에** 덮어 쓰므로, 더 새로운 빌드가 쓴 키와 이 빌드가 읽지 못하는 값은 이전 빌드가 다른 값을 저장해도 남는다. 파일에 없던 알려진 필드는 현재 값(기본값)으로 채워 쓴다.
-- 패치 자체는 `prefsSetInput`(알려진 필드만, `strict`)으로 엄격하게 검증한다. 모르는 키나 잘못된 값은 `VALIDATION_FAILED`이고 아무것도 쓰지 않는다. 패치에서 `undefined`로 온 키는 "변경 없음"이지 기본값으로 되돌리는 것이 아니다. 상대 경로 `libraryRoot`는 저장을 거부하고, 손으로 고친 상대 경로는 무시한다.
+- 패치 자체는 엄격하게 검증한다(알려진 필드만, `strict`): 렌더러가 보내는 `prefs.set`은 `prefsSetInput`(`libraryRoot` 없음, 아래 "라이브러리 위치"), main 안의 저장소 입력은 `prefsPatchInput`이다. 모르는 키나 잘못된 값은 `VALIDATION_FAILED`이고 아무것도 쓰지 않는다. 패치에서 `undefined`로 온 키는 "변경 없음"이지 기본값으로 되돌리는 것이 아니다. 상대 경로 `libraryRoot`는 저장을 거부하고, 손으로 고친 상대 경로는 무시한다.
 
 ### 3. 환경설정 파일의 쓰기와 손상 처리 (`apps/desktop/src/main/prefs.ts`)
 - 쓰기는 원자적이다: 같은 폴더에 프로세스·호스트·난수가 들어간 임시 파일 → fsync → rename → 폴더 fsync. 크래시 후에는 옛 파일이나 새 파일 중 하나가 남고 반쪽 파일은 없다(홈이 NFS로 공유될 수 있어 임시 이름에 호스트를 넣는다).
@@ -50,6 +50,7 @@ M2에서 테마·밀도·정렬·창 배치·읽기 위치를 저장하기 시�
 ### 6. 비밀값 금지
 - 세 저장소 어디에도 API 키·토큰·비밀번호를 두지 않는다. `preferences.json`은 평문이고 `library.sqlite`는 백업·내보내기로 다른 곳에 복사된다. 키 레지스트리와 `prefsSchema`에도 그런 필드를 추가하지 않는다.
 - 외부 서비스 키는 P3에서 OS 키체인(macOS Keychain)에 저장하고, 설정에는 "키가 설정됨" 같은 상태 표시나 키체인 항목 이름만 둔다.
+  - (2026-10-22) 시점이 바뀌었다: ACP 튜터(T1)는 Learn이 키나 토큰을 다루지 않으므로 키체인은 나중의 API 키 어댑터에서 쓴다(ADR-0010). 저장 규칙은 그대로다.
 - 로그에는 환경설정·설정 값을 남기지 않는다(오류 코드만).
 
 ## 근거
@@ -61,3 +62,11 @@ M2에서 테마·밀도·정렬·창 배치·읽기 위치를 저장하기 시�
 ## 검증
 - 단위: `prefs.test.ts`(기본값·병합·undefined 무시·필드별 기본값과 `libraryRoot` 유지·모르는 키 보존·패치 검증·원자적 쓰기·폴더 fsync·손상/읽기 불가 격리·읽기 전용·`LEARN_LIBRARY_DIR` 우선), `settings-repository.test.ts`, `settings.test.ts`, `migrate.test.ts` "migration v2 (organize)", `backup.test.ts`(v2 counts에 `readingPositions`), `reading-repository.test.ts`(`markOpened`: 행이 없으면 시작 위치로 생성, 있으면 `opened_at`만 갱신), `apps/desktop/src/main/ipc/reader.test.ts`(`getPosition`은 순수 읽기, `open`은 알림 없음).
 - E2E(`tests/e2e/platform.spec.ts`): "prefs: theme dark survives a restart and drives nativeTheme.themeSource", "settings: library.sort survives a restart; an unregistered key is VALIDATION_FAILED". `position.spec.ts`: 읽기 위치 복원, "opening a PDF records openedAt even when the page never changes".
+- M3: `packages/domain/test/settings.test.ts` "prefs inputs (R4)", `apps/desktop/src/main/library-folder.test.ts`, `apps/desktop/src/main/ipc/app.test.ts`, E2E `tests/e2e/settings.spec.ts`.
+
+## 라이브러리 위치 (M3)
+- `libraryRoot`는 렌더러가 바꿀 수 없다(`prefs.set` 입력에서 제외). 설정 창의 "다른 폴더 선택…"은 `app.chooseLibraryFolder`를 부르고, main이 폴더 대화상자를 띄워 존재·디렉터리·쓰기 가능 여부를 확인한 뒤, "다시 시작해야 합니다" 확인을 받고 저장·재시작한다. 렌더러는 경로를 보내지 않는다(이 채널은 입력이 없다).
+- 두 대화상자(폴더 선택, 다시 시작 확인)는 설정 창에 붙는 시트다(macOS). 시트가 열린 동안 설정 창은 메인 창으로 남고, 닫힌 뒤 키 창이 되면 창 상태를 다시 읽는다(메인 창의 시트와 같은 규칙).
+- 변경은 **재시작 후** 적용된다(라이브러리 DB를 실행 중에 바꾸지 않는다). 새 폴더에 라이브러리가 없으면 첫 실행처럼 만든다. 이전 라이브러리는 그대로 남는다.
+- `LEARN_LIBRARY_DIR` 환경 변수는 여전히 우선한다(개발·E2E). E2E(`LEARN_E2E=1`)에서는 재시작 대신 요청만 기록한다(Playwright는 재시작한 프로세스를 따라갈 수 없다).
+- 라이브러리를 열지 못한 화면에서도 위치를 바꿀 수 있다: "설정…"(⌘,)은 main이 직접 여는 명령(`MAIN_OWNED_COMMANDS`)이고, 그 화면의 "설정 열기" 단추도 같은 창을 연다.

@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { acceleratorKeys, acceleratorLabel, ariaKeyShortcuts, keySpecKeys, platformAccelerator } from '../src/accelerator';
+
+describe('accelerators', () => {
+  it('spells an accelerator for aria-keyshortcuts (KeyboardEvent.key names, Meta for ⌘)', () => {
+    expect(ariaKeyShortcuts('CmdOrCtrl+K', 'darwin')).toBe('Meta+K');
+    expect(ariaKeyShortcuts('CmdOrCtrl+K', 'linux')).toBe('Control+K');
+    expect(ariaKeyShortcuts('Alt+CmdOrCtrl+O', 'darwin')).toBe('Alt+Meta+O');
+    expect(ariaKeyShortcuts('Ctrl+Cmd+S', 'darwin')).toBe('Control+Meta+S');
+    expect(ariaKeyShortcuts('Ctrl+Cmd+S', 'win32')).toBe('Control+Shift+S');
+    expect(ariaKeyShortcuts('CmdOrCtrl+Plus', 'darwin')).toBe('Meta+Plus');
+    expect(ariaKeyShortcuts('CmdOrCtrl+/', 'linux')).toBe('Control+/');
+    expect(ariaKeyShortcuts('Escape', 'darwin')).toBe('Escape');
+  });
+  it('maps ⌃⌘ combinations to Ctrl+Shift off macOS and leaves the rest', () => {
+    expect(platformAccelerator('Ctrl+Cmd+S', 'linux')).toBe('Ctrl+Shift+S');
+    expect(platformAccelerator('Ctrl+Cmd+S', 'darwin')).toBe('Ctrl+Cmd+S');
+    expect(platformAccelerator('Alt+CmdOrCtrl+O', 'win32')).toBe('Alt+CmdOrCtrl+O');
+  });
+  it('draws macOS keycaps in ⌃⌥⇧⌘ order with Apple key symbols', () => {
+    expect(acceleratorKeys('Alt+CmdOrCtrl+O', 'darwin')).toEqual(['⌥', '⌘', 'O']);
+    expect(acceleratorKeys('Ctrl+Cmd+S', 'darwin')).toEqual(['⌃', '⌘', 'S']);
+    expect(acceleratorKeys('Shift+CmdOrCtrl+R', 'darwin')).toEqual(['⇧', '⌘', 'R']);
+    expect(acceleratorKeys('CmdOrCtrl+Plus', 'darwin')).toEqual(['⌘', '+']);
+    expect(acceleratorKeys('CmdOrCtrl+-', 'darwin')).toEqual(['⌘', '−']);
+    expect(acceleratorKeys('CmdOrCtrl+,', 'darwin')).toEqual(['⌘', ',']);
+    expect(acceleratorKeys('CmdOrCtrl+Backspace', 'darwin')).toEqual(['⌘', '⌫']);
+    expect(acceleratorKeys('Ctrl+Tab', 'darwin')).toEqual(['⌃', '⇥']);
+    expect(acceleratorLabel('Alt+CmdOrCtrl+O', 'darwin')).toBe('⌥⌘O');
+  });
+  it('sorts modifiers written in any order into ⌃⌥⇧⌘ on macOS', () => {
+    expect(acceleratorLabel('CmdOrCtrl+Shift+N', 'darwin')).toBe('⇧⌘N');
+    expect(acceleratorLabel('Cmd+Ctrl+F', 'darwin')).toBe('⌃⌘F');
+    expect(acceleratorLabel('CmdOrCtrl+Alt+G', 'darwin')).toBe('⌥⌘G');
+    expect(acceleratorLabel('Shift+Cmd+Alt+Ctrl+K', 'darwin')).toBe('⌃⌥⇧⌘K');
+  });
+  it('spells modifiers out on Linux and Windows', () => {
+    expect(acceleratorKeys('Alt+CmdOrCtrl+O', 'linux')).toEqual(['Ctrl', 'Alt', 'O']);
+    expect(acceleratorKeys('Ctrl+Cmd+S', 'linux')).toEqual(['Ctrl', 'Shift', 'S']);
+    expect(acceleratorKeys('CmdOrCtrl+Plus', 'win32')).toEqual(['Ctrl', '+']);
+    expect(acceleratorKeys('CmdOrCtrl+-', 'linux')).toEqual(['Ctrl', '−']); // U+2212, as on macOS (display only)
+    expect(acceleratorLabel('Alt+CmdOrCtrl+O', 'linux')).toBe('Ctrl+Alt+O');
+  });
+  it('draws a modifier held on its own (⌥ on a drop links) as its keycap', () => {
+    expect(acceleratorKeys('Alt', 'darwin')).toEqual(['⌥']);
+    expect(acceleratorKeys('Shift', 'darwin')).toEqual(['⇧']);
+    expect(acceleratorLabel('Alt', 'darwin')).toBe('⌥');
+    expect(acceleratorKeys('Alt', 'linux')).toEqual(['Alt']);
+    expect(acceleratorKeys('Option', 'win32')).toEqual(['Alt']);
+    expect(acceleratorLabel('Alt', 'linux')).toBe('Alt');
+  });
+  it('draws single-key shortcuts from the physical key code', () => {
+    expect(keySpecKeys({ code: 'F6' }, 'darwin')).toEqual(['F6']);
+    expect(keySpecKeys({ code: 'F6', shift: true }, 'darwin')).toEqual(['⇧', 'F6']);
+    expect(keySpecKeys({ code: 'KeyJ' }, 'linux')).toEqual(['J']);
+    expect(keySpecKeys({ code: 'Digit1', shift: true }, 'linux')).toEqual(['Shift', '1']);
+  });
+});

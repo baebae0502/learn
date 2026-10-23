@@ -140,9 +140,9 @@ test('library screen and fonts', TAG, async () => {
   const shots = await allShots(app, page, '01-library', 'library with 5 imported fixtures');
   const fonts = [];
   for (const sel of [
-    '.brand strong',
-    '.sidebar h2',
-    '[data-testid="import-managed"]',
+    '[data-testid="toolbar-title"]',
+    '.sidebar .section-label',
+    '[data-testid="nav-library"] .label',
     '[data-testid="open-item"][data-title="sample"]',
     '[data-testid="open-item"][data-title="한글 경로 (테스트) #1"]',
   ]) {
@@ -269,7 +269,7 @@ test('HEVC: record behaviour (not a pass/fail criterion)', TAG, async () => {
 test('unsupported codec notice (MPEG-4 Part 2)', TAG, async () => {
   await backToLibrary(page);
   const ms = await timeOpen(page, 'sample-mpeg4part2', 'video-error');
-  await expect(page.getByTestId('video-error')).toContainText('코덱');
+  await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   const error = await page.getByTestId('video').evaluate((v: HTMLVideoElement) => (v.error ? { code: v.error.code, message: v.error.message } : null));
   await allShots(app, page, '06-unsupported', 'unsupported codec notice');
   saveBaseline({ unsupported: { msToNotice: Math.round(ms), error, uiText: await page.getByTestId('video-error').innerText() } });

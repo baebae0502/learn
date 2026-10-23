@@ -38,3 +38,5 @@ export const prefsSchema = z.object({
   libraryRoot: prefsFields.libraryRoot.default(null),
 });
 export type Prefs = z.infer<typeof prefsSchema>;
+/** All defaults: what a window falls back to when reading the prefs failed. */
+export const DEFAULT_PREFS: Readonly<Prefs> = Object.freeze(prefsSchema.parse({}));

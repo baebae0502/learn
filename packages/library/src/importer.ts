@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { LearnError, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
+import { LearnError, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
 import type { AssetRow, LibraryRepository } from '@learn/db';
 import { sha256File } from './hash';
 import { managedRelativePath, type LibraryLayout } from './layout';
@@ -43,9 +43,9 @@ export class Importer {
   private async run(src: string, opts: ImportOptions): Promise<ImportOutcome> {
     const { repo, hooks } = this.deps;
     const st = await fs.stat(src);
-    if (!st.isFile()) throw new LearnError('UNSUPPORTED_TYPE', '일반 파일만 가져올 수 있습니다.');
+    if (!st.isFile()) throw new LearnError('UNSUPPORTED_TYPE', '일반 파일만 가져올\u00a0수 있습니다.');
     const kind = await sniffFile(src);
-    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4·MOV·WebM)을 가져올 수 있습니다.');
+    if (!kind) throw new LearnError('UNSUPPORTED_TYPE', `지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(${VIDEO_FORMATS})을 가져올\u00a0수 있습니다.`);
     const sha256 = await sha256File(src);
 
     const existing = repo.findAssetsBySha(sha256);
@@ -108,7 +108,7 @@ export class Importer {
     try {
       await fs.copyFile(src, staging);
       if ((await sha256File(staging)) !== sha256) {
-        throw new LearnError('HASH_MISMATCH', '복사하는 동안 원본 파일이 바뀌었습니다. 다시 시도하세요.', { retryable: true });
+        throw new LearnError('HASH_MISMATCH', '복사하는 동안 원본\u00a0파일이 바뀌었습니다. 다시 시도하세요.', { retryable: true });
       }
       await hooks?.afterStage?.(staging);
       await fs.mkdir(path.dirname(target), { recursive: true });

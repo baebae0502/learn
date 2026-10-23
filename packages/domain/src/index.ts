@@ -1,3 +1,4 @@
+export * from './accelerator';
 export * from './anchors';
 export * from './commands';
 export * from './errors';
@@ -11,4 +12,5 @@ export * from './metadata';
 export * from './reading';
 export * from './result';
 export * from './settings';
+export * from './sheets';
 export * from './tag-colors';

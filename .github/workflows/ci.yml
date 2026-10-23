@@ -44,6 +44,8 @@ jobs:
 
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Shipped licences (allow-list)
+        run: node scripts/check-licenses.mjs
 
       - name: Fixture cache
         id: fixtures-cache
@@ -65,8 +67,10 @@ jobs:
       - name: Allow Chromium sandbox
         run: echo 0 | sudo tee /proc/sys/kernel/apparmor_restrict_unprivileged_userns
 
+      # Larger than the 1440×900 window: Chromium shrinks a frameless (hidden title bar) window that is exactly the
+      # screen's size by 1 px on Linux, so a 1440×900 screen could not hold the visual tour's 1440×900 viewport.
       - name: E2E (Xvfb)
-        run: xvfb-run -a -s "-screen 0 1440x900x24" pnpm exec playwright test
+        run: xvfb-run -a -s "-screen 0 1920x1200x24" pnpm exec playwright test
 
       # Keeps the evidence harness honest between (expensive) macOS runs; darwin-only captures are skipped.
       - name: Evidence harness (Xvfb)

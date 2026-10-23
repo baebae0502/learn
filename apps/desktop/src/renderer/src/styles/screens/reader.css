@@ -1,0 +1,130 @@
+@layer screens {
+  .reader {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* 44 px reader toolbar (mockup .reader-toolbar): page controls, then the zoom on the right. */
+  .reader-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: var(--pane-header-height);
+    flex: none;
+    min-width: 0;
+    padding: 0 var(--space-12);
+    background: var(--bg-content);
+    border-bottom: 1px solid var(--separator);
+  }
+  .reader-toolbar .page-indicator {
+    min-width: 72px; /* local: "12 / 340쪽" without reflow */
+    text-align: center;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .zoom-select {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* The native arrow is replaced by the 12 px chevron every other disclosure uses (spec 5; mockup .zoom-btn). */
+  .zoom-select .select-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .zoom-select .select-wrap .icon {
+    position: absolute;
+    right: var(--space-6);
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+  .zoom-select select {
+    appearance: none;
+    height: var(--control-height-small);
+    padding: 0 var(--space-20) 0 var(--space-8);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-control);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .zoom-select select:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .pdf-stage,
+  .reader-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: var(--bg-sunken);
+  }
+  .pdf-stage:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  /* At least the stage's width (the page centres in it) and as wide as the page at 200 %: a page wider than the stage
+     overflows to the right only, so its left edge stays reachable by scrolling. */
+  .pdf-page-wrap {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    width: fit-content;
+    min-width: 100%;
+    padding: var(--space-24);
+  }
+  .pdf-page-wrap canvas {
+    flex: none;
+    background: var(--page-original-bg);
+    box-shadow: var(--shadow-page);
+  }
+  /* Until the first page has rendered the canvas is the default 300 × 150 white box: keep it unseen (T13-m6). */
+  .pdf-page-wrap canvas[data-rendered='0'],
+  .pdf-page-wrap canvas[data-failed] {
+    visibility: hidden; /* a page that failed shows its notice, not a half-drawn page (final review m2) */
+  }
+  .stage-center {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: var(--space-24);
+  }
+  .video-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: var(--video-stage);
+  }
+  .video-stage video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  /* The player shows with its first frame (VideoViewer data-frame): before it, only the dark stage (T13-m6). */
+  .video-stage video:not([data-frame]) {
+    visibility: hidden;
+  }
+  .fatal {
+    position: relative;
+    height: 100vh;
+    background: var(--bg-window);
+  }
+  .fatal-drag {
+    height: var(--toolbar-height);
+    -webkit-app-region: drag;
+  }
+  .fatal .notice p {
+    max-width: 440px;
+  }
+}

@@ -12,7 +12,9 @@ export const themeHex = {
     bgField: '#ffffff',
     bgControl: '#ffffff',
     bgControlSelected: '#ffffff',
+    bgChromeInactive: '#ececec',
     separator: '#dadcdf',
+    separatorChromeInactive: '#dadcdf',
     border: '#ced1d4',
     borderStrong: '#7d8185',
     textPrimary: '#1a1d21',
@@ -25,6 +27,7 @@ export const themeHex = {
     accentText: '#0b6f6b',
     focus: '#0e8984',
     meter: '#107c77',
+    accentRing: '#107c77',
     danger: '#cc3430',
     dangerText: '#b72725',
     warning: '#eb9f2c',
@@ -40,7 +43,9 @@ export const themeHex = {
     bgContentAlt: '#1b1d1e',
     bgRaised: '#2c2e30',
     bgSunken: '#0f1112',
+    bgChromeInactive: '#141414',
     separator: '#333638',
+    separatorChromeInactive: '#000000',
     borderStrong: '#83878b',
     textPrimary: '#e9ebee',
     textSecondary: '#b4b8bc',
@@ -52,6 +57,7 @@ export const themeHex = {
     accentText: '#60ccc5',
     focus: '#39bab4',
     meter: '#18a7a1',
+    accentRing: '#18a7a1',
     danger: '#e55551',
     dangerText: '#f98f87',
     warning: '#efb146',
@@ -65,10 +71,10 @@ export const themeHex = {
 /** BrowserWindow `backgroundColor` per theme, so the first frame is never white in dark mode. */
 export const windowBackground = { light: '#f6f7f8', dark: '#242527' } as const;
 
-/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead). */
+/** `titleBarOverlay` for Windows/Linux (macOS uses traffic lights instead): 51 tall, above the toolbar's hairline. */
 export const titleBarOverlay = {
-  light: { color: '#f6f7f8', symbolColor: '#54595e', height: 52 },
-  dark: { color: '#242527', symbolColor: '#b4b8bc', height: 52 },
+  light: { color: '#f6f7f8', symbolColor: '#54595e', height: 51 },
+  dark: { color: '#242527', symbolColor: '#b4b8bc', height: 51 },
 } as const;
 
 export const trafficLightPosition = { x: 18, y: 18 } as const;

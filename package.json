@@ -2,6 +2,7 @@
   "name": "learn",
   "private": true,
   "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "packageManager": "pnpm@10.15.1",
   "engines": { "node": ">=22.12" },
@@ -15,15 +16,17 @@
     "tokens:check": "node --experimental-strip-types apps/desktop/scripts/build-tokens.mjs --check",
     "mockups:render": "node --experimental-strip-types scripts/render-mockups.mjs",
     "e2e": "pnpm build && pnpm fixtures && playwright test",
-    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1440x900x24\" playwright test",
+    "e2e:xvfb": "pnpm build && pnpm fixtures && xvfb-run -a -s \"-screen 0 1920x1200x24\" playwright test",
     "e2e:evidence": "pnpm build && pnpm fixtures && playwright test -c playwright.evidence.config.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "electron-builder": "26.17.0",
     "lucide-static": "1.60.0",
     "pdf-lib": "1.17.1",
+    "playwright-core": "1.64.1",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   },

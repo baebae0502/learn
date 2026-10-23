@@ -1,0 +1,137 @@
+/* Demo overlay (LEARN_DEMO_OVERLAY=1, unpackaged builds only): a presentation cursor, shortcut pills and chapter
+   captions for screen recordings (shell/DemoOverlay.tsx). Nothing here may read as the app's own UI: no --focus, no
+   app surface colours; the pill and the caption share one dark HUD look, a little lighter on a dark window so that it
+   reads as a HUD there and not as its hairline alone (critique mac1 n1).
+
+   The pointer: in 'follow' mode (synthetic input, no cursor on screen) a disc where the pointer is; in 'clicks' mode
+   (the system's own arrow is on screen) only a ring at the arrow while a button is down, fading after it is up.
+
+   Places, in CSS px from the window's bottom-left, chosen so they never overlap each other at 1024 or 1440 wide
+   (and stay clear of the bottom-right toast column, 16 from the right, 360 wide):
+   - pill: centred, bottom 40, 52 tall (bottom band 40–92); aside (data-aside: a command that opens a sheet, or any
+     pill shown while one hangs over the window's middle — a macOS sheet at 1024 × 743 is nearly as tall as the
+     window), bottom-left, at left 24, where the sheet leaves room. Fixed when the pill appears;
+   - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows; beside
+     a settings window that covers that box, narrower (an inline max-width, left of it); only when even that leaves no
+     room, in the settings window at the top (data-place top, 12 down or under its theme tiles), since its bottom is the
+     라이브러리 위치 card (critique mac1 m3, concern 4);
+   - tag ("스크립트로 재현" while a scripted gesture is on screen): top-left, 16 below the toolbar;
+   - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
+     least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom; while a
+     sheet is open (the pill then bottom-left), 240 from the bottom, above the caption.
+   Separate windows are another matter: the settings window carries its own overlay (the script captions a settings
+   chapter in the main window unless the settings window covers that caption box), and the ⌘/ chapter shows its
+   caption before the sheet opens. */
+@layer screens {
+  .demo-overlay {
+    --demo-hud-bg: light-dark(rgb(28 28 30 / 0.86), rgb(78 78 84 / 0.9)); /* local: demo HUD, lighter on a dark window */
+    --demo-hud-text: rgb(255 255 255 / 0.96); /* local: demo HUD */
+    --demo-hud-key: rgb(255 255 255 / 0.14); /* local: demo HUD keycap fill */
+    --demo-pill-bottom: var(--space-40);
+    --demo-pill-height: 52px; /* local: 12 + 28 keycap + 12 */
+    position: fixed;
+    inset: 0;
+    z-index: 100; /* local: above every surface, the palette (40), toasts (45) and the drop overlay (50) */
+    pointer-events: none;
+  }
+  /* A presentation cursor: a translucent disc with a white rim, unlike any control or focus ring of the app. */
+  .demo-pointer {
+    position: absolute;
+    width: 28px; /* local: demo only */
+    height: 28px; /* local: demo only */
+    margin: -14px 0 0 -14px; /* local: centred on the pointer */
+    border-radius: 50%;
+    background: rgb(0 0 0 / 0.14); /* local: demo cursor */
+    border: 2px solid rgb(255 255 255 / 0.95); /* local: demo cursor */
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 2px 6px rgb(0 0 0 / 0.25); /* local: demo cursor */
+    transition: scale var(--duration-fast) var(--ease-standard);
+  }
+  .demo-pointer[data-down] {
+    scale: 0.82;
+    background: rgb(0 0 0 / 0.28); /* local: demo cursor, pressed */
+  }
+  /* With the system's arrow: a click ring around its tip, while the button is down. */
+  .demo-overlay[data-pointer-mode='clicks'] .demo-pointer {
+    width: 36px; /* local: demo click ring */
+    height: 36px; /* local: demo click ring */
+    margin: -18px 0 0 -18px; /* local: centred on the arrow's tip */
+    background: rgb(255 255 255 / 0.18); /* local: demo click ring */
+    border-width: 3px; /* local: demo click ring */
+    scale: 1;
+    animation: fade-in var(--duration-fast) var(--ease-standard);
+  }
+  .demo-pointer[data-leaving] {
+    opacity: 0;
+    transition: opacity calc(var(--duration-base) * 0.75) var(--ease-standard);
+  }
+  /* Over a resize handle (col-resize): a ↔ in the disc. */
+  .demo-pointer[data-resize]::after {
+    content: '↔';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: rgb(255 255 255 / 0.96); /* local: demo cursor */
+    font: var(--type-body);
+  }
+  .demo-hud {
+    position: absolute;
+    border-radius: var(--radius-pill);
+    background: var(--demo-hud-bg);
+    -webkit-backdrop-filter: blur(12px); /* local: demo HUD */
+    backdrop-filter: blur(12px); /* local: demo HUD */
+    /* A hairline keeps the HUD apart from a dark window too. */
+    box-shadow: var(--shadow-e2), 0 0 0 1px rgb(255 255 255 / 0.16); /* local: demo HUD hairline */
+    color: var(--demo-hud-text);
+    font: var(--type-title3);
+    animation: rise-in var(--duration-base) var(--ease-standard);
+  }
+  .demo-hud[data-leaving] {
+    opacity: 0;
+    transition: opacity calc(var(--duration-base) * 0.75) var(--ease-standard);
+  }
+  /* Centred with auto margins, not a translate: rise-in animates translate, which would slide it in sideways. */
+  .demo-pill {
+    inset-inline: 0;
+    bottom: var(--demo-pill-bottom);
+    width: max-content;
+    height: var(--demo-pill-height);
+    margin-inline: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    padding: 0 var(--space-20);
+  }
+  .demo-pill .kbd {
+    min-width: 28px; /* local: demo only, keycaps readable in a recording */
+    height: 28px; /* local: demo only */
+    padding: 0 var(--space-6);
+    background: var(--demo-hud-key);
+    box-shadow: none;
+    color: var(--demo-hud-text);
+    font: var(--type-title3);
+  }
+  .demo-pill[data-aside] {
+    inset-inline: var(--space-24) auto;
+    margin-inline: 0;
+  }
+  /* It comes up with the drop overlay it sits on, in the overlay's own fade (T13R4-n1). */
+  .demo-tag {
+    left: var(--space-24);
+    top: calc(var(--toolbar-height) + var(--space-16));
+    padding: var(--space-6) var(--space-12);
+    font: var(--type-footnote);
+    animation: fade-in var(--duration-slow) var(--ease-standard);
+  }
+  .demo-caption {
+    left: var(--space-24);
+    bottom: calc(var(--demo-pill-bottom) + var(--demo-pill-height) + var(--space-16));
+    max-width: min(560px, calc(100vw - 2 * var(--space-24))); /* local: demo caption measure */
+    padding: var(--space-12) var(--space-20);
+    border-radius: var(--radius-lg);
+  }
+  .demo-caption[data-place='top'] {
+    top: var(--space-12);
+    bottom: auto;
+  }
+}

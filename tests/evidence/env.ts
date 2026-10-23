@@ -1,6 +1,9 @@
 import os from 'node:os';
 import type { ElectronApplication } from '@playwright/test';
-import { IS_MAC, LABEL, tryExec, writeJson } from './capture';
+import fs from 'node:fs';
+import path from 'node:path';
+import { EVIDENCE_ROOT, IS_MAC, LABEL, tryExec, writeJson } from './capture';
+import { savedDisplayModes } from './display-mac';
 
 interface DisplaySummary {
   gpu: string | null;
@@ -55,7 +58,8 @@ async function macInfo(): Promise<Record<string, unknown>> {
 /** Collect runner + app environment into evidence-results/env.json. */
 export async function writeEnv(app: ElectronApplication): Promise<Record<string, unknown>> {
   const electron = await app.evaluate(async ({ app: a, screen, BrowserWindow }) => {
-    const w = BrowserWindow.getAllWindows()[0];
+    // The main window by its URL (sheets and the settings window are windows too).
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=main'));
     let gpuInfo: unknown = null;
     try {
       gpuInfo = await a.getGPUInfo('basic');
@@ -105,7 +109,25 @@ export async function writeEnv(app: ElectronApplication): Promise<Record<string,
     },
     mac: IS_MAC ? await macInfo() : null,
     electron,
+    // Display spike (Task 13): every screen and mode the workflow's displayplacer listed before the tests. Only the
+    // demo switches the screen, around its own recording, and records what happened as displaySwitch (mergeEnv).
+    displayModes: savedDisplayModes(),
+    displaySwitch: readEnv()['displaySwitch'] ?? 'not attempted yet: only the demo switches the screen, around its recording',
   };
   writeJson('env.json', env, 'runner and app environment');
   return env;
+}
+
+const ENV_FILE = path.join(EVIDENCE_ROOT, 'env.json');
+const readEnv = (): Record<string, unknown> => {
+  try {
+    return JSON.parse(fs.readFileSync(ENV_FILE, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+};
+
+/** Merge `patch` into evidence-results/env.json (created when no suite wrote it yet), keeping what is there. */
+export function mergeEnv(patch: Record<string, unknown>): void {
+  writeJson('env.json', { label: LABEL, ...readEnv(), ...patch }, 'runner and app environment');
 }

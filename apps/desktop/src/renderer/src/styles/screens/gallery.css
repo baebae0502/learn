@@ -1,0 +1,66 @@
+@layer screens {
+  .gallery {
+    height: 100vh;
+    overflow: hidden;
+    padding: var(--space-24);
+    background: var(--bg-content);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-24) var(--space-32);
+    align-content: start;
+  }
+  /* Board sections only: RAC's MenuSection is a <section> too. */
+  .gallery > section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+  .gallery .g-title {
+    font: var(--type-headline);
+    color: var(--text-secondary);
+  }
+  .gallery .g-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+  }
+  .gallery .g-notices {
+    gap: var(--space-24);
+  }
+  .gallery .g-notice {
+    margin: 0;
+    gap: var(--space-8);
+  }
+  .gallery .g-notice figcaption {
+    font: var(--type-footnote);
+    color: var(--text-secondary);
+  }
+  .gallery .g-label {
+    width: 120px;
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .gallery .g-row.g-top {
+    align-items: flex-start;
+  }
+  .gallery .g-field {
+    width: 232px;
+  }
+  .gallery .g-field-small {
+    width: 160px;
+  }
+  .gallery .g-list {
+    width: 240px;
+    padding: var(--space-8);
+    border-radius: var(--radius-lg);
+    background: var(--bg-sidebar);
+  }
+  .gallery .g-table {
+    --cols: minmax(0, 1fr) 88px 88px 132px;
+  }
+  .gallery .g-static {
+    position: static;
+    width: 360px;
+  }
+}

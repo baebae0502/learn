@@ -1,0 +1,92 @@
+@layer screens {
+  .library-table {
+    --cols: minmax(0, 1fr) 88px 88px 132px;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  /* The body reserves its scrollbar's gutter and the head reserves the same one, so a classic scrollbar (Linux, or
+     macOS with "always show") never shifts the columns against the head; overlay scrollbars reserve nothing. */
+  .library-table .table-head {
+    overflow: hidden;
+    scrollbar-gutter: stable;
+  }
+  .library-table .table-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    padding-bottom: var(--space-8);
+  }
+  .library-table .linked-mark {
+    display: inline-flex;
+    flex: none;
+  }
+  /* A list that could not be read: the stage notice where the list would be, on the empty state's optical centre. */
+  .library-state {
+    flex: 1 1 auto;
+    display: grid;
+    place-items: center;
+    padding: var(--space-32) var(--space-32) 96px; /* local: optical centre, as .empty-state */
+  }
+  /* First run (library-empty.html): optical centre above the geometric one. */
+  .empty-state {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-16);
+    padding: var(--space-32) var(--space-32) 96px; /* local: optical centre */
+    text-align: center;
+  }
+  .empty-state .glyph {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-xl);
+    display: grid;
+    place-items: center;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+  }
+  .empty-state h2 {
+    font: var(--type-title2);
+  }
+  /* The busy variant (a drop being brought in): the spinner leads the title. */
+  .empty-state .busy-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+  .empty-state[data-busy]:focus {
+    outline: none; /* holds a keyboard focus for the list that follows; not a control */
+  }
+  .empty-state p {
+    max-width: 520px;
+    color: var(--text-secondary);
+    font: var(--type-callout);
+  }
+  .empty-state .actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+  .empty-state .hints {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+    margin-top: var(--space-16);
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .empty-state .hints .row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-6);
+  }
+  .empty-state .hints .row .gap {
+    width: var(--space-12);
+  }
+}

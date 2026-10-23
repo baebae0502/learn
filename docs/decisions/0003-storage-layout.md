@@ -4,6 +4,7 @@
 
 ## 결정
 - 라이브러리 = 한 폴더: `library.sqlite`, `assets/<sha256 앞 2자>/<sha256>`, `staging/`, `derived/`, `exports/`. 기본 위치 macOS `~/Library/Application Support/Learn/Library`, Linux `~/.config/Learn/Library`(앱 이름 `Learn`), `LEARN_LIBRARY_DIR`로 바꿀 수 있다.
+  - `derived/`는 다시 만들 수 있는 파생물을 두는 곳이지만, `derived/open/<assetId>/`는 예외다(M3, 최종 리뷰 I1). 기본 앱으로 열기의 이름 붙은 복사본과, 사용자가 다른 앱에서 고친 수정본(`<제목> (수정본 <날짜 시각>).<확장자>`)이 여기 있다. 그래서 `derived/`를 지우거나 다시 만드는 복구·캐시 정리·복원은 `derived/open/`을 빼야 한다.
 - 관리형 파일 이름은 해시뿐이다. 표시 이름은 DB에 둔다. 외부 연결은 경로만 기록하며 이식 불가능하다(백업에는 참조로만 남김).
 - 가져오기: staging 복사 → 해시 재검증 → 원자적 rename → 단일 트랜잭션 커밋 → 추출 job 등록. 중간 실패는 DB에 흔적을 남기지 않고, 남은 파일은 복구 스캔이 보고만 한다(자동 삭제 없음).
   - 이미 관리형으로 배치된 같은 해시의 자산을 재사용할 때는 디스크의 파일을 해시로 검증하고, 파일이 없으면 원본에서 복원한다(`ensurePlaced`). 대상이 손상돼 있으면 삭제하지 않고 `staging/corrupt-<sha256>-<id>`로 격리한 뒤 검증된 복사본을 배치하며(복구 스캔이 staging 잔여물로 보고한다), 복사 중 원본이 바뀐 경우도 감지한다. 커밋이 실패한 뒤 재시도하면 이미 배치된 파일(inode)을 재사용한다.
@@ -13,6 +14,7 @@
   - 백업과 복원은 모두 전부 성공 또는 전부 무효다. 형제 임시 폴더에 쓴 뒤 rename하며, 실패 시 임시 폴더를 정리한다.
   - 라이브 라이브러리에서 관리형 파일이 사라져 있으면 백업은 실패하지 않고 그 자산을 `included:false`로 기록한다. 복원 시 해당 자산은 missing으로 표시된다.
 - 비밀키는 DB에 저장하지 않는다(OS keychain, P3).
+  - (2026-10-22) 튜터는 ACP로 사용자의 에이전트를 띄우고 로그인은 각 공급사 CLI가 맡는다. 그래서 Learn이 비밀을 다루는 것은 나중의 API 키 어댑터부터다(ADR-0010, `docs/spec-amendments.md`). 규칙(DB에 두지 않고 키체인에 둔다)은 그대로다.
 
 ## 스키마 v2 (M2, `packages/db/src/migrations/002-organize.ts`)
 v1은 `001`의 테이블 그대로다(`items`, `assets`, `item_assets`, `source_revisions`, `collections`, `collection_items`, `tags`, `item_tags`, `anchors`, `annotations`, `jobs`, `settings`). v2는 열·인덱스·테이블을 더하는 마이그레이션이라 v1 데이터는 그대로 남는다. 예외는 하나다. v1의 `tags.name UNIQUE`는 대소문자를 구분했으므로, 대소문자만 다른 이름의 태그는 가장 먼저 만든 태그(가장 작은 rowid)로 합친다. 할당(`item_tags`)은 그 태그로 옮기고(중복은 하나만) 나머지 태그는 지운다. 그래야 `tags_name_nocase`를 만들 수 있다. 적용 전에는 스냅샷 `library.sqlite.pre-v<N>.bak`을 남긴다(N은 첫 대기 마이그레이션 버전이므로 v1→v2에서는 `library.sqlite.pre-v2.bak`).

@@ -1,0 +1,48 @@
+@layer components {
+  .segmented {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: var(--radius-md);
+    background: var(--bg-track);
+    flex: none;
+  }
+  .segmented.fill {
+    display: flex;
+  }
+  /* A segment's tooltip wrapper (Segmented `title`): no box of its own, so the track lays the segments out as before. */
+  .segmented .seg-tip {
+    display: contents;
+  }
+  .segmented .seg {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    height: 24px; /* local: 28 control − 2×2 track */
+    padding: 0 var(--space-12);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .segmented.fill .seg {
+    flex: 1 1 0;
+    padding: 0 var(--space-4);
+  }
+  .segmented .seg:is([data-selected], [data-force~='on']) {
+    background: var(--bg-control-selected);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-primary);
+  }
+  .segmented .seg[data-focus-visible],
+  .segmented[data-force~='focus'] .seg[data-selected] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: 0;
+  }
+  .segmented[data-disabled] {
+    opacity: 0.45;
+  }
+}

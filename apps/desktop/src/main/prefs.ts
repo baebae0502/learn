@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { LearnError, prefsFields, prefsSchema, prefsSetInput, toLearnError, type Prefs, type PrefsSetInput } from '@learn/domain';
+import { LearnError, prefsFields, prefsPatchInput, prefsSchema, toLearnError, type Prefs, type PrefsPatch } from '@learn/domain';
 
 /** Per-device preferences, outside the library (userData/preferences.json). No Electron import: unit-tested. */
 export const PREFS_FILE = 'preferences.json';
@@ -12,9 +12,9 @@ export interface PrefsStore {
   get(): Prefs;
   /**
    * Validates the patch, merges it over the stored file object (unknown keys survive), persists atomically, and
-   * returns the result.
+   * returns the result. Main's own input: the library location is set here only by app.chooseLibraryFolder (R4).
    */
-  set(patch: PrefsSetInput): Prefs;
+  set(patch: PrefsPatch): Prefs;
   /**
    * True when an existing file could neither be read nor moved aside: this session runs on defaults and
    * `set` refuses (PREFS_UNAVAILABLE) rather than overwrite a file we never saw.
@@ -146,7 +146,7 @@ export function openPrefsStore(dir: string, opts: { now?: () => Date } = {}): Pr
           '환경설정 파일을 읽거나 옮길 수 없어 이번 실행에서는 변경 내용을 저장하지 않습니다. 파일 권한을 확인한 뒤 앱을 다시 시작하세요.',
         );
       }
-      const parsed = prefsSetInput.safeParse(patch);
+      const parsed = prefsPatchInput.safeParse(patch);
       if (!parsed.success) throw new LearnError('VALIDATION_FAILED', '환경설정 값이 올바르지 않습니다.');
       // A key sent as `undefined` means "unchanged", not "reset to the default".
       const defined = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined)) as Partial<Prefs>;

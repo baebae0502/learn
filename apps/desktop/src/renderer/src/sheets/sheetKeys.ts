@@ -56,6 +56,8 @@ export function useSheetKeys(onDefault: () => void, onCancel: () => void) {
       setFresh(false);
     },
     onMouseDown(e: MouseEvent<HTMLElement>) {
+      // On purpose this includes a scrolling body (scrollRegion.ts): a click into it does not focus it, as a macOS
+      // sheet's list takes no focus from a click; Tab reaches it (re-review m10).
       if (!(e.target as Element).closest(FOCUSABLE_ON_PRESS)) e.preventDefault();
     },
   };

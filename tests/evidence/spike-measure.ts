@@ -186,13 +186,13 @@ export const stopFrames = (page: Page): Promise<number[]> =>
   });
 
 /** Our code's share of a change (Step 5's attribution): row elements built by TableBody's function, memoised cells rendered. */
-interface Counts {
+export interface Counts {
   rowElements: number;
   cellRenders: number;
 }
-const counts = (page: Page): Promise<Counts> => page.evaluate(() => ({ rowElements: window.__spike!.rowElements, cellRenders: window.__spike!.cellRenders }));
-const minus = (a: Counts, b: Counts): Counts => ({ rowElements: a.rowElements - b.rowElements, cellRenders: a.cellRenders - b.cellRenders });
-const perChange = (c: Counts, n: number): Counts => ({ rowElements: r1(c.rowElements / n), cellRenders: r1(c.cellRenders / n) });
+export const counts = (page: Page): Promise<Counts> => page.evaluate(() => ({ rowElements: window.__spike!.rowElements, cellRenders: window.__spike!.cellRenders }));
+export const minus = (a: Counts, b: Counts): Counts => ({ rowElements: a.rowElements - b.rowElements, cellRenders: a.cellRenders - b.cellRenders });
+export const perChange = (c: Counts, n: number): Counts => ({ rowElements: r1(c.rowElements / n), cellRenders: r1(c.cellRenders / n) });
 
 // Checks every implementation shares (the budgets of spec 3.4 / 9 that the table alone decides).
 
@@ -205,12 +205,14 @@ export async function measureMount(page: Page, report: Report, query: string, sh
       const m = await marks(page);
       runs.push(r1(m.find((x) => x.name === 'first-row')!.at - m.find((x) => x.name === 'rows:set')!.at));
     }
+    // Our code's share on the last fresh page, up to the probe's read (Step 6's retry rule).
+    const oursAtMount = await counts(page);
     report.setWindow(await page.evaluate(() => ({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio, cores: navigator.hardwareConcurrency })));
     const aria = await grid(page).evaluate((el) => ({ rowcount: el.getAttribute('aria-rowcount'), multiselectable: el.getAttribute('aria-multiselectable') }));
     const domRows = await page.locator('[data-testid="item-row"]').count();
     await pageShot(page, shot, 'M4 spike: 10,000 rows');
     const firstPaintMs = pct(runs, 50);
-    report.check('mount', aria.rowcount === String(N + 1) && aria.multiselectable === 'true' && domRows < 100 && firstPaintMs <= limit(BUDGET.firstPaint), 'native', { runsMs: runs, firstPaintMs, aria, domRows });
+    report.check('mount', aria.rowcount === String(N + 1) && aria.multiselectable === 'true' && domRows < 100 && firstPaintMs <= limit(BUDGET.firstPaint), 'native', { runsMs: runs, firstPaintMs, aria, domRows, oursAtMount });
   });
 }
 
@@ -220,7 +222,9 @@ export async function measureScroll(page: Page, report: Report, query: string): 
     await openSpike(page, query);
     const idle = await sampleScroll(page, 120, 0);
     report.idleP95 = pct(idle.intervals, 95);
+    const c0 = await counts(page);
     const run = await sampleScroll(page, 240, 84);
+    const scrollOurs = minus(await counts(page), c0);
     await grid(page).evaluate((el) => (el.scrollTop = 0));
     await frames(page, 3);
     const probed = await sampleScroll(page, 240, 84, true);
@@ -246,7 +250,7 @@ export async function measureScroll(page: Page, report: Report, query: string): 
     }));
     const scrolled = stats(run.intervals);
     report.check('scroll', framesOk(report.idleP95, scrolled.p95) && probed.blank / 240 <= 0.02, 'native', {
-      idle: stats(idle.intervals), scroll3RowsPerFrame: scrolled, blankFrames: probed.blank, blankOf: 240, jump: { ms: r1(jump.ms), frames: jump.frames }, scrollTopAfter: run.scrollTop,
+      idle: stats(idle.intervals), scroll3RowsPerFrame: scrolled, blankFrames: probed.blank, blankOf: 240, jump: { ms: r1(jump.ms), frames: jump.frames }, scrollTopAfter: run.scrollTop, scrollOurs,
     });
   });
 }

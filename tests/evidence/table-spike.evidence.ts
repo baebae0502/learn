@@ -7,8 +7,8 @@ import type { SpikeSortColumn } from '../../apps/desktop/src/renderer/src/spike/
 import { NativeInputNotPermitted, launch, nativeKeystroke, type Session } from '../e2e/helpers';
 import { IS_MAC, pageShot } from './capture';
 import {
-  BUDGET, MOD, N, ROWS, armVisible, createReport, focusedIndex, frames, framesOk, grid, header, limit, markAfter, measureFilter, measureMount, measureRefresh,
-  measureScroll, measureSort, openSpike, pct, r1, rowAt, selectedIds, startFrames, stats, stopFrames, timed, visibleAfterInput,
+  BUDGET, MOD, N, ROWS, armVisible, counts as ourShare, createReport, focusedIndex, frames, framesOk, grid, header, limit, markAfter, measureFilter, measureMount, measureRefresh,
+  measureScroll, measureSort, minus, openSpike, pct, perChange, r1, rowAt, selectedIds, startFrames, stats, stopFrames, timed, visibleAfterInput,
 } from './spike-measure';
 
 const TAG = { tag: '@perf' };
@@ -52,9 +52,12 @@ test('spike rac: column resize — follows the pointer, one onResizeEnd on relea
       await frames(s.page, 3);
       return during;
     };
+    // Our code's share of the drag's frames (Step 6's retry rule): row elements built, memoised cells rendered.
+    const c0 = await ourShare(s.page);
     await startFrames(s.page);
     const during = await drag(60);
     const dragFrames = stats(await stopFrames(s.page));
+    const dragOurs = minus(await ourShare(s.page), c0);
     const ends = await s.page.evaluate(() => window.__spike!.resizeEnds);
     const cell = (await rowAt(s.page, 0).locator('[data-col="creators"]').boundingBox())!.width;
     const after = { creators: await width('creators'), title: await width('title'), cell };
@@ -65,7 +68,7 @@ test('spike rac: column resize — follows the pointer, one onResizeEnd on relea
     const ok =
       Math.abs(after.creators - before.creators - 60) <= 2 && Math.abs(after.cell - after.creators) <= 1 && during.ends === 0 && during.moves > 0 &&
       ends.length === 1 && Math.abs(clamped - 96) <= 1 && framesOk(report.idleP95, dragFrames.p95);
-    report.check('resize', ok, 'native', { before, after, overflowX, during, endsAfterRelease: ends.length, firstEnd: ends[0], clampedTo: clamped, dragFrames });
+    report.check('resize', ok, 'native', { before, after, overflowX, during, endsAfterRelease: ends.length, firstEnd: ends[0], clampedTo: clamped, dragFrames, dragOurs });
   });
 });
 
@@ -79,7 +82,10 @@ test('spike rac: multiple selection — click, ⇧click, ⌘click, ⌘A, and cli
   await report.guard('select', async () => {
     await openSpike(s.page);
     const clickMs: number[] = [];
+    // Our code's share of the timed clicks and of ⌘A (Step 6's retry rule).
+    const k0 = await ourShare(s.page);
     for (const i of [3, 10, 15, 20, 1]) clickMs.push(await timed(s.page, 'selection', () => rowAt(s.page, i).click()));
+    const clickOurs = perChange(minus(await ourShare(s.page), k0), 5);
     const counts: number[] = [];
     await rowAt(s.page, 3).click();
     counts.push((await selectedIds(s.page)).length);
@@ -90,7 +96,9 @@ test('spike rac: multiple selection — click, ⇧click, ⌘click, ⌘A, and cli
     await rowAt(s.page, 5).click({ modifiers: [MOD] });
     counts.push((await selectedIds(s.page)).length);
     const range = await selectedIds(s.page);
+    const a0 = await ourShare(s.page);
     const allMs = await timed(s.page, 'selection', () => s.page.keyboard.press(`${MOD}+A`));
+    const selectAllOurs = minus(await ourShare(s.page), a0);
     counts.push((await selectedIds(s.page)).length);
     await pageShot(s.page, 'm4-spike-03-selected', 'M4 spike: every row selected (⌘A), focus in the table');
     await rowAt(s.page, 2).click();
@@ -106,7 +114,7 @@ test('spike rac: multiple selection — click, ⇧click, ⌘click, ⌘A, and cli
       'select',
       JSON.stringify(counts) === JSON.stringify([1, 6, 7, 6, N, 1]) && JSON.stringify(range) === JSON.stringify(expectedRange) && clickMedian <= limit(BUDGET.select) && allMs <= limit(BUDGET.select),
       'native',
-      { counts, clickMs, clickMedianMs: clickMedian, selectAllMs: allMs, shiftClickWithCopiedSet: shiftWithCopiedSet },
+      { counts, clickMs, clickMedianMs: clickMedian, selectAllMs: allMs, shiftClickWithCopiedSet: shiftWithCopiedSet, clickOurs, selectAllOurs },
     );
   });
   await report.guard('selectAllNative', async () => {
@@ -162,8 +170,10 @@ test('spike rac: keyboard cursor — arrows, ⇧arrows, End (→ painted), Home,
     const nativeEnd = await s.page.evaluate(() => ({ row: Number(document.activeElement?.closest('[data-testid="item-row"]')?.getAttribute('aria-rowindex') ?? 0) - 2, col: document.activeElement?.getAttribute('data-col') ?? null }));
     await s.page.evaluate(() => (window.__spike!.globalHomeEnd = true));
     await armVisible(s.page, N - 1);
+    const e0 = await ourShare(s.page);
     await s.page.keyboard.press('End');
     const endMs = await visibleAfterInput(s.page);
+    const endOurs = minus(await ourShare(s.page), e0);
     const end = { focused: await focusedIndex(s.page), selected: (await selectedIds(s.page)).length };
     await s.page.keyboard.press('Home');
     await frames(s.page, 3);
@@ -178,7 +188,7 @@ test('spike rac: keyboard cursor — arrows, ⇧arrows, End (→ painted), Home,
       down.focused === 3 && JSON.stringify(down.selected) === JSON.stringify([ROWS[3]!.id]) && extended === 3 && end.focused === N - 1 && endMs <= limit(BUDGET.keyEnd) &&
       home === 0 && (pageDown ?? 0) > 1 && pageDownVisible;
     const how = nativeEnd.row === N - 1 ? 'native' : 'workaround: plain Home / End are sent on as ⌘/Ctrl+Home / End (a click focuses a cell)';
-    report.check('keyboard', ok, how, { down, extended, nativeEnd, end, endMs, home, pageDown, pageDownVisible, arrowRightFocus: right });
+    report.check('keyboard', ok, how, { down, extended, nativeEnd, end, endMs, endOurs, home, pageDown, pageDownVisible, arrowRightFocus: right });
   });
 });
 

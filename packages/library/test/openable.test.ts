@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import fsp from 'node:fs/promises';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { libraryLayout } from '../src/layout';
-import { NAMED_COPY_MODE, asideName, ensureNamedCopy, extensionAgrees, mayHoldEdits, namedCopyPath, openExtension, openableFile, safeBaseName, type OpenableAsset } from '../src/openable';
+import { NAMED_COPY_MODE, asideName, ensureNamedCopy, extensionAgrees, isAside, mayHoldEdits, namedCopyPath, openExtension, openableFile, safeBaseName, type OpenableAsset } from '../src/openable';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-openable-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -132,5 +133,42 @@ describe('a file the OS can open by name (final review I1)', () => {
     expect(await openableFile(layout, { ...pdf, id: 'a3', storageMode: 'linked', originalName: 'x.command' }, 'x', misnamed)).toBe(path.join(layout.derivedDir, 'open', 'a3', 'x.pdf'));
     // A type with nothing to name: the file itself.
     expect(await openableFile(layout, { ...pdf, id: 'a4', mime: 'text/plain' }, 't', store)).toBe(store);
+  });
+
+  describe('on HFS+, which lists names decomposed (re-review N1)', () => {
+    afterEach(() => vi.restoreAllMocks());
+    /** HFS+ as Node sees it: readdir answers NFD names, and a lookup by either form finds the same file. */
+    function hfsPlus() {
+      const { readdir, stat, rm } = fsp;
+      vi.spyOn(fsp, 'readdir').mockImplementation((async (dir: string) => ((await readdir(dir)) as string[]).map((n) => n.normalize('NFD'))) as unknown as typeof fsp.readdir);
+      vi.spyOn(fsp, 'stat').mockImplementation(((p: string, ...rest: unknown[]) => (stat as (...a: unknown[]) => unknown)(p.normalize('NFC'), ...rest)) as unknown as typeof fsp.stat);
+      vi.spyOn(fsp, 'rm').mockImplementation(((p: string, ...rest: unknown[]) => (rm as (...a: unknown[]) => unknown)(p.normalize('NFC'), ...rest)) as unknown as typeof fsp.rm);
+    }
+
+    it('the fresh copy of a Hangul title is not mistaken for an older name: it survives, and the open hands it over', async () => {
+      hfsPlus();
+      const store = path.join(tmp, 'hfs-src.bin');
+      fs.writeFileSync(store, '%PDF-1.7\n');
+      const opened = await openableFile(layout, { ...pdf, id: 'h1' }, '세포 신호 전달', store);
+      expect(opened).toBe(path.join(layout.derivedDir, 'open', 'h1', '세포 신호 전달.pdf'));
+      expect(fs.existsSync(opened)).toBe(true);
+      // Again: reused, still there; and an older Hangul title is still cleaned up.
+      expect(await openableFile(layout, { ...pdf, id: 'h1' }, '세포 신호 전달', store)).toBe(opened);
+      const renamed = await openableFile(layout, { ...pdf, id: 'h1' }, '세포 신호', store);
+      expect(fs.existsSync(renamed)).toBe(true);
+      expect(fs.readdirSync(path.dirname(renamed))).toEqual(['세포 신호.pdf']);
+    });
+
+    it('a copy kept aside is recognised in its decomposed form too', () => {
+      expect(isAside('세포 (수정본 2026-10-23 1504).pdf'.normalize('NFD'))).toBe(true);
+    });
+  });
+
+  it('a copy kept aside is the exact pattern at the end of the name; a title that only contains it is not', () => {
+    expect(isAside('Notes (수정본 2026-10-23 1504).pdf')).toBe(true);
+    expect(isAside('Notes (수정본 2026-10-23 1504) 2.pdf')).toBe(true);
+    expect(isAside('Notes (수정본 초안).pdf')).toBe(false);
+    expect(isAside('Notes (수정본 2026-10-23 1504) draft.pdf')).toBe(false);
+    expect(isAside('Notes.pdf')).toBe(false);
   });
 });

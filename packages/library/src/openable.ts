@@ -93,7 +93,14 @@ export function asideName(fileName: string, when: Date): string {
   const stamp = `${when.getFullYear()}-${two(when.getMonth() + 1)}-${two(when.getDate())} ${two(when.getHours())}${two(when.getMinutes())}`;
   return `${name} (${EDITED_LABEL} ${stamp})${ext}`;
 }
-const isAside = (fileName: string) => fileName.includes(` (${EDITED_LABEL} `);
+/**
+ * File names as read back from the folder are compared NFC (re-review N1): HFS+ stores and lists names decomposed
+ * (NFD), so the copy written under its NFC name comes back from readdir as a different string.
+ */
+const nfc = (name: string) => name.normalize('NFC');
+/** ` (수정본 YYYY-MM-DD HHmm)`, with an optional ` N`, at the end of the base name: exactly what asideName writes. */
+const ASIDE_TAIL = new RegExp(` \\(${EDITED_LABEL} \\d{4}-\\d{2}-\\d{2} \\d{4}\\)(?: \\d+)?$`);
+export const isAside = (fileName: string): boolean => ASIDE_TAIL.test(path.parse(nfc(fileName)).name);
 
 export interface NamedCopyResult {
   action: 'reused' | 'created';
@@ -132,8 +139,9 @@ export async function ensureNamedCopy(src: string, dst: string, size: number, no
     await fs.rm(tmp, { force: true });
     throw e;
   }
+  const own = nfc(path.basename(dst));
   for (const name of await fs.readdir(dir)) {
-    if (name === path.basename(dst) || name.endsWith('.part') || isAside(name)) continue;
+    if (nfc(name) === own || name.endsWith('.part') || isAside(name)) continue;
     const other = path.join(dir, name);
     const ost = await fs.stat(other).catch(() => null);
     if (ost?.isFile() && !mayHoldEdits(ost, size)) await fs.rm(other, { force: true });

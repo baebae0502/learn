@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { commandById, commandMention, type AppInfo, type Prefs, type Result, type StorageMode } from '@learn/domain';
+import { commandById, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
@@ -40,6 +40,8 @@ const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.a
 
 /** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file first; a failure is a toast. */
 const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
+/** The list before its first read: one array, so the command env's memo holds (final review nit). */
+const NO_ITEMS: readonly LibraryItem[] = [];
 
 export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
@@ -162,15 +164,19 @@ export function MainWindow(_props: { info: AppInfo }) {
   }, [items.isError, items.data, items.error]);
   const listFailure = items.data !== undefined ? null : items.isError ? items.error.message : lastListFailure;
 
-  const list = items.data ?? [];
-  const env: CommandEnv = {
-    view: view.kind === 'reader' ? 'viewer' : 'library',
+  const list = items.data ?? NO_ITEMS;
+  // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
+  // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
+  const viewKind = view.kind;
+  const textSize = prefs?.fontSize ?? 13;
+  const env = useMemo<CommandEnv>(() => ({
+    view: viewKind === 'reader' ? 'viewer' : 'library',
     blocked,
     held,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
-    textSize: prefs?.fontSize ?? 13,
+    textSize,
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (ids) => freshTargets(queryClient, list, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
@@ -186,7 +192,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     modal,
-  };
+  }), [viewKind, blocked, held, sidebarHidden, textSize, list, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

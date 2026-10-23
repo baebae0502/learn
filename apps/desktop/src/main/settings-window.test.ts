@@ -44,9 +44,18 @@ class FakeWindow extends EventEmitter {
   };
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   show = () => void (this.shown = true);
+  hide = () => {
+    this.shown = false;
+    this.events.push('hide');
+  };
+  isVisible = () => this.shown;
+  /** What happened to the window, in order (hide, close). */
+  events: string[] = [];
   focus = () => void this.focused++;
   loadURL = async (url: string) => void (this.url = url);
   close = () => {
+    this.emit('close', { preventDefault: () => {} });
+    this.events.push('torn down');
     this.destroyed = true;
     this.emit('closed');
   };
@@ -117,6 +126,14 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     const second = settings.open() as unknown as FakeWindow;
     expect(second).not.toBe(first);
     expect(FakeWindow.all).toHaveLength(2);
+  });
+
+  it('closing takes it off the screen before the page is torn down: no empty body on ⌘W (Mac run 2, critique n2)', async () => {
+    const w = host().open() as unknown as FakeWindow;
+    await ready(w);
+    expect(w.shown).toBe(true);
+    w.close();
+    expect(w.events).toEqual(['hide', 'torn down']);
   });
 
   it('gets its own window-state pushes (not key: no rings, neutral selection)', () => {

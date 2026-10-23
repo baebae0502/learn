@@ -54,6 +54,11 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         },
       });
       win = created;
+      // ⌘W or the close light: off the screen first, then torn down. Closing tears the page down before AppKit takes the
+      // window away, which showed an empty body for 2 frames (Mac run 2, critique n2); hidden, that happens unseen.
+      created.on('close', () => {
+        if (!created.isDestroyed() && created.isVisible()) created.hide();
+      });
       created.on('closed', () => {
         if (win === created) win = null;
       });

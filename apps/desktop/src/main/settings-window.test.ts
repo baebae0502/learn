@@ -43,6 +43,8 @@ class FakeWindow extends EventEmitter {
     this.animated = animate;
   };
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
+  /** The frame: the content plus a 28 pt title bar. */
+  getBounds = () => ({ x: this.position?.[0] ?? 0, y: this.position?.[1] ?? 0, width: this.contentSize[0], height: this.contentSize[1] + 28 });
   show = () => void (this.shown = true);
   hide = () => {
     this.shown = false;
@@ -61,8 +63,10 @@ class FakeWindow extends EventEmitter {
   };
 }
 
-vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: true } }));
-const { SETTINGS_WIDTH, createSettingsWindow } = await import('./settings-window');
+/** The display every frame lands on (tests change it). */
+const display = { workArea: { x: 0, y: 25, width: 1920, height: 1150 } };
+vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: true }, screen: { getDisplayMatching: () => display } }));
+const { SETTINGS_WIDTH, createSettingsWindow, settingsPosition } = await import('./settings-window');
 
 const MAIN = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 40, width: 1440, height: 900 }) } as unknown as BrowserWindow;
 const host = (main: BrowserWindow | null = MAIN) => createSettingsWindow({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=settings', main: () => main });
@@ -110,6 +114,37 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     expect(w.animated).toBe(true); // the bottom edge slides on macOS (critic T10-n3; ignored elsewhere)
     heightChanged!(412); // the message went (the next try)
     await new Promise((r) => setTimeout(r, 0));
+    expect(w.contentSize).toEqual([600, 412]);
+  });
+
+  it('sits wholly inside its display\'s work area, also over a main window low on the screen (final review m4)', async () => {
+    const wa = { x: 0, y: 25, width: 1024, height: 684 };
+    expect(settingsPosition({ x: 0, y: 25, width: 1024, height: 684 }, { width: 600, height: 440 }, wa)).toEqual({ x: 212, y: 121 });
+    expect(settingsPosition({ x: 300, y: 400, width: 1024, height: 684 }, { width: 600, height: 440 }, wa)).toEqual({ x: 424, y: 269 }); // up and left
+    expect(settingsPosition({ x: -500, y: 25, width: 600, height: 400 }, { width: 600, height: 440 }, wa)).toEqual({ x: 0, y: 121 });
+    expect(settingsPosition({ x: 0, y: 25, width: 1024, height: 684 }, { width: 600, height: 900 }, wa)).toEqual({ x: 212, y: 25 }); // taller: its top
+    // Through the window: a main window near the bottom of a 1024 × 768 display.
+    display.workArea = wa;
+    try {
+      const low = { isDestroyed: () => false, getBounds: () => ({ x: 0, y: 500, width: 1024, height: 268 }) } as unknown as BrowserWindow;
+      const w = host(low).open() as unknown as FakeWindow;
+      await ready(w);
+      const frame = w.getBounds();
+      expect(frame.y + frame.height).toBeLessThanOrEqual(wa.y + wa.height);
+      expect(frame.y).toBeGreaterThanOrEqual(wa.y);
+    } finally {
+      display.workArea = { x: 0, y: 25, width: 1920, height: 1150 };
+    }
+  });
+
+  it('a second ⌘, while the first is still being measured shows nothing unsized; the sized show follows (final review m4)', async () => {
+    const settings = host();
+    const w = settings.open() as unknown as FakeWindow;
+    expect(settings.open()).toBe(w as unknown as BrowserWindow);
+    expect(w.shown).toBe(false);
+    expect(w.focused).toBe(0);
+    await ready(w);
+    expect(w.shown).toBe(true);
     expect(w.contentSize).toEqual([600, 412]);
   });
 

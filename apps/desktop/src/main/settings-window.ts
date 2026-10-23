@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
@@ -8,6 +8,27 @@ import { trackWindowState } from './window-state';
 export const SETTINGS_WIDTH = 600;
 /** Off a main window, the settings window opens this far below its top edge (centred across it). */
 const BELOW_MAIN_TOP = 96;
+
+interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Where the settings window goes over a main window: centred across it, BELOW_MAIN_TOP below its top, then moved to lie
+ * wholly inside the work area of its display (final review m4: a main window low on the screen, or on a second display,
+ * put it partly off screen; AppKit only keeps the title bar below the menu bar). Taller than the work area: its top.
+ */
+export function settingsPosition(main: Rect, size: { width: number; height: number }, workArea: Rect): { x: number; y: number } {
+  const x = Math.round(main.x + (main.width - size.width) / 2);
+  const y = main.y + BELOW_MAIN_TOP;
+  return {
+    x: Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - size.width)),
+    y: Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - size.height)),
+  };
+}
 
 export interface SettingsWindow {
   /** ⌘, : opens the settings window, or brings the open one to the front. */
@@ -23,14 +44,18 @@ export interface SettingsWindow {
  */
 export function createSettingsWindow(deps: { preload: string; url(): string; main(): BrowserWindow | null }): SettingsWindow {
   let win: BrowserWindow | null = null;
+  /** Shown by its sized path: until then a second ⌘, shows nothing unsized (final review m4); the sized show comes soon. */
+  let sized = false;
   return {
     current: () => (win && !win.isDestroyed() ? win : null),
     open(): BrowserWindow {
       if (win && !win.isDestroyed()) {
+        if (!sized) return win; // still being measured: it shows itself, sized, in a moment (and takes the focus then)
         win.show();
         win.focus();
         return win;
       }
+      sized = false;
       const created = new BrowserWindow({
         width: SETTINGS_WIDTH,
         height: 560, // measured at this height first, then fitted to the content
@@ -79,9 +104,14 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
           const main = deps.main();
           if (main && !main.isDestroyed()) {
             const b = main.getBounds();
-            created.setPosition(Math.round(b.x + (b.width - SETTINGS_WIDTH) / 2), b.y + BELOW_MAIN_TOP);
+            const size = created.getBounds(); // the frame, title bar included
+            // The display it would land on, then that display's work area.
+            const { workArea } = screen.getDisplayMatching({ x: Math.round(b.x + (b.width - size.width) / 2), y: b.y + BELOW_MAIN_TOP, width: size.width, height: size.height });
+            const at = settingsPosition(b, size, workArea);
+            created.setPosition(at.x, at.y);
           }
           await markSized(created.webContents);
+          sized = true;
           created.show();
           // A message that appears (a refused folder) or goes makes the window as tall as its content again; on macOS the
           // bottom edge slides as AppKit's own windows do (`animate` is ignored elsewhere).
@@ -90,6 +120,7 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
           });
         })().catch(() => {
           // Only a window closed mid-measure gets here; otherwise show it unsized rather than not at all.
+          sized = true;
           if (!created.isDestroyed()) created.show();
         });
       });

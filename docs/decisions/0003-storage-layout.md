@@ -4,6 +4,7 @@
 
 ## 결정
 - 라이브러리 = 한 폴더: `library.sqlite`, `assets/<sha256 앞 2자>/<sha256>`, `staging/`, `derived/`, `exports/`. 기본 위치 macOS `~/Library/Application Support/Learn/Library`, Linux `~/.config/Learn/Library`(앱 이름 `Learn`), `LEARN_LIBRARY_DIR`로 바꿀 수 있다.
+  - `derived/`는 다시 만들 수 있는 파생물을 두는 곳이지만, `derived/open/<assetId>/`는 예외다(M3, 최종 리뷰 I1). 기본 앱으로 열기의 이름 붙은 복사본과, 사용자가 다른 앱에서 고친 수정본(`<제목> (수정본 <날짜 시각>).<확장자>`)이 여기 있다. 그래서 `derived/`를 지우거나 다시 만드는 복구·캐시 정리·복원은 `derived/open/`을 빼야 한다.
 - 관리형 파일 이름은 해시뿐이다. 표시 이름은 DB에 둔다. 외부 연결은 경로만 기록하며 이식 불가능하다(백업에는 참조로만 남김).
 - 가져오기: staging 복사 → 해시 재검증 → 원자적 rename → 단일 트랜잭션 커밋 → 추출 job 등록. 중간 실패는 DB에 흔적을 남기지 않고, 남은 파일은 복구 스캔이 보고만 한다(자동 삭제 없음).
   - 이미 관리형으로 배치된 같은 해시의 자산을 재사용할 때는 디스크의 파일을 해시로 검증하고, 파일이 없으면 원본에서 복원한다(`ensurePlaced`). 대상이 손상돼 있으면 삭제하지 않고 `staging/corrupt-<sha256>-<id>`로 격리한 뒤 검증된 복사본을 배치하며(복구 스캔이 staging 잔여물로 보고한다), 복사 중 원본이 바뀐 경우도 감지한다. 커밋이 실패한 뒤 재시도하면 이미 배치된 파일(inode)을 재사용한다.

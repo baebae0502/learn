@@ -85,6 +85,7 @@
 - https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan (2026-10-07 갱신)
   > "You can still use the Claude Agent SDK, `claude -p`, and third-party apps with your subscription limits."
 - 읽기: "unmodified Claude Code binary" 문장과 지원 문서는 허용 쪽을 가리키고, `claude-agent-acp`는 Agent SDK 위의 어댑터라 SDK 문서의 "Unless previously approved"는 승인 필요 쪽을 가리킨다. Anthropic이 2026-05에 발표했다가 2026-06에 멈춘 과금 변경은 "Claude Code through ACP"를 SDK 사용으로 묶었다고 Zed가 전했다(https://zed.dev/blog/anthropic-subscription-changes, 공급사 아닌 2차 출처). Anthropic이 ACP를 직접 다룬 문장은 찾지 못했다. 문서만으로는 정해지지 않으므로 **넓은 공개 전에 서면 확인이 필요하다.** 위의 Commercial Terms 조건이 Learn 같은 앱에 해당하는지도 문서만으로는 분명하지 않다.
+- 저장소 공개: 2026-10-23 소유자 결정으로 baebae0502/learn을 공개 저장소로 전환했다. Anthropic 서면 확인은 추후에 받는다.
 - 이름: Anthropic 문서는 "Claude Code"나 Anthropic 이름을 자기 제품·기능 이름에 쓰지 못하게 한다(같은 legal 페이지 "Using the Claude Code name and logo"). 에이전트 선택 화면의 표기에 걸린다.
 
 **OpenAI**

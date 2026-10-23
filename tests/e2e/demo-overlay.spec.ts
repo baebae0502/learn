@@ -259,11 +259,16 @@ test('the drawn pointer: a disc that follows, or only a click ring; gone when th
     expect(await at()).toEqual(['130px', `${h - 80}px`]);
     await page.mouse.move(150, h - 90);
     expect(await at()).toEqual(['150px', `${h - 90}px`]);
-    // … fading once it is up (250 ms, then the exit).
+    // … staying once it is up while the arrow rests there (Mac run 3, critique n3), fading once the pointer moves away
+    // (and 250 ms have passed), then gone for good.
     await page.mouse.up();
     await expect(pointer).not.toHaveAttribute('data-down', '');
-    await expect(pointer).toHaveCount(0, { timeout: 1500 });
+    await page.waitForTimeout(600);
+    await expect(pointer).toBeVisible();
+    await expect(pointer).not.toHaveAttribute('data-leaving', '');
     await page.mouse.move(160, h - 90);
+    await expect(pointer).toHaveCount(0, { timeout: 1500 });
+    await page.mouse.move(170, h - 90);
     await page.waitForTimeout(300);
     await expect(pointer).toHaveCount(0);
   } finally {
@@ -292,6 +297,9 @@ test('a caption and a click ring are counted from their first painted frame, not
     await page.mouse.up();
     await expect(pointer).toBeVisible();
     await expect(pointer).not.toHaveAttribute('data-leaving', '');
+    await page.waitForTimeout(500); // the arrow rests on what it pressed: the ring stays (n3)
+    await expect(pointer).not.toHaveAttribute('data-leaving', '');
+    await page.mouse.move(200, h - 120);
     await expect(pointer).toHaveCount(0, { timeout: 1500 });
   } finally {
     await app.close();

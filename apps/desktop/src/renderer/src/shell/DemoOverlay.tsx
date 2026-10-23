@@ -11,6 +11,8 @@ import { useSidebarHidden } from './useSidebar';
 const PILL_MS = 1900;
 /** With the system's own cursor: how long the click ring stays after the button is released, before it fades. */
 const RING_AFTER_UP_MS = 250;
+/** A ring waiting for the pointer to move away leaves this long after its first painted frame anyway (a keyboard chapter next). */
+const RING_REST_MAX_MS = 1500;
 /** How long a chapter caption stays when the script names no duration. */
 const CAPTION_MS = 3500;
 /** Exits run at 0.75 × the base duration (design-spec 8.1), as the CSS does. */
@@ -131,9 +133,12 @@ export function DemoOverlay() {
     const up = (e: KeyboardEvent) => {
       if (e.key === 'Alt' && pillRef.current?.held && !pillRef.current.leaving) endPill();
     };
+    /** Set while a ring waits for the pointer to move away (clicks mode, after the button came up). */
+    let ringMoved: ((x: number, y: number) => void) | null = null;
     const clearRing = () => {
       for (const cancel of ringTimers.current) cancel();
       ringTimers.current = [];
+      ringMoved = null;
     };
     const move = (e: PointerEvent) => {
       const cursor = e.target instanceof Element ? getComputedStyle(e.target).cursor : '';
@@ -145,17 +150,36 @@ export function DemoOverlay() {
           setPointer(next);
         } else if (e.type === 'pointermove') {
           if (e.buttons > 0) setPointer((p) => (p ? next : p));
+          else ringMoved?.(e.clientX, e.clientY);
         } else {
           setPointer((p) => (p ? { ...p, down: false } : p));
           clearRing();
-          // Counted from the ring's first painted frame: a press whose work holds the frame still shows its ring.
+          // The ring leaves at the later of RING_AFTER_UP_MS after its first painted frame and the pointer's next move
+          // away (Mac run 3, critique n3): a press whose work kept the frame off screen (the PDF's next page) showed its
+          // ring for one presented frame, since a page cannot see presentation; it stays while the arrow rests on it.
+          const from = { x: e.clientX, y: e.clientY };
+          let timeUp = false;
+          let moved = false;
+          const leave = () => {
+            ringMoved = null;
+            setPointer((p) => (p ? { ...p, leaving: true } : p));
+            ringTimers.current.push(later(() => setPointer(null), EXIT_MS));
+          };
+          ringMoved = (x, y) => {
+            if (moved || Math.hypot(x - from.x, y - from.y) < 2) return; // a made-up move in place is no move
+            moved = true;
+            if (timeUp) leave();
+          };
           ringTimers.current.push(
             afterPaint(() =>
               ringTimers.current.push(
                 later(() => {
-                  setPointer((p) => (p ? { ...p, leaving: true } : p));
-                  ringTimers.current.push(later(() => setPointer(null), EXIT_MS));
+                  timeUp = true;
+                  if (moved) leave();
                 }, RING_AFTER_UP_MS),
+                later(() => {
+                  if (ringMoved) leave();
+                }, RING_REST_MAX_MS),
               ),
             ),
           );

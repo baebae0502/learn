@@ -6,6 +6,9 @@ import type { WebContents } from 'electron';
  */
 export const REMEASURE_MS = 500;
 
+// Every script here only reads layout or marks the page, so none runs as a user gesture (`executeJavaScript(…, false)`,
+// final review nit): a gesture would let the page do what only a click may (a popup, full screen, playback).
+
 /**
  * Natural height (CSS px, rounded up) of the first element matching `selector` in a not-yet-shown window.
  * Polls with timers (hidden windows get no animation frames); 0 → `fallback`.
@@ -22,7 +25,7 @@ export async function contentHeight(contents: WebContents, selector: string, fal
     };
     tick();
   })`;
-  const height = Number(await contents.executeJavaScript(script, true));
+  const height = Number(await contents.executeJavaScript(script, false));
   return height > 0 ? height : fallback;
 }
 
@@ -43,7 +46,7 @@ export async function fontsReady(contents: WebContents, selector: string, capMs 
   const cap = new Promise<boolean>((resolve) => {
     timer = setTimeout(() => resolve(false), capMs);
   });
-  const ready = contents.executeJavaScript(script, true).then(
+  const ready = contents.executeJavaScript(script, false).then(
     (value) => value === true,
     () => false,
   );
@@ -56,7 +59,7 @@ export async function fontsReady(contents: WebContents, selector: string, capMs 
 
 /** After sizing: the page may now cap itself to the window and scroll inside (CSS :root[data-sized]). */
 export async function markSized(contents: WebContents): Promise<void> {
-  await contents.executeJavaScript("document.documentElement.dataset.sized = '1'", true);
+  await contents.executeJavaScript("document.documentElement.dataset.sized = '1'", false);
 }
 
 /**
@@ -79,7 +82,7 @@ export function followContentHeight(contents: WebContents, selector: string, kno
     });
     ro.observe(el);
   })`;
-  contents.executeJavaScript(script, true).then(
+  contents.executeJavaScript(script, false).then(
     (value) => {
       const height = Number(value);
       if (contents.isDestroyed() || !(height > 0) || height === known) return; // gone, or nothing to follow

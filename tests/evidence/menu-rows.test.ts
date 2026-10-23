@@ -40,4 +40,23 @@ describe('open-menu row counter (Task 8 R2-1)', () => {
     }
     expect(rowsBelowFirstSeparator(menuRows(grey, findMenuPanel(grey, { x: 15, y: 10 })))).toBe(2);
   });
+  it('the measured extremes fall on their side of INK (re-review m6: separators ≤ 28, the disabled row ≥ 61)', () => {
+    // A blank panel row redrawn as a 1 px line 28 below the panel (the faintest margin measured), and the second
+    // full-screen row's text as grey 61 below it: still a separator and still a row.
+    const edge = { ...fixture, data: Uint8Array.from(fixture.data) };
+    const bg = fixture.data[(10 * fixture.width + 15) * 4]!;
+    const panel = findMenuPanel(fixture, { x: 15, y: 10 });
+    const before = menuRows(fixture, panel);
+    for (let x = panel.x0; x < panel.x1; x++) for (const c of [0, 1, 2]) edge.data[(12 * edge.width + x) * 4 + c] = bg - 28;
+    for (let y = 66; y < 88; y++) {
+      for (let x = 12; x < 176; x++) {
+        const i = (y * edge.width + x) * 4;
+        if (bg - edge.data[i]! > 60) for (const c of [0, 1, 2]) edge.data[i + c] = bg - 61;
+      }
+    }
+    const m = menuRows(edge, panel);
+    expect(m.separators).toContain(panel.y0 + 7); // y 12 in the crop
+    expect(m.rows).toHaveLength(before.rows.length);
+    expect(rowsBelowFirstSeparator(m)).toBe(3); // the new line is now the first separator: all three rows below it
+  });
 });

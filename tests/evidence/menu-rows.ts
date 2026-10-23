@@ -46,7 +46,10 @@ export function findMenuPanel(img: RgbaImage, seed: { x: number; y: number }, to
 /**
  * Ink threshold. A disabled item (기본 글자 크기 at the default size) is grey text that peaks 61–62 from the panel on
  * the macos-15 runner, so the old 60 split its band into slivers and the row went uncounted (run 39779536146 counted 5
- * of 6). Separators peak at 24–26, regular text at about 195: 40 sits clear of both.
+ * of 6). Measured in every counted 보기 capture of runs 39779536146, 39792501184 and 39799538851 (re-review m6; all
+ * light menus, panel luma 234–237): separators peak at 25–28, the disabled row at 61–64, regular text at 198–201. So 40
+ * clears the separators by at least 12 and the faintest text row by at least 21. The runner's menus are never dark (its
+ * system appearance stays light; m3-18 is the app in dark under a light menu), so no dark menu has been measured.
  */
 export const INK = 40;
 

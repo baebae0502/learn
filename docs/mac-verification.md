@@ -1,6 +1,6 @@
 # macOS 검증 기록 (M0 증거 레인)
 
-- 갱신: 2026-10-23(M3 셸 Task 14 반영 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
+- 갱신: 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
 - 이 문서의 수치는 모두 아래 실행 기록의 artifact(`env.json`, `baseline.json`, `spikes.json`, Playwright 리포트)에서 옮겼다. GitHub 러너는 M1 **가상 머신**이므로 성능·코덱 값은 참고값이고, AC16 판정은 기준 장비(Apple Silicon 16 GB 실기)에서 한다.
 
 ## 목적
@@ -236,7 +236,7 @@ macOS 분은 잡마다 분 단위로 올림되고, 비공개 저장소는 macOS 
 
 ## M3 셸 (Task 14, 2026-10-22–23, macos-15 arm64)
 
-Task 14의 macOS 실행. 마지막 `all` 실행(run 39892840988, b156e77)이 녹색이다: 증거 29/0, 셸 판정 64/64, 기능 E2E 127 통과 · 0 실패 · 10 건너뜀(Linux 전용과 시각 투어), 데모는 첫 시도에 녹화됐다. 러너: 이미지 macos-15-arm64 20260907.0337.1, Apple M1 (Virtual), macOS 15.7.9, 1024×768 @1x. 아래 값은 모두 `evidence/m3/39892840988/evidence/evidence-results/`의 JSON(`m3-shell.json`, `perf.json`, `open-latency.json`, `theme-switch.json`, `spikes.json`, `e2e-report.json`)과 데모 파일에서 옮겼다.
+Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — PR의 최종 코드**)이 녹색이다: 증거 30/0, 셸 판정 65/65, 기능 E2E 129 통과 · 0 실패 · 10 건너뜀(Linux 전용과 시각 투어), 데모는 첫 시도에 녹화됐다(아래 "4·5차 실행"). 아래 셸 판정 값·데모 절은 3차(run 39892840988, b156e77)에서 옮긴 것이고, 4·5차에서 바뀐 값은 "4·5차 실행" 절에 있다. 러너: 이미지 macos-15-arm64 20260907.0337.1, Apple M1 (Virtual), macOS 15.7.9, 1024×768 @1x. 아래 값은 모두 `evidence/m3/39892840988/evidence/evidence-results/`의 JSON(`m3-shell.json`, `perf.json`, `open-latency.json`, `theme-switch.json`, `spikes.json`, `e2e-report.json`)과 데모 파일에서 옮겼다.
 
 ### 실행 기록 (이어서)
 
@@ -247,8 +247,12 @@ Task 14의 macOS 실행. 마지막 `all` 실행(run 39892840988, b156e77)이 녹
 | 17–22 | [39785581887](https://github.com/baebae0502/learn/actions/runs/39785581887) · [39788948612](https://github.com/baebae0502/learn/actions/runs/39788948612) · [39792501184](https://github.com/baebae0502/learn/actions/runs/39792501184) · [39795175858](https://github.com/baebae0502/learn/actions/runs/39795175858) · [39796931020](https://github.com/baebae0502/learn/actions/runs/39796931020) · [39799538851](https://github.com/baebae0502/learn/actions/runs/39799538851) | 10-22 13:17–14:52 | 진단 t14-diag1–6(demo 탐침 · e2e · evidence · demo · evidence+3 spec · evidence) | 460 · 394 · 251 · 354 · 318 · 279초 → 8 · 7 · 5 · 6 · 6 · 5분 | 진단(1차 실행 수정 라운드): 녹화 유실 원인 탐침, 기능 E2E와 판정 재확인 |
 | 23 | [39884763777](https://github.com/baebae0502/learn/actions/runs/39884763777) | 10-23 01:34 | all / 예 / d119c0d | 936초 → 16분 | **성공**: 증거 29/0, 판정 64/64, E2E 124/0/10. 데모에 앱 결함 하나(성공 토스트가 닫히지 않음, b2f0e55에서 고침) |
 | 24 | [39892840988](https://github.com/baebae0502/learn/actions/runs/39892840988) | 10-23 03:02 | all / 예 / b156e77 | 963초 → 17분 | **성공**: 증거 29/0, 판정 64/64, E2E 127/0/10, 데모 첫 시도 녹화 |
+| 25 | [39913204254](https://github.com/baebae0502/learn/actions/runs/39913204254) | 10-23 06:43 | all / 예 / 7175385 (최종 리뷰 수정) | 981초 → 17분 | **성공**: 증거 30/0, 판정 65/65(기본 앱 조회 추가), E2E 128/0/10, 데모 첫 시도 녹화 |
+| 26 | [39920413383](https://github.com/baebae0502/learn/actions/runs/39920413383) | 10-23 07:49 | all / 예 / 18efa56 (잔여 수정, 최종) | 935초 → 16분(공개 저장소: 무료) | **성공**: 증거 30/0, 판정 65/65, E2E 129/0/10, 데모 첫 시도 녹화 |
 
-**합계: macOS 24회, 146분(포함 분 1,460분 차감).** M0 5회 · M2 1회 · M3 18회. M3은 Task 8 창 크롬 8회(30분), Task 13 데모 1회(7분), Task 14 9회(86분: `all` 3회 49분, 진단 6회 37분). fixture 잡(ubuntu)은 run마다 1분(×1).
+**합계: macOS 26회, 179분.** M0 5회 · M2 1회 · M3 20회. M3은 Task 8 창 크롬 8회(30분), Task 13 데모 1회(7분), Task 14 11회(119분: `all` 5회 82분, 진단 6회 37분). fixture 잡(ubuntu)은 run마다 1분(×1).
+- **한도**: 비공개 저장소일 때는 macOS 1분이 포함 분 10분, Linux 1분이 1분으로 같은 월 2,000분에서 빠진다. 25차(run 39913204254)까지 macOS 166분(1,660) + Linux CI 약 373분으로 2026-10 한도를 다 썼다(이 문서의 이전 합계는 macOS만 셌다). 계정의 Actions 예산이 $0(사용 차단)이라 과금은 없었다.
+- **2026-10-23 공개 전환**: 저장소를 공개한 뒤로 GitHub 호스트 러너(macOS 포함)는 무료다. 26차(run 39920413383)는 공개 뒤 실행이다.
 
 ### 1차 실행에서 2차까지 (run 39779536146 → 39884763777)
 - **데모 녹화 유실**: `screencapture -v`가 1600×900 전환 뒤 8.1초 만에 종료 1("capture error")로 끝났다. 탐침 run 39785581887에서 같은 모드로 12초 녹화 5개(커서 이동 0·30·60·120 Hz)가 모두 성공했고, 성공한 녹화도 같은 `IOServiceMatchingfailed … AppleM2ScalerParavirtDriver` 줄을 남긴다. 그래서 그 줄은 원인이 아니며, 원인은 가상 디스플레이 캡처의 일시 실패다. 대응(b0f6d32, 68369e2):
@@ -330,6 +334,21 @@ Task 14의 macOS 실행. 마지막 `all` 실행(run 39892840988, b156e77)이 녹
     - n6: 드롭 뒤 0.55초 멈춤과 100ms 바쁨 문구. 표시를 더하고 고쳤다(36ad37d, eec201d). Mac 원인은 4차의 `drop-import.json`이 말한다;
     - n7: 불투명 비교 캡처(2a743b1).
   - 위 3차 영상 수치(테마, 토스트, 설정 창 이동·닫기, 시트)는 구현자가 60fps 프레임에서 잰 값이고, 비평의 값과 같다.
+
+### 4·5차 실행 (run 39913204254 · 39920413383, 최종 리뷰 수정과 잔여 수정)
+- **기본 앱으로 열기·Finder에서 보기**(최종 리뷰 I1): 관리형 사본의 저장 파일(`assets/<2>/<sha256>`, 확장자 없음)은 macOS에서 **TextEdit**로 열린다(LaunchServices 조회, 실행 없이). 이름 붙인 읽기 전용 사본(`derived/open/<assetId>/<제목>.<확장자>`)은 PDF → **Preview**, MP4 → **QuickTime Player**(5차, 종류마다 자기 경로로 확인). 4차는 PDF → Preview.
+- **시트·설정 창 열기**(`open-latency.json`, 목표 250ms):
+
+  | 실행 | ⌘/ 시트 중앙값(5회) | 설정 창 중앙값(5회) | 새 세션 첫 열기(3세션 중앙값) |
+  |---|---|---|---|
+  | 4차 run 39913204254 (7175385) | 518ms (585, 605, 518, 474, 402) | 282ms | 시트 521ms, 설정 357ms |
+  | 5차 run 39920413383 (18efa56) | **300ms** (426, 300, 258, 275, 315) | **204ms** (204, 234, 197, 197, 215) | 시트 329ms, 설정 272ms |
+
+  4차의 시트 값만 튀었다. 그 사이 시트 경로의 변경(`measure.ts`의 `executeJavaScript(…, false)`, ⌘/ 시트의 전체 화면 행)은 Linux에서 b156e77 · 7175385 · 7175385+`true`를 번갈아 10회씩 재도 차이가 없었고(시트 378.5–384ms, 첫 열기 444–450.5ms), 5차가 다시 300ms라 러너 편차로 본다. 5차도 ⌘/ 시트는 목표 250ms 위(보고만, M4 미리 띄우기 입력).
+- **테마 전환**(5차, `theme-switch.json`): 네이티브 테마 적용 23–33ms, 세 번 모두 `shown`. 데모 60fps 프레임(다크 클릭, 탐침: 메인 사이드바·도구 막대·내용, 설정 제목 막대·본문·카드): 설정 페이지 119.517초 → 메인 페이지 119.550초(+2프레임) → 네이티브 부분(메인 사이드바 재질, 설정 제목 막대) 119.583초. **네이티브가 페이지보다 앞서는 프레임은 없다.** 메인 창은 자기 페이지 뒤 2프레임(허용 1–2) 안이고, 설정 창 제목 막대는 자기 페이지보다 4프레임(67ms) 늦다 — `nativeTheme`은 두 창에 한 번에 적용되므로 두 페이지가 같은 프레임에 바뀌어야 줄어든다(M4 입력).
+- **드롭**(`drop-import.json`, 8개 파일): 4차 — 오버레이 지움 17ms, 응답 109ms, 토스트 363ms, 페이지 최장 프레임 간격 317ms, main 최장 정지 5ms. 5차 — 27 / 97 / 247ms, 프레임 간격 200ms, main 7ms, 바쁨 문구 없음. 3차 영상의 0.55초 멈춤은 main이 아니라 렌더러 쪽이다(M4에서 프로파일).
+- **냉시작 중앙값**(`perf.json`): app-ready 4차 679ms, 5차 586ms.
+- **데모**: 4차 175.7초, 5차 172.6초(artifact `demo-m3-39920413383`, `m3-demo.final.mov`, 1600×900, 60fps, 장 17개), 둘 다 첫 시도 녹화, `notes` 없음. 5차 장 목록은 3차와 같은 17장이고 시각만 몇 초 다르다(앞머리 자르기와 토스트 기다림).
 
 ## 알려진 한계
 

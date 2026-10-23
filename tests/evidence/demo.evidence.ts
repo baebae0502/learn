@@ -39,6 +39,7 @@ import { captionSpot, desktopSpot } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
 import { PDF_FOOTER, READ_TITLE, UNPLAYABLE_TITLE, writeDemoMedia } from './demo-media';
+import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
 
 const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
@@ -86,15 +87,13 @@ const PLANS: readonly DemoPlan[] = IS_MAC
     ]
   : [{ display: 'switch', capture: 'screencapture', why: 'the only attempt' }];
 /**
- * The demo's whole budget, attempts included. With the rest of `all` (about 290 s of evidence on the Mac) the step
- * stays under its 16-minute cap: worst case about 290 + 560 + 20 s ≈ 14.5 min.
+ * The demo's whole budget, attempts included. With the rest of `all` (about 285 s of evidence on the Mac) the step
+ * stays under its 16-minute cap (globalTimeout 960 s): typically 285 + 310 s; at worst the test's own limit (560 + 60
+ * s) and, only after a timeout, the afterAll's restores (RESTORE_HOOK_MS): 285 + 620 + 45 = 950 s.
  */
 const DEMO_BUDGET_MS = 560_000;
 /** One full attempt: set-up, the fixed-length recording, teardown (Mac run 39779536146: 304 s). */
 const FULL_ATTEMPT_MS = 320_000;
-class RecordingLost extends Error {
-  override name = 'RecordingLost';
-}
 /** Set when this attempt's recording ended early (screencapture exited before RECORD_SECONDS). */
 let lostRecording: string | null = null;
 const stopIfLost = () => {
@@ -105,6 +104,40 @@ const pause = async (ms: number) => {
   await sleep(ms * PACE);
   stopIfLost();
 };
+
+/**
+ * What the demo changed on the runner (display mode, Dock, desktop picture) and the app it launched: each undone once,
+ * in reverse order, each on its own (one that fails or hangs past RESTORE_MS does not skip the next; re-review m3). The
+ * attempt's `finally` runs them, and the file's afterAll runs any left: a test timeout abandons the attempt before its
+ * `finally` (re-review m2), and the shell captures after the demo need the runner's own 1024 × 768 mode.
+ */
+const pendingRestores: Array<{ what: string; run: () => Promise<unknown> }> = [];
+const RESTORE_MS = 10_000;
+/** The afterAll's own limit: the four restores at their limit, and a margin. */
+const RESTORE_HOOK_MS = 45_000;
+const onRestore = (what: string, run: () => Promise<unknown>) => void pendingRestores.push({ what, run });
+const within = <T>(work: Promise<T>, ms: number, what: string): Promise<T> =>
+  Promise.race([work, sleep(ms).then(() => Promise.reject(new Error(`${what}: no answer within ${ms / 1000} s`)))]);
+/** Restore runs one at a time: an afterAll that starts while an abandoned attempt's `finally` restores waits for it. */
+let restoring: Promise<void> = Promise.resolve();
+function runRestores(notes: string[]): Promise<void> {
+  const run = restoring.then(async () => {
+    for (let r = pendingRestores.pop(); r; r = pendingRestores.pop()) {
+      await within(r.run(), RESTORE_MS, `restoring ${r.what}`).catch((e: unknown) => notes.push(`restoring ${r!.what} failed: ${errorText(e)}`));
+    }
+  });
+  restoring = run.catch(() => {});
+  return run;
+}
+test.afterAll(async () => {
+  test.setTimeout(RESTORE_HOOK_MS);
+  const notes: string[] = [];
+  if (pendingRestores.length > 0) notes.push(`${pendingRestores.length} restores left by an attempt that did not finish (a test timeout)`);
+  await runRestores(notes);
+  if (notes.length > 0) console.warn(`[demo] ${notes.join('; ')}`);
+});
+/** A recording's stop (or its end) may take this long; then it counts as having left no file. */
+const STOP_MS = 30_000;
 /**
  * T13R2-m2: after a key whose result is the point (open, close, fold, theme, ⌘O, ⌘1, ⌘K), the result stays on screen
  * 2.5 s once its pill has gone, counted from when the key went out. Stops inside a typed sequence (the 초성 letters,
@@ -207,11 +240,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   /** Linux x11grab: when ffmpeg had opened the screen (macOS: derived from screencapture's exit). */
   let recordingStartMs: number | null = null;
   let demoSeconds = 0;
+  /** The demo's last chapter has ended: the recording's remaining seconds are only its tail. */
+  let demoEnded = false;
+  /** Why this attempt's recording is lost (demo-loss.ts), set in the `finally`. */
+  let loss: string | null = null;
   let screen: unknown = null;
   // Widened on purpose: glide() changes it from inside a closure, where narrowing cannot see.
   let cursor = (IS_MAC ? 'system' : 'synthetic') as CursorMode;
-  let restoreDock: (() => Promise<void>) | null = null;
-  let restoreDesktop: (() => Promise<string[]>) | null = null;
   const osascriptBefore = osascriptLimits.timeoutMs;
   if (IS_MAC) osascriptLimits.timeoutMs = OSASCRIPT_MS; // T13R2-m7: a stuck Apple Event may freeze the picture 5 s at most
   /** A macOS-only step: any failure is a note, then `recover` puts a known state back (review minor 2). */
@@ -226,6 +261,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
   const display: { result: DisplaySwitch; restore(): Promise<void> } =
     plan.display === 'switch' ? await switchDisplayForDemo() : { result: { status: 'skipped', reason: plan.why }, restore: async () => {} };
+  onRestore('the display mode', () => display.restore());
   let launchOptions: LaunchOptions = {
     env: { LEARN_DEMO_OVERLAY: '1' },
     // The page follows the theme pref through nativeTheme, as on a user's Mac (no light emulation; Task 8 M1).
@@ -234,11 +270,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   };
   if (IS_MAC) {
     await macStep('Dock autohide', async () => {
-      restoreDock = await hideDock();
+      onRestore('the Dock', await hideDock());
     });
     await macStep('a neutral desktop picture (the runner\'s own stays)', async () => {
       const desktop = await neutralDesktop();
-      restoreDesktop = desktop.restore;
+      onRestore('the desktop picture', async () => notes.push(...(await desktop.restore())));
       notes.push(...desktop.notes);
     });
     await macStep('the app copy named Learn (the plain Electron binary runs instead)', async () => {
@@ -250,6 +286,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   try {
     s = await launch(libraryDir, userData, launchOptions);
     const app = s.app;
+    onRestore('the app (closing it)', () => app.close());
     const page = s.page;
     // The study material, printed by Chromium in the launched app before anything is recorded; if printing fails or
     // takes too long, fixture copies under the same names (a note says so; the demo stays the same).
@@ -522,11 +559,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       rec = startRecording(RECORD_SECONDS, 'm3-demo', 'M3 shell demo (2–4 min)');
       const recordingFrom = Date.now();
       if (rec.file) {
-        // Not for a skipped one (Linux CI). An exit well before RECORD_SECONDS without a file is a lost recording.
+        // Not for a skipped one (Linux CI). An exit before the demo has ended is a lost recording, with or without a
+        // (partial) file (re-review I1): the demo stops at its next step and runs again.
         void rec.done.then((entry) => {
           recordingExitMs = Date.now();
-          const after = (recordingExitMs - recordingFrom) / 1000;
-          if (!entry.file && after < RECORD_SECONDS - 5) lostRecording = `screencapture ended after ${after.toFixed(1)} s without a file (${(entry.error ?? 'no error').split('\n').at(-1)})`;
+          lostRecording ??= exitedEarly({ afterSeconds: (recordingExitMs - recordingFrom) / 1000, demoEnded, end: entry });
         });
       }
     }
@@ -892,6 +929,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3000);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
+    stopIfLost(); // an exit that came during the last pause
+    demoEnded = true;
     if (!stopRec && rec?.file) {
       // screencapture -V stops by itself; finish-demo.sh trims the rest away. A recording lost meanwhile ends the wait.
       const left = RECORD_SECONDS - (Date.now() - started) / 1000;
@@ -900,19 +939,20 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       stopIfLost();
     } else await pause(2000); // the tail of an x11grab recording or a screencast
   } catch (e) {
-    if (!(e instanceof RecordingLost)) throw e;
-    notes.push(`attempt (${plan.why}): ${e.message}; the demo stopped there`);
+    // A loss that made a step fail before the next check is still a loss (re-review m1): the exit handler gets a moment.
+    if (!(e instanceof RecordingLost) && !lostRecording && rec?.file) await Promise.race([rec.done.then(() => sleep(50)), sleep(1000)]);
+    const lost = lossOf(e, lostRecording);
+    if (lost === null) throw e;
+    lostRecording = lost;
+    notes.push(`attempt (${plan.why}): ${lost}; the demo stopped there`);
   } finally {
-    const entry = stopRec ? await stopRec() : rec ? await rec.done : null;
-    await s?.app.close().catch(() => {});
-    if (restoreDock) await (restoreDock as () => Promise<void>)().catch((e: unknown) => notes.push(`restoring the Dock failed: ${errorText(e)}`));
-    if (restoreDesktop) {
-      await (restoreDesktop as () => Promise<string[]>)().then(
-        (skipped) => notes.push(...skipped),
-        (e: unknown) => notes.push(`restoring the desktop picture failed: ${errorText(e)}`),
-      );
-    }
-    await display.restore();
+    // A recording that has not ended by itself stops now, not at RECORD_SECONDS; any stop is bounded (re-review m3).
+    if (!demoEnded) rec?.cancel?.();
+    const entry: RecordingEnd | null = await within<RecordingEnd | null>(stopRec ? stopRec() : rec ? rec.done : Promise.resolve(null), STOP_MS, 'stopping the recording').catch(
+      (e: unknown) => ({ file: null, error: errorText(e) }),
+    );
+    loss = recordingLoss({ capture: GRAB ? 'x11grab' : plan.capture, end: entry, early: lostRecording });
+    await runRestores(notes);
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(libraryDir, { recursive: true, force: true });
@@ -934,8 +974,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       json.abs,
       `${JSON.stringify(
         {
-          recording: entry?.file ?? null,
+          recording: loss ? null : (entry?.file ?? null),
           recordingError: entry?.error ?? entry?.skipped ?? null,
+          /** Why this attempt's recording is lost (then it retries, or the test fails); a partial file stays aside. */
+          recordingLost: loss,
+          ...(loss && entry?.file ? { partialRecording: entry.file } : {}),
           recordSeconds: IS_MAC ? RECORD_SECONDS : null,
           demoSeconds,
           /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the video. */
@@ -962,7 +1005,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     record({ file: json.rel, kind: 'data', description: 'M3 demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
-  if (lostRecording) return { lost: lostRecording };
+  if (loss) return { lost: loss };
   // A demo longer than the fixed macOS recording lost its end: say so (the files above are written either way).
   if (IS_MAC && rec?.file) expect(demoSeconds, 'the demo fits the recording (RECORD_SECONDS)').toBeLessThanOrEqual(RECORD_SECONDS);
   return { lost: null };

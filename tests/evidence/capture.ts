@@ -196,6 +196,8 @@ export interface Recording {
   file: string | null;
   /** Resolves when screencapture exits (after `seconds`). */
   done: Promise<ManifestEntry>;
+  /** Ends it early (SIGINT: screencapture writes out what it has). A no-op once it has ended or when skipped. */
+  cancel?(): void;
 }
 
 /**
@@ -226,7 +228,7 @@ export function startRecording(seconds: number, name: string, description: strin
       );
     });
   });
-  return { file, done };
+  return { file, done, cancel: () => void (child.exitCode === null && child.signalCode === null && child.kill('SIGINT')) };
 }
 
 export interface StoppableRecording extends Recording {

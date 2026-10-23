@@ -145,9 +145,10 @@ test('a first drop into an empty library: the overlay goes first, a quiet screen
     expect(lastText - firstText, 'the text, once shown, at least 300 ms').toBeGreaterThanOrEqual(280);
     // The success toast never says "가져왔습니다" over "가져오는 중…": it waits for the rows.
     await expect(page.getByTestId('import-done')).toBeVisible();
-    const toastAt = await page.evaluate(() => performance.getEntriesByName('learn:toast:import-done').at(-1)?.startTime ?? null);
-    expect(toastAt).not.toBeNull();
-    expect(toastAt!).toBeGreaterThan(lastText);
+    // The mark is set at the toast's first painted frame, two frames after it is in the DOM: wait for it.
+    const toastMark = () => page.evaluate(() => performance.getEntriesByName('learn:toast:import-done').at(-1)?.startTime ?? null);
+    await expect.poll(toastMark).not.toBeNull();
+    expect((await toastMark())!).toBeGreaterThan(lastText);
   } finally {
     await app.close();
   }

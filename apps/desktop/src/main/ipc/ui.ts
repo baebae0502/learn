@@ -5,6 +5,7 @@ import { refreshItemAvailability } from '../item-availability';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
 import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
+import { mainStrings } from '../strings';
 
 export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   // Resolves when the native menu closes: the picked command (the renderer runs it with runPicked) or null.
@@ -43,7 +44,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
 
   // Sheets hang over the main window only: a sheet (or the settings window) cannot open one over itself.
   const mainWindowOf = (sender: WebContents): BrowserWindow | null => {
-    if (!deps.isMainWindow(sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    if (!deps.isMainWindow(sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     return BrowserWindow.fromWebContents(sender);
   };
 
@@ -70,14 +71,14 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library. From the main window or
   // the settings window only (a sheet has no reason to).
   handle(Channels.ui.openSettings, emptyInput, (_input, event) => {
-    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.windows.openSettings();
   });
 
   // The pages that draw the theme themselves (the main and the settings window) say when they show a change; the native
   // theme follows them (T13R4-m1). Sheets follow the native theme and report nothing.
   handle(Channels.ui.themeShown, themeShownInput, ({ shade }, event) => {
-    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.theme.shown(event.sender, shade);
   });
 }

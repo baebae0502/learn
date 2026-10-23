@@ -15,7 +15,7 @@ export function registerAppIpc(handle: Handle, deps: IpcDeps): void {
   // The library location belongs to the settings window: no other window of ours asks for it (defence in depth; the
   // page URL check and the native confirmation still come first and last).
   const fromSettings = (sender: WebContents): void => {
-    if (!deps.isSettingsWindow(sender)) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    if (!deps.isSettingsWindow(sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
   };
 
   handle(Channels.app.showLibraryFolder, emptyInput, (_input, event) => {

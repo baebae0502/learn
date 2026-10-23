@@ -47,7 +47,8 @@ const ITEM = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const ASSET = '1b6f5a52-2c1e-4d55-9a3e-0d2c6f7e8a90';
 const COLL = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
 const stored: { availability: Availability } = { availability: 'available' };
-const item = (): LibraryItem => ({ id: ITEM, assetId: ASSET, storageMode: 'linked', availability: stored.availability }) as LibraryItem;
+const mode: { storageMode: 'linked' | 'managed' } = { storageMode: 'linked' };
+const item = (): LibraryItem => ({ id: ITEM, assetId: ASSET, title: '세포 신호', storageMode: mode.storageMode, availability: stored.availability }) as LibraryItem;
 
 const OTHER = '3c2d1e0f-9a8b-4c7d-8e6f-5a4b3c2d1e0f';
 const repo = {
@@ -219,6 +220,18 @@ describe('Finder에서 보기 / 기본 앱으로 열기 re-check the file, then 
       ['reveal', `/library/assets/${ASSET}.pdf`],
       ['open', `/library/assets/${ASSET}.pdf`],
     ]);
+  });
+
+  it('a missing managed copy says to import the original again: it cannot be relinked (final review m6)', async () => {
+    mode.storageMode = 'managed';
+    disk.availability = 'missing';
+    try {
+      const r = await call('library:openExternally', { itemId: ITEM });
+      expect(r).toMatchObject({ ok: false, code: 'NOT_FOUND', message: '라이브러리 안의 사본을 찾을 수 없습니다. 원본\u00a0파일이 있으면 다시 가져오세요.' });
+      expect((r as { message: string }).message).not.toContain('다시 연결');
+    } finally {
+      mode.storageMode = 'linked';
+    }
   });
 
   it('a file that went missing is NOT_FOUND (Korean cause + next step), announced, and never handed to the OS', async () => {

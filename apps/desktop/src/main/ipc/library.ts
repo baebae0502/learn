@@ -6,11 +6,12 @@ import {
 import { relinkAsset, resolveAssetPath } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
+import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
 const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
-  { name: 'PDF·동영상', extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
-  { name: '모든\u00a0파일', extensions: ['*'] },
+  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
+  { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 
 /**
@@ -89,9 +90,10 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   async function existingFile(itemId: string): Promise<string> {
     const ctx = deps.getContext();
     const item = await refreshItemAvailability(ctx, itemId);
-    if (item.availability === 'missing') throw new LearnError('NOT_FOUND', '원본\u00a0파일을 찾을 수 없습니다. 파일을 옮겼다면 다시 연결하세요.');
+    const copy = mainStrings.itemFile;
+    if (item.availability === 'missing') throw new LearnError('NOT_FOUND', item.storageMode === 'managed' ? copy.managedMissing : copy.linkedMissing);
     const asset = ctx.repo.getAsset(item.assetId);
-    if (!asset) throw new LearnError('NOT_FOUND', '자료를 찾을 수 없습니다.');
+    if (!asset) throw new LearnError('NOT_FOUND', copy.noItem);
     return resolveAssetPath(ctx.layout, asset);
   }
 
@@ -103,6 +105,6 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.openExternally, itemIdInput, async ({ itemId }) => {
     // openPath resolves with the OS's error text (English, may name the path): logged by code only, never shown.
     const failure = await shell.openPath(await existingFile(itemId));
-    if (failure) throw new LearnError('INTERNAL', '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.');
+    if (failure) throw new LearnError('INTERNAL', mainStrings.itemFile.noApp);
   });
 }

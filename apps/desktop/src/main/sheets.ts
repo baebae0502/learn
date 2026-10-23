@@ -2,6 +2,7 @@ import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import { LearnError, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, fontsReady, markSized } from './measure';
+import { mainStrings } from './strings';
 
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
 /**
@@ -59,7 +60,7 @@ export function createSheetHost(opts: {
   const queues = new Map<number, Promise<unknown>>();
   const find = (contents: WebContents): Pending => {
     const p = pending.get(contents.id);
-    if (!p) throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+    if (!p) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     return p;
   };
 

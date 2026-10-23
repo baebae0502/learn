@@ -5,6 +5,7 @@ import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
+import { mainStrings } from '../strings';
 
 export interface IpcDeps {
   getContext(): LibraryContext;
@@ -63,7 +64,7 @@ export function createHandle(devOrigin: string | null): Handle {
     ipcMain.handle(channel, async (event, raw: unknown): Promise<Result<T>> => {
       try {
         if (!isAllowedAppUrl(event.senderFrame?.url ?? '', devOrigin)) {
-          throw new LearnError('PERMISSION_DENIED', '허용되지 않은 호출자입니다.');
+          throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
         }
         const parsed = schema.safeParse(raw ?? undefined);
         if (!parsed.success) throw new LearnError('VALIDATION_FAILED', '잘못된 요청입니다.');

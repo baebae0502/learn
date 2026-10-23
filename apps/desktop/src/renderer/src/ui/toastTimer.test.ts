@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UNSTABLE_ToastQueue as ToastQueue } from 'react-aria-components';
 import { DismissTimer } from './toastTimer';
+import { LearnToastQueue } from './toasts';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -61,5 +62,23 @@ describe('a toast that closes by itself (Mac run 2: the drop toast stayed for go
     vi.advanceTimersByTime(10_000);
     expect(done).toHaveBeenCalledTimes(1);
     expect(s.ended).toBe(true);
+  });
+
+  it('the hold ends when the last toast leaves, so the next toast counts down (final review m1)', () => {
+    const q = new LearnToastQueue<string>();
+    const first = q.add('자료 8개를 가져왔습니다');
+    q.pauseAll(); // the pointer on the toasts, or the focus in them …
+    expect(q.held).toBe(true);
+    q.close(first); // … and the region is gone before RAC sees the pointer or the focus leave
+    expect(q.held).toBe(false);
+    const next = q.add('자료 1개를 가져왔습니다');
+    const timer = new DismissTimer(5000, () => q.close(next));
+    const follow = () => (q.held ? timer.hold() : timer.run());
+    follow();
+    q.onHold(follow);
+    vi.advanceTimersByTime(4999);
+    expect(q.visibleToasts).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(q.visibleToasts).toHaveLength(0);
   });
 });

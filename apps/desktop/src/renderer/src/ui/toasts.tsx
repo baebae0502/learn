@@ -59,9 +59,18 @@ export const TOAST_MS = 5000;
  * pauseAll / resumeAll (the pointer on the toasts, or the focus in them: useToastRegion); here that is a flag the
  * visible toasts' timers follow.
  */
-class LearnToastQueue extends ToastQueue<ToastData> {
+export class LearnToastQueue<T = ToastData> extends ToastQueue<T> {
   private heldNow = false;
   private readonly holdListeners = new Set<() => void>();
+  constructor(options?: ConstructorParameters<typeof ToastQueue<T>>[0]) {
+    super(options);
+    // A safety net (final review m1): with no toast on screen nothing can be hovered or focused, so the hold ends. RAC
+    // notices a removed hovered or focused region only on a later pointer or focus event, which may never come (the
+    // focus falls to <body>); a hold left behind would keep the next toast from counting down.
+    this.subscribe(() => {
+      if (this.visibleToasts.length === 0) this.setHeld(false);
+    });
+  }
   override pauseAll(): void {
     this.setHeld(true);
   }

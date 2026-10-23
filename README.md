@@ -69,20 +69,40 @@ Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15
 - 기기 설정을 바꾸는 단계는 CI 러너(`CI` 환경 변수)에서만 돈다. 데모(`@demo`)는 거기서만 화면 모드·Dock 자동 숨김·바탕화면 그림을 바꾸고 끝나면 되돌리며, 개발자 Mac에서는 그대로 둔 채 녹화한다(`m3-demo.chapters.json`의 notes에 남는다). 실제 홈 폴더를 쓰는 기준선 테스트도 CI에서만 돈다.
 
 ## 라이선스
-Learn은 **AGPL-3.0-or-later**로 배포한다. 전문은 [`LICENSE`](LICENSE), 결정과 이유는 [ADR-0011](docs/decisions/0011-license-agpl.md). 런타임 의존성은 아래 표의 MIT·ISC·Apache·OFL만 쓴다.
+Learn은 **AGPL-3.0-or-later**로 배포한다. 전문은 [`LICENSE`](LICENSE), 결정과 이유는 [ADR-0011](docs/decisions/0011-license-agpl.md). 배포물에 들어가는 코드와 글꼴은 아래 표의 MIT·ISC·Apache-2.0·OFL-1.1·0BSD만 쓴다.
 
-## 런타임 의존성 라이선스 (렌더러 번들 포함)
+## 런타임 의존성 라이선스 (main·렌더러 번들 포함)
+
+`node scripts/check-licenses.mjs --table`이 만든 표다. 배포물에 들어가는 것은 `apps/desktop`의 `dependencies`(main이 실행 중에 읽는다)와, Vite가 main·렌더러에 묶는 `devDependencies`, 그리고 그것들이 의존하는 패키지 전부다. 빌드 도구(vite, electron-vite, @vitejs/plugin-react), 타입 패키지, pdf.js의 Node용 선택 의존성 `@napi-rs/canvas`(렌더러는 브라우저 캔버스를 쓴다)는 들어가지 않는다. Electron은 런타임 자체로 들어간다. Chromium과 그 구성 요소의 고지는 Electron 배포본의 `LICENSES.chromium.html`에 있다.
 
 | 패키지 | 버전 | 라이선스 |
 |---|---|---|
-| react-aria-components | 1.22.1 | Apache-2.0 |
+| aria-hidden | 1.2.6 | MIT |
+| better-sqlite3 | 13.0.3 | MIT |
+| client-only | 0.0.1 | MIT |
+| clsx | 2.1.1 | MIT |
+| electron | 44.9.1 | MIT |
+| @internationalized/* (date, number, string) | 3.12.4, 3.6.9, 3.2.10 | Apache-2.0 |
 | lucide-react | 1.60.0 | ISC |
+| node-addon-api | 8.9.2 | MIT |
+| pdfjs-dist | 6.4.299 | Apache-2.0 |
+| pretendard (Pretendard Variable) | 1.3.9 | OFL-1.1 |
+| react | 19.3.1 | MIT |
+| react-aria | 3.53.1 | Apache-2.0 |
+| react-aria-components | 1.22.1 | Apache-2.0 |
+| react-dom | 19.3.1 | MIT |
 | react-resizable-panels | 4.14.8 | MIT |
-| @tanstack/react-query | 5.104.5 | MIT |
+| react-stately | 3.51.0 | Apache-2.0 |
+| @react-types/shared | 3.37.0 | Apache-2.0 |
+| scheduler | 0.28.0 | MIT |
+| @swc/helpers | 0.5.23 | Apache-2.0 |
+| @tanstack/* (react-query, query-core) | 5.104.5 | MIT |
+| tslib | 2.8.1 | 0BSD |
+| use-sync-external-store | 1.7.0 | MIT |
+| zod | 4.6.7 | MIT |
 | zustand | 5.0.15 | MIT |
-| Pretendard Variable | 1.3.9 | SIL OFL 1.1 |
 
-`@axe-core/playwright`(MPL-2.0)는 테스트 전용이며 배포물에 들어가지 않는다.
+CI(`ci.yml`)가 같은 스크립트로 검사한다. 허용 목록(MIT, ISC, Apache-2.0, BSD-2-Clause, BSD-3-Clause, 0BSD, OFL-1.1) 밖의 라이선스가 배포물에 들어오면 실패한다. 의존성을 바꾸면 `--table`로 이 표를 다시 만든다. `@axe-core/playwright`(MPL-2.0)는 테스트 전용이며 배포물에 들어가지 않는다.
 
 ## 구조
 - `packages/domain` 타입·스키마·Result · `packages/db` SQLite·마이그레이션 · `packages/library` 가져오기·복구·백업

@@ -44,6 +44,8 @@ jobs:
 
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Shipped licences (allow-list)
+        run: node scripts/check-licenses.mjs
 
       - name: Fixture cache
         id: fixtures-cache

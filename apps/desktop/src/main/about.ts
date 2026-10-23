@@ -6,7 +6,7 @@ const CREDITS = [
   '아이콘: Lucide — ISC License',
   '컴포넌트: React Aria Components — Apache License 2.0',
   'PDF: PDF.js — Apache License 2.0',
-  'React, react-resizable-panels, TanStack Query, zustand, Electron, better-sqlite3 — MIT License',
+  'React, react-resizable-panels, TanStack Query, zustand, Zod, Electron, better-sqlite3 — MIT License',
 ].join('\n');
 
 export function aboutPanelOptions(version: string, electronVersion: string): AboutPanelOptionsOptions {

@@ -10,8 +10,10 @@ import type { LibraryLayout } from './layout';
  * choose the app by the extension: they find none for it. So these actions use a named copy at
  * `derived/open/<assetId>/<name>.<ext>`, made with copy-on-write where the file system has it (APFS clone) and a full
  * copy elsewhere — never a hard link: an app that saves in place would change a content-addressed asset and break its
- * sha256. Edits made there in another app stay in that copy (M4/M6: import the edited copy again; removing these files
- * belongs with trash).
+ * sha256. The copy is read-only (0o444): Preview and the like say the file is locked and offer a duplicate, rather than
+ * let the user think the edits go into Learn. A copy that may hold edits all the same (unlocked, or a different size) is
+ * never overwritten or removed: it is kept aside under `<name> (수정본 <YYYY-MM-DD HHmm>).<ext>` (final review I1,
+ * addendum 2). Importing an edited copy again is M4/M6; removing these files belongs with trash (M6).
  */
 
 /** The extensions each sniffed type may have (sniff.ts); the first is the one used when the original name has none of them. */
@@ -76,27 +78,71 @@ export function namedCopyPath(layout: LibraryLayout, asset: OpenableAsset, title
   return path.join(layout.derivedDir, 'open', asset.id, `${base}.${ext}`);
 }
 
+/** The mode of a named copy: read-only for everyone. */
+export const NAMED_COPY_MODE = 0o444;
+/** The word in the name of a copy kept aside because it may hold edits (a file name the user sees in Finder). */
+const EDITED_LABEL = '수정본';
+
+/** A copy that may hold edits: unlocked again (any write bit), or no longer the asset's size. */
+export const mayHoldEdits = (st: { mode: number; size: number }, size: number): boolean => (st.mode & 0o222) !== 0 || st.size !== size;
+
+/** `<name> (수정본 2026-10-23 1504).<ext>` in local time (no colon: not allowed on Windows, shown as / in Finder). */
+export function asideName(fileName: string, when: Date): string {
+  const { name, ext } = path.parse(fileName);
+  const two = (n: number) => String(n).padStart(2, '0');
+  const stamp = `${when.getFullYear()}-${two(when.getMonth() + 1)}-${two(when.getDate())} ${two(when.getHours())}${two(when.getMinutes())}`;
+  return `${name} (${EDITED_LABEL} ${stamp})${ext}`;
+}
+const isAside = (fileName: string) => fileName.includes(` (${EDITED_LABEL} `);
+
+export interface NamedCopyResult {
+  action: 'reused' | 'created';
+  /** Where a copy that may hold edits was kept, when one stood at the name. */
+  keptAside: string | null;
+}
+
 /**
- * Makes `dst` a copy of `src` unless it already is one of `size` bytes: through a temporary name and a rename, so a
- * half-written file is never opened. Other names in the folder (an older title) are removed. Returns what it did.
+ * Makes `dst` a read-only copy of `src` (`size` bytes) unless it already is one, writing through a temporary name and
+ * a rename, so a half-written file is never opened. A file at `dst` that may hold edits is first renamed aside, never
+ * overwritten. Other names in the folder (an older title) are removed only while they are unedited copies; edited ones
+ * and copies kept aside stay.
+ *
+ * POSIX lets a writable folder rename over or remove a read-only file. Windows does not (the read-only attribute
+ * blocks both); it is not a target yet, and would need the attribute cleared first.
  */
-export async function ensureNamedCopy(src: string, dst: string, size: number): Promise<'reused' | 'created'> {
+export async function ensureNamedCopy(src: string, dst: string, size: number, now: () => Date = () => new Date()): Promise<NamedCopyResult> {
   const st = await fs.stat(dst).catch(() => null);
-  if (st?.isFile() && st.size === size) return 'reused';
+  if (st?.isFile() && !mayHoldEdits(st, size)) return { action: 'reused', keptAside: null };
   const dir = path.dirname(dst);
   await fs.mkdir(dir, { recursive: true });
+  let keptAside: string | null = null;
+  if (st) {
+    const base = asideName(path.basename(dst), now());
+    const { name, ext } = path.parse(base);
+    keptAside = path.join(dir, base);
+    for (let n = 2; await exists(keptAside); n++) keptAside = path.join(dir, `${name} ${n}${ext}`);
+    await fs.rename(dst, keptAside);
+  }
   const tmp = path.join(dir, `.${randomUUID()}.part`);
   try {
     await fs.copyFile(src, tmp, fsConstants.COPYFILE_FICLONE);
+    await fs.chmod(tmp, NAMED_COPY_MODE);
     await fs.rename(tmp, dst);
   } catch (e) {
     await fs.rm(tmp, { force: true });
     throw e;
   }
   for (const name of await fs.readdir(dir)) {
-    if (name !== path.basename(dst) && !name.endsWith('.part')) await fs.rm(path.join(dir, name), { force: true });
+    if (name === path.basename(dst) || name.endsWith('.part') || isAside(name)) continue;
+    const other = path.join(dir, name);
+    const ost = await fs.stat(other).catch(() => null);
+    if (ost?.isFile() && !mayHoldEdits(ost, size)) await fs.rm(other, { force: true });
   }
-  return 'created';
+  return { action: 'created', keptAside };
+}
+
+async function exists(p: string): Promise<boolean> {
+  return (await fs.stat(p).catch(() => null)) !== null;
 }
 
 /**

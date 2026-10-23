@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { libraryLayout } from '../src/layout';
-import { ensureNamedCopy, extensionAgrees, namedCopyPath, openExtension, openableFile, safeBaseName, type OpenableAsset } from '../src/openable';
+import { NAMED_COPY_MODE, asideName, ensureNamedCopy, extensionAgrees, mayHoldEdits, namedCopyPath, openExtension, openableFile, safeBaseName, type OpenableAsset } from '../src/openable';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-openable-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -43,20 +43,77 @@ describe('a file the OS can open by name (final review I1)', () => {
     expect(namedCopyPath(layout, { ...pdf, mime: 'text/plain' }, 'x')).toBeNull();
   });
 
-  it('copies through a temporary name, reuses a copy of the right size, recreates a wrong one, drops an older name', async () => {
+  it('copies through a temporary name, read-only; reuses an unedited copy; drops an unedited older name', async () => {
     const src = path.join(tmp, 'src.bin');
     fs.writeFileSync(src, '%PDF-1.7\n');
     const dst = path.join(tmp, 'open', 'a1', 'Title.pdf');
-    expect(await ensureNamedCopy(src, dst, 9)).toBe('created');
+    expect(await ensureNamedCopy(src, dst, 9)).toEqual({ action: 'created', keptAside: null });
     expect(fs.readFileSync(dst, 'utf8')).toBe('%PDF-1.7\n');
+    expect(fs.statSync(dst).mode & 0o777).toBe(NAMED_COPY_MODE); // locked: apps offer a duplicate
     expect(fs.statSync(dst).ino).not.toBe(fs.statSync(src).ino); // never a hard link
-    expect(await ensureNamedCopy(src, dst, 9)).toBe('reused');
-    fs.writeFileSync(dst, 'edited in another app, longer');
-    expect(await ensureNamedCopy(src, dst, 9)).toBe('created');
-    expect(fs.readFileSync(dst, 'utf8')).toBe('%PDF-1.7\n');
+    expect(await ensureNamedCopy(src, dst, 9)).toEqual({ action: 'reused', keptAside: null });
+    // A new title: the unedited copy under the old name goes.
     const renamed = path.join(tmp, 'open', 'a1', 'New title.pdf');
-    expect(await ensureNamedCopy(src, renamed, 9)).toBe('created');
+    expect((await ensureNamedCopy(src, renamed, 9)).action).toBe('created');
     expect(fs.readdirSync(path.dirname(dst))).toEqual(['New title.pdf']);
+  });
+
+  it('a copy edited after unlocking it is kept aside, never overwritten; a fresh read-only copy takes the name (addendum 2)', async () => {
+    const src = path.join(tmp, 'src.bin');
+    const dst = path.join(tmp, 'open', 'e1', 'Notes.pdf');
+    await ensureNamedCopy(src, dst, 9);
+    fs.chmodSync(dst, 0o644); // the user unlocked it …
+    fs.writeFileSync(dst, 'annotated in Preview'); // … and saved annotations
+    const when = new Date(2026, 9, 23, 15, 4);
+    const result = await ensureNamedCopy(src, dst, 9, () => when);
+    const aside = path.join(tmp, 'open', 'e1', 'Notes (수정본 2026-10-23 1504).pdf');
+    expect(result).toEqual({ action: 'created', keptAside: aside });
+    expect(fs.readFileSync(aside, 'utf8')).toBe('annotated in Preview');
+    expect(fs.readFileSync(dst, 'utf8')).toBe('%PDF-1.7\n');
+    expect(fs.statSync(dst).mode & 0o777).toBe(NAMED_COPY_MODE);
+    // Unlocked but the same size (a same-length edit, or only unlocked): kept aside too; a second one that minute numbered.
+    fs.chmodSync(dst, 0o644);
+    expect((await ensureNamedCopy(src, dst, 9, () => when)).keptAside).toBe(path.join(tmp, 'open', 'e1', 'Notes (수정본 2026-10-23 1504) 2.pdf'));
+    // A different size while still locked (an app that replaced the file): kept aside.
+    fs.chmodSync(dst, 0o644);
+    fs.writeFileSync(dst, 'x');
+    fs.chmodSync(dst, 0o444);
+    expect(await ensureNamedCopy(src, dst, 9, () => new Date(2026, 9, 23, 16, 30))).toEqual({ action: 'created', keptAside: path.join(tmp, 'open', 'e1', 'Notes (수정본 2026-10-23 1630).pdf') });
+    expect(fs.readdirSync(path.dirname(dst)).sort()).toEqual(['Notes (수정본 2026-10-23 1504) 2.pdf', 'Notes (수정본 2026-10-23 1504).pdf', 'Notes (수정본 2026-10-23 1630).pdf', 'Notes.pdf'].sort());
+  });
+
+  it('an edited copy under an older title is not removed by the cleanup (addendum 2)', async () => {
+    const src = path.join(tmp, 'src.bin');
+    const old = path.join(tmp, 'open', 'e2', 'Old title.pdf');
+    await ensureNamedCopy(src, old, 9);
+    fs.chmodSync(old, 0o644);
+    fs.appendFileSync(old, '% my notes');
+    const next = path.join(tmp, 'open', 'e2', 'New title.pdf');
+    expect(await ensureNamedCopy(src, next, 9)).toEqual({ action: 'created', keptAside: null });
+    expect(fs.readdirSync(path.dirname(next)).sort()).toEqual(['New title.pdf', 'Old title.pdf']);
+    expect(fs.readFileSync(old, 'utf8')).toBe('%PDF-1.7\n% my notes');
+  });
+
+  it('POSIX: a rename over a read-only unedited copy works (the folder is writable); so does removing one', () => {
+    const dir = path.join(tmp, 'open', 'p1');
+    fs.mkdirSync(dir, { recursive: true });
+    const locked = path.join(dir, 'a.pdf');
+    fs.writeFileSync(locked, 'old');
+    fs.chmodSync(locked, NAMED_COPY_MODE);
+    const part = path.join(dir, '.x.part');
+    fs.writeFileSync(part, 'new');
+    fs.renameSync(part, locked);
+    expect(fs.readFileSync(locked, 'utf8')).toBe('new');
+    fs.chmodSync(locked, NAMED_COPY_MODE);
+    fs.rmSync(locked);
+    expect(fs.existsSync(locked)).toBe(false);
+  });
+
+  it('names a copy kept aside by the local date and time, before the extension', () => {
+    expect(asideName('세포 신호.pdf', new Date(2026, 0, 2, 3, 4))).toBe('세포 신호 (수정본 2026-01-02 0304).pdf');
+    expect(mayHoldEdits({ mode: 0o100444, size: 9 }, 9)).toBe(false);
+    expect(mayHoldEdits({ mode: 0o100644, size: 9 }, 9)).toBe(true);
+    expect(mayHoldEdits({ mode: 0o100444, size: 8 }, 9)).toBe(true);
   });
 
   it('a managed copy and a misnamed linked file open as the named copy; a well-named linked file as itself', async () => {

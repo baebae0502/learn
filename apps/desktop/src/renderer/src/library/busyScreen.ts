@@ -1,11 +1,13 @@
-import { useEffect, useReducer } from 'react';
-import { afterPaint, afterPaintOr } from '../ui/afterPaint';
+import { useEffect, useLayoutEffect, useReducer } from 'react';
+import { afterPaintOr } from '../ui/afterPaint';
 import { perfMark } from '../ui/perfMarks';
 
 /** design-spec 6: work shorter than this shows nothing. Counted from the first painted frame of the busy screen. */
 export const BUSY_DELAY_MS = 300;
 /** Once "자료 N개를 가져오는 중…" is on screen it stays at least this long: never a flash (Mac run 3, critique n6). */
 export const BUSY_MIN_MS = 300;
+/** A window that paints no frame (hidden or minimised) counts the text as shown this long after it was rendered. */
+const UNPAINTED_TEXT_MS = 1000;
 
 /**
  * The empty library's busy screen while a drop brings files in (T13R2-m1), as a state machine:
@@ -95,7 +97,9 @@ export function useBusyScreen(count: number | null): BusyScreen | null {
   const textAt = s?.textAt ?? null;
   useEffect(() => {
     if (!text || textAt !== null) return;
-    return afterPaint(() => {
+    // With a fallback (re-review m-N4): a window hidden before the text painted would otherwise hold the busy screen
+    // over the rows, after "가져왔습니다", until it was shown again.
+    return afterPaintOr(UNPAINTED_TEXT_MS, () => {
       perfMark('import:busy-text');
       dispatch({ type: 'textPainted', at: performance.now() });
     });
@@ -107,7 +111,8 @@ export function useBusyScreen(count: number | null): BusyScreen | null {
   }, [textAt]);
   const screen = busyScreen(s);
   const holding = screen?.holding ?? false;
-  useEffect(() => setHeld(holding), [holding]);
+  // In the commit itself, so busyScreenSettled() sees a text phase as soon as it is rendered.
+  useLayoutEffect(() => setHeld(holding), [holding]);
   useEffect(() => () => setHeld(false), []);
   return screen;
 }

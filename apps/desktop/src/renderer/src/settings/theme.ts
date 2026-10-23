@@ -38,7 +38,6 @@ export function applyShade(root: ShadeTarget, shade: Shade, opts: ShadeOptions =
   return true;
 }
 
-
 /**
  * Keeps <html data-theme> on `theme` (the main window: the pref; the settings window: the tile just picked, ahead of
  * the pref's round trip), and on the system appearance while it is 시스템 설정. Until `theme` is known the page follows

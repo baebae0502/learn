@@ -153,6 +153,47 @@ test('a first drop into an empty library: the overlay goes first, a quiet screen
   }
 });
 
+// Re-review m-N4: the busy text's first paint has a fallback. A window hidden before the text painted used to keep the
+// busy screen (holding) until it was shown again: the rows stayed behind "가져오는 중…", after "가져왔습니다".
+test('a window that draws no frame before the busy text paints still lets the rows in when the import ends (re-review m-N4)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await app.evaluate(() => {
+      const fsp = process.getBuiltinModule('node:fs/promises');
+      const copy = fsp.copyFile;
+      const g = globalThis as { __learnReleaseCopy?: () => void };
+      const held = new Promise<void>((resolve) => (g.__learnReleaseCopy = resolve));
+      fsp.copyFile = (async (...args: Parameters<typeof copy>) => {
+        await held;
+        return copy(...args);
+      }) as typeof copy;
+    });
+    await dropSource(page, [PDF, path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await dropReal(page);
+    const empty = page.getByTestId('empty-state');
+    await expect(empty).toHaveAttribute('data-busy', 'quiet');
+    // From here the page draws no frames, as a hidden or minimised window (X11 does not report an unmapped window as
+    // hidden, so the frames are stopped where the app asks for them).
+    await page.evaluate(() => {
+      const w = window as unknown as { __realRaf?: typeof requestAnimationFrame };
+      w.__realRaf = window.requestAnimationFrame;
+      window.requestAnimationFrame = () => 0;
+    });
+    // The text phase comes, counts as shown after its fallback, and its minimum time passes with no frame.
+    await expect(empty).toHaveAttribute('data-busy', 'text', { timeout: 5000 });
+    await page.waitForTimeout(1600);
+    await app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
+    await expect(page.getByTestId('item-row')).toHaveCount(2, { timeout: 10_000 }); // still without a frame
+    await expect(page.getByTestId('empty-state')).toHaveCount(0);
+    await page.evaluate(() => {
+      const w = window as unknown as { __realRaf?: typeof requestAnimationFrame };
+      if (w.__realRaf) window.requestAnimationFrame = w.__realRaf;
+    });
+  } finally {
+    await app.close();
+  }
+});
+
 test('no overlay while reading; the drag gets the no-drop cursor and a drop there imports nothing', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

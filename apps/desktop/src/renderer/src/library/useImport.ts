@@ -5,6 +5,7 @@ import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
+import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { showToast } from '../ui/toasts';
 import { BUSY_MIN_MS, busyScreenSettled } from './busyScreen';
@@ -33,6 +34,9 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
         if (report.imported > 0) await settledWithin(queryClient.invalidateQueries({ queryKey: keys.items }), LIST_REFRESH_WAIT_MS);
         perfMark('import:listed');
         // A busy text that has just appeared holds the rows its minimum time: the toast waits with them (busyScreen.ts).
+        // A drop's busy screen may have just turned to its text, not yet committed: one painted frame first, so the
+        // toast never comes a frame before the text (re-review m-N4).
+        if (count !== undefined) await new Promise<void>((resolve) => afterPaintOr(100, resolve));
         await settledWithin(busyScreenSettled(), BUSY_MIN_MS + 200);
         if (report.imported > 0) showToast({ kind: 'success', title: (mode === 'linked' ? t.toast.linked : t.toast.imported)(report.imported), testId: 'import-done' });
         if (report.failed.length > 0) {

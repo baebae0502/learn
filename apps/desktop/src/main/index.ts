@@ -38,6 +38,10 @@ app.setName('Learn');
 
 // macOS: 보기's 전체 화면 is our own plain item (app-menu.ts); AppKit is also told, in the app's own defaults, not to
 // add a full-screen item of its own (older macOS does when no item uses its selector). Task 8 R2-1.
+// Unpackaged too, on purpose (final review m11): the evidence runs the unpackaged app and counts one 전체 화면 row in
+// 보기. The cost: unpackaged, the defaults domain is Electron's own (com.github.Electron), so the key is written for
+// every unpackaged Electron app on that Mac. It is a hint AppKit reads, harmless to other apps (docs/mac-verification.md,
+// 알려진 한계), and `defaults delete com.github.Electron NSFullScreenMenuItemEverywhere` removes it.
 if (process.platform === 'darwin') systemPreferences.setUserDefault('NSFullScreenMenuItemEverywhere', 'boolean', false);
 
 // E2E and multi-profile runs isolate userData (also scopes the single-instance lock).

@@ -327,6 +327,7 @@ Task 14의 macOS 실행. 마지막 `all` 실행(run 39892840988, b156e77)이 녹
 - 패키지 앱은 ad-hoc 서명 상태로만 실행했다. 실제 서명·공증·hardened runtime은 P6.
 - `pnpm dev`(Vite dev server) 경로는 러너에서 돌리지 않았다.
 - 데모용 커서·키 입력 오버레이(`LEARN_DEMO_OVERLAY`)는 M3에서 생겼다(녹화 전용, 비패키지 실행에서만 켜진다).
+- `NSFullScreenMenuItemEverywhere = false`는 비패키지 실행에서도 쓴다(최종 리뷰 m11). 증거가 비패키지 앱의 보기 메뉴에서 전체 화면 줄이 하나인지 세기 때문이다. 비패키지 앱의 defaults 도메인은 Electron 자신의 것(`com.github.Electron`)이라, 그 Mac의 모든 비패키지 Electron 앱에 이 키가 남는다. AppKit이 읽는 힌트일 뿐 다른 앱에 해가 없고, `defaults delete com.github.Electron NSFullScreenMenuItemEverywhere`로 지운다. 패키지 앱은 Learn 자신의 도메인(`app.learn.desktop`)에 쓴다.
 - **M3 실행에서 받아들인 러너 한계**(Task 14 Mac 비평 1–3차):
   - @1x 렌더링: 1.5pt 획이 반쯤 덮인 두 열에 걸친다(메인이 아닌 토글 획 206 on 236). 다크 툴팁의 3차 글자 ⌃⌘S는 2.94:1로 그려진다(토큰 3.20).
   - 영어 시스템과 비패키지 앱: 메뉴 막대의 "Electron", Dock과 NSAlert의 Electron 아이콘, AppKit이 넣는 영어 항목(편집의 AutoFill 등, 윈도우의 타일 항목, 앱 메뉴의 숨은 "Quit and Keep Windows"), 열기 패널의 영어 문구. 패키지·`ko` 실행(스파이크 5·6)은 Learn과 한국어다.

@@ -573,7 +573,7 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
       // macOS: the toolbar takes the inactive material and its lines the inactive separator (polish Q2, N4-4; the Mac
       // run 39779536146 read rgb(236, 236, 236), the material).
       expect(background).toMatchObject({ toolbarFill: await token('--bg-chrome-inactive'), toolbarLine: await token('--separator-chrome-inactive') });
-      expect(background.sidebarEdge).toContain(await token('--separator-chrome-inactive'));
+      expect(background.sidebarEdge).toBe(`${await token('--separator-chrome-inactive')} -1px 0px 0px 0px inset`);
     } else {
       // Linux and Windows keep their toolbar fill and lines (the controls overlay's colour is fixed).
       expect(background).toMatchObject({ toolbarFill: active.toolbarFill, toolbarLine: active.toolbarLine, sidebarEdge: active.sidebarEdge });
@@ -585,7 +585,7 @@ test('not key: no ring or cursor, neutral selection; not main as well: the chrom
       const mac = await looks();
       expect(mac.toolbarFill, theme).toBe(await token('--bg-chrome-inactive'));
       expect(mac.toolbarLine, theme).toBe(await token('--separator-chrome-inactive'));
-      expect(mac.sidebarEdge, theme).toContain(await token('--separator-chrome-inactive'));
+      expect(mac.sidebarEdge, theme).toBe(`${await token('--separator-chrome-inactive')} -1px 0px 0px 0px inset`); // inset -1px 0 0
     }
     expect(await token('--separator-chrome-inactive')).toBe('oklch(0 0 0)'); // dark: black
     await page.evaluate((p) => {

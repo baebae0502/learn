@@ -48,14 +48,15 @@ const tilde = (p: string, home: string) => (p === home || p.startsWith(home + pa
 /**
  * A notice's path line (design-spec 4: no middle elision): every character is shown, the line wraps only after a
  * separator (no folder or name is broken), the file name is whole on one line, and the line stays inside the notice.
- * A folder name wider than the whole line cannot be whole: it wraps inside itself and still never overflows (the Mac
- * runner's real home puts the long test-folder name in the path, Mac run t14-diag2). Returns the number of lines.
+ * `longParts`: only where the app's home is not the test's (macOS: the runner's real home puts the long test-folder
+ * name in the path, Mac run t14-diag2), a folder name wider than the whole line may wrap inside itself; it still never
+ * overflows. Returns the number of lines, and the number its parts must take (laid out by the rule above).
  */
-async function expectPathLine(notice: Locator, shown: string, base: string): Promise<number> {
+async function expectPathLine(notice: Locator, shown: string, base: string, opts: { longParts?: boolean } = {}): Promise<{ lines: number; expected: number }> {
   const line = notice.locator('.file');
   await expect(line).toHaveText(shown);
   await expect(line.locator('.file-base')).toHaveText(base);
-  const m = await line.evaluate((el) => {
+  const m = await line.evaluate((el, longParts) => {
     const lh = parseFloat(getComputedStyle(el).lineHeight);
     const parts = [...el.querySelectorAll<HTMLElement>('.file-part')];
     const box = el.getBoundingClientRect();
@@ -68,16 +69,33 @@ async function expectPathLine(notice: Locator, shown: string, base: string): Pro
       Object.assign(p.style, { maxWidth, whiteSpace });
       return w;
     };
+    const width = el.clientWidth;
+    // The lines the parts must take: whole parts fill a line until the next does not fit; a part wider than the line
+    // (allowed only with `longParts`) takes lines of its own, as many as it is drawn on (its characters wrap anywhere).
+    let expected = 0;
+    let used = width + 1; // nothing on a line yet: the first part opens one
+    for (const p of parts) {
+      const w = natural(p);
+      if (w > width + 0.5) {
+        expected += Math.round(p.getBoundingClientRect().height / lh);
+        used = width + 1;
+      } else if (used + w > width + 0.5) {
+        expected += 1;
+        used = w;
+      } else used += w;
+    }
     return {
-      partsWhole: parts.every((p) => Math.round(p.getBoundingClientRect().height) === lh || natural(p) > el.clientWidth),
+      partsWhole: parts.every((p) => Math.round(p.getBoundingClientRect().height) === lh || (longParts && natural(p) > width)),
       noOverflow: el.scrollWidth <= el.clientWidth,
       inside: box.left >= notice.left - 0.5 && box.right <= notice.right + 0.5,
       selectable: getComputedStyle(el).userSelect === 'text',
       lines: Math.round(box.height / lh),
+      expected,
     };
-  });
-  expect({ ...m, lines: undefined }).toEqual({ partsWhole: true, noOverflow: true, inside: true, selectable: true, lines: undefined });
-  return m.lines;
+  }, opts.longParts ?? false);
+  expect({ ...m, lines: undefined, expected: undefined }).toEqual({ partsWhole: true, noOverflow: true, inside: true, selectable: true, lines: undefined, expected: undefined });
+  expect(m.lines, 'the line count its parts take').toBe(m.expected);
+  return { lines: m.lines, expected: m.expected };
 }
 
 /** Final states sit directly under the 52 px unified toolbar: no 44 px title row in M3 (spec 2.1; fix round 1 M1). */
@@ -311,7 +329,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('원본 파일을 찾을 수 없습니다');
     await expect(notice).toContainText('새 위치를 지정하세요');
-    await expectPathLine(notice, tilde(file, appHome), 'linked.pdf'); // where it was, home as ~ ("~/Downloads/linked.pdf" off macOS)
+    await expectPathLine(notice, tilde(file, appHome), 'linked.pdf', { longParts: appHome !== home }); // where it was, home as ~ ("~/Downloads/linked.pdf" off macOS)
     await expect(notice.locator('.file')).toHaveAttribute('title', file); // the full path
     await expectStageUnderToolbar(s.page, '.reader-stage');
     await expect(s.page.getByTestId('relink')).toHaveText('다시 연결…');
@@ -445,11 +463,12 @@ test('a library that cannot be opened: our own words, the newest real backup on 
     const notice = s.page.getByTestId('fatal-notice');
     await expect(notice.locator('p')).toHaveText('데이터는 삭제되지 않았습니다. 아래 위치의 업데이트 전 백업 파일로 복구할 수 있습니다.');
     const full = path.join(lib, 'library.sqlite.pre-v3.bak');
-    const lines = await expectPathLine(notice, tilde(full, appHome), 'library.sqlite.pre-v3.bak');
-    // Wrapped after a separator, not cut. Off macOS the line reads "~/Library/Application Support/Learn/Library/
-    // library.sqlite.pre-v3.bak", which takes exactly 2; on macOS the account's home makes it longer, so more lines.
+    const { lines } = await expectPathLine(notice, tilde(full, appHome), 'library.sqlite.pre-v3.bak', { longParts: appHome !== home });
+    // Wrapped after a separator, not cut: the count its parts take (checked above). Off macOS the line reads
+    // "~/Library/Application Support/Learn/Library/library.sqlite.pre-v3.bak", which takes exactly 2; on macOS the
+    // account's home makes it longer, so more.
     if (appHome === home) expect(lines).toBe(2);
-    else expect(lines).toBeGreaterThanOrEqual(2);
+    else expect(lines).toBeGreaterThan(2);
     await expect(notice.locator('.file')).toHaveAttribute('title', new RegExp(`^${full.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\((INTERNAL|MIGRATION_FAILED|LIBRARY_UNAVAILABLE)\\)$`));
   } finally {
     await s.app.close();

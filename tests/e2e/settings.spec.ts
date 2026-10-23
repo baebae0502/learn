@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
+import { mainWindowChrome, shouldUseVibrancy } from '../../apps/desktop/src/main/window-options';
 import { FIXTURES, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -119,7 +120,10 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     // has the sidebar vibrancy, which shows only through a clear window background (window-options.ts: #00000000, read
     // back without its alpha), so it stays clear in both themes; the settings window has no vibrancy and follows.
     await expect.poll(async () => (await (await settingsWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(windowBackground.dark);
-    const mainBackground = process.platform === 'darwin' ? '#000000' : windowBackground.dark;
+    // The main window's own chrome rule (window-options.ts): with vibrancy (macOS, unless LEARN_VIBRANCY=0) the clear
+    // #00000000, which getBackgroundColor reads back without its alpha; otherwise the theme's window background.
+    const chrome = mainWindowChrome({ platform: process.platform, theme: 'dark', vibrancy: shouldUseVibrancy(process.platform, process.env) });
+    const mainBackground = String(chrome.backgroundColor).slice(0, 7).toLowerCase();
     await expect.poll(async () => (await (await mainWindow(app)).evaluate((w) => w.getBackgroundColor())).toLowerCase()).toBe(mainBackground);
 
     await settings.getByTestId('density-compact').click();

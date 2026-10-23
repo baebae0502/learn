@@ -89,7 +89,9 @@ test('a drop imports a copy; with ⌥ held it links the original', async ({}, te
 
 // Critique T13R2-m1: while a drop's copies are being made into an empty library, the screen said "아직 자료가 없습니다"
 // with disabled buttons. The copy is held in main (the importer's fs.copyFile waits) so the import stays open.
-test('a first drop into an empty library says it is bringing N items in: no empty state, no buttons, until the rows', async ({}, testInfo) => {
+// Mac run 3, critique n6: the overlay leaves in the frame after the drop, before the import's request goes to main; the
+// busy screen is quiet for its first 300 ms (design-spec 6) and, once it has said "가져오는 중", says it at least 300 ms.
+test('a first drop into an empty library: the overlay goes first, a quiet screen, then "N개를 가져오는 중…" held at least 300 ms; never the buttons', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await app.evaluate(() => {
@@ -103,14 +105,15 @@ test('a first drop into an empty library says it is bringing N items in: no empt
       }) as typeof copy;
     });
     // Every painted frame from the drop event on (an animation frame runs before each paint; commits that the same
-    // task replaces are never seen, so they are not counted).
+    // task replaces are never seen, so they are not counted), with its time.
     await page.evaluate(() => {
-      const w = window as unknown as { __screens: string[]; __dropped?: boolean };
+      const w = window as unknown as { __screens: Array<[string, number]>; __dropped?: boolean };
       w.__screens = [];
       addEventListener('drop', () => (w.__dropped = true), true);
-      const frame = () => {
+      const frame = (t: number) => {
         const empty = document.querySelector('[data-testid="empty-state"]');
-        if (w.__dropped && empty) w.__screens.push(`${empty.hasAttribute('data-busy') ? 'busy' : 'empty'}:${empty.querySelectorAll('button').length}`);
+        const overlay = document.querySelector('[data-testid="drop-overlay"]') ? '+overlay' : '';
+        if (w.__dropped) w.__screens.push([empty ? `${empty.getAttribute('data-busy') ?? 'empty'}:${empty.querySelectorAll('button').length}${overlay}` : `rows${overlay}`, t]);
         if (!document.querySelector('[data-testid="item-row"]')) requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
@@ -118,17 +121,33 @@ test('a first drop into an empty library says it is bringing N items in: no empt
     await dropSource(page, [PDF, path.join(FIXTURES, 'sample-h264-aac.mp4')]);
     await dropReal(page);
     const empty = page.getByTestId('empty-state');
-    await expect(empty).toHaveAttribute('data-busy', '');
+    await expect(empty).toHaveAttribute('data-busy', 'text');
     await expect(empty.getByRole('heading')).toHaveText('자료 2개를 가져오는 중…');
     await expect(empty.getByRole('button')).toHaveCount(0);
-    await page.waitForTimeout(300); // held: it stays the busy screen
-    await expect(empty).toHaveAttribute('data-busy', '');
+    // The overlay-less frame was painted before the request went to main (ui/perfMarks.ts).
+    const marks = await page.evaluate(() => ['drop', 'drop:clear', 'import:sent'].map((n) => performance.getEntriesByName(`learn:${n}`).at(-1)?.startTime ?? null));
+    expect(marks.every((m) => m !== null)).toBe(true);
+    expect(marks[1]!).toBeGreaterThan(marks[0]!);
+    expect(marks[2]!).toBeGreaterThanOrEqual(marks[1]!);
+    // The text is painted now; let the import end at once: the text still stays its minimum time.
+    await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
     await app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
     await expect(page.getByTestId('item-row')).toHaveCount(2);
-    // From the drop on, every painted frame of the empty library was the busy screen (no flash of the buttons).
-    const screens = await page.evaluate(() => (window as unknown as { __screens: string[] }).__screens);
-    expect(screens.length).toBeGreaterThan(0);
-    expect(screens.filter((x) => x !== 'busy:0')).toEqual([]);
+    const screens = await page.evaluate(() => (window as unknown as { __screens: Array<[string, number]> }).__screens);
+    const kinds = screens.map(([k]) => k);
+    // No frame of the empty library's buttons; the overlay only in the drop's own frame at most; then quiet, then the text.
+    expect(kinds.filter((k) => !['quiet:0', 'text:0', 'rows', 'quiet:0+overlay'].includes(k))).toEqual([]);
+    expect(kinds.filter((k) => k.endsWith('+overlay')).length).toBeLessThanOrEqual(1);
+    const firstQuiet = screens.find(([k]) => k === 'quiet:0')![1];
+    const firstText = screens.find(([k]) => k === 'text:0')![1];
+    const lastText = screens.filter(([k]) => k === 'text:0').at(-1)![1];
+    expect(firstText - firstQuiet, 'quiet for its first 300 ms').toBeGreaterThanOrEqual(280);
+    expect(lastText - firstText, 'the text, once shown, at least 300 ms').toBeGreaterThanOrEqual(280);
+    // The success toast never says "가져왔습니다" over "가져오는 중…": it waits for the rows.
+    await expect(page.getByTestId('import-done')).toBeVisible();
+    const toastAt = await page.evaluate(() => performance.getEntriesByName('learn:toast:import-done').at(-1)?.startTime ?? null);
+    expect(toastAt).not.toBeNull();
+    expect(toastAt!).toBeGreaterThan(lastText);
   } finally {
     await app.close();
   }

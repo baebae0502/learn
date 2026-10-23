@@ -9,6 +9,7 @@ import { useMenuCommands } from '../commands/useMenuCommands';
 import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
+import { useBusyScreen } from '../library/busyScreen';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySidebar } from '../library/LibrarySidebar';
@@ -31,6 +32,8 @@ import { useWindowState } from '../shell/useWindowState';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
+import { afterPaintOr } from '../ui/afterPaint';
+import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
@@ -40,6 +43,8 @@ const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.a
 
 /** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file first; a failure is a toast. */
 const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
+/** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
+const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
 const NO_ITEMS: readonly LibraryItem[] = [];
 
@@ -54,6 +59,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);
+  const importCount = useShell((s) => s.importCount);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
   const sidebarHidden = useSidebarHidden();
@@ -138,9 +144,29 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const onDrop = useCallback(
     (paths: string[], mode: StorageMode, unresolved: number) => {
+      clearImportMarks(true);
+      perfMark('drop');
+      // The overlay leaves in the frame after the drop, whatever the import does (Mac run 3, critique n6: it stayed
+      // 0.55 s over a frozen screen). The import is held (the window too) from now, but its request goes to main only
+      // once the frame without the overlay has been painted, so main's import work cannot keep that frame off screen.
+      const cleared = new Promise<void>((resolve) =>
+        afterPaintOr(DROP_CLEAR_FALLBACK_MS, () => {
+          perfMark('drop:clear');
+          resolve();
+        }),
+      );
       // Files without a location on disk are named in a toast; the others are still imported.
       if (unresolved > 0) showToast({ kind: 'error', title: t.toast.dropNoPathTitle(unresolved), body: t.toast.dropNoPathBody(commandMention(commandById('file.importManaged'), currentPlatform())), testId: 'drop-failed' });
-      if (paths.length > 0) void runImport(() => api().library.import({ paths, mode }), mode, paths.length);
+      if (paths.length > 0)
+        void runImport(
+          async () => {
+            await cleared;
+            perfMark('import:sent');
+            return api().library.import({ paths, mode });
+          },
+          mode,
+          paths.length,
+        );
     },
     [runImport],
   );
@@ -214,6 +240,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const openFromList = useCallback((itemId: string) => runCommand('item.open', envRef.current, { itemIds: [itemId] }), []);
 
   const count = list.length;
+  // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
+  const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
   // <body>: hand it to the first title, where the list continues; keyboard users keep their place.
   const leftWithFocus = useRef(false);
@@ -238,8 +266,8 @@ export function MainWindow(_props: { info: AppInfo }) {
       listFailure !== null ? (
         <ListFailed message={listFailure} retrying={items.isFetching} onRetry={() => void items.refetch()} focusOnLeave={leftWithFocus} />
       ) : null
-    ) : count === 0 ? (
-      <EmptyLibrary focusOnLeave={leftWithFocus} />
+    ) : count === 0 || busy?.holding ? (
+      <EmptyLibrary busy={busy} focusOnLeave={leftWithFocus} />
     ) : (
       <LibraryTable items={list} firstTitleRef={firstTitle} onOpen={openFromList} onContextMenu={(itemId, x, y) => void showItemMenu(itemId, x, y)} />
     );

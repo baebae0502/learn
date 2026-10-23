@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { ROOT, closeSheet, expectWindow, launch, runMenuCommand } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, launch, runMenuCommand } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { coldFirstOpens, openTimer } from './open-latency';
 
@@ -172,6 +172,96 @@ test('theme switch order: click → each page shows it → its chrome → the na
     };
     writeJson('theme-switch.json', result, 'M3 theme switch: click → each page shows it → its chrome → native theme → nativeTheme updated (T13R4-m1)');
     console.log('[measure] theme switch', JSON.stringify(switches.map((w) => ({ to: w['to'], ...(w['msFromClick'] as object), because: w['nativeAppliedBecause'] }))));
+  } finally {
+    await s.app.close();
+  }
+});
+
+/** A drop's marks (ui/perfMarks.ts), in ms after `learn:drop`; null for one that did not come. */
+const DROP_MARKS = ['drop:clear', 'import:start', 'import:sent', 'import:answered', 'import:listed', 'import:busy-text', 'toast:import-done', 'import:end'] as const;
+
+// Mac run 3, critique n6: a drop of 8 files into an empty library held the screen 0.55 s (the overlay stayed, the
+// caption froze), then "자료 8개를 가져오는 중…" flashed for about 100 ms. Where the time goes, reported only: the
+// page's marks from the drop (ui/perfMarks.ts), the main process's longest stall (a 5 ms ticker: a longer gap is time
+// main's event loop was held) and the page's longest gap between frames, both from the drop to the toast.
+test('a drop of 8 files into an empty library: drop → overlay gone → import → list → toast (marks, n6)', { tag: '@perf' }, async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  // Eight distinct files, like the demo's (none a duplicate, so no question): the fixtures, each made unique.
+  const dir = testInfo.outputPath('drop-files');
+  fs.mkdirSync(dir, { recursive: true });
+  const files: string[] = [];
+  for (const [name, n] of [['sample.pdf', 5], ['sample-h264-aac.mp4', 1], ['sample-hevc.mp4', 1], ['sample-mpeg4part2.mp4', 1]] as const) {
+    for (let i = 0; i < n; i++) {
+      const file = path.join(dir, `${i + 1} ${name}`);
+      fs.copyFileSync(path.join(FIXTURES, name), file);
+      fs.appendFileSync(file, `\n% ${i}\n`);
+      files.push(file);
+    }
+  }
+  const bytes = files.reduce((sum, f) => sum + fs.statSync(f).size, 0);
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  try {
+    await expect(s.page.getByTestId('empty-state')).toBeVisible();
+    await s.app.evaluate(() => {
+      const g = globalThis as { __learnStall?: { max: number; last: number; on: boolean } };
+      const stall = { max: 0, last: performance.now(), on: false };
+      g.__learnStall = stall;
+      setInterval(() => {
+        const now = performance.now();
+        if (stall.on) stall.max = Math.max(stall.max, now - stall.last);
+        stall.last = now;
+      }, 5);
+    });
+    await s.page.evaluate(() => {
+      const w = window as unknown as { __learnFrames: { max: number; last: number; on: boolean } };
+      const frames = { max: 0, last: 0, on: false };
+      w.__learnFrames = frames;
+      const tick = (t: number) => {
+        if (frames.on && frames.last) frames.max = Math.max(frames.max, t - frames.last);
+        frames.last = t;
+        if (!document.querySelector('[data-testid="import-done"]')) requestAnimationFrame(tick);
+        else frames.on = false;
+      };
+      requestAnimationFrame(tick);
+      addEventListener('drop', () => (frames.on = true), true);
+    });
+    await dropSource(s.page, files);
+    await drag(s.page, 'dragenter', 'source');
+    await drag(s.page, 'dragover', 'source');
+    await expect(s.page.getByTestId('drop-overlay')).toBeVisible();
+    await s.app.evaluate(() => {
+      const stall = (globalThis as { __learnStall?: { max: number; last: number; on: boolean } }).__learnStall!;
+      stall.on = true;
+      stall.max = 0;
+      stall.last = performance.now();
+    });
+    await drag(s.page, 'drop', 'source');
+    await expect(s.page.getByTestId('item-row')).toHaveCount(8, { timeout: 30_000 });
+    await expect.poll(() => s.page.evaluate(() => performance.getEntriesByName('learn:import:end').length + performance.getEntriesByName('learn:toast:import-done').length), { timeout: 15_000 }).toBe(2);
+    const mainStallMs = await s.app.evaluate(() => {
+      const stall = (globalThis as { __learnStall?: { max: number; on: boolean } }).__learnStall!;
+      stall.on = false;
+      return Math.round(stall.max - 5);
+    });
+    const page = await s.page.evaluate((names) => {
+      const at = (n: string) => performance.getEntriesByName(`learn:${n}`).at(-1)?.startTime ?? null;
+      const drop = at('drop')!;
+      const marks = Object.fromEntries(names.map((n) => [n, at(n) === null ? null : Math.round(at(n)! - drop)]));
+      return { marks, longestFrameGapMs: Math.round((window as unknown as { __learnFrames: { max: number } }).__learnFrames.max) };
+    }, [...DROP_MARKS]);
+    const result = {
+      files: files.length,
+      bytes,
+      marksMsAfterDrop: page.marks,
+      busyTextShown: page.marks['import:busy-text'] !== null,
+      longestFrameGapMs: page.longestFrameGapMs,
+      mainLongestStallMs: mainStallMs,
+      platform: `${process.platform}-${process.arch}`,
+      ci: process.env['CI'] ?? null,
+    };
+    writeJson('drop-import.json', result, 'M3 drop of 8 files into an empty library: marks from the drop, longest main stall and frame gap (Mac run 3 n6)');
+    console.log('[measure] drop import', JSON.stringify(result));
+    expect(page.marks['drop:clear'], 'the overlay-less frame was painted').not.toBeNull();
   } finally {
     await s.app.close();
   }

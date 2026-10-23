@@ -84,7 +84,8 @@
       --toast-distance: 0px;
     }
   }
-  /* A theme change (settings/theme.ts) crossfades the whole page: the default View Transition, at --duration-base. */
+  /* A theme change crossfades the whole page where settings/theme.ts `crossfades` (no platform today: Mac run 2): the
+     default View Transition, at --duration-base. */
   ::view-transition-group(root),
   ::view-transition-old(root),
   ::view-transition-new(root) {

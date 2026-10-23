@@ -88,8 +88,8 @@ describe('the page theme (T13M-m6, T13R4-m1)', () => {
     expect(onShown).toHaveBeenCalledTimes(1);
   });
 
-  it('crossfades on macOS only (the AppKit lag it covers); elsewhere a change is instant (T13R4-m1)', () => {
-    expect(crossfades('darwin')).toBe(true);
+  it('crossfades on no platform: on macOS the native part led the fade by 183–283 ms (Mac run 2, critique m1; T13R4-m1)', () => {
+    expect(crossfades('darwin')).toBe(false);
     expect(crossfades('linux')).toBe(false);
     expect(crossfades('win32')).toBe(false);
   });

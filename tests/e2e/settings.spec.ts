@@ -70,8 +70,8 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     // T13M-m6: the tile is selected by the click itself, before the pref's round trip through main: checked after
     // microtasks only (React renders a click's update in one), where no IPC answer can arrive. Both pages then take the
     // theme (html[data-theme]).
-    // On macOS each page crossfades the change (a View Transition, to cover AppKit's late repaint); elsewhere it is
-    // instant (T13R4-m1). Counted here.
+    // Every page changes at once, on macOS too (no View Transition: its fade started after AppKit's native parts had
+    // turned, Mac run 2 critique m1; T13R4-m1). Counted here.
     const countTransitions = () => {
       const w = window as unknown as { __transitions: number };
       const start = document.startViewTransition.bind(document);
@@ -98,9 +98,8 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await expect(settings.getByTestId('theme-tile-dark')).toHaveAttribute('data-selected', 'true');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(settings.locator('html')).toHaveAttribute('data-theme', 'dark');
-    const crossfades = process.platform === 'darwin' ? 1 : 0;
-    expect(await transitions(page)).toBe(crossfades);
-    expect(await transitions(settings)).toBe(crossfades);
+    expect(await transitions(page)).toBe(0);
+    expect(await transitions(settings)).toBe(0);
     // T13R4-m1: the native theme followed the pages. Each page said it shows the change (after its crossfade's update),
     // its window's chrome followed it, and the app-wide native theme came last, once both had (not by the fallback).
     const steps = await app.evaluate(() =>

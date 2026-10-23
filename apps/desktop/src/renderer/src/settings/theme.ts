@@ -68,12 +68,14 @@ export function applyShade(root: ShadeTarget, shade: Shade, opts: ShadeOptions):
 }
 
 /**
- * Whether a theme change crossfades on this platform: macOS only. The crossfade exists to cover AppKit's late title bar
- * and vibrancy (T13M-m6). Elsewhere nothing native lags: the window-controls overlay follows the page at once, and a
- * View Transition's own frames come so late under software compositing (0.4–0.7 s at 2× on Xvfb) that the overlay
- * would lead the content however it is told (T13R4-m1).
+ * Whether a theme change crossfades on this platform: on none (checklist 8.1's branch). The crossfade was there to
+ * cover AppKit's late title bar and vibrancy (T13M-m6), but a View Transition's first frame comes later still: on the
+ * macOS runner the native parts turned 183–283 ms before the page began to fade, 11–17 frames of a dark title bar and
+ * sidebar over a fully light page (Mac run 2, critique m1). Elsewhere it was never used: its frames come 0.4–0.7 s late
+ * under software compositing (T13R4-m1). So every page swaps at once, says so after the next frame, and the native part
+ * follows within 1–2 frames. applyShade keeps the crossfade for a platform where it would lead; none does today.
  */
-export const crossfades = (platform: string): boolean => platform === 'darwin';
+export const crossfades = (_platform: string): boolean => false;
 
 /**
  * Keeps <html data-theme> on `theme` (the main window: the pref; the settings window: the tile just picked, ahead of

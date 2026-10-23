@@ -638,7 +638,20 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
         await expect(opaque.page.getByTestId('item-row')).toHaveCount(3);
         await expect.poll(() => opaque.page.evaluate(() => document.visibilityState)).toBe('visible');
         await opaque.page.waitForTimeout(500);
-        const shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
+        // Critique mac3 n7 (and run 1): the page had its rows, but the window capture showed an empty table, a frame not
+        // yet on screen. The capture is taken again (up to 4 times, 500 ms apart) until it shows the first row's title:
+        // a dark text pixel in its first 160 px, on three lines through its middle.
+        const title = (await opaque.page.getByTestId('item-row').first().locator('[data-testid="open-item"]').boundingBox())!;
+        const along = Array.from({ length: Math.min(160, Math.floor(title.width)) * 3 }, (_, i) => [Math.round(title.x) + Math.floor(i / 3), Math.round(title.y + title.height / 2) + (i % 3) * 2 - 2] as const);
+        let shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
+        let opaqueAttempts = 1;
+        const showsRows = async (file: string) => (await pngPixels(s.page, file, along)).some(([r, g, b]) => (r! + g! + b!) / 3 < 140);
+        while (shot.file && !(await showsRows(shot.file)) && opaqueAttempts < 4) {
+          await opaque.page.waitForTimeout(500);
+          shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
+          opaqueAttempts++;
+        }
+        results['opaqueCaptureAttempts'] = opaqueAttempts;
         if (shot.file) {
           const points = [[120, 500], [700, 500]] as const; // sidebar, content (points; runner is 1x)
           const [withVib, without] = [await pngPixels(s.page, light.file, points), await pngPixels(s.page, shot.file, points)];

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UNSTABLE_ToastQueue as ToastQueue } from 'react-aria-components';
 import { DismissTimer } from './toastTimer';
-import { LearnToastQueue } from './toasts';
+import { LearnToastQueue, startAutoClose } from './toasts';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -80,5 +80,32 @@ describe('a toast that closes by itself (Mac run 2: the drop toast stayed for go
     expect(q.visibleToasts).toHaveLength(1);
     vi.advanceTimersByTime(1);
     expect(q.visibleToasts).toHaveLength(0);
+  });
+
+  it('counts the 5 s from the first painted frame, not the mount (Mac run 3, critique n6)', () => {
+    const q = new LearnToastQueue<string>();
+    const key = q.add('자료 8개를 가져왔습니다');
+    let paint: (() => void) | null = null;
+    const shown = vi.fn();
+    startAutoClose(q as LearnToastQueue<unknown>, key, { painted: (fn) => ((paint = fn), () => {}), shown });
+    vi.advanceTimersByTime(550); // the drop held the frame: the toast is mounted but not on screen
+    expect(shown).not.toHaveBeenCalled();
+    paint!();
+    expect(shown).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(4999);
+    expect(q.visibleToasts).toHaveLength(1); // 5.55 s after the mount, still up: its 5 s began when it was seen
+    vi.advanceTimersByTime(1);
+    expect(q.visibleToasts).toHaveLength(0);
+  });
+
+  it('a toast that leaves before its first frame starts no countdown', () => {
+    const q = new LearnToastQueue<string>();
+    const key = q.add('x');
+    let paint: (() => void) | null = null;
+    const cancel = vi.fn();
+    const stop = startAutoClose(q as LearnToastQueue<unknown>, key, { painted: (fn) => ((paint = fn), cancel) });
+    stop();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(paint).not.toBeNull();
   });
 });

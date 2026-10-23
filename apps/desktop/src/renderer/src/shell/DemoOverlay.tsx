@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion } from '../design/tokens';
 import { useLearnEvent } from '../events';
+import { afterPaint, type Pending } from '../ui/afterPaint';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { commandPill, keyPill, shortcutPill, type DemoPill, type KeyPlace } from './demoPill';
@@ -50,24 +51,10 @@ function placeOf(e: KeyboardEvent): KeyPlace {
   return 'other';
 }
 
-/** A pending timer or frame callback, as its cancel. */
-type Pending = () => void;
 const later = (fn: () => void, ms: number): Pending => {
   const id = setTimeout(fn, ms);
   return () => clearTimeout(id);
 };
-/**
- * Runs `fn` once the next frame has been painted (the second animation frame from now). A countdown started there
- * cannot lose its time to a late first paint: the opening caption, sent while the renderer was still busy after
- * launch, painted 1.2 s late and stood 2.1 s of its 3.5 (Mac run 2, critique m2); the click ring on the PDF's next-page
- * press, whose page render held the frame, had faded before it was ever drawn (critique n3).
- */
-export function afterPaint(fn: () => void, raf: (cb: () => void) => number = requestAnimationFrame, cancel: (id: number) => void = cancelAnimationFrame): Pending {
-  let id = raf(() => {
-    id = raf(fn);
-  });
-  return () => cancel(id);
-}
 
 /** Shows `value` for `ms` of painted time (forever when null), then lets it fade out for EXIT_MS and removes it. */
 function useTransient<T>(): [Shown<T> | null, (value: T, ms: number | null) => void, () => void] {

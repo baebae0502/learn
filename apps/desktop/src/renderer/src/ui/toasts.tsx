@@ -10,6 +10,8 @@ import {
 import { t } from '../strings';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
+import { afterPaintOr, type Pending } from './afterPaint';
+import { perfMark } from './perfMarks';
 import { DismissTimer } from './toastTimer';
 
 export type ToastKind = 'success' | 'error' | 'info';
@@ -104,23 +106,43 @@ export function showToast(data: ToastData): string {
   return toastQueue.add(data);
 }
 
+/** Where no frames come (a hidden or minimised window), a toast counts from this long after it mounted. */
+const UNPAINTED_START_MS = 1000;
+
 /**
- * The 5 s of a visible success or info toast: from when it appears (mounts), held while the toasts are held, closed
- * when the time is up, also when the hold came just as it ran out. A toast pushed out of the three visible ones starts
- * again when it is back, as RAC's did.
+ * The 5 s of a visible success or info toast: from its first painted frame (Mac run 3, critique n6: counted from the
+ * mount, a toast whose first frame came late after a drop was on screen 4.63 s and its rise-in never seen), held while
+ * the toasts are held, closed when the time is up, also when the hold came just as it ran out. `shown` runs at that
+ * first painted frame. Returns the cleanup.
  */
-function AutoClose({ toastKey, kind }: { toastKey: string; kind: ToastKind }) {
+export function startAutoClose(
+  queue: LearnToastQueue<unknown>,
+  toastKey: string,
+  opts: { painted?: (fn: () => void) => Pending; shown?: () => void } = {},
+): () => void {
+  let timer: DismissTimer | null = null;
+  let off = () => {};
+  const cancelPaint = (opts.painted ?? ((fn) => afterPaintOr(UNPAINTED_START_MS, fn)))(() => {
+    opts.shown?.();
+    const t = new DismissTimer(TOAST_MS, () => queue.close(toastKey));
+    timer = t;
+    const follow = () => (queue.held ? t.hold() : t.run());
+    follow();
+    off = queue.onHold(follow);
+  });
+  return () => {
+    cancelPaint();
+    off();
+    timer?.stop();
+  };
+}
+
+/** A toast pushed out of the three visible ones starts again when it is back, as RAC's did. */
+function AutoClose({ toastKey, kind, testId }: { toastKey: string; kind: ToastKind; testId: string | undefined }) {
   useEffect(() => {
     if (kind === 'error') return;
-    const timer = new DismissTimer(TOAST_MS, () => toastQueue.close(toastKey));
-    const follow = () => (toastQueue.held ? timer.hold() : timer.run());
-    follow();
-    const off = toastQueue.onHold(follow);
-    return () => {
-      off();
-      timer.stop();
-    };
-  }, [toastKey, kind]);
+    return startAutoClose(toastQueue as LearnToastQueue<unknown>, toastKey, { shown: testId ? () => perfMark(`toast:${testId}`) : undefined });
+  }, [toastKey, kind, testId]);
   return null;
 }
 
@@ -156,7 +178,7 @@ export function Toasts() {
       <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
         {({ toast }) => (
           <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
-            <AutoClose toastKey={toast.key} kind={toast.content.kind} />
+            <AutoClose toastKey={toast.key} kind={toast.content.kind} testId={toast.content.testId} />
             <ToastIcon kind={toast.content.kind} />
             <ToastContent className="t-text">
               <Text slot="title" className="t-title">

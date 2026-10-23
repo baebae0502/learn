@@ -1544,6 +1544,63 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     results['finder'] = value;
     check('Finder에서 보기 brings Finder to the front', value.frontmost === 'Finder' && value.revealCalls === 1 && !value.errorToast, value);
   });
+  // Final review I1: 기본 앱으로 열기 and Finder에서 보기 hand the OS a named copy (derived/open/<assetId>/<title>.<ext>),
+  // because LaunchServices finds no app for the store's extensionless hash file. Resolved without launching anything:
+  // NSWorkspace's default app for each path, the raw store path (expected none) and the named copy (expected an app).
+  await guard('기본 앱으로 열기: the named copy of a managed PDF and MP4 has a default app (handler lookup, I1)', async () => {
+    const handlerOf = async (p: string): Promise<string | null> => {
+      const js = [
+        "ObjC.import('AppKit');",
+        `var u = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL($.NSURL.fileURLWithPath(${JSON.stringify(p)}));`,
+        "u.isNil() ? '' : ObjC.unwrap(u.path);",
+      ].join(' ');
+      const r = await tryExec('osascript', ['-l', 'JavaScript', '-e', js], 15_000);
+      return r.ok && r.stdout.trim() ? r.stdout.trim() : null;
+    };
+    const libraryRoot = await s.page.evaluate(async () => {
+      const r = await window.learn.app.info();
+      return r.ok ? r.data.libraryRoot : null;
+    });
+    // The path main would hand the OS, read by a stubbed reveal (the real one is put back after).
+    await s.app.evaluate(({ shell }) => {
+      const g = globalThis as { __learnRealReveal?: typeof shell.showItemInFolder; __learnRevealed?: string };
+      g.__learnRealReveal ??= shell.showItemInFolder.bind(shell);
+      shell.showItemInFolder = (p: string) => void (g.__learnRevealed = p);
+    });
+    const value: Record<string, unknown> = {};
+    try {
+      for (const [kind, title] of [['pdf', 'sample'], ['mp4', 'sample-h264-aac']] as const) {
+        const info = await s.page.evaluate(async (title) => {
+          const list = await window.learn.library.list();
+          const item = list.ok ? list.data.find((i) => i.title === title) : undefined;
+          if (!item) return null;
+          const d = await window.learn.library.detail({ itemId: item.id });
+          await window.learn.library.showInFolder({ itemId: item.id });
+          return d.ok ? { itemId: item.id, sha256: d.data.file.sha256, storageMode: d.data.file.storageMode } : null;
+        }, title);
+        const named = await s.app.evaluate(() => (globalThis as { __learnRevealed?: string }).__learnRevealed ?? null);
+        const raw = info && libraryRoot ? path.join(libraryRoot, 'assets', info.sha256.slice(0, 2), info.sha256) : null;
+        value[kind] = {
+          storageMode: info?.storageMode ?? null,
+          raw,
+          rawApp: raw ? await handlerOf(raw) : null,
+          named,
+          namedApp: named ? await handlerOf(named) : null,
+        };
+      }
+    } finally {
+      await s.app.evaluate(({ shell }) => {
+        const g = globalThis as { __learnRealReveal?: typeof shell.showItemInFolder };
+        if (g.__learnRealReveal) shell.showItemInFolder = g.__learnRealReveal;
+      });
+    }
+    results['openHandler'] = value;
+    const ok = (['pdf', 'mp4'] as const).every((k) => {
+      const v = value[k] as { storageMode: string | null; named: string | null; namedApp: string | null } | undefined;
+      return v?.storageMode === 'managed' && v.named !== null && /[\\/]derived[\\/]open[\\/]/.test(v.named) && v.namedApp !== null;
+    });
+    check('기본 앱으로 열기: the named copy of a managed PDF and MP4 has a default app (handler lookup, final review I1)', ok, value);
+  });
   // R2-6e, R3-3, R3-6: Finder's own window as the reference for the inactive look — a window opened at Downloads (its
   // sidebar row selected), active and inactive, light and dark (the system appearance is switched on CI only).
   // Measured per element on Finder's fixed layout; a value is a solid colour only if ≥ 20 pixels sit at the extreme.

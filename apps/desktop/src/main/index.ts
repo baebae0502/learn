@@ -13,7 +13,7 @@ import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
-import { DETERMINISTIC_SWITCHES, isDeterministic } from './deterministic';
+import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
 import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
@@ -46,9 +46,9 @@ if (process.env['LEARN_USER_DATA_DIR']) app.setPath('userData', process.env['LEA
 const devServerUrl = !app.isPackaged ? (process.env['ELECTRON_RENDERER_URL'] ?? null) : null;
 const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
 /** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
-const isDevBuild = !app.isPackaged && process.env['LEARN_E2E'] !== '1';
+const isDevBuild = !app.isPackaged && !isE2E(app.isPackaged, process.env);
 
-const deterministic = isDeterministic(process.env);
+const deterministic = isDeterministic(app.isPackaged, process.env);
 if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);
 
 /** Every window loads the same renderer; `?window=` picks what it shows (main, settings, sheet). */
@@ -337,7 +337,7 @@ if (!app.requestSingleInstanceLock()) {
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
       relaunch() {
-        if (process.env['LEARN_E2E'] === '1') {
+        if (isE2E(app.isPackaged, process.env)) {
           // Playwright cannot follow a relaunched process: E2E only records the request.
           (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
           return;

@@ -44,13 +44,13 @@ E2E 스크립트는 빌드 후 `pnpm fixtures`를 자동으로 실행한다. fix
 ## 환경 변수
 | 변수 | 뜻 |
 |---|---|
-| `LEARN_LIBRARY_DIR` | 라이브러리 폴더(설정의 위치보다 우선). |
-| `LEARN_USER_DATA_DIR` | 사용자 데이터 폴더(환경설정 파일). 테스트가 프로필마다 따로 쓴다. |
-| `LEARN_DETERMINISTIC=1` | 스크린샷을 반복 가능하게 한다. Chromium 스위치(sRGB 색 프로필, LCD 글꼴과 GPU 합성 끔, 힌팅 없음)를 켜고, 페이지에 `data-deterministic`을 달아 테마 크로스페이드 같은 전환을 없앤다. 시각 투어와 증거 페이지 샷이 쓴다. |
+| `LEARN_LIBRARY_DIR` | 라이브러리 폴더(설정의 위치보다 우선). 패키지 빌드에서도 따른다. |
+| `LEARN_USER_DATA_DIR` | 사용자 데이터 폴더(환경설정 파일). 테스트가 프로필마다 따로 쓴다. 패키지 빌드에서도 따른다. |
+| `LEARN_DETERMINISTIC=1` | 스크린샷을 반복 가능하게 한다. Chromium 스위치(sRGB 색 프로필, LCD 글꼴과 GPU 합성 끔, 힌팅 없음)를 켜고, 페이지에 `data-deterministic`을 달아 움직임과 캐럿을 없앤다. 시각 투어와 증거 페이지 샷이 쓴다. 패키지 빌드에서는 무시한다. |
 | `LEARN_VIBRANCY=0` | macOS 사이드바 비브런시를 끄고 불투명 토큰으로 그린다. 기본은 켬이고, 증거 하네스가 비교 캡처에 쓴다. |
 | `LEARN_DEMO_OVERLAY=1` | 화면 녹화용 오버레이: 커서 고리, 단축키 알약, 장 자막. 패키지 빌드에서는 무시한다. |
 | `LEARN_TOUR_2X=1` | 시각 투어가 기준 비교와 함께 @2x(2880×1800) 캡처를 `test-results/tour/`에 남긴다(디자인 비평 입력). |
-| `LEARN_E2E=1` | 배포 메뉴로 실행한다(개발자 도구 없음). E2E가 켠다. |
+| `LEARN_E2E=1` | 배포 메뉴로 실행하고(개발자 도구 없음), 라이브러리 위치를 바꾼 뒤의 재시작은 요청만 기록한다(Playwright가 재시작한 프로세스를 따라가지 못한다). E2E가 켠다. 패키지 빌드에서는 무시한다(재시작이 실제로 일어난다). |
 | `LEARN_DEMO_PACE`, `LEARN_DEMO_SCALE`, `LEARN_DEMO_GRAB` | 데모 녹화(`@demo`)의 속도(1 = 실제 속도), 배율, Linux x11grab 영역. `scripts/record-demo-linux.sh`가 정한다. |
 | `LEARN_PACKAGED_APP`, `LEARN_DISPLAYPLACER`, `LEARN_DISPLAYPLACER_LIST` | macOS 증거 워크플로가 정한다: 패키지 앱 실행 파일, 화면 모드 전환 도구와 그 목록. |
 

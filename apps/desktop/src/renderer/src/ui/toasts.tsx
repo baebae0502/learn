@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from 'react';
+import { useEffect, type KeyboardEvent } from 'react';
 import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import {
   Text,
@@ -10,6 +10,7 @@ import {
 import { t } from '../strings';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
+import { DismissTimer } from './toastTimer';
 
 export type ToastKind = 'success' | 'error' | 'info';
 /** A toast row about one file: the name is cut with an ellipsis before the cause is (the cause is what to read). */
@@ -49,16 +50,69 @@ export function ToastLines({ data }: { data: Pick<ToastData, 'lines' | 'body'> }
   );
 }
 
+/** design-spec 6 토스트: a success or info toast closes by itself 5 s after it appears. */
+export const TOAST_MS = 5000;
+
+/**
+ * RAC's queue, with the 5 s counted by our own timers (toastTimer.ts): RAC's lost a toast for good when the pointer
+ * reached the toasts just as its time ran out (Mac run 2). The region still says when to hold them, through
+ * pauseAll / resumeAll (the pointer on the toasts, or the focus in them: useToastRegion); here that is a flag the
+ * visible toasts' timers follow.
+ */
+class LearnToastQueue extends ToastQueue<ToastData> {
+  private heldNow = false;
+  private readonly holdListeners = new Set<() => void>();
+  override pauseAll(): void {
+    this.setHeld(true);
+  }
+  override resumeAll(): void {
+    this.setHeld(false);
+  }
+  get held(): boolean {
+    return this.heldNow;
+  }
+  onHold(listener: () => void): () => void {
+    this.holdListeners.add(listener);
+    return () => this.holdListeners.delete(listener);
+  }
+  private setHeld(held: boolean): void {
+    if (held === this.heldNow) return;
+    this.heldNow = held;
+    for (const l of [...this.holdListeners]) l();
+  }
+}
+
 /**
  * One queue per window. design-spec 6 토스트: success (and info) closes by itself after 5 s and has no button;
  * an error stays until its × (or Escape while it has focus) closes it (C-6). Action buttons, when a toast gets one,
  * are verbs (취소·보기·다시 시도). RAC's toast API is UNSTABLE_-prefixed in 1.22.1; it is pinned and used only through
  * this module.
  */
-export const toastQueue = new ToastQueue<ToastData>({ maxVisibleToasts: 3 });
+export const toastQueue = new LearnToastQueue({ maxVisibleToasts: 3 });
 
+/** No RAC timeout: a toast that closes by itself does so through AutoClose, while it is on screen. */
 export function showToast(data: ToastData): string {
-  return toastQueue.add(data, data.kind === 'error' ? {} : { timeout: 5000 });
+  return toastQueue.add(data);
+}
+
+/**
+ * The 5 s of a visible success or info toast: from when it appears (mounts), held while the toasts are held, closed
+ * when the time is up, also when the hold came just as it ran out. A toast pushed out of the three visible ones starts
+ * again when it is back, as RAC's did.
+ */
+function AutoClose({ toastKey, kind }: { toastKey: string; kind: ToastKind }) {
+  useEffect(() => {
+    if (kind === 'error') return;
+    const timer = new DismissTimer(TOAST_MS, () => toastQueue.close(toastKey));
+    const follow = () => (toastQueue.held ? timer.hold() : timer.run());
+    follow();
+    const off = toastQueue.onHold(follow);
+    return () => {
+      off();
+      timer.stop();
+    };
+  }, [toastKey, kind]);
+  return null;
 }
 
 const TOAST_ICON = { success: CircleCheck, error: CircleAlert, info: Info } as const;
@@ -93,6 +147,7 @@ export function Toasts() {
       <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
         {({ toast }) => (
           <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
+            <AutoClose toastKey={toast.key} kind={toast.content.kind} />
             <ToastIcon kind={toast.content.kind} />
             <ToastContent className="t-text">
               <Text slot="title" className="t-title">

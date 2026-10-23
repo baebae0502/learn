@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { clickToCloseSheet, drag, dropSource, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
+import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -215,6 +215,90 @@ test('under its own open panel (⌘O) the main window is not key — no ring, no
     await expectDisabledReason(s.page.getByTestId('sidebar-toggle'), null);
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     if (process.platform === 'darwin') await expect.poll(() => fullScreenItemEnabled(s)).toBe(true);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a success toast closes 5 s after it appears, also when the pointer reaches it just as its time runs out (Mac run 2)', async ({}, testInfo) => {
+  // Mac run 2 (39884763777): the drop's "자료 8개를 가져왔습니다" stayed through the whole demo. The pointer reached the
+  // toasts as its 5 s ran out, after the deadline but before the timer's task ran (input runs before timers): RAC's
+  // timer subtracted past zero, cleared itself and never resumed. The page's clock makes that moment exact here.
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await s.page.clock.install();
+    await s.page.mouse.move(10, 10);
+    await s.page.evaluate(() => {
+      new MutationObserver((_, obs) => {
+        if (!document.querySelector('[data-testid="import-done"]')) return;
+        obs.disconnect();
+        (window as unknown as { __toastAt: number }).__toastAt = Date.now(); // the page's (fake) clock
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await dropSource(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-mpeg4part2.mp4')]);
+    await drag(s.page, 'dragenter', 'source');
+    await drag(s.page, 'drop', 'source', { repeat: false });
+    const dropped = s.page.getByTestId('import-done').filter({ hasText: '자료 2개를 가져왔습니다' });
+    await expect(dropped).toHaveCount(1);
+    // ⌘O with a panel that answers at once (the demo's), and its own toast above the first.
+    await stubOpenDialog(s.app, [path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await runMenuCommand(s.app, 'file.importManaged');
+    await expect(s.page.getByTestId('item-row')).toHaveCount(3);
+    await expect(s.page.getByTestId('import-done')).toHaveCount(2);
+    const toastAt = await s.page.evaluate(() => (window as unknown as { __toastAt: number }).__toastAt);
+    // The first toast's 5 s are up, and its timer's task has not run yet: the pointer comes onto the toasts now.
+    await s.page.clock.setSystemTime(toastAt + 5010);
+    const box = (await s.page.getByTestId('import-done').first().boundingBox())!;
+    await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await s.page.clock.runFor(1000); // resting on them: the second toast waits, the first is already due
+    await s.page.mouse.move(10, 10);
+    await s.page.clock.runFor(500);
+    await expect(dropped).toHaveCount(0); // closed when its time was up, not kept for good
+    await s.page.clock.runFor(10_000); // the second toast's remaining time, plus a margin
+    await expect(s.page.getByTestId('import-done')).toHaveCount(0);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('only the pointer on the toasts or the focus in them holds a toast: not a panel, a sheet state or the window losing the key (Mac run 2)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const html = s.page.locator('html');
+  const windowState = () => s.page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data : null)));
+  try {
+    await s.page.clock.install();
+    await s.page.mouse.move(10, 10);
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    // A toast of its own (importPaths is silent), then ⌘O answered at once, as in the demo: no sheet state is left behind.
+    await stubOpenDialog(s.app, [path.join(FIXTURES, 'sample-h264-aac.mp4')]);
+    await runMenuCommand(s.app, 'file.importManaged');
+    const toast = s.page.getByTestId('import-done');
+    await expect(toast).toHaveCount(1);
+    await expect.poll(windowState).toMatchObject({ focused: true, sheetOpen: false });
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    // A real panel held open (here 2 s), then cancelled: not key meanwhile, and the toast's time runs on.
+    await holdOpenDialog(s.app, []);
+    await runMenuCommand(s.app, 'file.importManaged');
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await s.page.clock.runFor(2000);
+    await releaseOpenDialog(s.app);
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expect.poll(windowState).toMatchObject({ focused: true, sheetOpen: false });
+    // Another window takes the key and gives it back (2 s): the time runs on.
+    await s.app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await s.page.clock.runFor(2000);
+    await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expect(toast).toHaveCount(1);
+    await s.page.clock.runFor(1200); // 5.2 s since it appeared
+    await expect(toast).toHaveCount(0);
   } finally {
     await s.app.close();
   }

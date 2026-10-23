@@ -41,8 +41,8 @@ export interface ThemeFollower {
    */
   pageChanged(theme: Prefs['theme']): void;
   /**
-   * A follower's page now shows `shade` (the frame after it swapped). Only the report of the pending change counts: one
-   * in another shade is a late report of a change before it, and is ignored.
+   * A follower's page now has `shade` (reported right after its swap, while it paints). Only the report of the pending
+   * change counts: one in another shade is a late report of a change before it, and is ignored.
    */
   shown(windowId: number, shade: Shade): void;
 }
@@ -50,8 +50,9 @@ export interface ThemeFollower {
 /**
  * T13R4-m1: the native theme follows the page. AppKit repaints a title bar and the vibrancy a few frames after it is
  * told, and Linux draws its window-controls overlay at once; a page swaps in one frame (no crossfade on any platform:
- * Mac run 2, critique m1). So for a change made in a page, main applies nothing native until the pages show it: never a
- * native part already in the new theme over web content still wholly in the old one. A page that never reports (hung, closed) holds it at most
+ * Mac run 2, critique m1) and reports right after its swap, so main's native call overlaps the page's paint and AppKit
+ * lands 1–2 frames after the page (Mac run 3, critique m4). So for a change made in a page, main applies nothing
+ * native until the pages have it: never a native part already in the new theme over web content still in the old one. A page that never reports (hung, closed) holds it at most
  * THEME_FOLLOW_MS. A change no page made (startup, the system appearance) never comes here: main applies it at once.
  *
  * Each report names the shade it shows, and is taken only for the pending change's shade. With light → dark → light in

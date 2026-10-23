@@ -84,7 +84,7 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await expect(settings.getByTestId('theme-tile-dark')).toHaveAttribute('data-selected', 'true');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(settings.locator('html')).toHaveAttribute('data-theme', 'dark');
-    // T13R4-m1: the native theme followed the pages. Each page said it shows the change (the frame after it swapped),
+    // T13R4-m1: the native theme followed the pages. Each page said it has the change (right after its swap),
     // its window's chrome followed it, and the app-wide native theme came last, once both had (not by the fallback).
     const steps = await app.evaluate(() =>
       ((globalThis as { __learnThemeLog?: Array<{ event: string; window?: string | null; reason?: string; at: number }> }).__learnThemeLog ?? []).map(

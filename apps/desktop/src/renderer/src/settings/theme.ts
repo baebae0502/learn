@@ -12,31 +12,20 @@ interface ShadeTarget {
 }
 interface ShadeOptions {
   /**
-   * The page shows `shade` now: called once, after the next frame (the change has been drawn), at once when nothing
-   * changed. Main lets the native theme follow it (T13R4-m1).
+   * The page has `shade`: called once, right after the swap (or at once when nothing changed). Main lets the native
+   * theme follow it (T13R4-m1).
    */
   onShown?: () => void;
-  /** After the next frame (an instant change has been drawn); a hidden page, which draws no frames, still answers. */
-  afterFrame?: (fn: () => void) => void;
-}
-
-/** Calls `fn` after the next frame is drawn, or after 100 ms where no frames come (a hidden or occluded window). */
-export function afterNextFrame(fn: () => void): void {
-  let done = false;
-  const once = () => {
-    if (done) return;
-    done = true;
-    fn();
-  };
-  requestAnimationFrame(() => setTimeout(once, 0));
-  setTimeout(once, 100);
 }
 
 /**
  * <html data-theme> (tokens.css: color-scheme light or dark, so every light-dark() token follows). The change is instant
  * on every platform: a crossfade's first frame came after AppKit had turned the native title bar and vibrancy (Mac run 2,
- * 183–283 ms of dark native over a light page), so the page swaps at once and main applies the native theme once the
- * page says it shows the change (`onShown`, T13R4-m1): it follows within 1–2 frames. Returns whether anything changed.
+ * 183–283 ms of dark native over a light page). The page reports it right after the synchronous swap, with no frame
+ * wait: the report crosses to main and main's native call while this page paints, and AppKit repaints its parts a frame
+ * or two after it is told (Mac run 3, critique m4: waiting for the next frame and a timer put the native parts 3 frames,
+ * 50 ms, behind the page). Main still applies nothing native before the report, and falls back after THEME_FOLLOW_MS.
+ * Returns whether anything changed.
  */
 export function applyShade(root: ShadeTarget, shade: Shade, opts: ShadeOptions = {}): boolean {
   const shown = opts.onShown ?? (() => {});
@@ -45,7 +34,7 @@ export function applyShade(root: ShadeTarget, shade: Shade, opts: ShadeOptions =
     return false;
   }
   root.dataset['theme'] = shade;
-  (opts.afterFrame ?? afterNextFrame)(shown);
+  shown();
   return true;
 }
 

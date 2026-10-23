@@ -1,0 +1,128 @@
+/* M4 Task 1 table spike (branch m4-spike only): enough of the table's metrics to measure real rows. */
+@layer screens {
+  .spike {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-content);
+    color: var(--text-primary);
+    font: var(--type-body);
+  }
+  .spike-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: var(--toolbar-height);
+    padding: 0 var(--space-16);
+    border-bottom: 1px solid var(--separator);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .spike-wrap,
+  .spike-resize {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+  }
+  .spike-table {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: auto;
+    outline: none;
+    scroll-padding-top: var(--table-header-height);
+  }
+  .spike-table .th {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    box-sizing: border-box;
+    height: 100%;
+    padding: 0 var(--space-8);
+    background: var(--bg-content);
+    border-bottom: 1px solid var(--separator);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    outline: none;
+    cursor: default;
+  }
+  .spike-table .th:is([aria-sort='ascending'], [aria-sort='descending']) {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .spike-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 8px; /* local: the column boundary's hit width */
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .spike-table .row {
+    box-sizing: border-box;
+    height: 100%;
+    border-radius: var(--radius-md);
+    outline: none;
+  }
+  .spike-table .row.is-odd {
+    background: var(--bg-content-alt);
+  }
+  .spike-table .row[data-selected] {
+    background: var(--fill-selected);
+  }
+  .spike-table:focus-within .row[data-selected] {
+    background: var(--accent);
+  }
+  .spike-table .row[data-focus-visible] {
+    box-shadow: inset 0 0 0 2px var(--focus);
+  }
+  .spike-table .td {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    box-sizing: border-box;
+    height: 100%;
+    padding: 0 var(--space-8);
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--text-secondary);
+  }
+  .spike-table .td[data-col='title'] {
+    color: var(--text-primary);
+  }
+  .spike-table:focus-within .row[data-selected] .td {
+    color: var(--text-on-accent);
+  }
+  .spike-flag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex: none;
+    color: var(--warning-text);
+    font: var(--type-footnote);
+  }
+  /* The TanStack fallback (TanstackSpike): its own sticky header and absolutely placed rows. */
+  .spike-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    height: var(--table-header-height);
+  }
+  .spike-body {
+    position: relative;
+  }
+  .spike-body .row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    height: var(--row-height);
+  }
+}

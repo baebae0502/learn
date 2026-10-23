@@ -21,6 +21,7 @@
     "@learn/domain": "workspace:*",
     "@learn/library": "workspace:*",
     "@tanstack/react-query": "5.104.5",
+    "@tanstack/react-virtual": "3.14.22",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "6.1.2",

@@ -28,6 +28,11 @@ const VIEWS: Record<RendererWindow, () => Promise<ComponentType>> = {
   main: () => import('./App').then((m) => m.App),
   settings: () => Promise.resolve(SettingsApp),
   gallery: () => import('./gallery/Gallery').then((m) => m.Gallery),
+  // M4 Task 1 table spike (branch m4-spike only); &impl=tanstack is the fallback's page.
+  spike: () =>
+    new URLSearchParams(location.search).get('impl') === 'tanstack'
+      ? import('./spike/TanstackSpike').then((m) => m.TanstackSpike)
+      : import('./spike/TableSpike').then((m) => m.TableSpike),
   sheet: () => Promise.resolve(SheetApp),
 };
 const View = await VIEWS[params.window]();

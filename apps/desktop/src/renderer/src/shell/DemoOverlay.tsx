@@ -50,23 +50,42 @@ function placeOf(e: KeyboardEvent): KeyPlace {
   return 'other';
 }
 
-/** Shows `value` for `ms` (forever when null), then lets it fade out for EXIT_MS and removes it. */
+/** A pending timer or frame callback, as its cancel. */
+type Pending = () => void;
+const later = (fn: () => void, ms: number): Pending => {
+  const id = setTimeout(fn, ms);
+  return () => clearTimeout(id);
+};
+/**
+ * Runs `fn` once the next frame has been painted (the second animation frame from now). A countdown started there
+ * cannot lose its time to a late first paint: the opening caption, sent while the renderer was still busy after
+ * launch, painted 1.2 s late and stood 2.1 s of its 3.5 (Mac run 2, critique m2); the click ring on the PDF's next-page
+ * press, whose page render held the frame, had faded before it was ever drawn (critique n3).
+ */
+export function afterPaint(fn: () => void, raf: (cb: () => void) => number = requestAnimationFrame, cancel: (id: number) => void = cancelAnimationFrame): Pending {
+  let id = raf(() => {
+    id = raf(fn);
+  });
+  return () => cancel(id);
+}
+
+/** Shows `value` for `ms` of painted time (forever when null), then lets it fade out for EXIT_MS and removes it. */
 function useTransient<T>(): [Shown<T> | null, (value: T, ms: number | null) => void, () => void] {
   const [shown, setShown] = useState<Shown<T> | null>(null);
-  const timers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const pending = useRef<Pending[]>([]);
   const clear = () => {
-    for (const timer of timers.current) clearTimeout(timer);
-    timers.current = [];
+    for (const cancel of pending.current) cancel();
+    pending.current = [];
   };
   const leave = () => {
     clear();
     setShown((s) => (s ? { ...s, leaving: true } : s));
-    timers.current.push(setTimeout(() => setShown(null), EXIT_MS));
+    pending.current.push(later(() => setShown(null), EXIT_MS));
   };
   const show = (value: T, ms: number | null) => {
     clear();
     setShown({ ...value, at: performance.now(), leaving: false });
-    if (ms !== null) timers.current.push(setTimeout(leave, ms));
+    if (ms !== null) pending.current.push(afterPaint(() => pending.current.push(later(leave, ms))));
   };
   useEffect(() => clear, []);
   return [shown, show, leave];
@@ -101,7 +120,7 @@ export function DemoOverlay() {
     if (!state.focused) dropPointer.current();
   });
   const lastPointer = useRef<{ x: number; y: number } | null>(null);
-  const ringTimers = useRef<Array<ReturnType<typeof setTimeout>>>([]);
+  const ringTimers = useRef<Pending[]>([]);
   // The sidebar state as last drawn, i.e. before a ⌃⌘S that is arriving now: the pill names what the command did.
   const hidden = useSidebarHidden();
   const drawnHidden = useRef(hidden);
@@ -126,7 +145,7 @@ export function DemoOverlay() {
       if (e.key === 'Alt' && pillRef.current?.held && !pillRef.current.leaving) endPill();
     };
     const clearRing = () => {
-      for (const timer of ringTimers.current) clearTimeout(timer);
+      for (const cancel of ringTimers.current) cancel();
       ringTimers.current = [];
     };
     const move = (e: PointerEvent) => {
@@ -142,11 +161,16 @@ export function DemoOverlay() {
         } else {
           setPointer((p) => (p ? { ...p, down: false } : p));
           clearRing();
+          // Counted from the ring's first painted frame: a press whose work holds the frame still shows its ring.
           ringTimers.current.push(
-            setTimeout(() => {
-              setPointer((p) => (p ? { ...p, leaving: true } : p));
-              ringTimers.current.push(setTimeout(() => setPointer(null), EXIT_MS));
-            }, RING_AFTER_UP_MS),
+            afterPaint(() =>
+              ringTimers.current.push(
+                later(() => {
+                  setPointer((p) => (p ? { ...p, leaving: true } : p));
+                  ringTimers.current.push(later(() => setPointer(null), EXIT_MS));
+                }, RING_AFTER_UP_MS),
+              ),
+            ),
           );
         }
         return;

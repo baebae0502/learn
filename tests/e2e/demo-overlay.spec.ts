@@ -271,6 +271,33 @@ test('the drawn pointer: a disc that follows, or only a click ring; gone when th
   }
 });
 
+test('a caption and a click ring are counted from their first painted frame, not from the event (Mac run 2, critique m2, n3)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), DEMO);
+  try {
+    const caption = page.getByTestId('demo-caption');
+    const pointer = page.getByTestId('demo-pointer');
+    /** The page busy for `ms` (a launch, a page render): no frame meanwhile, while timers come due. */
+    const busy = (ms: number) => `{ const end = performance.now() + ${ms}; while (performance.now() < end) {} }`;
+    // A 600 ms caption sent while the renderer stays busy for 900 ms: still up, and not leaving, once it has painted.
+    await page.evaluate(`dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '첫 장', ms: 600 } })); ${busy(900)}`);
+    await expect(caption).toHaveText('첫 장');
+    await expect(caption).not.toHaveAttribute('data-leaving', '');
+    await expect(caption).toHaveCount(0, { timeout: 3000 }); // and then its time, the exit
+    // Clicks mode: a press whose own work holds the frame for 600 ms (the PDF's next page) still shows its ring.
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-pointer', { detail: { mode: 'clicks' } })));
+    const h = await page.evaluate(() => innerHeight);
+    await page.evaluate(`addEventListener('pointerup', () => ${busy(600)}, { once: true })`);
+    await page.mouse.move(130, h - 80);
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect(pointer).toBeVisible();
+    await expect(pointer).not.toHaveAttribute('data-leaving', '');
+    await expect(pointer).toHaveCount(0, { timeout: 1500 });
+  } finally {
+    await app.close();
+  }
+});
+
 // Task 13 ruling (Since Task 12): F6 cycles through the same panes with the overlay on as without it, and the fold
 // rescue lands where it does without it.
 test('F6 / ⇧F6 and the fold rescue visit the same stops with the demo overlay on as without it', async ({}, testInfo) => {

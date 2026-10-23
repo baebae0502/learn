@@ -214,6 +214,15 @@ export function openFinderWindow(folder: string, bounds: readonly [number, numbe
       'tell application "Finder"',
       `make new Finder window to (POSIX file ${JSON.stringify(folder)} as alias)`,
       'set current view of front window to list view',
+      // Critique mac3 n4: at 680 wide the list still scrolled sideways and cut 종류. Name and size only, and room for
+      // the names (this folder's own view options; the demo's material folder is its own).
+      'try',
+      'tell list view options of front window',
+      'set visible of column id modification date column to false',
+      'set visible of column id kind column to false',
+      'set width of column id name column to 330',
+      'end tell',
+      'end try',
       `set bounds of front window to {${bounds.map(Math.round).join(', ')}}`,
       'activate',
       'end tell',

@@ -55,7 +55,12 @@ const RECORD_SECONDS = 280;
  * The recording starts this long before the demo: its first frames show the painted first screen (mac1 m2).
  * screencapture warmed up on frozen frames for about 1.1 s on the runner: 2.5 s there (Mac risk 2).
  */
-const PRE_ROLL_MS = IS_MAC ? 2500 : 1500;
+/**
+ * Before chapter 1. On macOS screencapture shows nothing moving for its first seconds (Mac run 3, critique m2: the file
+ * stood still to 3.42 s although the page had started the caption at about 1.6 s), so chapter 1 starts after that;
+ * scripts/finish-demo.sh cuts the still head back to 0.5 s and moves the chapters with it.
+ */
+const PRE_ROLL_MS = IS_MAC ? 4500 : 1500;
 /** The Finder window in front (chapter 13): wide enough for the list view's Name, Size and Kind (critique mac2 n4). */
 const FINDER_W = 680;
 /** One PDF printed by Chromium may take this long; then the rest are fixture copies (re-review Important 1). */
@@ -623,6 +628,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect(page.getByTestId('import-done')).toBeVisible();
     await park(page, 'main');
     await pause(3500);
+    // Critique mac3 m5: the drop's toast closes by itself on camera (5 s from its first frame; what Mac run 2's M1
+    // broke), so ⌘O's toast is the only one and the glide below lands on it where it stays.
+    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
 
     // 4. ⌘O, one file: the one F6 and ↩ will open. The file panel is skipped (said in the chapter line and caption).
     //    The pointer goes to the result toast and holds it there (a toast waits while the pointer is on it).
@@ -632,7 +640,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const importedAt = await press('o', ['command'], 'file.importManaged', async () => (await dialogCalls()) > 0);
     await expect(rows).toHaveCount(media.drop.length + 1);
     await expect(firstTitle).toHaveAttribute('data-title', READ_TITLE);
-    // The drop's toast can still be up: this one is the ⌘O result (one item).
+    // The ⌘O result (one item), the only toast now: the pointer comes to rest on it and holds it.
     const toast = page.getByTestId('import-done').filter({ hasText: '1개' });
     await expect(toast).toBeVisible();
     const toastBox = (await toast.boundingBox())!;

@@ -102,9 +102,13 @@ const PLANS: readonly DemoPlan[] = IS_MAC
     ]
   : [{ display: 'switch', capture: 'screencapture', why: 'the only attempt' }];
 /**
- * The demo's whole budget, attempts included. With the rest of `all` (about 285 s of evidence on the Mac) the step
- * stays under its 16-minute cap (globalTimeout 960 s): typically 285 + 310 s; at worst the test's own limit (560 + 60
- * s) and, only after a timeout, the afterAll's restores (RESTORE_HOOK_MS): 285 + 620 + 45 = 950 s.
+ * The demo's whole budget, attempts included. The `all` evidence step (playwright.evidence.config.ts globalTimeout
+ * 1080 s, step limit 19 min), recomputed for the residual round from Mac run 39913204254:
+ * - typically 591 s: the rest of the suite 283 s, the demo 298 s, Playwright's own 9 s;
+ * - at worst 1021 s: the rest 283 s, plus 4.5 s for three opaque retakes and 60 s for four JXA handler lookups that
+ *   each hit their 15 s limit; the demo at its own limit (560 + 60 s); the afterAll's restores after a timeout
+ *   (RESTORE_HOOK_MS, 45 s); and Playwright's 9 s. That leaves 59 s to the globalTimeout.
+ * The longer Mac pre-roll and the wait for the drop toast fall inside the demo's own budget.
  */
 const DEMO_BUDGET_MS = 560_000;
 /** One full attempt: set-up, the fixed-length recording, teardown (Mac run 39779536146: 304 s). */

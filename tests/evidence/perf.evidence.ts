@@ -12,6 +12,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { ROOT, closeSheet, expectWindow, launch, runMenuCommand } from '../e2e/helpers';
 import { writeJson } from './capture';
+import { coldFirstOpens, openTimer } from './open-latency';
 
 interface Marks {
   processStart: number;
@@ -72,32 +73,15 @@ test('cold start to app-ready, 5 launches, and the renderer bundle', { tag: '@pe
 });
 
 const OPENS = 5;
+/** Fresh app sessions per kind for the cold first open (critique mac2 m3). */
+const COLD_SESSIONS = 3;
 
-test('opening the ⌘/ sheet and the settings window: menu command → window shown, 5 times each', { tag: '@perf' }, async ({}, testInfo) => {
-  test.setTimeout(120_000);
+test('opening the ⌘/ sheet and the settings window: menu command → window shown, cold (a new session) and 5 times each', { tag: '@perf' }, async ({}, testInfo) => {
+  test.setTimeout(240_000);
+  const cold = await coldFirstOpens(testInfo.outputPath('cold'), COLD_SESSIONS);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    // t0 when the menu item is clicked in main, shown at the window's 'show' (both main-process clocks).
-    await s.app.evaluate(({ app }) => {
-      const g = globalThis as { __learnOpen?: { t0: number; shown?: number } };
-      app.on('browser-window-created', (_event, win) => {
-        win.once('show', () => {
-          if (g.__learnOpen && g.__learnOpen.shown === undefined) g.__learnOpen.shown = Date.now();
-        });
-      });
-    });
-    const click = (id: string) =>
-      s.app.evaluate(({ BrowserWindow, Menu }, id) => {
-        (globalThis as { __learnOpen?: { t0: number } }).__learnOpen = { t0: Date.now() };
-        Menu.getApplicationMenu()!.getMenuItemById(id)!.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined);
-      }, id);
-    const elapsed = async () => {
-      await expect.poll(() => s.app.evaluate(() => (globalThis as { __learnOpen?: { shown?: number } }).__learnOpen?.shown ?? 0)).toBeGreaterThan(0);
-      return s.app.evaluate(() => {
-        const o = (globalThis as { __learnOpen?: { t0: number; shown?: number } }).__learnOpen!;
-        return o.shown! - o.t0;
-      });
-    };
+    const { click, elapsed } = await openTimer(s.app);
     const sheetMs: number[] = [];
     const settingsMs: number[] = [];
     for (let i = 0; i < OPENS; i++) {
@@ -115,13 +99,15 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     const result = {
       runsMs: { sheet: sheetMs, settings: settingsMs },
       medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
+      // The first open in a new session (report, not tune: checklist 7.1).
+      coldFirstMs: { runs: cold, median: { sheet: median(cold.sheet), settings: median(cold.settings) } },
       // The first open of each is the first such window of the session; the target is the median.
       targetMs: 250,
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
     writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4)');
-    console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs));
+    console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs), 'cold', JSON.stringify(result.coldFirstMs));
     // The plan's CI rule (re-review minor 3): runner values are reported; Linux CI fails only beyond 2× the target.
     if (process.platform === 'linux' && process.env['CI']) {
       expect(result.medianMs.sheet, 'the ⌘/ sheet: median open, ms').toBeLessThanOrEqual(2 * result.targetMs);

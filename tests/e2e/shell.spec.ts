@@ -475,6 +475,44 @@ test('a menu toggle pops no tooltip or ring on the toggle unless the keyboard wa
   }
 });
 
+test('a tooltip is in the page only while it is open: one node then, none and no aria-describedby once closed (152f05a)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const nodes = () => page.locator('.tooltip').count();
+  const describedBy = (id: string) => page.getByTestId(id).getAttribute('aria-describedby');
+  try {
+    expect(await nodes()).toBe(0);
+    expect(await describedBy('sidebar-toggle')).toBeNull();
+    // Hover: one tooltip, named by the trigger.
+    await page.getByTestId('sidebar-toggle').hover();
+    await expect(page.getByRole('tooltip')).toHaveText(/사이드바 가리기/);
+    expect(await nodes()).toBe(1);
+    const tipId = await page.locator('.tooltip').getAttribute('id');
+    expect(await describedBy('sidebar-toggle')).toBe(tipId);
+    // Leave: nothing left in the page, and the trigger names nothing.
+    await page.mouse.move(700, 600);
+    await expect.poll(nodes).toBe(0);
+    expect(await describedBy('sidebar-toggle')).toBeNull();
+    // Keyboard focus moving from one trigger to the next swaps them at once (RAC closes the first "instantly", the path
+    // that left a closed tooltip behind): one node at a time, none after the focus has left.
+    await page.getByTestId('launcher').focus();
+    await page.keyboard.press('Shift+Tab'); // the sidebar toggle: its tooltip
+    await expect(page.getByRole('tooltip')).toHaveText(/사이드바 가리기/);
+    await runMenuCommand(app, 'view.toggleSidebar'); // a rescue onto the toolbar toggle (quiet: no tooltip)
+    await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
+    await page.waitForTimeout(300);
+    expect(await nodes()).toBe(0);
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab'); // back on the toolbar toggle by keyboard: its tooltip, the only node
+    await expect(page.getByRole('tooltip')).toHaveText(/사이드바 보기/);
+    expect(await nodes()).toBe(1);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect.poll(nodes).toBe(0);
+    expect(await describedBy('toolbar-sidebar-toggle')).toBeNull();
+  } finally {
+    await app.close();
+  }
+});
+
 test('an open tooltip closes when the window becomes inactive and does not come back', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {

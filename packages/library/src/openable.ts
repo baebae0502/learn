@@ -117,19 +117,29 @@ export interface NamedCopyResult {
  * POSIX lets a writable folder rename over or remove a read-only file. Windows does not (the read-only attribute
  * blocks both); it is not a target yet, and would need the attribute cleared first.
  */
-export async function ensureNamedCopy(src: string, dst: string, size: number, now: () => Date = () => new Date()): Promise<NamedCopyResult> {
+export function ensureNamedCopy(src: string, dst: string, size: number, now: () => Date = () => new Date()): Promise<NamedCopyResult> {
+  // One at a time per asset folder (re-review m-N2): two presses of 기본 앱으로 열기 over an edited copy both set it
+  // aside, and the second could fail, or (POSIX rename replaces) put its aside over the first one's.
+  const key = path.dirname(dst);
+  const run = (inFlight.get(key) ?? Promise.resolve()).then(() => ensureNamedCopyNow(src, dst, size, now));
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  inFlight.set(key, settled);
+  void settled.then(() => {
+    if (inFlight.get(key) === settled) inFlight.delete(key);
+  });
+  return run;
+}
+const inFlight = new Map<string, Promise<void>>();
+
+async function ensureNamedCopyNow(src: string, dst: string, size: number, now: () => Date): Promise<NamedCopyResult> {
   const st = await fs.stat(dst).catch(() => null);
   if (st?.isFile() && !mayHoldEdits(st, size)) return { action: 'reused', keptAside: null };
   const dir = path.dirname(dst);
   await fs.mkdir(dir, { recursive: true });
-  let keptAside: string | null = null;
-  if (st) {
-    const base = asideName(path.basename(dst), now());
-    const { name, ext } = path.parse(base);
-    keptAside = path.join(dir, base);
-    for (let n = 2; await exists(keptAside); n++) keptAside = path.join(dir, `${name} ${n}${ext}`);
-    await fs.rename(dst, keptAside);
-  }
+  const keptAside = st ? await moveAside(dst, now()) : null;
   const tmp = path.join(dir, `.${randomUUID()}.part`);
   try {
     await fs.copyFile(src, tmp, fsConstants.COPYFILE_FICLONE);
@@ -149,8 +159,30 @@ export async function ensureNamedCopy(src: string, dst: string, size: number, no
   return { action: 'created', keptAside };
 }
 
-async function exists(p: string): Promise<boolean> {
-  return (await fs.stat(p).catch(() => null)) !== null;
+const code = (e: unknown) => (e as NodeJS.ErrnoException)?.code;
+
+/**
+ * Moves `file` to its first free aside name, never over an existing one: a hard link (which fails with EEXIST) then
+ * the unlink of the old name; where the volume has no hard links (FAT, exFAT, some SMB), an exclusive copy instead.
+ */
+async function moveAside(file: string, when: Date): Promise<string> {
+  const { name, ext } = path.parse(asideName(path.basename(file), when));
+  const dir = path.dirname(file);
+  for (let n = 1; n <= 999; n++) {
+    const target = path.join(dir, n === 1 ? `${name}${ext}` : `${name} ${n}${ext}`);
+    try {
+      await fs.link(file, target).catch(async (e: unknown) => {
+        if (code(e) === 'EEXIST') throw e;
+        await fs.copyFile(file, target, fsConstants.COPYFILE_EXCL);
+      });
+    } catch (e) {
+      if (code(e) === 'EEXIST') continue;
+      throw e;
+    }
+    await fs.unlink(file);
+    return target;
+  }
+  throw new Error(`no free name to keep ${file} aside`);
 }
 
 /**

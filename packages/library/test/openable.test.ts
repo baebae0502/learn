@@ -171,4 +171,40 @@ describe('a file the OS can open by name (final review I1)', () => {
     expect(isAside('Notes (수정본 2026-10-23 1504) draft.pdf')).toBe(false);
     expect(isAside('Notes.pdf')).toBe(false);
   });
+
+  it('two opens at once over an edited copy both succeed, and the edits are kept once (re-review m-N2)', async () => {
+    const src = path.join(tmp, 'src.bin');
+    const dst = path.join(tmp, 'open', 'c1', 'Both.pdf');
+    await ensureNamedCopy(src, dst, 9);
+    fs.chmodSync(dst, 0o644);
+    fs.writeFileSync(dst, 'my annotations');
+    const when = () => new Date(2026, 9, 23, 17, 0);
+    const [a, b] = await Promise.all([ensureNamedCopy(src, dst, 9, when), ensureNamedCopy(src, dst, 9, when)]);
+    expect([a.action, b.action]).toEqual(['created', 'reused']); // the second waited for the first and found its copy
+    const aside = path.join(tmp, 'open', 'c1', 'Both (수정본 2026-10-23 1700).pdf');
+    expect(a.keptAside).toBe(aside);
+    expect(fs.readFileSync(aside, 'utf8')).toBe('my annotations');
+    expect(fs.readFileSync(dst, 'utf8')).toBe('%PDF-1.7\n');
+    expect(fs.readdirSync(path.dirname(dst)).sort()).toEqual(['Both (수정본 2026-10-23 1700).pdf', 'Both.pdf']);
+  });
+
+  it('an aside name already taken is never written over: the next free number is used (re-review m-N2)', async () => {
+    const src = path.join(tmp, 'src.bin');
+    const dst = path.join(tmp, 'open', 'c2', 'Taken.pdf');
+    await ensureNamedCopy(src, dst, 9);
+    const taken = path.join(tmp, 'open', 'c2', 'Taken (수정본 2026-10-23 1700).pdf');
+    fs.writeFileSync(taken, 'kept earlier');
+    fs.chmodSync(dst, 0o644);
+    fs.writeFileSync(dst, 'edited again');
+    const r = await ensureNamedCopy(src, dst, 9, () => new Date(2026, 9, 23, 17, 0));
+    expect(r.keptAside).toBe(path.join(tmp, 'open', 'c2', 'Taken (수정본 2026-10-23 1700) 2.pdf'));
+    expect(fs.readFileSync(taken, 'utf8')).toBe('kept earlier');
+    expect(fs.readFileSync(r.keptAside!, 'utf8')).toBe('edited again');
+  });
+
+  it('a failed copy does not hold up the next open of that asset', async () => {
+    const dst = path.join(tmp, 'open', 'c3', 'Next.pdf');
+    await expect(ensureNamedCopy(path.join(tmp, 'missing.bin'), dst, 9)).rejects.toThrow();
+    expect((await ensureNamedCopy(path.join(tmp, 'src.bin'), dst, 9)).action).toBe('created');
+  });
 });

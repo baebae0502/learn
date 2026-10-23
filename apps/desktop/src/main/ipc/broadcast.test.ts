@@ -31,7 +31,9 @@ vi.mock('@learn/library', () => ({
     return disk.availability;
   }),
   relinkAsset: vi.fn(),
-  resolveAssetPath: vi.fn((_layout: unknown, asset: { id: string }) => `/library/assets/${asset.id}.pdf`),
+  resolveAssetPath: vi.fn((_layout: unknown, asset: { id: string }) => `/library/assets/${asset.id}`),
+  // The named copy the OS can open (library openable.ts, final review I1): its own tests cover the naming and copying.
+  openableFile: vi.fn(async (_layout: unknown, asset: { id: string }, title: string, src: string) => `/library/derived/open/${asset.id}/${title}.pdf <- ${src}`),
 }));
 vi.mock('../menu/context-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/context-menu')>()),
@@ -216,9 +218,10 @@ describe('Finder에서 보기 / 기본 앱으로 열기 re-check the file, then 
   it('library.showInFolder reveals the file on disk; library.openExternally opens it with the default app', async () => {
     expect(await call('library:showInFolder', { itemId: ITEM })).toEqual({ ok: true, data: undefined });
     expect(await call('library:openExternally', { itemId: ITEM })).toEqual({ ok: true, data: undefined });
+    // The OS gets the name openableFile chose for the item's file, never the store path itself.
     expect(shellCalls).toEqual([
-      ['reveal', `/library/assets/${ASSET}.pdf`],
-      ['open', `/library/assets/${ASSET}.pdf`],
+      ['reveal', `/library/derived/open/${ASSET}/세포 신호.pdf <- /library/assets/${ASSET}`],
+      ['open', `/library/derived/open/${ASSET}/세포 신호.pdf <- /library/assets/${ASSET}`],
     ]);
   });
 

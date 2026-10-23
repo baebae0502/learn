@@ -179,7 +179,11 @@ test('a PDF that cannot be opened: the notice with the file and Finder에서 보
     await s.page.getByTestId('pdf-reveal').click();
     await s.page.getByTestId('pdf-open').click();
     await expect.poll(async () => (await shellCalls(s.app)).map(([k]) => k)).toEqual(['reveal', 'open']);
-    expect((await shellCalls(s.app)).every(([, p]) => p.startsWith(path.join(lib, 'assets')))).toBe(true);
+    // A name the OS can open (final review I1): the named copy under derived/open/<assetId>/, never the store's hash file.
+    for (const [, p] of await shellCalls(s.app)) {
+      expect(path.relative(path.join(lib, 'derived', 'open'), p).split(path.sep)).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/), 'broken.pdf']);
+      expect(fs.readFileSync(p, 'latin1')).toBe(fs.readFileSync(broken, 'latin1')); // the same bytes
+    }
     for (const id of ['pdf-prev', 'pdf-next', 'pdf-zoom', 'pdf-page-indicator', 'pdf-canvas', 'reader-toolbar']) await expect(s.page.getByTestId(id), id).toHaveCount(0);
     // pdf.js's own message is logged by name only and never shown.
     expect(warnings.some((w) => /^\[pdf\] open\/render failed: \w+$/.test(w))).toBe(true);
@@ -210,7 +214,9 @@ test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and
     await expect.poll(async () => (await shellCalls(s.app)).map(([k]) => k)).toEqual(['reveal', 'open']);
     const [revealed, opened] = (await shellCalls(s.app)).map(([, p]) => p);
     expect(revealed).toBe(opened);
-    expect(revealed!.startsWith(path.join(testInfo.outputPath('library'), 'assets'))).toBe(true); // the managed copy
+    // The managed copy's named copy, with the type's extension, never the store's extensionless hash file (final review I1).
+    expect(path.relative(path.join(testInfo.outputPath('library'), 'derived', 'open'), revealed!).split(path.sep)).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/), 'sample-mpeg4part2.mp4']);
+    expect(fs.statSync(revealed!).size).toBe(fs.statSync(MPEG4).size);
     // No app for the type: a toast with our own cause + next step, never the OS text.
     await stubShell(s.app, true);
     await s.page.getByTestId('codec-open').click();

@@ -84,16 +84,24 @@ test('every registry command runs without a page error (library and reader menus
     await stubOpenDialog(app, []); // import dialogs come back empty
     // No Finder and no other app on CI: main's shell calls are recorded instead.
     await app.evaluate(({ dialog, shell }) => {
-      const g = globalThis as { __learnShell?: string[] };
+      const g = globalThis as { __learnShell?: string[]; __learnShellPaths?: string[] };
       g.__learnShell = [];
+      g.__learnShellPaths = [];
       dialog.showMessageBox = (async () => ({ response: 1, checkboxChecked: false })) as typeof dialog.showMessageBox;
-      shell.showItemInFolder = () => void g.__learnShell!.push('reveal');
-      shell.openPath = async () => {
+      shell.showItemInFolder = (p: string) => {
+        g.__learnShell!.push('reveal');
+        g.__learnShellPaths!.push(p);
+      };
+      shell.openPath = async (p: string) => {
         g.__learnShell!.push('open');
+        g.__learnShellPaths!.push(p);
         return '';
       };
     });
     const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
+    /** The paths main handed the OS: named copies under derived/open/ with the type's extension (final review I1). */
+    const shellPaths = () => app.evaluate(() => (globalThis as { __learnShellPaths?: string[] }).__learnShellPaths ?? []);
+    const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
     const ran = new Set<CommandId>();
     for (const view of ['library', 'reader'] as const) {
       if (view === 'reader') await openItem(page, 'sample');
@@ -123,6 +131,7 @@ test('every registry command runs without a page error (library and reader menus
     await stubContextMenu(app, process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기');
     await page.getByTestId('item-row').first().click({ button: 'right' });
     await expect.poll(shellCalls).toEqual(['reveal']);
+    expect((await shellPaths())[0]).toMatch(new RegExp(`^${openDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/][0-9a-f-]{36}[\\/]sample\\.pdf$`));
     ran.add('item.showInFolder');
 
     // 다시 연결… (first in the item menu for a linked item whose file is gone): the dialog picks the moved file.
@@ -149,6 +158,8 @@ test('every registry command runs without a page error (library and reader menus
     await openItem(page, 'sample-mpeg4part2');
     await page.getByTestId('codec-open').click();
     await expect.poll(shellCalls).toEqual(['reveal', 'open']);
+    expect((await shellPaths())[1]).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample-mpeg4part2\.mp4$/);
+    expect(fs.existsSync((await shellPaths())[1]!)).toBe(true);
     ran.add('item.openExternally');
     await runMenuCommand(app, 'nav.back');
 

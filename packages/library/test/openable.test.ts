@@ -207,4 +207,69 @@ describe('a file the OS can open by name (final review I1)', () => {
     await expect(ensureNamedCopy(path.join(tmp, 'missing.bin'), dst, 9)).rejects.toThrow();
     expect((await ensureNamedCopy(path.join(tmp, 'src.bin'), dst, 9)).action).toBe('created');
   });
+
+  it('an orphaned .part is removed once nothing has written it for 10 minutes; a fresh one and Finder files stay (re-review m-N3)', async () => {
+    const src = path.join(tmp, 'src.bin');
+    const dst = path.join(tmp, 'open', 'o1', 'Orphans.pdf');
+    await ensureNamedCopy(src, dst, 9);
+    const dir = path.dirname(dst);
+    const orphan = path.join(dir, `.${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}.part`);
+    fs.writeFileSync(orphan, 'half a video');
+    fs.writeFileSync(path.join(dir, '.DS_Store'), 'finder');
+    fs.chmodSync(dst, 0o644); // force a fresh copy, so the cleanup runs
+    // Now: the .part was just written, maybe by another open in flight: kept.
+    await ensureNamedCopy(src, dst, 9);
+    expect(fs.existsSync(orphan)).toBe(true);
+    // An hour on, nothing has touched it: an orphan, removed. .DS_Store is not ours.
+    fs.chmodSync(dst, 0o644);
+    await ensureNamedCopy(src, dst, 9, () => new Date(Date.now() + 60 * 60_000));
+    expect(fs.existsSync(orphan)).toBe(false);
+    expect(fs.existsSync(path.join(dir, '.DS_Store'))).toBe(true);
+  });
+
+  it('a misnamed linked file changed since it was linked is compared at its current size: reused, not set aside (re-review m-N6)', async () => {
+    const own = path.join(tmp, 'changed.command');
+    fs.writeFileSync(own, '%PDF-1.7\n% grew after linking\n');
+    const linked: OpenableAsset = { ...pdf, id: 'l6', storageMode: 'linked', originalName: 'changed.command', size: 9 };
+    const first = await openableFile(layout, linked, 'changed', own);
+    expect(await openableFile(layout, linked, 'changed', own)).toBe(first);
+    expect(fs.readdirSync(path.dirname(first))).toEqual(['changed.pdf']);
+  });
+
+  it('a linked symlink is copied as the file it points to; the user\'s own file keeps its mode', async () => {
+    const target = path.join(tmp, 'user-file');
+    fs.writeFileSync(target, '%PDF-1.7\n');
+    fs.chmodSync(target, 0o644);
+    const link = path.join(tmp, 'pointer.command');
+    fs.symlinkSync(target, link);
+    const opened = await openableFile(layout, { ...pdf, id: 'sl', storageMode: 'linked', originalName: 'pointer.command' }, 'pointer', link);
+    expect(fs.lstatSync(opened).isFile()).toBe(true);
+    expect(fs.lstatSync(opened).isSymbolicLink()).toBe(false);
+    expect(fs.statSync(opened).mode & 0o777).toBe(NAMED_COPY_MODE);
+    expect(fs.statSync(target).mode & 0o777).toBe(0o644);
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+  });
+
+  describe('a folder that does not keep modes (exFAT, FAT, some SMB)', () => {
+    afterEach(() => vi.restoreAllMocks());
+    it('chmod refused (EPERM): the open still succeeds, and the writable copy is reused, not set aside', async () => {
+      vi.spyOn(fsp, 'chmod').mockRejectedValue(Object.assign(new Error('operation not permitted'), { code: 'EPERM' }));
+      const src = path.join(tmp, 'src.bin');
+      const dst = path.join(tmp, 'open', 'f1', 'Vfat.pdf');
+      expect((await ensureNamedCopy(src, dst, 9)).action).toBe('created');
+      expect(fs.statSync(dst).mode & 0o222).not.toBe(0);
+      expect(await ensureNamedCopy(src, dst, 9)).toEqual({ action: 'reused', keptAside: null });
+      // Only a size change counts there.
+      fs.writeFileSync(dst, 'edited on the stick');
+      expect((await ensureNamedCopy(src, dst, 9, () => new Date(2026, 9, 23, 18, 0))).keptAside).toBe(path.join(tmp, 'open', 'f1', 'Vfat (수정본 2026-10-23 1800).pdf'));
+    });
+    it('chmod ignored (the mode does not stick): the same size-only rule', async () => {
+      vi.spyOn(fsp, 'chmod').mockResolvedValue(undefined);
+      const src = path.join(tmp, 'src.bin');
+      const dst = path.join(tmp, 'open', 'f2', 'Exfat.pdf');
+      expect((await ensureNamedCopy(src, dst, 9)).action).toBe('created');
+      expect(await ensureNamedCopy(src, dst, 9)).toEqual({ action: 'reused', keptAside: null });
+      expect(fs.readdirSync(path.dirname(dst))).toEqual(['Exfat.pdf']);
+    });
+  });
 });

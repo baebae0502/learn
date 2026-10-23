@@ -66,6 +66,7 @@ export interface OpenableAsset {
   id: string;
   mime: string;
   originalName: string;
+  /** The size recorded at import or link time. The copy is checked against the file's current size instead (m-N6). */
   size: number;
   storageMode: 'managed' | 'linked';
 }
@@ -83,8 +84,37 @@ export const NAMED_COPY_MODE = 0o444;
 /** The word in the name of a copy kept aside because it may hold edits (a file name the user sees in Finder). */
 const EDITED_LABEL = '수정본';
 
-/** A copy that may hold edits: unlocked again (any write bit), or no longer the asset's size. */
-export const mayHoldEdits = (st: { mode: number; size: number }, size: number): boolean => (st.mode & 0o222) !== 0 || st.size !== size;
+/**
+ * A copy that may hold edits: no longer the source's size, or unlocked again (any write bit) where the folder keeps
+ * modes. Where it does not (exFAT, FAT, some SMB mounts: chmod is ignored or refused), only the size counts, so a fresh
+ * copy is not set aside as 수정본 on every open.
+ */
+export const mayHoldEdits = (st: { mode: number; size: number }, size: number, modesKept = true): boolean =>
+  (modesKept && (st.mode & 0o222) !== 0) || st.size !== size;
+
+/** A `.part` (or mode probe) that nothing has written for this long was left by a process that died mid-copy. */
+export const ORPHAN_MS = 10 * 60_000;
+const SCRATCH = /^\.[0-9a-f-]{36}\.(?:part|probe)$/;
+
+/** Whether files in this folder keep a read-only mode: probed once per folder and process, and corrected on a copy. */
+const modesKeptIn = new Map<string, boolean>();
+async function keepsModes(dir: string): Promise<boolean> {
+  const known = modesKeptIn.get(dir);
+  if (known !== undefined) return known;
+  const probe = path.join(dir, `.${randomUUID()}.probe`);
+  let kept = false;
+  try {
+    await fs.writeFile(probe, '');
+    await fs.chmod(probe, NAMED_COPY_MODE);
+    kept = ((await fs.stat(probe)).mode & 0o222) === 0;
+  } catch {
+    kept = false;
+  } finally {
+    await fs.rm(probe, { force: true }).catch(() => {});
+  }
+  modesKeptIn.set(dir, kept);
+  return kept;
+}
 
 /** `<name> (수정본 2026-10-23 1504).<ext>` in local time (no colon: not allowed on Windows, shown as / in Finder). */
 export function asideName(fileName: string, when: Date): string {
@@ -135,26 +165,45 @@ export function ensureNamedCopy(src: string, dst: string, size: number, now: () 
 const inFlight = new Map<string, Promise<void>>();
 
 async function ensureNamedCopyNow(src: string, dst: string, size: number, now: () => Date): Promise<NamedCopyResult> {
-  const st = await fs.stat(dst).catch(() => null);
-  if (st?.isFile() && !mayHoldEdits(st, size)) return { action: 'reused', keptAside: null };
   const dir = path.dirname(dst);
+  const st = await fs.stat(dst).catch(() => null);
+  if (st?.isFile() && !mayHoldEdits(st, size, await keepsModes(dir))) return { action: 'reused', keptAside: null };
   await fs.mkdir(dir, { recursive: true });
   const keptAside = st ? await moveAside(dst, now()) : null;
   const tmp = path.join(dir, `.${randomUUID()}.part`);
   try {
     await fs.copyFile(src, tmp, fsConstants.COPYFILE_FICLONE);
-    await fs.chmod(tmp, NAMED_COPY_MODE);
+    if (await keepsModes(dir)) {
+      // Re-checked on the copy itself: where the mode did not stick, or chmod is refused (EPERM on Linux vfat), the
+      // copy stays writable and the folder counts sizes only; the open goes on.
+      try {
+        await fs.chmod(tmp, NAMED_COPY_MODE);
+        if (((await fs.stat(tmp)).mode & 0o222) !== 0) modesKeptIn.set(dir, false);
+      } catch (e) {
+        if (code(e) !== 'EPERM' && code(e) !== 'ENOTSUP' && code(e) !== 'EACCES') throw e;
+        modesKeptIn.set(dir, false);
+      }
+    }
     await fs.rename(tmp, dst);
   } catch (e) {
     await fs.rm(tmp, { force: true });
     throw e;
   }
+  const modes = await keepsModes(dir);
   const own = nfc(path.basename(dst));
   for (const name of await fs.readdir(dir)) {
-    if (nfc(name) === own || name.endsWith('.part') || isAside(name)) continue;
+    if (nfc(name) === own || isAside(name)) continue;
     const other = path.join(dir, name);
     const ost = await fs.stat(other).catch(() => null);
-    if (ost?.isFile() && !mayHoldEdits(ost, size)) await fs.rm(other, { force: true });
+    if (!ost?.isFile()) continue;
+    if (name.startsWith('.')) {
+      // Our own scratch files only (re-review m-N3), and only once nothing has written them for ORPHAN_MS: a copy in
+      // flight keeps writing (and calls on this folder run one at a time). Finder's .DS_Store and the like stay.
+      const touched = Math.max(ost.mtimeMs, ost.birthtimeMs || 0);
+      if (SCRATCH.test(name) && now().getTime() - touched > ORPHAN_MS) await fs.rm(other, { force: true });
+      continue;
+    }
+    if (!mayHoldEdits(ost, size, modes)) await fs.rm(other, { force: true });
   }
   return { action: 'created', keptAside };
 }
@@ -194,6 +243,11 @@ export async function openableFile(layout: LibraryLayout, asset: OpenableAsset, 
   if (asset.storageMode === 'linked' && extensionAgrees(src, asset.mime)) return src;
   const dst = namedCopyPath(layout, asset, title);
   if (!dst) return src;
-  await ensureNamedCopy(src, dst, asset.size);
+  // The file itself, never a link to it: on macOS a clone of a symlink is the symlink (copyfile's COPYFILE_CLONE does
+  // not follow it), and the chmod after would then lock the user's own file. Its size now, not the one recorded when
+  // it was linked (re-review m-N6): a linked file changed since then would otherwise look edited on every open.
+  const real = await fs.realpath(src);
+  const { size } = await fs.stat(real);
+  await ensureNamedCopy(real, dst, size);
   return dst;
 }

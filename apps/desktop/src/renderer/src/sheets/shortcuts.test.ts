@@ -9,6 +9,10 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     for (const c of COMMANDS.filter((x) => x.accelerator || x.key)) expect(labels.filter((l) => l === c.label), c.id).toHaveLength(1);
     expect(groups.map((g) => g.title)).toEqual(['앱', '라이브러리', '리더', '팔레트·대화상자']);
     expect(groups[1]!.rows[0]).toEqual({ label: '파일 가져오기…', keys: ['⌘', 'O'], spoken: '⌘O' });
+    // The one row that is not a registry command: the system's 전체 화면 (design-spec 7.4), marked as such.
+    const system = groups.flatMap((g) => g.rows).filter((r) => r.system);
+    expect(system).toEqual([{ label: '전체 화면', keys: ['⌃', '⌘', 'F'], spoken: '⌃⌘F', system: true }]);
+    expect(COMMANDS.some((c) => c.label === '전체 화면')).toBe(false);
   });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
@@ -21,12 +25,15 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists the app commands in design-spec 7.4 order (⌘, ⌘K ⌘/ ⌃⌘S), whatever the registry order (R-10), then F6 / ⇧F6 (8.3)', () => {
     const app = shortcutGroups('darwin')[0]!;
-    expect(app.rows.map((r) => r.label)).toEqual(['설정…', '명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기', '다음 패널로 이동', '이전 패널로 이동']);
-    expect(app.rows.slice(-2)).toEqual([
+    expect(app.rows.map((r) => r.label)).toEqual(['설정…', '명령 팔레트…', '단축키 도움말', '사이드바 보기/가리기', '다음 패널로 이동', '이전 패널로 이동', '전체 화면']);
+    expect(app.rows.slice(-3, -1)).toEqual([
       { label: '다음 패널로 이동', keys: ['F6'], spoken: 'F6' },
       { label: '이전 패널로 이동', keys: ['⇧', 'F6'], spoken: '⇧F6' },
     ]);
-    expect(shortcutGroups('linux')[0]!.rows.at(-1)).toEqual({ label: '이전 패널로 이동', keys: ['Shift', 'F6'], spoken: 'Shift+F6' });
+    const linux = shortcutGroups('linux')[0]!.rows;
+    expect(linux.at(-2)).toEqual({ label: '이전 패널로 이동', keys: ['Shift', 'F6'], spoken: 'Shift+F6' });
+    // Off macOS the item is Electron's togglefullscreen role, on F11.
+    expect(linux.at(-1)).toEqual({ label: '전체 화면', keys: ['F11'], spoken: 'F11', system: true });
     expect(app.rows[0]).toEqual({ label: '설정…', keys: ['⌘', ','], spoken: '⌘,' });
     expect(app.rows[1]).toEqual({ label: '명령 팔레트…', keys: ['⌘', 'K'], spoken: '⌘K' });
   });

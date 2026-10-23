@@ -43,7 +43,7 @@ export function ShortcutsSheet() {
               <div className="group-label">{g.title}</div>
               <div className="card shortcut-list">
                 {g.rows.map((r) => (
-                  <div className="shortcut-row" key={r.label} data-testid="shortcut-row">
+                  <div className="shortcut-row" key={r.label} data-testid="shortcut-row" data-system={r.system ? '' : undefined}>
                     <span className="sr-label">{r.label}</span>
                     <Kbd keys={r.keys} alternatives={r.alternatives} />
                     <span className="visually-hidden">{r.spoken}</span>

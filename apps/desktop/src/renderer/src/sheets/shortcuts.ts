@@ -8,6 +8,8 @@ export interface ShortcutRow {
   spoken: string;
   /** The keys are alternatives (↑ or ↓), drawn apart; otherwise they are one chord (⌘ K). */
   alternatives?: true;
+  /** Not a registry command: a system item the menu bar carries (전체 화면). */
+  system?: true;
 }
 export interface ShortcutGroup {
   title: string;
@@ -34,7 +36,20 @@ const DIALOG_KEYS = [
   { label: t.sheets.dialogKeys.close, accelerators: ['Escape'] },
 ] as const;
 
-/** The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), then the palette and dialog keys. */
+/**
+ * design-spec 7.4 앱: ⌃⌘F 전체 화면(시스템). Main builds the item outside the registry (a plain item on macOS, Electron's
+ * togglefullscreen role on F11 elsewhere: main/menu/app-menu.ts), so it is a static row here, marked `system`, after the
+ * registry's app rows. The registry stays the only source of commands and their keys.
+ */
+const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
+  const accelerator = platform === 'darwin' ? 'Ctrl+Cmd+F' : 'F11';
+  return [{ label: t.sheets.fullScreen, keys: acceleratorKeys(accelerator, platform), spoken: acceleratorLabel(accelerator, platform), system: true }];
+};
+
+/**
+ * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
+ * after the app rows, then the palette and dialog keys.
+ */
 export function shortcutGroups(platform: string): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
@@ -46,7 +61,9 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
         const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');
         return { label: commandLabel(c, platform), keys, spoken };
       }),
-  })).filter((g) => g.rows.length > 0);
+  }))
+    .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))
+    .filter((g) => g.rows.length > 0);
   const dialogs: ShortcutGroup = {
     title: t.sheets.groups.dialogs,
     rows: DIALOG_KEYS.map((r) => ({

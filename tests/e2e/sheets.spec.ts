@@ -122,6 +122,11 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     for (const c of COMMANDS.filter((x) => x.accelerator || x.key)) {
       await expect(sheet.getByTestId('shortcut-row').filter({ hasText: commandLabel(c, process.platform) }), c.id).toHaveCount(1);
     }
+    // design-spec 7.4's ⌃⌘F 전체 화면(시스템): one static row, marked as the system's (main builds it outside the registry).
+    const system = sheet.locator('[data-testid="shortcut-row"][data-system]');
+    await expect(system).toHaveCount(1);
+    await expect(system.locator('.sr-label')).toHaveText('전체 화면');
+    await expect(system.locator('.visually-hidden')).toHaveText(process.platform === 'darwin' ? '⌃⌘F' : 'F11');
     await expect(sheet.getByTestId('shortcuts-done')).toBeFocused();
     expect(await ring(sheet.getByTestId('shortcuts-done'))).toBe('none');
     expect(await menuItemEnabled(s.app, 'app.shortcuts')).toBe(false);

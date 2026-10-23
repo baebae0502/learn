@@ -10,4 +10,6 @@ export const sheets = {
   groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', dialogs: '팔레트·대화상자' },
   /** The keys the ⌘K palette and every sheet understand (design-spec 7.4); sheets/shortcuts.ts spells them per platform. */
   dialogKeys: { move: '이동', run: '실행', close: '닫기' },
+  /** 보기's 전체 화면, built by main outside the registry (main/menu/app-menu.ts FULL_SCREEN): the menu's neutral name. */
+  fullScreen: '전체 화면',
 } as const;

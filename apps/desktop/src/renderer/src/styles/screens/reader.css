@@ -86,8 +86,9 @@
     box-shadow: var(--shadow-page);
   }
   /* Until the first page has rendered the canvas is the default 300 × 150 white box: keep it unseen (T13-m6). */
-  .pdf-page-wrap canvas[data-rendered='0'] {
-    visibility: hidden;
+  .pdf-page-wrap canvas[data-rendered='0'],
+  .pdf-page-wrap canvas[data-failed] {
+    visibility: hidden; /* a page that failed shows its notice, not a half-drawn page (final review m2) */
   }
   .stage-center {
     position: absolute;

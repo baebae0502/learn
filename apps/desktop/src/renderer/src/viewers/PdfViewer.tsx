@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileX } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -7,6 +7,7 @@ import { assetUrl, type LibraryItem } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { Notice } from '../ui/Notice';
 import { ratio, restorePageIndex } from './positionSaver';
 import { PdfErrorNotice } from './ReaderNotices';
 import { usePosition } from './usePosition';
@@ -25,21 +26,22 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
   const [pageNum, setPageNum] = useState(1);
   const [zoom, setZoom] = useState<number>(1);
   const [rendered, setRendered] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  /** The document cannot be opened: the reader is replaced by the notice. */
+  const [openFailed, setOpenFailed] = useState(false);
+  /** One page could not be drawn: that page's stage says so; the toolbar stays, so the other pages can be reached. */
+  const [pageFailed, setPageFailed] = useState<number | null>(null);
   const [restored, setRestored] = useState(false);
   const pos = usePosition(item, PAGE_SAVE);
   /** pdf.js messages are technical (and English): the error name goes to the log, the user gets our notice. */
-  const fail = (e: unknown) => {
-    console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
-    setError('failed');
-  };
+  const logFailure = (e: unknown) => console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
 
   useEffect(() => {
     let cancelled = false;
     setDoc(null);
     setPageNum(1);
     setRestored(false);
-    setError(null);
+    setOpenFailed(false);
+    setPageFailed(null);
     const task = pdfjs.getDocument({
       url: assetUrl(item.assetId),
       cMapUrl: dataUrl('cmaps'),
@@ -52,7 +54,9 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     task.promise.then(
       (d) => { if (!cancelled) setDoc(d); },
       (e: unknown) => {
-        if (!cancelled) fail(e);
+        if (cancelled) return;
+        logFailure(e);
+        setOpenFailed(true);
       },
     );
     return () => {
@@ -79,6 +83,7 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
     const canvas = canvasRef.current;
     if (!doc || !canvas || !restored) return;
     let cancelled = false;
+    setPageFailed(null);
     void (async () => {
       const prev = lastRender.current;
       if (prev) {
@@ -101,7 +106,9 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
         if (!cancelled) setRendered((n) => n + 1);
       } catch (e) {
         if (cancelled || (e as Error)?.name === 'RenderingCancelledException') return;
-        fail(e);
+        // A page of a document that opened (final review m2): that page says so, the others stay reachable.
+        logFailure(e);
+        setPageFailed(pageNum);
       }
     })();
     return () => {
@@ -112,7 +119,8 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
 
   const total = doc?.numPages ?? 0;
   // A final state (design-spec 6, rubric 8; C-2): no reader controls that cannot work, only the notice.
-  if (error) return <PdfErrorNotice item={item} />;
+  if (openFailed) return <PdfErrorNotice item={item} />;
+  const failedHere = pageFailed !== null && pageFailed === pageNum;
   return (
     <div className="reader">
       <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
@@ -149,8 +157,15 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
           (axe aria-prohibited-attr). */}
       <div className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage}>
         <div className="pdf-page-wrap">
-          <canvas ref={canvasRef} data-testid="pdf-canvas" data-rendered={rendered} />
+          <canvas ref={canvasRef} data-testid="pdf-canvas" data-rendered={rendered} data-failed={failedHere ? '' : undefined} />
         </div>
+        {failedHere && (
+          <div className="stage-center">
+            <Notice icon={FileX} title={t.reader.pageErrorTitle} testId="pdf-page-error">
+              {t.reader.pageErrorBody}
+            </Notice>
+          </div>
+        )}
       </div>
     </div>
   );

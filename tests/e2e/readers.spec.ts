@@ -193,6 +193,46 @@ test('a PDF that cannot be opened: the notice with the file and Finder에서 보
   }
 });
 
+test('a page that cannot be drawn says so on its own stage; the toolbar stays and the other pages open (final review m2)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [PDF]);
+    await openItem(s.page, 'sample');
+    const canvas = s.page.getByTestId('pdf-canvas');
+    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    const drawn = Number(await canvas.getAttribute('data-rendered'));
+    // The next page's drawing fails (as a broken page's would): pdf.js asks the canvas for its context on each render.
+    await s.page.evaluate(() => {
+      const real = HTMLCanvasElement.prototype.getContext;
+      (window as unknown as { __realGetContext?: typeof real }).__realGetContext = real;
+      HTMLCanvasElement.prototype.getContext = function () {
+        throw new Error('injected render failure');
+      } as typeof real;
+    });
+    await s.page.getByTestId('pdf-next').click();
+    const notice = s.page.getByTestId('pdf-page-error');
+    await expect(notice.locator('h2')).toHaveText('이\u00a0쪽을 표시할 수 없습니다');
+    await expect(notice.locator('p')).toHaveText('이\u00a0쪽의 내용을 그리지 못했습니다. 다른\u00a0쪽으로 이동해 계속 읽을 수 있습니다.');
+    await expect(s.page.getByTestId('pdf-error')).toHaveCount(0); // the document is still open
+    await expect(s.page.getByTestId('reader-toolbar')).toBeVisible();
+    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expectDisabledReason(s.page.getByTestId('pdf-prev'), null);
+    await expect(canvas).toHaveCSS('visibility', 'hidden'); // no half-drawn page under the notice
+    // Drawing works again: the user moves on, and the pages render.
+    await s.page.evaluate(() => {
+      const w = window as unknown as { __realGetContext?: typeof HTMLCanvasElement.prototype.getContext };
+      if (w.__realGetContext) HTMLCanvasElement.prototype.getContext = w.__realGetContext;
+    });
+    await s.page.getByTestId('pdf-next').click();
+    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('3 / 3쪽');
+    await expect.poll(async () => Number(await canvas.getAttribute('data-rendered'))).toBeGreaterThan(drawn);
+    await expect(notice).toHaveCount(0);
+    await expect(canvas).toHaveCSS('visibility', 'visible');
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and 기본 앱으로 열기 through the registry', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

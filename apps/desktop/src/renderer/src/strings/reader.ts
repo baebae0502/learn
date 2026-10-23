@@ -16,6 +16,9 @@ export const reader = {
   pdfErrorTitle: '이\u00a0PDF를 열 수 없습니다',
   // One cause, one next action (design-spec 6), as in reader-pdf.html?state=error.
   pdfErrorBody: '파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본\u00a0파일은 그대로 보관됩니다. 다른\u00a0사본이 있으면 다시 가져오세요.',
+  /** One page of a PDF that opened could not be drawn (final review m2): cause, then the way on. */
+  pageErrorTitle: '이\u00a0쪽을 표시할 수 없습니다',
+  pageErrorBody: '이\u00a0쪽의 내용을 그리지 못했습니다. 다른\u00a0쪽으로 이동해 계속 읽을 수 있습니다.',
   videoUnsupportedTitle: '이\u00a0동영상은 재생할 수 없습니다',
   // U+2060 (word joiner) keeps the particle on the format's line: a break between ")" and "로" is allowed even
   // with word-break: keep-all, and a line that opens with "로" reads badly.

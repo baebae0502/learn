@@ -1583,21 +1583,27 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     const value: Record<string, unknown> = {};
     try {
       for (const [kind, title] of [['pdf', 'sample'], ['mp4', 'sample-h264-aac']] as const) {
+        // Re-review m-N5: each kind reads its own path. The capture is cleared first, the reveal must answer ok, and the
+        // path must end in this kind's extension; otherwise the PDF's path could stand in for a failed MP4 reveal.
+        await s.app.evaluate(() => delete (globalThis as { __learnRevealed?: string }).__learnRevealed);
         const info = await s.page.evaluate(async (title) => {
           const list = await window.learn.library.list();
           const item = list.ok ? list.data.find((i) => i.title === title) : undefined;
           if (!item) return null;
           const d = await window.learn.library.detail({ itemId: item.id });
-          await window.learn.library.showInFolder({ itemId: item.id });
-          return d.ok ? { itemId: item.id, sha256: d.data.file.sha256, storageMode: d.data.file.storageMode } : null;
+          const r = await window.learn.library.showInFolder({ itemId: item.id });
+          return d.ok ? { itemId: item.id, sha256: d.data.file.sha256, storageMode: d.data.file.storageMode, revealOk: r.ok, revealCode: r.ok ? null : r.code } : null;
         }, title);
         const named = await s.app.evaluate(() => (globalThis as { __learnRevealed?: string }).__learnRevealed ?? null);
         const raw = info && libraryRoot ? path.join(libraryRoot, 'assets', info.sha256.slice(0, 2), info.sha256) : null;
         value[kind] = {
           storageMode: info?.storageMode ?? null,
+          revealOk: info?.revealOk ?? false,
+          revealCode: info?.revealCode ?? null,
           raw,
           rawApp: raw ? await handlerOf(raw) : null,
           named,
+          namedExtensionMatches: named !== null && named.toLowerCase().endsWith(`.${kind}`),
           namedApp: named ? await handlerOf(named) : null,
         };
       }
@@ -1609,8 +1615,8 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     }
     results['openHandler'] = value;
     const ok = (['pdf', 'mp4'] as const).every((k) => {
-      const v = value[k] as { storageMode: string | null; named: string | null; namedApp: string | null } | undefined;
-      return v?.storageMode === 'managed' && v.named !== null && /[\\/]derived[\\/]open[\\/]/.test(v.named) && v.namedApp !== null;
+      const v = value[k] as { storageMode: string | null; revealOk: boolean; named: string | null; namedExtensionMatches: boolean; namedApp: string | null } | undefined;
+      return v?.storageMode === 'managed' && v.revealOk && v.named !== null && /[\\/]derived[\\/]open[\\/]/.test(v.named) && v.namedExtensionMatches && v.namedApp !== null;
     });
     check('기본 앱으로 열기: the named copy of a managed PDF and MP4 has a default app (handler lookup, final review I1)', ok, value);
   });

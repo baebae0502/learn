@@ -18,7 +18,8 @@
 //   RECORD_SECONDS and is trimmed to the demo afterwards, with the start offset (negative: the pre-roll) measured here.
 //
 // Display spike (Task 13): before launching, the demo switches the main screen to the best mode displayplacer lists
-// (display.ts) and puts it back afterwards; env.json records displayModes and displaySwitch.
+// (display.ts) and puts it back afterwards; env.json records displayModes and displaySwitch. That, the Dock and the
+// desktop picture change only on a CI runner (HOST_CHANGES, final review m9).
 //
 // scripts/record-demo-linux.sh records it on Linux too: LEARN_DEMO_PACE=1 (full pace), LEARN_DEMO_SCALE=2
 // (--force-device-scale-factor) and LEARN_DEMO_GRAB=<w>x<h>+<x>,<y> (ffmpeg x11grab of exactly the window).
@@ -80,6 +81,13 @@ interface DemoPlan {
   capture: 'screencapture' | 'screencast';
   why: string;
 }
+/**
+ * The display mode, the Dock and the desktop picture are the machine's own settings: the demo changes them only on a
+ * throwaway CI runner, as baseline.evidence.ts touches the real home only there (final review m9). On a developer's Mac
+ * it records over what is there; the app copy named Learn lives in the run's own folder and is made anywhere.
+ */
+const HOST_CHANGES = IS_MAC && Boolean(process.env['CI']);
+const NOT_CI = 'not a CI runner: the display mode, the Dock and the desktop picture stay as they are';
 const PLANS: readonly DemoPlan[] = IS_MAC
   ? [
       { display: 'switch', capture: 'screencapture', why: 'the first attempt' },
@@ -262,7 +270,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   };
 
   const display: { result: DisplaySwitch; restore(): Promise<void> } =
-    plan.display === 'switch' ? await switchDisplayForDemo() : { result: { status: 'skipped', reason: plan.why }, restore: async () => {} };
+    plan.display === 'switch' && (HOST_CHANGES || !IS_MAC)
+      ? await switchDisplayForDemo()
+      : { result: { status: 'skipped', reason: IS_MAC && !HOST_CHANGES ? NOT_CI : plan.why }, restore: async () => {} };
   onRestore('the display mode', () => display.restore());
   let launchOptions: LaunchOptions = {
     env: { LEARN_DEMO_OVERLAY: '1' },
@@ -271,14 +281,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     ...(SCALE !== 1 ? { args: [`--force-device-scale-factor=${SCALE}`] } : {}),
   };
   if (IS_MAC) {
-    await macStep('Dock autohide', async () => {
-      onRestore('the Dock', await hideDock());
-    });
-    await macStep('a neutral desktop picture (the runner\'s own stays)', async () => {
-      const desktop = await neutralDesktop();
-      onRestore('the desktop picture', async () => notes.push(...(await desktop.restore())));
-      notes.push(...desktop.notes);
-    });
+    if (HOST_CHANGES) {
+      await macStep('Dock autohide', async () => {
+        onRestore('the Dock', await hideDock());
+      });
+      await macStep('a neutral desktop picture (the runner\'s own stays)', async () => {
+        const desktop = await neutralDesktop();
+        onRestore('the desktop picture', async () => notes.push(...(await desktop.restore())));
+        notes.push(...desktop.notes);
+      });
+    } else notes.push(NOT_CI);
     await macStep('the app copy named Learn (the plain Electron binary runs instead)', async () => {
       const executablePath = await renamedElectron(path.join(work, 'app'));
       launchOptions = { ...launchOptions, executablePath, args: [path.join(ROOT, 'apps/desktop')] };

@@ -66,6 +66,7 @@ Mac이 없는 헤드리스 서버에서 GitHub의 Apple Silicon 러너(`macos-15
 - 내려받은 결과는 `evidence/<label>/<run_id>/`(gitignore): `evidence/`(PNG, `env.json`, `baseline.json`, `spikes.json`, 리포트), `demo/`(녹화), `run.json`(잡별 소요 분, 다운로드 속도). `EVIDENCE_RUN_ID=<id>`를 주면 새로 실행하지 않고 기존 실행을 다시 내려받는다.
 - **분 예산 주의**: 비공개 저장소의 macOS 분은 10배로 차감된다. 디버깅은 이 서버의 xvfb(`pnpm e2e:evidence`를 `xvfb-run`으로)와 Linux CI(`ci.yml`, 증거 하네스도 실행)에서 먼저 끝내고, 실행할 때마다 `docs/mac-verification.md` 실행 기록 표에 run id·분·결과를 남긴다.
 - 증거 하네스: `playwright.evidence.config.ts`, `tests/evidence/`(`capture.ts` 페이지·창·전체 화면 캡처, 녹화, 실제 글꼴 조회 / `env.ts` 환경 보고). macOS 전용 캡처는 다른 OS에서 `skipped`로 기록된다.
+- 기기 설정을 바꾸는 단계는 CI 러너(`CI` 환경 변수)에서만 돈다. 데모(`@demo`)는 거기서만 화면 모드·Dock 자동 숨김·바탕화면 그림을 바꾸고 끝나면 되돌리며, 개발자 Mac에서는 그대로 둔 채 녹화한다(`m3-demo.chapters.json`의 notes에 남는다). 실제 홈 폴더를 쓰는 기준선 테스트도 CI에서만 돈다.
 
 ## 라이선스
 Learn은 **AGPL-3.0-or-later**로 배포한다. 전문은 [`LICENSE`](LICENSE), 결정과 이유는 [ADR-0011](docs/decisions/0011-license-agpl.md). 런타임 의존성은 아래 표의 MIT·ISC·Apache·OFL만 쓴다.

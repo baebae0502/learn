@@ -126,8 +126,8 @@ interface ThemeLogEntry {
   at: number;
 }
 
-// T13R4-m1: a theme picked in the settings window. The pages lead (each says when it shows the change: after its
-// crossfade's update, or after the next frame), each window's chrome follows its page, the app-wide native theme
+// T13R4-m1: a theme picked in the settings window. The pages lead (each says when it shows the change: after the next
+// frame), each window's chrome follows its page, the app-wide native theme
 // follows both, and nativeTheme's 'updated' comes last. Times from the click, per window; reported only.
 test('theme switch order: click → each page shows it → its chrome → the native theme → nativeTheme updated', { tag: '@perf' }, async ({}, testInfo) => {
   test.setTimeout(120_000);

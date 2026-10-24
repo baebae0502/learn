@@ -265,10 +265,15 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
       await bringAppToFront(s.app);
       const captured = await captureOpenMenu(s.app, pid, 3, 'm4-04-menu-file-one', '파일 menu, one selected row');
       const names = captured.keyboard.open.names ?? [];
-      v['fileMenuOne'] = { names, shots: [captured.click.shot, captured.keyboard.shot] };
+      // The capture closes the menu with Escape keys; one that reaches the page clears the table selection.
+      const selectedAfterMenu = (await row.getAttribute('aria-selected')) === 'true';
+      v['fileMenuOne'] = { names, selectedAfterMenu, shots: [captured.click.shot, captured.keyboard.shot] };
       check('selection: 파일 lists Finder에서 보기 and 기본 앱으로 열기', names.includes('Finder에서 보기') && names.includes('기본 앱으로 열기'), v['fileMenuOne']);
     });
     await guard('selection: a real ⇧⌘R reveals the selected row', async () => {
+      // Own precondition: the previous guard's menu capture may have cleared the selection.
+      await row.click();
+      await expect(row).toHaveAttribute('aria-selected', 'true');
       const before = (await shellCalls()).length;
       let note: string | undefined;
       try {
@@ -289,6 +294,9 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
     await expect.poll(async () => (await shellCalls()).length).toBeGreaterThan(0);
   }
   await guard('selection: no selected row greys both 파일 items', async () => {
+    // Own precondition: a selected row, so the modifier-click below toggles it off rather than on.
+    if ((await row.getAttribute('aria-selected')) !== 'true') await row.click();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
     await row.click({ modifiers: [IS_MAC ? 'Meta' : 'Control'] }); // toggles the one selected row off
     await expect(row).not.toHaveAttribute('aria-selected', 'true');
     await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(false);

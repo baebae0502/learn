@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
-import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
+import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
+import { columnMenuEntries, popupColumnMenu } from '../menu/column-menu';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
 import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
@@ -12,7 +13,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.showContextMenu, showContextMenuInput, async (input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    if (input.kind !== 'item') return null; // collection/tag/column menus get their commands in M4–M5
+    if (input.kind !== 'item') return null; // collection and tag menus get their commands in M5
     const ctx = deps.getContext();
     let targets: LibraryItem[] = input.itemIds.flatMap((id) => ctx.repo.getItem(id) ?? []);
     if (targets.length === 0) return null;
@@ -28,6 +29,14 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (entries.length === 0) return null;
     const commandId = await popupCommandMenu(entries, { window, x: input.x, y: input.y });
     return commandId ? { commandId } : null;
+  });
+
+  // The table header's native menu: resolves the column to show or hide, a reset, or null when dismissed. Its items
+  // are the column catalogue's; the renderer sends only which columns show and where the pointer is.
+  handle(Channels.ui.showColumnMenu, showColumnMenuInput, async ({ visible, x, y }, event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return null;
+    return popupColumnMenu(columnMenuEntries(visible, mainStrings.columnMenu.reset), { window, x, y });
   });
 
   // The main window's command context (ADR-0005 §2): main rebuilds the menu bar from it; other windows are ignored.

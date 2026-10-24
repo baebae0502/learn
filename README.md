@@ -96,7 +96,7 @@ Learn은 **AGPL-3.0-or-later**로 배포한다. 전문은 [`LICENSE`](LICENSE), 
 | @react-types/shared | 3.37.0 | Apache-2.0 |
 | scheduler | 0.28.0 | MIT |
 | @swc/helpers | 0.5.23 | Apache-2.0 |
-| @tanstack/* (react-query, query-core) | 5.104.5 | MIT |
+| @tanstack/* (react-query, query-core, react-virtual, virtual-core) | 5.104.5, 5.104.5, 3.14.22, 3.19.7 | MIT |
 | tslib | 2.8.1 | 0BSD |
 | use-sync-external-store | 1.7.0 | MIT |
 | zod | 4.6.7 | MIT |

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMMANDS } from '@learn/domain';
+import { COMMANDS, LIBRARY_COLUMNS } from '@learn/domain';
 import { mainStrings } from '../../../main/strings';
 import { t } from './index';
 
@@ -26,6 +26,8 @@ for (const c of COMMANDS) {
     for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
   }
 }
+// The table's column names (the header and main's column menu both show them) come from the domain catalogue.
+for (const c of LIBRARY_COLUMNS) copy.push({ at: `column ${c.id}`, text: c.label });
 
 /** Renderer sources (no tests) under src/, relative paths. */
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

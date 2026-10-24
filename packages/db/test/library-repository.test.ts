@@ -316,3 +316,38 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     });
   });
 });
+
+describe('LibraryRepository.insertItemsForAsset (E2E seeding only, P-22)', () => {
+  const rowsFor = (a: AssetRow, revisionId: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: newId(),
+      type: 'pdf' as const,
+      title: `seeded ${i}`,
+      createdAt: `2026-10-01T00:00:0${i}.000Z`,
+      metadataJson: JSON.stringify({ creators: [{ name: `저자 ${i}`, role: 'author' }], date: String(2000 + i) }),
+      assetId: a.id,
+      revisionId,
+    }));
+
+  it('adds items that share the source asset and its revision, with their creators and year, in one go', () => {
+    const src = seedItem(db, { title: 'source' });
+    repo.insertItemsForAsset(rowsFor(src.asset, src.revisionId, 3));
+    const seeded = repo.listItems().filter((i) => i.title.startsWith('seeded'));
+    expect(seeded.map((i) => i.title)).toEqual(['seeded 2', 'seeded 1', 'seeded 0']); // created_at DESC
+    for (const i of seeded) expect([i.assetId, i.revisionId, i.availability]).toEqual([src.asset.id, src.revisionId, 'available']);
+    expect(seeded.at(-1)).toMatchObject({ creators: ['저자 0'], year: 2000, updatedAt: '2026-10-01T00:00:00.000Z' });
+    expect(repo.counts()).toMatchObject({ items: 4, assets: 1, revisions: 1 });
+  });
+
+  it('writes nothing when a row names another asset\'s revision or carries metadata outside schema v1', () => {
+    const src = seedItem(db, { title: 'source' });
+    const other = seedItem(db, { title: 'other' });
+    const foreign = rowsFor(src.asset, src.revisionId, 2);
+    foreign[1] = { ...foreign[1]!, revisionId: other.revisionId };
+    expect(() => repo.insertItemsForAsset(foreign)).toThrow(/revision/);
+    const invalid = rowsFor(src.asset, src.revisionId, 2);
+    invalid[1] = { ...invalid[1]!, metadataJson: JSON.stringify({ date: 'soon' }) };
+    expect(() => repo.insertItemsForAsset(invalid)).toThrow(/metadata/);
+    expect(repo.counts().items).toBe(2);
+  });
+});

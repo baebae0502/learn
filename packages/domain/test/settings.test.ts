@@ -70,3 +70,19 @@ describe('prefs inputs (R4)', () => {
     expect(prefsPatchInput.parse({ libraryRoot: '/tmp/lib' })).toEqual({ libraryRoot: '/tmp/lib' });
   });
 });
+
+describe('library table settings (M4 spec 3.1, 3.2)', () => {
+  it('library.sort takes the new sort columns', () => {
+    for (const column of ['updatedAt', 'storageMode', 'size', 'originalName'] as const) {
+      expect(parseSetting('library.sort', { column, direction: 'desc' })).toEqual({ column, direction: 'desc' });
+    }
+  });
+  it('library.columns keeps ids it does not know (a later milestone adds or drops columns) and bounds the widths', () => {
+    const later = { visible: ['title', 'tags'], order: ['title', 'tags', 'year'], widths: { tags: 120, year: 70 } };
+    expect(parseSetting('library.columns', later)).toEqual(later);
+    expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [], widths: { year: 1201 } }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [], widths: { year: 70.5 } }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [] }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('library.columns', { visible: 'title', order: [], widths: {} }))).toBe('VALIDATION_FAILED');
+  });
+});

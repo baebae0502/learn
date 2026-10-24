@@ -11,6 +11,9 @@ export const keys = {
   item: (itemId: string) => ['library', 'item', itemId] as const,
   detail: (itemId: string) => ['library', 'detail', itemId] as const,
   panes: ['settings', 'layout.panes'] as const,
+  /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
+  columns: ['settings', 'library.columns'] as const,
+  sort: ['settings', 'library.sort'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });

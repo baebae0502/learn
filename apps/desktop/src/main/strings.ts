@@ -26,6 +26,8 @@ export const mainStrings = {
     noItem: '자료를 찾을 수 없습니다.',
     noApp: '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.',
   },
+  /** The table header's native column menu (menu/column-menu.ts); the column names come from the catalogue. */
+  columnMenu: { reset: '열 구성 되돌리기' },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',
 } as const;

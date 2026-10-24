@@ -14,7 +14,7 @@ import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
-import { sendEvent } from './events';
+import { broadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
@@ -23,6 +23,7 @@ import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
 import { createSheetHost } from './sheets';
+import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
@@ -359,6 +360,8 @@ if (!app.requestSingleInstanceLock()) {
       },
     };
     registerAllIpc(createHandle(devOrigin), deps);
+    // E2E only (LEARN_E2E=1, never packaged): the seeding hook a large-library test calls through app.evaluate.
+    if (isE2E(app.isPackaged, process.env)) installTestHooks({ repo: () => deps.getContext().repo, broadcast });
 
     activation.markReady();
     mainWindow = openMainWindow();

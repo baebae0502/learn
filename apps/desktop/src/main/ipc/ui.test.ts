@@ -23,8 +23,14 @@ vi.mock('electron', () => ({
   BrowserWindow: { fromWebContents: () => senderWindow, getAllWindows: () => [] },
 }));
 
+vi.mock('../menu/column-menu', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../menu/column-menu')>()),
+  popupColumnMenu: vi.fn(async () => ({ toggle: 'year' as const })),
+}));
+
 const { createHandle } = await import('./register');
 const { registerUiIpc } = await import('./ui');
+const { popupColumnMenu } = await import('../menu/column-menu');
 
 const MAIN = { id: 1 };
 const SHEET = { id: 2 };
@@ -132,5 +138,22 @@ describe('ui.themeShown (T13R4-m1: the native theme follows the pages)', () => {
     expect(await invoke('ui:themeShown', MAIN, { shade: 'system' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(await invoke('ui:themeShown', MAIN, { shade: 'dark', at: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(themeShown).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ui.showColumnMenu (P-9: the column header has its own channel)', () => {
+  beforeEach(() => {
+    senderWindow = fakeWindow;
+  });
+  it('pops the column menu over the sender window, the shown columns checked, and returns the pick', async () => {
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['title', 'year'], x: 12, y: 34 })).toEqual({ ok: true, data: { toggle: 'year' } });
+    const [entries, at] = vi.mocked(popupColumnMenu).mock.calls.at(-1)!;
+    expect(entries.filter((e) => e !== 'separator' && e.kind === 'column' && e.checked).map((e) => (e as { id: string }).id)).toEqual(['title', 'year']);
+    expect(at).toEqual({ window: fakeWindow, x: 12, y: 34 });
+  });
+  it('refuses columns it does not know (VALIDATION_FAILED) and answers null without a window', async () => {
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['tags'], x: 0, y: 0 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    senderWindow = null;
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['title'], x: 0, y: 0 })).toEqual({ ok: true, data: null });
   });
 });

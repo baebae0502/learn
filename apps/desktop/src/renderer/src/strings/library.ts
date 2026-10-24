@@ -8,6 +8,8 @@ export const library = {
   colSize: '크기',
   colAdded: '추가일',
   type: { pdf: 'PDF', video: '동영상' },
+  /** 보관 column (spec §3.1): the user's words, never the internal "managed" (design-spec 9). */
+  storage: { managed: '사본', linked: '외부 연결' },
   linked: '외부 파일 연결',
   missing: '파일 없음',
   missingTitle: '원본\u00a0파일을 찾을 수 없습니다',
@@ -19,4 +21,8 @@ export const library = {
   /** The empty library while a drop's files are being brought in (critique T13R2-m1). */
   importingTitle: (n: number) => `자료 ${n}개를 가져오는 중…`,
   formats: `PDF와 ${VIDEO_FORMATS} 동영상을 지원합니다.`,
+  /** The table body while the first list read takes longer than 300 ms (design-spec 6; the header stays). */
+  loading: '불러오는 중…',
+  /** A column edge's accessible name (its separator, which VoiceOver reads with the width). */
+  resizeColumn: (column: string) => `${column} 열 폭`,
 } as const;

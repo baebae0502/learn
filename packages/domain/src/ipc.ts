@@ -7,7 +7,8 @@ import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
 import type { DuplicateChoice, SheetPayload } from './sheets';
-import { LIBRARY_SORT_COLUMNS, prefsFields } from './settings';
+import { prefsFields } from './settings';
+import { LIBRARY_COLUMN_IDS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
@@ -89,13 +90,17 @@ export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
-/** Native context menus by kind (ADR-0005 §4). M3 has item commands only; the other kinds get theirs in M4–M5. */
+/** Native context menus by kind (ADR-0005 §4): items now; collections and tags get theirs in M5. */
 export const showContextMenuInput = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  // The whole table selection (⌘A in a large library): the bound of the reported selection counts.
+  z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(1_000_000), ...point }),
   z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
-  z.object({ kind: z.literal('column'), columnId: z.enum(LIBRARY_SORT_COLUMNS), ...point }),
 ]);
+/** The table header's native menu: which columns show now, and where the pointer is. */
+export const showColumnMenuInput = z
+  .object({ visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length), ...point })
+  .strict();
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
@@ -121,6 +126,7 @@ export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
 export type ShowContextMenuInput = z.input<typeof showContextMenuInput>;
+export type ShowColumnMenuInput = z.input<typeof showColumnMenuInput>;
 
 /** The only surface the renderer sees (window.learn). */
 export interface LearnApi {
@@ -201,6 +207,8 @@ export interface LearnApi {
      * native theme follow it (T13R4-m1). Other windows are PERMISSION_DENIED.
      */
     themeShown(input: ThemeShownInput): Promise<Result<void>>;
+    /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
+    showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
   };
   /** Only callable from an open sheet window. */
   sheet: {

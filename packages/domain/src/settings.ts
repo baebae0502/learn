@@ -1,11 +1,26 @@
 import { z } from 'zod';
 import { LearnError } from './errors';
+import { COLUMN_WIDTH_MAX } from './library-columns';
 
-export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress'] as const;
+/** Sortable fields. openedAt / progress have no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). */
+export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
+
+const storedColumnId = z.string().min(1).max(64);
+/**
+ * library.columns (spec §3.2). Column ids stay plain strings here: a value written by a later milestone (a column added
+ * or dropped) must still read back; the renderer's parseColumnConfig drops the ids it does not know and clamps widths to
+ * each column's minimum.
+ */
+export const columnConfigSchema = z.object({
+  visible: z.array(storedColumnId).max(64),
+  order: z.array(storedColumnId).max(64),
+  widths: z.record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX)),
+});
 
 /** Library-scoped settings (stored in the library DB). */
 export const SETTINGS = {
   'library.sort': z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) }),
+  'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
 } as const;

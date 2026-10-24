@@ -143,6 +143,33 @@ export class LibraryRepository {
     })();
   }
 
+  /**
+   * E2E seeding only (main's test hook under LEARN_E2E): items that share one existing asset and its revision, all in
+   * one transaction. Imports never come here (insertImported). Each row's revision must belong to its asset, and its
+   * metadata must be schema v1, as updateMetadata would store it.
+   */
+  insertItemsForAsset(
+    rows: ReadonlyArray<{ id: string; type: ItemType; title: string; createdAt: string; metadataJson: string; assetId: string; revisionId: string }>,
+  ): void {
+    this.db.transaction(() => {
+      const insertItem = this.db.prepare(`INSERT INTO items (id, type, title, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`);
+      const link = this.db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'original')`);
+      const revisionOf = this.db.prepare('SELECT 1 FROM source_revisions WHERE id = ? AND asset_id = ?');
+      const checked = new Set<string>();
+      for (const r of rows) {
+        const pair = `${r.revisionId}/${r.assetId}`;
+        if (!checked.has(pair)) {
+          if (!revisionOf.get(r.revisionId, r.assetId)) throw new Error(`insertItemsForAsset: revision ${r.revisionId} is not a revision of asset ${r.assetId}`);
+          checked.add(pair);
+        }
+        const meta = itemMetadataSchema.safeParse(JSON.parse(r.metadataJson));
+        if (!meta.success) throw new Error('insertItemsForAsset: metadata is not schema v1');
+        insertItem.run(r.id, r.type, r.title, JSON.stringify(meta.data), r.createdAt, r.createdAt);
+        link.run(r.id, r.assetId);
+      }
+    })();
+  }
+
   /** Non-trashed items, newest first. Tags come from one pairs query merged in memory (no per-item queries). */
   listItems(): LibraryItem[] {
     const rows = this.db.prepare(`${ITEM_SELECT} ORDER BY i.created_at DESC, i.rowid DESC`).all() as ItemDbRow[];

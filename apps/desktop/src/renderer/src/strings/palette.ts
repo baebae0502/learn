@@ -16,6 +16,8 @@ export const palette = {
   example: (initials: string, word: string) => `${initials} → ${word}`,
   /** The last row of 명령 while there is a query: the quick search takes the query over (⌘F). */
   searchLibrary: (query: string) => `라이브러리에서 ‘${query}’ 검색`,
+  /** The same sentence in three pieces, so the row can mark the query between the quotes. */
+  searchLibraryParts: (query: string): [string, string, string] => ['라이브러리에서 ‘', query, '’ 검색'],
   /** While an import or a sheet holds the window: what is unavailable, then why and what next. */
   busyTitle: '지금은 명령을 실행할 수 없습니다',
   busyBody: '진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.',

@@ -470,6 +470,7 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await expect(results.first().locator('.p-meta .kbd-group')).toHaveCount(1); // ↩ on the cursor row only
     await expect(results.nth(1).locator('.p-meta .kbd-group')).toHaveCount(0);
     await expect(page.getByTestId('palette-search-library')).toHaveText(/라이브러리에서 ‘신호’ 검색/);
+    await expect(page.getByTestId('palette-search-library').locator('mark')).toHaveText('신호'); // the query is marked, the text reads the same
     await expect(page.locator('.p-foot .row').nth(1)).toHaveText(/열기/); // ↩ opens the item under the cursor
     // The search row is not a command: no command matches 신호, so the status counts the five items alone.
     await expect(page.getByTestId('palette-status')).toHaveText('자료 5개');
@@ -492,6 +493,35 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect(page.getByTestId('viewer-title')).toHaveText('신호 증폭');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a long author list ends in an ellipsis inside 240 px and the title keeps its width', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'a.pdf');
+    fs.writeFileSync(file, '%PDF-1.4\n% a\n%%EOF\n');
+    const [item] = await importPaths(page, [file]);
+    const names = ['김하늘', '박서준', '이도윤', '최민서', '정우진', '한지민', '오세훈', '윤아름', '장민호', '서지우'];
+    await page.evaluate(
+      (i) => window.learn.library.updateMetadata({ itemId: i.id, title: '신호 전달 경로의 정량 모델과 그 응용', metadata: { creators: i.names.map((name) => ({ name, role: 'author' as const })), date: '2024' } }),
+      { id: item!.id, names },
+    );
+    await runMenuCommand(app, 'app.palette');
+    const input = page.getByTestId('palette-input');
+    const title = page.getByTestId('palette-result').first().locator('.p-title');
+    await input.fill('신호');
+    await expect(page.getByTestId('palette-result')).toHaveCount(1);
+    const sub = page.getByTestId('palette-result').first().locator('.p-sub');
+    await expect(sub).toContainText('김하늘');
+    // The long list gave way first: it is cut at 240 px and the title shows whole.
+    await expect.poll(() => sub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await sub.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(240);
+    expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   } finally {
     await app.close();
   }

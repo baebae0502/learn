@@ -252,7 +252,15 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       return option(row, index, { 'data-testid': 'palette-search-library' }, (
         <>
           <Icon icon={ListFilter} />
-          <span className="p-title ellipsis">{t.palette.searchLibrary(q)}</span>
+          <span className="p-title ellipsis">
+            {(([before, query, after]) => (
+              <>
+                {before}
+                <mark>{query}</mark>
+                {after}
+              </>
+            ))(t.palette.searchLibraryParts(q))}
+          </span>
           <span className="p-meta">
             <Kbd accelerator={commandById('library.find').accelerator} />
           </span>

@@ -320,7 +320,7 @@ test('selection commands: the palette with one selected row lists 폴더에서 �
 });
 
 /** palette.html's items: 신호 in four titles, one of them a video; author and year on two (spec §4.4: 저자 · 연도, else the kind). */
-async function paletteLibrary(s: Session, dir: string): Promise<void> {
+async function paletteLibrary(s: Session, dir: string): Promise<string[]> {
   fs.mkdirSync(dir, { recursive: true });
   const pdf = (name: string) => {
     const p = path.join(dir, `${name}.pdf`);
@@ -345,6 +345,7 @@ async function paletteLibrary(s: Session, dir: string): Promise<void> {
     await set(ids[3]!, '신호 증폭의 정량 모델', ['이도윤', '최민서'], '2023', 'author');
   }, imported);
   await expect(rowByTitle(s.page, '신호 증폭의 정량 모델')).toBeVisible();
+  return imported;
 }
 
 test('palette: empty query, 자료 results (palette.html), commands only, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
@@ -354,7 +355,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
   const input = s.page.getByTestId('palette-input');
   const cursor = s.page.locator('.palette [role="option"][data-focused]');
   try {
-    await paletteLibrary(s, testInfo.outputPath('media'));
+    const ids = await paletteLibrary(s, testInfo.outputPath('media'));
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await runMenuCommand(s.app, 'app.palette');
@@ -403,6 +404,16 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    // A long author list is cut with an ellipsis inside 240 px and the title keeps its width (spec 10.5).
+    await s.page.evaluate(
+      (id) => window.learn.library.updateMetadata({ itemId: id, title: '신호 증폭의 정량 모델', metadata: { creators: ['김하늘', '박서준', '이도윤', '최민서', '정우진', '한지민', '오세훈', '윤아름'].map((name) => ({ name, role: 'author' as const })), date: '2023' } }),
+      ids[3]!,
+    );
+    await input.fill('증폭');
+    const longSub = s.page.getByTestId('palette-result').first().locator('.p-sub');
+    await expect(longSub).toContainText('김하늘');
+    await expect.poll(() => longSub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await shoot(s.page, 'palette-long-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

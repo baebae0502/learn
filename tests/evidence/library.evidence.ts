@@ -22,6 +22,8 @@ const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 const results: Record<string, unknown> = {};
+/** The unfocused-selection window capture's path (relative to the evidence root), the drawn reference for the inactive check. */
+let unfocusedWindowShot: string | null = null;
 /** Every check's verdict and the value it was judged on, in the order measured (asserted by the last test). */
 const checks: Record<string, { ok: boolean; value: unknown }> = {};
 const save = () => writeJson('m4-library.json', { ...results, checks, platform: `${process.platform}-${process.arch}`, at: new Date().toISOString() }, 'M4 library measurements');
@@ -149,7 +151,7 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
     await s.page.getByTestId('nav-library').focus();
     const v = { fill: await fill(0), neutral: await tokenColor(s.page, '--fill-selected') };
     check('unfocused selection: neutral fill', v.fill === v.neutral, v);
-    await allShots(s.app, s.page, 'm4-02-unfocused-light', 'the selection while the sidebar has the focus');
+    unfocusedWindowShot = (await allShots(s.app, s.page, 'm4-02-unfocused-light', 'the selection while the sidebar has the focus')).find((e) => e.kind === 'window')?.file ?? null;
   });
   if (IS_MAC) {
     // A real ⌘A meets the menu bar too (its 모두 선택 has ⌘A): either way the table takes it — every row, no page text.
@@ -187,8 +189,7 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
       const [rowPixel, toolbarPixel] = shot.file ? await pngPixels(s.page, shot.file, [rowPoint, toolbarPoint]) : [null, null];
       // --fill-selected is translucent, so its token string cannot be compared with a drawn pixel. The reference is the
       // neutral selection as drawn in the unfocused capture (same window, same rows selected, so the same spot).
-      const unfocusedShot = 'm4-02-unfocused-light.window.png';
-      const referencePixel = shot.file && fs.existsSync(path.join(EVIDENCE_ROOT, unfocusedShot)) ? (await pngPixels(s.page, unfocusedShot, [rowPoint]))[0] ?? null : null;
+      const referencePixel = shot.file && unfocusedWindowShot ? (await pngPixels(s.page, unfocusedWindowShot, [rowPoint]))[0] ?? null : null;
       const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
       const near = (px: number[] | null | undefined, want: readonly number[] | null) => !!px && !!want && want.length === 3 && px.every((v, k) => Math.abs(v - want[k]!) <= 3);
       const v = { before, ring, neutral, chrome, scale, rowPoint, toolbarPoint, rowPixel, toolbarPixel, referencePixel };

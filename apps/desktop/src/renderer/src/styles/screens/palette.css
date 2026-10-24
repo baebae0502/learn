@@ -81,7 +81,7 @@
     gap: var(--space-4);
   }
   .palette .p-list {
-    max-height: 360px; /* local: 9 rows + header */
+    max-height: 400px; /* local: 10 rows + header: the empty query lists ten commands once ⌘F joins them */
     overflow-y: auto;
     padding: var(--space-8);
     outline: none;

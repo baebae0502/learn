@@ -1,6 +1,6 @@
 import {
   LearnError, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
-  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type StorageMode,
+  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
 } from '@learn/domain';
 import type { Db } from './connection';
 import { CollectionsRepository } from './collections-repository';
@@ -77,7 +77,7 @@ const toAsset = (r: AssetDbRow): AssetRow => ({
 const toItem = (r: ItemDbRow, tagIds: string[], meta: ItemMetadata = parseItemMetadata(r.metadata_json)): LibraryItem => ({
   id: r.id, title: r.title, type: r.type, mime: r.mime, size: r.size, storageMode: r.storage_mode,
   availability: r.availability, assetId: r.asset_id, revisionId: r.revision_id, originalName: r.original_name, createdAt: r.created_at,
-  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), tagIds, progress: r.progress, openedAt: r.opened_at,
+  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), publisher: meta.publisher || null, tagIds, progress: r.progress, openedAt: r.opened_at,
 });
 
 const itemNotFound = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
@@ -175,6 +175,29 @@ export class LibraryRepository {
     const rows = this.db.prepare(`${ITEM_SELECT} ORDER BY i.created_at DESC, i.rowid DESC`).all() as ItemDbRow[];
     const tags = this.tagIdsByItem(false);
     return rows.map((r) => toItem(r, tags.get(r.id) ?? []));
+  }
+
+  /**
+   * Quick search's long fields (spec 4.2): abstract and memo of the live items that have either. SQLite drops the rest
+   * first; `json_valid` comes first in a CASE because json_extract throws on malformed JSON. The schema still decides
+   * (a stored value that no longer parses reads as empty, as everywhere else).
+   */
+  searchTexts(): SearchText[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, metadata_json FROM items
+         WHERE deleted_at IS NULL
+           AND CASE WHEN json_valid(metadata_json)
+                    THEN coalesce(json_extract(metadata_json, '$.abstract'), '') || coalesce(json_extract(metadata_json, '$.extra'), '')
+                    ELSE '' END <> ''`,
+      )
+      .all() as Array<{ id: string; metadata_json: string }>;
+    return rows.flatMap((r) => {
+      const meta = parseItemMetadata(r.metadata_json);
+      const abstract = meta.abstract || null;
+      const extra = meta.extra || null;
+      return abstract || extra ? [{ id: r.id, abstract, extra }] : [];
+    });
   }
 
   /** Non-trashed item, or undefined. */

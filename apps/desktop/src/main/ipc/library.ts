@@ -43,6 +43,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.import, importPathsInput, async (input) => announceImported(await deps.getContext().importer.importMany(input.paths, input)));
 
   handle(Channels.library.list, emptyInput, () => deps.getContext().repo.listItems());
+  handle(Channels.library.searchTexts, emptyInput, () => deps.getContext().repo.searchTexts());
 
   // Re-checks the file; a changed availability is broadcast (libraryChanged{availability}).
   handle(Channels.library.get, itemIdInput, ({ itemId }) => refreshItemAvailability(deps.getContext(), itemId));

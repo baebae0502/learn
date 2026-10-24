@@ -1,10 +1,11 @@
-import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, Search, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
 export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'file.importManaged': FilePlus,
   'file.importLinked': Link,
+  'library.find': Search,
   'nav.back': ArrowLeft,
   'item.relink': Link,
   'item.open': FolderOpen,

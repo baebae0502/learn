@@ -10,5 +10,7 @@ export const shell = {
   libraryHeading: '라이브러리',
   myLibrary: '내 라이브러리',
   count: (n: number) => `${n}개`,
+  /** The toolbar count while a quick search filters the table (design-spec 2.4: "0개 / 48개"). */
+  countOf: (shown: number, total: number) => `${shown}개 / ${total}개`,
   listFailed: '목록을 새로 고치지 못했습니다',
 } as const;

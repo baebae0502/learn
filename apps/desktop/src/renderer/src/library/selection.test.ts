@@ -5,7 +5,7 @@ import { inTableOrder, selectionCounts } from './selection';
 
 const item = (id: string, createdAt: string, availability: Availability = 'available', storageMode: StorageMode = 'managed'): LibraryItem => ({
   id, title: id, type: 'pdf', mime: 'application/pdf', size: 1, storageMode, availability, assetId: `a-${id}`, revisionId: `r-${id}`,
-  originalName: `${id}.pdf`, createdAt, updatedAt: createdAt, creators: [], year: null, tagIds: [], progress: null, openedAt: null,
+  originalName: `${id}.pdf`, createdAt, updatedAt: createdAt, creators: [], year: null, publisher: null, tagIds: [], progress: null, openedAt: null,
 });
 const LIST = [
   item('b', '2026-10-02T00:00:00.000Z'),

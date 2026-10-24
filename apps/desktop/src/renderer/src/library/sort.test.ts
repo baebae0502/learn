@@ -6,7 +6,7 @@ let n = 0;
 const item = (over: Partial<LibraryItem>): LibraryItem => ({
   id: `id-${String(++n).padStart(3, '0')}`, title: 't', type: 'pdf', mime: 'application/pdf', size: 1, storageMode: 'managed',
   availability: 'available', assetId: 'a', revisionId: 'r', originalName: 'f.pdf', createdAt: '2026-10-01T00:00:00.000Z',
-  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, tagIds: [], progress: null, openedAt: null, ...over,
+  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, publisher: null, tagIds: [], progress: null, openedAt: null, ...over,
 });
 const titles = (items: readonly LibraryItem[]) => items.map((i) => i.title);
 

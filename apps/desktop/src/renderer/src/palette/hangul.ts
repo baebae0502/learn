@@ -37,7 +37,7 @@ export function splitFinal(ch: string): [string, string] | null {
 }
 
 const chars = (s: string) => [...s.normalize('NFC').toLocaleLowerCase('ko-KR')];
-const WORD_START = /[\s(‘“/·-]/;
+export const WORD_START = /[\s(‘“/·-]/;
 
 function find(query: readonly string[], text: readonly string[]): { start: number; literal: boolean } | null {
   for (let i = 0; i + query.length <= text.length; i++) {

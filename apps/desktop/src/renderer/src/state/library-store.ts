@@ -2,8 +2,8 @@ import { create } from 'zustand';
 import type { SelectionState } from '../library/selectionModel';
 
 /**
- * The library view's own state: the table's selection with its anchor and keyboard cursor now; the last opened row,
- * the query and the edited item join it as those features arrive. Commands and the item panel read the selection even
+ * The library view's own state: the table's selection with its anchor and keyboard cursor now; the last opened row
+ * and the quick search query; the edited item joins it as those features arrive. Commands and the item panel read the selection even
  * while the table is not mounted (the reader view).
  */
 export interface LibraryState extends SelectionState {
@@ -16,6 +16,9 @@ export interface LibraryState extends SelectionState {
   /** The item the reader last opened, by whatever path (table, palette, import): the table shows its row on return. */
   lastOpenedId: string | null;
   setLastOpened(id: string | null): void;
+  /** Quick search query, this session only (spec 4.1: a restart starts empty). */
+  query: string;
+  setQuery(q: string): void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -26,6 +29,8 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   anchorId: null,
   cursorId: null,
   lastOpenedId: null,
+  query: '',
+  setQuery: (query) => set({ query }),
   setLastOpened: (lastOpenedId) => set({ lastOpenedId }),
   setSelected: (ids) => {
     const next = new Set(ids);

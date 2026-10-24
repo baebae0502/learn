@@ -241,6 +241,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,
+    // The toolbar field that takes the focus arrives with the field itself; until then there is nothing to focus.
+    focusSearch: () => {},
     modal,
   }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);

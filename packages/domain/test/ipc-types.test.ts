@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type * as Ipc from '../src/ipc';
 import type { LearnApi } from '../src/ipc';
+import type { LibraryItem, SearchText } from '../src/library';
 import type { LibraryColumnId } from '../src/library-columns';
 import type { Result } from '../src/result';
 
@@ -36,6 +37,12 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
     expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
+  });
+  it('library.searchTexts takes nothing and answers the long texts; the list row carries the publisher', () => {
+    expectTypeOf<Parameters<LearnApi['library']['searchTexts']>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<LearnApi['library']['searchTexts']>>().toEqualTypeOf<Promise<Result<SearchText[]>>>();
+    expectTypeOf<SearchText>().toEqualTypeOf<{ id: string; abstract: string | null; extra: string | null }>();
+    expectTypeOf<LibraryItem['publisher']>().toEqualTypeOf<string | null>();
   });
   it('the renderer never sends a library path (R4): prefs.set takes no libraryRoot; main\'s own patch does', () => {
     expectTypeOf<Ipc.PrefsSetInput>().not.toHaveProperty('libraryRoot');

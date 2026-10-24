@@ -30,6 +30,8 @@ export interface CommandEnv extends CommandContextState {
   setTextSize(update: TextSizeUpdate): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
+  /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
+  focusSearch(): void;
   /**
    * A modal surface owns the keyboard: a sheet, the palette, the drop overlay (MainWindow derives it once). Not
    * reported to main; it tells an import (blocked alone) from a modal surface for `duringWork` commands.
@@ -55,6 +57,7 @@ type Handler = (env: CommandEnv, itemIds: readonly string[]) => void;
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
+  'library.find': (env) => env.focusSearch(),
   'nav.back': (env) => env.back(),
   'item.open': (env, [itemId]) => env.open(itemId!),
   'item.showInFolder': (env, [itemId]) => env.showInFolder(itemId!),

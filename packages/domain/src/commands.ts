@@ -9,6 +9,7 @@ import type { Availability, StorageMode } from './library';
 export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
+  | 'library.find'
   | 'nav.back'
   | 'item.open'
   | 'item.showInFolder'
@@ -82,6 +83,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 2 }, contexts: ['library'],
     keywords: ['연결', '외부', '링크', 'link'],
+  },
+  // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
+  // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
+  {
+    id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'],
+    keywords: ['검색', '찾기', 'search', 'find'],
   },
   {
     id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
@@ -217,6 +224,7 @@ export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] 
 
 type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
+  'library.find': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
   'item.open': (_ctx, t) => t.length === 1,
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',

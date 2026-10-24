@@ -23,6 +23,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
+  focusSearch: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
@@ -204,6 +205,13 @@ describe('renderer command registry', () => {
     // Main's menu bar refuses them too.
     expect(reportedContext(held)).toEqual({ view: 'library', blocked: true, textSize: 13, ...COUNTS });
     expect(reportedContext(env())).toEqual(contextOf(env()));
+  });
+  it('⌘F focuses the quick search in the library while it has items, not in the reader', () => {
+    const lib = env({ libraryCount: 2 });
+    expect(runCommand('library.find', lib)).toBe(true);
+    expect(lib.focusSearch).toHaveBeenCalledTimes(1);
+    expect(runCommand('library.find', env({ libraryCount: 0 }))).toBe(false);
+    expect(runCommand('library.find', env({ view: 'viewer', libraryCount: 2 }))).toBe(false);
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);

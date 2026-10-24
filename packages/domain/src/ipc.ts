@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { COMMANDS, type CommandContextState, type CommandId } from './commands';
 import type { LearnEventMap, WindowState } from './events';
-import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, Tag } from './library';
+import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
@@ -154,6 +154,8 @@ export interface LearnApi {
     showInFolder(input: ItemIdInput): Promise<Result<void>>;
     /** Open the file with the system's default app. */
     openExternally(input: ItemIdInput): Promise<Result<void>>;
+    /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
+    searchTexts(): Promise<Result<SearchText[]>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;

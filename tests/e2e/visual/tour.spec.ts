@@ -165,9 +165,9 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
       if (theme === 'light') {
-        // ㄱ: six rows, the <mark> in accent text on the rows the cursor is not on (설정… by its keyword 글자 크기: no mark).
+        // ㄱ: seven rows (빠른 검색 by its 검색), the <mark> in accent text on the rows the cursor is not on (설정… by its keyword 글자 크기: no mark).
         await input.fill('ㄱ');
-        await expect(s.page.getByTestId('palette-item')).toHaveCount(6);
+        await expect(s.page.getByTestId('palette-item')).toHaveCount(7);
         await shoot(s.page, 'palette-multi-light', { mask: dates() });
       }
       await input.fill('효소 억제제');

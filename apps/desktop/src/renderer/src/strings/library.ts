@@ -1,4 +1,5 @@
 import { VIDEO_FORMATS } from '@learn/domain';
+import { waGwa } from './josa';
 
 export const library = {
   table: '자료 목록',
@@ -21,4 +22,12 @@ export const library = {
   loading: '불러오는 중…',
   /** A column edge's accessible name (its separator, which VoiceOver reads with the width). */
   resizeColumn: (column: string) => `${column} 열 폭`,
+  /** The toolbar's quick search (spec 4.1); 태그 joins it with tags in M5 (no word for what is not there yet). */
+  searchPlaceholder: '제목, 저자 검색',
+  /** Read out politely as the results change; with none, the no-results state speaks instead. */
+  searchStatus: (n: number) => `일치하는 자료 ${n}개`,
+  /** In the table body's place when nothing matches (spec 4.3). */
+  searchEmptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료가 없습니다`,
+  searchEmptyBody: '제목·저자·출판사·원래 파일 이름·초록·메모에서 찾았습니다.',
+  searchClear: '검색어 지우기',
 } as const;

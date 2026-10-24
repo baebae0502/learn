@@ -63,6 +63,8 @@ const EDIT: Shape = {
     { label: '복사하기', role: 'copy' },
     { label: '붙여넣기', role: 'paste' },
     { label: '모두 선택', role: 'selectAll' },
+    SEP,
+    { id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F' },
   ],
 };
 const VIEW = (platform: NodeJS.Platform): Shape => ({

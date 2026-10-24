@@ -197,6 +197,44 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expectLearnError(() => repo.updateMetadata(itemId, { title: 'x' }), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
   });
 
+  it('carries the publisher on the list row; corrupt or invalid metadata reads as none', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = seedItem(db);
+    const b = seedItem(db);
+    const c = seedItem(db);
+    repo.updateMetadata(a.itemId, { metadata: { creators: [], publisher: '분자생물학회' } });
+    repo.updateMetadata(b.itemId, { metadata: { creators: [], publisher: '' } });
+    db.prepare(`UPDATE items SET metadata_json = '{"publisher":' WHERE id = ?`).run(c.itemId);
+    const byId = new Map(repo.listItems().map((i) => [i.id, i]));
+    expect(byId.get(a.itemId)!.publisher).toBe('분자생물학회');
+    expect(byId.get(b.itemId)!.publisher).toBeNull();
+    expect(byId.get(c.itemId)!.publisher).toBeNull(); // the list still reads (json_extract would throw here)
+    expect(repo.getItem(a.itemId)!.publisher).toBe('분자생물학회');
+    expect(warn).toHaveBeenCalledWith('METADATA_CORRUPT_JSON');
+  });
+
+  it('searchTexts: abstracts and memos of live items that have one, never corrupt or trashed rows', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const both = seedItem(db);
+    const memo = seedItem(db);
+    const none = seedItem(db);
+    const trashed = seedItem(db);
+    const corrupt = seedItem(db);
+    repo.updateMetadata(both.itemId, { metadata: { creators: [], abstract: '수용체가 신호를 증폭합니다.', extra: '시험 범위' } });
+    repo.updateMetadata(memo.itemId, { metadata: { creators: [], extra: '다시 읽기' } });
+    repo.updateMetadata(none.itemId, { metadata: { creators: [], publisher: 'MIT', abstract: '' } });
+    repo.updateMetadata(trashed.itemId, { metadata: { creators: [], abstract: 'gone' } });
+    repo.trash([trashed.itemId]);
+    db.prepare(`UPDATE items SET metadata_json = '{"abstract":' WHERE id = ?`).run(corrupt.itemId);
+    const texts = repo.searchTexts();
+    expect(texts.sort((x, y) => x.id.localeCompare(y.id))).toEqual(
+      [
+        { id: both.itemId, abstract: '수용체가 신호를 증폭합니다.', extra: '시험 범위' },
+        { id: memo.itemId, abstract: null, extra: '다시 읽기' },
+      ].sort((x, y) => x.id.localeCompare(y.id)),
+    );
+  });
+
   it('degrades corrupt stored metadata to empty without failing the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { itemId } = seedItem(db);

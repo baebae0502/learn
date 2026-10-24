@@ -263,6 +263,8 @@ test('menu: 편집 carries the native edit roles with Korean labels', async ({},
       ['copy', '복사하기'],
       ['paste', '붙여넣기'],
       ['selectall', '모두 선택'],
+      ['-', ''],
+      [null, '빠른 검색'],
     ]);
   } finally {
     await app.close();

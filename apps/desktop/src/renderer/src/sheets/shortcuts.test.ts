@@ -39,8 +39,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists ⌘+ / ⌘− / ⌘0 under 라이브러리 (design-spec 7.4), after the import commands', () => {
     const library = shortcutGroups('darwin')[1]!;
-    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '글자 크게', '글자 작게', '기본 글자 크기']);
-    expect(library.rows.slice(2).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
+    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '빠른 검색', '글자 크게', '글자 작게', '기본 글자 크기']);
+    expect(library.rows.slice(3).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
   });
   it('lists the selected item\'s shortcut (⇧⌘R) in its own 자료 group, after 라이브러리 (design-spec 7.4)', () => {
     const item = (platform: string) => shortcutGroups(platform).find((g) => g.title === '자료')!.rows;

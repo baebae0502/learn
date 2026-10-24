@@ -30,7 +30,7 @@ const sheetOwners: Array<{ owner: unknown; phase: 'shown' | 'closed' }> = [];
 registerLibraryIpc(
   createHandle(null),
   stubDeps({
-    getContext: () => ({ importer: { importMany: vi.fn() }, repo: {} }) as never,
+    getContext: () => ({ importer: { importMany: vi.fn() }, repo: { searchTexts: () => [{ id: 'i1', abstract: '초록', extra: null }] } }) as never,
     windows: {
       openSettings: () => {},
       asSheet: async (owner, show) => {
@@ -71,5 +71,12 @@ describe('library open panels hang on the asking window as sheets (follow-up D)'
     expect(await invoke('library:pickAndImport', { mode: 'managed' })).toMatchObject({ ok: true, data: [] });
     expect(panels).toEqual([null]);
     expect(sheetOwners).toEqual([]);
+  });
+});
+
+describe('library.searchTexts', () => {
+  it('answers the repository’s long texts, and takes no input', async () => {
+    expect(await invoke('library:searchTexts')).toEqual({ ok: true, data: [{ id: 'i1', abstract: '초록', extra: null }] });
+    expect(await invoke('library:searchTexts', { extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   });
 });

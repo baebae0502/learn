@@ -363,8 +363,11 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 | # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (초 → 과금 분) | 결과 |
 |---|---|---|---|---|---|
 | 28 | [40097296461](https://github.com/baebae0502/learn/actions/runs/40097296461) | 10-24 13:14 | library / 아니오 / 71bd6fc (Task 3 표) | 112초 → 2분(공개 저장소: 무료) | **성공**: 증거 테스트 4개, `m4-library.json` 확인 11개 모두 ok(실제 ⌘A, 비활성 창, 네이티브 열 메뉴 포함) |
+| 29 | [40098108104](https://github.com/baebae0502/learn/actions/runs/40098108104) | 10-24 13:26 | library / 아니오 / a47d52e (Task 3 비활성 창 증거 수정 1) | 83초 → 2분(무료) | **실패**: 비활성 창 캡처는 맞게 찍혔으나(행 225,226,226, 도구 막대 236) 판정이 반투명 토큰 문자열과 비교 — 10/11 ok |
+| 30 | [40098357693](https://github.com/baebae0502/learn/actions/runs/40098357693) | 10-24 13:29 | library / 아니오 / bf52a9e (수정 2) | 78초 → 2분(무료) | **실패**: 기준 PNG(포커스 없는 선택)를 라벨 폴더 밖에서 찾음 — 10/11 ok |
+| 31 | [40098617639](https://github.com/baebae0502/learn/actions/runs/40098617639) | 10-24 13:33 | library / 아니오 / 1c9d1da (수정 3) | 70초 → 2분(무료) | **성공**: 증거 테스트 4개, 확인 11개 모두 ok — 비활성 창은 캡처 픽셀로 판정(행 = 포커스 없는 선택의 그려진 채움, 도구 막대 236) |
 
-**합계: macOS 28회, 185분.** 값과 PNG는 `evidence/m4-t3/40097296461/evidence/evidence-results/`(`m4-library.json`, `m4-t3/m4-0*.png`).
+**합계: macOS 31회, 191분.** Task 3의 판정 값과 PNG는 `evidence/m4-t3d/40098617639/evidence/evidence-results/`(`m4-library.json`, `m4-t3d/m4-0*.png`). 28회의 비활성 창 PNG는 키 창 상태로 찍혀 있었다(디자인 비평이 찾음): 그 실행의 검사는 계산된 스타일만 읽어 통과했다.
 
 ## 알려진 한계
 

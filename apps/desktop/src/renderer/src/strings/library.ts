@@ -3,10 +3,6 @@ import { VIDEO_FORMATS } from '@learn/domain';
 export const library = {
   table: '자료 목록',
   listFailed: '자료 목록을 불러오지 못했습니다',
-  colTitle: '제목',
-  colType: '종류',
-  colSize: '크기',
-  colAdded: '추가일',
   type: { pdf: 'PDF', video: '동영상' },
   /** 보관 column (spec §3.1): the user's words, never the internal "managed" (design-spec 9). */
   storage: { managed: '사본', linked: '외부 연결' },

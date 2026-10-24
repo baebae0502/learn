@@ -6,7 +6,7 @@ import { COMMANDS, availableMenuCommands, commandLabel, type CommandContextState
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
   FIXTURES, NativeInputNotPermitted, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
-  recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
+  recordedPopups, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -127,7 +127,7 @@ test('menu command 파일 가져오기… opens the (stubbed) dialog once and ad
     await stubOpenDialog(app, [PDF]);
     await runMenuCommand(app, 'file.importManaged');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
-    await expect(page.locator('[data-testid="open-item"][data-title="sample"]')).toBeVisible();
+    await expect(rowByTitle(page, 'sample')).toBeVisible();
     expect(await openDialogCalls(app)).toBe(1);
   } finally {
     await app.close();

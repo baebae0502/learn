@@ -1,23 +1,44 @@
 @layer screens {
+  /* The table fills the content column and is its own scroll view (the virtualizer's): the header sticks to its top,
+     the body is as tall as every row and the virtualizer draws the rows near the view, each on the grid tracks the table
+     computes (columns.ts columnTemplates, as --head-cols / --row-cols). Narrower than the columns' least width, it
+     scrolls sideways. */
   .library-table {
-    --cols: minmax(0, 1fr) 88px 88px 132px;
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: auto;
+    outline: none;
   }
-  /* The body reserves its scrollbar's gutter and the head reserves the same one, so a classic scrollbar (Linux, or
-     macOS with "always show") never shifts the columns against the head; overlay scrollbars reserve nothing. */
   .library-table .table-head {
-    overflow: hidden;
-    scrollbar-gutter: stable;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex: none;
+    display: grid;
+    grid-template-columns: var(--head-cols);
+    min-width: var(--table-min-width);
   }
   .library-table .table-body {
+    position: relative;
+    flex: none;
+    min-width: var(--table-min-width);
+  }
+  .library-table .table-body > .table-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: grid;
+    grid-template-columns: var(--row-cols);
+  }
+  /* The loading line (and a no-results state) takes the body's place under the header. */
+  .library-table :is(.table-empty, .table-empty-cell) {
     flex: 1 1 auto;
     min-height: 0;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-    padding-bottom: var(--space-8);
+    display: flex;
+    flex-direction: column;
   }
   .library-table .linked-mark {
     display: inline-flex;

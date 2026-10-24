@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Bookmark, Copy, FileText, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { Bookmark, ChevronDown, Copy, FileText, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { t } from '../strings';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
+import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
 import { MENU_SEPARATOR, MenuButton, MenuList, type MenuEntry } from '../ui/MenuButton';
@@ -56,6 +57,25 @@ function sortMenu(sort: SortId, order: SortId, opts: { activeTitle?: boolean; te
     },
   ];
 }
+
+/** The board's table: the title takes the rest; 추가일 is the sorted column (design-spec 6 표, M4 spec 3.1). */
+const G_COLUMNS: ReadonlyArray<{ id: string; label: string; width?: number; end?: true }> = [
+  { id: 'title', label: '제목' },
+  { id: 'type', label: '종류', width: 88 },
+  { id: 'size', label: '크기', width: 80, end: true },
+  { id: 'createdAt', label: '추가일', width: 132 },
+];
+/** Every row state of the library table (design-spec 3.1, 6): its name, the forced state, and whether its file is missing. */
+const G_ROWS: ReadonlyArray<readonly [string, string | undefined, boolean]> = [
+  ['기본', undefined, false],
+  ['줄무늬', 'stripe', false],
+  ['호버', 'hover', false],
+  ['선택(포커스 없음)', 'selected', false],
+  ['선택(포커스)', 'selected focused', false],
+  ['키보드 커서', 'cursor', false],
+  ['선택(포커스) + 커서', 'selected focused cursor', false],
+  ['파일 없음', undefined, true],
+];
 
 /** A toast as <Toasts/> draws it, in place: same icon, text and (error only, C-6) the real close button. */
 function StaticToast({ data }: { data: ToastData }) {
@@ -267,42 +287,47 @@ function Part2() {
         <h2 className="g-title">표 행</h2>
         <div className="g-table">
           <div className="table-head">
-            <div className="th">제목</div>
-            <div className="th">종류</div>
-            <div className="th end">크기</div>
-            <div className="th">추가일</div>
-          </div>
-          <div className="table-body">
-            {(
-              [
-                ['기본', undefined, false],
-                ['줄무늬', undefined, false],
-                ['호버', 'hover', false],
-                ['파일 없음', undefined, true],
-                ['키보드 커서', 'cursor', false],
-              ] as const
-            ).map(([name, force, missing]) => (
-              <div key={name} className="table-row" data-force={force} data-missing={missing || undefined}>
-                <div className="td">
-                  <Icon icon={FileText} />
-                  <span className="row-open">{name} · 분자생물학 6장</span>
-                  {missing ? (
-                    <span className="inline-flag c-warning">
-                      <Icon icon={TriangleAlert} size="sm" />
-                      파일 없음
-                    </span>
-                  ) : (
-                    <span className="c-tertiary" title="외부 파일 연결">
-                      <Icon icon={Link} size="sm" />
-                    </span>
-                  )}
+            {G_COLUMNS.map((c, i) => (
+              <div
+                key={c.id}
+                className={cx('th', c.end && 'end', i === 0 && 'is-first', i === G_COLUMNS.length - 1 && 'is-last')}
+                style={c.width ? { width: c.width } : undefined}
+                data-force={c.id === 'createdAt' ? 'sorted' : undefined}
+              >
+                <div className="th-sort">
+                  <span className="ellipsis">{c.label}</span>
+                  {c.id === 'createdAt' && <Icon icon={ChevronDown} size="xs" />}
                 </div>
-                <div className="td">PDF</div>
-                <div className="td end num">4.2 MB</div>
-                <div className="td num">2026. 10. 20.</div>
               </div>
             ))}
           </div>
+          {G_ROWS.map(([name, force, missing]) => (
+            <div key={name} className="table-row" data-force={force} data-missing={missing || undefined}>
+              <div className="td is-first" data-col="title">
+                <Icon icon={FileText} />
+                <span className="item-title ellipsis">{name} · 분자생물학 6장</span>
+                {missing ? (
+                  <span className="inline-flag c-warning">
+                    <Icon icon={TriangleAlert} size="sm" />
+                    파일 없음
+                  </span>
+                ) : (
+                  <span className="linked-mark c-tertiary" title="외부 파일 연결">
+                    <Icon icon={Link} size="sm" />
+                  </span>
+                )}
+              </div>
+              <div className="td" data-col="type" style={{ width: 88 }}>
+                <span className="ellipsis">PDF</span>
+              </div>
+              <div className="td end num" data-col="size" style={{ width: 80 }}>
+                <span className="ellipsis">4.2 MB</span>
+              </div>
+              <div className="td num is-last" data-col="createdAt" style={{ width: 132 }}>
+                <span className="ellipsis">2026. 10. 20.</span>
+              </div>
+            </div>
+          ))}
         </div>
         <div className="g-row">
           <Icon icon={Copy} />

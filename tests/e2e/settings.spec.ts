@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { mainWindowChrome, shouldUseVibrancy } from '../../apps/desktop/src/main/window-options';
-import { FIXTURES, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, runMenuCommand } from './helpers';
+import { FIXTURES, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -113,7 +113,7 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await expect.poll(async () => (await page.getByTestId('item-row').boundingBox())?.height).toBe(24);
     await expect(page.locator('html')).toHaveAttribute('data-density', 'compact');
     await settings.getByTestId('font-size-15').click();
-    await expect.poll(() => page.getByTestId('open-item').first().evaluate((el) => getComputedStyle(el).fontSize)).toBe('15px');
+    await expect.poll(() => rowAt(page, 0).locator('.item-title').evaluate((el) => getComputedStyle(el).fontSize)).toBe('15px');
     // Bars and rows keep their heights (only the type scales).
     expect(await page.getByTestId('toolbar').evaluate((el) => el.getBoundingClientRect().height)).toBe(52);
     expect((await page.getByTestId('item-row').boundingBox())?.height).toBe(24);

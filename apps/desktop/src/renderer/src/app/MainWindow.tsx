@@ -13,7 +13,8 @@ import { useBusyScreen } from '../library/busyScreen';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySidebar } from '../library/LibrarySidebar';
-import { LibraryTable } from '../library/LibraryTable';
+import { LibraryLoading } from '../library/LibraryLoading';
+import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
 import { useImport } from '../library/useImport';
 import { Palette, openPalette } from '../palette/Palette';
@@ -195,6 +196,10 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const list = items.data ?? NO_ITEMS;
   const count = list.length;
+  // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
+  // one here when a command is judged.
+  const listRef = useRef(list);
+  listRef.current = list;
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -214,7 +219,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionRelinkable: 0,
     selection: noSelection,
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
-    targetsOf: (ids) => freshTargets(queryClient, list, ids),
+    targetsOf: (ids) => freshTargets(queryClient, listRef.current, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
     open: (itemId) => setView({ kind: 'reader', itemId }),
@@ -228,7 +233,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, textSize, count, list, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
+  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -237,10 +242,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     envRef.current = env;
   });
 
-  const showItemMenu = useCallback(async (itemId: string, x: number, y: number) => {
+  /** The item menu for the table's selection, in table order (right-click selected first, design-spec 7.1). */
+  const showItemMenu = useCallback(async (itemIds: readonly string[], x: number, y: number) => {
     try {
-      const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [itemId], x, y }));
-      if (picked) runPicked(picked.commandId, envRef.current, [itemId]);
+      const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [...itemIds], x, y }));
+      if (picked) runPicked(picked.commandId, envRef.current, itemIds);
     } catch (e) {
       actionFailed(e);
     }
@@ -252,14 +258,17 @@ export function MainWindow(_props: { info: AppInfo }) {
   // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
-  // <body>: hand it to the first title, where the list continues; keyboard users keep their place.
+  // <body>: hand it to the table, whose grid passes it on to its first row; keyboard users keep their place. The
+  // virtualizer draws the rows once it has measured its view, so the hand-over waits one frame (and does nothing if
+  // the focus went somewhere meanwhile).
   const leftWithFocus = useRef(false);
-  const firstTitle = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     const hadFocus = leftWithFocus.current;
     leftWithFocus.current = false;
     if (!hadFocus || view.kind !== 'library' || count === 0) return;
-    if (document.activeElement === null || document.activeElement === document.body) firstTitle.current?.focus();
+    requestAnimationFrame(() => {
+      if (document.activeElement === null || document.activeElement === document.body) document.querySelector<HTMLElement>('[data-testid="library-table"]')?.focus();
+    });
   }, [view.kind, count]);
 
   const toolbar =
@@ -274,11 +283,13 @@ export function MainWindow(_props: { info: AppInfo }) {
     items.data === undefined ? (
       listFailure !== null ? (
         <ListFailed message={listFailure} retrying={items.isFetching} onRetry={() => void items.refetch()} focusOnLeave={leftWithFocus} />
-      ) : null
+      ) : (
+        <LibraryLoading />
+      )
     ) : count === 0 || busy?.holding ? (
       <EmptyLibrary busy={busy} focusOnLeave={leftWithFocus} />
     ) : (
-      <LibraryTable items={list} firstTitleRef={firstTitle} onOpen={openFromList} onContextMenu={(itemId, x, y) => void showItemMenu(itemId, x, y)} />
+      <LibraryView items={list} onOpen={openFromList} onItemMenu={(itemIds, x, y) => void showItemMenu(itemIds, x, y)} />
     );
 
   return (

@@ -9,6 +9,12 @@ const PANES = ['sidebar', 'content', 'toasts'] as const;
 const FOCUSABLE =
   'button:not([disabled]):not([aria-disabled="true"]), [href], input:not([disabled]), select:not([disabled]), video[controls], [tabindex="0"]:not([aria-disabled="true"]), [role="option"]';
 
+/**
+ * A grid (the library table) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the
+ * first row before there is one), never on a header button or a column edge inside it (tabindex -1).
+ */
+const landsOn = (el: Element): boolean => el.closest('[role="grid"]') === null || el.getAttribute('tabindex') === '0';
+
 /** F6 / ⇧F6: next / previous pane (sidebar → content → toasts); folded (inert) and absent panes are skipped. */
 export function focusPane(direction: 1 | -1): void {
   const panes = PANES.flatMap((name) => {
@@ -19,9 +25,10 @@ export function focusPane(direction: 1 | -1): void {
   if (panes.length === 0) return;
   const at = panes.findIndex((p) => p.contains(document.activeElement));
   const next = panes[at === -1 ? (direction === 1 ? 0 : panes.length - 1) : (at + direction + panes.length) % panes.length]!;
-  for (const target of next.querySelectorAll<HTMLElement>(FOCUSABLE)) {
+  for (const target of [...next.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)) {
     target.focus();
-    if (document.activeElement === target) return;
+    // Landed once the focus is in the target (a grid hands its focus on to the stop row).
+    if (target.contains(document.activeElement)) return;
   }
   next.tabIndex = -1; // nothing to land on: the pane itself
   next.focus();

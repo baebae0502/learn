@@ -19,7 +19,7 @@
   :root[data-window-inactive] :is(:focus-visible, [data-focus-visible], .soft-disabled) {
     outline: none;
   }
-  :root[data-window-inactive] :is(.nav-row[data-focus-visible], .table-row:has(.row-open:focus-visible)) {
+  :root[data-window-inactive] :is(.nav-row[data-focus-visible], .table-row[data-focus-visible]) {
     box-shadow: none;
   }
   :root[data-window-inactive] .field:is([data-focus-visible], [data-focus-within]),

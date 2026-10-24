@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, runMenuCommand, seedLibrary, type Session } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -19,6 +19,8 @@ test('component state board (gallery parts 1–2)', async ({}, testInfo) => {
       for (const part of [1, 2]) {
         await s.page.goto(`learn://app/index.html?window=gallery&part=${part}&platform=linux&det=1`);
         await s.page.getByTestId('gallery').waitFor();
+        // The board fits the 1440 × 900 window: nothing at its bottom is cut off.
+        expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
         await shoot(s.page, `gallery${part}-${theme}`);
       }
     }
@@ -38,7 +40,7 @@ const library = (dir: string) => [
 
 test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-col="added"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
   try {
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
@@ -56,6 +58,8 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
       if (list.ok) for (const i of list.data) await window.learn.library.get({ itemId: i.id });
     });
     await expect(s.page.getByTestId('missing-flag')).toHaveCount(1);
+    await rowAt(s.page, 0).click(); // library.html: the first row selected while the table has the focus
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await shoot(s.page, `library-${theme}`, { mask: dates() });
@@ -101,9 +105,9 @@ test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) =>
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     await setTheme(s.page, 'light');
     await s.page.keyboard.press('F6');
-    await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-col="added"]')] });
+    await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')] });
     await s.page.keyboard.press('F6');
-    await shoot(s.page, 'focus-row-light', { mask: [s.page.locator('[data-col="added"]')] });
+    await shoot(s.page, 'focus-row-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')] });
   } finally {
     await s.app.close();
   }
@@ -131,7 +135,7 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
 
 test('palette: empty query, 초성 results, several rows, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-col="added"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
   const input = s.page.getByTestId('palette-input');
   const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
   try {
@@ -228,7 +232,7 @@ test('settings window (light, dark, focus, not key, a refused folder), compact d
   // The library as deep as the default macOS one, under a HOME in the test folder: the path reads the same everywhere.
   const home = tourHome(testInfo.outputPath());
   const s = await launchTour(path.join(home, 'Library', 'Application Support', 'Learn'), { HOME: home });
-  const dates = () => [s.page.locator('[data-col="added"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     for (const theme of THEMES) {
@@ -320,6 +324,69 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('table: several rows selected with the keyboard cursor, sorted by title, and the window not key', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  try {
+    const [pdf] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await seedLibrary(s.app, { count: 11, from: pdf! });
+    await expect(s.page.getByTestId('toolbar-count')).toHaveText('12개');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // library.html?state=multi: rows 1, 3 and 6 selected, the keyboard cursor on 6 (← does nothing in the table, but
+      // it is a key: the cursor shows its ring).
+      await rowAt(s.page, 0).click();
+      await rowAt(s.page, 2).click({ modifiers: ['Control'] });
+      await rowAt(s.page, 5).click({ modifiers: ['Control'] });
+      await s.page.keyboard.press('ArrowLeft');
+      await expect(rowAt(s.page, 5)).toHaveAttribute('data-focus-visible', 'true');
+      await expect(s.page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(3);
+      await shoot(s.page, `table-multi-${theme}`, { mask: dates() });
+    }
+    await setTheme(s.page, 'light');
+    const title = s.page.locator('[data-testid="column-header"][data-col="title"]');
+    await title.click();
+    await expect(title).toHaveAttribute('aria-sort', 'ascending');
+    await rowAt(s.page, 0).click();
+    await shoot(s.page, 'table-sorted-light', { mask: dates() });
+    // Another window takes the key: the selection turns neutral and the cursor ring goes (design-spec 2.1, 3.1).
+    await s.page.keyboard.press('ArrowDown');
+    await expect(rowAt(s.page, 1)).toHaveAttribute('data-focus-visible', 'true');
+    await s.app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await shoot(s.page, 'table-inactive-light', { mask: dates() });
+    await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('table: loading — the header stays and 불러오는 중… comes after 300 ms', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await s.app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('library:list');
+      ipcMain.handle('library:list', () => new Promise(() => {})); // never answers: the loading state holds for the shot
+    });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.reload();
+      await expect(s.page.getByTestId('table-loading')).toBeVisible();
+      await shoot(s.page, `table-loading-${theme}`);
     }
   } finally {
     await s.app.close();

@@ -49,7 +49,7 @@ function placeOf(e: KeyboardEvent): KeyPlace {
   const target = e.target instanceof Element ? e.target : null;
   if (document.querySelector('[data-testid="drop-overlay"]')) return 'dropping';
   if (target?.closest('[data-testid="palette"]')) return 'palette';
-  if (target?.closest('[data-testid="open-item"]')) return 'row';
+  if (target?.closest('[data-testid="item-row"]')) return 'row'; // ↩ on a table row opens it
   return 'other';
 }
 

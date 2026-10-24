@@ -32,7 +32,7 @@ import { commandById, commandLabel, type CommandId } from '../../packages/domain
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
 import {
   NativeInputNotPermitted, ROOT, bringAppToFront, closeSheet, drag, dropSource, expectWindow, launch, mainWindow, nativeKeystroke, osascript, osascriptLimits,
-  runMenuCommand, stubOpenDialog, type KeyModifier, type LaunchOptions, type Session,
+  rowAt, rowByTitle, runMenuCommand, stubOpenDialog, type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
@@ -426,6 +426,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       await target.click();
       await pause(400);
     };
+    /** Glides onto a table row, rests, and double-clicks it: a single click only selects (M4 spec 3.3). */
+    const glideOpen = async (p: Page, kind: WindowKind, target: ReturnType<Page['getByTestId']>) => {
+      const box = (await target.boundingBox())!;
+      await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
+      await pause(250);
+      await target.dblclick();
+      await pause(400);
+    };
     /**
      * Rests the pointer where it hovers nothing and covers no overlay element (demo.css): the main window's empty
      * sidebar bottom (x 120, 72 from the bottom); the settings window's empty header corner.
@@ -555,7 +563,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       await closed;
     };
     const rows = page.getByTestId('item-row');
-    const firstTitle = page.getByTestId('open-item').first();
+    const firstRow = rowAt(page, 0);
     const html = page.locator('html');
     const backToLibrary = async () => {
       if (await page.getByTestId('viewer-back').isVisible()) await runMenuCommand(app, 'nav.back');
@@ -643,7 +651,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const dialogCalls = () => app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
     const importedAt = await press('o', ['command'], 'file.importManaged', async () => (await dialogCalls()) > 0);
     await expect(rows).toHaveCount(media.drop.length + 1);
-    await expect(firstTitle).toHaveAttribute('data-title', READ_TITLE);
+    await expect(firstRow).toHaveAttribute('data-title', READ_TITLE);
     // The ⌘O result (one item), the only toast now: the pointer comes to rest on it and holds it.
     const toast = page.getByTestId('import-done').filter({ hasText: '1개' });
     await expect(toast).toBeVisible();
@@ -652,7 +660,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await afterKey(importedAt);
 
     // 5. ⇧F6 from nowhere goes to the last pane, the toast (the focus holds it), then F6 cycles on: 내 라이브러리 (the
-    //    accent fill, no ring), the first title (its ring); ↩ opens it. A sequence: each stop is read with its pill.
+    //    accent fill, no ring), the first row (selected as the table takes the focus, its ring); ↩ opens it. A sequence: each stop is read with its pill.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); // n1: a reset, not a gesture
     await chapter(`${key('F6')} / ${key('Shift+F6')} 키로 사이드바, 표, 알림 패널 사이를 옮겨 다닙니다.`);
     if (await toast.isVisible()) {
@@ -665,7 +673,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect(page.getByTestId('nav-library')).toBeFocused();
     await pause(2500);
     await page.keyboard.press('F6');
-    await expect(firstTitle).toBeFocused();
+    await expect(firstRow).toBeFocused();
     await pause(4500);
     const openedAt = await keyIn(page, 'Enter');
 
@@ -752,7 +760,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
     // 8. A video this platform cannot play: why, and what to do next; then ⌘1 back, held (T13R2-M1).
     await chapter(`재생할 수 없는 동영상은 이유를 알리고 ‘${label('item.showInFolder')}’와 ‘${label('item.openExternally')}’를 권합니다.`);
-    await glideClick(page, 'main', page.locator(`[data-testid="open-item"][data-title="${UNPLAYABLE_TITLE}"]`));
+    await glideOpen(page, 'main', rowByTitle(page, UNPLAYABLE_TITLE));
     await park(page, 'main');
     await expect(page.getByTestId('video-error')).toBeVisible();
     await pause(2200);
@@ -889,7 +897,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const resetAt = await press('0', ['command'], 'view.textReset', async () => (await html.getAttribute('data-font-size')) === '13');
     await expect(html).toHaveAttribute('data-font-size', '13');
     await afterKey(resetAt, 1200);
-    await glideClick(page, 'main', page.locator(`[data-testid="open-item"][data-title="${READ_TITLE}"]`));
+    await glideOpen(page, 'main', rowByTitle(page, READ_TITLE));
     await park(page, 'main');
     await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expect(indicator).not.toHaveText(pageOne ?? '');

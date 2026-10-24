@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog, type Session } from './helpers';
+import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -147,30 +147,29 @@ test('while an import runs, its controls are disabled with the reason as their t
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
-    // The focused button left with the first-run screen: focus continues on the first title, not on <body>.
-    await expect(s.page.getByTestId('open-item').first()).toBeFocused();
+    // The focused button left with the first-run screen: focus continues on the table's first row, not on <body>.
+    await expect(rowAt(s.page, 0)).toBeFocused();
 
     // Opening from the list goes through the registry (item.open), so it is refused while the import holds the window.
     await holdOpenDialog(s.app, []);
     await s.page.getByTestId('import-menu').click();
     await s.page.getByTestId('import-menu-managed').click();
     await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
-    const title = s.page.locator('[data-testid="open-item"][data-title="held"]');
+    const row = rowByTitle(s.page, 'held');
     const opensNothing = async (how: () => Promise<void>) => {
       await how();
       await frames(s);
       await expect(s.page.getByTestId('viewer-title')).toHaveCount(0);
       await expect(s.page.getByTestId('library-table')).toBeVisible();
     };
-    await opensNothing(() => title.click());
-    await opensNothing(() => s.page.getByTestId('item-row').locator('[data-col="added"]').dblclick());
+    await opensNothing(() => row.dblclick());
     await opensNothing(async () => {
-      await title.focus();
+      await row.click(); // selecting stays allowed; opening is the registry's item.open, refused while held
       await s.page.keyboard.press('Enter');
     });
     await releaseOpenDialog(s.app); // cancelled: nothing imported, nothing to report
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
-    await title.click();
+    await row.dblclick();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
   } finally {
     await s.app.close();
@@ -336,8 +335,8 @@ test('a first list read that fails says so where the list goes, and 다시 시�
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await expect(s.page.getByTestId('list-failed')).toHaveCount(0);
     await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개');
-    // The focused 다시 시도 left with the notice: focus continues on the first title.
-    await expect(s.page.getByTestId('open-item').first()).toBeFocused();
+    // The focused 다시 시도 left with the notice: focus continues on the table's first row.
+    await expect(rowAt(s.page, 0)).toBeFocused();
   } finally {
     await s.app.close();
   }
@@ -367,46 +366,6 @@ test('boot: a library with items never shows the first-run screen, not even befo
     const mounted = await s.page.evaluate(() => (globalThis as { __learnMounted?: string[] }).__learnMounted ?? []);
     expect(mounted).toContain('library-table'); // the observer did see the boot
     expect(mounted).not.toContain('empty-state');
-  } finally {
-    await s.app.close();
-  }
-});
-
-test('a title opens on click, ↩ or Space, a row on double-click; the keyboard-focused title rings its row', async ({}, testInfo) => {
-  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
-  const src = testInfo.outputPath('src');
-  try {
-    await importPaths(s.page, [fakePdf(src, 'first.pdf', '1'), fakePdf(src, 'second.pdf', '2')]);
-    await expect(s.page.getByTestId('item-row')).toHaveCount(2);
-    // Nothing had focus on the first-run screen, so the list takes none (the hand-off is only for a focused button).
-    expect(await s.page.evaluate(() => document.activeElement === document.body)).toBe(true);
-    const title = s.page.locator('[data-testid="open-item"][data-title="first"]');
-    const row = s.page.getByTestId('item-row').filter({ has: title });
-    const other = s.page.getByTestId('item-row').filter({ hasNot: title });
-    const ring = (r: typeof row) => r.evaluate((e) => getComputedStyle(e).boxShadow);
-    await expect(title).toHaveAttribute('title', 'first'); // the full title as its tooltip (the cell truncates)
-
-    const back = async () => {
-      await s.page.getByTestId('viewer-back').click();
-      await expect(s.page.getByTestId('library-table')).toBeVisible();
-    };
-    for (const key of ['Enter', 'Space']) {
-      await title.focus();
-      await s.page.keyboard.press('Shift+Tab'); // arrive by keyboard (focus-visible), as a user does
-      await s.page.keyboard.press('Tab');
-      await expect(title).toBeFocused();
-      // Keyboard-cursor grammar: an inside 2 px ring on the whole row, none on the others.
-      expect(await ring(row)).toMatch(/ 0px 0px 0px 2px inset$/);
-      expect(await ring(other)).toBe('none');
-      await s.page.keyboard.press(key);
-      await expect(s.page.getByTestId('viewer-title')).toHaveText('first');
-      await back();
-    }
-    await title.click();
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('first');
-    await back();
-    await row.locator('[data-col="added"]').dblclick();
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('first');
   } finally {
     await s.app.close();
   }

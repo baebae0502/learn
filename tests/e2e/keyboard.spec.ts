@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, closeSheet, drag, dropSource, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, openItem, releaseOpenDialog, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, openItem, releaseOpenDialog, rowAt, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -29,15 +29,15 @@ test('import → open → page → back → palette → settings → shortcuts, 
     expect(await focusedTestId(page)).toBe('import-managed');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('item-row')).toHaveCount(2);
-    // The first-run screen took the focus along: the list's first title has it now (MainWindow's handover).
-    await expect(page.getByTestId('open-item').first()).toBeFocused();
+    // The first-run screen took the focus along: the table's first row has it now (MainWindow's handover), selected.
+    await expect(rowAt(page, 0)).toBeFocused();
     await expectNoSeriousA11y(page, 'library list');
 
     await page.keyboard.press('Shift+F6'); // sidebar (whether or not the success toast is still up)
     expect(await focusedTestId(page)).toBe('nav-library');
-    await page.keyboard.press('F6'); // content: the first title
-    expect(await focusedTestId(page)).toBe('open-item');
-    await expect(page.locator('.table-row:has(.row-open:focus-visible)')).toHaveCount(1); // keyboard cursor ring
+    await page.keyboard.press('F6'); // content: the table's cursor row
+    expect(await focusedTestId(page)).toBe('item-row');
+    await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expectNoSeriousA11y(page, 'PDF reader');

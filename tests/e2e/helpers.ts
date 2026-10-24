@@ -291,8 +291,79 @@ export function drag(page: Page, type: DragType, carry: DragCarry, opts: { altKe
   );
 }
 
+/**
+ * The table row of the item titled exactly `title` . The table is virtualized: a row far from the viewport is
+ * not in the DOM until it is scrolled to.
+ */
+export const rowByTitle = (page: Page, title: string): Locator => page.locator(`[data-testid="item-row"][data-title=${JSON.stringify(title)}]`);
+
+/** The row at `index` in the table's current order (data-index): a virtualized body's DOM order need not be the visual one. */
+export const rowAt = (page: Page, index: number): Locator => page.locator(`[data-testid="item-row"][data-index="${index}"]`);
+
+/** Opens an item as a user does: a double-click on its row (M4 spec 3.3). A single click only selects. */
 export async function openItem(page: Page, title: string): Promise<void> {
-  await page.locator(`[data-testid="open-item"][data-title="${title}"]`).click();
+  const row = rowByTitle(page, title);
+  await row.scrollIntoViewIfNeeded();
+  await row.dblclick();
+}
+
+/**
+ * Selects rows by title: a plain click on the first, a modifier-click on each of the rest. `Meta` (the default, toggle)
+ * is the platform's: ⌘ on macOS, Ctrl elsewhere (the table's own rule, LibraryTable).
+ */
+export async function selectRows(page: Page, titles: readonly string[], opts: { modifier?: 'Meta' | 'Shift' | 'Control' } = {}): Promise<void> {
+  const [first, ...rest] = titles;
+  if (first === undefined) return;
+  await rowByTitle(page, first).click();
+  const wanted = opts.modifier ?? 'Meta';
+  const modifier = wanted === 'Meta' && process.platform !== 'darwin' ? 'Control' : wanted;
+  for (const title of rest) await rowByTitle(page, title).click({ modifiers: [modifier] });
+}
+
+/** One seeded item's facts, as main's test hook takes them (apps/desktop/src/main/test-hooks.ts). */
+export interface SeedRow {
+  title: string;
+  creators: string[];
+  year: number | null;
+  createdAt: string;
+}
+
+const SEED_KO = ['세포', '신호', '전달', '단백질', '효소', '반응', '유전자', '발현', '대사', '경로', '면역', '수용체', '광합성', '열역학', '확률', '통계', '강의', '노트'];
+const SEED_EN = ['Signal', 'Protein', 'Enzyme', 'Kinetics', 'Bayesian', 'Inference', 'Linear', 'Algebra', 'Membrane', 'Transport', 'Genome', 'Lecture', 'Notes', 'Review'];
+const SEED_NAMES = ['김민지', '이서준', '박지훈', '최유나', '정하늘', 'Alice Kim', 'Brian Lee', 'Chen Wei', 'Dana Park', 'Erik Lund'];
+
+/**
+ * `count` seeded rows from a fixed generator (mulberry32): Korean and English titles, each ending in its running number
+ * (so every title is unique), 0–4 creators, a year or none, and 추가일 one minute apart going back from `base`.
+ */
+export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z')): SeedRow[] {
+  let a = seed | 0;
+  const rand = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+  return Array.from({ length: count }, (_, i) => {
+    const words = rand() < 0.6 ? SEED_KO : SEED_EN;
+    return {
+      title: `${pick(words)} ${pick(words)} ${i + 1}`,
+      creators: Array.from({ length: Math.floor(rand() * 5) }, () => pick(SEED_NAMES)),
+      year: rand() < 0.1 ? null : 1985 + Math.floor(rand() * 41),
+      createdAt: new Date(base - i * 60_000).toISOString(),
+    };
+  });
+}
+
+/**
+ * Adds `count` items that share `from`'s file — one managed copy, one transaction — through main's E2E hook.
+ * Resolves once main has written them; the list follows its one libraryChanged.
+ */
+export async function seedLibrary(app: ElectronApplication, opts: { count: number; from: LibraryItem; seed?: number }): Promise<void> {
+  const input = { fromItemId: opts.from.id, rows: seedRows(opts.count, opts.seed) };
+  const added = await app.evaluate((_electron, arg) => (globalThis as unknown as { __learnTest: { seedItems(i: typeof arg): number } }).__learnTest.seedItems(arg), input);
+  if (added !== opts.count) throw new Error(`seedLibrary: ${added} of ${opts.count} items added`);
 }
 
 /** One application-menu entry as JSON. Runtime roles are lower-case (`selectall`, `togglefullscreen`). */
@@ -362,6 +433,8 @@ export interface PopupItem {
   id: string | null;
   label: string;
   enabled: boolean;
+  /** A checkbox item's mark (the column header menu); false for the others. */
+  checked: boolean;
   type: string;
 }
 
@@ -372,11 +445,11 @@ export interface PopupItem {
  */
 export async function stubContextMenu(app: ElectronApplication, pick: string | null): Promise<void> {
   await app.evaluate(({ Menu }, pick) => {
-    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; type: string; click(): void }
+    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; click(): void }
     const g = globalThis as { __learnPopups?: PopupItem[][] };
     g.__learnPopups = [];
     Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { callback?: () => void }) {
-      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, type: i.type })));
+      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type })));
       const target = pick === null ? undefined : this.items.find((i) => i.label === pick && i.enabled && i.visible);
       setTimeout(() => {
         target?.click();

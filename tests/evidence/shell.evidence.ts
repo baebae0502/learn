@@ -14,7 +14,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, runMenuCommand, stubContextMenu, stubOpenDialog,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog,
   type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
@@ -402,14 +402,14 @@ async function timedOpen(page: Page, title: string, ready: string): Promise<{ bl
   return page.evaluate(
     async ({ title, ready }) => {
       const content = document.querySelector('[data-testid="content"]')!;
-      const button = document.querySelector<HTMLElement>(`[data-testid="open-item"][data-title="${CSS.escape(title)}"]`)!;
+      const row = document.querySelector<HTMLElement>(`[data-testid="item-row"][data-title="${CSS.escape(title)}"]`)!;
       const visible = (sel: string) => {
         const el = document.querySelector(sel);
         const r = el?.getBoundingClientRect();
         return Boolean(r && r.width > 0 && r.height > 0);
       };
       const t0 = performance.now();
-      button.click();
+      row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 })); // opens it (spec 3.3), timed from here
       let sawBlank = false;
       let blankMs: number | null = null;
       while (performance.now() - t0 < 15_000) {
@@ -641,7 +641,7 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
         // Critique mac3 n7 (and run 1): the page had its rows, but the window capture showed an empty table, a frame not
         // yet on screen. The capture is taken again (up to 4 times, 500 ms apart) until it shows the first row's title:
         // a dark text pixel in its first 160 px, on three lines through its middle.
-        const title = (await opaque.page.getByTestId('item-row').first().locator('[data-testid="open-item"]').boundingBox())!;
+        const title = (await opaque.page.locator('[data-testid="item-row"][data-index="0"] .item-title').boundingBox())!;
         const along = Array.from({ length: Math.min(160, Math.floor(title.width)) * 3 }, (_, i) => [Math.round(title.x) + Math.floor(i / 3), Math.round(title.y + title.height / 2) + (i % 3) * 2 - 2] as const);
         let shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
         let opaqueAttempts = 1;
@@ -1541,7 +1541,7 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     });
     await stubContextMenu(s.app, 'Finder에서 보기');
     await bringAppToFront(s.app);
-    await s.page.getByTestId('item-row').filter({ has: s.page.locator('[data-testid="open-item"][data-title="sample"]') }).click({ button: 'right' });
+    await rowByTitle(s.page, 'sample').click({ button: 'right' });
     const t0 = Date.now();
     let front = frontmostProcess();
     while (front.name !== 'Finder' && Date.now() - t0 < 5_000) {

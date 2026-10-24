@@ -56,8 +56,20 @@
     border-radius: var(--radius-lg);
     background: var(--bg-sidebar);
   }
-  .gallery .g-table {
-    --cols: minmax(0, 1fr) 88px 88px 132px;
+  /* The board's table rows are static (the library table is virtualized): flex rows, the title taking the rest and
+     the other columns their widths inline; the header keeps the body's 4 px top inset. */
+  .gallery .g-table .table-head,
+  .gallery .g-table .table-row {
+    display: flex;
+  }
+  .gallery .g-table .table-head {
+    margin-bottom: var(--space-4);
+  }
+  .gallery .g-table :is(.th, .td) {
+    flex: none;
+  }
+  .gallery .g-table :is(.th.is-first, .td.is-first) {
+    flex: 1 1 0;
   }
   .gallery .g-static {
     position: static;

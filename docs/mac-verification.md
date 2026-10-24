@@ -366,8 +366,10 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 | 29 | [40098108104](https://github.com/baebae0502/learn/actions/runs/40098108104) | 10-24 13:26 | library / 아니오 / a47d52e (Task 3 비활성 창 증거 수정 1) | 83초 → 2분(무료) | **실패**: 비활성 창 캡처는 맞게 찍혔으나(행 225,226,226, 도구 막대 236) 판정이 반투명 토큰 문자열과 비교 — 10/11 ok |
 | 30 | [40098357693](https://github.com/baebae0502/learn/actions/runs/40098357693) | 10-24 13:29 | library / 아니오 / bf52a9e (수정 2) | 78초 → 2분(무료) | **실패**: 기준 PNG(포커스 없는 선택)를 라벨 폴더 밖에서 찾음 — 10/11 ok |
 | 31 | [40098617639](https://github.com/baebae0502/learn/actions/runs/40098617639) | 10-24 13:33 | library / 아니오 / 1c9d1da (수정 3) | 70초 → 2분(무료) | **성공**: 증거 테스트 4개, 확인 11개 모두 ok — 비활성 창은 캡처 픽셀로 판정(행 = 포커스 없는 선택의 그려진 채움, 도구 막대 236) |
+| 32 | [40100366921](https://github.com/baebae0502/learn/actions/runs/40100366921) | 10-24 13:57 | library / 아니오 / 0d8733b (Task 4 선택 → 명령) | 103초 → 2분(무료) | **실패**: 16/18 ok — 메뉴 캡처가 메뉴를 닫으려 보낸 여분의 Esc가 표의 선택을 지워(표의 Esc = 선택 해제) 실제 ⇧⌘R에 대상이 없었고, 다음 ⌘-클릭이 선택을 켰다 |
+| 33 | [40100757864](https://github.com/baebae0502/learn/actions/runs/40100757864) | 10-24 14:02 | library / 아니오 / 3c9c9f4 (검사가 자기 행을 고른다) | 73초 → 2분(무료) | **성공**: 증거 테스트 5개, 확인 18개 모두 ok — 실제 ⇧⌘R이 네이티브로 고른 행을 보였다(이름 붙은 사본), 파일 메뉴 둘 다 켜짐/꺼짐, ⌘/ 시트 두 열·자연 높이 562 |
 
-**합계: macOS 31회, 191분.** Task 3의 판정 값과 PNG는 `evidence/m4-t3d/40098617639/evidence/evidence-results/`(`m4-library.json`, `m4-t3d/m4-0*.png`). 28회의 비활성 창 PNG는 키 창 상태로 찍혀 있었다(디자인 비평이 찾음): 그 실행의 검사는 계산된 스타일만 읽어 통과했다.
+**합계: macOS 33회, 195분.** Task 3의 판정 값과 PNG는 `evidence/m4-t3d/40098617639/evidence/evidence-results/`, Task 4는 `evidence/task4b/40100757864/evidence/evidence-results/`(`m4-library.json`, `task4b/m4-04*.png`). 28회의 비활성 창 PNG는 키 창 상태로 찍혀 있었다(디자인 비평이 찾음): 그 실행의 검사는 계산된 스타일만 읽어 통과했다.
 
 ## 알려진 한계
 

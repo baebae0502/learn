@@ -378,3 +378,24 @@ test('one save at a time: a double press of 저장 writes once', async ({}, test
     await app.close();
   }
 });
+
+test('a refused close answers at once even when the page runs no frames (invalid, never a timeout)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await showPanel(app, page);
+    await selectRows(page, ['sample']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'date').fill('2024-13');
+    await page.evaluate(() => {
+      window.requestAnimationFrame = () => 0; // a hidden or occluded window: no frame ever comes
+    });
+    await (await mainWindow(app)).evaluate((w) => w.close());
+    await expect.poll(() => flushLog(app)).toEqual([{ action: 'close', result: 'invalid' }]);
+    expect(await windowCount(app)).toBe(1);
+    await expect(field(page, 'date')).toBeFocused();
+    await page.getByTestId('editor-discard').click(); // an invalid edit would keep the app from closing
+  } finally {
+    await app.close().catch(() => {});
+  }
+});

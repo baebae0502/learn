@@ -155,9 +155,14 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     // again too, so the arrows go on from it.
     useLibrary.getState().setSelected([item.id]);
     // The focus goes to the marked field, not on in the table: the field draws its halo and the table's selection turns
-    // neutral by itself. After the paint, so a panel that was folded has its field to focus.
-    if (!v.ok) await new Promise<void>((done) => requestAnimationFrame(() => done()));
-    if (!v.ok) focusFirstError(v.errors);
+    // neutral by itself. The answer never waits for a paint (a hidden or occluded window runs no frames, and main's
+    // flush would time out and let the window go): focus now, and once more after the next frame if the table took it back.
+    if (!v.ok) {
+      focusFirstError(v.errors);
+      requestAnimationFrame(() => {
+        if (rootRef.current && !rootRef.current.contains(document.activeElement)) focusFirstError(v.errors);
+      });
+    }
     return false;
   };
   const leaveRef = useRef(leave);

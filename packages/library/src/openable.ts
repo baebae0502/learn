@@ -71,12 +71,21 @@ export interface OpenableAsset {
   storageMode: 'managed' | 'linked';
 }
 
-/** Where the named copy of an asset lives (null: a type with no known extension, nothing to name). */
-export function namedCopyPath(layout: LibraryLayout, asset: OpenableAsset, title: string): string | null {
+/**
+ * The file name the OS sees for an asset under this title: the named copy's (namedCopyPath) and the default in
+ * 사본 내보내기's save panel — the title made safe (the original name's base when the title is empty) with the type's
+ * extension. null: a type with no known extension.
+ */
+export function openableName(asset: Pick<OpenableAsset, 'mime' | 'originalName'>, title: string): string | null {
   const ext = openExtension(asset.mime, asset.originalName);
   if (!ext) return null;
-  const base = safeBaseName(title, safeBaseName(path.parse(asset.originalName).name));
-  return path.join(layout.derivedDir, 'open', asset.id, `${base}.${ext}`);
+  return `${safeBaseName(title, safeBaseName(path.parse(asset.originalName).name))}.${ext}`;
+}
+
+/** Where the named copy of an asset lives (null: a type with no known extension, nothing to name). */
+export function namedCopyPath(layout: LibraryLayout, asset: OpenableAsset, title: string): string | null {
+  const name = openableName(asset, title);
+  return name === null ? null : path.join(layout.derivedDir, 'open', asset.id, name);
 }
 
 /** The mode of a named copy: read-only for everyone. */
@@ -250,4 +259,36 @@ export async function openableFile(layout: LibraryLayout, asset: OpenableAsset, 
   const { size } = await fs.stat(real);
   await ensureNamedCopy(real, dst, size);
   return dst;
+}
+
+/** A file name may take 255 bytes on every file system we write to; an export's temporary name stays within it. */
+export const EXPORT_TEMP_BYTES = 255;
+
+/**
+ * `.<name>.learn-export-<uuid>.part`: hidden (leading dot) and in the chosen folder, so the rename that finishes the
+ * export stays on one volume and is atomic. A long chosen name is cut at a character to keep within EXPORT_TEMP_BYTES.
+ */
+export function exportTempName(fileName: string, id: string = randomUUID()): string {
+  const tail = `.learn-export-${id}.part`;
+  const room = EXPORT_TEMP_BYTES - 1 - Buffer.byteLength(tail, 'utf8');
+  const chars = Array.from(fileName.normalize('NFC'));
+  while (Buffer.byteLength(chars.join(''), 'utf8') > room) chars.pop();
+  return `.${chars.join('')}${tail}`;
+}
+
+/**
+ * 사본 내보내기 (spec §7): copies `src` to `dst` through a temporary name beside it (copy-on-write where the volume has
+ * it), then renames it over `dst`. The chosen path only ever holds the whole file, and a file already there (the save
+ * panel asked before replacing it) is replaced in one step. Any failure removes the temporary file and is rethrown.
+ * The copy keeps the source's mode: the user's file, not a locked named copy.
+ */
+export async function exportFile(src: string, dst: string): Promise<void> {
+  const tmp = path.join(path.dirname(dst), exportTempName(path.basename(dst)));
+  try {
+    await fs.copyFile(src, tmp, fsConstants.COPYFILE_FICLONE);
+    await fs.rename(tmp, dst);
+  } catch (e) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
 }

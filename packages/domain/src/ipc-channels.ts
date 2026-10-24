@@ -9,6 +9,7 @@ export const Channels = {
     pickAndRelink: 'library:pickAndRelink', recoveryReport: 'library:recoveryReport', detail: 'library:detail',
     updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', listTrash: 'library:listTrash',
     duplicateGroups: 'library:duplicateGroups', showInFolder: 'library:showInFolder', openExternally: 'library:openExternally',
+    exportCopy: 'library:exportCopy', revealExport: 'library:revealExport',
     searchTexts: 'library:searchTexts',
   },
   collections: {

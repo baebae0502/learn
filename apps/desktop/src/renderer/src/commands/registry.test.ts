@@ -24,6 +24,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
+  exportCopy: vi.fn(),
   editInfo: vi.fn(),
   focusSearch: vi.fn(),
   openSettings: vi.fn(),

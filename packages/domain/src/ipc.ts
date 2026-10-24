@@ -154,6 +154,14 @@ export interface LearnApi {
     showInFolder(input: ItemIdInput): Promise<Result<void>>;
     /** Open the file with the system's default app. */
     openExternally(input: ItemIdInput): Promise<Result<void>>;
+    /**
+     * 사본 내보내기…: main asks where in a save panel on the calling window (a sheet on macOS), then copies the item's
+     * file there through a temporary name and a rename. `saved: false` when the panel was cancelled. The path stays
+     * in main (revealExport).
+     */
+    exportCopy(input: ItemIdInput): Promise<Result<{ saved: boolean }>>;
+    /** Reveals the copy exported last in this run (NOT_FOUND when there is none, or it has gone since). */
+    revealExport(): Promise<Result<void>>;
     /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
     searchTexts(): Promise<Result<SearchText[]>>;
   };

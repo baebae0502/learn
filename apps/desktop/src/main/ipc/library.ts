@@ -1,9 +1,12 @@
-import { BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions } from 'electron';
+import { existsSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { app, BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import {
-  Channels, LearnError, assetIdInput, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, LearnError, assetIdInput, commandById, commandMention, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
-import { openableFile, relinkAsset, resolveAssetPath } from '@learn/library';
+import { exportFile, openExtension, openableFile, openableName, relinkAsset, resolveAssetPath, safeBaseName } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
 import { mainStrings } from '../strings';
@@ -24,6 +27,14 @@ async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenD
   const win = BrowserWindow.fromWebContents(event.sender);
   const res = win ? await deps.windows.asSheet(win, () => dialog.showOpenDialog(win, options)) : await dialog.showOpenDialog(options);
   return res.canceled ? [] : res.filePaths;
+}
+
+/** A copy that could not be written, in the user's words (cause + next step); any other error keeps its own. */
+export function exportError(e: unknown): unknown {
+  const code = (e as NodeJS.ErrnoException | null)?.code;
+  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return new LearnError('PERMISSION_DENIED', mainStrings.exportCopy.notWritable, { cause: e });
+  if (code === 'ENOSPC' || code === 'EDQUOT') return new LearnError('DISK_FULL', mainStrings.exportCopy.diskFull, { cause: e, retryable: true });
+  return e;
 }
 
 /** Push libraryChanged when an import added at least one item. */
@@ -88,18 +99,26 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.duplicateGroups, emptyInput, () => deps.getContext().repo.duplicateGroups());
 
   /**
-   * The file to hand the OS for an item, re-checked first (a missing file is reported, never revealed): a name the OS
-   * can open by its extension (openableFile: the named copy under derived/open/ for a managed asset, or for a linked file
-   * whose extension misleads; final review I1). The renderer never sees a path.
+   * The item's file, re-checked first (a missing file is reported, never used): the item, its asset and where its bytes
+   * are on disk. The renderer never sees a path.
    */
-  async function existingFile(itemId: string): Promise<string> {
+  async function availableAsset(itemId: string) {
     const ctx = deps.getContext();
     const item = await refreshItemAvailability(ctx, itemId);
     const copy = mainStrings.itemFile;
     if (item.availability === 'missing') throw new LearnError('NOT_FOUND', item.storageMode === 'managed' ? copy.managedMissing : copy.linkedMissing);
     const asset = ctx.repo.getAsset(item.assetId);
     if (!asset) throw new LearnError('NOT_FOUND', copy.noItem);
-    return openableFile(ctx.layout, asset, item.title, resolveAssetPath(ctx.layout, asset));
+    return { ctx, item, asset, src: resolveAssetPath(ctx.layout, asset) };
+  }
+
+  /**
+   * The file to hand the OS for an item: a name the OS can open by its extension (openableFile: the named copy under
+   * derived/open/ for a managed asset, or for a linked file whose extension misleads; final review I1).
+   */
+  async function existingFile(itemId: string): Promise<string> {
+    const { ctx, item, asset, src } = await availableAsset(itemId);
+    return openableFile(ctx.layout, asset, item.title, src);
   }
 
   // Finder에서 보기 / 기본 앱으로 열기 (design-spec 7.3, 10.7): the renderer has no shell; main resolves the path itself.
@@ -111,5 +130,38 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
     // openPath resolves with the OS's error text (English, may name the path): logged by code only, never shown.
     const failure = await shell.openPath(await existingFile(itemId));
     if (failure) throw new LearnError('INTERNAL', mainStrings.itemFile.noApp);
+  });
+
+  /** The copy 사본 내보내기 saved last in this run: its folder is where the next panel opens, and revealExport shows it. */
+  let lastExport: string | null = null;
+
+  // 사본 내보내기… (spec §7): the save panel as a sheet on the asking window, then the copy through a temporary name in the
+  // chosen folder (exportFile). The panel asks before replacing a file (showOverwriteConfirmation on Linux; macOS and
+  // Windows always ask). The default name is the one 기본 앱으로 열기 gives its copy.
+  handle(Channels.library.exportCopy, itemIdInput, async ({ itemId }, event) => {
+    const { item, asset, src } = await availableAsset(itemId);
+    const ext = openExtension(asset.mime, asset.originalName);
+    const options: SaveDialogOptions = {
+      title: commandMention(commandById('item.exportCopy'), process.platform),
+      defaultPath: path.join(lastExport ? path.dirname(lastExport) : app.getPath('downloads'), openableName(asset, item.title) ?? safeBaseName(asset.originalName)),
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+      ...(ext ? { filters: [{ name: mainStrings.exportCopy.filterName[item.type], extensions: [ext] }] } : {}),
+    };
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const res = win ? await deps.windows.asSheet(win, () => dialog.showSaveDialog(win, options)) : await dialog.showSaveDialog(options);
+    if (res.canceled || !res.filePath) return { saved: false };
+    try {
+      // The file itself, never a link to it (a clone of a symlink is the symlink on macOS, as for the named copy).
+      await exportFile(await fs.realpath(src), res.filePath);
+    } catch (e) {
+      throw exportError(e);
+    }
+    lastExport = res.filePath;
+    return { saved: true };
+  });
+
+  handle(Channels.library.revealExport, emptyInput, () => {
+    if (lastExport === null || !existsSync(lastExport)) throw new LearnError('NOT_FOUND', mainStrings.exportCopy.gone);
+    shell.showItemInFolder(lastExport);
   });
 }

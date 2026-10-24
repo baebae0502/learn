@@ -37,6 +37,10 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
     expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
+    expectTypeOf<P<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Ipc.ItemIdInput>();
+    // The renderer learns only whether a copy was saved, never where: revealExport shows it.
+    expectTypeOf<ReturnType<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Promise<Result<{ saved: boolean }>>>();
+    expectTypeOf<ReturnType<LearnApi['library']['revealExport']>>().toEqualTypeOf<Promise<Result<void>>>();
   });
   it('library.searchTexts takes nothing and answers the long texts; the list row carries the publisher', () => {
     expectTypeOf<Parameters<LearnApi['library']['searchTexts']>>().toEqualTypeOf<[]>();

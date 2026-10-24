@@ -192,6 +192,7 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.open', label: '열기', enabled: true },
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: false },
+      { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
@@ -211,6 +212,7 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.open', label: '열기', enabled: true },
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: true },
+      { id: 'item.exportCopy', label: '사본 내보내기…', enabled: true },
     ]);
     expect(sent).toEqual([]);
   });

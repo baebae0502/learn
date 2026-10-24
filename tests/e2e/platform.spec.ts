@@ -92,7 +92,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
       [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''],
-      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '기본 앱으로 열기'], ['-', ''],
+      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], ['-', ''],
       ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
     if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
@@ -204,7 +204,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
-    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…']);
   } finally {
     await app.close();
   }

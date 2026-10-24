@@ -112,7 +112,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -210,6 +210,29 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(inPalette(commandById('item.open'))).toBe(false);
     expect(inPalette(commandById('item.relink'))).toBe(false);
   });
+  it('사본 내보내기… needs one item whose file exists; 파일 menu and the item menu after Finder에서 보기 (design-spec 7.3)', () => {
+    expect(commandById('item.exportCopy')).toEqual({
+      id: 'item.exportCopy',
+      label: '사본 내보내기…',
+      menu: { menu: 'file', group: 2, order: 2 },
+      contexts: ['item'],
+      contextMenu: { kinds: ['item'], group: 2, order: 2 },
+      palette: true,
+      keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+    });
+    expect(isCommandAvailable('item.exportCopy', LIB, [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.exportCopy', VIEWER, [{ storageMode: 'linked', availability: 'available' }])).toBe(true);
+    expect(isCommandAvailable('item.exportCopy', LIB, [linkedMissing])).toBe(false);
+    expect(isCommandAvailable('item.exportCopy', LIB, [managedOk, managedOk])).toBe(false);
+    expect(isCommandAvailable('item.exportCopy', LIB)).toBe(false);
+    expect(inPalette(commandById('item.exportCopy'))).toBe(true);
+    // The menu bar judges it on the reported selection: exactly one item, and its file is there.
+    const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
+    expect(availableMenuCommands(one)).toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, selectionAvailable: 0, selectionRelinkable: 1 })).not.toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, selectionCount: 2, selectionAvailable: 2 })).not.toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, blocked: true })).not.toContain('item.exportCopy');
+  });
   it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
@@ -219,7 +242,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'view.toggleSidebar', 'view.toggleInspector', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected

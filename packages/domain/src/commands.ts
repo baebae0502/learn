@@ -15,6 +15,7 @@ export type CommandId =
   | 'item.showInFolder'
   | 'item.openExternally'
   | 'item.editInfo'
+  | 'item.exportCopy'
   | 'item.relink'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
@@ -113,6 +114,16 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   // 정보 편집 (spec §5.3): the palette and the 정보 section's pencil; the table selection is its target.
   { id: 'item.editInfo', label: '정보 편집', contexts: ['item'], palette: true, keywords: ['정보', '편집', '메타데이터', '저자', '제목', '고치기', 'edit', 'info'] },
+  // 사본 내보내기… (design-spec 7.3, spec §7): a copy wherever the user picks, named like 기본 앱으로 열기's copy.
+  {
+    id: 'item.exportCopy',
+    label: '사본 내보내기…',
+    menu: { menu: 'file', group: 2, order: 2 },
+    contexts: ['item'],
+    contextMenu: { kinds: ['item'], group: 2, order: 2 },
+    palette: true,
+    keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+  },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
@@ -243,6 +254,7 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
   'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
   'item.openExternally': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
+  'item.exportCopy': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
   'item.editInfo': (c, t) => t.length === 1 && c.view === 'library',
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,

@@ -26,6 +26,13 @@ export const mainStrings = {
     noItem: '자료를 찾을 수 없습니다.',
     noApp: '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.',
   },
+  /** 사본 내보내기… (ipc/library.ts exportCopy): the save panel's type filter and what the copy can fail with. */
+  exportCopy: {
+    filterName: { pdf: 'PDF', video: '동영상' },
+    notWritable: '이\u00a0폴더에는 쓸 수 없습니다. 다른\u00a0폴더를 고르세요.',
+    diskFull: '디스크\u00a0공간이 부족합니다. 공간을 확보하거나 다른\u00a0폴더를 고르세요.',
+    gone: '내보낸 사본을 찾을 수 없습니다. 옮기거나 지웠다면 다시 내보내세요.',
+  },
   /** The table header's native column menu (menu/column-menu.ts); the column names come from the catalogue. */
   columnMenu: { reset: '열 구성 되돌리기' },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */

@@ -53,7 +53,7 @@ import { ViewerHost } from '../viewers/ViewerHost';
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
 
 /** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file first; a failure is a toast. */
-const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()).catch(actionFailed);
+const fileAction = (run: () => Promise<Result<unknown>>): void => void unwrap(run()).catch(actionFailed);
 /** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
 const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
@@ -259,6 +259,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     openPalette,
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
+    // Minimal until the busy and result toasts: the panel and the copy run in main, the outcome is only reported on failure.
+    exportCopy: (itemId) => fileAction(() => api().library.exportCopy({ itemId })),
     // Placeholder until the editor screen gives the command its handler (inspector/startEditing.ts).
     editInfo: startEditing,
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),

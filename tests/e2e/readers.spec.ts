@@ -370,7 +370,8 @@ test('missing linked original: 다시 연결… first in the context menu and in
       ['다시 연결…', true],
       ['열기', true],
       [REVEAL, false],
-    ]); // 기본 앱으로 열기 is not a context-menu item (design-spec 7.3, C-1)
+      ['사본 내보내기…', false],
+    ]); // 기본 앱으로 열기 is not a context-menu item (design-spec 7.3)
     await openItem(s.page, 'linked');
     const notice = s.page.getByTestId('missing-notice');
     await expect(notice).toContainText('원본 파일을 찾을 수 없습니다');

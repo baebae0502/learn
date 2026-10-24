@@ -4,10 +4,14 @@
 
 /** The page's answer (renderer inspector/editGuard.ts flushEdits). */
 export type FlushResult = 'saved' | 'clean' | 'invalid';
+/** What the gate logs: the page's answer, or 'timeout' when none came in time (a slow save stays visible in the log; it lets go like 'clean'). */
+export type FlushOutcome = FlushResult | 'timeout';
 /** Run in the page's main world, where the renderer installs the hook while an editor is open (no IPC channel). */
 export const FLUSH_SCRIPT = 'window.__learnFlushEdits ? window.__learnFlushEdits() : "clean"';
 /** Longer than a save takes; a hung, crashed or still-loading page past it counts as having nothing to save. */
 export const FLUSH_TIMEOUT_MS = 3000;
+/** The quit's own window close comes at once; a pass still set this long after app.quit() belongs to a quit that did not happen. */
+export const QUIT_PASS_MS = 1000;
 
 /** The main window as far as the gate needs it (a BrowserWindow fits). */
 export interface FlushWindow {
@@ -27,24 +31,31 @@ export interface FlushGateDeps {
   quit(): void;
   timeoutMs?: number;
   /** Every decision, for the E2E log (index.ts). */
-  record?(entry: { action: Action; result: FlushResult }): void;
+  record?(entry: { action: Action; result: FlushOutcome }): void;
+  /** How long a quit's own close may come after app.quit() before the pass is dropped (a quit another listener called off). */
+  passMs?: number;
 }
 
-/** The page's answer; 'clean' when none comes in time, the call fails, or it answers anything else. */
-export function askToFlush(win: FlushWindow, timeoutMs = FLUSH_TIMEOUT_MS): Promise<FlushResult> {
+/** The page's answer; 'timeout' when none comes in time, 'clean' when the call fails or it answers anything else. */
+export function askToFlush(win: FlushWindow, timeoutMs = FLUSH_TIMEOUT_MS): Promise<FlushOutcome> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (result: FlushResult) => {
+    const finish = (result: FlushOutcome) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       resolve(result);
     };
-    const timer = setTimeout(() => finish('clean'), timeoutMs);
-    win.webContents.executeJavaScript(FLUSH_SCRIPT, true).then(
-      (answer) => finish(answer === 'saved' || answer === 'invalid' ? answer : 'clean'),
-      () => finish('clean'),
-    );
+    const timer = setTimeout(() => finish('timeout'), timeoutMs);
+    // A call that throws at once (a destroyed webContents) must not leave the promise pending.
+    try {
+      win.webContents.executeJavaScript(FLUSH_SCRIPT, true).then(
+        (answer) => finish(answer === 'saved' || answer === 'invalid' ? answer : 'clean'),
+        () => finish('clean'),
+      );
+    } catch {
+      finish('clean');
+    }
   });
 }
 
@@ -73,8 +84,15 @@ export function createFlushGate(deps: FlushGateDeps): FlushGate {
       deps.record?.({ action: wanted, result });
       if (result === 'invalid') return; // the window stays, the quit is off: the form shows why
       passing = wanted;
-      if (wanted === 'quit') deps.quit();
-      else if (!win.isDestroyed()) win.close();
+      if (wanted === 'quit') {
+        deps.quit();
+        // The window's own close comes inside the quit; if none does (another listener called the quit off, or no main
+        // window is left) the pass must not outlive the attempt and wave a later ⌘W or ⌘Q through unasked.
+        const drop = setTimeout(() => {
+          if (passing === 'quit') passing = null;
+        }, deps.passMs ?? QUIT_PASS_MS);
+        drop.unref?.();
+      } else if (!win.isDestroyed()) win.close();
       else passing = null;
     });
   };

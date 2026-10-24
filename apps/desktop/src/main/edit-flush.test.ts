@@ -13,7 +13,7 @@ const ev = (): Ev => ({
 });
 
 /** A main window and an app the way Electron drives the gate: close() emits 'close', quit() emits 'before-quit', then closes. */
-function rig(answers: Array<() => Promise<unknown>>) {
+function rig(answers: Array<() => Promise<unknown>>, opts: { quitCloses?: boolean; passMs?: number } = {}) {
   const calls = { scripts: 0, exited: false, records: [] as Array<{ action: string; result: string }> };
   let gate!: FlushGate;
   const win: FlushWindow & { destroyed: boolean } = {
@@ -36,10 +36,11 @@ function rig(answers: Array<() => Promise<unknown>>) {
     const e = ev();
     gate.onBeforeQuit(e);
     if (e.prevented) return;
+    if (opts.quitCloses === false) return; // another before-quit listener called the quit off
     if (!win.destroyed) win.close();
     calls.exited = win.destroyed;
   };
-  gate = createFlushGate({ mainWindow: () => (win.destroyed ? null : win), quit, timeoutMs: 50, record: (r) => calls.records.push(r) });
+  gate = createFlushGate({ mainWindow: () => (win.destroyed ? null : win), quit, timeoutMs: 50, passMs: opts.passMs ?? 20, record: (r) => calls.records.push(r) });
   return { win, quit, calls };
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -75,6 +76,7 @@ describe('closing or quitting over an open 정보 편집 (spec §5.3; M/edit-flu
     const hung = rig([() => new Promise(() => {})]);
     hung.quit();
     await vi.waitFor(() => expect(hung.calls.exited).toBe(true));
+    expect(hung.calls.records).toEqual([{ action: 'quit', result: 'timeout' }]); // a slow save stays visible in the log
     const thrown = rig([() => Promise.reject(new Error('render process gone'))]);
     thrown.win.close();
     await vi.waitFor(() => expect(thrown.win.destroyed).toBe(true));
@@ -100,5 +102,31 @@ describe('closing or quitting over an open 정보 편집 (spec §5.3; M/edit-flu
     r.quit();
     expect(r.calls.exited).toBe(true);
     expect(r.calls.scripts).toBe(0);
+  });
+  it('a call that throws at once (a destroyed webContents) neither hangs nor leaves the gate asking', async () => {
+    const r = rig([() => {
+      throw new Error('Object has been destroyed');
+    }]);
+    r.win.close();
+    await vi.waitFor(() => expect(r.win.destroyed).toBe(true));
+    const again = rig([() => {
+      throw new Error('Object has been destroyed');
+    }, () => Promise.resolve('invalid')]);
+    again.quit();
+    await vi.waitFor(() => expect(again.calls.exited).toBe(true));
+    again.win.destroyed = false;
+    again.win.close(); // asked again: `asking` was reset
+    await tick();
+    expect(again.calls.scripts).toBe(2);
+  });
+  it('a quit another listener called off does not leave a pass that waves the next close through', async () => {
+    const r = rig([() => Promise.resolve('clean'), () => Promise.resolve('invalid')], { quitCloses: false, passMs: 20 });
+    r.quit();
+    await vi.waitFor(() => expect(r.calls.records).toHaveLength(1));
+    await new Promise((res) => setTimeout(res, 40));
+    r.win.close();
+    await tick();
+    expect(r.calls.scripts).toBe(2); // asked, not passed
+    expect(r.win.destroyed).toBe(false);
   });
 });

@@ -160,6 +160,8 @@ test('leaving the edit: another row after valid changes saves first; invalid one
     await expect(rowByTitle(page, '한글 경로 (테스트) #1')).toHaveAttribute('aria-selected', 'false');
     await expect(head).toHaveText('sample');
     await expect(field(page, 'date')).toHaveAttribute('aria-invalid', 'true');
+    // The focus is on the marked field, not left in the table: the field draws its halo and the table's selection is neutral.
+    await expect(field(page, 'date')).toBeFocused();
     // The reader is a way out too: refused the same way. The double-click's first press selects that row (the edit is
     // asked and the selection comes back), then its item.open goes through env.open's afterEditing: asked again, refused.
     await rowByTitle(page, '한글 경로 (테스트) #1').dblclick();
@@ -319,6 +321,59 @@ test('IME: ↩ and esc that belong to a composition neither save nor cancel; key
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('info-editor')).toHaveCount(0);
     expect((await detailOf(page, pdf!.id)).item.title).toBe('세포');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the palette\'s 정보 편집 on a panel folded by the width shows it and focuses the editor', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await contentWidth(app, 1024);
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
+    await expect.poll(() => panelState(page)).toBe('hidden'); // folded by the width, not by the user
+    await selectRows(page, ['sample']);
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('정보 편집');
+    await expect(page.getByTestId('palette-item').first()).toHaveAttribute('data-command-id', 'item.editInfo');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => panelState(page)).toBe('shown');
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    await expect(field(page, 'title')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('one save at a time: a double press of 저장 writes once', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await showPanel(app, page);
+    await selectRows(page, ['sample']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'publisher').fill('학습출판');
+    // Hold the write in main so the second press comes while the first is pending.
+    await app.evaluate(({ ipcMain }) => {
+      const g = globalThis as { __learnWrites?: number; __learnRelease?: () => void };
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('library:updateMetadata')!;
+      g.__learnWrites = 0;
+      ipcMain.removeHandler('library:updateMetadata');
+      ipcMain.handle('library:updateMetadata', async (...a) => {
+        g.__learnWrites! += 1;
+        await new Promise<void>((r) => (g.__learnRelease = r));
+        return original(...(a as [unknown, unknown]));
+      });
+    });
+    const save = page.getByTestId('editor-save');
+    await save.dispatchEvent('click');
+    await save.dispatchEvent('click');
+    await page.waitForTimeout(200);
+    await app.evaluate(() => (globalThis as { __learnRelease?: () => void }).__learnRelease?.());
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    expect(await app.evaluate(() => (globalThis as { __learnWrites?: number }).__learnWrites)).toBe(1);
   } finally {
     await app.close();
   }

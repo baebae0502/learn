@@ -58,5 +58,9 @@ export function flushEdits(): Promise<FlushResult> {
   const s = session;
   if (!s) return Promise.resolve('clean');
   const changed = s.dirty();
-  return leaveEditing().then((ok): FlushResult => (!ok ? 'invalid' : changed ? 'saved' : 'clean'));
+  // A leave that rejects did not let go: the window stays (main would read a rejected page call as nothing to save).
+  return leaveEditing().then(
+    (ok): FlushResult => (!ok ? 'invalid' : changed ? 'saved' : 'clean'),
+    (): FlushResult => 'invalid',
+  );
 }

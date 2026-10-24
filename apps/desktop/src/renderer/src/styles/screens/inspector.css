@@ -278,13 +278,17 @@
   }
   .inspector .ed-text {
     height: auto;
-    min-height: 76px; /* local: four lines of body text and the field's insets */
+    min-height: 88px; /* local: four paragraph lines of 20 and the field's insets */
+    font: var(--type-paragraph); /* the view shows the same text in this face: entering the edit does not reflow it */
     padding: var(--space-4) var(--space-8);
     resize: vertical;
   }
   .inspector .ed-error {
     color: var(--danger-text);
     font: var(--type-footnote);
+  }
+  .inspector :is(.ed-unsaved-text, .ed-error) {
+    text-wrap: pretty;
   }
   .inspector .ed-creators {
     gap: var(--space-4);
@@ -311,11 +315,16 @@
     justify-content: flex-end;
     gap: var(--space-8);
     margin-top: var(--space-4);
+    /* Stays at the panel's foot while the form is longer than the panel (the scroller is the panel). */
+    position: sticky;
+    bottom: 0;
+    padding-block: var(--space-8);
+    background: var(--bg-content);
   }
   /* Something tried to leave with a field still marked (spec §5.3): above the form, with 버리기. */
   .inspector .ed-unsaved {
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* the icon sits on the first line, not the middle of three */
     gap: var(--space-8);
     padding: var(--space-8) var(--space-12);
     border-radius: var(--radius-md);
@@ -325,6 +334,9 @@
   .inspector .ed-unsaved > .icon {
     flex: none;
     color: var(--warning-text);
+  }
+  .inspector .ed-unsaved > .btn {
+    margin: -3px calc(var(--space-8) * -1) -3px 0; /* the button's text sits as far from the right edge as the icon from the left */
   }
   .inspector .ed-unsaved-text {
     flex: 1 1 auto;

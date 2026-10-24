@@ -27,8 +27,8 @@ describe('정보 편집: the draft, its checks, and what counts as a change (spe
     if (r.ok) throw new Error('expected marked fields');
     expect(r.errors).toEqual({
       title: '제목은 비워 둘 수 없습니다. 자료를 알아볼 이름을 적으세요.',
-      date: '날짜는 2024, 2024-03, 2024-03-15처럼 적어 주세요.',
-      url: 'http:// 또는 https://로 시작하는 주소를 적어 주세요.',
+      date: '날짜는 2024, 2024-03, 2024-03-15처럼 적어\u00a0주세요.',
+      url: 'http:// 또는 https://로 시작하는 주소를 적어\u00a0주세요.',
     });
   });
   it('tells a value that is too long from one of the wrong form, and marks a creator row by its key', () => {

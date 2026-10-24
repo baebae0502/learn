@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronDown, ChevronUp, CircleAlert, Minus, Plus } from 'lucide-react';
+import { ChevronDown, ChevronUp, TriangleAlert, Minus, Plus } from 'lucide-react';
 import { FieldError, Input, Label, TextArea, TextField } from 'react-aria-components';
 import type { ItemDetail, LibraryItem } from '@learn/domain';
 import { api, unwrap } from '../api';
@@ -87,7 +87,15 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     if (returnFocus && hadFocus) requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="info-edit"]')?.focus());
   };
   /** True once the library has it; a failure is a toast and the form stays (spec §5.3). */
-  const save = async (value: CleanInfo): Promise<boolean> => {
+  const saveInFlight = useRef<Promise<boolean> | null>(null);
+  /** One save at a time: a second press, or a row change while one is pending, waits for that one's answer. */
+  const save = (value: CleanInfo): Promise<boolean> => {
+    saveInFlight.current ??= write(value).finally(() => {
+      saveInFlight.current = null;
+    });
+    return saveInFlight.current;
+  };
+  const write = async (value: CleanInfo): Promise<boolean> => {
     setSaving(true);
     try {
       const saved = await unwrap(api().library.updateMetadata({ itemId: item.id, title: value.title, metadata: value.metadata }));
@@ -104,11 +112,16 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
   };
   const focusFirstError = (errs: FieldErrors) => {
     const root = rootRef.current;
-    if (errs.title) return void fieldInput(root, 'title')?.focus();
-    const row = draftRef.current.creators.find((c) => errs[`creator:${c.key}`] !== undefined);
-    if (row) return void root?.querySelector<HTMLElement>(`[data-row="${row.key}"] input`)?.focus();
-    const field = FIELD_ORDER.find((f) => errs[f] !== undefined);
-    if (field) fieldInput(root, field)?.focus();
+    const target = (): HTMLElement | null | undefined => {
+      if (errs.title) return fieldInput(root, 'title');
+      const row = draftRef.current.creators.find((c) => errs[`creator:${c.key}`] !== undefined);
+      if (row) return root?.querySelector<HTMLElement>(`[data-row="${row.key}"] input`);
+      const field = FIELD_ORDER.find((f) => errs[f] !== undefined);
+      return field ? fieldInput(root, field) : null;
+    };
+    const el = target();
+    el?.focus();
+    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) el.select();
   };
   /** 저장, ⌘↩ and ↩ in a one-line field. Nothing changed: the edit just ends (no write, 수정일 stays). */
   const submit = async () => {
@@ -141,6 +154,10 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     // Back to the edited item (and after a failed save, whose toast says why): it is the anchor and the keyboard cursor
     // again too, so the arrows go on from it.
     useLibrary.getState().setSelected([item.id]);
+    // The focus goes to the marked field, not on in the table: the field draws its halo and the table's selection turns
+    // neutral by itself. After the paint, so a panel that was folded has its field to focus.
+    if (!v.ok) await new Promise<void>((done) => requestAnimationFrame(() => done()));
+    if (!v.ok) focusFirstError(v.errors);
     return false;
   };
   const leaveRef = useRef(leave);
@@ -181,7 +198,7 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     <div ref={rootRef} className="editor" role="form" aria-label={e.form} data-testid="info-editor" onKeyDown={onKeyDown}>
       {blocked && (
         <div className="ed-unsaved" role="alert" data-testid="editor-unsaved">
-          <Icon icon={CircleAlert} size="sm" />
+          <Icon icon={TriangleAlert} size="sm" />
           <span className="ed-unsaved-text">{e.unsaved}</span>
           <Button variant="plain-danger" size="small" testId="editor-discard" onPress={() => end(true)}>
             {e.discard}
@@ -214,8 +231,8 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
                   </option>
                 ))}
               </select>
-              <IconButton icon={ChevronUp} size="small" label={e.creatorUp(i + 1)} isDisabled={i === 0} onPress={() => moveCreator(i, -1)} testId="creator-up" />
-              <IconButton icon={ChevronDown} size="small" label={e.creatorDown(i + 1)} isDisabled={i === draft.creators.length - 1} onPress={() => moveCreator(i, 1)} testId="creator-down" />
+              <IconButton icon={ChevronUp} size="small" label={e.creatorUp(i + 1)} isDisabled={i === 0} disabledReason={e.creatorFirst} onPress={() => moveCreator(i, -1)} testId="creator-up" />
+              <IconButton icon={ChevronDown} size="small" label={e.creatorDown(i + 1)} isDisabled={i === draft.creators.length - 1} disabledReason={e.creatorLast} onPress={() => moveCreator(i, 1)} testId="creator-down" />
               <IconButton icon={Minus} size="small" label={e.creatorRemove(i + 1)} onPress={() => removeCreator(i)} testId="creator-remove" />
             </div>
           );

@@ -67,5 +67,8 @@ describe('leaving an open edit (spec §5.3)', () => {
     closers.pop()!();
     open({ dirty: () => true, leave: vi.fn(async () => false) }); // a marked field: the form stays and says why
     expect(await flushEdits()).toBe('invalid');
+    closers.pop()!();
+    open({ dirty: () => true, leave: vi.fn(async () => Promise.reject(new Error('save blew up'))) });
+    expect(await flushEdits()).toBe('invalid'); // a rejected leave keeps the window, never reads as clean
   });
 });

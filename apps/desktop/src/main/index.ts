@@ -81,7 +81,7 @@ const editFlush = createFlushGate({
 
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
-    preload: path.join(here, '../preload/index.cjs'),
+    preload: path.join(here, '../preload/main.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
   });
@@ -115,7 +115,7 @@ function refreshFullScreenItem(): void {
 
 /** ⌘, (main-owned): one settings window, placed over the main window when there is one. */
 const settingsWindow = createSettingsWindow({
-  preload: path.join(here, '../preload/index.cjs'),
+  preload: path.join(here, '../preload/settings.cjs'),
   url: () => windowUrl(rendererBase, 'settings', urlOptions),
   main: () => mainWindow,
 });
@@ -338,7 +338,7 @@ if (!app.requestSingleInstanceLock()) {
       isMainWindow,
       isSettingsWindow,
       sheets: createSheetHost({
-        preload: path.join(here, '../preload/index.cjs'),
+        preload: path.join(here, '../preload/sheet.cjs'),
         url: () => windowUrl(rendererBase, 'sheet', urlOptions),
         platform: process.platform,
         onSheetShown,

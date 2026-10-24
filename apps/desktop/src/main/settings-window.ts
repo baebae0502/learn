@@ -3,6 +3,7 @@ import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
 import { currentTheme } from './theme';
+import { registerWindowKind } from './window-kinds';
 import { trackWindowState } from './window-state';
 
 export const SETTINGS_WIDTH = 600;
@@ -79,6 +80,7 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         },
       });
       win = created;
+      registerWindowKind(created.webContents, 'settings');
       // ⌘W or the close light: off the screen first, then torn down. Closing tears the page down before AppKit takes the
       // window away, which showed an empty body for 2 frames (Mac run 2, critique n2); hidden, that happens unseen.
       created.on('close', () => {

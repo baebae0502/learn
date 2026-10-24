@@ -1,3 +1,4 @@
+import { registerWindowKind, type KindedContents, type WindowKind } from '../window-kinds';
 import type { IpcDeps } from './register';
 
 /** IpcDeps for IPC unit tests: inert stubs, a test overrides what it exercises. M3 tasks that add IpcDeps fields add their stub here. */
@@ -22,4 +23,14 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     relaunch: () => {},
     ...over,
   };
+}
+
+/**
+ * A sender webContents for IPC unit tests, registered as a window of `kind`: createHandle answers only senders main
+ * registered, and only for the kinds a channel allows.
+ */
+export function fakeSender(id: number, kind: WindowKind): KindedContents {
+  const contents: KindedContents = { id, once: () => contents };
+  registerWindowKind(contents, kind);
+  return contents;
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -32,9 +32,9 @@ const { createHandle } = await import('./register');
 const { registerUiIpc } = await import('./ui');
 const { popupColumnMenu } = await import('../menu/column-menu');
 
-const MAIN = { id: 1 };
-const SHEET = { id: 2 };
-const SETTINGS = { id: 3 };
+const MAIN = fakeSender(1, 'main');
+const SHEET = fakeSender(2, 'sheet');
+const SETTINGS = fakeSender(3, 'settings');
 const ITEM_ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt: '2026-10-20T11:40:00.000Z', storageMode: 'managed' };
 const opened: unknown[] = [];
@@ -62,7 +62,7 @@ registerUiIpc(
 );
 
 const invoke = (channel: string, sender: unknown, raw?: unknown) => handlers.get(channel)!({ sender, senderFrame: { url: 'learn://app/index.html' } }, raw);
-const call = (raw?: unknown) => invoke('ui:windowState', {}, raw);
+const call = (raw?: unknown) => invoke('ui:windowState', MAIN, raw);
 
 beforeEach(() => {
   Object.assign(win, { fullscreen: false, focused: true, destroyed: false });
@@ -89,22 +89,24 @@ describe('sheets are opened over the main window only', () => {
     await invoke('ui:showShortcuts', MAIN);
     expect(events).toEqual(['sheet:duplicate', 'sheet:shortcuts']);
   });
-  it('any other window (a sheet, later the settings window) is PERMISSION_DENIED and opens nothing', async () => {
-    expect(await invoke('ui:confirmDuplicate', SHEET, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await invoke('ui:showShortcuts', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+  it('any other window (a sheet, the settings window) is PERMISSION_DENIED and opens nothing', async () => {
+    for (const from of [SHEET, SETTINGS]) {
+      expect(await invoke('ui:confirmDuplicate', from, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+      expect(await invoke('ui:showShortcuts', from)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    }
     expect(opened).toEqual([]);
   });
 });
 
 describe('ui.openSettings (the main-owned ⌘, behind the fatal screen\'s 설정 열기)', () => {
-  it('opens (or brings forward) the settings window from the main or the settings window; a sheet is refused', async () => {
+  it('opens (or brings forward) the settings window from the main window; the settings window and a sheet are refused', async () => {
     openSettings.mockClear();
     expect(await invoke('ui:openSettings', MAIN)).toEqual({ ok: true, data: undefined });
-    expect(await invoke('ui:openSettings', SETTINGS)).toEqual({ ok: true, data: undefined });
-    expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(await invoke('ui:openSettings', SETTINGS)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await invoke('ui:openSettings', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(openSettings).toHaveBeenCalledTimes(1);
     expect(await invoke('ui:openSettings', MAIN, { x: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 });
 

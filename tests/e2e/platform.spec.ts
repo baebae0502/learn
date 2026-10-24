@@ -3,9 +3,10 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
 import { COMMANDS, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
-import { Channels } from '../../packages/domain/src/ipc-channels';
+import { CHANNEL_KINDS } from '../../apps/desktop/src/main/ipc/channel-kinds';
+import type { WindowKind } from '../../apps/desktop/src/main/window-kinds';
 import {
-  FIXTURES, NativeInputNotPermitted, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
+  FIXTURES, NativeInputNotPermitted, ROOT, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
   recordedPopups, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
@@ -40,6 +41,46 @@ const VIEW_START = [
 async function session(testInfo: { outputPath(...p: string[]): string }) {
   return launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
 }
+
+/** A page's window.learn: every function by path, generic IPC names anywhere in it, and whether ipcRenderer leaked. */
+const scanSurface = (p: Page) =>
+  p.evaluate(() => {
+    const GENERIC = new Set([
+      'invoke', 'send', 'sendSync', 'sendTo', 'sendToHost', 'postMessage', 'ipcRenderer', 'once', 'addListener', 'removeAllListeners',
+    ]);
+    const functions: string[] = [];
+    const generic: string[] = [];
+    const seen = new Set<unknown>();
+    const walk = (value: unknown, at: string): void => {
+      if (value === null || (typeof value !== 'object' && typeof value !== 'function') || seen.has(value)) return;
+      seen.add(value);
+      for (const key of Object.keys(value)) {
+        const child = (value as Record<string, unknown>)[key];
+        const where = at ? `${at}.${key}` : key;
+        if (GENERIC.has(key)) generic.push(where);
+        if (typeof child === 'function') {
+          functions.push(where);
+          if (GENERIC.has(child.name)) generic.push(`${where} (named ${child.name})`);
+        }
+        walk(child, where);
+      }
+    };
+    walk(window.learn, '');
+    return { functions: functions.sort(), generic, windowIpc: typeof (window as unknown as { ipcRenderer?: unknown }).ipcRenderer };
+  });
+/** Whether window.learn.on(name, callback) throws in this page. */
+const onThrows = (p: Page, name: string, callback: 'function' | 'string' = 'function') =>
+  p.evaluate(
+    ([n, c]) => {
+      try {
+        (window.learn as unknown as { on(name: unknown, cb: unknown): unknown }).on(n, c === 'function' ? () => {} : 'not a function');
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    [name, callback] as const,
+  );
 
 async function importOnePdf(page: Page): Promise<string> {
   const [item] = await importPaths(page, [PDF]);
@@ -318,58 +359,38 @@ test('settings: library.sort survives a restart; an unregistered key is VALIDATI
   }
 });
 
-test('preload: window.learn has only the declared invokers, no generic IPC; on() rejects unknown events', async ({}, testInfo) => {
+test('preload: each window has only its own invokers and events (P-5), no generic IPC; on() rejects every other name', async ({}, testInfo) => {
+  // The built preloads: one standalone CommonJS file per window kind (a sandboxed preload cannot require a chunk).
+  const out = path.join(ROOT, 'apps/desktop/out/preload');
+  expect(fs.readdirSync(out).sort()).toEqual(['main.cjs', 'settings.cjs', 'sheet.cjs']);
+  for (const file of ['main.cjs', 'settings.cjs', 'sheet.cjs']) {
+    const required = [...fs.readFileSync(path.join(out, file), 'utf8').matchAll(/require\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(required, file).toEqual(['"electron"']);
+  }
   const { app, page } = await session(testInfo);
   try {
-    const scan = await page.evaluate(() => {
-      const GENERIC = new Set([
-        'invoke', 'send', 'sendSync', 'sendTo', 'sendToHost', 'postMessage', 'ipcRenderer', 'once', 'addListener', 'removeAllListeners',
-      ]);
-      const functions: string[] = [];
-      const generic: string[] = [];
-      const seen = new Set<unknown>();
-      const walk = (value: unknown, at: string): void => {
-        if (value === null || (typeof value !== 'object' && typeof value !== 'function') || seen.has(value)) return;
-        seen.add(value);
-        for (const key of Object.keys(value)) {
-          const child = (value as Record<string, unknown>)[key];
-          const where = at ? `${at}.${key}` : key;
-          if (GENERIC.has(key)) generic.push(where);
-          if (typeof child === 'function') {
-            functions.push(where);
-            if (GENERIC.has(child.name)) generic.push(`${where} (named ${child.name})`);
-          }
-          walk(child, where);
-        }
-      };
-      walk(window.learn, '');
-      const throws = (fn: () => unknown) => {
-        try {
-          fn();
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      const learn = window.learn as unknown as { on(name: unknown, cb: unknown): unknown };
-      return {
-        functions: functions.sort(),
-        generic,
-        windowIpc: typeof (window as unknown as { ipcRenderer?: unknown }).ipcRenderer,
-        unknownEventThrows: throws(() => learn.on('notAllowed', () => {})),
-        protoKeyThrows: throws(() => learn.on('toString', () => {})),
-        badCallbackThrows: throws(() => learn.on('libraryChanged', 'not a function')),
-        knownEventReturns: typeof learn.on('libraryChanged', () => {}),
-      };
-    });
-    const declared = Object.entries(Channels).flatMap(([ns, verbs]) => Object.keys(verbs).map((verb) => `${ns}.${verb}`));
-    expect(scan.functions).toEqual([...declared, 'on', 'pathForFile'].sort());
-    expect(scan.generic).toEqual([]);
-    expect(scan.windowIpc).toBe('undefined');
-    expect(scan.unknownEventThrows).toBe(true);
-    expect(scan.protoKeyThrows).toBe(true);
-    expect(scan.badCallbackThrows).toBe(true);
-    expect(scan.knownEventReturns).toBe('function');
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
+    const pages: Record<WindowKind, Page> = { main: page, settings, sheet };
+    for (const kind of ['main', 'settings', 'sheet'] as const) {
+      const channels = Object.entries(CHANNEL_KINDS)
+        .filter(([, kinds]) => kinds.includes(kind))
+        .map(([channel]) => channel.replace(':', '.'));
+      const others = kind === 'main' ? ['on', 'pathForFile'] : kind === 'settings' ? ['on'] : [];
+      const scan = await scanSurface(pages[kind]);
+      expect(scan.functions, kind).toEqual([...channels, ...others].sort());
+      expect(scan.generic, kind).toEqual([]);
+      expect(scan.windowIpc, kind).toBe('undefined');
+    }
+    // The main window hears its events; another name, an Object.prototype key or a callback that is not one is refused.
+    expect(await onThrows(page, 'libraryChanged')).toBe(false);
+    expect(await onThrows(page, 'notAllowed')).toBe(true);
+    expect(await onThrows(page, 'toString')).toBe(true);
+    expect(await onThrows(page, 'libraryChanged', 'string')).toBe(true);
+    // The settings window hears its own events, not the main window's.
+    expect(await onThrows(settings, 'prefsChanged')).toBe(false);
+    expect(await onThrows(settings, 'libraryChanged')).toBe(true);
+    await closeSheet(sheet, 'Enter');
   } finally {
     await app.close();
   }

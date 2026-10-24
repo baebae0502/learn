@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PREFS, type Prefs, type Result } from '@learn/domain';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -24,7 +24,8 @@ registerSettingsIpc(
     theme: { changed, shown: () => {} },
   }),
 );
-const invoke = (raw: unknown) => handlers.get('prefs:set')!({ sender: {}, senderFrame: { url: 'learn://app/index.html' } }, raw);
+const MAIN_PAGE = fakeSender(1, 'main');
+const invoke = (raw: unknown) => handlers.get('prefs:set')!({ sender: MAIN_PAGE, senderFrame: { url: 'learn://app/index.html' } }, raw);
 
 describe('prefs.set and the theme (T13R4-m1)', () => {
   it('hands a changed theme to the follower (the pages lead, the native theme follows); other prefs do not', async () => {

@@ -2,6 +2,10 @@ import type { ErrorCode, LearnApi, Result } from '@learn/domain';
 
 declare global {
   interface Window {
+    /**
+     * Each window's preload exposes its own part of LearnApi only (preload/main.ts, settings.ts, sheet.ts):
+     * another window's namespace is undefined in this page, and main refuses its channels anyway.
+     */
     learn: LearnApi;
   }
 }

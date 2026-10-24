@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
+import { windowKindOf } from './window-kinds';
 
 /** A BrowserWindow stand-in: records what the host does with it; tests drive its lifecycle events. */
 class FakeWindow extends EventEmitter {
@@ -65,6 +66,12 @@ afterEach(() => {
 
 describe('sheet host', () => {
   const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+
+  it('registers each sheet window as a sheet, so only an open sheet reaches sheet:* (P-5)', async () => {
+    void host().open(parent(), { kind: 'shortcuts' });
+    await tick();
+    expect(windowKindOf(FakeWindow.all[0]!.webContents.id)).toBe('sheet');
+  });
 
   it('opens a hidden modal child, sizes it to its content, places it under the toolbar, then shows it', async () => {
     const h = host();

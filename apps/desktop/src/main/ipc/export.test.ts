@@ -6,7 +6,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LearnError, type Availability, type Result } from '@learn/domain';
 import { libraryLayout } from '@learn/library';
 import { mainStrings } from '../strings';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -69,7 +69,8 @@ registerLibraryIpc(
     },
   }),
 );
-const invoke = (channel: string, raw?: unknown) => handlers.get(channel)!({ sender: { id: 10 }, senderFrame: { url: 'learn://app/index.html?window=main' } }, raw);
+const MAIN_PAGE = fakeSender(10, 'main');
+const invoke = (channel: string, raw?: unknown) => handlers.get(channel)!({ sender: MAIN_PAGE, senderFrame: { url: 'learn://app/index.html?window=main' } }, raw);
 const chosen = path.join(tmp, 'chosen');
 
 beforeEach(() => {

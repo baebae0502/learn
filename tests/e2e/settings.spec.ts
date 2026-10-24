@@ -183,12 +183,12 @@ test('R4: the renderer cannot set the library path; main picks, checks, confirms
   const { app, page } = await launch(lib, ud);
   try {
     expect(await page.evaluate(() => window.learn.prefs.set({ libraryRoot: '/tmp/x' } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    // Only the settings window asks for the library location (review minor 5): the main window is refused before any dialog.
-    expect(await page.evaluate(() => window.learn.app.chooseLibraryFolder())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await page.evaluate(() => window.learn.app.showLibraryFolder())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    // It takes no input at all: a path sent anyway is refused before any dialog.
-    expect(await page.evaluate(() => (window.learn.app.chooseLibraryFolder as (input: unknown) => Promise<unknown>)({ path: '/tmp/x' }))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    // Only the settings window asks for the library location: the main window's preload has no such invoker, and
+    // main refuses its kind on those channels (app.test.ts, register.test.ts).
+    expect(await page.evaluate(() => Object.keys(window.learn.app))).toEqual(['info']);
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    // It takes no input at all: a path sent anyway is refused before any dialog.
+    expect(await settings.evaluate(() => (window.learn.app.chooseLibraryFolder as (input: unknown) => Promise<unknown>)({ path: '/tmp/x' }))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     await expect(settings.getByTestId('library-path')).toHaveAttribute('title', lib);
     await app.evaluate(({ dialog, shell }, dir) => {
       const g = globalThis as { __revealed?: string; __asked?: number };

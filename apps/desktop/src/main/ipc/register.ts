@@ -6,6 +6,8 @@ import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
 import { mainStrings } from '../strings';
+import { windowKindOf } from '../window-kinds';
+import { CHANNEL_KINDS } from './channel-kinds';
 
 export interface IpcDeps {
   getContext(): LibraryContext;
@@ -15,9 +17,12 @@ export interface IpcDeps {
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */
   sheets: SheetHost;
-  /** Whether `sender` is the main window's renderer (sheets and the settings window are not). */
+  /**
+   * Whether `sender` is the current main window's renderer. createHandle has checked its kind already; this is the
+   * window itself (a main window being closed still has the kind, and its last report must not drive the menu).
+   */
   isMainWindow(sender: WebContents): boolean;
-  /** Whether `sender` is the settings window's renderer (the only caller of the library-location channels). */
+  /** Whether `sender` is the current settings window's renderer (its kind is checked by createHandle already). */
   isSettingsWindow(sender: WebContents): boolean;
   windows: {
     /** ⌘, (main-owned): opens the settings window, or brings it to the front. */
@@ -55,15 +60,17 @@ type Handler<S extends z.ZodType, T> = (input: z.output<S>, event: IpcMainInvoke
 export type Handle = <C extends Channel, S extends z.ZodType>(channel: C, schema: S, fn: Handler<S, ChannelResult<C>>) => void;
 
 /**
- * The single IPC entry point (moved unchanged from the former main/ipc.ts): sender URL check, zod
- * validation, `Result` envelope, and error-code-only logging. The signature additionally ties each
- * channel to the result type LearnApi declares for it.
+ * The single IPC entry point: sender URL check, window-kind check (CHANNEL_KINDS, by the sender's webContents), zod
+ * validation, `Result` envelope, and error-code-only logging. A sender the channel does not allow is refused before
+ * its input is read. The signature additionally ties each channel to the result type LearnApi declares for it.
  */
 export function createHandle(devOrigin: string | null): Handle {
-  return function handle<S extends z.ZodType, T>(channel: string, schema: S, fn: Handler<S, T>): void {
+  return function handle<S extends z.ZodType, T>(channel: Channel, schema: S, fn: Handler<S, T>): void {
+    const kinds = CHANNEL_KINDS[channel];
     ipcMain.handle(channel, async (event, raw: unknown): Promise<Result<T>> => {
       try {
-        if (!isAllowedAppUrl(event.senderFrame?.url ?? '', devOrigin)) {
+        const kind = windowKindOf(event.sender?.id);
+        if (!isAllowedAppUrl(event.senderFrame?.url ?? '', devOrigin) || kind === undefined || !kinds.includes(kind)) {
           throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
         }
         const parsed = schema.safeParse(raw ?? undefined);

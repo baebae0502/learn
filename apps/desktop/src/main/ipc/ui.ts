@@ -77,10 +77,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
   });
 
-  // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library. From the main window or
-  // the settings window only (a sheet has no reason to).
+  // The main-owned app.settings (⌘,) behind the fatal screen's 설정 열기: it needs no library. The main window only
+  // (CHANNEL_KINDS): the settings window's own ⌘, is the menu's, which main runs itself.
   handle(Channels.ui.openSettings, emptyInput, (_input, event) => {
-    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
+    if (!deps.isMainWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.windows.openSettings();
   });
 

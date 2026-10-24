@@ -130,8 +130,10 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     await expect(sheet.getByTestId('shortcuts-done')).toBeFocused();
     expect(await ring(sheet.getByTestId('shortcuts-done'))).toBe('none');
     expect(await menuItemEnabled(s.app, 'app.shortcuts')).toBe(false);
-    // A sheet cannot open another sheet over itself (nor, from Task 10, the settings window): main window only.
-    expect(await sheet.evaluate(() => window.learn.ui.showShortcuts())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    // A sheet's preload has its own namespace only: it cannot ask for another sheet, the settings window or the
+    // library at all, and main refuses its kind on those channels too (register.test.ts).
+    expect(await sheet.evaluate(() => Object.keys(window.learn))).toEqual(['sheet']);
+    expect(await sheet.evaluate(() => Object.keys(window.learn.sheet).sort())).toEqual(['payload', 'resolve']);
     expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
     // A click on a row (static text) leaves ↩ working.
     await sheet.getByTestId('shortcut-row').first().click();
@@ -260,11 +262,12 @@ test('the window greys only when the ⌘/ sheet is on screen; until then its com
   }
 });
 
-test('sheet IPC refuses a caller that is not an open sheet', async ({}, testInfo) => {
+test('sheet IPC belongs to the sheets: the main window has no sheet namespace (P-5)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    expect(await s.page.evaluate(() => window.learn.sheet.payload())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await s.page.evaluate(() => window.learn.sheet.resolve({ kind: 'shortcuts' }))).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    // Main also refuses any caller that is not an open sheet: by its kind (register.test.ts), then by the open sheet
+    // itself (sheets.test.ts).
+    expect(await s.page.evaluate(() => 'sheet' in window.learn)).toBe(false);
   } finally {
     await s.app.close();
   }

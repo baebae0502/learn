@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReadingPosition, Result } from '@learn/domain';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -23,7 +23,8 @@ const stored: ReadingPosition = {
 const reading = { get: vi.fn((_id: string): ReadingPosition | undefined => stored), markOpened: vi.fn(), save: vi.fn() };
 registerReaderIpc(createHandle(null), stubDeps({ getContext: () => ({ reading }) as never, appInfo: () => ({}) as never }));
 
-const call = (channel: string, raw: unknown) => handlers.get(channel)!({ sender: {}, senderFrame: { url: 'learn://app/index.html' } }, raw);
+const MAIN_PAGE = fakeSender(1, 'main');
+const call = (channel: string, raw: unknown) => handlers.get(channel)!({ sender: MAIN_PAGE, senderFrame: { url: 'learn://app/index.html' } }, raw);
 
 beforeEach(() => {
   vi.clearAllMocks();

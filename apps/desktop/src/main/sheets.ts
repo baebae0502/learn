@@ -3,6 +3,7 @@ import { LearnError, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
+import { registerWindowKind } from './window-kinds';
 
 export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560 };
 /**
@@ -93,6 +94,7 @@ export function createSheetHost(opts: {
           backgroundThrottling: false,
         },
       });
+      registerWindowKind(win.webContents, 'sheet');
       const id = win.webContents.id;
       let done = false;
       let watchdog: ReturnType<typeof setTimeout> | undefined;

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { EventChannels } from '@learn/domain';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
+import { windowKindOf } from './window-kinds';
 
 /** The page's height changes, as main's ResizeObserver call would report them (one pending call at a time). */
 let heightChanged: ((height: number) => void) | null = null;
@@ -12,6 +13,7 @@ let fontsLoaded: Promise<boolean> = Promise.resolve(true);
 /** A BrowserWindow stand-in: records what the settings window does with it. The page is 412 px tall. */
 class FakeWindow extends EventEmitter {
   static all: FakeWindow[] = [];
+  static nextId = 500;
   destroyed = false;
   shown = false;
   focused = 0;
@@ -21,6 +23,8 @@ class FakeWindow extends EventEmitter {
   position: [number, number] | null = null;
   url = '';
   readonly webContents = {
+    id: FakeWindow.nextId++,
+    once: vi.fn(),
     isDestroyed: () => this.destroyed,
     send: vi.fn(),
     executeJavaScript: (script: string) =>
@@ -81,6 +85,11 @@ beforeEach(() => {
 });
 
 describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
+  it('is registered as the settings window, so IPC answers it as one (P-5)', () => {
+    const w = host().open() as unknown as FakeWindow;
+    expect(windowKindOf(w.webContents.id)).toBe('settings');
+  });
+
   it('is one standard window, 600 wide, not resizable, in the theme colour, hidden until sized', () => {
     const settings = host();
     const w = settings.open() as unknown as FakeWindow;

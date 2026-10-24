@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX } from './library-columns';
 
@@ -23,6 +24,8 @@ export const SETTINGS = {
   'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
+  /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
+  'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;

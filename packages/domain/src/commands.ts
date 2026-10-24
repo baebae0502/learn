@@ -157,6 +157,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];
 
+/** Every command id, in registry order: the zod enums of ipc.ts (commandIdSchema) and settings.ts (palette.recent). */
+export const COMMAND_IDS = COMMANDS.map((c) => c.id) as readonly CommandId[] as readonly [CommandId, ...CommandId[]];
+
 export function commandById(id: CommandId): CommandSpec {
   const c = COMMANDS.find((x) => x.id === id);
   if (!c) throw new Error(`unknown command: ${id}`);

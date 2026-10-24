@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMMANDS, type CommandContextState, type CommandId } from './commands';
+import { COMMAND_IDS, type CommandContextState, type CommandId } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
@@ -61,7 +61,7 @@ export const savePositionInput = z.object({
   locator: readingLocatorSchema,
   progress: z.number().min(0).max(1).nullable(),
 });
-export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
+export const commandIdSchema = z.enum(COMMAND_IDS);
 const paneShownSchema = z.enum(['shown', 'hidden']);
 /** An item count in a reported context (the library, the selection). */
 const contextCount = z.number().int().min(0).max(1_000_000);

@@ -90,7 +90,7 @@ function PaletteDialog() {
   const ids = useId();
   const platform = currentPlatform();
   /** 설정 as the hints name it: ㅅㅈ → 설정 (critic T14-n2). */
-  const settingsName = commandMention(commandById('app.settings'), platform);
+  const example = t.palette.example('ㅅㅈ', commandMention(commandById('app.settings'), platform));
   // The pane states the toggles' names follow (사이드바 가리기 / 사이드바 보기), as the menu bar has them.
   const state = { sidebar: env.sidebar, inspector: env.inspector };
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
@@ -122,7 +122,7 @@ function PaletteDialog() {
     ranked.length > 0
       ? env.blocked
         ? t.palette.busyStatus(ranked.length)
-        : t.palette.resultCount(ranked.length)
+        : t.palette.resultCount(0, ranked.length)
       : env.blocked
         ? t.palette.busyTitle
         : t.palette.emptyTitle(query.trim());
@@ -192,12 +192,12 @@ function PaletteDialog() {
         <div className="p-list">
           {ranked.length > 0 && busy}
           {ranked.length > 0 ? (
-            <div role="listbox" id={listId} aria-label={t.palette.group} className="p-options">
+            <div role="listbox" id={listId} aria-label={t.palette.listLabel} className="p-options">
               <section role="group" aria-labelledby={`${ids}-group`}>
                 {/* A listbox holds options and groups only: the heading names the group and is no element of its own
                     (role presentation, as RAC's ListBoxSection draws it; axe aria-required-children). */}
                 <header className="p-group" id={`${ids}-group`} role="presentation">
-                  {t.palette.group}
+                  {t.palette.groups.commands}
                 </header>
                 {ranked.map(({ command, match }, index) => {
                   const label = commandLabel(command, platform, state);
@@ -232,7 +232,7 @@ function PaletteDialog() {
             (busy || (
               <div className="p-empty" data-testid="palette-empty">
                 <div className="pe-title">{t.palette.emptyTitle(query.trim())}</div>
-                <div className="pe-text">{t.palette.emptyBody(settingsName)}</div>
+                <div className="pe-text">{t.palette.emptyBody(example)}</div>
               </div>
             ))
           )}
@@ -262,7 +262,7 @@ function PaletteDialog() {
         {ranked.length > 0 && (
           <>
             <span className="spacer" />
-            <span className="row">{t.palette.footHint(settingsName)}</span>
+            <span className="row">{t.palette.footHint(example)}</span>
           </>
         )}
       </div>

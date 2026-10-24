@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
-  ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
+  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
   sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type CommandTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
@@ -44,6 +44,7 @@ describe('command registry', () => {
     const ids = COMMANDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const c of COMMANDS) expect(commandById(c.id)).toBe(c);
+    expect(COMMAND_IDS).toEqual(COMMANDS.map((c) => c.id)); // zod enums (ipc.ts, settings.ts) are built from it, in registry order
   });
   it('gives every accelerator and every single key to one command (one native menu serves every view in M3)', () => {
     // Compared per platform after mapping (⌃⌘ → Ctrl+Shift off macOS) and sorting modifiers, so 'Shift+CmdOrCtrl+X'

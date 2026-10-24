@@ -85,4 +85,11 @@ describe('library table settings (M4 spec 3.1, 3.2)', () => {
     expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [] }))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('library.columns', { visible: 'title', order: [], widths: {} }))).toBe('VALIDATION_FAILED');
   });
+  it('keeps the palette history as known command ids, twenty at most (palette.recent, spec §4.4)', () => {
+    expect(parseSetting('palette.recent', ['app.settings', 'view.textBigger'])).toEqual(['app.settings', 'view.textBigger']);
+    expect(parseSetting('palette.recent', [])).toEqual([]);
+    expect(code(() => parseSetting('palette.recent', ['app.nope']))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('palette.recent', 'app.settings'))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('palette.recent', Array.from({ length: 21 }, () => 'app.settings')))).toBe('VALIDATION_FAILED');
+  });
 });

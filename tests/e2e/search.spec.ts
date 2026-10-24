@@ -93,7 +93,8 @@ test('⌘F selects the field; 초성, two letters, AND over every field, the abs
     await expectNoSeriousA11y(page, 'quick search, results');
     // ⌘F again selects what is typed, so the next keys replace it.
     await runMenuCommand(app, 'library.find');
-    expect(await input(page).evaluate((el) => [(el as HTMLInputElement).selectionStart, (el as HTMLInputElement).selectionEnd])).toEqual([0, 2]);
+    await expect(input(page)).toBeFocused();
+    await expect.poll(() => input(page).evaluate((el) => [(el as HTMLInputElement).selectionStart, (el as HTMLInputElement).selectionEnd])).toEqual([0, 2]);
     await page.keyboard.type('ㅅㅎ');
     await expect(input(page)).toHaveValue('ㅅㅎ');
     await expect.poll(() => titles(page)).toEqual([SIGNAL]);
@@ -140,7 +141,9 @@ test('esc empties the field, then hands the focus to the table; ↓ moves to the
   try {
     await library(page);
     await runMenuCommand(app, 'library.find');
+    await expect(input(page)).toBeFocused(); // the command reaches the renderer later than the keys would
     await page.keyboard.type('노트');
+    await expect(input(page)).toHaveValue('노트');
     await expect.poll(() => titles(page)).toEqual([FOLD]);
     await page.keyboard.press('Escape');
     await expect(input(page)).toHaveValue('');
@@ -150,7 +153,9 @@ test('esc empties the field, then hands the focus to the table; ↓ moves to the
     await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[data-testid="library-table"]') !== null)).toBe(true);
     // ↓ from the field: the first result takes the focus and the selection (as an arrow key selects in the table).
     await runMenuCommand(app, 'library.find');
+    await expect(input(page)).toBeFocused(); // the command reaches the renderer later than the keys would
     await page.keyboard.type('광합');
+    await expect(input(page)).toHaveValue('광합');
     await expect.poll(() => titles(page)).toEqual([PHOTO]);
     await page.keyboard.press('ArrowDown');
     const row = rowByTitle(page, PHOTO);
@@ -174,7 +179,9 @@ test('rows the query hides leave the selection; back from the reader the query i
     await rowByTitle(page, PHOTO).click();
     await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(true);
     await runMenuCommand(app, 'library.find');
+    await expect(input(page)).toBeFocused(); // the command reaches the renderer later than the keys would
     await page.keyboard.type('신호');
+    await expect(input(page)).toHaveValue('신호');
     await expect.poll(() => titles(page)).toEqual([SIGNAL]);
     // The hidden row left the selection: no command acts on a row that is not on screen (spec 3.3).
     await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(false);

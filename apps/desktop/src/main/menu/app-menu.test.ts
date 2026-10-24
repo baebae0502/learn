@@ -272,7 +272,7 @@ describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)',
 
 describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)', () => {
   const byIdOf = (template: MenuItemConstructorOptions[]) => new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
-  /** The item panel's toggle as Task 6 adds it, under a stand-in id. */
+  /** The item panel's toggle as the item panel will add it, under a stand-in id. */
   const panel: CommandSpec = {
     id: 'nav.back', label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
     menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
@@ -309,7 +309,7 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(byId.get('nav.back')?.label).toBe('항목 패널 보기/가리기'); // no state: the neutral name
   });
   it('enables a menu-bar item command from the reported selection, in place, never in the reader (P-2, spec 6)', () => {
-    // No item command has a menu placement yet (Task 4 places 파일's): a variant of the registry stands in.
+    // No item command has a menu placement yet (the 파일 menu's item commands come later): a variant of the registry stands in.
     const placed: CommandSpec[] = [{ ...commandById('item.showInFolder'), menu: { menu: 'file', group: 2, order: 1 } }];
     const selecting = (selectionCount: number, selectionAvailable: number, view: CommandContextState['view'] = 'library') =>
       next({ view, libraryCount: 9, selectionCount, selectionAvailable });

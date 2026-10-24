@@ -55,7 +55,7 @@ describe('renderer command registry', () => {
     const two = env({ selection: () => [ID, OTHER], targetsOf: available });
     expect(menuTarget('item.openExternally', two)).toEqual({ itemIds: [ID, OTHER] });
     expect(runCommand('item.openExternally', two, menuTarget('item.openExternally', two))).toBe(false);
-    // Nothing selected (until Task 4), or the reader, which shows no table: nothing to act on.
+    // Nothing selected (the table reports none yet), or the reader, which shows no table: nothing to act on.
     const none = env({ targetsOf: available });
     expect(runCommand('item.showInFolder', none, menuTarget('item.showInFolder', none))).toBe(false);
     const reader = env({ view: 'viewer', selection: () => [ID], targetsOf: available });

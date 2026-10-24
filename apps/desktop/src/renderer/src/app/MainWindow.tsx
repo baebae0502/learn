@@ -47,7 +47,7 @@ const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()
 const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
 const NO_ITEMS: readonly LibraryItem[] = [];
-/** The table selection until the table has one (Task 4 connects it): one function, so the env's memo holds. */
+/** The table selection until the table reports one: one function, so the env's memo holds. */
 const NO_IDS: readonly string[] = [];
 const noSelection = (): readonly string[] => NO_IDS;
 
@@ -208,7 +208,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
-    // No table selection yet (Task 4): the menu bar's item commands stay off.
+    // No table selection yet: the menu bar's item commands stay off.
     selectionCount: 0,
     selectionAvailable: 0,
     selectionRelinkable: 0,

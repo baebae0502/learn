@@ -7,7 +7,7 @@ export interface CommandEnv extends CommandContextState {
   /** Availability facts for item targets (from the library list). */
   targetsOf(itemIds: readonly string[]): CommandTargetInfo[];
   /**
-   * The table selection in table order: the targets of an item command run from the menu bar (P-2). Read when the
+   * The table selection in table order: the targets of an item command run from the menu bar. Read when the
    * command runs, so a closing palette does not run it on an older selection.
    */
   selection(): readonly string[];

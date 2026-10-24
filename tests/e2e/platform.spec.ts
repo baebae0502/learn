@@ -16,7 +16,7 @@ test.beforeAll(() => {
   if (!fs.existsSync(PDF)) throw new Error(`fixture missing: ${PDF} — run \`pnpm fixtures\``);
 });
 
-/** What an empty library reports first (P-2: no items, nothing selected). */
+/** What an empty library reports first: no items, nothing selected. */
 const EMPTY_LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
 const TOP_LABELS: Record<MenuName, string> = { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' };
 const HANGUL = /[가-힣]/;
@@ -224,8 +224,8 @@ test('menu: enabled state follows the reported view (ui:reportContext)', async (
   }
 });
 
-// P-2: what main was told, read back (main keeps the last accepted report for tests). The selection counts stay 0 until
-// the table has a selection (Task 4); the fatal screen reports the same zeros, or no report would pass the schema.
+// What main was told, read back (main keeps the last accepted report for tests). The selection counts stay 0 until
+// the table has a selection; the fatal screen reports the same zeros, or no report would pass the schema.
 test('menu: the reported context carries the library count and no selection yet; the fatal screen reports zeros', async ({}, testInfo) => {
   const reported = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnMenuContext?: CommandContextState }).__learnMenuContext ?? null);
   const { app, page } = await session(testInfo);

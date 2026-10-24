@@ -21,7 +21,7 @@ collect(t, 't', copy);
 collect(mainStrings, 'mainStrings', copy);
 for (const c of COMMANDS) {
   copy.push({ at: `command ${c.id}`, text: c.label });
-  // A toggle's state labels are menu, palette and tooltip names too (P-3).
+  // A toggle's state labels are menu, palette and tooltip names too.
   for (const [pane, names] of Object.entries(c.stateLabels ?? {})) {
     for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
   }

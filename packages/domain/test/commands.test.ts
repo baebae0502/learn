@@ -134,7 +134,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.open', LIB)).toBe(false);
     expect(isCommandAvailable('item.open', LIB, [managedOk])).toBe(true);
     expect(isCommandAvailable('item.open', LIB, [managedOk, managedOk])).toBe(false);
-    // P-8: 열기 also for a missing file — the reader's 원본 없음 notice is where it is relinked.
+    // 열기 also for a missing file — the reader's 원본 없음 notice is where it is relinked.
     expect(isCommandAvailable('item.open', LIB, [linkedMissing])).toBe(true);
     expect(isCommandAvailable('item.open', LIB, [managedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing])).toBe(true);
@@ -166,7 +166,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
-    // A selection changes nothing while no item command is placed in the menu bar (Task 4 places 파일's).
+    // A selection changes nothing while no item command is placed in the menu bar (the 파일 menu's item commands come later).
     expect(availableMenuCommands(selecting(1, 1))).toEqual(availableMenuCommands(LIB));
   });
   it('turns the reported selection counts into targets: available first, then linked and missing, then the rest (P-2)', () => {
@@ -256,7 +256,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
 
   it('names a toggle after its own pane: exactly one state-label key per command (P-3)', () => {
     for (const c of COMMANDS) if (c.stateLabels) expect(Object.keys(c.stateLabels), c.id).toHaveLength(1);
-    // The item panel's toggle (Task 6) follows `inspector`; the sidebar's follows `sidebar`. Neither reads the other.
+    // The item panel's toggle follows `inspector`; the sidebar's follows `sidebar`. Neither reads the other.
     const panel: CommandSpec = { ...commandById('view.toggleSidebar'), label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } } };
     const sidebar = commandById('view.toggleSidebar');
     for (const platform of ['darwin', 'linux', 'win32']) {

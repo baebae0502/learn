@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { commandById, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
+import { commandById, commandLabel, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
@@ -10,6 +10,8 @@ import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
+import { whenPanelCloses } from '../library/fileActions';
+import { runFileAction } from '../library/runFileAction';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { afterEditing } from '../inspector/editGuard';
 import { Inspector } from '../inspector/Inspector';
@@ -52,8 +54,11 @@ import { ViewerHost } from '../viewers/ViewerHost';
 /** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
 
-/** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file first; a failure is a toast. */
-const fileAction = (run: () => Promise<Result<unknown>>): void => void unwrap(run()).catch(actionFailed);
+/** The item's title as the list has it: the busy toast names what main is copying. */
+const titleOf = (itemId: string): string => queryClient.getQueryData<LibraryItem[]>(keys.items)?.find((i) => i.id === itemId)?.title ?? '';
+
+/** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file and makes its named copy (busy past 300 ms); a failure is a toast. */
+const fileAction = (kind: 'open' | 'reveal', itemId: string, call: () => Promise<Result<void>>): void => void runFileAction(kind, titleOf(itemId), call).catch(actionFailed);
 /** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
 const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
@@ -93,6 +98,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const runImport = useImport(confirm);
   /** 다시 연결…'s open panel is up: a sheet on this window (follow-up D), which holds it like ours do (blocked). */
   const [relinking, setRelinking] = useState(false);
+  /** 사본 내보내기…'s save panel is up: a sheet on this window, which holds it like 다시 연결…'s panel (blocked). */
+  const [exportPanel, setExportPanel] = useState(false);
   /** ⌘/ asked for and not answered yet: from the request until the sheet has closed. */
   const [sheetRequested, setSheetRequested] = useState(false);
   /** Main says one of our sheets hangs over this window: pushed when it shows (windowState.sheetOpen). */
@@ -106,7 +113,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   // Duplicate sheets wait inside the import, so `importing` covers them, and so is the open panel of 파일 가져오기…;
   // the ⌘/ sheet and 다시 연결…'s open panel have their own flags. The registry (env.blocked), main's menu and the
   // window's drop target follow this one value.
-  const blocked = importing || sheetOpen || relinking;
+  const blocked = importing || sheetOpen || relinking || exportPanel;
   // The one modal predicate (Task 12 polish): a surface that owns the keyboard — a sheet (⌘/ or a duplicate question),
   // the palette, the drop overlay. Work in progress is not one: during an import F6 still moves between panes, and only
   // these stop it. The keymap's `active` and the registry's `duringWork` rule both read this value, so they cannot
@@ -151,6 +158,32 @@ export function MainWindow(_props: { info: AppInfo }) {
       }
     } catch (e) {
       actionFailed(e);
+    }
+  }, []);
+
+  const exportCopy = useCallback(async (itemId: string) => {
+    setExportPanel(true);
+    // The panel is part of the call: the busy toast counts from its close, which the windowState push tells.
+    const panel = whenPanelCloses((cb) => api().on('windowState', cb));
+    void panel.closed.then(() => setExportPanel(false));
+    try {
+      const { saved } = await runFileAction('export', titleOf(itemId), () => api().library.exportCopy({ itemId }), { countFrom: panel.closed });
+      if (saved)
+        showToast({
+          kind: 'success',
+          title: t.toast.exportSaved,
+          testId: 'export-done',
+          action: {
+            label: commandLabel(commandById('item.showInFolder'), currentPlatform()),
+            testId: 'export-reveal',
+            onAction: () => void unwrap(api().library.revealExport()).catch(actionFailed),
+          },
+        });
+    } catch (e) {
+      showToast({ kind: 'error', title: t.toast.exportFailed, body: (e as Error).message, testId: 'export-failed' });
+    } finally {
+      panel.stop();
+      setExportPanel(false);
     }
   }, []);
 
@@ -257,10 +290,9 @@ export function MainWindow(_props: { info: AppInfo }) {
     toggleInspector,
     showShortcuts: () => void showShortcuts(),
     openPalette,
-    showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
-    openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
-    // Minimal until the busy and result toasts: the panel and the copy run in main, the outcome is only reported on failure.
-    exportCopy: (itemId) => fileAction(() => api().library.exportCopy({ itemId })),
+    showInFolder: (itemId) => fileAction('reveal', itemId, () => api().library.showInFolder({ itemId })),
+    openExternally: (itemId) => fileAction('open', itemId, () => api().library.openExternally({ itemId })),
+    exportCopy: (itemId) => void exportCopy(itemId),
     // Placeholder until the editor screen gives the command its handler (inspector/startEditing.ts).
     editInfo: startEditing,
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
@@ -268,7 +300,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     focusPane,
     focusSearch: focusQuickSearch,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

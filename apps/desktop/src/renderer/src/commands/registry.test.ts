@@ -235,6 +235,13 @@ describe('renderer command registry', () => {
     expect(contextOf(env({ inspector: 'hidden' }))).toMatchObject({ inspector: 'hidden' });
     expect(Object.hasOwn(contextOf(env()), 'inspector')).toBe(false);
   });
+  it('사본 내보내기… runs for one item whose file is there, with that item', () => {
+    const available: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
+    const e = env({ targetsOf: (ids) => ids.map(() => available) });
+    expect(runCommand('item.exportCopy', e, { itemIds: [ID] })).toBe(true);
+    expect(e.exportCopy).toHaveBeenCalledWith(ID);
+    expect(runCommand('item.exportCopy', env(), { itemIds: [ID] })).toBe(false); // the factory's target has no file
+  });
   it('정보 편집 edits the one target in the library; never in the reader or for several', () => {
     const e = env();
     expect(runCommand('item.editInfo', e, { itemIds: [ID] })).toBe(true);

@@ -35,6 +35,12 @@
   .toast > .icon-btn.sm {
     margin-block: -2px;
   }
+  /* The action sits on the title line like the ×: a one-line toast stays 42. */
+  .toast .t-actions {
+    display: flex;
+    gap: var(--space-4);
+    margin-block: -2px;
+  }
   .toast .t-icon {
     display: grid;
     margin-top: 1px;

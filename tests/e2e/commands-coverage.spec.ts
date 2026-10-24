@@ -5,7 +5,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, enabledMenuCommands, importPaths, launch, menuItemEnabled, openDialogCalls, openItem, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog } from './helpers';
+import {
+  FIXTURES, enabledMenuCommands, importPaths, launch, menuItemEnabled, openDialogCalls, openItem, rowByTitle, runMenuCommand, saveDialogCalls, shellCalls, stubContextMenu, stubOpenDialog, stubSaveDialog,
+  stubShell,
+} from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -66,9 +69,11 @@ test('every registry command runs without a page error (library and reader menus
   app.on('window', watch);
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
-  const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
+  const exported = testInfo.outputPath('exports', 'sample.pdf');
+  /** What main handed the OS, in order (stubShell below): the kinds, then the paths. */
+  const shellKinds = async () => (await shellCalls(app)).map(([kind]) => kind);
   /** The paths main handed the OS: named copies under derived/open/ with the type's extension (final review I1). */
-  const shellPaths = () => app.evaluate(() => (globalThis as { __learnShellPaths?: string[] }).__learnShellPaths ?? []);
+  const shellPaths = async () => (await shellCalls(app)).map(([, p]) => p);
   /** What each command must visibly have done, beyond running without an error (Task 12 rulings). */
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
@@ -94,28 +99,24 @@ test('every registry command runs without a page error (library and reader menus
     'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
     'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
     // On the selected sample row: the OS is asked to show, then to open, its named copy (파일 menu order).
-    'item.showInFolder': () => expect.poll(shellCalls).toEqual(['reveal']),
-    'item.openExternally': () => expect.poll(shellCalls).toEqual(['reveal', 'open']),
+    'item.showInFolder': () => expect.poll(shellKinds).toEqual(['reveal']),
+    // The save panel is stubbed to answer one path: the toast says it is saved and the copy is there.
+    'item.exportCopy': async () => {
+      await expect(page.getByTestId('export-done').last()).toBeVisible();
+      expect(fs.existsSync(exported)).toBe(true);
+    },
+    'item.openExternally': () => expect.poll(shellKinds).toEqual(['reveal', 'open']),
   };
   try {
     await importPaths(page, [PDF]);
     await stubOpenDialog(app, []); // import dialogs come back empty
-    // No Finder and no other app on CI: main's shell calls are recorded instead.
-    await app.evaluate(({ dialog, shell }) => {
-      const g = globalThis as { __learnShell?: string[]; __learnShellPaths?: string[] };
-      g.__learnShell = [];
-      g.__learnShellPaths = [];
+    // No Finder, no other app and no save panel on CI: main's shell calls are recorded and the panel answers a path.
+    await app.evaluate(({ dialog }) => {
       dialog.showMessageBox = (async () => ({ response: 1, checkboxChecked: false })) as typeof dialog.showMessageBox;
-      shell.showItemInFolder = (p: string) => {
-        g.__learnShell!.push('reveal');
-        g.__learnShellPaths!.push(p);
-      };
-      shell.openPath = async (p: string) => {
-        g.__learnShell!.push('open');
-        g.__learnShellPaths!.push(p);
-        return '';
-      };
     });
+    await stubShell(app);
+    fs.mkdirSync(path.dirname(exported), { recursive: true });
+    await stubSaveDialog(app, exported);
     const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
     const ran = new Set<CommandId>();
     for (const view of ['library', 'reader'] as const) {
@@ -152,9 +153,19 @@ test('every registry command runs without a page error (library and reader menus
     await runMenuCommand(app, 'nav.back');
     await stubContextMenu(app, process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기');
     await page.getByTestId('item-row').first().click({ button: 'right' });
-    await expect.poll(shellCalls).toEqual(['reveal', 'open', 'reveal']);
+    await expect.poll(shellKinds).toEqual(['reveal', 'open', 'reveal']);
     expect((await shellPaths())[2]).toMatch(new RegExp(`^${openDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/][0-9a-f-]{36}[\\/]sample\\.pdf$`));
     ran.add('item.showInFolder');
+
+    // 사본 내보내기… from the item menu: one more save panel, and the copy at the path it answered.
+    const panels = await saveDialogCalls(app);
+    fs.rmSync(exported);
+    await stubContextMenu(app, '사본 내보내기…');
+    await rowByTitle(page, 'sample').click({ button: 'right' });
+    await expect.poll(() => saveDialogCalls(app)).toBe(panels + 1);
+    await expect.poll(() => fs.existsSync(exported)).toBe(true);
+    expect(fs.readFileSync(exported)).toEqual(fs.readFileSync(PDF));
+    ran.add('item.exportCopy');
 
     // 다시 연결… (first in the item menu for a linked item whose file is gone): the dialog picks the moved file.
     const src = testInfo.outputPath('src');
@@ -179,7 +190,7 @@ test('every registry command runs without a page error (library and reader menus
     await importPaths(page, [MPEG4]);
     await openItem(page, 'sample-mpeg4part2');
     await page.getByTestId('codec-open').click();
-    await expect.poll(shellCalls).toEqual(['reveal', 'open', 'reveal', 'open']);
+    await expect.poll(shellKinds).toEqual(['reveal', 'open', 'reveal', 'open']);
     expect((await shellPaths())[3]).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample-mpeg4part2\.mp4$/);
     expect(fs.existsSync((await shellPaths())[3]!)).toBe(true);
     ran.add('item.openExternally');

@@ -9,8 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, nativeKeyCode, nativeKeystroke,
-  recordedPopups, rowAt, runMenuCommand, seedLibrary, seedMetadata, selectRows, stubContextMenu, type Session,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, holdCopies, holdSaveDialog, importPaths, launch, mainWindow, menuItemEnabled, nativeKeyCode,
+  nativeKeystroke, recordedPopups, releaseCopies, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, saveDialogCalls, saveDialogLog, seedLibrary, seedMetadata, selectRows, shellCalls, stubContextMenu,
+  stubShell, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
 import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
@@ -571,6 +572,76 @@ test('M4 library: 정보 편집 — the form in place, ⌘↩ from a real keystr
   if (!shownBefore) await runMenuCommand(s.app, 'view.toggleInspector');
   fs.rmSync(src, { force: true });
   save();
+});
+
+// 사본 내보내기 (spec 7) and the busy toast, in a session of its own: the save panel is held, then the copy.
+test('M4 library: 사본 내보내기… — the default name, nothing partial at the chosen path, no busy toast under the panel, 내보내는 중… after it', TAG, async ({}, testInfo) => {
+  const dir = testInfo.outputPath('export');
+  // A second profile beside the shared session (as shell.evidence.ts does): the shared window is hidden meanwhile — both
+  // open at the same place, and Chromium stops drawing the occluded one (run 39617644850: a blank capture).
+  const shared = await mainWindow(s.app);
+  await shared.evaluate((w) => w.hide());
+  const x = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { colorScheme: null });
+  const value: Record<string, unknown> = {};
+  results['export'] = value;
+  try {
+    await setTheme(x.page, 'light'); // the captures below are named light
+    const [item] = await importPaths(x.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await x.page.evaluate((itemId) => window.learn.library.updateMetadata({ itemId, title: '세포 신호: 개요' }), item!.id);
+    const out = path.join(dir, 'exports');
+    fs.mkdirSync(out, { recursive: true });
+    const chosen = path.join(out, '세포 신호 개요.pdf');
+    await stubShell(x.app);
+    await holdSaveDialog(x.app, chosen);
+    await rowByTitle(x.page, '세포 신호: 개요').click();
+    await runMenuCommand(x.app, 'item.exportCopy');
+    await guard('export: the save panel opens as a sheet on the title-named default in Downloads', async () => {
+      await expect.poll(() => saveDialogCalls(x.app)).toBe(1);
+      const [call] = await saveDialogLog(x.app);
+      const downloads = await x.app.evaluate(({ app }) => app.getPath('downloads'));
+      const v = { name: call?.defaultPath ? path.basename(call.defaultPath) : null, inDownloads: call?.defaultPath ? path.dirname(call.defaultPath) === downloads : false, sheet: call?.parent ?? false };
+      value['panel'] = v;
+      check('export: the save panel opens as a sheet on the title-named default in Downloads', v.name === '세포 신호 개요.pdf' && v.inDownloads && v.sheet, v);
+    });
+    await guard('export: no busy toast while the save panel is up', async () => {
+      await x.page.waitForTimeout(800);
+      const shown = await x.page.getByTestId('file-busy').count();
+      value['busyUnderPanel'] = shown;
+      check('export: no busy toast while the save panel is up', shown === 0, { shown });
+    });
+    await holdCopies(x.app);
+    const released = Date.now();
+    await releaseSaveDialog(x.app);
+    await guard('export: 내보내는 중… from 300 ms after the panel closed, while the copy runs', async () => {
+      await expect(x.page.getByTestId('file-busy')).toBeVisible({ timeout: 5_000 });
+      const ms = Date.now() - released;
+      value['busyShownMs'] = ms;
+      check('export: 내보내는 중… from 300 ms after the panel closed, while the copy runs', ms >= 280 && ms <= 2_000, { ms });
+    });
+    await allShots(x.app, x.page, 'm4-08-export-busy', '사본 내보내기: 내보내는 중… while the copy runs (light)');
+    await guard('export: nothing at the chosen path before the copy is whole', async () => {
+      const there = fs.existsSync(chosen);
+      value['partialAtChosenPath'] = there;
+      check('export: nothing at the chosen path before the copy is whole', !there, { there });
+    });
+    await releaseCopies(x.app);
+    await guard('export: 사본을 저장했습니다, and its Finder에서 보기 reveals the saved copy', async () => {
+      const done = x.page.getByTestId('export-done');
+      await expect(done).toBeVisible({ timeout: 10_000 });
+      await allShots(x.app, x.page, 'm4-08-export-done', '사본 내보내기: 사본을 저장했습니다 with Finder에서 보기 (light)');
+      const label = await done.getByTestId('export-reveal').textContent();
+      await done.getByTestId('export-reveal').click();
+      await expect.poll(async () => (await shellCalls(x.app)).length).toBe(1);
+      const [reveal] = await shellCalls(x.app);
+      const v = { left: fs.readdirSync(out), label, revealedTheCopy: reveal?.[0] === 'reveal' && reveal[1] === chosen };
+      value['saved'] = v;
+      check('export: 사본을 저장했습니다, and its Finder에서 보기 reveals the saved copy', v.left.length === 1 && v.left[0] === '세포 신호 개요.pdf' && v.revealedTheCopy, v);
+    });
+  } finally {
+    save();
+    await x.app.close();
+    await shared.evaluate((w) => w.show()); // the shared session goes on for the tests after this one
+  }
 });
 
 test('M4 library: verdict of every check above (m4-library.json checks)', TAG, async () => {

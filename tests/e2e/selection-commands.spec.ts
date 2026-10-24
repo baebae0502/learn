@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import {
-  FIXTURES, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, menuSnapshot, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows,
+  FIXTURES, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, menuSnapshot, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows, shellCalls, stubShell,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -20,19 +20,6 @@ test.beforeAll(() => {
   for (const f of [PDF, KO_PDF]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
 
-/** Record shell calls in main instead of opening Finder or another app. */
-async function stubShell(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ shell }) => {
-    const g = globalThis as { __learnShell?: Array<[string, string]> };
-    g.__learnShell = [];
-    shell.showItemInFolder = (p: string) => void g.__learnShell!.push(['reveal', p]);
-    shell.openPath = async (p: string) => {
-      g.__learnShell!.push(['open', p]);
-      return '';
-    };
-  });
-}
-const shellCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
 /** 파일 › Finder에서 보기 and 기본 앱으로 열기: enabled or not, in that order. */
 const fileItems = (app: ElectronApplication) => Promise.all([menuItemEnabled(app, 'item.showInFolder'), menuItemEnabled(app, 'item.openExternally')]);
 const selectedRows = (page: import('@playwright/test').Page) => page.locator('[data-testid="item-row"][aria-selected="true"]');

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -13,20 +13,6 @@ const REVEAL = process.platform === 'darwin' ? 'Finder에서 보기' : '폴더�
 test.beforeAll(() => {
   for (const f of [PDF, MPEG4]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
-
-/** Record shell calls in main instead of opening Finder / another app; `openFails` makes openPath report an error. */
-async function stubShell(app: ElectronApplication, openFails = false): Promise<void> {
-  await app.evaluate(({ shell }, openFails) => {
-    const g = globalThis as { __learnShell?: Array<[string, string]> };
-    g.__learnShell = [];
-    shell.showItemInFolder = (p: string) => void g.__learnShell!.push(['reveal', p]);
-    shell.openPath = async (p: string) => {
-      g.__learnShell!.push(['open', p]);
-      return openFails ? 'No application knows how to open this file' : '';
-    };
-  }, openFails);
-}
-const shellCalls = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
 
 const heightOf = async (page: Page, testId: string) => Math.round((await page.getByTestId(testId).boundingBox())!.height);
 
@@ -258,7 +244,7 @@ test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and
     expect(path.relative(path.join(testInfo.outputPath('library'), 'derived', 'open'), revealed!).split(path.sep)).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/), 'sample-mpeg4part2.mp4']);
     expect(fs.statSync(revealed!).size).toBe(fs.statSync(MPEG4).size);
     // No app for the type: a toast with our own cause + next step, never the OS text.
-    await stubShell(s.app, true);
+    await stubShell(s.app, { openFails: true });
     await s.page.getByTestId('codec-open').click();
     const toast = s.page.getByTestId('action-error');
     await expect(toast).toContainText('기본 앱으로 열지 못했습니다');

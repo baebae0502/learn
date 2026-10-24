@@ -133,6 +133,102 @@ export const restoreOpenDialog = (app: ElectronApplication) =>
 export const openDialogCalls = (app: ElectronApplication): Promise<number> =>
   app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
 
+/** What main handed the OS since the last stubShell, in order: Finder에서 보기 = reveal, 기본 앱으로 열기 = open. */
+export type ShellCall = ['reveal' | 'open', string];
+
+/** Record shell calls in main instead of opening Finder or another app; `openFails` makes openPath report an error. */
+export async function stubShell(app: ElectronApplication, opts: { openFails?: boolean } = {}): Promise<void> {
+  await app.evaluate(({ shell }, openFails) => {
+    const g = globalThis as { __learnShell?: Array<['reveal' | 'open', string]> };
+    g.__learnShell = [];
+    shell.showItemInFolder = (p: string) => void g.__learnShell!.push(['reveal', p]);
+    shell.openPath = async (p: string) => {
+      g.__learnShell!.push(['open', p]);
+      return openFails ? 'No application knows how to open this file' : '';
+    };
+  }, opts.openFails === true);
+}
+export const shellCalls = (app: ElectronApplication): Promise<ShellCall[]> => app.evaluate(() => (globalThis as { __learnShell?: ShellCall[] }).__learnShell ?? []);
+
+/** One call of the stubbed save panel: whether it hung on a window (a sheet), and what it was asked to show. */
+export interface SaveDialogCall {
+  parent: boolean;
+  title: string | null;
+  defaultPath: string | null;
+  properties: string[];
+  extensions: string[];
+}
+
+/**
+ * Replace the native save panel in main for the rest of the session: it answers `filePath` (null: cancelled) and records
+ * every call, from none (saveDialogCalls counts them, saveDialogLog says what each was asked to show).
+ */
+export async function stubSaveDialog(app: ElectronApplication, filePath: string | null): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] };
+    g.__learnSaveDialogCalls = [];
+    dialog.showSaveDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; defaultPath?: string; properties?: string[]; filters?: Array<{ extensions: string[] }> };
+      g.__learnSaveDialogCalls!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+        extensions: (o.filters ?? []).flatMap((f) => f.extensions),
+      });
+      return answer === null ? { canceled: true, filePath: '' } : { canceled: false, filePath: answer };
+    }) as typeof dialog.showSaveDialog;
+  }, filePath);
+}
+/** How many times the stubbed (or held) save panel was shown since the last stubSaveDialog / holdSaveDialog, as openDialogCalls counts. */
+export const saveDialogCalls = (app: ElectronApplication): Promise<number> =>
+  app.evaluate(() => (globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] }).__learnSaveDialogCalls?.length ?? 0);
+/** What each of those panels was asked to show, oldest first. */
+export const saveDialogLog = (app: ElectronApplication): Promise<SaveDialogCall[]> =>
+  app.evaluate(() => (globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] }).__learnSaveDialogCalls ?? []);
+
+/** A save panel that stays up (the user still choosing) until releaseSaveDialog, then answers `filePath`; calls are recorded from none. */
+export const holdSaveDialog = (app: ElectronApplication, filePath: string) =>
+  app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnReleaseSave?: () => void; __learnSaveDialogCalls?: SaveDialogCall[] };
+    delete g.__learnReleaseSave;
+    g.__learnSaveDialogCalls = [];
+    dialog.showSaveDialog = ((...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; defaultPath?: string; properties?: string[]; filters?: Array<{ extensions: string[] }> };
+      g.__learnSaveDialogCalls!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+        extensions: (o.filters ?? []).flatMap((f) => f.extensions),
+      });
+      return new Promise((resolve) => (g.__learnReleaseSave = () => resolve({ canceled: false, filePath: answer })));
+    }) as typeof dialog.showSaveDialog;
+  }, filePath);
+/** Answers the held save panel; waits until main has shown it (the menu click returns before the IPC arrives). */
+export async function releaseSaveDialog(app: ElectronApplication): Promise<void> {
+  await expect.poll(() => app.evaluate(() => typeof (globalThis as { __learnReleaseSave?: () => void }).__learnReleaseSave)).toBe('function');
+  await app.evaluate(() => (globalThis as { __learnReleaseSave?: () => void }).__learnReleaseSave!());
+}
+
+/**
+ * Every copy main makes from now (node:fs/promises copyFile: imports, named copies, exports) waits until releaseCopies.
+ * The real copyFile is kept the first time, so holding again does not stack waits.
+ */
+export async function holdCopies(app: ElectronApplication): Promise<void> {
+  await app.evaluate(() => {
+    const fsp = process.getBuiltinModule('node:fs/promises');
+    const g = globalThis as { __learnRealCopyFile?: typeof fsp.copyFile; __learnReleaseCopy?: () => void };
+    const real = (g.__learnRealCopyFile ??= fsp.copyFile);
+    const held = new Promise<void>((resolve) => (g.__learnReleaseCopy = resolve));
+    fsp.copyFile = (async (...args: Parameters<typeof real>) => {
+      await held;
+      return real(...args);
+    }) as typeof real;
+  });
+}
+export const releaseCopies = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
+
 /** Import files through `learn.library.import` (managed); every path must come back as a new item. */
 export async function importPaths(page: Page, paths: string[]): Promise<LibraryItem[]> {
   const r = await page.evaluate((paths) => window.learn.library.import({ paths, mode: 'managed' }), paths);

@@ -6,7 +6,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows, type Session } from '../helpers';
+import {
+  FIXTURES, closeSheet, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  stubContextMenu, stubSaveDialog, type Session,
+} from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -215,6 +218,31 @@ test('item panel: nothing selected, one item, several, a missing original, folde
     await selectRows(s.page, ['sample-mpeg4part2']);
     await expect(s.page.getByTestId('inspector-loading')).toBeVisible();
     await shoot(s.page, 'inspector-loading-light', { mask: masks() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('toasts: 내보내는 중… while a copy runs, then 사본을 저장했습니다 with 폴더에서 보기', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The table's dates in its rows only (Q-40), and what moves in the item panel (Task 6).
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
+    await setTheme(s.page, 'light');
+    const out = testInfo.outputPath('exports');
+    fs.mkdirSync(out, { recursive: true });
+    await stubSaveDialog(s.app, path.join(out, 'sample.pdf'));
+    await holdCopies(s.app);
+    await stubContextMenu(s.app, '사본 내보내기…');
+    await rowByTitle(s.page, 'sample').click({ button: 'right' }); // selects it first (spec 3.3), then the item menu
+    await expect(s.page.getByTestId('file-busy')).toBeVisible();
+    await panelSettled(s.page, 'PDF · 3쪽'); // the panel reads the page count from the file, not through a copy
+    await shoot(s.page, 'toast-busy-light', { mask: dates() });
+    await releaseCopies(s.app);
+    // Shot at once: a success toast closes 5 s after it first paints.
+    await expect(s.page.getByTestId('export-done')).toBeVisible();
+    await shoot(s.page, 'toast-export-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

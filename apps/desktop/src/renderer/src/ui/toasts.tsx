@@ -8,13 +8,20 @@ import {
   UNSTABLE_ToastRegion as ToastRegion,
 } from 'react-aria-components';
 import { t } from '../strings';
-import { IconButton } from './Button';
+import { Button, IconButton } from './Button';
 import { Icon } from './Icon';
+import { Spinner } from './Spinner';
 import { afterPaintOr, type Pending } from './afterPaint';
 import { perfMark } from './perfMarks';
 import { DismissTimer } from './toastTimer';
 
-export type ToastKind = 'success' | 'error' | 'info';
+export type ToastKind = 'success' | 'error' | 'info' | 'busy';
+/** A toast's one verb (design-spec 6 toast action, a small button): pressing it runs it, and the toast goes — its job is done. */
+export interface ToastAction {
+  label: string;
+  onAction(): void;
+  testId?: string;
+}
 /** A toast row about one file: the name is cut with an ellipsis before the cause is (the cause is what to read). */
 export interface ToastFileLine {
   name: string;
@@ -28,6 +35,8 @@ export interface ToastData {
   lines?: readonly (ToastFileLine | string)[];
   /** A paragraph under the lines (the next step); wraps. */
   body?: string;
+  /** At most one, on the title line (a success toast after 사본 내보내기: the button that reveals the copy). */
+  action?: ToastAction;
   testId?: string;
 }
 
@@ -94,9 +103,9 @@ export class LearnToastQueue<T = ToastData> extends ToastQueue<T> {
 }
 
 /**
- * One queue per window. design-spec 6 토스트: success (and info) closes by itself after 5 s and has no button;
- * an error stays until its × (or Escape while it has focus) closes it (C-6). Action buttons, when a toast gets one,
- * are verbs (취소·보기·다시 시도). RAC's toast API is UNSTABLE_-prefixed in 1.22.1; it is pinned and used only through
+ * One queue per window. design-spec 6 토스트: success (and info) closes by itself after 5 s and has no close
+ * button; an error stays until its × (or Escape while it has focus) closes it; a busy toast stays until the work it
+ * stands for ends (closeToast). Action buttons are verbs (보기·다시 시도). RAC's toast API is UNSTABLE_-prefixed in 1.22.1; it is pinned and used only through
  * this module.
  */
 export const toastQueue = new LearnToastQueue({ maxVisibleToasts: 3 });
@@ -104,6 +113,11 @@ export const toastQueue = new LearnToastQueue({ maxVisibleToasts: 3 });
 /** No RAC timeout: a toast that closes by itself does so through AutoClose, while it is on screen. */
 export function showToast(data: ToastData): string {
   return toastQueue.add(data);
+}
+
+/** Closes a toast by the key showToast returned: the only way a busy toast goes. */
+export function closeToast(key: string): void {
+  toastQueue.close(key);
 }
 
 /** Where no frames come (a hidden or minimised window), a toast counts from this long after it mounted. */
@@ -140,7 +154,7 @@ export function startAutoClose(
 /** A toast pushed out of the three visible ones starts again when it is back, as RAC's did. */
 function AutoClose({ toastKey, kind, testId }: { toastKey: string; kind: ToastKind; testId: string | undefined }) {
   useEffect(() => {
-    if (kind === 'error') return;
+    if (kind === 'error' || kind === 'busy') return; // an error waits for its ×, a busy toast for its work
     return startAutoClose(toastQueue as LearnToastQueue<unknown>, toastKey, { shown: testId ? () => perfMark(`toast:${testId}`) : undefined });
   }, [toastKey, kind, testId]);
   return null;
@@ -149,11 +163,37 @@ function AutoClose({ toastKey, kind, testId }: { toastKey: string; kind: ToastKi
 const TOAST_ICON = { success: CircleCheck, error: CircleAlert, info: Info } as const;
 const TOAST_TONE = { success: 'c-success', error: 'c-danger', info: 'c-secondary' } as const;
 
-/** 16 px icon in the 20 px icon column, centred on the title line (design-spec 6 토스트). Shared with the board. */
+/** 16 px icon in the 20 px icon column, centred on the title line (design-spec 6 toast); a busy toast spins there. Shared with the board. */
 export function ToastIcon({ kind }: { kind: ToastKind }) {
+  if (kind === 'busy') {
+    return (
+      <span className="t-icon">
+        <Spinner />
+      </span>
+    );
+  }
   return (
     <span className={`t-icon ${TOAST_TONE[kind]}`}>
       <Icon icon={TOAST_ICON[kind]} size="md" />
+    </span>
+  );
+}
+
+/** The action on the title line, a small link button; `onDone` closes the toast first. Shared with the board. */
+export function ToastActionButton({ action, onDone }: { action: ToastAction; onDone?: () => void }) {
+  return (
+    <span className="t-actions">
+      <Button
+        variant="plain-accent"
+        size="small"
+        testId={action.testId}
+        onPress={() => {
+          onDone?.();
+          action.onAction();
+        }}
+      >
+        {action.label}
+      </Button>
     </span>
   );
 }
@@ -190,6 +230,7 @@ export function Toasts() {
                 </Text>
               )}
             </ToastContent>
+            {toast.content.action && <ToastActionButton action={toast.content.action} onDone={() => toastQueue.close(toast.key)} />}
             {toast.content.kind === 'error' && <IconButton slot="close" icon={X} label={t.common.close} size="small" testId="toast-close" />}
           </Toast>
         )}

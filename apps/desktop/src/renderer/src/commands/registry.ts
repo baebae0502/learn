@@ -26,6 +26,7 @@ export interface CommandEnv extends CommandContextState {
   /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
   showInFolder(itemId: string): void;
   openExternally(itemId: string): void;
+  /** 사본 내보내기…: main's save panel, then the copy; the toast that says it is saved can reveal it. */
   exportCopy(itemId: string): void;
   /** 정보 편집: the item panel shows (if folded) and its 정보 section becomes the form. */
   editInfo(itemId: string): void;

@@ -12,7 +12,7 @@ import { currentPlatform, readWindowParams } from '../ui/platform';
 import { SearchField } from '../ui/SearchField';
 import { Segmented } from '../ui/Segmented';
 import { Spinner } from '../ui/Spinner';
-import { ToastIcon, ToastLines, Toasts, showToast, type ToastData } from '../ui/toasts';
+import { ToastActionButton, ToastIcon, ToastLines, Toasts, closeToast, showToast, type ToastData } from '../ui/toasts';
 import { TooltipText } from '../ui/Tooltip';
 
 // Sample copy on the board never reaches a user screen, so it stays outside strings/ (except shared words like 닫기).
@@ -77,7 +77,7 @@ const G_ROWS: ReadonlyArray<readonly [string, string | undefined, boolean]> = [
   ['파일 없음', undefined, true],
 ];
 
-/** A toast as <Toasts/> draws it, in place: same icon, text and (error only, C-6) the real close button. */
+/** A toast as <Toasts/> draws it, in place: same icon, text, action and (error only) the real close button. */
 function StaticToast({ data }: { data: ToastData }) {
   return (
     <div className="toast g-static" data-kind={data.kind}>
@@ -90,6 +90,7 @@ function StaticToast({ data }: { data: ToastData }) {
           </div>
         )}
       </div>
+      {data.action && <ToastActionButton action={data.action} />}
       {data.kind === 'error' && <IconButton icon={X} label={t.common.close} size="small" />}
     </div>
   );
@@ -237,6 +238,8 @@ function Part2() {
         <h2 className="g-title">토스트·스피너·툴팁</h2>
         <StaticToast data={{ kind: 'success', title: '자료 3개를 가져왔습니다' }} />
         <StaticToast data={{ kind: 'error', title: '파일 1개를 가져오지 못했습니다', body: 'notes.txt: 지원하지 않는 형식입니다.' }} />
+        <StaticToast data={{ kind: 'success', title: '사본을 저장했습니다', action: { label: 'Finder에서 보기', onAction: noop } }} />
+        <StaticToast data={{ kind: 'busy', title: '여는 중…', lines: ['분자생물학 6장 · 신호 전달'] }} />
         <div className="g-row">
           <Spinner />
           <span className="tooltip">
@@ -342,6 +345,7 @@ function Part3() {
   const [presses, setPresses] = useState(0);
   const [beforePresses, setBeforePresses] = useState(0);
   const [last, setLast] = useState('—');
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortId>('added');
   const [order, setOrder] = useState<SortId>('descending');
   const [density, setDensity] = useState<'compact' | 'regular' | 'comfortable'>('regular');
@@ -431,6 +435,20 @@ function Part3() {
           </Button>
           <Button testId="g3-toast-error-title" onPress={() => showToast({ kind: 'error', title: '필기를 저장하지 못했습니다', testId: 'toast-error-title' })}>
             제목만 있는 오류 토스트
+          </Button>
+          <Button
+            testId="g3-toast-action"
+            onPress={() =>
+              showToast({ kind: 'success', title: '사본을 저장했습니다', testId: 'toast-action', action: { label: 'Finder에서 보기', testId: 'toast-action-button', onAction: () => setLast('reveal') } })
+            }
+          >
+            동작 있는 토스트
+          </Button>
+          <Button testId="g3-toast-busy" onPress={() => setBusyKey(showToast({ kind: 'busy', title: '여는 중…', lines: ['분자생물학 6장 · 신호 전달'], testId: 'toast-busy' }))}>
+            바쁨 토스트
+          </Button>
+          <Button testId="g3-toast-busy-close" onPress={() => busyKey !== null && closeToast(busyKey)}>
+            바쁨 토스트 닫기
           </Button>
         </div>
       </section>

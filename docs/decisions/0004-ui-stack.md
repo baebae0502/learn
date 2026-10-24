@@ -70,7 +70,7 @@ M1 목업은 가상화된 정렬 표, 중첩 트리, 탭, 메뉴·팝오버·시
 
 ### Task 3에 넘기는 것
 
-- F6 착지점(P-31): 격자(`role="grid"`)가 스크롤 요소이고 `tabindex="0"`이며 행에는 없다(스파이크 페이지 `TanstackSpike.tsx`의 구조; RAC 쪽 측정 `focusTarget`도 같다) — `R/shell/panes.ts`의 포커스 대상은 이것이다.
+- F6 착지점(P-31): 격자(`role="grid"`)는 스크롤 요소이며 `tabindex="-1"`이고, 커서가 있는 행만 `tabindex="0"`이다(roving tabindex). F6은 그 행에 내리므로 `R/shell/panes.ts`의 포커스 대상은 커서 행이다. 스파이크 페이지(`TanstackSpike.tsx`)의 격자 `tabIndex={0}`은 측정용 지름길이었고 Task 3은 따르지 않는다.
 - 정렬 계산: 1만 행 콜레이터 정렬 12.7ms(Linux) / 3.3ms(Mac) — `R/library/sort.ts`는 정렬 열마다 다시 계산해도 예산 안이다.
 - 대안 페이지(`TanstackSpike.tsx`)가 Task 3의 출발점이다: `useVirtualizer({ count, getScrollElement, estimateSize: () => rowHeight, overscan: 8, getItemKey })`, 머리는 붙인 줄, 행은 `translateY`, `aria-rowindex`는 머리 줄을 1로 센다. 명세 3.3의 선택(⇧·⌘·⌘A·오른쪽 클릭·화살표·Home/End·↩)과 열 크기 조절은 직접 만든다.
 

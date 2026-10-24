@@ -51,6 +51,7 @@ import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
+import { useWarmUp } from './useWarmUp';
 
 /** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
@@ -75,6 +76,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const items = useItems();
   const prefs = usePrefs().data;
   useApplyTheme(prefs?.theme);
+  // The first rows' fonts and Intl data, at an idle moment once the list has settled (spec 8, the drop stall).
+  useWarmUp(items.isSuccess || items.isError);
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);

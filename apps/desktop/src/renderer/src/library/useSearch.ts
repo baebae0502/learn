@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo } from 'react';
 import type { LibraryItem } from '@learn/domain';
 import { useSearchTexts } from '../data/queries';
 import { useLibrary } from '../state/library-store';
+import { whenIdle } from '../ui/whenIdle';
 import { searchCached, searchIndexFor, type SearchResult } from './search';
 
 /**
@@ -16,8 +17,7 @@ export function useSearch(items: readonly LibraryItem[]): SearchResult | null {
   // The index of a new list is built while the window is idle, so the first keystroke does not pay for it.
   useEffect(() => {
     if (items.length === 0) return;
-    const id = requestIdleCallback(() => void searchIndexFor(items, texts));
-    return () => cancelIdleCallback(id);
+    return whenIdle(() => void searchIndexFor(items, texts), 1000);
   }, [items, texts]);
   return useMemo(() => (deferred.trim() === '' ? null : searchCached(searchIndexFor(items, texts), deferred)), [items, texts, deferred]);
 }

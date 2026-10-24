@@ -372,6 +372,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       const listAt = Number(await c.page.getByTestId('app-ready').getAttribute('data-at'));
       await expect.poll(() => c.page.evaluate(() => performance.getEntriesByName('learn:table:first-paint').length)).toBe(1);
       const paintedAt = await c.page.evaluate(() => performance.timeOrigin + performance.getEntriesByName('learn:table:first-paint')[0]!.startTime);
+      // An empty or placeholder table must not pass: the paint came after the list, and rows are in it (the mark is set in
+      // the frame of the commit that drew them, and rows are never removed after).
+      expect(paintedAt - listAt, 'the first rows were painted after the list arrived').toBeGreaterThan(0);
+      expect(await c.page.getByTestId('item-row').count(), 'the table shows rows at its first paint').toBeGreaterThan(0);
       firstPaintMs.push(Math.round(paintedAt - listAt));
     } finally {
       await c.app.close();
@@ -383,15 +387,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
   try {
     const page = s.page;
     // The list's search index is built at the window's first idle moment (useSearch; timed() records it): wait for it,
-    // so that long task lands in none of the measurements below.
-    // A window nobody touches schedules no frames, and Chromium then opens no idle period (requestIdleCallback waits for its
-    // timeout): frames are kept coming until the index is there, as they do under a user's hands.
-    await page.evaluate(() => {
-      const tick = () => {
-        if (performance.getEntriesByName('learn:search:index', 'measure').length === 0) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+    // so that long task lands in none of the measurements below (useSearch gives its idle callback a one-second timeout).
     await expect
       .poll(() => page.evaluate(() => performance.getEntriesByName('learn:search:index', 'measure').length), { timeout: 15_000, message: 'the search index was built at an idle moment' })
       .toBeGreaterThan(0);
@@ -455,6 +451,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       if (painted === null) unpainted++;
       else inputToPaintMs.push(Math.round(painted - t0));
     };
+    // The quick search measures of the timed inputs only: the warm-up query above is left out.
+    const measuresBefore = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures)).filter((m) => m.name === 'learn:search').length;
     const steps = searchSteps(libraryRows);
     for (const step of steps) {
       for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
@@ -464,6 +462,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     expect(inputToPaintMs.length, `enough inputs for a p95 (search-steps.ts found ${JSON.stringify(steps.map((x) => x.group))}; seedRows gives Korean and Latin titles and creators)`).toBeGreaterThanOrEqual(20);
     const searchMs = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures))
       .filter((m) => m.name === 'learn:search')
+      .slice(measuresBefore)
       .map((m) => tenth(m.ms));
     expect(searchMs.length, "quick search is timed (timed() in search.ts' searchCached)").toBeGreaterThan(0);
 

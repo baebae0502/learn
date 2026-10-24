@@ -79,6 +79,24 @@
     }
   }
 
+  /* app/warmUp.ts: laid out (faces and glyph runs) but never seen: off screen, for one frame. */
+  .font-warm {
+    position: fixed;
+    top: 0;
+    left: 0;
+    translate: -200vw 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .font-warm > span {
+    display: block;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .font-warm > .strong {
+    font-weight: var(--weight-semibold);
+  }
+
   /* Screenshots (LEARN_DETERMINISTIC=1): nothing moves, no caret. */
   :root[data-deterministic='1'] *,
   :root[data-deterministic='1'] *::before,

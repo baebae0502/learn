@@ -13,7 +13,8 @@ import {
   stubContextMenu, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
-import { IS_MAC, allShots, focusApp, fullScreenShot, movePointer, nativeWindowShot, pressEscape, writeJson } from './capture';
+import { EVIDENCE_ROOT, IS_MAC, allShots, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
+import { decodePng } from './png';
 
 const TAG = { tag: '@library' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -164,11 +165,31 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
       await rowAt(s.page, 5).click();
       await s.page.keyboard.press('ArrowUp'); // the keyboard cursor (its ring) on row 5 again
       await s.page.keyboard.press('ArrowDown');
+      // The ring must be on screen before the window loses key status, or the later "no ring" proves nothing.
+      const before = await rowAt(s.page, 5).evaluate((e) => ({ focusVisible: e.hasAttribute('data-focus-visible'), ring: getComputedStyle(e).boxShadow }));
+      // Points are CSS px read while the window is in front (its geometry does not change when inactive): a spot inside
+      // row 5's fill away from its text and the inset ring, and the toolbar where it is empty.
+      const geo = await s.page.evaluate((i) => {
+        const r = document.querySelectorAll('[data-testid="item-row"]')[i]!.getBoundingClientRect();
+        return { width: innerWidth, row: [r.right - 8, r.top + r.height / 2] as [number, number] };
+      }, 5);
       await bringFinderToFront();
-      await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
-      const v = { fill: await fill(5), ring: await rowAt(s.page, 5).evaluate((e) => getComputedStyle(e).boxShadow), neutral: await tokenColor(s.page, '--fill-selected') };
-      await nativeWindowShot(s.app, 'm4-02-inactive-light', 'library table, window inactive (Finder in front)', { focus: false });
-      check('inactive window: neutral selection and no cursor ring', v.fill === v.neutral && v.ring === 'none', v);
+      await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+      await sleep(500); // the web content repaints as inactive; a capture taken sooner shows the last active frame
+      const shot = await nativeWindowShot(s.app, 'm4-02-inactive-light', 'library table, window inactive (Finder in front)', { focus: false });
+      const ring = await rowAt(s.page, 5).evaluate((e) => getComputedStyle(e).boxShadow);
+      const neutral = await tokenColor(s.page, '--fill-selected');
+      const chrome = await tokenColor(s.page, '--bg-chrome-inactive');
+      const img = shot.file ? decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))) : null;
+      const scale = img ? img.width / geo.width : 1;
+      const rowPoint = [Math.round(geo.row[0] * scale), Math.round(geo.row[1] * scale)] as const;
+      const toolbarPoint = [Math.round(600 * scale), Math.round(26 * scale)] as const;
+      const [rowPixel, toolbarPixel] = shot.file ? await pngPixels(s.page, shot.file, [rowPoint, toolbarPoint]) : [null, null];
+      const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      const near = (px: number[] | null | undefined, want: string) => !!px && rgb(want).length === 3 && px.every((v, k) => Math.abs(v - rgb(want)[k]!) <= 3);
+      const v = { before, ring, neutral, chrome, scale, rowPoint, toolbarPoint, rowPixel, toolbarPixel };
+      const ringWasDrawn = before.focusVisible || before.ring !== 'none';
+      check('inactive window: neutral selection and no cursor ring', ringWasDrawn && ring === 'none' && near(rowPixel, neutral) && near(toolbarPixel, chrome), v);
       await bringAppToFront(s.app);
     });
   }

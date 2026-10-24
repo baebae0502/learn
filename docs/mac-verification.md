@@ -358,6 +358,14 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 
 **합계: macOS 27회, 183분.** 값은 `evidence/m4-spike/40034565009/evidence/evidence-results/table-spike.json`·`table-spike-tanstack.json`, 결정과 표는 ADR-0004 "M4 표". 같은 실행의 `perf.json`·`open-latency.json`·`theme-switch.json`·`drop-import.json`은 M3 코드 그대로의 참고값이다.
 
+## M4 작업별 실행 (브랜치 `m4-library`, macos-15 arm64)
+
+| # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (초 → 과금 분) | 결과 |
+|---|---|---|---|---|---|
+| 28 | [40097296461](https://github.com/baebae0502/learn/actions/runs/40097296461) | 10-24 13:14 | library / 아니오 / 71bd6fc (Task 3 표) | 112초 → 2분(공개 저장소: 무료) | **성공**: 증거 테스트 4개, `m4-library.json` 확인 11개 모두 ok(실제 ⌘A, 비활성 창, 네이티브 열 메뉴 포함) |
+
+**합계: macOS 28회, 185분.** 값과 PNG는 `evidence/m4-t3/40097296461/evidence/evidence-results/`(`m4-library.json`, `m4-t3/m4-0*.png`).
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.

@@ -155,6 +155,8 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
   // The group derives a late-mounted panel's constraints after this effect first runs (the handle throws until then),
   // and the first size already says what is wanted: only a change after the mount goes through the handle.
   const mounted = useRef(false);
+  // Development's StrictMode unmounts and re-runs every effect on mount: the skip must start over with it.
+  useEffect(() => () => void (mounted.current = false), []);
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;

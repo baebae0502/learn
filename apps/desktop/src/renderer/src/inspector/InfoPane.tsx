@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem } from '@learn/domain';
 import { useItemDetail, useItems } from '../data/queries';
@@ -90,6 +90,9 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
 export function ItemInfo({ item }: { item: LibraryItem }) {
   const detail = useItemDetail(item.id);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
+  useEffect(() => {
+    if (detail.isError) console.warn(`[inspector] detail failed: ${detail.error.message}`);
+  }, [detail.isError, detail.error]);
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
       <InfoHead item={item} />
@@ -101,7 +104,7 @@ export function ItemInfo({ item }: { item: LibraryItem }) {
       ) : detail.isError ? (
         <div className="pane-empty top" data-testid="inspector-failed">
           <div className="pe-title">{t.inspector.detailFailed}</div>
-          <div className="pe-text">{detail.error.message}</div>
+          <div className="pe-text">{t.inspector.detailFailedBody}</div>
           <Button size="small" isPending={detail.isFetching} onPress={() => void detail.refetch()}>
             {t.common.retry}
           </Button>

@@ -422,8 +422,9 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
       await runMenuCommand(s.app, 'view.toggleInspector');
     }
     await expect.poll(state).not.toBe(before);
-    inspector['keystroke'] = { native, before, after: await state() };
-    check('inspector: ⌥⌘I reaches the 보기 item and toggles the panel', true, inspector['keystroke']);
+    const after = await state();
+    inspector['keystroke'] = { native, before, after };
+    check('inspector: ⌥⌘I reaches the 보기 item and toggles the panel', before !== after && (before === 'shown' || before === 'hidden') && (after === 'shown' || after === 'hidden'), inspector['keystroke']);
   });
   if ((await state()) !== 'shown') await runMenuCommand(s.app, 'view.toggleInspector'); // on demand at 1024 px
   await expect.poll(state).toBe('shown');
@@ -472,7 +473,6 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
   fs.rmSync(src, { force: true });
   save();
 });
-
 
 test('M4 library: verdict of every check above (m4-library.json checks)', TAG, async () => {
   save();

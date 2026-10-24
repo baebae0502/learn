@@ -6,6 +6,8 @@ export const inspector = {
   panel: '항목 패널',
   loading: '불러오는 중…',
   detailFailed: '자료 정보를 불러오지 못했습니다',
+  /** Under detailFailed: no internal code, the retry is the next action. */
+  detailFailedBody: '잠시 뒤 다시 시도해 주세요.',
   /** The head's kind line: "PDF · 68쪽" (the duration comes from format.ts formatDuration). */
   pages: (n: number) => `${n}쪽`,
   /** Nothing selected (library.html?state=none); reading progress joins the sentence in M7. */

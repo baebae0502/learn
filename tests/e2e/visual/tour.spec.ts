@@ -159,7 +159,7 @@ test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) =>
 
 test('item panel: nothing selected, one item, several, a missing original, folded, loading', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  // The table's dates in its rows only (Q-40: the header keeps its sort arrow), and what moves in the panel (panelMasks).
+  // The table's dates in its rows only (the header keeps its sort arrow), and what moves in the panel (panelMasks).
   const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   try {
     const LIBRARY = library(testInfo.outputPath('videos'));
@@ -172,7 +172,7 @@ test('item panel: nothing selected, one item, several, a missing original, folde
     });
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
-      await expect(s.page.getByTestId('inspector-none')).toBeVisible(); // imported from the page: no focus entered the table (Q-48)
+      await expect(s.page.getByTestId('inspector-none')).toBeVisible(); // imported from the page: no focus entered the table
       await shoot(s.page, `inspector-none-${theme}`, { mask: masks() });
     }
     await selectRows(s.page, ['sample']);
@@ -189,7 +189,7 @@ test('item panel: nothing selected, one item, several, a missing original, folde
       await shoot(s.page, `inspector-multi-${theme}`, { mask: masks() });
     }
     await setTheme(s.page, 'light');
-    // A linked original that went missing: 다시 연결… leads (P-8).
+    // A linked original that went missing: 다시 연결… leads.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(LIBRARY[0]!, gone);
     await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
@@ -269,7 +269,7 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
       // Every available command, the cursor on the first (critic T9-M1, T9-n4).
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
-      await input.fill('ㄱㅈㅇ'); // one row: 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게, Task 10)
+      await input.fill('ㄱㅈㅇ'); // one row: 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게)
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
       if (theme === 'light') {

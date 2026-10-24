@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { ChevronDown, ChevronUp, Clapperboard, FileText, Link, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clapperboard, FileText } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode,
@@ -21,6 +21,7 @@ import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { gridKey } from './gridKeys';
+import { ItemMarks } from './ItemMarks';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
@@ -81,7 +82,7 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
   }
 }
 
-/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), the link mark, the 파일 없음 flag. */
+/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks. */
 function TitleCell({ item, match }: { item: LibraryItem; match: Match | null }) {
   return (
     <>
@@ -89,17 +90,7 @@ function TitleCell({ item, match }: { item: LibraryItem; match: Match | null }) 
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>
-      {item.storageMode === 'linked' && (
-        <span className="linked-mark c-tertiary" title={t.library.linked}>
-          <Icon icon={Link} size="sm" label={t.library.linked} />
-        </span>
-      )}
-      {item.availability === 'missing' && (
-        <span className="inline-flag c-warning" title={t.library.missingTitle} data-testid="missing-flag">
-          <Icon icon={TriangleAlert} size="sm" />
-          {t.library.missing}
-        </span>
-      )}
+      <ItemMarks item={item} flagTestId="missing-flag" />
     </>
   );
 }

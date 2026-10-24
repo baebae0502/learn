@@ -171,6 +171,15 @@
   /* A block, so its height can be measured open and clamped alike. */
   .inspector .kv .long {
     display: block;
+    font: var(--type-paragraph); /* an abstract is a paragraph: 20, not the body's 18 */
+  }
+  /* The head's title carries the table's status marks after it (link, 파일 없음): gap 4, left margin 6. */
+  .inspector .item-head h2 .item-marks {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-left: var(--space-6);
+    vertical-align: middle;
   }
   .inspector .kv .clamp {
     display: -webkit-box;

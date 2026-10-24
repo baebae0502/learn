@@ -1,5 +1,6 @@
 import { Clapperboard, FileText, FolderSearch } from 'lucide-react';
 import { commandById, commandLabel, type CommandId, type LibraryItem } from '@learn/domain';
+import { ItemMarks } from '../library/ItemMarks';
 import { useCommands } from '../commands/CommandProvider';
 import { formatDuration } from '../format';
 import { t } from '../strings';
@@ -32,7 +33,12 @@ export function InfoHead({ item }: { item: LibraryItem }) {
         <Icon icon={item.type === 'video' ? Clapperboard : FileText} size="sm" />
         <span className="num">{kind.filter(Boolean).join(' · ')}</span>
       </div>
-      <h2>{item.title}</h2>
+      <h2>
+        {item.title}
+        <span className="item-marks">
+          <ItemMarks item={item} />
+        </span>
+      </h2>
       {byline && <div className="authors">{byline}</div>}
       <div className="actions">
         {relinkFirst && (

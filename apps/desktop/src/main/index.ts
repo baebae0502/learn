@@ -14,6 +14,7 @@ import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
+import { createFlushGate } from './edit-flush';
 import { broadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
@@ -68,6 +69,16 @@ let ctx: LibraryContext | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
+/** Closing or quitting over an open 정보 편집 (spec §5.3): the page saves first, or keeps the window and the app (edit-flush.ts). */
+const editFlush = createFlushGate({
+  mainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+  quit: () => app.quit(),
+  record: (entry) => {
+    // E2E reads what each close or quit was answered.
+    if (isE2E(app.isPackaged, process.env)) ((globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ??= []).push(entry);
+  },
+});
+
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
     preload: path.join(here, '../preload/index.cjs'),
@@ -77,6 +88,7 @@ function openMainWindow(): BrowserWindow {
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);
+  win.on('close', (event) => editFlush.onClose(win, event));
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
@@ -370,6 +382,10 @@ if (!app.requestSingleInstanceLock()) {
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
   app.on('activate', () => activation.onActivate());
+
+  // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
+  // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).
+  app.on('before-quit', (event) => editFlush.onBeforeQuit(event));
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

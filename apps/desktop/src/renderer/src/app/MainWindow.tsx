@@ -256,6 +256,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     openPalette,
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
+    // Placeholder until the editor screen gives the command its handler (inspector/startEditing.ts).
+    editInfo: () => undefined,
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,

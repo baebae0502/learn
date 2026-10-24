@@ -26,6 +26,8 @@ export interface CommandEnv extends CommandContextState {
   /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
   showInFolder(itemId: string): void;
   openExternally(itemId: string): void;
+  /** 정보 편집: the item panel shows (if folded) and its 정보 section becomes the form. */
+  editInfo(itemId: string): void;
   /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
@@ -64,6 +66,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.open': (env, [itemId]) => env.open(itemId!),
   'item.showInFolder': (env, [itemId]) => env.showInFolder(itemId!),
   'item.openExternally': (env, [itemId]) => env.openExternally(itemId!),
+  'item.editInfo': (env, [itemId]) => env.editInfo(itemId!),
   'item.relink': (env, [itemId]) => env.relink(itemId!),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),

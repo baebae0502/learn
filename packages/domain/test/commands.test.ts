@@ -112,7 +112,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -172,6 +172,20 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'linked', availability: 'available' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'managed', availability: 'missing' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
+  });
+  it('정보 편집 is a palette command for one item in the library (P-15): no menu, no context menu, no key', () => {
+    const c = commandById('item.editInfo');
+    expect(c).toMatchObject({ label: '정보 편집', contexts: ['item'], palette: true });
+    expect(c.menu).toBeUndefined();
+    expect(c.contextMenu).toBeUndefined();
+    expect(c.accelerator).toBeUndefined();
+    expect(inPalette(c)).toBe(true);
+    expect(isCommandAvailable('item.editInfo', LIB, [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.editInfo', LIB, [linkedMissing])).toBe(true); // a missing file's info is still its own
+    expect(isCommandAvailable('item.editInfo', LIB, [managedOk, managedOk])).toBe(false);
+    expect(isCommandAvailable('item.editInfo', LIB)).toBe(false);
+    expect(isCommandAvailable('item.editInfo', VIEWER, [managedOk])).toBe(false); // the reader's own info comes with T1/M7
+    expect(isCommandAvailable('item.editInfo', { ...LIB, blocked: true }, [managedOk])).toBe(false);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 need one item whose file exists', () => {
     for (const id of ['item.showInFolder', 'item.openExternally'] as const) {

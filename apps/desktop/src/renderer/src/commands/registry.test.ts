@@ -24,6 +24,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
+  editInfo: vi.fn(),
   focusSearch: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
@@ -232,5 +233,12 @@ describe('renderer command registry', () => {
   it('reports the item panel state only while the view has one (the menu relabels from it)', () => {
     expect(contextOf(env({ inspector: 'hidden' }))).toMatchObject({ inspector: 'hidden' });
     expect(Object.hasOwn(contextOf(env()), 'inspector')).toBe(false);
+  });
+  it('정보 편집 edits the one target in the library; never in the reader or for several', () => {
+    const e = env();
+    expect(runCommand('item.editInfo', e, { itemIds: [ID] })).toBe(true);
+    expect(e.editInfo).toHaveBeenCalledWith(ID);
+    expect(runCommand('item.editInfo', env(), { itemIds: [ID, ID] })).toBe(false);
+    expect(runCommand('item.editInfo', env({ view: 'viewer' }), { itemIds: [ID] })).toBe(false);
   });
 });

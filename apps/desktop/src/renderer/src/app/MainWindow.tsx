@@ -51,6 +51,7 @@ import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
+import { useReportIdle } from './useReportIdle';
 import { useWarmUp } from './useWarmUp';
 
 /** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
@@ -78,6 +79,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyTheme(prefs?.theme);
   // The first rows' fonts and Intl data, at an idle moment once the list has settled (spec 8, the drop stall).
   useWarmUp(items.isSuccess || items.isError);
+  // Once the first list has settled and the page is idle, main prepares the settings window hidden.
+  useReportIdle(items.isSuccess || items.isError);
   const view = useShell((s) => s.view);
   const setView = useShell((s) => s.setView);
   const importing = useShell((s) => s.importing);

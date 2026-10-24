@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { DatabaseZap, MonitorX } from 'lucide-react';
 import { api, unwrap } from '../api';
+import { useReportIdle } from '../app/useReportIdle';
 import { homeRelative } from '../format';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
@@ -30,6 +31,8 @@ export interface FatalScreenProps {
  * sentence points at no backup (n5). The window can still be moved (52 px drag strip).
  */
 export function FatalScreen({ kind = 'library', code, libraryRoot = null, backupFile = null, homeDir = null }: FatalScreenProps) {
+  // 설정 열기 is what this screen offers: the settings window is prepared as soon as the screen is idle.
+  useReportIdle(true);
   // No library, no registry command can run: only main-owned commands (설정…) stay in the menu bar.
   useEffect(() => {
     void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 });

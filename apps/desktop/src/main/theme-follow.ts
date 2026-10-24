@@ -21,7 +21,7 @@ export interface ThemeFollowDeps {
   applySource(theme: Prefs['theme']): void;
   /** One window's own chrome for the shade its page now shows (the Linux window-controls overlay, its background). */
   applyWindowChrome(windowId: number, shade: Shade): void;
-  /** The open pages that draw the theme themselves and report it (the main and the settings window): webContents ids. */
+  /** The pages on screen that draw the theme themselves and report it (the main and the settings window): webContents ids (shownPages). */
   followers(): number[];
   /**
    * The shade the pages draw for `theme` now: the pref itself, and for 시스템 설정 the appearance they see while the
@@ -45,6 +45,22 @@ export interface ThemeFollower {
    * change counts: one in another shade is a late report of a change before it, and is ignored.
    */
   shown(windowId: number, shade: Shade): void;
+}
+
+/** A window as the follower list reads it. */
+export interface PageWindow {
+  isDestroyed(): boolean;
+  isVisible(): boolean;
+  webContents: { id: number; isDestroyed(): boolean };
+}
+
+/**
+ * The pages a theme change waits for: live windows on screen. A hidden one — the settings window prepared ahead of
+ * ⌘, — takes the change from the same prefsChanged broadcast, but nobody sees it, and a page still loading would hold
+ * the native theme for the whole THEME_FOLLOW_MS.
+ */
+export function shownPages(windows: ReadonlyArray<PageWindow | null>): number[] {
+  return windows.flatMap((w) => (w && !w.isDestroyed() && !w.webContents.isDestroyed() && w.isVisible() ? [w.webContents.id] : []));
 }
 
 /**

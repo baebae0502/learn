@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto';
 import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
-import { LearnError, type SheetPayload, type SheetResult } from '@learn/domain';
+import { LearnError, commandLabel, type CommandSpec, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
@@ -28,6 +29,23 @@ export const SHEET_SHOW_TIMEOUT_MS = 10_000;
 /** An unresponsive sheet is given up only if it does not answer again within this grace period (a long task is fine). */
 export const UNRESPONSIVE_GRACE_MS = 5_000;
 
+/**
+ * The key of a static sheet's natural height: what that height can depend on. The ⌘/ sheet does not follow the text
+ * size or density today (those apply to the main window); they are in the key so that a sheet that does is never sized
+ * from another setting.
+ */
+export function sheetHeightKey(o: { platform: string; fontSize: number; density: string; digest: string }): string {
+  return `${o.platform}|${o.fontSize}|${o.density}|${o.digest}`;
+}
+
+/** What the ⌘/ sheet is drawn from: every registry shortcut as it lists one (id, label, keys), hashed. */
+export function shortcutsDigest(commands: readonly CommandSpec[], platform: string): string {
+  const rows = commands
+    .filter((c) => c.accelerator !== undefined || c.key !== undefined)
+    .map((c) => [c.id, commandLabel(c, platform), c.accelerator ?? '', JSON.stringify(c.key ?? null)].join('\u0001'));
+  return createHash('sha256').update(rows.join('\u0002')).digest('hex').slice(0, 16);
+}
+
 export interface SheetHost {
   /**
    * A modal sheet over `parent`; resolves with the sheet's result, or null when it closed without one (or its page
@@ -55,10 +73,16 @@ export function createSheetHost(opts: {
    * (onSheetShown): the two come in pairs, as main counts the sheets on a window.
    */
   onSheetClosed?(parent: BrowserWindow): void;
+  /**
+   * The height key of a sheet whose content never changes between opens (sheetHeightKey), or null to measure every
+   * time (the duplicate question names a file).
+   */
+  staticKey?(payload: SheetPayload): string | null;
 }): SheetHost {
   const pending = new Map<number, Pending>();
   /** Per parent window: the sheet showing now (and any queued behind it). */
   const queues = new Map<number, Promise<unknown>>();
+  const heights = new Map<string, number>(); // a static sheet's natural height, measured in its own font
   const find = (contents: WebContents): Pending => {
     const p = pending.get(contents.id);
     if (!p) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
@@ -70,12 +94,15 @@ export function createSheetHost(opts: {
       const width = SHEET_WIDTH[payload.kind];
       const room = parent.getContentBounds();
       const maxHeight = sheetMaxHeight(room.height, opts.platform);
+      const key = opts.staticKey?.(payload) ?? null;
+      const known = key === null ? undefined : heights.get(key);
       const win = new BrowserWindow({
         parent,
         modal: true, // macOS: a sheet, centred over the parent and dimming it (the system's placement)
         show: false,
         width,
-        height: maxHeight, // measured at full height first, then shrunk to the content
+        // Measured at full height first, then shrunk to the content; a static sheet measured before starts at that height.
+        height: known === undefined ? maxHeight : Math.min(known, maxHeight),
         useContentSize: true,
         resizable: false,
         minimizable: false,
@@ -133,27 +160,39 @@ export function createSheetHost(opts: {
         hung = setTimeout(() => settle(null), UNRESPONSIVE_GRACE_MS);
       });
       win.on('responsive', () => clearTimeout(hung));
-      win.once('ready-to-show', () => {
-        void (async () => {
-          // Rendered, its font loaded (at most 300 ms more), then measured: never boxes with no text (T13-m6).
-          const rendered = await contentHeight(win.webContents, '[data-sheet-root]');
-          await fontsReady(win.webContents, '[data-sheet-root]');
-          // Re-measured briefly, keeping the first height otherwise: the show watchdog never loses this race.
-          const height = Math.min(await contentHeight(win.webContents, '[data-sheet-root]', rendered, REMEASURE_MS), maxHeight);
-          if (win.isDestroyed()) return;
-          win.setContentSize(width, height);
-          if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
-          await markSized(win.webContents);
-          clearTimeout(watchdog);
-          announce();
-          win.show();
-        })().catch(() => {
-          // Only a window closed mid-measure gets here (settled already); otherwise show it unsized rather than lose the question.
-          if (win.isDestroyed()) return;
-          clearTimeout(watchdog);
-          announce();
-          win.show();
+      // Measured from the moment its document exists, alongside the first paint rather than after it: rendered, its
+      // font loaded (at most 300 ms more), then measured again — never boxes with no text. null: the measurement
+      // failed, and the sheet is shown unsized rather than the question lost.
+      const height = new Promise<number | null>((settled) => {
+        win.webContents.once('dom-ready', () => {
+          void (async () => {
+            const rendered = await contentHeight(win.webContents, '[data-sheet-root]');
+            const fonts = await fontsReady(win.webContents, '[data-sheet-root]');
+            if (known !== undefined) return Math.min(known, maxHeight);
+            // Re-measured briefly, keeping the first height otherwise: the show watchdog never loses this race.
+            const natural = await contentHeight(win.webContents, '[data-sheet-root]', rendered, REMEASURE_MS);
+            if (key !== null && fonts) heights.set(key, natural); // a height in a fallback font is not worth keeping
+            return Math.min(natural, maxHeight);
+          })().then(settled, () => settled(null));
         });
+      });
+      // Shown only once the page has painted (ready-to-show) and been sized: the first frame on screen is the sized one.
+      const painted = new Promise<void>((settled) => win.once('ready-to-show', () => settled()));
+      void Promise.all([height, painted]).then(async ([h]) => {
+        if (win.isDestroyed()) return;
+        if (h !== null) {
+          try {
+            win.setContentSize(width, h);
+            if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
+            await markSized(win.webContents);
+          } catch {
+            // Closed or gone mid-way: shown as it is, below, if it is still there.
+          }
+        }
+        if (win.isDestroyed()) return;
+        clearTimeout(watchdog);
+        announce();
+        win.show();
       });
       watchdog = setTimeout(() => {
         if (!win.isDestroyed() && !win.isVisible()) settle(null);

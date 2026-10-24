@@ -90,4 +90,11 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.theme.shown(event.sender, shade);
   });
+
+  // The settings window is prepared once the main window's page has drawn its first list and gone idle, never while
+  // the app is still starting (spec 8). Only the main window's report counts.
+  handle(Channels.ui.reportIdle, emptyInput, (_input, event) => {
+    if (!deps.isMainWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
+    deps.prepareSettings();
+  });
 }

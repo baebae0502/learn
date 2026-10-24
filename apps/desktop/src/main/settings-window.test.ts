@@ -235,3 +235,78 @@ describe('the settings window measures twice, the second time briefly (re-review
     expect(w.contentSize).toEqual([SETTINGS_WIDTH, 412]);
   });
 });
+
+describe('the settings window prepared hidden once the main window is idle (spec 8, P-4)', () => {
+  it('prepare makes it hidden — loaded, measured, sized — and neither shows, focuses nor places it; once', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(w.options).toMatchObject({ width: 600, show: false, title: '설정' });
+    await ready(w);
+    expect(w.contentSize).toEqual([600, 412]);
+    expect(w.shown).toBe(false);
+    expect(w.focused).toBe(0);
+    expect(w.position).toBeNull();
+    expect(settings.current()).toBe(w as unknown as BrowserWindow);
+    settings.prepare();
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('⌘, then shows that same window over where the main window is now, and focuses it', async () => {
+    let bounds = { x: 100, y: 40, width: 1440, height: 900 };
+    const main = { isDestroyed: () => false, getBounds: () => bounds } as unknown as BrowserWindow;
+    const settings = host(main);
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    bounds = { x: 300, y: 200, width: 1200, height: 800 }; // moved since it was measured
+    expect(settings.open()).toBe(w as unknown as BrowserWindow);
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(w.shown).toBe(true);
+    expect(w.focused).toBe(1);
+    expect(w.position).toEqual([300 + (1200 - 600) / 2, 200 + 96]);
+  });
+
+  it('⌘, while it is still being measured shows it, sized and placed, once measured', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(settings.open()).toBe(w as unknown as BrowserWindow);
+    expect(w.shown).toBe(false);
+    await ready(w);
+    expect(w.shown).toBe(true);
+    expect(w.contentSize).toEqual([600, 412]);
+    expect(w.position).toEqual([100 + (1440 - 600) / 2, 40 + 96]);
+  });
+
+  it('discardPrepared closes a window never shown — also one being measured — and leaves one asked for or shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const measuring = FakeWindow.all[0]!;
+    settings.discardPrepared();
+    expect(measuring.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    settings.prepare();
+    const prepared = FakeWindow.all[1]!;
+    await ready(prepared);
+    settings.discardPrepared();
+    expect(prepared.destroyed).toBe(true);
+    const asked = settings.open() as unknown as FakeWindow; // a ⌘, while it is measured: the user wants it
+    settings.discardPrepared();
+    expect(asked.destroyed).toBe(false);
+    await ready(asked);
+    settings.discardPrepared();
+    expect(asked.destroyed).toBe(false);
+    expect(asked.shown).toBe(true);
+  });
+
+  it('follows its content height from the moment it is sized, hidden or shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    heightChanged!(440);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.contentSize).toEqual([600, 440]);
+  });
+});

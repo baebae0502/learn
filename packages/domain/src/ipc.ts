@@ -217,6 +217,11 @@ export interface LearnApi {
      * native theme follow it (T13R4-m1). Other windows are PERMISSION_DENIED.
      */
     themeShown(input: ThemeShownInput): Promise<Result<void>>;
+    /**
+     * The main window's page has drawn its first list and been idle once: main prepares the settings window hidden, so
+     * the first ⌘, only shows it (spec 8). Other windows are PERMISSION_DENIED.
+     */
+    reportIdle(): Promise<Result<void>>;
     /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
     showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
   };

@@ -23,11 +23,11 @@ import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, bu
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
-import { createSheetHost } from './sheets';
+import { createSheetHost, sheetHeightKey, shortcutsDigest } from './sheets';
 import { mainStrings } from './strings';
 import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
-import { createThemeFollower, type ThemeMark } from './theme-follow';
+import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
@@ -93,6 +93,9 @@ function openMainWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
+    // A settings window prepared for this main window and never asked for goes with it on every platform: hidden, it
+    // would keep a Linux app alive (window-all-closed) and hold a renderer for nobody on macOS.
+    settingsWindow.discardPrepared();
     // Linux/Windows: closing the main window ends the app (window-all-closed), so the settings window goes with it;
     // there is no dock to bring a main window back. macOS keeps the app, and the settings window, open (R-22).
     if (process.platform !== 'darwin') settingsWindow.current()?.close();
@@ -282,8 +285,8 @@ if (!app.requestSingleInstanceLock()) {
         if (page === 'main') applyChromeTheme(mainWindow!, { ...chrome(), theme: shade });
         if (page === 'settings') settingsWindow.current()?.setBackgroundColor(windowBackground[shade]);
       },
-      followers: () =>
-        [mainWindow, settingsWindow.current()].flatMap((w) => (w && !w.isDestroyed() && !w.webContents.isDestroyed() ? [w.webContents.id] : [])),
+      // Pages on screen only: the settings window prepared hidden takes the change from the same broadcast, unseen.
+      followers: () => shownPages([mainWindow, settingsWindow.current()]),
       // Asked before the native theme moves: 시스템 설정 is drawn in the current appearance until it is applied.
       shadeOf: (theme) => (theme === 'system' ? currentTheme() : theme),
       mark: (m: ThemeMark) => themeLog()?.push({ ...m, window: m.windowId !== undefined ? pageOf(m.windowId) : undefined }),
@@ -310,6 +313,8 @@ if (!app.requestSingleInstanceLock()) {
       refreshFullScreenItem();
     };
 
+    /** The ⌘/ sheet lists the registry's shortcuts: its height is kept per what it is drawn from. */
+    const shortcutsSheetDigest = shortcutsDigest(COMMANDS, process.platform);
     const deps: IpcDeps = {
       getContext: () => {
         if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
@@ -344,6 +349,10 @@ if (!app.requestSingleInstanceLock()) {
         platform: process.platform,
         onSheetShown,
         onSheetClosed,
+        staticKey: (payload) =>
+          payload.kind === 'shortcuts'
+            ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
+            : null,
       }),
       windows: {
         openSettings: () => void settingsWindow.open(),
@@ -360,6 +369,7 @@ if (!app.requestSingleInstanceLock()) {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
+      prepareSettings: () => settingsWindow.prepare(),
       relaunch() {
         if (isE2E(app.isPackaged, process.env)) {
           // Playwright cannot follow a relaunched process: E2E only records the request.
@@ -394,6 +404,12 @@ if (!app.requestSingleInstanceLock()) {
   // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
   // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).
   app.on('before-quit', (event) => editFlush.onBeforeQuit(event));
+
+  // ⌘Q, the app menu's 종료, or a relaunch: a prepared settings window nobody opened is closed first — but only when the
+  // quit goes ahead; the edit-flush gate above may call this attempt off and quit again after saving.
+  app.on('before-quit', (event) => {
+    if (!event.defaultPrevented) settingsWindow.discardPrepared();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

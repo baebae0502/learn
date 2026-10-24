@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { THEME_FOLLOW_MS, createThemeFollower, type Shade, type ThemeFollowDeps, type ThemeMark } from './theme-follow';
+import { THEME_FOLLOW_MS, createThemeFollower, shownPages, type Shade, type ThemeFollowDeps, type ThemeMark } from './theme-follow';
 
 /**
  * A follower with a fake clock and timers; `log` records what was applied, in order. `native.shade` is the appearance
@@ -145,5 +145,19 @@ describe('the native theme follows the page (T13R4-m1)', () => {
       ['chrome', 120, 1, null],
       ['source', 120, null, 'shown'],
     ]);
+  });
+});
+
+describe('the pages a theme change waits for (spec 8, P-4)', () => {
+  const page = (id: number, o: { visible?: boolean; destroyed?: boolean; contentsGone?: boolean } = {}) => ({
+    isDestroyed: () => o.destroyed ?? false,
+    isVisible: () => o.visible ?? true,
+    webContents: { id, isDestroyed: () => o.contentsGone ?? false },
+  });
+  it('are the live windows on screen: not the settings window prepared hidden, nor one closing', () => {
+    expect(shownPages([page(1), page(2)])).toEqual([1, 2]);
+    expect(shownPages([page(1), page(2, { visible: false })])).toEqual([1]);
+    expect(shownPages([page(1), null])).toEqual([1]);
+    expect(shownPages([page(1, { destroyed: true }), page(2, { contentsGone: true })])).toEqual([]);
   });
 });

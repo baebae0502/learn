@@ -40,6 +40,8 @@ export interface IpcDeps {
    * is called by prefs.set when the theme pref changed; `shown` when a page reports the theme it shows.
    */
   theme: { changed(theme: Prefs['theme']): void; shown(sender: WebContents, shade: 'light' | 'dark'): void };
+  /** ui.reportIdle: the settings window is made, loaded and measured hidden now; nothing when one exists. */
+  prepareSettings(): void;
   /** Restarts into the library location just saved. Under E2E (LEARN_E2E=1) it only records the request. */
   relaunch(): void;
 }

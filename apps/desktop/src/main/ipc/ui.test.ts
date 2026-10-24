@@ -40,6 +40,7 @@ const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt
 const opened: unknown[] = [];
 const openSettings = vi.fn();
 const themeShown = vi.fn();
+const prepareSettings = vi.fn();
 registerUiIpc(
   createHandle(null),
   stubDeps({
@@ -58,6 +59,7 @@ registerUiIpc(
     windows: { openSettings, asSheet: (_owner, show) => show() },
     isSettingsWindow: (sender) => sender === (SETTINGS as never),
     theme: { changed: () => {}, shown: themeShown },
+    prepareSettings,
   }),
 );
 
@@ -157,5 +159,17 @@ describe('ui.showColumnMenu (P-9: the column header has its own channel)', () =>
     expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['tags'], x: 0, y: 0 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     senderWindow = null;
     expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['title'], x: 0, y: 0 })).toEqual({ ok: true, data: null });
+  });
+});
+
+describe('ui.reportIdle (spec 8, P-4: the settings window is prepared once the main window is idle)', () => {
+  it('prepares it for the main window only; a sheet or the settings window is PERMISSION_DENIED; it takes no input', async () => {
+    prepareSettings.mockClear();
+    expect(await invoke('ui:reportIdle', MAIN)).toEqual({ ok: true, data: undefined });
+    expect(prepareSettings).toHaveBeenCalledTimes(1);
+    expect(await invoke('ui:reportIdle', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:reportIdle', SETTINGS)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:reportIdle', MAIN, { now: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(prepareSettings).toHaveBeenCalledTimes(1);
   });
 });

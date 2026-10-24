@@ -25,7 +25,7 @@ export const Channels = {
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
   ui: {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirmDuplicate: 'ui:confirmDuplicate',
-    showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', showColumnMenu: 'ui:showColumnMenu',
+    showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
   },
   sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve' },
 } as const;

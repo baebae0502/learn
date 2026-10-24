@@ -89,10 +89,19 @@ export const COMMANDS: readonly CommandSpec[] = [
   },
   { id: 'item.relink', label: '다시 연결…', contexts: ['item'], contextMenu: { kinds: ['item'], group: 0, order: 1, onlyWhenAvailable: true } },
   { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
-  { id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } },
-  // Not in the item context menu: design-spec 7.3 lists no such item ("여기 없는 메뉴는 그리지 않는다", C-1).
-  // It is a notice button only: the unplayable video (10.7) and the PDF that cannot be opened (C-1 as amended).
-  { id: 'item.openExternally', label: '기본 앱으로 열기', contexts: ['item'] },
+  // ⇧⌘R (design-spec 7.4 라이브러리): 파일 › and the item menu act on the one selected row; the menu bar judges the
+  // reported selection counts, so it greys with no selection, several, or a missing file (and in the reader).
+  {
+    id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 },
+    contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+    keywords: ['폴더', '위치', '파인더', 'Finder', 'reveal'],
+  },
+  // 파일 › and the palette on the selected row, besides the notices' buttons. Still no item context-menu entry:
+  // design-spec 7.3 lists none ("여기 없는 메뉴는 그리지 않는다").
+  {
+    id: 'item.openExternally', label: '기본 앱으로 열기', menu: { menu: 'file', group: 2, order: 3 }, contexts: ['item'], palette: true,
+    keywords: ['기본 앱', '다른 앱', '외부 앱', 'open with', 'external'],
+  },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },

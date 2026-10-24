@@ -37,4 +37,10 @@ describe('library selection store (M4 spec 3.3)', () => {
     useLibrary.getState().pruneSelected(new Set(['b', 'd']));
     expect(now()).toEqual({ selected: ['b'], anchor: null, cursor: null });
   });
+  it('remembers the item the reader opened last (the table shows its row on return)', () => {
+    useLibrary.getState().setLastOpened('x');
+    expect(useLibrary.getState().lastOpenedId).toBe('x');
+    useLibrary.getState().setLastOpened(null);
+    expect(useLibrary.getState().lastOpenedId).toBeNull();
+  });
 });

@@ -16,7 +16,9 @@ import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
+import { inTableOrder, selectionCounts } from '../library/selection';
 import { useImport } from '../library/useImport';
+import { useLibrarySettings } from '../library/useLibrarySettings';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
@@ -30,6 +32,7 @@ import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
+import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
@@ -49,8 +52,6 @@ const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
 const NO_ITEMS: readonly LibraryItem[] = [];
 /** The table selection until the table reports one: one function, so the env's memo holds. */
-const NO_IDS: readonly string[] = [];
-const noSelection = (): readonly string[] => NO_IDS;
 
 export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
@@ -200,6 +201,14 @@ export function MainWindow(_props: { info: AppInfo }) {
   // one here when a command is judged.
   const listRef = useRef(list);
   listRef.current = list;
+  // The table selection for the command context: counts only, so the context stays flat and a re-read list with the
+  // same facts changes nothing.
+  const selected = useLibrary((s) => s.selected);
+  const selection = useMemo(() => selectionCounts(list, selected), [list, selected]);
+  /** The sort in force, read (like listRef) when a menu or palette item command takes the selection in table order. */
+  const { sort } = useLibrarySettings();
+  const sortRef = useRef(sort);
+  sortRef.current = sort;
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -213,11 +222,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
-    // No table selection yet: the menu bar's item commands stay off.
-    selectionCount: 0,
-    selectionAvailable: 0,
-    selectionRelinkable: 0,
-    selection: noSelection,
+    selectionCount: selection.count,
+    selectionAvailable: selection.available,
+    selectionRelinkable: selection.relinkable,
+    // Item commands from the menu bar and the palette run on these ids, in the order the table shows them.
+    selection: () => inTableOrder(listRef.current, useLibrary.getState().selected, sortRef.current),
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (ids) => freshTargets(queryClient, listRef.current, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
@@ -233,7 +242,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
+  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -241,6 +250,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   useEffect(() => {
     envRef.current = env;
   });
+  // Every way into the reader passes here, so the table can show that row again on return (spec 3.3).
+  const setLastOpened = useLibrary((s) => s.setLastOpened);
+  useEffect(() => {
+    if (view.kind === 'reader') setLastOpened(view.itemId);
+  }, [view, setLastOpened]);
 
   /** The item menu for the table's selection, in table order (right-click selected first, design-spec 7.1). */
   const showItemMenu = useCallback(async (itemIds: readonly string[], x: number, y: number) => {

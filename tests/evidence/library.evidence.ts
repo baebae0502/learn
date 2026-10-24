@@ -9,11 +9,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, importPaths, launch, nativeKeystroke, recordedPopups, rowAt, seedLibrary,
-  stubContextMenu, type Session,
+  FIXTURES, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, nativeKeystroke,
+  recordedPopups, rowAt, runMenuCommand, seedLibrary, stubContextMenu, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
-import { EVIDENCE_ROOT, IS_MAC, allShots, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
+import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
 import { decodePng } from './png';
 
 const TAG = { tag: '@library' };
@@ -227,6 +227,94 @@ test('M4 table: the column header menu — every column, the shown ones checked,
     results['columnMenu'] = items;
     check('column menu: every catalogue column, the shown ones checked, 제목 fixed, then 열 구성 되돌리기', JSON.stringify(items) === JSON.stringify(want), { items, want });
   });
+});
+
+// The selection's commands. On macOS: the 파일 menu with one selected row and with none, a real ⇧⌘R
+// (System Events), the ⌘/ sheet's 자료 group. Elsewhere the same states through the menu path, captures skipped.
+test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 열기 with one selected row and with none; a real ⇧⌘R; ⌘/ lists it under 자료', TAG, async () => {
+  test.setTimeout(180_000);
+  const v: Record<string, unknown> = {};
+  results['selection'] = v;
+  await s.app.evaluate(({ shell }) => {
+    const g = globalThis as { __learnShell?: Array<[string, string]> };
+    g.__learnShell = [];
+    shell.showItemInFolder = (p: string) => void g.__learnShell!.push(['reveal', p]);
+    shell.openPath = async (p: string) => {
+      g.__learnShell!.push(['open', p]);
+      return '';
+    };
+  });
+  const shellCalls = () => s.app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
+  const fileItems = async () => [await menuItemEnabled(s.app, 'item.showInFolder'), await menuItemEnabled(s.app, 'item.openExternally')];
+  // A row of its own, whatever the session already holds (same content: allowDuplicate).
+  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
+  check('selection: a row to select was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  if (id === null) return void save();
+  const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);
+  const pid = s.app.process().pid!;
+
+  await guard('selection: one selected row enables both 파일 items', async () => {
+    await row.click();
+    await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(true);
+    v['enabledWithOne'] = await fileItems();
+    check('selection: one selected row enables both 파일 items', (v['enabledWithOne'] as boolean[]).every(Boolean), v['enabledWithOne']);
+  });
+  if (IS_MAC) {
+    await guard('selection: the 파일 menu with one selected row', async () => {
+      await bringAppToFront(s.app);
+      const captured = await captureOpenMenu(s.app, pid, 3, 'm4-04-menu-file-one', '파일 menu, one selected row');
+      const names = captured.keyboard.open.names ?? [];
+      v['fileMenuOne'] = { names, shots: [captured.click.shot, captured.keyboard.shot] };
+      check('selection: 파일 lists Finder에서 보기 and 기본 앱으로 열기', names.includes('Finder에서 보기') && names.includes('기본 앱으로 열기'), v['fileMenuOne']);
+    });
+    await guard('selection: a real ⇧⌘R reveals the selected row', async () => {
+      const before = (await shellCalls()).length;
+      let note: string | undefined;
+      try {
+        await bringAppToFront(s.app);
+        await nativeKeystroke(s.app, 'r', ['shift', 'command']);
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        note = 'keystroke not permitted: ran from the menu instead';
+        await runMenuCommand(s.app, 'item.showInFolder');
+      }
+      await expect.poll(async () => (await shellCalls()).length, { timeout: 5_000 }).toBeGreaterThan(before);
+      const call = (await shellCalls())[before];
+      v['realShiftCmdR'] = { native: note === undefined, kind: call?.[0] ?? null, namedCopy: /[\\/]sample\.pdf$/.test(call?.[1] ?? ''), ...(note ? { note } : {}) };
+      check('selection: ⇧⌘R reveals the selected row', call?.[0] === 'reveal' && /[\\/]sample\.pdf$/.test(call[1]), v['realShiftCmdR']);
+    });
+  } else {
+    await runMenuCommand(s.app, 'item.showInFolder');
+    await expect.poll(async () => (await shellCalls()).length).toBeGreaterThan(0);
+  }
+  await guard('selection: no selected row greys both 파일 items', async () => {
+    await row.click({ modifiers: [IS_MAC ? 'Meta' : 'Control'] }); // toggles the one selected row off
+    await expect(row).not.toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(false);
+    v['enabledWithNone'] = await fileItems();
+    check('selection: no selected row greys both 파일 items', (v['enabledWithNone'] as boolean[]).every((e) => !e), v['enabledWithNone']);
+    if (IS_MAC) {
+      const captured = await captureOpenMenu(s.app, pid, 3, 'm4-04b-menu-file-none', '파일 menu, nothing selected');
+      v['fileMenuNone'] = { names: captured.keyboard.open.names, shots: [captured.click.shot, captured.keyboard.shot] };
+    }
+  });
+  await guard('selection: ⌘/ lists ⇧⌘R under 자료', async () => {
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+    const rows = await sheet.locator('section[aria-label="자료"] [data-testid="shortcut-row"]').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
+    v['sheetItemGroup'] = rows;
+    check('selection: ⌘/ lists ⇧⌘R under 자료', rows.length === 1 && rows[0]!.startsWith(IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'), rows);
+    // Two columns, groups whole, and a natural height that fits a 1440 × 900 Mac's ≈ 806 pt parent (room 774).
+    const layout = await sheet.evaluate(() => ({
+      columns: [...document.querySelectorAll('.shortcut-column')].map((c) => [...c.querySelectorAll('section')].map((g) => g.getAttribute('aria-label'))),
+      natural: Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height),
+    }));
+    v['sheetLayout'] = layout;
+    check('selection: the ⌘/ sheet has two columns and fits the 806 pt room', layout.columns.length === 2 && layout.natural <= 774, layout);
+    if (IS_MAC) await fullScreenShot('m4-04c-sheet-shortcuts', '⌘/ sheet: two columns, the 자료 group after 라이브러리');
+    await closeSheet(sheet, 'Escape');
+  });
+  save();
 });
 
 // Later M4 tasks add their tests here, above the verdict.

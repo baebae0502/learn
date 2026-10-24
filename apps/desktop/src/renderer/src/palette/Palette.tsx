@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useState, type KeyboardEvent } from 'react';
+import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
@@ -96,8 +96,17 @@ function PaletteDialog() {
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
   // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
   // notice that says why the rest is missing (review minor 1).
+  // Item commands (Finder에서 보기, 기본 앱으로 열기, later 사본 내보내기… and 정보 편집) are judged and run on the
+  // table selection, which only the library view shows. Judged once per env rather than on every keystroke: a
+  // selection can hold every row (⌘A).
+  const itemTarget = useMemo(() => ({ itemIds: env.view === 'library' ? env.selection() : [] }), [env]);
+  const itemCommands = useMemo(
+    () => new Set(COMMANDS.filter((c) => c.contexts.includes('item') && inPalette(c) && isEnabled(c.id, itemTarget)).map((c) => c.id)),
+    [isEnabled, itemTarget],
+  );
+  const targetOf = (id: CommandId) => (commandById(id).contexts.includes('item') ? itemTarget : {});
   const ranked = rankCommands(
-    COMMANDS.filter((c) => inPalette(c) && isEnabled(c.id)),
+    COMMANDS.filter((c) => inPalette(c) && (c.contexts.includes('item') ? itemCommands.has(c.id) : isEnabled(c.id))),
     query,
     platform,
     state,
@@ -135,7 +144,7 @@ function PaletteDialog() {
     if (cursorElementId) document.getElementById(cursorElementId)?.scrollIntoView({ block: 'nearest' });
   }, [cursorElementId]);
 
-  const execute = (id: CommandId) => closePalette(() => run(id));
+  const execute = (id: CommandId) => closePalette(() => run(id, targetOf(id)));
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault(); // not the caret's start/end

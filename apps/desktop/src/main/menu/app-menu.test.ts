@@ -45,6 +45,10 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     { id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' },
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
     SEP,
+    // The selected item's commands (design-spec 7.4 ⇧⌘R); the gap at order 2 is left for the copy export.
+    { id: 'item.showInFolder', label: platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R' },
+    { id: 'item.openExternally', label: '기본 앱으로 열기' },
+    SEP,
     ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
     { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },

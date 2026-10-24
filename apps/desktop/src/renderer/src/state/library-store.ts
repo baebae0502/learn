@@ -13,6 +13,9 @@ export interface LibraryState extends SelectionState {
   setSelection(next: SelectionState): void;
   /** Keep only ids still shown (list change, search); an anchor or cursor that is gone goes too. */
   pruneSelected(shown: ReadonlySet<string>): void;
+  /** The item the reader last opened, by whatever path (table, palette, import): the table shows its row on return. */
+  lastOpenedId: string | null;
+  setLastOpened(id: string | null): void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -22,6 +25,8 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   selected: NONE,
   anchorId: null,
   cursorId: null,
+  lastOpenedId: null,
+  setLastOpened: (lastOpenedId) => set({ lastOpenedId }),
   setSelected: (ids) => {
     const next = new Set(ids);
     if (same(next, get().selected)) return;

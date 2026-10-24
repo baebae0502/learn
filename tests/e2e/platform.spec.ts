@@ -91,7 +91,9 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     }
     // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
-      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
+      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''],
+      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '기본 앱으로 열기'], ['-', ''],
+      ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
     if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });

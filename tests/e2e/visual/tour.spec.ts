@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, runMenuCommand, seedLibrary, type Session } from '../helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, type Session } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -128,6 +128,21 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
       await closeSheet(keys, 'Escape');
       await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('selection commands: the palette with one selected row lists 폴더에서 보기 and 기본 앱으로 열기', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await setTheme(s.page, 'light');
+    await rowByTitle(s.page, 'sample').click();
+    await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(true);
+    await runMenuCommand(s.app, 'app.palette');
+    await expect(s.page.locator('[data-testid="palette-item"][data-command-id="item.openExternally"]')).toBeVisible();
+    await shoot(s.page, 'palette-selection-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')] });
   } finally {
     await s.app.close();
   }

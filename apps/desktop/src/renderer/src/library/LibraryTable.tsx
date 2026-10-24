@@ -21,6 +21,7 @@ import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { gridKey } from './gridKeys';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
+import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
 
 export interface LibraryTableProps {
@@ -169,6 +170,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
  */
 export function LibraryTable(props: LibraryTableProps) {
   const { rows, columns, sort } = props;
+  useRevealRow(rows, props.revealId);
   const now = useNow(); // 오늘/어제 move on at midnight
   const selected = useLibrary((s) => s.selected);
   const cursorId = useLibrary((s) => s.cursorId);

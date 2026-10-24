@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, enabledMenuCommands, importPaths, launch, openDialogCalls, openItem, runMenuCommand, stubContextMenu, stubOpenDialog } from './helpers';
+import { FIXTURES, enabledMenuCommands, importPaths, launch, menuItemEnabled, openDialogCalls, openItem, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -64,6 +64,9 @@ test('every registry command runs without a page error (library and reader menus
   watch(page);
   app.on('window', watch);
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
+  const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
+  /** The paths main handed the OS: named copies under derived/open/ with the type's extension (final review I1). */
+  const shellPaths = () => app.evaluate(() => (globalThis as { __learnShellPaths?: string[] }).__learnShellPaths ?? []);
   /** What each command must visibly have done, beyond running without an error (Task 12 rulings). */
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
@@ -78,6 +81,9 @@ test('every registry command runs without a page error (library and reader menus
     // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
     'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
     'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
+    // On the selected sample row: the OS is asked to show, then to open, its named copy (파일 menu order).
+    'item.showInFolder': () => expect.poll(shellCalls).toEqual(['reveal']),
+    'item.openExternally': () => expect.poll(shellCalls).toEqual(['reveal', 'open']),
   };
   try {
     await importPaths(page, [PDF]);
@@ -98,13 +104,15 @@ test('every registry command runs without a page error (library and reader menus
         return '';
       };
     });
-    const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
-    /** The paths main handed the OS: named copies under derived/open/ with the type's extension (final review I1). */
-    const shellPaths = () => app.evaluate(() => (globalThis as { __learnShellPaths?: string[] }).__learnShellPaths ?? []);
     const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
     const ran = new Set<CommandId>();
     for (const view of ['library', 'reader'] as const) {
       if (view === 'reader') await openItem(page, 'sample');
+      // 파일 › Finder에서 보기 and 기본 앱으로 열기 act on the table selection: select the row first, wait for main's menu.
+      if (view === 'library') {
+        await rowByTitle(page, 'sample').click();
+        await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(true);
+      }
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
       for (const id of ids) {
@@ -115,6 +123,8 @@ test('every registry command runs without a page error (library and reader menus
       }
     }
     await expect(page.getByTestId('library-table')).toBeVisible(); // nav.back ran last
+    // The menu-bar runs handed the OS the named copy (final review I1), like the item menu below.
+    for (const p of (await shellPaths()).slice(0, 2)) expect(p).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample\.pdf$/);
     // ⌘0 is enabled only away from 13: one more round trip for it, restored to 13.
     await runMenuCommand(app, 'view.textBigger');
     await expect.poll(() => fontSize(page)).toBe(14);
@@ -130,8 +140,8 @@ test('every registry command runs without a page error (library and reader menus
     await runMenuCommand(app, 'nav.back');
     await stubContextMenu(app, process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기');
     await page.getByTestId('item-row').first().click({ button: 'right' });
-    await expect.poll(shellCalls).toEqual(['reveal']);
-    expect((await shellPaths())[0]).toMatch(new RegExp(`^${openDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/][0-9a-f-]{36}[\\/]sample\\.pdf$`));
+    await expect.poll(shellCalls).toEqual(['reveal', 'open', 'reveal']);
+    expect((await shellPaths())[2]).toMatch(new RegExp(`^${openDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\/][0-9a-f-]{36}[\\/]sample\\.pdf$`));
     ran.add('item.showInFolder');
 
     // 다시 연결… (first in the item menu for a linked item whose file is gone): the dialog picks the moved file.
@@ -157,9 +167,9 @@ test('every registry command runs without a page error (library and reader menus
     await importPaths(page, [MPEG4]);
     await openItem(page, 'sample-mpeg4part2');
     await page.getByTestId('codec-open').click();
-    await expect.poll(shellCalls).toEqual(['reveal', 'open']);
-    expect((await shellPaths())[1]).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample-mpeg4part2\.mp4$/);
-    expect(fs.existsSync((await shellPaths())[1]!)).toBe(true);
+    await expect.poll(shellCalls).toEqual(['reveal', 'open', 'reveal', 'open']);
+    expect((await shellPaths())[3]).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample-mpeg4part2\.mp4$/);
+    expect(fs.existsSync((await shellPaths())[3]!)).toBe(true);
     ran.add('item.openExternally');
     await runMenuCommand(app, 'nav.back');
 

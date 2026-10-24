@@ -153,21 +153,41 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     }
     expect(commandLabel(commandById('item.showInFolder'), 'darwin')).toBe('Finder에서 보기');
     expect(commandLabel(commandById('item.showInFolder'), 'linux')).toBe('폴더에서 보기');
-    expect(commandById('item.showInFolder')).toMatchObject({ contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } });
-    // Not an item context-menu entry (design-spec 7.3 has none, C-1): only the unplayable-video notice's button.
-    expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', contexts: ['item'] });
+    // ⇧⌘R and 파일 › act on the table selection (design-spec 7.4); the palette lists them while the selection allows.
+    expect(commandById('item.showInFolder')).toMatchObject({
+      accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 }, contexts: ['item'],
+      contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+    });
+    expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', menu: { menu: 'file', group: 2, order: 3 }, contexts: ['item'], palette: true });
+    // Still no item context-menu entry (design-spec 7.3 lists none) and no shortcut of its own.
     expect(commandById('item.openExternally').contextMenu).toBeUndefined();
-    // No accelerator yet: ⇧⌘R needs the table selection (M4).
-    expect(commandById('item.showInFolder').accelerator).toBeUndefined();
     expect(commandById('item.openExternally').accelerator).toBeUndefined();
+    // 열기 and 다시 연결… stay with the table and the notices: never palette rows.
+    expect(inPalette(commandById('item.open'))).toBe(false);
+    expect(inPalette(commandById('item.relink'))).toBe(false);
   });
-  it('lists the menu-bar commands of a view (no item command has a menu placement yet)', () => {
+  it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
-    // A selection changes nothing while no item command is placed in the menu bar (the 파일 menu's item commands come later).
-    expect(availableMenuCommands(selecting(1, 1))).toEqual(availableMenuCommands(LIB));
+  });
+  it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
+    const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
+    expect(availableMenuCommands(one)).toEqual([
+      'file.importManaged', 'file.importLinked', 'item.showInFolder', 'item.openExternally', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+    ]);
+    const refused: CommandContextState[] = [
+      LIB, // nothing selected
+      { ...one, selectionCount: 2, selectionAvailable: 2 }, // two
+      { ...one, selectionAvailable: 0, selectionRelinkable: 1 }, // a linked file that went missing
+      { ...one, selectionAvailable: 0 }, // a managed copy that went missing
+      { ...one, blocked: true },
+    ];
+    for (const ctx of refused) {
+      expect(availableMenuCommands(ctx), JSON.stringify(ctx)).not.toContain('item.showInFolder');
+      expect(availableMenuCommands(ctx), JSON.stringify(ctx)).not.toContain('item.openExternally');
+    }
   });
   it('turns the reported selection counts into targets: available first, then linked and missing, then the rest (P-2)', () => {
     const targets = (count: number, available: number, relinkable: number) => selectionTargets(selecting(count, available, relinkable));
@@ -181,7 +201,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(targets(2, 1, 5)).toEqual([managedOk, linkedMissing]);
   });
   it('judges a menu-bar item command on the selection, in the library view only (P-2, spec 6)', () => {
-    // No item command has a menu placement yet: a variant of the registry stands in (availability is still by id).
+    // A variant of the registry stands in for 다시 연결…, which has no menu placement (availability is still by id).
     const placed: CommandSpec[] = [
       { ...commandById('item.showInFolder'), menu: { menu: 'file', group: 2, order: 1 } },
       { ...commandById('item.relink'), menu: { menu: 'file', group: 2, order: 2 } },

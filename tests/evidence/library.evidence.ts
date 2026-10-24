@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, nativeKeystroke,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, nativeKeyCode, nativeKeystroke,
   recordedPopups, rowAt, runMenuCommand, seedLibrary, seedMetadata, selectRows, stubContextMenu, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
@@ -470,6 +470,105 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(0);
   if ((await state()) !== inspector['defaultState']) await runMenuCommand(s.app, 'view.toggleInspector');
+  fs.rmSync(src, { force: true });
+  save();
+});
+
+test('M4 library: 정보 편집 — the form in place, ⌘↩ from a real keystroke, a marked field; ⌘W and ⌘Q refused over it', TAG, async () => {
+  const page = s.page;
+  const state = () => page.getByTestId('shell').getAttribute('data-inspector');
+  const edit: Record<string, unknown> = {};
+  results['inspectorEdit'] = edit;
+  const src = path.join(os.tmpdir(), `learn-m4-edit-${process.pid}.pdf`);
+  fs.writeFileSync(src, Buffer.concat([fs.readFileSync(PDF), Buffer.from('\n% edit evidence\n')]));
+  const [item] = await importPaths(page, [src]);
+  const title = path.parse(src).name;
+  const publisher = async () =>
+    page.evaluate(async (id) => {
+      const r = await window.learn.library.detail({ itemId: id });
+      return r.ok ? (r.data.metadata.publisher ?? null) : null;
+    }, item!.id);
+  // The new item is the newest row (index 0): the table (its own scroll view) at the top, where the virtualizer draws it.
+  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await selectRows(page, [title]);
+  const shownBefore = (await state()) === 'shown';
+  if (!shownBefore) await runMenuCommand(s.app, 'view.toggleInspector'); // the 1024 px runner folds it
+  await page.getByTestId('info-edit').click();
+  await page.locator('[data-testid="editor-field"][data-field="publisher"] input').fill('학습출판');
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(page, theme);
+    await allShots(s.app, page, `m4-inspector-edit-${theme}`, `정보 편집, the form in place (${theme})`);
+  }
+  await setTheme(page, 'light');
+
+  await guard('edit: ⌘↩ saves', async () => {
+    let native = false;
+    if (IS_MAC) {
+      try {
+        await nativeKeyCode(s.app, KEY_CODE.return, ['command']);
+        native = true;
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        await page.keyboard.press('Meta+Enter');
+      }
+    } else {
+      await page.keyboard.press('Control+Enter');
+    }
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    edit['saveKey'] = { native, publisher: await publisher() };
+    check('edit: ⌘↩ saves', (await publisher()) === '학습출판', edit['saveKey']);
+  });
+
+  await page.getByTestId('info-edit').click();
+  await page.locator('[data-testid="editor-field"][data-field="date"] input').fill('2024-13');
+  // Another row: the one beside the edited item in the table's order (data-index, not the DOM order); its press asks
+  // the edit, which refuses and brings the selection back.
+  const besideMine = (await rowAt(page, 0).getAttribute('data-title')) === title ? 1 : 0;
+  await rowAt(page, besideMine).click();
+  await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+  await allShots(s.app, page, 'm4-inspector-edit-invalid-light', '정보 편집, a marked date and the unsaved line (light)');
+
+  await guard('edit: closing the window over a marked field keeps it open', async () => {
+    let native = false;
+    if (IS_MAC) {
+      try {
+        await nativeKeystroke(s.app, 'w', ['command']); // 윈도우 닫기 ⌘W
+        native = true;
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        await (await mainWindow(s.app)).evaluate((w) => w.close());
+      }
+    } else {
+      await (await mainWindow(s.app)).evaluate((w) => w.close());
+    }
+    await page.waitForTimeout(500);
+    const open = await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=main')));
+    edit['closeGuard'] = { native, open };
+    check('edit: closing the window over a marked field keeps it open', open, edit['closeGuard']);
+  });
+  // ⌘Q over the marked field: main's flush calls the quit off (edit-flush.ts). Were it to quit, this session ends here —
+  // the failed check then explains the tests that fail after it.
+  await guard('edit: quitting over a marked field is called off (the app stays)', async () => {
+    let native = false;
+    if (IS_MAC) {
+      try {
+        await nativeKeystroke(s.app, 'q', ['command']); // Learn 종료 ⌘Q
+        native = true;
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        await s.app.evaluate(({ app: electronApp }) => electronApp.quit());
+      }
+    } else {
+      await s.app.evaluate(({ app: electronApp }) => electronApp.quit());
+    }
+    await page.waitForTimeout(500);
+    const alive = await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=main')));
+    edit['quitGuard'] = { native, alive, flushLog: await s.app.evaluate(() => (globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ?? []) };
+    check('edit: quitting over a marked field is called off (the app stays)', alive, edit['quitGuard']);
+  });
+  await page.getByTestId('editor-discard').click();
+  await expect(page.getByTestId('info-editor')).toHaveCount(0);
+  if (!shownBefore) await runMenuCommand(s.app, 'view.toggleInspector');
   fs.rmSync(src, { force: true });
   save();
 });

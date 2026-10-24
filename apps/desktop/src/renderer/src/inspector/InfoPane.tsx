@@ -22,13 +22,19 @@ const MULTI_TITLES = 8;
 /** A load shorter than this shows nothing (design-spec 6). */
 const LOADING_DELAY_MS = 300;
 
-/** Info mode (spec §5.3–5.4), from the table's selection: nothing selected, several, or one item. */
+/** Info mode (spec §5.3–5.4), from the table's selection; an open edit keeps its item on show until it lets go. */
 export function InfoPane() {
   const items = useItems().data ?? NO_ITEMS;
   const selected = useLibrary((s) => s.selected);
-  // The selected items in list order (the store's set is in the order they were picked): equal values keep the list's
-  // order in sortItems, so MultiSelection's titles come in the table's relative order.
+  const editingId = useLibrary((s) => s.editingId);
+  const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+  // In list order: equal values keep the list order, so the multiple selection lists titles as the table does.
   const chosen = useMemo(() => (selected.size === 0 ? NO_ITEMS : items.filter((i) => selected.has(i.id))), [selected, items]);
+  const editing = editingId === null ? undefined : byId.get(editingId);
+  useEffect(() => {
+    if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
+  }, [editingId, byId]);
+  if (editing) return <ItemInfo key={editing.id} item={editing} />;
   if (chosen.length === 0) return <NoSelection items={items} />;
   if (chosen.length > 1) return <MultiSelection items={chosen} />;
   return <ItemInfo key={chosen[0]!.id} item={chosen[0]!} />;

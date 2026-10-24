@@ -11,8 +11,10 @@ import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
 import { EmptyLibrary } from '../library/EmptyLibrary';
+import { afterEditing } from '../inspector/editGuard';
 import { Inspector } from '../inspector/Inspector';
 import { InspectorToggle } from '../inspector/InspectorToggle';
+import { startEditing } from '../inspector/startEditing';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
 import { LibrarySidebar } from '../library/LibrarySidebar';
@@ -248,7 +250,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     targetsOf: (ids) => freshTargets(queryClient, listRef.current, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
-    open: (itemId) => setView({ kind: 'reader', itemId }),
+    // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
+    open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     toggleInspector,
@@ -257,7 +260,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction(() => api().library.openExternally({ itemId })),
     // Placeholder until the editor screen gives the command its handler (inspector/startEditing.ts).
-    editInfo: () => undefined,
+    editInfo: startEditing,
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,

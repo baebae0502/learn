@@ -40,7 +40,7 @@ export const inspector = {
   creatorWithRole: (name: string, role: string) => `${name} (${role})`,
   monthDate: (y: number, m: number) => `${y}. ${m}.`,
   dayDate: (y: number, m: number, d: number) => `${y}. ${m}. ${d}.`,
-  /** No info at all yet: what writing it gives (the pencil beside 정보 is the way, once editing exists). */
+  /** No info at all yet: what writing it gives (the pencil beside 정보 is the way). */
   noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을 수 있습니다.',
   showMore: '더 보기',
   showLess: '접기',

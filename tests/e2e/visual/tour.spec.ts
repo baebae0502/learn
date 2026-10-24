@@ -220,6 +220,41 @@ test('item panel: nothing selected, one item, several, a missing original, folde
   }
 });
 
+test('정보 편집: the form in place, its end, and a marked field with the unsaved line', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // What moves in the panel (the SHA-256 shows under the form) and the table's dates in its rows only.
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const [sample] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, '한글 경로 (테스트) #1.pdf')]);
+    await seedMetadata(s.page, sample!.id, {
+      creators: [{ name: '한서진', role: 'author' }, { name: '배유나', role: 'editor' }],
+      date: '2024-03-15', publisher: '학습출판', language: '한국어', url: 'https://example.org/molbio/6',
+      abstract: '세포가 바깥 신호를 받아들이는 과정을 수용체, G 단백질, 2차 전령의 순서로 정리한다.',
+    });
+    await selectRows(s.page, ['sample']);
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await s.page.getByTestId('info-edit').click();
+    await expect(s.page.getByTestId('info-editor')).toBeVisible();
+    await expect(s.page.locator('[data-testid="editor-field"][data-field="title"] input')).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `inspector-edit-${theme}`, { mask: masks() }); // the title field focused (its halo)
+    }
+    await setTheme(s.page, 'light');
+    await s.page.locator('.inspector-scroll').evaluate((e) => e.scrollTo(0, e.scrollHeight));
+    await shoot(s.page, 'inspector-edit-end-light', { mask: masks() }); // 메모, 취소 · 저장
+    await s.page.locator('[data-testid="editor-field"][data-field="date"] input').fill('2024-13');
+    await expect(s.page.locator('[data-testid="editor-field"][data-field="date"] input')).toHaveValue('2024-13');
+    await selectRows(s.page, ['한글 경로 (테스트) #1']); // refused: the selection comes back to sample
+    await expect(s.page.getByTestId('editor-unsaved')).toBeVisible();
+    await s.page.locator('.inspector-scroll').evaluate((e) => e.scrollTo(0, 0));
+    await shoot(s.page, 'inspector-edit-invalid-light', { mask: masks() });
+    await s.page.getByTestId('editor-discard').click(); // nothing left to hold the window when the app closes
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {

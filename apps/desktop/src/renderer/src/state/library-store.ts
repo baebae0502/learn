@@ -19,6 +19,9 @@ export interface LibraryState extends SelectionState {
   /** Quick search query, this session only (spec 4.1: a restart starts empty). */
   query: string;
   setQuery(q: string): void;
+  /** The item whose info is being edited, or null (inspector/InfoEditor.tsx). */
+  editingId: string | null;
+  setEditing(id: string | null): void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -30,6 +33,8 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   cursorId: null,
   lastOpenedId: null,
   query: '',
+  editingId: null,
+  setEditing: (editingId) => set({ editingId }),
   setQuery: (query) => set({ query }),
   setLastOpened: (lastOpenedId) => set({ lastOpenedId }),
   setSelected: (ids) => {

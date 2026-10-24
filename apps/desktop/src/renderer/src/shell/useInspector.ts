@@ -52,3 +52,10 @@ export function useKeepFocusOnInspectorFold(hidden: boolean): void {
     });
   }, [hidden]);
 }
+
+/** Shows the item panel if it is out of sight — folded by the user or by the window — as ⌥⌘I would (정보 편집 needs it). */
+export function revealInspector(): void {
+  const { sidebar, inspector, setInspector } = useShell.getState();
+  const panes = { sidebar, inspector };
+  if (hiddenPanes(panes, innerWidth, true).inspector) setInspector(toggledInspector(panes, innerWidth));
+}

@@ -50,6 +50,7 @@ const fontSize = (page: Page) =>
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
+  'item.editInfo': 'inspector-edit.spec.ts › 정보 편집 from the palette edits the selected item, showing a folded item panel first',
 };
 
 test('every registry command runs without a page error (library and reader menus, item menu, notice buttons)', async ({}, testInfo) => {

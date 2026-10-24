@@ -1,5 +1,6 @@
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { CHOSEONG, MATCH_RANK, WORD_START, matchKorean, splitFinal, type Match, type MatchKind } from '../palette/hangul';
+import { timed } from '../ui/perfMarks';
 
 /**
  * Quick search over the library list (spec 4.2). Every query word must be in some field (AND). Fields compare NFC and
@@ -207,7 +208,7 @@ const indexes = new WeakMap<readonly LibraryItem[], { texts: readonly SearchText
 export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly SearchText[]): SearchIndex {
   const hit = indexes.get(items);
   if (hit && hit.texts === texts) return hit.index;
-  const index = buildSearchIndex(items, texts);
+  const index = timed('search:index', () => buildSearchIndex(items, texts));
   indexes.set(items, { texts, index });
   return index;
 }
@@ -224,7 +225,7 @@ const lastResults = new WeakMap<SearchIndex, { query: string; result: SearchResu
 export function searchCached(index: SearchIndex, query: string): SearchResult | null {
   const hit = lastResults.get(index);
   if (hit && hit.query === query) return hit.result;
-  const result = search(index, query);
+  const result = timed('search', () => search(index, query));
   lastResults.set(index, { query, result });
   return result;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
   VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
@@ -61,6 +61,20 @@ describe('ipc contract', () => {
   it('rejects empty path lists and unknown modes', () => {
     expect(importPathsInput.safeParse({ paths: [], mode: 'managed' }).success).toBe(false);
     expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'copy' }).success).toBe(false);
+  });
+  it('takes the reported command context strictly, with the library and selection counts (P-2)', () => {
+    const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1 };
+    expect(commandContextInput.parse(ctx)).toEqual(ctx);
+    // The fatal screen reports neither pane.
+    expect(commandContextInput.safeParse({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 }).success).toBe(true);
+    for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable'] as const) {
+      for (const bad of [-1, 1.5, 1_000_001, '1']) expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
+      const without: Record<string, unknown> = { ...ctx };
+      delete without[k];
+      expect(commandContextInput.safeParse(without).success, `${k} missing`).toBe(false);
+    }
+    expect(commandContextInput.safeParse({ ...ctx, inspector: 'open' }).success).toBe(false);
+    expect(commandContextInput.safeParse({ ...ctx, extra: 1 }).success).toBe(false);
   });
   it('builds same-origin asset URLs', () => {
     expect(APP_ORIGIN).toBe('learn://app');

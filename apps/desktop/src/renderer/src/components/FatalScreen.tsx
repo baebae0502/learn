@@ -32,7 +32,7 @@ export interface FatalScreenProps {
 export function FatalScreen({ kind = 'library', code, libraryRoot = null, backupFile = null, homeDir = null }: FatalScreenProps) {
   // No library, no registry command can run: only main-owned commands (설정…) stay in the menu bar.
   useEffect(() => {
-    void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13 });
+    void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 });
   }, []);
   const sep = currentPlatform() === 'win32' ? '\\' : '/';
   const backup = kind === 'library' && libraryRoot && backupFile ? `${libraryRoot}${sep}${backupFile}` : null;

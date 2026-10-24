@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
-import { COMMANDS, commandLabel, isCommandAvailable, type MenuName } from '../../packages/domain/src/commands';
+import { COMMANDS, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import {
   FIXTURES, NativeInputNotPermitted, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
@@ -16,6 +16,8 @@ test.beforeAll(() => {
   if (!fs.existsSync(PDF)) throw new Error(`fixture missing: ${PDF} — run \`pnpm fixtures\``);
 });
 
+/** What an empty library reports first (P-2: no items, nothing selected). */
+const EMPTY_LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
 const TOP_LABELS: Record<MenuName, string> = { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' };
 const HANGUL = /[가-힣]/;
 
@@ -83,7 +85,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         expect.objectContaining({
           label: commandLabel(c, process.platform, { sidebar: 'shown' }), // the shell opens with the sidebar shown
           accelerator: c.accelerator ? platformAccelerator(c.accelerator, process.platform) : null,
-          enabled: isCommandAvailable(c.id, { view: 'library', blocked: false, textSize: 13 }),
+          enabled: availableMenuCommands(EMPTY_LIBRARY).includes(c.id),
         }),
       ]);
     }
@@ -219,6 +221,31 @@ test('menu: enabled state follows the reported view (ui:reportContext)', async (
     expect(await page.evaluate(() => window.learn.ui.reportContext({ view: 'viewer', blocked: false, extra: 1 } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   } finally {
     await app.close();
+  }
+});
+
+// P-2: what main was told, read back (main keeps the last accepted report for tests). The selection counts stay 0 until
+// the table has a selection (Task 4); the fatal screen reports the same zeros, or no report would pass the schema.
+test('menu: the reported context carries the library count and no selection yet; the fatal screen reports zeros', async ({}, testInfo) => {
+  const reported = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnMenuContext?: CommandContextState }).__learnMenuContext ?? null);
+  const { app, page } = await session(testInfo);
+  try {
+    await expect.poll(() => reported(app)).toEqual({ ...EMPTY_LIBRARY, sidebar: 'shown' });
+    await importOnePdf(page);
+    await expect.poll(async () => (await reported(app))?.libraryCount).toBe(1);
+    expect(await reported(app)).toMatchObject({ selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 });
+  } finally {
+    await app.close();
+  }
+  const broken = testInfo.outputPath('broken');
+  fs.mkdirSync(broken, { recursive: true });
+  fs.writeFileSync(path.join(broken, 'library.sqlite'), 'not a database');
+  const fatal = await launch(broken, testInfo.outputPath('userdata-broken'));
+  try {
+    await expect(fatal.page.getByTestId('fatal-screen')).toBeVisible();
+    expect(await reported(fatal.app)).toEqual({ ...EMPTY_LIBRARY, blocked: true });
+  } finally {
+    await fatal.app.close();
   }
 });
 

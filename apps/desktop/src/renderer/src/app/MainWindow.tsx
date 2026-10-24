@@ -47,6 +47,9 @@ const fileAction = (run: () => Promise<Result<void>>): void => void unwrap(run()
 const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
 const NO_ITEMS: readonly LibraryItem[] = [];
+/** The table selection until the table has one (Task 4 connects it): one function, so the env's memo holds. */
+const NO_IDS: readonly string[] = [];
+const noSelection = (): readonly string[] => NO_IDS;
 
 export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
@@ -191,6 +194,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const listFailure = items.data !== undefined ? null : items.isError ? items.error.message : lastListFailure;
 
   const list = items.data ?? NO_ITEMS;
+  const count = list.length;
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -203,6 +207,12 @@ export function MainWindow(_props: { info: AppInfo }) {
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
+    libraryCount: count,
+    // No table selection yet (Task 4): the menu bar's item commands stay off.
+    selectionCount: 0,
+    selectionAvailable: 0,
+    selectionRelinkable: 0,
+    selection: noSelection,
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (ids) => freshTargets(queryClient, list, ids),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
@@ -218,7 +228,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, textSize, list, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
+  }), [viewKind, blocked, held, sidebarHidden, textSize, count, list, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -239,7 +249,6 @@ export function MainWindow(_props: { info: AppInfo }) {
   /** Open from the list through the registry: refused while an import or a sheet holds the window (blocked). */
   const openFromList = useCallback((itemId: string) => runCommand('item.open', envRef.current, { itemIds: [itemId] }), []);
 
-  const count = list.length;
   // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to

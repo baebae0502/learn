@@ -61,13 +61,21 @@ export const savePositionInput = z.object({
   progress: z.number().min(0).max(1).nullable(),
 });
 export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
+const paneShownSchema = z.enum(['shown', 'hidden']);
+/** An item count in a reported context (the library, the selection). */
+const contextCount = z.number().int().min(0).max(1_000_000);
 /** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
 export const commandContextInput = z
   .object({
     view: z.enum(['library', 'viewer']),
     blocked: z.boolean(),
-    sidebar: z.enum(['shown', 'hidden']).optional(),
+    sidebar: paneShownSchema.optional(),
+    inspector: paneShownSchema.optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
+    libraryCount: contextCount,
+    selectionCount: contextCount,
+    selectionAvailable: contextCount,
+    selectionRelinkable: contextCount,
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;

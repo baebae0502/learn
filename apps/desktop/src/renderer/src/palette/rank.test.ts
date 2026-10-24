@@ -33,4 +33,9 @@ describe('rankCommands', () => {
     expect(rankCommands(toggle, '가리기', 'darwin', { sidebar: 'hidden' })).toEqual([{ command: toggle[0], match: null }]);
     expect(rankCommands(toggle, 'ㅅㅇㄷㅂ ㅂ', 'darwin', { sidebar: 'hidden' })[0]!.match).toEqual({ start: 0, end: 6, kind: 'initials' });
   });
+  it('matches the item panel toggle by the name its own pane state gives it (P-3)', () => {
+    const panel: CommandSpec = { id: 'nav.back', label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } }, keywords: ['항목 패널'], contexts: ['library'] };
+    expect(rankCommands([panel], '가리기', 'darwin', { inspector: 'shown' })[0]!.match).toEqual({ start: 6, end: 9, kind: 'word' });
+    expect(rankCommands([panel], '가리기', 'darwin', { inspector: 'hidden', sidebar: 'shown' })).toEqual([]);
+  });
 });

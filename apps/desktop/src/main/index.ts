@@ -18,7 +18,7 @@ import { sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
@@ -118,11 +118,16 @@ const activation = createActivateGate({
 });
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
-const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({ view: 'library', blocked: true, textSize: 13 });
+const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({
+  view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0,
+});
 /** Last command context of the main window (ADR-0005 §2). */
 let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
-/** E2E marker: bumped on every accepted context report (tests wait for the first one). */
-const menuState = globalThis as { __learnMenuStateVersion?: number };
+/**
+ * E2E markers: the version is bumped on every accepted context report (tests wait for the first one); the context is
+ * the last accepted report, which tests read for what the renderer told main.
+ */
+const menuState = globalThis as { __learnMenuStateVersion?: number; __learnMenuContext?: CommandContextState };
 let appMenu: Menu | null = null;
 
 /**
@@ -137,7 +142,7 @@ function installAppMenu(): void {
       commands: COMMANDS,
       enabled: new Set(availableMenuCommands(uiContext)),
       onCommand: dispatchMenuCommand,
-      labels: { ...(uiContext.sidebar ? { sidebar: uiContext.sidebar } : {}) },
+      labels: menuLabelState(uiContext),
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
       fullScreenAvailable: mainWindow !== null && !mainWindow.isDestroyed() && !isSheetOpen(mainWindow),
       onToggleFullScreen: () => {
@@ -167,11 +172,11 @@ function setNativeMenuOpen(open: boolean): void {
 /** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open). */
 function setUiContext(next: CommandContextState): void {
   if (sameCommandContext(uiContext, next)) return;
-  const relabel = next.sidebar !== uiContext.sidebar;
+  const relabel = menuLabelsChanged(uiContext, next);
   uiContext = next;
   if (!appMenu) return;
   applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
-  if (relabel) applyMenuLabels(appMenu, process.platform, { ...(next.sidebar ? { sidebar: next.sidebar } : {}) });
+  if (relabel) applyMenuLabels(appMenu, process.platform, menuLabelState(next));
 }
 
 /**
@@ -312,6 +317,7 @@ if (!app.requestSingleInstanceLock()) {
           // Only the main window drives the menu (settings and sheet windows report nothing that counts).
           if (!isMainWindow(sender)) return;
           menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1; // received, even if unchanged
+          menuState.__learnMenuContext = ctx;
           setUiContext(ctx);
         },
         current: () => uiContext,

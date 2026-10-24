@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, acceleratorLabel, commandById, platformAccelerator, type CommandId, type CommandSpec } from '@learn/domain';
-import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds } from './app-menu';
+import { COMMANDS, acceleratorLabel, availableMenuCommands, commandById, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged } from './app-menu';
 
 interface Shape {
   label?: string;
@@ -267,6 +267,62 @@ describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)',
     expect(after).toEqual(before.map((i) => (i.id === 'view.toggleSidebar' ? { ...i, label: '사이드바 보기' } : i)));
     applyMenuLabels({ getMenuItemById: (id) => byId.get(id) ?? null }, 'darwin', { sidebar: 'shown' });
     expect(sidebarItem(template)).toMatchObject({ id: 'view.toggleSidebar', label: '사이드바 가리기', accelerator: 'Ctrl+Cmd+S' });
+  });
+});
+
+describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)', () => {
+  const byIdOf = (template: MenuItemConstructorOptions[]) => new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+  /** The item panel's toggle as Task 6 adds it, under a stand-in id. */
+  const panel: CommandSpec = {
+    id: 'nav.back', label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+    menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+  };
+  const toggles: CommandSpec[] = [commandById('view.toggleSidebar'), panel];
+  const base: CommandContextState = {
+    view: 'library', blocked: false, textSize: 13, sidebar: 'shown', inspector: 'shown', libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0,
+  };
+  const next = (over: Partial<CommandContextState>): CommandContextState => ({ ...base, ...over });
+
+  it('keeps the pane states a report names, and only those', () => {
+    expect(menuLabelState(base)).toEqual({ sidebar: 'shown', inspector: 'shown' });
+    expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown' }); // the reader has no item panel
+    expect(menuLabelState(next({ sidebar: undefined, inspector: undefined }))).toEqual({}); // the fatal screen
+  });
+  it('relabels when the sidebar or the item panel changed, never for a change of counts', () => {
+    expect(menuLabelsChanged(base, next({ sidebar: 'hidden' }))).toBe(true);
+    expect(menuLabelsChanged(base, next({ inspector: 'hidden' }))).toBe(true);
+    expect(menuLabelsChanged(base, next({ inspector: undefined }))).toBe(true);
+    expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, selectionRelinkable: 0 }))).toBe(false);
+    expect(menuLabelsChanged(base, next({ view: 'viewer', blocked: true, textSize: 15 }))).toBe(false);
+  });
+  it('builds and relabels each toggle from its own pane state, in place', () => {
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: toggles, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown', inspector: 'hidden' } });
+    const byId = byIdOf(template);
+    const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    expect(byId.get('view.toggleSidebar')?.label).toBe('사이드바 가리기');
+    expect(byId.get('nav.back')?.label).toBe('항목 패널 보기');
+    applyMenuLabels(lookup, 'darwin', { sidebar: 'shown', inspector: 'shown' }, toggles);
+    expect(byId.get('view.toggleSidebar')?.label).toBe('사이드바 가리기');
+    expect(byId.get('nav.back')?.label).toBe('항목 패널 가리기');
+    applyMenuLabels(lookup, 'darwin', { sidebar: 'hidden' }, toggles);
+    expect(byId.get('view.toggleSidebar')?.label).toBe('사이드바 보기');
+    expect(byId.get('nav.back')?.label).toBe('항목 패널 보기/가리기'); // no state: the neutral name
+  });
+  it('enables a menu-bar item command from the reported selection, in place, never in the reader (P-2, spec 6)', () => {
+    // No item command has a menu placement yet (Task 4 places 파일's): a variant of the registry stands in.
+    const placed: CommandSpec[] = [{ ...commandById('item.showInFolder'), menu: { menu: 'file', group: 2, order: 1 } }];
+    const selecting = (selectionCount: number, selectionAvailable: number, view: CommandContextState['view'] = 'library') =>
+      next({ view, libraryCount: 9, selectionCount, selectionAvailable });
+    const template = build('darwin', false, vi.fn(), new Set(availableMenuCommands(base, placed)), placed);
+    const byId = byIdOf(template);
+    const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    expect(byId.get('item.showInFolder')).toMatchObject({ label: 'Finder에서 보기', enabled: false });
+    applyMenuEnabled(lookup, new Set(availableMenuCommands(selecting(1, 1), placed)), placed);
+    expect(byId.get('item.showInFolder')?.enabled).toBe(true);
+    for (const off of [selecting(2, 2), selecting(1, 0), selecting(1, 1, 'viewer')]) {
+      applyMenuEnabled(lookup, new Set(availableMenuCommands(off, placed)), placed);
+      expect(byId.get('item.showInFolder')?.enabled, JSON.stringify(off)).toBe(false);
+    }
   });
 });
 

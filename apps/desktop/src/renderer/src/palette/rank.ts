@@ -15,7 +15,7 @@ export function rankCommands(
   commands: readonly CommandSpec[],
   query: string,
   platform: string,
-  state: Pick<CommandContextState, 'sidebar'> = {},
+  state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {},
 ): RankedCommand[] {
   if (query.trim() === '') return commands.map((command) => ({ command, match: null }));
   return commands

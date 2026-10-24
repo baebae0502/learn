@@ -1,4 +1,4 @@
-import { isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
+import { COMMANDS, isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 
@@ -6,6 +6,11 @@ import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 export interface CommandEnv extends CommandContextState {
   /** Availability facts for item targets (from the library list). */
   targetsOf(itemIds: readonly string[]): CommandTargetInfo[];
+  /**
+   * The table selection in table order: the targets of an item command run from the menu bar (P-2). Read when the
+   * command runs, so a closing palette does not run it on an older selection.
+   */
+  selection(): readonly string[];
   importFiles(mode: StorageMode): void;
   back(): void;
   open(itemId: string): void;
@@ -66,9 +71,28 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.previousPane': (env) => env.focusPane(-1),
 };
 
-/** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */
+/** Just the context fields (what main needs for the menu bar: availability and counts, and the pane states for its labels). */
 export function contextOf(env: CommandEnv): CommandContextState {
-  return { view: env.view, blocked: env.blocked, textSize: env.textSize, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
+  return {
+    view: env.view,
+    blocked: env.blocked,
+    textSize: env.textSize,
+    libraryCount: env.libraryCount,
+    selectionCount: env.selectionCount,
+    selectionAvailable: env.selectionAvailable,
+    selectionRelinkable: env.selectionRelinkable,
+    ...(env.sidebar ? { sidebar: env.sidebar } : {}),
+    ...(env.inspector ? { inspector: env.inspector } : {}),
+  };
+}
+
+/**
+ * The targets of a command from the menu bar (its accelerator or a click): an item command acts on the table's
+ * selection, which only the library view shows (spec 6: off in the reader, as main's availableMenuCommands judges it).
+ */
+export function menuTarget(id: CommandId, env: CommandEnv): CommandTarget {
+  if (!COMMANDS.find((c) => c.id === id)?.contexts.includes('item')) return {};
+  return { itemIds: env.view === 'library' ? env.selection() : [] };
 }
 
 /** The window a command is judged in: a held one counts as the blocked, modal window it is about to be. */

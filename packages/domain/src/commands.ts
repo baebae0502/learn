@@ -31,8 +31,10 @@ export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column'] as con
 /** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
+/** Whether a pane is shown — what a pane toggle's state label depends on. */
+export type PaneShown = 'shown' | 'hidden';
 /** Whether the sidebar is shown (layout B) — what the sidebar command's label depends on. */
-export type SidebarState = 'shown' | 'hidden';
+export type SidebarState = PaneShown;
 
 export interface CommandSpec {
   id: CommandId;
@@ -44,8 +46,9 @@ export interface CommandSpec {
   /**
    * Mac pattern for a toggle (design-spec 7.4): the menu, the tooltip and the palette name what the command does now —
    * "사이드바 가리기" while the sidebar is shown, "사이드바 보기" while it is hidden. One command, one id, one shortcut.
+   * Exactly one key: the reported pane state the label follows.
    */
-  stateLabels?: { sidebar: Readonly<Record<SidebarState, string>> };
+  stateLabels?: { sidebar?: Readonly<Record<PaneShown, string>>; inspector?: Readonly<Record<PaneShown, string>> };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
   /** Electron accelerator, owned by the native menu. */
@@ -127,8 +130,10 @@ export const inPalette = (c: CommandSpec): boolean => c.palette ?? !c.contexts.i
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
  * is the reported context), else the platform label.
  */
-export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
-  if (c.stateLabels && state.sidebar) return c.stateLabels.sidebar[state.sidebar];
+export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+  const labels = c.stateLabels;
+  if (labels?.sidebar && state.sidebar) return labels.sidebar[state.sidebar];
+  if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
@@ -137,7 +142,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: Pick<Comma
  * ellipsis where the command asks for more input (macOS HIG), in menus, buttons, the palette and the ⌘/ sheet; prose
  * that only names the command drops it (Apple Style Guide), and is built from the label so the two cannot drift.
  */
-export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
+export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
   return commandLabel(c, platform, state).replace(/…$/, '');
 }
 
@@ -150,9 +155,19 @@ export interface CommandContextState {
   /** An import, a modal sheet or the fatal screen owns the window: nothing runs. */
   blocked: boolean;
   /** For state labels only (not availability): absent where the window has no sidebar (the fatal screen). */
-  sidebar?: SidebarState;
+  sidebar?: PaneShown;
+  /** The item panel (library view only), for its toggle's state label; absent where there is none. */
+  inspector?: PaneShown;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
+  /** Items in the library; 0 is the empty library (nothing to find or inspect). */
+  libraryCount: number;
+  /** The table selection as counts, so the context stays flat (sameCommandContext). */
+  selectionCount: number;
+  /** Of the selection: items whose file is there. */
+  selectionAvailable: number;
+  /** Of the selection: linked items whose file is missing (what 다시 연결… needs). */
+  selectionRelinkable: number;
 }
 
 /** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */
@@ -176,8 +191,24 @@ export interface CommandSurface {
   modal: boolean;
 }
 
+const AVAILABLE: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'available' });
+const RELINKABLE: CommandTargetInfo = Object.freeze({ storageMode: 'linked', availability: 'missing' });
+const MISSING: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'missing' });
+
+/**
+ * Synthetic targets for the menu bar: `selectionAvailable` available, then `selectionRelinkable` linked+missing, the
+ * rest managed+missing. Main has only the reported counts; no rule reads the storage mode of an available target.
+ * Counts that do not add up are clamped to `selectionCount`.
+ */
+export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] {
+  const available = Math.min(ctx.selectionAvailable, ctx.selectionCount);
+  const relinkable = Math.min(ctx.selectionRelinkable, ctx.selectionCount - available);
+  return Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
+}
+
 type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
+  // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
   'item.open': (_ctx, t) => t.length === 1,
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
   'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
@@ -201,7 +232,13 @@ export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targ
   return inContext && (RULES[id]?.(ctx, targets) ?? true);
 }
 
-/** Menu-bar commands available in `ctx` (item commands live in context menus). */
-export function availableMenuCommands(ctx: CommandContextState): CommandId[] {
-  return COMMANDS.filter((c) => c.menu !== undefined && !c.contexts.includes('item') && isCommandAvailable(c.id, ctx)).map((c) => c.id);
+/**
+ * Menu-bar commands available in `ctx`. An item command with a menu placement is judged on the selection's synthetic
+ * targets (selectionTargets), in the library view only: the renderer runs it on the selected items. `commands` is the
+ * registry; tests pass variants with other placements (availability is still the registry's, by id).
+ */
+export function availableMenuCommands(ctx: CommandContextState, commands: readonly CommandSpec[] = COMMANDS): CommandId[] {
+  // Spec 6: the menu bar's item commands act on the library table's selection, so the reader has none.
+  const targets = ctx.view === 'library' ? selectionTargets(ctx) : [];
+  return commands.filter((c) => c.menu !== undefined && isCommandAvailable(c.id, ctx, targets)).map((c) => c.id);
 }

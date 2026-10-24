@@ -91,7 +91,8 @@ function PaletteDialog() {
   const platform = currentPlatform();
   /** 설정 as the hints name it: ㅅㅈ → 설정 (critic T14-n2). */
   const settingsName = commandMention(commandById('app.settings'), platform);
-  const state = env.sidebar ? { sidebar: env.sidebar } : {};
+  // The pane states the toggles' names follow (사이드바 가리기 / 사이드바 보기), as the menu bar has them.
+  const state = { sidebar: env.sidebar, inspector: env.inspector };
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
   // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
   // notice that says why the rest is missing (review minor 1).

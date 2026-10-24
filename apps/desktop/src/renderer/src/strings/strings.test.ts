@@ -19,7 +19,13 @@ const copy: Array<{ at: string; text: string }> = [];
 collect(t, 't', copy);
 // Main's own copy module (native dialogs, messages that reach the screen): the same rules as the renderer's (review minor 7).
 collect(mainStrings, 'mainStrings', copy);
-for (const c of COMMANDS) copy.push({ at: `command ${c.id}`, text: c.label });
+for (const c of COMMANDS) {
+  copy.push({ at: `command ${c.id}`, text: c.label });
+  // A toggle's state labels are menu, palette and tooltip names too (P-3).
+  for (const [pane, names] of Object.entries(c.stateLabels ?? {})) {
+    for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
+  }
+}
 
 /** Renderer sources (no tests) under src/, relative paths. */
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

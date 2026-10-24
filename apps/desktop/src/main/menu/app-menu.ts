@@ -12,7 +12,7 @@ export interface AppMenuOptions {
   /** Registry item clicked (mouse or accelerator). */
   onCommand(id: CommandId): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
-  labels?: Pick<CommandContextState, 'sidebar'>;
+  labels?: MenuLabelState;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
   fullScreenState?: boolean;
   /** Whether the macOS 전체 화면 item can run: a main window exists and none of our sheets is attached. Default true. */
@@ -49,6 +49,19 @@ function fullScreenItems(opts: AppMenuOptions): Item[] {
 
 type Item = MenuItemConstructorOptions;
 const SEP: Item = { type: 'separator' };
+
+/** The reported pane states that state labels follow (design-spec 7.4). */
+export type MenuLabelState = Pick<CommandContextState, 'sidebar' | 'inspector'>;
+
+/** The pane states of a reported context, without the absent ones (the fatal screen reports neither). */
+export function menuLabelState(ctx: MenuLabelState): MenuLabelState {
+  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}) };
+}
+
+/** Whether a new report renames a menu item: a pane state that a state label follows has changed. */
+export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
+  return before.sidebar !== after.sidebar || before.inspector !== after.inspector;
+}
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
 const TWINS: Readonly<Record<string, readonly string[]>> = { 'CmdOrCtrl+Plus': ['CmdOrCtrl+='] };
@@ -180,7 +193,7 @@ export function applyMenuEnabled(menu: MenuItemLookup, enabled: ReadonlySet<Comm
 export function applyMenuLabels(
   menu: MenuItemLookup,
   platform: NodeJS.Platform,
-  state: Pick<CommandContextState, 'sidebar'>,
+  state: MenuLabelState,
   commands: readonly CommandSpec[] = COMMANDS,
 ): void {
   for (const c of commands) {

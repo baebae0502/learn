@@ -471,13 +471,68 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await expect(results.nth(1).locator('.p-meta .kbd-group')).toHaveCount(0);
     await expect(page.getByTestId('palette-search-library')).toHaveText(/라이브러리에서 ‘신호’ 검색/);
     await expect(page.locator('.p-foot .row').nth(1)).toHaveText(/열기/); // ↩ opens the item under the cursor
-    await expect(page.getByTestId('palette-status')).toHaveText('자료 5개, 명령 1개');
+    // The search row is not a command: no command matches 신호, so the status counts the five items alone.
+    await expect(page.getByTestId('palette-status')).toHaveText('자료 5개');
+    const input = page.getByTestId('palette-input');
+    const searchRow = page.getByTestId('palette-search-library');
+    for (let i = 1; i < 5; i++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(results.nth(i)).toHaveAttribute('data-focused', 'true');
+    }
+    // ↓ from the last item crosses into the group below (here the search row alone): the cursor does not stop at 자료.
     await page.keyboard.press('ArrowDown');
-    await expect(results.nth(1)).toHaveAttribute('data-focused', 'true');
+    await expect(searchRow).toHaveAttribute('data-focused', 'true');
+    await expect(results.nth(4)).not.toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await searchRow.getAttribute('id'))!);
     await page.keyboard.press('ArrowUp');
+    await expect(results.nth(4)).toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await results.nth(4).getAttribute('id'))!);
+    for (let i = 3; i >= 0; i--) await page.keyboard.press('ArrowUp');
+    await expect(results.first()).toHaveAttribute('data-focused', 'true');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect(page.getByTestId('viewer-title')).toHaveText('신호 증폭');
+  } finally {
+    await app.close();
+  }
+});
+
+test('↓ and ↑ cross from 자료 into 명령 and back; ↩ on a command row runs the command and opens no item', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const fake = (title: string) => {
+      const p = path.join(dir, `${title}.pdf`);
+      fs.writeFileSync(p, `%PDF-1.4\n% ${title}\n%%EOF\n`);
+      return p;
+    };
+    await importPaths(page, [fake('글자 크게 연습'), fake('글자 크게 노트')]);
+    await runMenuCommand(app, 'app.palette');
+    const input = page.getByTestId('palette-input');
+    await input.fill('글자 크게');
+    const results = page.getByTestId('palette-result');
+    const commandRows = page.getByTestId('palette-item');
+    await expect(results).toHaveCount(2);
+    await expect(commandRows.first()).toHaveAttribute('data-command-id', 'view.textBigger');
+    const textSize = () => page.evaluate(() => document.documentElement.dataset['fontSize']);
+    const before = await textSize();
+    await expect(results.first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('ArrowDown');
+    await expect(results.nth(1)).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('ArrowDown'); // the boundary: the next row is the first command, not a stop on the last item
+    await expect(commandRows.first()).toHaveAttribute('data-focused', 'true');
+    await expect(results.nth(1)).not.toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await commandRows.first().getAttribute('id'))!);
+    await page.keyboard.press('ArrowUp');
+    await expect(results.nth(1)).toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await results.nth(1).getAttribute('id'))!);
+    await page.keyboard.press('ArrowDown');
+    await expect(commandRows.first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect.poll(textSize).not.toBe(before); // the command ran
+    await expect(page.getByTestId('viewer-title')).toHaveCount(0); // and no item was opened
   } finally {
     await app.close();
   }

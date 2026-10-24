@@ -644,78 +644,76 @@ test('M4 library: 사본 내보내기… — the default name, nothing partial a
   }
 });
 
-// ⌘K finds items (spec §4.4, design-spec 10.5), in a session of its own: three PDFs with 신호 in the title (the shared
-// session's seeded titles hold 신호 too, so its results and its 초성 example would not be these).
+// ⌘K finds items (spec §4.4, design-spec 10.5), in the shared session: a second app could not be brought to the front on
+// the Mac (both processes are the same bundle, the shared one stayed frontmost, run 40127825772). The seeded titles hold
+// 신호 too, so three PDFs with a word of their own (형광) are imported and searched; the last one heads the list, which
+// is what the hint's 초성 example comes from (palette/items.ts initialsExample).
 test('M4 library: ⌘K finds items — 자료 above 명령, 라이브러리에서 검색 last, the launcher says 검색 및 명령', TAG, async ({}, testInfo) => {
   const dir = testInfo.outputPath('palette');
-  // A second profile beside the shared session: its window is hidden meanwhile, as in the export test above.
-  const shared = await mainWindow(s.app);
-  await shared.evaluate((w) => w.hide());
-  const x = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { colorScheme: null });
   const value: Record<string, unknown> = {};
   results['paletteItems'] = value;
-  const palette = x.page.getByTestId('palette');
+  const palette = s.page.getByTestId('palette');
+  const theme = await s.page.locator('html').getAttribute('data-theme');
+  await setTheme(s.page, 'light');
   try {
-    await setTheme(x.page, 'light');
     const media = path.join(dir, 'media');
     fs.mkdirSync(media, { recursive: true });
-    // The last one imported heads the list, so the hint's 초성 example is ㅅㅎ → 신호 (palette/items.ts initialsExample).
-    const files = ['분자생물학 6장 · 신호 전달', '세포 신호 그림 모음', '신호 증폭의 정량 모델'].map((title) => {
+    const files = ['현미경 6장 · 형광 영상', '세포 형광 그림 모음', '형광 증폭의 정량 모델'].map((title) => {
       const p = path.join(media, `${title}.pdf`);
       fs.writeFileSync(p, `%PDF-1.4\n% ${title}\n%%EOF\n`);
       return p;
     });
-    await importPaths(x.page, files);
+    await importPaths(s.page, files);
     await guard('palette: the launcher says 검색 및 명령', async () => {
-      const text = (await x.page.getByTestId('launcher').textContent()) ?? '';
+      const text = (await s.page.getByTestId('launcher').textContent()) ?? '';
       value['launcher'] = text;
       check('palette: the launcher says 검색 및 명령', text.includes('검색 및 명령'), { text });
     });
     let via = 'menu';
     if (IS_MAC) {
-      await bringAppToFront(x.app).catch(() => {});
+      await bringAppToFront(s.app).catch(() => {});
       try {
-        await nativeKeystroke(x.app, 'k', ['command']);
+        await nativeKeystroke(s.app, 'k', ['command']);
         via = 'keystroke';
       } catch (e) {
         if (!(e instanceof NativeInputNotPermitted)) throw e;
-        await runMenuCommand(x.app, 'app.palette');
+        await runMenuCommand(s.app, 'app.palette');
       }
-    } else await runMenuCommand(x.app, 'app.palette');
+    } else await runMenuCommand(s.app, 'app.palette');
     await expect(palette).toBeVisible({ timeout: 5_000 });
-    await x.page.keyboard.insertText('신호');
+    await s.page.keyboard.insertText('형광');
     await guard('palette: 자료 above 명령, the cursor on the first item, 라이브러리에서 ‘신호’ 검색 last', async () => {
-      await expect(x.page.getByTestId('palette-result')).toHaveCount(3, { timeout: 5_000 });
+      await expect(s.page.getByTestId('palette-result')).toHaveCount(3, { timeout: 5_000 });
       const v = {
         via,
-        groups: await x.page.locator('.palette .p-group').allTextContents(),
-        cursorOnItem: (await x.page.locator('.palette [role="option"][data-focused]').getAttribute('data-testid')) === 'palette-result',
-        lastIsSearch: (await x.page.locator('.palette [role="option"]').last().getAttribute('data-testid')) === 'palette-search-library',
-        hint: (await x.page.locator('.p-foot').textContent()) ?? '',
+        groups: await s.page.locator('.palette .p-group').allTextContents(),
+        cursorOnItem: (await s.page.locator('.palette [role="option"][data-focused]').getAttribute('data-testid')) === 'palette-result',
+        lastIsSearch: (await s.page.locator('.palette [role="option"]').last().getAttribute('data-testid')) === 'palette-search-library',
+        hint: (await s.page.locator('.p-foot').textContent()) ?? '',
       };
       value['results'] = v;
       check('palette: 자료 above 명령, the cursor on the first item, 라이브러리에서 ‘신호’ 검색 last', v.groups.join('|') === '자료|명령' && v.cursorOnItem && v.lastIsSearch, v);
-      check('palette: the 초성 hint comes from the library (ㅅㅎ → 신호)', v.hint.includes('ㅅㅎ → 신호'), { hint: v.hint });
+      check('palette: the 초성 hint comes from the library (ㅅㅎ → 신호)', v.hint.includes('ㅎㄱ → 형광'), { hint: v.hint });
     });
-    await allShots(x.app, x.page, 'm4-09-palette-items', '⌘K 신호: 자료 above 명령 (light)');
+    await allShots(s.app, s.page, 'm4-09-palette-items', '⌘K 형광: 자료 above 명령 (light)');
     if (IS_MAC) {
-      await setTheme(x.page, 'dark');
-      await nativeWindowShot(x.app, 'm4-09-palette-items-dark', '⌘K 신호: 자료 above 명령 (dark)');
-      await setTheme(x.page, 'light');
+      await setTheme(s.page, 'dark');
+      await nativeWindowShot(s.app, 'm4-09-palette-items-dark', '⌘K 형광: 자료 above 명령 (dark)');
+      await setTheme(s.page, 'light');
     }
-    await x.page.getByTestId('palette-input').fill('효소 억제제');
+    await s.page.getByTestId('palette-input').fill('쥐똥나무 열매');
     await guard('palette: with no match the notice and the search row stay', async () => {
-      await expect(x.page.getByTestId('palette-empty')).toBeVisible({ timeout: 5_000 });
-      const v = { searchRow: await x.page.getByTestId('palette-search-library').count(), foot: await x.page.locator('.p-foot .row').allTextContents() };
+      await expect(s.page.getByTestId('palette-empty')).toBeVisible({ timeout: 5_000 });
+      const v = { searchRow: await s.page.getByTestId('palette-search-library').count(), foot: await s.page.locator('.p-foot .row').allTextContents() };
       value['none'] = v;
       check('palette: with no match the notice and the search row stay', v.searchRow === 1 && v.foot.length === 2, v);
     });
-    await allShots(x.app, x.page, 'm4-09-palette-none', '⌘K 효소 억제제: the notice above 라이브러리에서 검색 (light)');
-    await x.page.keyboard.press('Escape');
+    await allShots(s.app, s.page, 'm4-09-palette-none', '⌘K 쥐똥나무 열매: the notice above 라이브러리에서 검색 (light)');
+    await s.page.keyboard.press('Escape');
+    await expect(palette).toBeHidden();
   } finally {
     save();
-    await x.app.close();
-    await shared.evaluate((w) => w.show()); // the shared session goes on for the tests after this one
+    if (theme === 'dark') await setTheme(s.page, 'dark');
   }
 });
 

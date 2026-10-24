@@ -372,6 +372,13 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
+      if (theme === 'light') {
+        // ㄱ: several command rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
+        await input.fill('ㄱ');
+        await expect(s.page.getByTestId('palette-item').nth(2)).toBeVisible();
+        await expect(s.page.locator('[data-testid="palette-item"]:not([data-focused]) mark').first()).toBeVisible();
+        await shoot(s.page, 'palette-multi-light', { mask: dates() });
+      }
       // palette.html ?state=none: the notice, then the search row under the cursor; the foot says ↩ 실행 · esc 닫기.
       await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();

@@ -159,7 +159,8 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
     return e ? t.palette.example(e.initials, e.word) : t.palette.example('ㅅㅈ', settingsName);
   }, [list, settingsName]);
 
-  // Read out politely when the result changes (the counts, or the notice that replaces the list); a cursor move or an
+  // Read out politely when the result changes (the counts of items and real commands — the search row is neither — or
+  // the notice that replaces the list); a cursor move or an
   // edit that leaves the same counts changes nothing here, so nothing is re-announced.
   const status = env.blocked
     ? commands.length > 0
@@ -167,7 +168,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       : t.palette.busyTitle
     : none
       ? t.palette.emptyTitle(q)
-      : t.palette.resultCount(items.length, commands.length + (searchRow ? 1 : 0));
+      : t.palette.resultCount(items.length, commands.length);
   // An import or a sheet holds the window (not "no match"). Alone when nothing is listed: nothing can run until it ends.
   // Above the commands that still run (설정…): a header — not an option, never under the cursor — that says the others
   // come back when the work ends.

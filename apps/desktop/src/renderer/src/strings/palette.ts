@@ -28,7 +28,8 @@ export const palette = {
   /** Read out (polite) with that header: the hold, then how many commands are listed. */
   busyStatus: (n: number) => `진행 중인 작업이 있습니다. 실행할 수 있는 명령 ${n}개`,
   /** Read out (polite) when the results change. */
-  resultCount: (items: number, commands: number) => (items > 0 ? `자료 ${items}개, 명령 ${commands}개` : `명령 ${commands}개`),
+  resultCount: (items: number, commands: number) =>
+    items > 0 && commands > 0 ? `자료 ${items}개, 명령 ${commands}개` : items > 0 ? `자료 ${items}개` : `명령 ${commands}개`,
   footMove: '이동',
   /** ↩ on a command row (and the demo overlay's pill). */
   footRun: '실행',

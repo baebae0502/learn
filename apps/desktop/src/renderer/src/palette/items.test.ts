@@ -65,5 +65,6 @@ describe('palette 자료 results (spec §4.4)', () => {
     expect(t.palette.searchLibrary('신호')).toBe('라이브러리에서 ‘신호’ 검색');
     expect(t.palette.resultCount(4, 1)).toBe('자료 4개, 명령 1개');
     expect(t.palette.resultCount(0, 7)).toBe('명령 7개');
+    expect(t.palette.resultCount(5, 0)).toBe('자료 5개'); // the search row is not a command
   });
 });

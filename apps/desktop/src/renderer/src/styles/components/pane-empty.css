@@ -18,6 +18,10 @@
     margin-bottom: var(--space-4);
     color: var(--text-tertiary);
   }
+  .pane-empty .pe-title,
+  .pane-empty .pe-text {
+    text-wrap: balance; /* no one-word last line (design-spec 4) */
+  }
   .pane-empty .pe-title {
     font: var(--type-headline);
   }

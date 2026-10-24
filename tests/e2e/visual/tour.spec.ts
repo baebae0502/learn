@@ -110,8 +110,12 @@ test('quick search: 초성 results with the count and the title mark, and no res
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       // ⌘F, then 초성: the focused field with its value, "1개 / 4개", 신호 marked in the one row.
+      // The menu command reaches the renderer asynchronously: wait for the focus before typing, and set the value the
+      // same way in both themes, so no key is lost to the focus's select().
       await runMenuCommand(s.app, 'library.find');
-      await s.page.keyboard.type('ㅅㅎ');
+      await expect(field).toBeFocused();
+      await field.fill('ㅅㅎ');
+      await expect(field).toHaveValue('ㅅㅎ');
       await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개 / 4개');
       await shoot(s.page, `search-${theme}`, { mask: dates() });
       await field.fill('효소 억제제');

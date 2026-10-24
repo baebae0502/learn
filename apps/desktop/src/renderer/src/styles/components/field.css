@@ -47,6 +47,12 @@
     color: var(--field-placeholder, var(--text-tertiary));
     opacity: 1;
   }
+  /* Off the Mac, Chromium paints a selected value in its own blue; the accent keeps it on the tokens. The Mac keeps
+     the system highlight, as native fields do. */
+  :root:not([data-platform='darwin']) .field .field-input::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+    color: inherit;
+  }
   .field .field-input::-webkit-search-cancel-button,
   .field .field-input::-webkit-search-decoration {
     appearance: none;

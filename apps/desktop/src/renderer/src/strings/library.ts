@@ -28,6 +28,6 @@ export const library = {
   searchStatus: (n: number) => `일치하는 자료 ${n}개`,
   /** In the table body's place when nothing matches (spec 4.3). */
   searchEmptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료가 없습니다`,
-  searchEmptyBody: '제목·저자·출판사·원래 파일 이름·초록·메모에서 찾았습니다.',
+  searchEmptyBody: '제목·저자·출판사·원래 파일 이름·초록·메모에서 찾았습니다.',
   searchClear: '검색어 지우기',
 } as const;

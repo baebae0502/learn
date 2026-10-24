@@ -319,39 +319,72 @@ test('selection commands: the palette with one selected row lists 폴더에서 �
   }
 });
 
-test('palette: empty query, 초성 results, several rows, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
+/** palette.html's items: 신호 in four titles, one of them a video; author and year on two (spec §4.4: 저자 · 연도, else the kind). */
+async function paletteLibrary(s: Session, dir: string): Promise<void> {
+  fs.mkdirSync(dir, { recursive: true });
+  const pdf = (name: string) => {
+    const p = path.join(dir, `${name}.pdf`);
+    fs.writeFileSync(p, `%PDF-1.4\n% ${name}\n%%EOF\n`);
+    return p;
+  };
+  const video = path.join(dir, 'c.mp4');
+  fs.renameSync(h264(dir), video);
+  // One import each, a few ms apart: the list (newest first) is d, c, b, a, and b and c, which match 신호 at the same
+  // place, keep that order in the palette too (the newer first) — the shot is the same on every run.
+  const imported: string[] = [];
+  for (const p of [pdf('a'), pdf('b'), video, pdf('d')]) {
+    imported.push(...(await importPaths(s.page, [p])).map((i) => i.id));
+    await s.page.waitForTimeout(5);
+  }
+  await s.page.evaluate(async (ids) => {
+    const set = (itemId: string, title: string, names: string[], date: string | null, role: 'author' | 'lecturer') =>
+      window.learn.library.updateMetadata({ itemId, title, metadata: { creators: names.map((name) => ({ name, role })), ...(date ? { date } : {}) } });
+    await set(ids[0]!, '세포 신호 그림 모음', [], null, 'author');
+    await set(ids[1]!, '분자생물학 6장 · 신호 전달', ['김하늘'], '2024', 'author');
+    await set(ids[2]!, '강의 04 · 세포 신호', ['박서준'], '2025', 'lecturer');
+    await set(ids[3]!, '신호 증폭의 정량 모델', ['이도윤', '최민서'], '2023', 'author');
+  }, imported);
+  await expect(rowByTitle(s.page, '신호 증폭의 정량 모델')).toBeVisible();
+}
+
+test('palette: empty query, 자료 results (palette.html), commands only, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  // The table's dates in its rows only and whatever moves in the item panel behind the scrim.
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   const input = s.page.getByTestId('palette-input');
-  const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
+  const cursor = s.page.locator('.palette [role="option"][data-focused]');
   try {
-    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await paletteLibrary(s, testInfo.outputPath('media'));
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await runMenuCommand(s.app, 'app.palette');
-      // Every available command, the cursor on the first (critic T9-M1, T9-n4).
+      // Every available command, the cursor on the first; nothing ran from the palette yet.
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
-      await input.fill('ㄱㅈㅇ'); // one row: 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게)
+      // palette.html: 자료 above 명령, the matched 신호 in each title, 저자 · 연도 on the right, 라이브러리에서 ‘신호’ 검색 last.
+      await input.fill('신호');
+      await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
+      await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
+      await expect(s.page.locator('.p-foot')).toContainText('ㅅㅎ → 신호');
+      await shoot(s.page, `palette-items-${theme}`, { mask: dates() });
+      // Commands only, the search row under them (ㄱㅈㅇ: 파일 가져오기… alone, in no title) — M3's palette-{light,dark} state.
+      await input.fill('ㄱㅈㅇ');
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+      await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
-      if (theme === 'light') {
-        // ㄱ: eight rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on (설정… by its keyword 글자 크기: no mark).
-        await input.fill('ㄱ');
-        await expect(s.page.getByTestId('palette-item')).toHaveCount(8);
-        await shoot(s.page, 'palette-multi-light', { mask: dates() });
-      }
+      // palette.html ?state=none: the notice, then the search row under the cursor; the foot says ↩ 실행 · esc 닫기.
       await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();
+      await expect(cursor).toHaveAttribute('data-testid', 'palette-search-library');
       await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
-    // Another window takes the key: the palette stays, its cursor row is the neutral selection (design-spec 3.1).
+    // Another window takes the key: the palette stays, its cursor row (an item) is the neutral selection (design-spec 3.1).
     await setTheme(s.page, 'light');
     await runMenuCommand(s.app, 'app.palette');
-    await input.fill('ㄱ');
-    await expect(cursor).toHaveAttribute('data-command-id', 'view.textBigger');
+    await input.fill('신호');
+    await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
     await s.app.evaluate(({ BrowserWindow }) => {
       const w = new BrowserWindow({ width: 300, height: 200, show: true });
       void w.loadURL('about:blank');

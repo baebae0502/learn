@@ -821,6 +821,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const paletteOpen = () => page.getByTestId('palette').isVisible();
     const paletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
     await expect(page.getByTestId('palette-input')).toBeFocused();
+    // Nothing ran from the palette before this chapter, so the empty query lists the registry order (palette.recent is empty).
     const paletteCursor = page.locator('[data-testid="palette-item"][data-focused]');
     await expect(paletteCursor).toHaveAttribute('data-command-id', 'file.importManaged');
     await afterKey(paletteAt);
@@ -830,6 +831,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       await pause(1000);
     }
     await expect(paletteCursor).toHaveAttribute('data-command-id', 'app.settings');
+    // No demo title has the run ㅅㅈ (세포 신호 …, 단백질 접힘 …): the 자료 group stays empty and the cursor on 설정….
+    await expect(page.getByTestId('palette-result')).toHaveCount(0);
     await pause(2000);
     const settings = await expectWindow(app, 'settings', () => page.keyboard.press('Enter'));
     settingsPages.push(settings);

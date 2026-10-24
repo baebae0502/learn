@@ -125,6 +125,11 @@
     font: var(--type-footnote);
     white-space: nowrap;
   }
+  /* An item row's 저자 · 연도 gives way (ellipsis) before the title does. */
+  .palette .p-item .p-sub {
+    min-width: 0;
+    max-width: 240px; /* local: the title keeps at least half of the 624 px row */
+  }
   .palette .p-item mark {
     background: none;
     color: var(--accent-text);
@@ -160,6 +165,10 @@
   .palette .p-empty .pe-text {
     color: var(--text-secondary);
     font: var(--type-footnote);
+  }
+  /* palette.html ?state=none: the notice above the 명령 group with its search row, 24 from the notice to the group header. */
+  .palette .p-list > .p-empty + [role='listbox'] {
+    margin-top: var(--space-8);
   }
   .palette .p-foot {
     display: flex;

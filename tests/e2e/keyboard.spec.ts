@@ -64,6 +64,8 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await runMenuCommand(app, 'app.palette');
     await page.keyboard.type('효소 억제제');
     await expect(page.getByTestId('palette-empty')).toBeVisible();
+    // The library has items: the hand-off to the quick search stays, the one row, under the cursor (spec §4.4).
+    await expect(page.getByTestId('palette-search-library')).toHaveAttribute('data-focused', 'true');
     await expectNoSeriousA11y(page, 'palette, no results');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('palette')).toHaveCount(0);

@@ -8,9 +8,10 @@ const ROLES = ['t-body', 't-caption', 't-footnote', 't-headline', 't-title3'] as
 
 /**
  * Pays, at an idle moment, what a window otherwise pays inside the frame of its first rows (spec 8, the drop stall):
- * the Korean collation and time-format data the table's sort and date cells load on first use, and the faces and glyph
- * runs of its type roles in both weights: Hangul, Latin and tabular digits. The probe is laid out unseen (visibility
- * hidden, off screen, aria-hidden) and removed once a frame has been painted. Returns its cancel.
+ * the Korean collation and time-format data the table's sort and date cells load on first use, and the font faces and
+ * text shaping of its type roles in both weights: Hangul, Latin and tabular digits. The probe is laid out and its
+ * text shaped, but never painted (a `visibility: hidden` element takes layout and shaping, not painting); it is off
+ * screen, aria-hidden, and removed once a frame has been painted. Returns its cancel.
  */
 export function warmUp(doc: Document): Pending {
   new Intl.Collator('ko', { numeric: true, sensitivity: 'base' }).compare('가', 'a');

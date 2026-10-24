@@ -388,9 +388,31 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     const page = s.page;
     // The list's search index is built at the window's first idle moment (useSearch; timed() records it): wait for it,
     // so that long task lands in none of the measurements below (useSearch gives its idle callback a one-second timeout).
-    await expect
-      .poll(() => page.evaluate(() => performance.getEntriesByName('learn:search:index', 'measure').length), { timeout: 15_000, message: 'the search index was built at an idle moment' })
-      .toBeGreaterThan(0);
+    const indexBuilt = () => page.evaluate(() => performance.getEntriesByName('learn:search:index', 'measure').length);
+    const deadline = Date.now() + 15_000;
+    while ((await indexBuilt()) === 0) {
+      if (Date.now() > deadline) {
+        const state = await page.evaluate(async () => {
+          const listed = await window.learn.library.list();
+          const entries = performance
+            .getEntries()
+            .filter((e) => e.name.startsWith('learn:'))
+            .slice(-10)
+            .map((e) => `${e.name} (${e.entryType}) at ${Math.round(e.startTime)} ms, ${Math.round(e.duration)} ms`);
+          return {
+            rows: document.querySelectorAll('[data-testid="item-row"]').length,
+            appReady: document.querySelector('[data-testid="app-ready"]') !== null,
+            listLength: listed.ok ? listed.data.length : `list failed: ${listed.code}`,
+            entries,
+          };
+        });
+        throw new Error(
+          `the search index was built at an idle moment: no learn:search:index measure in 15 s; item-row shown ${state.rows}, app-ready present ${state.appReady}, ` +
+            `library.list length ${state.listLength}; last learn:* entries: ${state.entries.join('; ') || 'none'}`,
+        );
+      }
+      await page.waitForTimeout(100);
+    }
     const listed = await page.evaluate(async (runs) => {
       const out: number[] = [];
       let count = 0;

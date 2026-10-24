@@ -350,6 +350,14 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 - **냉시작 중앙값**(`perf.json`): app-ready 4차 679ms, 5차 586ms.
 - **데모**: 4차 175.7초, 5차 172.6초(artifact `demo-m3-39920413383`, `m3-demo.final.mov`, 1600×900, 60fps, 장 17개), 둘 다 첫 시도 녹화, `notes` 없음. 5차 장 목록은 3차와 같은 17장이고 시각만 몇 초 다르다(앞머리 자르기와 토스트 기다림).
 
+## M4 표 스파이크 (Task 1, 2026-10-24, macos-15 arm64, `suite=perf`, 브랜치 `m4-spike`)
+
+| # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (초 → 과금 분) | 결과 |
+|---|---|---|---|---|---|
+| 27(앞 기록의 마지막이 26) | [40034565009](https://github.com/baebae0502/learn/actions/runs/40034565009) | 10-23 22:35 | perf / 아니오 / 13e44c3 (Task 1 스파이크) | 213초 → 4분(공개 저장소: 무료) | **성공**: RAC 떨어짐(sort·select·keyboard·filter), TanStack 통과 → 결정 TanStack |
+
+**합계: macOS 27회, 183분.** 값은 `evidence/m4-spike/40034565009/evidence/evidence-results/table-spike.json`·`table-spike-tanstack.json`, 결정과 표는 ADR-0004 "M4 표". 같은 실행의 `perf.json`·`open-latency.json`·`theme-switch.json`·`drop-import.json`은 M3 코드 그대로의 참고값이다.
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.

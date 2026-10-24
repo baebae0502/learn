@@ -10,6 +10,7 @@ import { usePrefs } from '../data/queries';
 import { defaultDensity, density as ROW_HEIGHT, layout } from '../design/tokens';
 import { formatDate, formatSize } from '../format';
 import type { Match } from '../palette/hangul';
+import { highlight } from '../palette/highlight';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
@@ -33,7 +34,7 @@ export interface LibraryTableProps {
   onColumnsChange(next: ColumnConfig): void;
   onOpen(itemId: string): void;
   onContextMenu(itemIds: readonly string[], x: number, y: number): void;
-  /** Matched range per title, for <mark> (declared before the search exists). */
+  /** Matched range per title, for <mark> (the quick search's). */
   titleMatches?: ReadonlyMap<string, Match> | null;
   /** Scroll this row into view once after mount (return from the reader). */
   revealId?: string | null;
@@ -81,12 +82,12 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
 }
 
 /** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), the link mark, the 파일 없음 flag. */
-function TitleCell({ item }: { item: LibraryItem }) {
+function TitleCell({ item, match }: { item: LibraryItem; match: Match | null }) {
   return (
     <>
       <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
       <span className="item-title ellipsis" title={item.title}>
-        {item.title}
+        {highlight(item.title, match)}
       </span>
       {item.storageMode === 'linked' && (
         <span className="linked-mark c-tertiary" title={t.library.linked}>
@@ -115,6 +116,8 @@ interface ItemRowProps {
   ring: boolean;
   columns: readonly LibraryColumnSpec[];
   now: Date;
+  /** The part of the title the quick search matched. */
+  match: Match | null;
 }
 
 /**
@@ -122,7 +125,7 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match }: ItemRowProps) {
   const last = columns.length - 1;
   return (
     <div
@@ -149,7 +152,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           data-col={c.id}
         >
           {c.id === 'title' ? (
-            <TitleCell item={item} />
+            <TitleCell item={item} match={match} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}
@@ -499,6 +502,7 @@ export function LibraryTable(props: LibraryTableProps) {
                 ring={ring && focusedId === item.id}
                 columns={visible}
                 now={now}
+                match={props.titleMatches?.get(item.id) ?? null}
               />
             );
           })}

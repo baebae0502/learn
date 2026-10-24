@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { LibraryItem } from '@learn/domain';
+import { useLibrary } from '../state/library-store';
 import { afterPaint } from '../ui/afterPaint';
 
 /** One table per window. Its rows outside the viewport are not in the DOM: the virtualizer draws them on scroll. */
@@ -59,4 +60,24 @@ export function useRevealRow(rows: readonly LibraryItem[], revealId: string | nu
       revealRow(index, revealId);
     });
   }, [rows, revealId]);
+}
+
+const firstRow = () => document.querySelector<HTMLElement>(`${GRID} [data-testid="item-row"][data-index="0"]`);
+
+/**
+ * Quick search's ↓ (spec 4.1): the first result takes the keyboard focus, selected alone, as an arrow key selects in
+ * the table. A table scrolled down has no first row drawn: it scrolls to the top and focuses the row once drawn.
+ */
+export function focusFirstRow(): void {
+  const focus = () => {
+    const row = firstRow();
+    const id = row?.dataset['itemId'];
+    if (!row || !id) return;
+    useLibrary.getState().setSelected([id]);
+    row.focus();
+  };
+  if (firstRow()) return focus();
+  const scroller = tableScroller();
+  if (scroller) scroller.scrollTop = 0;
+  afterPaint(focus);
 }

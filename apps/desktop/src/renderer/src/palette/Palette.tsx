@@ -192,7 +192,7 @@ function PaletteDialog() {
         <div className="p-list">
           {ranked.length > 0 && busy}
           {ranked.length > 0 ? (
-            <div role="listbox" id={listId} aria-label={t.palette.group}>
+            <div role="listbox" id={listId} aria-label={t.palette.group} className="p-options">
               <section role="group" aria-labelledby={`${ids}-group`}>
                 {/* A listbox holds options and groups only: the heading names the group and is no element of its own
                     (role presentation, as RAC's ListBoxSection draws it; axe aria-required-children). */}

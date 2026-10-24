@@ -62,8 +62,11 @@ export function SearchField(props: {
             placeholder={props.placeholder}
             aria-keyshortcuts={props['aria-keyshortcuts']}
             // RAC clears on esc and submits on ↩ without asking whether a composition owns the key.
+            // Chromium's own type=search also empties on esc, as the key's default: held back too.
             onKeyDownCapture={(e) => {
-              if (composing(e) && (e.key === 'Escape' || e.key === 'Enter')) e.stopPropagation();
+              if (!composing(e) || (e.key !== 'Escape' && e.key !== 'Enter')) return;
+              e.stopPropagation();
+              e.preventDefault();
             }}
           />
           {!isEmpty && <IconButton icon={CircleX} label={t.common.clear} size="small" testId={props.testId && `${props.testId}-clear`} />}

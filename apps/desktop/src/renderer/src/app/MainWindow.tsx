@@ -12,6 +12,7 @@ import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
 import { EmptyLibrary } from '../library/EmptyLibrary';
 import { ImportMenuButton } from '../library/ImportMenuButton';
+import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
 import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
@@ -19,6 +20,7 @@ import { ListFailed } from '../library/ListFailed';
 import { inTableOrder, selectionCounts } from '../library/selection';
 import { useImport } from '../library/useImport';
 import { useLibrarySettings } from '../library/useLibrarySettings';
+import { useSearch } from '../library/useSearch';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
@@ -197,6 +199,7 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const list = items.data ?? NO_ITEMS;
   const count = list.length;
+  const found = useSearch(list);
   // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
   // one here when a command is judged.
   const listRef = useRef(list);
@@ -241,8 +244,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,
-    // The toolbar field that takes the focus arrives with the field itself; until then there is nothing to focus.
-    focusSearch: () => {},
+    focusSearch: focusQuickSearch,
     modal,
   }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);
@@ -287,11 +289,23 @@ export function MainWindow(_props: { info: AppInfo }) {
     });
   }, [view.kind, count]);
 
+  // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
+  const tableShown = items.data !== undefined && count > 0 && !busy?.holding;
   const toolbar =
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
     ) : (
-      <Toolbar title={t.shell.myLibrary} count={count > 0 ? t.shell.count(count) : undefined} actions={<ImportMenuButton />} trailing={<Launcher />} />
+      <Toolbar
+        title={t.shell.myLibrary}
+        count={count > 0 ? (found ? t.shell.countOf(found.ids.size, count) : t.shell.count(count)) : undefined}
+        actions={
+          <>
+            <ImportMenuButton />
+            {tableShown && <LibrarySearch />}
+          </>
+        }
+        trailing={<Launcher />}
+      />
     );
   // N-5: until the first list has arrived the count is unknown, not 0 — show neither the first-run screen nor the
   // list (no empty-library flash). A first read that failed says so where the list would be, with a retry.

@@ -81,10 +81,17 @@
     gap: var(--space-4);
   }
   .palette .p-list {
-    max-height: 400px; /* local: 10 rows + header: the empty query lists ten commands once ⌘F joins them */
-    overflow-y: auto;
+    max-height: 360px; /* local: 9 rows + header */
+    display: flex;
+    flex-direction: column;
     padding: var(--space-8);
     outline: none;
+  }
+  /* The listbox is the scroller: the combobox's popup is the one scrolling region axe accepts without a Tab stop, and
+     the focus stays in the input (aria-activedescendant). */
+  .palette .p-options {
+    min-height: 0;
+    overflow-y: auto;
   }
   .palette .p-group {
     padding: var(--space-8) var(--space-12) var(--space-4);

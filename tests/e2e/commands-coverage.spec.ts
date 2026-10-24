@@ -71,6 +71,8 @@ test('every registry command runs without a page error (library and reader menus
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
     'app.shortcuts': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
+    // ⌘F: the quick search field has the focus.
+    'library.find': () => expect(page.getByTestId('search-field').locator('input')).toBeFocused(),
     'app.palette': () => expect(page.getByTestId('palette')).toBeVisible(),
     // Both states: hidden, then shown again by the same command.
     'view.toggleSidebar': async () => {

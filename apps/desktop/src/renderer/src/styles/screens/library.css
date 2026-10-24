@@ -110,4 +110,19 @@
   .empty-state .hints .row .gap {
     width: var(--space-12);
   }
+  /* Quick search: the matched part of a title, as the palette marks it (spec 4.2). */
+  .library-table .item-title mark {
+    background: none;
+    color: var(--accent-text);
+    font-weight: var(--weight-semibold);
+  }
+  /* On the accent selection (focus in the table, the key window) the mark is the row's own white text. */
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] .item-title mark {
+    color: inherit;
+  }
+  /* The toolbar's quick search field (design-spec 2.4). */
+  .titlebar .library-search {
+    width: 240px; /* local: design-spec 2.4 search field */
+    flex: none;
+  }
 }

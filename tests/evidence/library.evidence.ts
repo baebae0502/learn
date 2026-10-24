@@ -10,7 +10,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, nativeKeystroke,
-  recordedPopups, rowAt, runMenuCommand, seedLibrary, stubContextMenu, type Session,
+  recordedPopups, rowAt, runMenuCommand, seedLibrary, seedMetadata, stubContextMenu, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
 import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
@@ -322,6 +322,68 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
     if (IS_MAC) await fullScreenShot('m4-04c-sheet-shortcuts', '⌘/ sheet: two columns, the 자료 group after 라이브러리');
     await closeSheet(sheet, 'Escape');
   });
+  save();
+});
+
+// Quick search. On macOS a real ⌘F (System Events), the 편집 menu with 빠른 검색; on every platform the 초성
+// result with its count and mark, and the no-results state in dark (page shots; window and screen shots on macOS).
+test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and the mark, 편집 › 빠른 검색, no results in dark', TAG, async () => {
+  test.setTimeout(180_000);
+  const v: Record<string, unknown> = {};
+  results['search'] = v;
+  const field = s.page.getByTestId('search-field').locator('input');
+  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
+  check('search: a row to find was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  if (id === null) return void save();
+  await seedMetadata(s.page, id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
+  const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);
+  await expect(row).toBeVisible();
+  const theme = (shade: 'light' | 'dark') => s.page.evaluate((t) => window.learn.prefs.set({ theme: t }), shade).then(() => expect.poll(() => s.page.evaluate(() => document.documentElement.dataset['theme'])).toBe(shade));
+
+  await guard('search: ⌘F focuses the quick search field', async () => {
+    let note: string | undefined;
+    if (IS_MAC) {
+      try {
+        await bringAppToFront(s.app);
+        await nativeKeystroke(s.app, 'f', ['command']);
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        note = 'keystroke not permitted: ran from the menu instead';
+        await runMenuCommand(s.app, 'library.find');
+      }
+    } else await runMenuCommand(s.app, 'library.find');
+    await expect(field).toBeFocused({ timeout: 5_000 });
+    v['cmdF'] = { native: IS_MAC && note === undefined, ...(note ? { note } : {}) };
+    check('search: ⌘F focuses the quick search field', true, v['cmdF']);
+  });
+  await guard('search: 초성 ㅅㅎ finds the row and marks 신호', async () => {
+    await field.fill('ㅅㅎ');
+    await expect(row.locator('mark')).toHaveText('신호');
+    const count = await s.page.getByTestId('toolbar-count').textContent();
+    v['initials'] = { count, mark: await row.locator('mark').textContent() };
+    await allShots(s.app, s.page, 'm4-05-search-initials', 'quick search: 초성 ㅅㅎ, the count and the title mark');
+    check('search: 초성 ㅅㅎ finds the row and marks 신호', /^\d+개 \/ \d+개$/.test(count ?? ''), v['initials']);
+  });
+  if (IS_MAC) {
+    await guard('search: 편집 lists 빠른 검색', async () => {
+      const captured = await captureOpenMenu(s.app, s.app.process().pid!, 4, 'm4-05b-menu-edit', '편집 menu: 빠른 검색 after the system items');
+      const names = captured.keyboard.open.names ?? [];
+      v['editMenu'] = { names, shots: [captured.click.shot, captured.keyboard.shot] };
+      check('search: 편집 lists 빠른 검색', names.includes('빠른 검색'), v['editMenu']);
+    });
+  }
+  await guard('search: no results in dark says which query', async () => {
+    await theme('dark');
+    await field.fill('효소 억제제');
+    await expect(s.page.getByTestId('search-empty')).toBeVisible();
+    const title = await s.page.getByTestId('search-empty').locator('.pe-title').textContent();
+    v['none'] = { title };
+    await allShots(s.app, s.page, 'm4-05c-search-none-dark', 'quick search: no results, dark');
+    check('search: no results in dark says which query', title === '‘효소 억제제’와 일치하는 자료가 없습니다', v['none']);
+  });
+  await field.fill('');
+  await theme('light');
   save();
 });
 

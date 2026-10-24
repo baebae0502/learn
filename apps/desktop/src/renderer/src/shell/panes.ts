@@ -15,21 +15,35 @@ const FOCUSABLE =
  */
 const landsOn = (el: Element): boolean => el.closest('[role="grid"]') === null || el.getAttribute('tabindex') === '0';
 
-/** F6 / ⇧F6: next / previous pane (sidebar → content → toasts); folded (inert) and absent panes are skipped. */
-export function focusPane(direction: 1 | -1): void {
-  const panes = PANES.flatMap((name) => {
-    const el = document.querySelector<HTMLElement>(`[data-pane="${name}"]`);
-    const usable = el !== null && el.closest('[inert]') === null && el.getBoundingClientRect().width > 0 && (name !== 'toasts' || el.querySelector('.toast') !== null);
-    return usable ? [el] : [];
-  });
-  if (panes.length === 0) return;
-  const at = panes.findIndex((p) => p.contains(document.activeElement));
-  const next = panes[at === -1 ? (direction === 1 ? 0 : panes.length - 1) : (at + direction + panes.length) % panes.length]!;
-  for (const target of [...next.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)) {
+/** The pane's element when F6 can visit it: there, not folded (inert or zero-wide); the toasts only with a toast. */
+function usablePane(name: (typeof PANES)[number]): HTMLElement | null {
+  const el = document.querySelector<HTMLElement>(`[data-pane="${name}"]`);
+  const usable = el !== null && el.closest('[inert]') === null && el.getBoundingClientRect().width > 0 && (name !== 'toasts' || el.querySelector('.toast') !== null);
+  return usable ? el : null;
+}
+
+/** Where F6 lands in a pane: its first control that takes the focus now, else the pane itself. */
+function landIn(pane: HTMLElement): void {
+  for (const target of [...pane.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(landsOn)) {
     target.focus();
     // Landed once the focus is in the target (a grid hands its focus on to the stop row).
     if (target.contains(document.activeElement)) return;
   }
-  next.tabIndex = -1; // nothing to land on: the pane itself
-  next.focus();
+  pane.tabIndex = -1; // nothing to land on: the pane itself
+  pane.focus();
+}
+
+/** F6 / ⇧F6: next / previous pane (sidebar → content → toasts); folded (inert) and absent panes are skipped. */
+export function focusPane(direction: 1 | -1): void {
+  const panes = PANES.flatMap((name) => usablePane(name) ?? []);
+  if (panes.length === 0) return;
+  const at = panes.findIndex((p) => p.contains(document.activeElement));
+  landIn(panes[at === -1 ? (direction === 1 ? 0 : panes.length - 1) : (at + direction + panes.length) % panes.length]!);
+}
+
+/** The focus where F6 would land in pane `name` (quick search's esc hands it to the table); false when it is not there. */
+export function focusPaneNamed(name: (typeof PANES)[number]): boolean {
+  const pane = usablePane(name);
+  if (pane) landIn(pane);
+  return pane !== null;
 }

@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, type Session } from '../helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, type Session } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -94,6 +94,32 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     expect(await long.locator('.t-name').evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     expect(await long.locator('.t-cause').evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
     await shoot(s.page, 'toast-failure-multi-dark', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('quick search: 초성 results with the count and the title mark, and no results', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-col="createdAt"]')];
+  const field = s.page.getByTestId('search-field').locator('input');
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    await seedMetadata(s.page, items[0]!.id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
+    await expect(rowByTitle(s.page, '세포 신호 전달 개요')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // ⌘F, then 초성: the focused field with its value, "1개 / 4개", 신호 marked in the one row.
+      await runMenuCommand(s.app, 'library.find');
+      await s.page.keyboard.type('ㅅㅎ');
+      await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개 / 4개');
+      await shoot(s.page, `search-${theme}`, { mask: dates() });
+      await field.fill('효소 억제제');
+      await expect(s.page.getByTestId('search-empty')).toBeVisible();
+      await shoot(s.page, `search-none-${theme}`, { mask: dates() });
+      await field.fill('');
+      await expect(s.page.getByTestId('item-row')).toHaveCount(4);
+    }
   } finally {
     await s.app.close();
   }

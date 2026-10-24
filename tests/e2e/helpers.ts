@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import type { LearnApi } from '../../packages/domain/src/ipc';
+import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
 
 declare global {
@@ -141,6 +141,16 @@ export async function importPaths(page: Page, paths: string[]): Promise<LibraryI
     if (o.status !== 'imported') throw new Error(`library.import: ${o.path} → ${o.status}`);
     return o.item;
   });
+}
+
+/**
+ * Metadata (and, when given, a title) for an item through `learn.library.updateMetadata` from the page. Main
+ * broadcasts libraryChanged{metadata}, so the list is read again; the updated row comes back.
+ */
+export async function seedMetadata(page: Page, itemId: string, metadata: NonNullable<UpdateMetadataInput['metadata']>, title?: string): Promise<LibraryItem> {
+  const r = await page.evaluate((input) => window.learn.library.updateMetadata(input), { itemId, metadata, ...(title === undefined ? {} : { title }) });
+  if (!r.ok) throw new Error(`library.updateMetadata failed: ${r.code}`);
+  return r.data;
 }
 
 /** Import through the real menu path (stubbed dialog): 파일 › 파일 가져오기… or 외부 파일 연결…. */

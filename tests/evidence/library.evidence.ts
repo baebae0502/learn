@@ -185,11 +185,15 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
       const rowPoint = [Math.round(geo.row[0] * scale), Math.round(geo.row[1] * scale)] as const;
       const toolbarPoint = [Math.round(600 * scale), Math.round(26 * scale)] as const;
       const [rowPixel, toolbarPixel] = shot.file ? await pngPixels(s.page, shot.file, [rowPoint, toolbarPoint]) : [null, null];
+      // --fill-selected is translucent, so its token string cannot be compared with a drawn pixel. The reference is the
+      // neutral selection as drawn in the unfocused capture (same window, same rows selected, so the same spot).
+      const unfocusedShot = 'm4-02-unfocused-light.window.png';
+      const referencePixel = shot.file && fs.existsSync(path.join(EVIDENCE_ROOT, unfocusedShot)) ? (await pngPixels(s.page, unfocusedShot, [rowPoint]))[0] ?? null : null;
       const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
-      const near = (px: number[] | null | undefined, want: string) => !!px && rgb(want).length === 3 && px.every((v, k) => Math.abs(v - rgb(want)[k]!) <= 3);
-      const v = { before, ring, neutral, chrome, scale, rowPoint, toolbarPoint, rowPixel, toolbarPixel };
+      const near = (px: number[] | null | undefined, want: readonly number[] | null) => !!px && !!want && want.length === 3 && px.every((v, k) => Math.abs(v - want[k]!) <= 3);
+      const v = { before, ring, neutral, chrome, scale, rowPoint, toolbarPoint, rowPixel, toolbarPixel, referencePixel };
       const ringWasDrawn = before.focusVisible || before.ring !== 'none';
-      check('inactive window: neutral selection and no cursor ring', ringWasDrawn && ring === 'none' && near(rowPixel, neutral) && near(toolbarPixel, chrome), v);
+      check('inactive window: neutral selection and no cursor ring', ringWasDrawn && ring === 'none' && near(rowPixel, referencePixel) && near(toolbarPixel, rgb(chrome)), v);
       await bringAppToFront(s.app);
     });
   }

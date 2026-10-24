@@ -24,13 +24,14 @@ import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
 import { createSheetHost } from './sheets';
+import { mainStrings } from './strings';
 import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
-import { isSheetOpen, sheetClosed, sheetShown } from './window-state';
+import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -291,7 +292,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       ctx = await openLibraryContext(libraryRoot);
     } catch (e) {
-      const le = toLearnError(e, '라이브러리를 여는 중 오류가 발생했습니다.');
+      const le = toLearnError(e, mainStrings.library.openFailed);
       libraryError = { code: le.code, message: le.message };
       console.error(`[library] open failed: ${le.code}`);
     }
@@ -311,7 +312,7 @@ if (!app.requestSingleInstanceLock()) {
 
     const deps: IpcDeps = {
       getContext: () => {
-        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? '라이브러리를 열 수 없습니다.');
+        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
         return ctx;
       },
       appInfo: (): AppInfo => ({
@@ -382,6 +383,13 @@ if (!app.requestSingleInstanceLock()) {
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
   app.on('activate', () => activation.onActivate());
+  // A window under a sheet is main only while no other window of ours has the key: every window is re-read whenever
+  // one of ours (a sheet included) gains the focus.
+  app.on('browser-window-focus', () => {
+    resyncAllWindowStates();
+    // On X11 the window still reports the old key window when the event arrives; read once more when it has settled.
+    setTimeout(resyncAllWindowStates, 50);
+  });
 
   // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
   // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).

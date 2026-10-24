@@ -74,7 +74,7 @@ export function createHandle(devOrigin: string | null): Handle {
           throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
         }
         const parsed = schema.safeParse(raw ?? undefined);
-        if (!parsed.success) throw new LearnError('VALIDATION_FAILED', '잘못된 요청입니다.');
+        if (!parsed.success) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
         return ok(await fn(parsed.data, event));
       } catch (e) {
         const failure = failureFrom(e);

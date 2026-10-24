@@ -56,7 +56,7 @@ function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     const ctx = deps.getContext();
-    const paths = await showOpen(deps, event, { title: '파일 가져오기', properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(deps, event, { title: mainStrings.openPanels.import, properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
     return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
   });
 
@@ -70,7 +70,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();
-    const [picked] = await showOpen(deps, event, { title: '원본\u00a0파일 다시 연결', properties: ['openFile'], filters: IMPORT_FILTERS });
+    const [picked] = await showOpen(deps, event, { title: mainStrings.openPanels.relink, properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
     await relinkAsset(ctx.repo, assetId, picked);
     const itemIds = ctx.repo.itemIdsForAsset(assetId);

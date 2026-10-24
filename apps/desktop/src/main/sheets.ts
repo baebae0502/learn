@@ -178,7 +178,7 @@ export function createSheetHost(opts: {
     payloadFor: (contents) => find(contents).payload,
     resolve(contents, result) {
       const p = find(contents);
-      if (p.payload.kind !== result.kind) throw new LearnError('VALIDATION_FAILED', '잘못된 요청입니다.');
+      if (p.payload.kind !== result.kind) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
       p.settle(result);
     },
   };

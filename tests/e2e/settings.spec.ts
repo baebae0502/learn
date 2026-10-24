@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { mainWindowChrome, shouldUseVibrancy } from '../../apps/desktop/src/main/window-options';
-import { FIXTURES, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand } from './helpers';
+import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -231,6 +231,52 @@ test('under its own folder dialog the settings window is not key (its ring goes)
     await releaseOpenDialog(app); // cancelled
     await expect(html).not.toHaveAttribute('data-window-inactive', '');
     await expect.poll(ringed).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a sheet keeps the main window main only while no other window of ours has the key: the settings window clicked dims it, its sheet clicked undims it (final review m5)', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const html = page.locator('html');
+  /** One of our windows takes the key, as a click on it would (Xvfb has no window manager to click through). */
+  const focusWindow = (part: string) =>
+    app.evaluate(({ BrowserWindow }, part) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(part))?.focus(), part);
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await expect(html).not.toHaveAttribute('data-window-not-main', ''); // under its own sheet: still main
+    await focusWindow('window=settings');
+    await expect.poll(() => inactive(settings)).toBe(false);
+    await expect(html).toHaveAttribute('data-window-not-main', ''); // the settings window is AppKit's main window now
+    expect(await menuItemEnabled(app, 'app.shortcuts')).toBe(false); // the sheet still holds the main window
+    await focusWindow('window=sheet');
+    await expect(html).not.toHaveAttribute('data-window-not-main', '');
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await closeSheet(sheet, 'Enter');
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
+    await expect(html).not.toHaveAttribute('data-window-not-main', '');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the other way round (m5): under its own folder dialog the settings window dims once the main window has the key', async ({}, testInfo) => {
+  const { app } = await launch(...dirs(testInfo));
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const html = settings.locator('html');
+    await holdOpenDialog(app, []);
+    await settings.getByTestId('library-choose').click(); // the folder dialog hangs on the settings window (a sheet on macOS)
+    await expect(html).toHaveAttribute('data-window-inactive', '');
+    await expect(html).not.toHaveAttribute('data-window-not-main', '');
+    await (await mainWindow(app)).evaluate((w) => w.focus());
+    await expect(html).toHaveAttribute('data-window-not-main', '');
+    await (await settingsWindow(app)).evaluate((w) => w.focus());
+    await expect(html).not.toHaveAttribute('data-window-not-main', '');
+    await releaseOpenDialog(app); // cancelled
+    await expect(html).not.toHaveAttribute('data-window-inactive', '');
   } finally {
     await app.close();
   }

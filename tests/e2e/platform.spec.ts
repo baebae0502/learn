@@ -399,7 +399,7 @@ test('preload: each window has only its own invokers and events (P-5), no generi
 test('ui.windowState() answers the current fullscreen and focus state that main sees', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
-    const mainSees = async () => (await mainWindow(app)).evaluate((w) => ({ fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false }));
+    const mainSees = async () => (await mainWindow(app)).evaluate((w) => ({ fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false, main: w.isFocused() }));
     const query = () => page.evaluate(() => window.learn.ui.windowState());
     expect(await query()).toEqual({ ok: true, data: await mainSees() });
     expect((await mainSees()).fullscreen).toBe(false);

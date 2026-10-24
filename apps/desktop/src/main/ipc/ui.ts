@@ -47,7 +47,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   // The current state for a renderer that (re)mounts after the last push; the windowState push stays.
   handle(Channels.ui.windowState, emptyInput, (_input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', '창을 찾을 수 없습니다.');
+    if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', mainStrings.windowGone);
     return windowStateOf(window);
   });
 

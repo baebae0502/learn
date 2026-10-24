@@ -112,9 +112,9 @@ describe('ui.openSettings (the main-owned ⌘, behind the fatal screen\'s 설정
 
 describe('ui.windowState (query; the windowState push stays)', () => {
   it("answers the sender window's current fullscreen and focus state", async () => {
-    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false } });
+    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false, main: true } });
     Object.assign(win, { fullscreen: true, focused: false });
-    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false } });
+    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false, main: false } });
   });
 
   it('NOT_FOUND when the sender has no (live) window; extra input is VALIDATION_FAILED', async () => {

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { LearnError, prefsFields, prefsPatchInput, prefsSchema, toLearnError, type Prefs, type PrefsPatch } from '@learn/domain';
+import { mainStrings } from './strings';
 
 /** Per-device preferences, outside the library (userData/preferences.json). No Electron import: unit-tested. */
 export const PREFS_FILE = 'preferences.json';
@@ -126,7 +127,7 @@ function writeAtomic(file: string, body: string): void {
     fs.renameSync(tmp, file);
   } catch (e) {
     fs.rmSync(tmp, { force: true });
-    throw toLearnError(e, '환경설정을 저장하지 못했습니다.');
+    throw toLearnError(e, mainStrings.prefs.saveFailed);
   }
   fsyncDir(path.dirname(file));
 }
@@ -141,17 +142,14 @@ export function openPrefsStore(dir: string, opts: { now?: () => Date } = {}): Pr
     get: () => ({ ...current }),
     set(patch) {
       if (loaded.readOnly) {
-        throw new LearnError(
-          'PREFS_UNAVAILABLE',
-          '환경설정 파일을 읽거나 옮길 수 없어 이번 실행에서는 변경 내용을 저장하지 않습니다. 파일 권한을 확인한 뒤 앱을 다시 시작하세요.',
-        );
+        throw new LearnError('PREFS_UNAVAILABLE', mainStrings.prefs.readOnly);
       }
       const parsed = prefsPatchInput.safeParse(patch);
-      if (!parsed.success) throw new LearnError('VALIDATION_FAILED', '환경설정 값이 올바르지 않습니다.');
+      if (!parsed.success) throw new LearnError('VALIDATION_FAILED', mainStrings.prefs.invalid);
       // A key sent as `undefined` means "unchanged", not "reset to the default".
       const defined = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined)) as Partial<Prefs>;
       if (typeof defined.libraryRoot === 'string' && !path.isAbsolute(defined.libraryRoot)) {
-        throw new LearnError('VALIDATION_FAILED', '라이브러리 위치는 절대 경로여야 합니다.');
+        throw new LearnError('VALIDATION_FAILED', mainStrings.prefs.libraryRootRelative);
       }
       // The patch goes over the stored object, so keys (and values) this build does not know — a newer build's —
       // survive. Known fields missing from the file are written with their current value.

@@ -1270,6 +1270,44 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       }
     });
   }
+  // One of our sheets keeps its window main only while no other window of ours has the key.
+  // With the ⌘/ sheet on the main window, the settings window taking the key dims the main chrome as AppKit greys its
+  // lights; the sheet taking the key back undims it.
+  await guard('m5: a sheet keeps the main window main only while no other window of ours has the key', async () => {
+    if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+    const html = s.page.locator('html');
+    const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+    let sheet: Page | null = null;
+    try {
+      sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+      await s.page.waitForTimeout(600); // the colours ease in
+      const underSheet = await mainChrome();
+      await (await settingsWindow()).evaluate((w) => w.focus());
+      await expect(html).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+      await s.page.waitForTimeout(600); // AppKit repaints the main window's lights; the colours ease in
+      const elsewhere = await mainChrome();
+      const shot = await fullScreenShot('m4-11-sheet-parent-not-main', 'the ⌘/ sheet on the main window while the settings window has the key: the main chrome dims with its lights (final review m5)');
+      await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=sheet'))?.focus());
+      await expect(html).not.toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+      await s.page.waitForTimeout(600);
+      const back = await mainChrome();
+      results['m5SheetParent'] = { underSheet, elsewhere, back, shot: shot.file };
+      check(
+        'm5: under its sheet the main window stays main; the settings window taking the key dims it; the sheet taking the key back undims it',
+        underSheet.notKey && !underSheet.notMain && underSheet.title === underSheet.tokens.primary &&
+          elsewhere.notMain && elsewhere.title === elsewhere.tokens.inactive &&
+          !back.notMain && back.title === back.tokens.primary,
+        results['m5SheetParent'],
+      );
+    } finally {
+      if (sheet && !sheet.isClosed()) await closeSheet(sheet, 'Escape').catch(() => {});
+      await settings.close();
+      if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+      else await (await mainWindow(s.app)).evaluate((w) => w.focus());
+      await expect(html).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 }).catch(() => {});
+    }
+  });
   await setTheme(s.page, 'light');
   if (!IS_MAC) return void save();
   const pid = s.app.process().pid!;

@@ -130,5 +130,9 @@ describe('main-process and library copy users see (N-3, C-4)', () => {
   });
   it('has no internal jargon', () => {
     expect(main.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
+  });  it('main keeps its Korean copy in main/strings.ts: no Korean literal anywhere else in main (spec §8)', () => {
+    const own = path.join('apps', 'desktop', 'src', 'main', 'strings.ts');
+    const inline = main.filter((s) => s.at.startsWith(path.join('apps', 'desktop', 'src', 'main')) && s.at !== own);
+    expect(inline.map(show)).toEqual([]);
   });
 });

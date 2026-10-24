@@ -1,16 +1,21 @@
 import type { CommandId } from './commands';
 import type { Prefs } from './settings';
 
-/** The window's fullscreen/focus state: pushed on change (windowState event) and answered by `ui.windowState()`. */
+/** The window's state as its renderer draws it: pushed on change (windowState event) and answered by `ui.windowState()`. */
 export interface WindowState {
   fullscreen: boolean;
   /** The key window (macOS): rings, keyboard cursor and the accent selection only here. */
   focused: boolean;
   /**
-   * One of our sheets is attached. A window that is not key but carries a sheet stays the main window (AppKit draws its
-   * chrome active): only a window that is neither key nor a sheet's parent dims its chrome (design-spec 2.1).
+   * One of our sheets (a sheet window or a native dialog) hangs on this window, from just before it shows until the
+   * window is key again after it closed: the window is held (the main window's `blocked`).
    */
   sheetOpen: boolean;
+  /**
+   * AppKit's main window: key, or carrying one of our sheets while no other window of ours has the key. Only a window
+   * that is not main dims its chrome (design-spec 2.1).
+   */
+  main: boolean;
 }
 
 export interface LearnEventMap {

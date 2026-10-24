@@ -1,6 +1,6 @@
-// Copy main shows itself: the settings window's title, its native folder dialog and restart confirmation, and the
-// messages its checks send back to the settings window. strings.test.ts lints it with the renderer's copy (design-spec 9:
-// 합니다체, verb buttons, U+00A0 groups; cause + next step). No Electron import.
+// Every string main shows itself (spec §8: none inline elsewhere in main, strings.test.ts checks): window titles, native
+// dialogs and menus, the messages its checks and requests send back to a page. strings.test.ts lints it with the
+// renderer's copy (design-spec 9: 합니다체, verb buttons, U+00A0 groups; cause + next step). No Electron import.
 export const mainStrings = {
   settingsWindow: { title: '설정' },
   libraryFolder: {
@@ -17,7 +17,9 @@ export const mainStrings = {
   },
   /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
   importFilters: { media: 'PDF\u00a0·\u00a0동영상', all: '모든\u00a0파일' },
-  /** Finder에서 보기 / 기본 앱으로 열기 on an item (ipc/library.ts existingFile). */
+  /** The open panels' titles: 파일 가져오기… and 다시 연결… (ipc/library.ts). */
+  openPanels: { import: '파일 가져오기', relink: '원본\u00a0파일 다시 연결' },
+  /** An item's file: Finder에서 보기 / 기본 앱으로 열기 / 사본 내보내기 (ipc/library.ts availableAsset); noItem for any item lookup (item-availability.ts too). */
   itemFile: {
     /** A linked file that is gone: it can be relinked. */
     linkedMissing: '원본\u00a0파일을 찾을 수 없습니다. 파일을 옮겼다면 다시 연결하세요.',
@@ -40,6 +42,45 @@ export const mainStrings = {
   },
   /** The table header's native column menu (menu/column-menu.ts); the column names come from the catalogue. */
   columnMenu: { reset: '열 구성 되돌리기' },
+  /** A request that fails its schema (ipc/register.ts), or a sheet's answer of the wrong kind (sheets.ts). */
+  badRequest: '잘못된 요청입니다.',
+  /** ui.windowState from a page whose window is gone. */
+  windowGone: '창을 찾을 수 없습니다.',
+  /** Opening the library at startup (index.ts): a failure with no message of its own, and requests while there is none. */
+  library: { openFailed: '라이브러리를 여는 중 오류가 발생했습니다.', unavailable: '라이브러리를 열 수 없습니다.' },
+  /** The preferences file (prefs.ts). */
+  prefs: {
+    saveFailed: '환경설정을 저장하지 못했습니다.',
+    readOnly: '환경설정 파일을 읽거나 옮길 수 없어 이번 실행에서는 변경 내용을 저장하지 않습니다. 파일 권한을 확인한 뒤 앱을 다시 시작하세요.',
+    invalid: '환경설정 값이 올바르지 않습니다.',
+    libraryRootRelative: '라이브러리 위치는 절대 경로여야 합니다.',
+  },
+  /**
+   * The application menu's own items (registry commands carry their labels in COMMANDS) and the edit context menu.
+   * Apple Korean: "<앱>에 관하여" in the app menu ("정보" is the Windows Help › About wording), "윈도우 닫기" after the
+   * 윈도우 menu; Linux/Windows say 창 and end 도움말 with "Learn 정보".
+   */
+  menu: {
+    top: { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' },
+    app: { about: 'Learn에 관하여', services: '서비스', hide: 'Learn 가리기', hideOthers: '기타 가리기', unhide: '모두 보기', quit: 'Learn 종료' },
+    close: { mac: '윈도우 닫기', other: '창 닫기' },
+    edit: { undo: '실행 취소', redo: '실행 복귀', cut: '오려두기', copy: '복사하기', paste: '붙여넣기', selectAll: '모두 선택' },
+    /** macOS names the item by what it will do; the neutral name is spec 7.4's (Linux/Windows's role item). */
+    fullScreen: { label: '전체 화면', windowed: '전체 화면 시작', fullscreen: '전체 화면 종료' },
+    devTools: '개발자 도구',
+    window: { minimize: '최소화', zoom: '확대/축소', front: '모두 앞으로 가져오기' },
+    aboutOther: 'Learn 정보',
+  },
+  /** The About panel's credits, one line each (README "런타임 의존성 라이선스"). */
+  about: {
+    credits: [
+      '글꼴: Pretendard Variable — SIL Open Font License 1.1 (OFL)',
+      '아이콘: Lucide — ISC License',
+      '컴포넌트: React Aria Components — Apache License 2.0',
+      'PDF: PDF.js — Apache License 2.0',
+      'React, react-resizable-panels, TanStack Query, TanStack Virtual, zustand, Zod, Electron, better-sqlite3 — MIT License',
+    ],
+  },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',
 } as const;

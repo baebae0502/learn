@@ -1,6 +1,6 @@
-// M4 adds the item panel after content (design-spec 8.3). The toast region (ui/toasts.tsx, data-pane="toasts") exists
-// only while a toast is visible; it is the last stop so F6 still reaches a toast once the keymap owns F6 (R-1).
-const PANES = ['sidebar', 'content', 'toasts'] as const;
+// F6 order (design-spec 7.4, 8.3): sidebar → table → item panel. The toast region (ui/toasts.tsx, data-pane="toasts")
+// exists only while a toast is visible; it is the last stop so F6 still reaches a toast once the keymap owns F6.
+const PANES = ['sidebar', 'content', 'inspector', 'toasts'] as const;
 /**
  * Where F6 lands in a pane: its first control that does something and can take the focus now. A control disabled with
  * a reason (ui/disabledReason.tsx) stays a Tab stop for its tooltip, but F6 goes past it (이전 쪽 on page 1); the
@@ -33,7 +33,7 @@ function landIn(pane: HTMLElement): void {
   pane.focus();
 }
 
-/** F6 / ⇧F6: next / previous pane (sidebar → content → toasts); folded (inert) and absent panes are skipped. */
+/** F6 / ⇧F6: next / previous pane (sidebar → content → item panel → toasts); folded (inert) and absent panes are skipped. */
 export function focusPane(direction: 1 | -1): void {
   const panes = PANES.flatMap((name) => usablePane(name) ?? []);
   if (panes.length === 0) return;

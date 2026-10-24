@@ -31,9 +31,9 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
-/** 보기 up to its full-screen item: the palette, the sidebar toggle, the text size group (with ⌘+'s hidden ⌘= twin). */
+/** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin). */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
 ];
 
@@ -117,6 +117,9 @@ test('menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구', a
   try {
     const view = topMenu(await menuSnapshot(app), '보기');
     expect(entries(view)).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구']]);
+    // ⌥⌘I is the item panel's, so the developer tools moved to ⌥⌘J.
+    const devtools = view.find((n) => roleOf(n) === 'toggledevtools')?.accelerator;
+    expect(devtools && acceleratorLabel(devtools, process.platform)).toBe(acceleratorLabel('Alt+CmdOrCtrl+J', process.platform));
   } finally {
     await app.close();
   }

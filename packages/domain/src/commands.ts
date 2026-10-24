@@ -16,6 +16,7 @@ export type CommandId =
   | 'item.openExternally'
   | 'item.relink'
   | 'view.toggleSidebar'
+  | 'view.toggleInspector'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -113,6 +114,13 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
     keywords: ['사이드바', '패널', '가리기', '숨기기', '보기', 'sidebar'],
+  },
+  // The item panel: the library only, its right slot (the reader's is the tutor's). Named by what it does now
+  // (stateLabels), like the sidebar toggle.
+  {
+    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+    stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+    keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
   },
   {
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
@@ -225,6 +233,8 @@ export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] 
 type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'library.find': (c) => c.libraryCount > 0,
+  // An empty library has no panel (design-spec 2.4).
+  'view.toggleInspector': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
   'item.open': (_ctx, t) => t.length === 1,
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',

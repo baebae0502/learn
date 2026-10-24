@@ -26,7 +26,8 @@
   :root[data-window-inactive] .field:has(> .field-input:focus) {
     box-shadow: inset 0 0 0 1px var(--border);
   }
-  :root[data-window-inactive] .pane-separator:focus-visible::before {
+  :root[data-window-inactive] .pane-separator:focus-visible::before,
+  :root[data-window-inactive] .inspector-separator:focus-visible::before {
     content: none;
   }
   /* Not the main window either (data-window-not-main: neither key nor the parent of one of our sheets): the chrome

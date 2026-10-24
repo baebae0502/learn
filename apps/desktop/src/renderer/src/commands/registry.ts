@@ -17,6 +17,8 @@ export interface CommandEnv extends CommandContextState {
   relink(itemId: string): void;
   /** ⌃⌘S (Task 4). */
   toggleSidebar(): void;
+  /** ⌥⌘I: the item panel, by the sidebar's rules (shell/layout.ts toggledInspector). */
+  toggleInspector(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -64,6 +66,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.openExternally': (env, [itemId]) => env.openExternally(itemId!),
   'item.relink': (env, [itemId]) => env.relink(itemId!),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
+  'view.toggleInspector': (env) => env.toggleInspector(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),

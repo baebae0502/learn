@@ -32,6 +32,7 @@ import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
+import { useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
 import { useLibrary } from '../state/library-store';
@@ -69,6 +70,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const importCount = useShell((s) => s.importCount);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
+  // Until the screens mount the panel, the command only flips the stored choice; no state is reported, so the menu keeps its neutral name.
+  const toggleInspector = useToggleInspector();
   const sidebarHidden = useSidebarHidden();
   // Cold-start mark (Task 13 perf): the first render in which the library list has settled, not the mount (R-18).
   const readyAt = useRef(0);
@@ -237,6 +240,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     open: (itemId) => setView({ kind: 'reader', itemId }),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
+    toggleInspector,
     showShortcuts: () => void showShortcuts(),
     openPalette,
     showInFolder: (itemId) => fileAction(() => api().library.showInFolder({ itemId })),
@@ -246,7 +250,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     focusPane,
     focusSearch: focusQuickSearch,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
+  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

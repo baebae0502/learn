@@ -58,6 +58,8 @@ const isHaeyo = (text: string): boolean => HAEYO.test(text.replace(YO_NOUNS, '')
 const DETERMINER = /(?:^|[\s(‘“])(이|그|저|새|다른|각|모든|어느) (?=[가-힣])/;
 const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
 const INTERNAL = /SHA-256|해시|staging|관리형|경로만 기록/;
+/** The technical values design-spec 9 allows, in the item panel's file section only; nothing else may say them. */
+const TECHNICAL_COPY = new Set(['t.inspector.fileSha', 't.inspector.copySha']);
 const show = (s: { at: string; text: string }) => `${s.at}: ${s.text}`;
 
 describe('UI copy (design-spec 4, 9)', () => {
@@ -72,8 +74,10 @@ describe('UI copy (design-spec 4, 9)', () => {
   it('uses 합니다체, never 해요체', () => {
     expect(copy.filter((s) => isHaeyo(s.text)).map(show)).toEqual([]);
   });
-  it('has no internal jargon', () => {
-    expect(copy.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
+  it('has no internal jargon (the file section\'s SHA-256 aside)', () => {
+    expect(copy.filter((s) => INTERNAL.test(s.text) && !TECHNICAL_COPY.has(s.at)).map(show)).toEqual([]);
+    // The allow-list names live strings only: a renamed key cannot leave a stale exception behind.
+    expect([...TECHNICAL_COPY].filter((at) => !copy.some((s) => s.at === at))).toEqual([]);
   });
   it('no renderer source shows a phase placeholder such as "P3 단계"', () => {
     expect(sources().filter((f) => /P[0-9]\s*단계/.test(read(f)))).toEqual([]);

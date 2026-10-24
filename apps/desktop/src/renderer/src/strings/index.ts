@@ -2,6 +2,7 @@
 import { common } from './common';
 import { drop } from './drop';
 import { fatal } from './fatal';
+import { inspector } from './inspector';
 import { library } from './library';
 import { palette } from './palette';
 import { reader } from './reader';
@@ -10,4 +11,4 @@ import { shell } from './shell';
 import { sheets } from './sheets';
 import { toast } from './toast';
 
-export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop } as const;
+export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector } as const;

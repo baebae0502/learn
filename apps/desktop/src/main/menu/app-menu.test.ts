@@ -72,6 +72,7 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K' },
     SEP,
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
+    { id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I' },
     SEP,
     // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
     { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
@@ -157,7 +158,7 @@ describe('buildAppMenu', () => {
       }
     }
     const view = build('darwin', true).find((m) => m.id === 'menu.view')!;
-    expect(shape(view.submenu as MenuItemConstructorOptions[])).toEqual([...VIEW('darwin').submenu!, SEP, { label: '개발자 도구', role: 'toggleDevTools' }]);
+    expect(shape(view.submenu as MenuItemConstructorOptions[])).toEqual([...VIEW('darwin').submenu!, SEP, { label: '개발자 도구', role: 'toggleDevTools', accelerator: 'Alt+CmdOrCtrl+J' }]);
   });
 
   it('every label is Korean except the app name', () => {
@@ -273,6 +274,14 @@ describe('state labels (design-spec 7.4: the menu names what ⌃⌘S does now)',
     expect(after).toEqual(before.map((i) => (i.id === 'view.toggleSidebar' ? { ...i, label: '사이드바 보기' } : i)));
     applyMenuLabels({ getMenuItemById: (id) => byId.get(id) ?? null }, 'darwin', { sidebar: 'shown' });
     expect(sidebarItem(template)).toMatchObject({ id: 'view.toggleSidebar', label: '사이드바 가리기', accelerator: 'Ctrl+Cmd+S' });
+  });
+  it('names the item panel item by the reported inspector state, and neutrally without one', () => {
+    const item = (labels?: { sidebar?: 'shown' | 'hidden'; inspector?: 'shown' | 'hidden' }) =>
+      walk(buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), ...(labels ? { labels } : {}) })).find((i) => i.id === 'view.toggleInspector')!;
+    expect(item({ sidebar: 'shown', inspector: 'shown' }).label).toBe('항목 패널 가리기');
+    expect(item({ sidebar: 'shown', inspector: 'hidden' }).label).toBe('항목 패널 보기');
+    expect(item({ sidebar: 'shown' }).label).toBe('항목 패널 보기/가리기'); // the empty library and the reader report none
+    expect(item().label).toBe('항목 패널 보기/가리기');
   });
 });
 
@@ -446,5 +455,11 @@ describe('shortcut collisions per platform (registry items, hidden twins, Electr
     expect(clashes(shortcuts('linux', [focus]))).toEqual([]); // Ctrl+Shift+F against F11
     const closeTab: CommandSpec = { ...focus, accelerator: 'CmdOrCtrl+W' };
     for (const platform of PLATFORMS) expect(clashes(shortcuts(platform, [closeTab])), platform).toHaveLength(1);
+  });
+  it('⌥⌘I is the item panel\'s; the developer tools take ⌥⌘J instead of the role default', () => {
+    const mac = shortcuts('darwin');
+    expect(mac.filter((a) => a === '⌥⌘I')).toHaveLength(1);
+    expect(mac.filter((a) => a === '⌥⌘J')).toHaveLength(1);
+    expect(walk(build('darwin', true)).find((i) => String(i.role ?? '').toLowerCase() === 'toggledevtools')?.accelerator).toBe('Alt+CmdOrCtrl+J');
   });
 });

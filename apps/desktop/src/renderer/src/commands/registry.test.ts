@@ -19,6 +19,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   open: vi.fn(),
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
+  toggleInspector: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
@@ -217,5 +218,19 @@ describe('renderer command registry', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);
     expect(runPicked('file.nope' as CommandId, env(), [ID])).toBe(false);
     expect(runPicked('toString' as CommandId, env(), [ID])).toBe(false); // not fooled by Object.prototype
+  });
+  it('⌥⌘I toggles the item panel in the library with items, never in the reader, the empty library or while blocked', () => {
+    const e = env({ libraryCount: 2 });
+    expect(runCommand('view.toggleInspector', e)).toBe(true);
+    expect(e.toggleInspector).toHaveBeenCalledTimes(1);
+    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }]) {
+      const off = env(over);
+      expect(runCommand('view.toggleInspector', off), JSON.stringify(over)).toBe(false);
+      expect(off.toggleInspector).not.toHaveBeenCalled();
+    }
+  });
+  it('reports the item panel state only while the view has one (the menu relabels from it)', () => {
+    expect(contextOf(env({ inspector: 'hidden' }))).toMatchObject({ inspector: 'hidden' });
+    expect(Object.hasOwn(contextOf(env()), 'inspector')).toBe(false);
   });
 });

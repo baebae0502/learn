@@ -125,17 +125,22 @@ export function useKeepFocusAcrossFold(hidden: boolean): void {
   }, [hidden]);
 }
 
-/** Saves the width and the user's collapse choice (layout.panes) 300 ms after the last change. */
+/** Saves both panes' widths and the user's collapse choices — one layout.panes record — 300 ms after the last change. */
 export function usePanePersistence(): void {
-  const width = useShell((s) => s.sidebar.width);
-  const collapsed = useShell((s) => s.sidebar.collapsed);
-  // The boot value came from the setting itself; only a value that differs from the last one written is saved
+  const sidebarWidth = useShell((s) => s.sidebar.width);
+  const sidebarCollapsed = useShell((s) => s.sidebar.collapsed);
+  const inspectorWidth = useShell((s) => s.inspector.width);
+  const inspectorCollapsed = useShell((s) => s.inspector.collapsed);
+  const value = serializePanes({
+    sidebar: { width: sidebarWidth, collapsed: sidebarCollapsed, forceShown: false },
+    inspector: { width: inspectorWidth, collapsed: inspectorCollapsed, forceShown: false },
+  });
+  const json = JSON.stringify(value);
+  // The boot value came from the setting itself; only a record that differs from the last one written is saved
   // (also when a change is undone within 300 ms, and under StrictMode's double effects).
   const saved = useRef<string | null>(null);
-  saved.current ??= JSON.stringify(serializePanes({ width, collapsed, forceShown: false }));
+  saved.current ??= json;
   useEffect(() => {
-    const value = serializePanes({ width, collapsed, forceShown: false });
-    const json = JSON.stringify(value);
     if (json === saved.current) return;
     const timer = setTimeout(() => {
       saved.current = json;
@@ -148,5 +153,6 @@ export function usePanePersistence(): void {
       );
     }, 300);
     return () => clearTimeout(timer);
-  }, [width, collapsed]);
+    // `value` is the record `json` spells.
+  }, [json]);
 }

@@ -189,7 +189,7 @@ test('arrow keys on the separator: 5 % steps clamped at 360 and 180, one more st
     await page.keyboard.press('ArrowLeft');
     await expect.poll(() => sidebarWidth(page)).toBe(0);
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
-    expect(await savedPanes(page)).toEqual({ sidebar: 180, sidebarCollapsed: 1 });
+    expect(await savedPanes(page)).toEqual({ sidebar: 180, sidebarCollapsed: 1, 'inspector.info': 320, inspectorCollapsed: 0 }); // both panes, always
   } finally {
     await app.close();
   }

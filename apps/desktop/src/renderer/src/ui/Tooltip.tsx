@@ -32,6 +32,7 @@ export function Tooltip({
   accelerator,
   reason,
   isDisabled,
+  forceOpen,
   children,
 }: {
   label: string;
@@ -40,10 +41,13 @@ export function Tooltip({
   reason?: string | undefined;
   /** Keep the trigger wrapper (so the child never remounts) but show nothing. */
   isDisabled?: boolean;
+  /** Open whatever the hover and focus while true: a short confirmation (복사했습니다). Never while tooltips are blocked. */
+  forceOpen?: boolean;
   children: ReactElement;
 }) {
   const [open, setOpen] = useState(false);
   const blocked = useTooltipsBlocked();
+  const shown = (open || forceOpen === true) && !blocked;
   useEffect(() => {
     if (blocked) setOpen(false);
   }, [blocked]);
@@ -54,12 +58,12 @@ export function Tooltip({
   return (
     // Blocked: RAC's trigger is off too, so a focus or hover meanwhile starts nothing in it. A veto alone (below) left
     // its state half-run: a later blur then drew the old tooltip again, for good (Linux evidence, after a quiet focus).
-    <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled || blocked} isOpen={open} onOpenChange={onOpenChange}>
+    <TooltipTrigger delay={600} closeDelay={0} isDisabled={isDisabled || blocked} isOpen={shown} onOpenChange={onOpenChange}>
       {children}
       {/* Mounted only while open: closing removes it at once (there is no exit animation), so RAC's exit state can never
           hold a closed tooltip in the page. On the Mac runner one stayed, unseen but counted (t14-diag5: two tooltips
           at m3-10, one of them the sidebar toggle's from an earlier step). */}
-      {open && (
+      {shown && (
         <AriaTooltip className="tooltip" placement="bottom" offset={6}>
           <TooltipText label={label} accelerator={accelerator} reason={reason} />
         </AriaTooltip>

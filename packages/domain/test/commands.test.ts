@@ -88,10 +88,32 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
     expect(inPalette(commandById('app.palette'))).toBe(false); // the palette does not list itself
   });
+  it('⌥⌘I shows or hides the item panel: 보기 after the sidebar toggle, the library with items only, named by what it does', () => {
+    const c = commandById('view.toggleInspector');
+    expect(c).toMatchObject({
+      label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+      stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+    });
+    expect(inPalette(c)).toBe(true);
+    expect(acceleratorLabel(c.accelerator!, 'darwin')).toBe('⌥⌘I');
+    const withItems: CommandContextState = { ...LIB, libraryCount: 3 };
+    expect(isCommandAvailable('view.toggleInspector', withItems)).toBe(true);
+    expect(isCommandAvailable('view.toggleInspector', LIB)).toBe(false); // libraryCount 0: no panel to show (design-spec 2.4)
+    expect(isCommandAvailable('view.toggleInspector', { ...VIEWER, libraryCount: 3 })).toBe(false); // the reader's right slot is the tutor's
+    expect(isCommandAvailable('view.toggleInspector', { ...withItems, blocked: true })).toBe(false);
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('항목 패널 가리기');
+      expect(commandLabel(c, platform, { inspector: 'hidden' })).toBe('항목 패널 보기');
+      expect(commandLabel(c, platform)).toBe('항목 패널 보기/가리기');
+      expect(commandLabel(c, platform, { sidebar: 'hidden' })).toBe('항목 패널 보기/가리기'); // the sidebar's state never names it
+    }
+    const menu = availableMenuCommands(withItems);
+    expect(menu.indexOf('view.toggleInspector')).toBe(menu.indexOf('view.toggleSidebar') + 1);
+  });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
-      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleSidebar',
+      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
@@ -183,7 +205,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'view.toggleSidebar', 'view.toggleInspector', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected

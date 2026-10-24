@@ -146,7 +146,8 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
   const view: Item = {
     id: 'menu.view',
     label: '보기',
-    submenu: join(reg('view'), fullScreenItems(opts), opts.isDev ? [{ role: 'toggleDevTools', label: '개발자 도구' }] : []),
+    // The item panel owns the role's default key on macOS, so a dev build moves the developer tools.
+    submenu: join(reg('view'), fullScreenItems(opts), opts.isDev ? [{ role: 'toggleDevTools', label: '개발자 도구', accelerator: 'Alt+CmdOrCtrl+J' }] : []),
   };
   const go: Item = { id: 'menu.go', label: '이동', submenu: reg('go') };
   const windowMenu: Item = {

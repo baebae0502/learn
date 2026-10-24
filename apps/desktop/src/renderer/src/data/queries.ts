@@ -40,6 +40,9 @@ export const useItem = (itemId: string, fresh = false) =>
   useQuery({ queryKey: keys.item(itemId), queryFn: () => unwrap(api().library.get({ itemId })), refetchOnMount: fresh ? 'always' : true });
 export const usePanes = () => useQuery({ queryKey: keys.panes, queryFn: () => unwrap(api().settings.get({ key: 'layout.panes' })) });
 
+/** The item panel's facts (metadata, file, SHA-256): the same cache entry as the reader's missing notice (ViewerHost). */
+export const useItemDetail = (itemId: string) => useQuery({ queryKey: keys.detail(itemId), queryFn: () => unwrap(api().library.detail({ itemId })) });
+
 /** Every change made through main pushes libraryChanged: drop the cached library data. */
 export function useLibrarySync(): void {
   useLearnEvent('libraryChanged', () => void queryClient.invalidateQueries({ queryKey: ['library'] }));

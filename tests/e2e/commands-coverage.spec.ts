@@ -64,6 +64,7 @@ test('every registry command runs without a page error (library and reader menus
   watch(page);
   app.on('window', watch);
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
+  const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const shellCalls = () => app.evaluate(() => (globalThis as { __learnShell?: string[] }).__learnShell ?? []);
   /** The paths main handed the OS: named copies under derived/open/ with the type's extension (final review I1). */
   const shellPaths = () => app.evaluate(() => (globalThis as { __learnShellPaths?: string[] }).__learnShellPaths ?? []);
@@ -79,6 +80,14 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(sidebar).toBe('hidden');
       await runMenuCommand(app, 'view.toggleSidebar');
       await expect.poll(sidebar).toBe('shown');
+    },
+    // Both states, as for the sidebar. 240 + 520 + 320 fit: the command hid the panel; in a narrower window (the
+    // 1024 px macOS runner) it showed the folded one on demand.
+    'view.toggleInspector': async () => {
+      const first = (await page.evaluate(() => innerWidth)) >= 1080 ? 'hidden' : 'shown';
+      await expect.poll(inspector).toBe(first);
+      await runMenuCommand(app, 'view.toggleInspector');
+      await expect.poll(inspector).toBe(first === 'hidden' ? 'shown' : 'hidden');
     },
     // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
     'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),

@@ -11,6 +11,8 @@ import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
 import { EmptyLibrary } from '../library/EmptyLibrary';
+import { Inspector } from '../inspector/Inspector';
+import { InspectorToggle } from '../inspector/InspectorToggle';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
 import { LibrarySidebar } from '../library/LibrarySidebar';
@@ -32,7 +34,7 @@ import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { Toolbar } from '../shell/Toolbar';
-import { useToggleInspector } from '../shell/useInspector';
+import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
 import { useLibrary } from '../state/library-store';
@@ -70,8 +72,6 @@ export function MainWindow(_props: { info: AppInfo }) {
   const importCount = useShell((s) => s.importCount);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
-  // Until the screens mount the panel, the command only flips the stored choice; no state is reported, so the menu keeps its neutral name.
-  const toggleInspector = useToggleInspector();
   const sidebarHidden = useSidebarHidden();
   // Cold-start mark (Task 13 perf): the first render in which the library list has settled, not the mount (R-18).
   const readyAt = useRef(0);
@@ -215,6 +215,15 @@ export function MainWindow(_props: { info: AppInfo }) {
   const { sort } = useLibrarySettings();
   const sortRef = useRef(sort);
   sortRef.current = sort;
+  // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
+  const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
+  // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
+  const tableShown = items.data !== undefined && count > 0 && !busy?.holding;
+  // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not before
+  // the first list, and not in the reader, whose right slot is the tutor's.
+  const showsTable = view.kind === 'library' && tableShown;
+  const inspectorHidden = useInspectorHidden(showsTable);
+  const toggleInspector = useToggleInspector();
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -225,6 +234,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     held,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
+    // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
+    inspector: showsTable ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -250,7 +261,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     focusPane,
     focusSearch: focusQuickSearch,
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, textSize, count, runImport, setView, relink, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -277,8 +288,6 @@ export function MainWindow(_props: { info: AppInfo }) {
   /** Open from the list through the registry: refused while an import or a sheet holds the window (blocked). */
   const openFromList = useCallback((itemId: string) => runCommand('item.open', envRef.current, { itemIds: [itemId] }), []);
 
-  // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
-  const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
   // <body>: hand it to the table, whose grid passes it on to its first row; keyboard users keep their place. The
   // virtualizer draws the rows once it has measured its view, so the hand-over waits one frame (and does nothing if
@@ -293,8 +302,6 @@ export function MainWindow(_props: { info: AppInfo }) {
     });
   }, [view.kind, count]);
 
-  // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
-  const tableShown = items.data !== undefined && count > 0 && !busy?.holding;
   const toolbar =
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
@@ -306,6 +313,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           <>
             <ImportMenuButton />
             {tableShown && <LibrarySearch />}
+            {showsTable && <InspectorToggle />}
           </>
         }
         trailing={<Launcher />}
@@ -332,6 +340,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         sidebar={<LibrarySidebar count={count} />}
         launcher={<Launcher />}
         toolbar={toolbar}
+        inspector={showsTable ? <Inspector mode="info" /> : undefined}
         overlays={
           <>
             <Palette />

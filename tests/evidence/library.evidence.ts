@@ -10,10 +10,10 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, importPaths, launch, menuItemEnabled, nativeKeystroke,
-  recordedPopups, rowAt, runMenuCommand, seedLibrary, seedMetadata, stubContextMenu, type Session,
+  recordedPopups, rowAt, runMenuCommand, seedLibrary, seedMetadata, selectRows, stubContextMenu, type Session,
 } from '../e2e/helpers';
 import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
-import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
+import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
 import { decodePng } from './png';
 
 const TAG = { tag: '@library' };
@@ -388,6 +388,91 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
 });
 
 // Later M4 tasks add their tests here, above the verdict.
+
+test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real keystroke, one item, none, several; the 보기 menu', TAG, async () => {
+  const page = s.page;
+  const state = () => page.getByTestId('shell').getAttribute('data-inspector');
+  const inspector: Record<string, unknown> = {};
+  results['inspector'] = inspector;
+  // Its own PDF (unique bytes after %%EOF, as perf.evidence does): the session may hold sample.pdf already.
+  const src = path.join(os.tmpdir(), `learn-m4-inspector-${process.pid}.pdf`);
+  fs.writeFileSync(src, Buffer.concat([fs.readFileSync(PDF), Buffer.from('\n% inspector evidence\n')]));
+  const [item] = await importPaths(page, [src]);
+  await seedMetadata(page, item!.id, { creators: [{ name: '한서진', role: 'author' }], date: '2024', publisher: '학습출판' });
+  const width = await page.evaluate(() => innerWidth);
+  const fits = width >= 240 + 520 + 320;
+  await expect.poll(state).toBe(fits ? 'shown' : 'hidden');
+  inspector['innerWidth'] = width;
+  inspector['defaultState'] = await state();
+  check('inspector: shown exactly when 240 + 520 + 320 fit (it folds before the sidebar)', (await state()) === (fits ? 'shown' : 'hidden'), { width, state: await state() });
+
+  await guard('inspector: ⌥⌘I reaches the 보기 item and toggles the panel', async () => {
+    const before = await state();
+    let native = true;
+    if (IS_MAC) {
+      try {
+        await nativeKeystroke(s.app, 'i', ['option', 'command']);
+      } catch (e) {
+        if (!(e instanceof NativeInputNotPermitted)) throw e;
+        native = false;
+        await runMenuCommand(s.app, 'view.toggleInspector');
+      }
+    } else {
+      native = false;
+      await runMenuCommand(s.app, 'view.toggleInspector');
+    }
+    await expect.poll(state).not.toBe(before);
+    inspector['keystroke'] = { native, before, after: await state() };
+    check('inspector: ⌥⌘I reaches the 보기 item and toggles the panel', true, inspector['keystroke']);
+  });
+  if ((await state()) !== 'shown') await runMenuCommand(s.app, 'view.toggleInspector'); // on demand at 1024 px
+  await expect.poll(state).toBe('shown');
+
+  // The new item is the newest row (index 0): the table (its own scroll view) back at the top, where the virtualizer draws it.
+  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await selectRows(page, [path.parse(src).name]);
+  await expect(page.getByTestId('inspector-kind')).toHaveText('PDF · 3쪽');
+  const vw = await page.evaluate(() => innerWidth);
+  const panel = (await page.getByTestId('inspector-panel').boundingBox())!;
+  const toolbar = (await page.getByTestId('toolbar').boundingBox())!;
+  inspector['geometry'] = { panel, toolbarRight: toolbar.x + toolbar.width, vw };
+  check('inspector: under the 52 px toolbar, flush with the right edge, the toolbar over both', Math.round(panel.y) === 52 && Math.round(panel.x + panel.width) === vw && Math.round(toolbar.x + toolbar.width) === vw, inspector['geometry']);
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(page, theme);
+    await allShots(s.app, page, `m4-inspector-item-${theme}`, `item panel, one PDF with info (${theme})`);
+  }
+  await setTheme(page, 'light');
+  // esc on the table clears the selection, the cursor stays: the key goes to the cursor row (the roving stop).
+  const cursorRow = page.locator('[data-testid="item-row"][tabindex="0"]');
+  await cursorRow.focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('inspector-none')).toBeVisible();
+  await allShots(s.app, page, 'm4-inspector-none-light', 'item panel, nothing selected (light)');
+  // The first three rows in the table's order (data-index; the DOM order of a virtualized body is not the visual one).
+  const titles = (await Promise.all([0, 1, 2].map((i) => rowAt(page, i).getAttribute('data-title')))).filter((x): x is string => x !== null);
+  // By position, not title: the session's seeded rows share titles.
+  await rowAt(page, 0).click();
+  for (const i of [1, 2]) await rowAt(page, i).click({ modifiers: [IS_MAC ? 'Meta' : 'Control'] });
+  await expect(page.getByTestId('multi-row')).toHaveCount(titles.length);
+  await allShots(s.app, page, 'm4-inspector-multi-light', `item panel, ${titles.length} selected (light)`);
+
+  if (IS_MAC) {
+    await guard('inspector: 보기 lists 항목 패널 가리기 with ⌥⌘I, and no 개발자 도구', async () => {
+      const pid = s.app.process().pid!;
+      inspector['menuView'] = { ...(await captureOpenMenu(s.app, pid, 5, 'm4-inspector-menu-view', '보기 open: 항목 패널 가리기 ⌥⌘I after 사이드바 가리기')), names: await menuItemNames(pid, 5) };
+      const names = (inspector['menuView'] as { names: string[] | null }).names ?? [];
+      check('inspector: 보기 lists 항목 패널 가리기 with ⌥⌘I, and no 개발자 도구', names.includes('항목 패널 가리기') && !names.includes('개발자 도구'), names);
+    });
+  }
+  // Leave the session as it was for the tests after this one: default panel state, nothing selected (esc on the table).
+  await cursorRow.focus();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(0);
+  if ((await state()) !== inspector['defaultState']) await runMenuCommand(s.app, 'view.toggleInspector');
+  fs.rmSync(src, { force: true });
+  save();
+});
+
 
 test('M4 library: verdict of every check above (m4-library.json checks)', TAG, async () => {
   save();

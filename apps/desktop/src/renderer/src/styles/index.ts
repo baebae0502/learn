@@ -19,6 +19,7 @@ import './components/pane-empty.css';
 import './screens/gallery.css';
 import './screens/shell.css';
 import './screens/library.css';
+import './screens/inspector.css';
 import './screens/sheet.css';
 import './screens/reader.css';
 import './screens/palette.css';

@@ -153,6 +153,9 @@ export async function seedMetadata(page: Page, itemId: string, metadata: NonNull
   return r.data;
 }
 
+/** The system clipboard's text, read in main: the page may write the clipboard but never read it. */
+export const readClipboard = (app: ElectronApplication): Promise<string> => app.evaluate(({ clipboard }) => clipboard.readText());
+
 /** Import through the real menu path (stubbed dialog): 파일 › 파일 가져오기… or 외부 파일 연결…. */
 export async function importFiles(s: Session, paths: string[], mode: 'managed' | 'linked' = 'managed'): Promise<void> {
   await stubOpenDialog(s.app, paths);

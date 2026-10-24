@@ -296,7 +296,7 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
     expect(new Set(columns[0]!.map((g) => g.left)).size).toBe(1);
     expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
     expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
-    // Short enough for every 1440 × 900 room (estimate ≈ 562 px now; ≈ 620 after ⌘F and ⌥⌘I): no scrolling.
+    // Short enough for every 1440 × 900 room (≈ 620 px with 자료, ⌘F and ⌥⌘I; Linux room 824, Mac 774): no scrolling.
     const body = sheet.locator('.d-body');
     expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
     const natural = await sheet.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));

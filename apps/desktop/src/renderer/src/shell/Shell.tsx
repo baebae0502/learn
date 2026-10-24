@@ -152,7 +152,14 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
 function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | null>; hidden: boolean; width: number; children: ReactNode }) {
   const { panelRef, hidden, width } = props;
   const [initialSize] = useState(() => (hidden ? 0 : width));
+  // The group derives a late-mounted panel's constraints after this effect first runs (the handle throws until then),
+  // and the first size already says what is wanted: only a change after the mount goes through the handle.
+  const mounted = useRef(false);
   useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
     const panel = panelRef.current;
     if (!panel) return;
     if (hidden && !panel.isCollapsed()) panel.collapse();

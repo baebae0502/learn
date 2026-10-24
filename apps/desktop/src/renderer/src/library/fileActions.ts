@@ -15,15 +15,15 @@ export interface BusyToastDeps {
   clearTimer(timer: unknown): void;
 }
 
-/** "여는 중…" / "내보내는 중…", then the item's title on one line; kind busy: no close button, no time-out. */
-export const busyToast = (kind: FileActionKind, title: string): ToastData => ({
+/** "여는 중…" / "내보내는 중…", then the file name on one line; kind busy: no close button, no time-out. */
+export const busyToast = (kind: FileActionKind, fileName: string): ToastData => ({
   kind: 'busy',
   title: t.toast.busy[kind],
-  ...(title ? { lines: [title] } : {}),
+  ...(fileName ? { lines: [fileName] } : {}),
   testId: 'file-busy',
 });
 
-export type RunFileAction = <T>(kind: FileActionKind, title: string, call: () => Promise<Result<T>>, opts?: { countFrom?: Promise<void> }) => Promise<T>;
+export type RunFileAction = <T>(kind: FileActionKind, fileName: string, call: () => Promise<Result<T>>, opts?: { countFrom?: Promise<void> }) => Promise<T>;
 
 /**
  * Runs a file call and resolves with its data (an ApiError when main refused). While the call is still pending
@@ -31,7 +31,7 @@ export type RunFileAction = <T>(kind: FileActionKind, title: string, call: () =>
  * settles. `countFrom` is for a call that first waits on the user (사본 내보내기's save panel): that time is not work.
  */
 export function fileActionRunner(deps: BusyToastDeps): RunFileAction {
-  return async function runFileAction<T>(kind: FileActionKind, title: string, call: () => Promise<Result<T>>, opts: { countFrom?: Promise<void> } = {}): Promise<T> {
+  return async function runFileAction<T>(kind: FileActionKind, fileName: string, call: () => Promise<Result<T>>, opts: { countFrom?: Promise<void> } = {}): Promise<T> {
     let settled = false;
     let timer: unknown = null;
     let key: string | null = null;
@@ -39,7 +39,7 @@ export function fileActionRunner(deps: BusyToastDeps): RunFileAction {
       if (settled) return;
       timer = deps.setTimer(() => {
         timer = null;
-        if (!settled) key = deps.show(busyToast(kind, title));
+        if (!settled) key = deps.show(busyToast(kind, fileName));
       }, FILE_BUSY_DELAY_MS);
     };
     if (opts.countFrom) void opts.countFrom.then(arm);

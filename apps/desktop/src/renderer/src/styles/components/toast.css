@@ -41,6 +41,10 @@
     gap: var(--space-4);
     margin-block: -2px;
   }
+  /* The small plain button keeps its 8 px side padding: pulled out on the right so the link's text ends at the same inset as the × glyph (the counterpart of .btn.leading). */
+  .toast .t-actions > .btn-plain-accent:last-child {
+    margin-right: calc(var(--space-8) * -1);
+  }
   .toast .t-icon {
     display: grid;
     margin-top: 1px;

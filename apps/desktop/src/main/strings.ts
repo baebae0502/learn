@@ -31,6 +31,11 @@ export const mainStrings = {
     filterName: { pdf: 'PDF', video: '동영상' },
     notWritable: '이\u00a0폴더에는 쓸 수 없습니다. 다른\u00a0폴더를 고르세요.',
     diskFull: '디스크\u00a0공간이 부족합니다. 공간을 확보하거나 다른\u00a0폴더를 고르세요.',
+    inLibrary: '라이브러리 폴더 안에는 저장할 수 없습니다. 다른\u00a0폴더를 고르세요.',
+    folderGone: '저장할 폴더를 찾을 수 없습니다. 폴더가 있는지 확인하고 다시 내보내세요.',
+    nameTooLong: '파일\u00a0이름이 너무 깁니다. 더 짧은 이름으로 다시 내보내세요.',
+    isFolder: '같은 이름의 폴더가 있습니다. 다른\u00a0이름으로 다시 내보내세요.',
+    failed: '사본을 쓰지 못했습니다. 잠시 뒤에 다시 내보내거나 다른\u00a0폴더를 고르세요.',
     gone: '내보낸 사본을 찾을 수 없습니다. 옮기거나 지웠다면 다시 내보내세요.',
   },
   /** The table header's native column menu (menu/column-menu.ts); the column names come from the catalogue. */

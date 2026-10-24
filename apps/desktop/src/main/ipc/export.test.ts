@@ -141,13 +141,72 @@ describe('사본 내보내기 (spec §7) — in order: the run remembers the las
     expect(fs.readdirSync(ro)).toEqual([]);
   });
 
-  it('names a full disk and a refused folder in the user\'s words; any other error keeps its own', () => {
+  it('names a full disk and a refused folder in the user\'s words; every other errno gets a Korean cause and next step, keeping the error as cause', () => {
     const errno = (code: string) => Object.assign(new Error(code), { code });
     expect(exportError(errno('ENOSPC'))).toMatchObject({ code: 'DISK_FULL', message: mainStrings.exportCopy.diskFull });
     expect(exportError(errno('EDQUOT'))).toMatchObject({ code: 'DISK_FULL', message: mainStrings.exportCopy.diskFull });
     for (const c of ['EACCES', 'EPERM', 'EROFS']) expect(exportError(errno(c))).toMatchObject({ code: 'PERMISSION_DENIED', message: mainStrings.exportCopy.notWritable });
-    const other = errno('EIO');
-    expect(exportError(other)).toBe(other);
+    expect(exportError(errno('ENOENT'))).toMatchObject({ code: 'NOT_FOUND', message: mainStrings.exportCopy.folderGone });
+    expect(exportError(errno('ENAMETOOLONG'))).toMatchObject({ code: 'VALIDATION_FAILED', message: mainStrings.exportCopy.nameTooLong });
+    expect(exportError(errno('EISDIR'))).toMatchObject({ code: 'VALIDATION_FAILED', message: mainStrings.exportCopy.isFolder });
+    for (const c of ['EBUSY', 'EIO', 'EMFILE', 'EXDEV']) {
+      const e = errno(c);
+      const mapped = exportError(e);
+      expect(mapped).toBeInstanceOf(LearnError);
+      expect(mapped).toMatchObject({ code: 'INTERNAL', message: mainStrings.exportCopy.failed, cause: e });
+    }
     expect(exportError(errno('ENOSPC'))).toBeInstanceOf(LearnError);
+    const refusal = new LearnError('VALIDATION_FAILED', 'mine');
+    expect(exportError(refusal)).toBe(refusal);
+  });
+
+  describe('a destination that would replace a library file is refused before anything is written', () => {
+    const snapshot = (dir: string): string[] => fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).sort();
+    const refused = { ok: false, code: 'VALIDATION_FAILED', message: mainStrings.exportCopy.inLibrary };
+
+    it('the source file itself, by its path or through a symlink to it', async () => {
+      const link = path.join(tmp, 'link-to-asset.pdf');
+      fs.rmSync(link, { force: true });
+      fs.symlinkSync(assetFile, link);
+      for (const target of [assetFile, link]) {
+        panel.answer = target;
+        expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
+      }
+      expect(fs.readFileSync(assetFile, 'utf8')).toBe(BYTES);
+      expect(fs.readdirSync(path.dirname(assetFile))).toEqual([SHA]);
+      expect(await invoke('library:revealExport')).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    });
+
+    it('any path under the library root: the managed copies, the named copies, a new name beside them', async () => {
+      const named = path.join(layout.derivedDir, 'open', ASSET);
+      fs.mkdirSync(named, { recursive: true });
+      const before = snapshot(layout.root);
+      for (const target of [path.join(layout.assetsDir, 'ab', 'new.pdf'), path.join(named, '세포 신호 개요.pdf'), path.join(layout.root, 'x.pdf')]) {
+        panel.answer = target;
+        expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
+      }
+      expect(snapshot(layout.root)).toEqual(before);
+    });
+
+    it('a library root reached through a symlinked folder is the same folder', async () => {
+      const alias = path.join(tmp, 'library-alias');
+      fs.rmSync(alias, { force: true });
+      fs.symlinkSync(layout.root, alias);
+      panel.answer = path.join(alias, 'assets', 'ab', 'x.pdf');
+      expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
+    });
+
+    it('a folder whose name only starts like the library root\'s is a normal folder', async () => {
+      const beside = `${layout.root}-exports`;
+      fs.mkdirSync(beside, { recursive: true });
+      panel.answer = path.join(beside, 'x.pdf');
+      expect(await invoke('library:exportCopy', { itemId: ITEM })).toEqual({ ok: true, data: { saved: true } });
+      expect(fs.readFileSync(panel.answer, 'utf8')).toBe(BYTES);
+    });
+
+    it('a folder that vanished while the panel was open: the folder-gone words, nothing written', async () => {
+      panel.answer = path.join(tmp, 'vanished', 'x.pdf');
+      expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject({ ok: false, code: 'NOT_FOUND', message: mainStrings.exportCopy.folderGone });
+    });
   });
 });

@@ -238,7 +238,7 @@ function Part2() {
         <h2 className="g-title">토스트·스피너·툴팁</h2>
         <StaticToast data={{ kind: 'success', title: '자료 3개를 가져왔습니다' }} />
         <StaticToast data={{ kind: 'error', title: '파일 1개를 가져오지 못했습니다', body: 'notes.txt: 지원하지 않는 형식입니다.' }} />
-        <StaticToast data={{ kind: 'success', title: '사본을 저장했습니다', action: { label: 'Finder에서 보기', onAction: noop } }} />
+        <StaticToast data={{ kind: 'success', title: '사본을 저장했습니다', action: { label: commandLabel(commandById('item.showInFolder'), currentPlatform()), onAction: noop } }} />
         <StaticToast data={{ kind: 'busy', title: '여는 중…', lines: ['분자생물학 6장 · 신호 전달'] }} />
         <div className="g-row">
           <Spinner />
@@ -439,7 +439,7 @@ function Part3() {
           <Button
             testId="g3-toast-action"
             onPress={() =>
-              showToast({ kind: 'success', title: '사본을 저장했습니다', testId: 'toast-action', action: { label: 'Finder에서 보기', testId: 'toast-action-button', onAction: () => setLast('reveal') } })
+              showToast({ kind: 'success', title: '사본을 저장했습니다', testId: 'toast-action', action: { label: commandLabel(commandById('item.showInFolder'), currentPlatform()), testId: 'toast-action-button', onAction: () => setLast('reveal') } })
             }
           >
             동작 있는 토스트

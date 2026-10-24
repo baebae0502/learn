@@ -10,6 +10,7 @@ import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
+import { createExportCopy } from '../library/exportCopy';
 import { whenPanelCloses } from '../library/fileActions';
 import { runFileAction } from '../library/runFileAction';
 import { EmptyLibrary } from '../library/EmptyLibrary';
@@ -55,10 +56,11 @@ import { ViewerHost } from '../viewers/ViewerHost';
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
 
 /** The item's title as the list has it: the busy toast names what main is copying. */
-const titleOf = (itemId: string): string => queryClient.getQueryData<LibraryItem[]>(keys.items)?.find((i) => i.id === itemId)?.title ?? '';
+/** The busy toast's second line: the file being copied, by the name it came with. */
+const fileNameOf = (itemId: string): string => queryClient.getQueryData<LibraryItem[]>(keys.items)?.find((i) => i.id === itemId)?.originalName ?? '';
 
 /** Finder에서 보기 / 기본 앱으로 열기: main re-checks the file and makes its named copy (busy past 300 ms); a failure is a toast. */
-const fileAction = (kind: 'open' | 'reveal', itemId: string, call: () => Promise<Result<void>>): void => void runFileAction(kind, titleOf(itemId), call).catch(actionFailed);
+const fileAction = (kind: 'open' | 'reveal', itemId: string, call: () => Promise<Result<void>>): void => void runFileAction(kind, fileNameOf(itemId), call).catch(actionFailed);
 /** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
 const DROP_CLEAR_FALLBACK_MS = 250;
 /** The list before its first read: one array, so the command env's memo holds (final review nit). */
@@ -161,31 +163,20 @@ export function MainWindow(_props: { info: AppInfo }) {
     }
   }, []);
 
-  const exportCopy = useCallback(async (itemId: string) => {
-    setExportPanel(true);
-    // The panel is part of the call: the busy toast counts from its close, which the windowState push tells.
-    const panel = whenPanelCloses((cb) => api().on('windowState', cb));
-    void panel.closed.then(() => setExportPanel(false));
-    try {
-      const { saved } = await runFileAction('export', titleOf(itemId), () => api().library.exportCopy({ itemId }), { countFrom: panel.closed });
-      if (saved)
-        showToast({
-          kind: 'success',
-          title: t.toast.exportSaved,
-          testId: 'export-done',
-          action: {
-            label: commandLabel(commandById('item.showInFolder'), currentPlatform()),
-            testId: 'export-reveal',
-            onAction: () => void unwrap(api().library.revealExport()).catch(actionFailed),
-          },
-        });
-    } catch (e) {
-      showToast({ kind: 'error', title: t.toast.exportFailed, body: (e as Error).message, testId: 'export-failed' });
-    } finally {
-      panel.stop();
-      setExportPanel(false);
-    }
-  }, []);
+  const exportCopy = useMemo(
+    () =>
+      createExportCopy({
+        setPanel: setExportPanel,
+        watchPanel: () => whenPanelCloses((cb) => api().on('windowState', cb)),
+        run: (itemId, fileName, countFrom) => runFileAction('export', fileName, () => api().library.exportCopy({ itemId }), { countFrom }),
+        fileName: fileNameOf,
+        revealLabel: commandLabel(commandById('item.showInFolder'), currentPlatform()),
+        reveal: () => void unwrap(api().library.revealExport()).catch(actionFailed),
+        show: showToast,
+        log: (e) => console.error('[export] the call failed', e),
+      }),
+    [],
+  );
 
   const onDrop = useCallback(
     (paths: string[], mode: StorageMode, unresolved: number) => {

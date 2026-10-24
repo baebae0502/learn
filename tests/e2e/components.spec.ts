@@ -150,7 +150,11 @@ test('toasts: an action runs once and takes its toast away; a busy toast spins, 
   await open(page);
   await page.getByTestId('g3-toast-action').click();
   const withAction = page.getByTestId('toast-action');
-  await expect(withAction.getByRole('button')).toHaveText(['Finder에서 보기']);
+  await expect(withAction.getByRole('button')).toHaveText([process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']);
+  // The link's text ends where the toast's own padding says (12 px) less the pulled-out 8 px of the button's side padding, so the text ends 12 px in.
+  const [toastBox, linkBox] = await Promise.all([withAction.boundingBox(), withAction.getByTestId('toast-action-button').boundingBox()]);
+  expect(toastBox!.x + toastBox!.width - (linkBox!.x + linkBox!.width)).toBeCloseTo(12 - 8, 0);
+  expect(linkBox!.height).toBeGreaterThanOrEqual(22);
   await withAction.getByTestId('toast-action-button').click();
   await expect(withAction).toHaveCount(0);
   await expect(page.getByTestId('g3-last')).toHaveText('reveal');

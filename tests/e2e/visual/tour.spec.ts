@@ -225,7 +225,7 @@ test('item panel: nothing selected, one item, several, a missing original, folde
 
 test('toasts: 내보내는 중… while a copy runs, then 사본을 저장했습니다 with 폴더에서 보기', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  // The table's dates in its rows only (Q-40), and what moves in the item panel (Task 6).
+  // The table's date cells only, and what moves in the item panel.
   const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);

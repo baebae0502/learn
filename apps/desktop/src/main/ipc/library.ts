@@ -6,7 +6,7 @@ import {
   Channels, LearnError, assetIdInput, commandById, commandMention, emptyInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
-import { exportFile, openExtension, openableFile, openableName, relinkAsset, resolveAssetPath, safeBaseName } from '@learn/library';
+import { exportDestinationRefusal, exportFile, openExtension, openableFile, openableName, relinkAsset, resolveAssetPath, safeBaseName } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
 import { mainStrings } from '../strings';
@@ -29,12 +29,21 @@ async function showOpen(deps: IpcDeps, event: IpcMainInvokeEvent, options: OpenD
   return res.canceled ? [] : res.filePaths;
 }
 
-/** A copy that could not be written, in the user's words (cause + next step); any other error keeps its own. */
+/**
+ * A copy that could not be written, in the user's words (cause + next step). The IPC wrapper would turn an errno into a
+ * generic line with no next step (or "알 수 없는 오류"), so every error from the write is named here; the original
+ * stays as the cause. An error that is already a LearnError is kept.
+ */
 export function exportError(e: unknown): unknown {
+  if (e instanceof LearnError) return e;
   const code = (e as NodeJS.ErrnoException | null)?.code;
-  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return new LearnError('PERMISSION_DENIED', mainStrings.exportCopy.notWritable, { cause: e });
-  if (code === 'ENOSPC' || code === 'EDQUOT') return new LearnError('DISK_FULL', mainStrings.exportCopy.diskFull, { cause: e, retryable: true });
-  return e;
+  const words = mainStrings.exportCopy;
+  if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') return new LearnError('PERMISSION_DENIED', words.notWritable, { cause: e });
+  if (code === 'ENOSPC' || code === 'EDQUOT') return new LearnError('DISK_FULL', words.diskFull, { cause: e, retryable: true });
+  if (code === 'ENOENT') return new LearnError('NOT_FOUND', words.folderGone, { cause: e });
+  if (code === 'ENAMETOOLONG') return new LearnError('VALIDATION_FAILED', words.nameTooLong, { cause: e });
+  if (code === 'EISDIR') return new LearnError('VALIDATION_FAILED', words.isFolder, { cause: e });
+  return new LearnError('INTERNAL', words.failed, { cause: e, retryable: true });
 }
 
 /** Push libraryChanged when an import added at least one item. */
@@ -139,7 +148,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   // chosen folder (exportFile). The panel asks before replacing a file (showOverwriteConfirmation on Linux; macOS and
   // Windows always ask). The default name is the one 기본 앱으로 열기 gives its copy.
   handle(Channels.library.exportCopy, itemIdInput, async ({ itemId }, event) => {
-    const { item, asset, src } = await availableAsset(itemId);
+    const { ctx, item, asset, src } = await availableAsset(itemId);
     const ext = openExtension(asset.mime, asset.originalName);
     const options: SaveDialogOptions = {
       title: commandMention(commandById('item.exportCopy'), process.platform),
@@ -152,7 +161,10 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
     if (res.canceled || !res.filePath) return { saved: false };
     try {
       // The file itself, never a link to it (a clone of a symlink is the symlink on macOS, as for the named copy).
-      await exportFile(await fs.realpath(src), res.filePath);
+      const source = await fs.realpath(src);
+      // Never onto the source or into the library: the rename would replace a stored copy with its own copy.
+      if ((await exportDestinationRefusal(source, res.filePath, ctx.layout.root)) !== null) throw new LearnError('VALIDATION_FAILED', mainStrings.exportCopy.inLibrary);
+      await exportFile(source, res.filePath);
     } catch (e) {
       throw exportError(e);
     }

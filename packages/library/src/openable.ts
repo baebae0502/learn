@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { constants as fsConstants } from 'node:fs';
+import { constants as fsConstants, realpath as realpathCb } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import type { LibraryLayout } from './layout';
 
 /**
@@ -274,6 +275,37 @@ export function exportTempName(fileName: string, id: string = randomUUID()): str
   const chars = Array.from(fileName.normalize('NFC'));
   while (Buffer.byteLength(chars.join(''), 'utf8') > room) chars.pop();
   return `.${chars.join('')}${tail}`;
+}
+
+/** The real path with the case the file system reports (fs/promises' realpath keeps the case it was given). */
+const realpathNative = promisify(realpathCb.native);
+
+/**
+ * Whether a chosen export path may not be written: it is the source file itself (the rename would replace the stored
+ * asset, or a linked original, with itself half-copied away) or lies under the library root (managed copies, named
+ * copies and anything else Learn keeps there). Paths are compared as the file system spells them (real path of the
+ * folder, native so a case-insensitive volume reports its own case), and a file already there is compared by identity too.
+ * A folder that does not exist throws its ENOENT: the caller reports it like any other failed write.
+ */
+export async function exportDestinationRefusal(src: string, dst: string, libraryRoot: string): Promise<'source' | 'library' | null> {
+  const parent = await realpathNative(path.dirname(path.resolve(dst)));
+  const target = path.join(parent, path.basename(dst));
+  const [realSrc, root, there, source] = await Promise.all([
+    realpathNative(src),
+    realpathNative(libraryRoot).catch(() => path.resolve(libraryRoot)),
+    fs.stat(target).catch(() => null),
+    fs.stat(src),
+  ]);
+  if (target === realSrc || (there !== null && there.dev === source.dev && there.ino === source.ino && there.ino !== 0)) return 'source';
+  const rel = path.relative(root, target);
+  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return 'library';
+  // A symlink standing at the name is replaced by the rename, not followed — but one that leads into the library is refused all the same.
+  const resolved = await realpathNative(target).catch(() => null);
+  if (resolved !== null) {
+    const via = path.relative(root, resolved);
+    if (!via.startsWith('..') && !path.isAbsolute(via)) return 'library';
+  }
+  return null;
 }
 
 /**

@@ -613,7 +613,7 @@ test('table: several rows selected with the keyboard cursor, sorted by title, an
   }
 });
 
-test('table: loading — the header stays and 불러오는 중… comes after 300 ms', async ({}, testInfo) => {
+test('table: loading — the header, the search field and the item panel stay and 불러오는 중… comes after 300 ms', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
@@ -625,6 +625,9 @@ test('table: loading — the header stays and 불러오는 중… comes after 30
       await setTheme(s.page, theme);
       await s.page.reload();
       await expect(s.page.getByTestId('table-loading')).toBeVisible();
+      // The toolbar's right group and the item panel stay (disabled, no statistics): only the rows are on their way.
+      await expect(s.page.getByTestId('search-field').locator('input')).toHaveAttribute('aria-disabled', 'true');
+      await expect(s.page.getByTestId('inspector-none')).toBeVisible();
       await shoot(s.page, `table-loading-${theme}`);
     }
   } finally {

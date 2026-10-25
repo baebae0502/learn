@@ -54,9 +54,10 @@ function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
 }
 
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
+  const words = mainStrings.openPanels;
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
     const ctx = deps.getContext();
-    const paths = await showOpen(deps, event, { title: mainStrings.openPanels.import, properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
+    const paths = await showOpen(deps, event, { title: words.import, message: input.mode === 'linked' ? words.linkMessage : words.importMessage, buttonLabel: input.mode === 'linked' ? words.linkButton : words.importButton, properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
     return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
   });
 
@@ -70,7 +71,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
     const ctx = deps.getContext();
-    const [picked] = await showOpen(deps, event, { title: mainStrings.openPanels.relink, properties: ['openFile'], filters: IMPORT_FILTERS });
+    const [picked] = await showOpen(deps, event, { title: words.relink, message: words.relinkMessage, buttonLabel: words.relinkButton, properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
     await relinkAsset(ctx.repo, assetId, picked);
     const itemIds = ctx.repo.itemIdsForAsset(assetId);

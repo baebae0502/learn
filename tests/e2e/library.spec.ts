@@ -155,6 +155,8 @@ test('while an import runs, its controls are disabled with the reason as their t
     await s.page.getByTestId('import-menu').click();
     await s.page.getByTestId('import-menu-managed').click();
     await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
+    // The quick search is held like the other toolbar controls (drawn disabled, no input) while the panel is up.
+    await expect(s.page.getByTestId('search-field').locator('input')).toHaveAttribute('aria-disabled', 'true');
     const row = rowByTitle(s.page, 'held');
     const opensNothing = async (how: () => Promise<void>) => {
       await how();
@@ -169,6 +171,7 @@ test('while an import runs, its controls are disabled with the reason as their t
     });
     await releaseOpenDialog(s.app); // cancelled: nothing imported, nothing to report
     await expectDisabledReason(s.page.getByTestId('import-menu'), null);
+    await expect(s.page.getByTestId('search-field').locator('input')).not.toHaveAttribute('aria-disabled', 'true');
     await row.dblclick();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
   } finally {

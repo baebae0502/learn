@@ -35,6 +35,11 @@ export function SearchField(props: {
   className?: string;
   testId?: string;
   force?: ForcedState[];
+  /**
+   * Drawn disabled (aria-disabled, content at 45 %) while something holds the window; the field keeps its focus and
+   * text but takes no input, as the launcher does (a real `disabled` would drop a focus the field has).
+   */
+  isDisabled?: boolean;
 }) {
   return (
     <AriaSearchField
@@ -49,7 +54,8 @@ export function SearchField(props: {
       }}
       onFocus={props.onFocus && (() => props.onFocus!())}
       autoFocus={props.autoFocus}
-      className={cx('field', props.size === 'small' && 'small', props.className)}
+      isReadOnly={props.isDisabled}
+      className={cx('field', props.size === 'small' && 'small', props.isDisabled && 'is-disabled', props.className)}
       data-testid={props.testId}
       data-force={props.force?.join(' ')}
     >
@@ -61,6 +67,7 @@ export function SearchField(props: {
             className="field-input"
             placeholder={props.placeholder}
             aria-keyshortcuts={props['aria-keyshortcuts']}
+            aria-disabled={props.isDisabled || undefined}
             // RAC clears on esc and submits on ↩ without asking whether a composition owns the key.
             // Chromium's own type=search also empties on esc, as the key's default: held back too.
             onKeyDownCapture={(e) => {
@@ -69,7 +76,7 @@ export function SearchField(props: {
               e.preventDefault();
             }}
           />
-          {!isEmpty && <IconButton icon={CircleX} label={t.common.clear} size="small" testId={props.testId && `${props.testId}-clear`} />}
+          {!isEmpty && <IconButton icon={CircleX} label={t.common.clear} size="small" isDisabled={props.isDisabled} testId={props.testId && `${props.testId}-clear`} />}
         </>
       )}
     </AriaSearchField>

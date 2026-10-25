@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import { LIBRARY_COLUMN_IDS } from '../../packages/domain/src/library-columns';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, importPaths, launch, mainWindow, recordedPopups, rowAt, rowByTitle, seedLibrary, selectRows, stubContextMenu } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, recordedPopups, rowAt, rowByTitle, seedLibrary, selectRows, showItemPanel, stubContextMenu } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -343,12 +343,71 @@ test('a first list read past 300 ms shows the header and 불러오는 중… in 
     await expect(page.getByTestId('table-loading')).toHaveText('불러오는 중…');
     await expect(page.getByTestId('column-header')).toHaveText(DEFAULT_HEADERS);
     await expect(page.getByTestId('item-row')).toHaveCount(0);
+    // The toolbar's right group and the item panel keep their places while the list is on its way (disabled, no stats):
+    // 가져오기 and the columns do not jump when the rows arrive.
+    const places = () =>
+      page.evaluate(() =>
+        Object.fromEntries(
+          ['import-menu', 'search-field', 'inspector-toggle', 'inspector-panel'].map((id) => {
+            const r = document.querySelector(`[data-testid="${id}"]`)?.getBoundingClientRect();
+            return [id, r ? [r.x, r.y, r.width, r.height].map(Math.round) : null];
+          }),
+        ),
+      );
+    const loadingPlaces = await places();
+    expect(loadingPlaces['search-field'], 'the search field is drawn while loading').not.toBeNull();
+    expect(loadingPlaces['inspector-toggle'], 'the panel toggle is drawn while loading').not.toBeNull();
+    await expect(page.getByTestId('search-field').locator('input')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('inspector-toggle')).toHaveAttribute('aria-disabled', 'true');
+    if ((await page.getByTestId('shell').getAttribute('data-inspector')) === 'shown') {
+      await expect(page.getByTestId('inspector-none')).toBeVisible();
+      await expect(page.getByTestId('inspector-stats')).toHaveCount(0);
+    }
     const seen = await page.evaluate(() => (globalThis as { __learnSeen?: Record<string, number> }).__learnSeen ?? {});
     expect(seen['table-loading']! - seen['shell']!).toBeGreaterThanOrEqual(290); // design-spec 6: nothing for 300 ms
     expect(seen['empty-state']).toBeUndefined();
     await app.evaluate(() => (globalThis as { __learnReleaseList?: () => void }).__learnReleaseList?.());
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(page.getByTestId('table-loading')).toHaveCount(0);
+    await expect(page.getByTestId('search-field').locator('input')).not.toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('inspector-toggle')).not.toHaveAttribute('aria-disabled', 'true');
+    expect(await places(), 'the right group and the panel sit where they sat while loading').toEqual(loadingPlaces);
+  } finally {
+    await app.close();
+  }
+});
+
+test('showing the row you came back to scrolls the table vertically only, even where the columns are wider than the table', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    await seedLibrary(app, { count: 150, from: pdf! });
+    await expect(page.getByTestId('toolbar-count')).toHaveText('151개');
+    // 1024 px with the sidebar and the item panel: the table's 464 px are narrower than its columns (the Mac runner's width).
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
+    await showItemPanel(app, page);
+    const table = page.getByTestId('library-table');
+    await expect.poll(() => table.evaluate((g) => g.scrollWidth - g.clientWidth), { message: 'the columns must overflow the table here' }).toBeGreaterThan(0);
+    await rowAt(page, 0).click();
+    await page.keyboard.press('End');
+    await expect(rowAt(page, 150)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await page.getByTestId('viewer-back').click();
+    // Shown vertically (the row is wider than the table, so the viewport ratio says nothing): inside the view's top and bottom.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const g = document.querySelector('[data-testid="library-table"]')!.getBoundingClientRect();
+          const r = document.querySelector('[data-testid="item-row"][data-index="150"]')?.getBoundingClientRect();
+          return r !== undefined && r.top >= g.top && r.bottom <= g.bottom;
+        }),
+      )
+      .toBe(true);
+    expect(await table.evaluate((g) => g.scrollTop)).toBeGreaterThan(0);
+    expect(await table.evaluate((g) => g.scrollWidth - g.clientWidth)).toBeGreaterThan(0);
+    expect(await table.evaluate((g) => g.scrollLeft)).toBe(0);
   } finally {
     await app.close();
   }

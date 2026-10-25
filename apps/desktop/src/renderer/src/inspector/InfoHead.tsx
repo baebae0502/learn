@@ -3,6 +3,7 @@ import { commandById, commandLabel, type CommandId, type LibraryItem } from '@le
 import { ItemMarks } from '../library/ItemMarks';
 import { useCommands } from '../commands/CommandProvider';
 import { formatDuration } from '../format';
+import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -13,7 +14,7 @@ import { useFileFacts } from './useFileFacts';
  * The panel's head (library.html inspectorItem): kind · pages or length, the title (title3, never above the content's
  * title; user text, so no text-wrap: pretty), "저자 · 연도" when known, and the item's actions through the registry.
  * A missing file: a linked one leads with 다시 연결… and keeps 열기 (it reaches the notice); a managed one leads
- * with 열기; Finder에서 보기 stays in place, disabled with the reason.
+ * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
  */
 export function InfoHead({ item }: { item: LibraryItem }) {
   const { env, run, isEnabled } = useCommands();
@@ -21,6 +22,8 @@ export function InfoHead({ item }: { item: LibraryItem }) {
   const platform = currentPlatform();
   const target = { itemIds: [item.id] };
   const label = (id: CommandId) => commandLabel(commandById(id), platform);
+  // The form's 저장 is the panel's one primary button while the editor is open.
+  const editing = useLibrary((s) => s.editingId === item.id);
   const relinkFirst = item.availability === 'missing' && item.storageMode === 'linked';
   const kind =
     item.type === 'pdf'
@@ -46,7 +49,7 @@ export function InfoHead({ item }: { item: LibraryItem }) {
             {label('item.relink')}
           </Button>
         )}
-        <Button variant={relinkFirst ? 'secondary' : 'primary'} testId="inspector-open" onPress={() => run('item.open', target)} isDisabled={!isEnabled('item.open', target)} disabledReason={t.common.busy}>
+        <Button variant={relinkFirst || editing ? 'secondary' : 'primary'} testId="inspector-open" onPress={() => run('item.open', target)} isDisabled={!isEnabled('item.open', target)} disabledReason={t.common.busy}>
           {label('item.open')}
         </Button>
         <Button

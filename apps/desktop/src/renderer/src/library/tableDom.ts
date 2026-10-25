@@ -38,7 +38,15 @@ export function revealRow(index: number, id: string): void {
     const height = scroller.querySelector<HTMLElement>('[data-testid="item-row"]')?.getBoundingClientRect().height ?? 28;
     scroller.scrollTop = centredScrollTop(index, height, scroller.clientHeight);
   }
-  afterPaint(() => rowEl(id)?.scrollIntoView({ block: 'center' }));
+  afterPaint(() => {
+    const row = rowEl(id);
+    if (!row) return;
+    // A row wider than the table (a narrow window with the item panel) would have its left edge pulled into view by
+    // scrollIntoView's horizontal alignment, shifting every column: only the vertical position is for us to change.
+    const left = scroller.scrollLeft;
+    row.scrollIntoView({ block: 'center' });
+    scroller.scrollLeft = left;
+  });
 }
 
 /**

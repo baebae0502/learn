@@ -24,7 +24,8 @@ const LOADING_DELAY_MS = 300;
 
 /** Info mode (spec §5.3–5.4), from the table's selection; an open edit keeps its item on show until it lets go. */
 export function InfoPane() {
-  const items = useItems().data ?? NO_ITEMS;
+  const list = useItems().data;
+  const items = list ?? NO_ITEMS;
   const selected = useLibrary((s) => s.selected);
   const editingId = useLibrary((s) => s.editingId);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -35,16 +36,17 @@ export function InfoPane() {
     if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
   }, [editingId, byId]);
   if (editing) return <ItemInfo key={editing.id} item={editing} />;
-  if (chosen.length === 0) return <NoSelection items={items} />;
+  if (chosen.length === 0) return <NoSelection items={items} stats={list !== undefined} />;
   if (chosen.length > 1) return <MultiSelection items={chosen} />;
   return <ItemInfo key={chosen[0]!.id} item={chosen[0]!} />;
 }
 
 /**
  * library.html?state=none: the empty-state format (design-spec 6; PaneEmpty on .pane-empty) and the
- * library's numbers in tertiary, last, in the slot after the text (no button there).
+ * library's numbers in tertiary, last, in the slot after the text (no button there). Before the first list has come
+ * there are no numbers to give (`stats` false): the text alone.
  */
-function NoSelection({ items }: { items: readonly LibraryItem[] }) {
+function NoSelection({ items, stats: withStats }: { items: readonly LibraryItem[]; stats: boolean }) {
   const stats = useMemo(() => libraryStats(items), [items]);
   return (
     <PaneEmpty
@@ -52,9 +54,11 @@ function NoSelection({ items }: { items: readonly LibraryItem[] }) {
       title={t.inspector.noneTitle}
       testId="inspector-none"
       action={
-        <div className="pe-text pe-stats" data-testid="inspector-stats">
-          {stats}
-        </div>
+        withStats ? (
+          <div className="pe-text pe-stats" data-testid="inspector-stats">
+            {stats}
+          </div>
+        ) : undefined
       }
     >
       {t.inspector.noneBody}

@@ -85,4 +85,12 @@
   .launcher[aria-disabled='true'] > .icon {
     opacity: 0.4;
   }
+  /* A search field held the same way (the library is still loading, or a sheet or an import holds the window). */
+  .field.is-disabled > .field-input::placeholder,
+  .field.is-disabled > .field-input {
+    opacity: 0.45;
+  }
+  .field.is-disabled > .icon {
+    opacity: 0.4;
+  }
 }

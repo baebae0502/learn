@@ -6,6 +6,8 @@ type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
 /** Each open panel's parent window (null: none), in order. */
 const panels: unknown[] = [];
+/** The options each open panel was asked with, in order. */
+const options: Array<{ title?: string; message?: string; buttonLabel?: string }> = [];
 
 const MAIN = { id: 1, name: 'main window' };
 let senderWindow: typeof MAIN | null = MAIN;
@@ -16,6 +18,7 @@ vi.mock('electron', () => ({
   dialog: {
     showOpenDialog: async (...args: unknown[]) => {
       panels.push(args.length > 1 ? args[0] : null);
+      options.push(args[args.length - 1] as (typeof options)[number]);
       return { canceled: true, filePaths: [] };
     },
   },
@@ -50,6 +53,7 @@ const invoke = (channel: string, raw?: unknown) => handlers.get(channel)!({ send
 
 beforeEach(() => {
   panels.length = 0;
+  options.length = 0;
   sheetOwners.length = 0;
   senderWindow = MAIN;
 });
@@ -65,6 +69,15 @@ describe('library open panels hang on the asking window as sheets (follow-up D)'
       { owner: MAIN, phase: 'shown' },
       { owner: MAIN, phase: 'closed' },
     ]);
+  });
+
+  it('each panel says what it is for: a message on the sheet and its own button (macOS shows no title on a sheet)', async () => {
+    await invoke('library:pickAndImport', { mode: 'managed' });
+    await invoke('library:pickAndImport', { mode: 'linked' });
+    await invoke('library:pickAndRelink', { assetId: '00000000-0000-4000-8000-000000000001' });
+    expect(options.map((o) => o.buttonLabel)).toEqual(['가져오기', '연결', '다시 연결']);
+    expect(new Set(options.map((o) => o.message)).size).toBe(3);
+    for (const o of options) expect(o.message).toMatch(/\S/);
   });
 
   it('without a window the panel stands alone and no sheet is marked', async () => {

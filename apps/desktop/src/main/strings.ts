@@ -17,8 +17,20 @@ export const mainStrings = {
   },
   /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
   importFilters: { media: 'PDF\u00a0·\u00a0동영상', all: '모든\u00a0파일' },
-  /** The open panels' titles: 파일 가져오기… and 다시 연결… (ipc/library.ts). */
-  openPanels: { import: '파일 가져오기', relink: '원본\u00a0파일 다시 연결' },
+  /**
+   * The open panels' titles: 파일 가져오기… and 다시 연결… (ipc/library.ts). macOS shows no title on a sheet, so each
+   * panel also has a one-line message (shown on top) and its own button name: ⌘O, ⌥⌘O and 다시 연결 do not look alike.
+   */
+  openPanels: {
+    import: '파일 가져오기',
+    relink: '원본\u00a0파일 다시 연결',
+    importMessage: '라이브러리에 사본으로 가져올 파일을 고르세요.',
+    importButton: '가져오기',
+    linkMessage: '원본\u00a0파일은 제자리에 두고 연결할 파일을 고르세요.',
+    linkButton: '연결',
+    relinkMessage: '옮겨진 원본\u00a0파일을 고르세요.',
+    relinkButton: '다시 연결',
+  },
   /** An item's file: Finder에서 보기 / 기본 앱으로 열기 / 사본 내보내기 (ipc/library.ts availableAsset); noItem for any item lookup (item-availability.ts too). */
   itemFile: {
     /** A linked file that is gone: it can be relinked. */

@@ -21,9 +21,10 @@ export function focusQuickSearch(): void {
 /**
  * The toolbar's quick search (spec 4.1, design-spec 2.4): 240 wide after 가져오기, bound to the session's query.
  * esc empties it (RAC), and on an empty field hands the focus to the table, as F6 would land there; ↓ goes to the first
- * result. Named after its command, with ⌘F as its shortcut.
+ * result. Named after its command, with ⌘F as its shortcut. `disabled` draws it held (the list is still loading, or a
+ * sheet or an import holds the window): the transient states keep their controls (design-spec 6).
  */
-export function LibrarySearch() {
+export function LibrarySearch({ disabled = false }: { disabled?: boolean }) {
   const query = useLibrary((s) => s.query);
   const setQuery = useLibrary((s) => s.setQuery);
   const found = useSearch(useItems().data ?? NO_ITEMS);
@@ -40,6 +41,7 @@ export function LibrarySearch() {
         inputRef={field}
         className="library-search"
         testId="search-field"
+        isDisabled={disabled}
         onKeyDown={(e) => {
           if (e.key === 'Escape' && query === '') focusPaneNamed('content');
           else if (e.key === 'ArrowDown') {

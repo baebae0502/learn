@@ -251,9 +251,13 @@ export function MainWindow(_props: { info: AppInfo }) {
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
   const tableShown = items.data !== undefined && count > 0 && !busy?.holding;
-  // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not before
-  // the first list, and not in the reader, whose right slot is the tutor's.
-  const showsTable = view.kind === 'library' && tableShown;
+  // The first list is on its way (not failed): that is not an empty library. The toolbar's right group and the item
+  // panel stay where they will be, disabled, so 가져오기 and the columns do not jump when the list arrives (design-spec
+  // 6: transient states keep their controls).
+  const listPending = items.data === undefined && listFailure === null;
+  // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not after a
+  // failed first read, and not in the reader, whose right slot is the tutor's.
+  const showsTable = view.kind === 'library' && (tableShown || listPending);
   const inspectorHidden = useInspectorHidden(showsTable);
   const toggleInspector = useToggleInspector();
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
@@ -348,8 +352,8 @@ export function MainWindow(_props: { info: AppInfo }) {
         actions={
           <>
             <ImportMenuButton />
-            {tableShown && <LibrarySearch />}
-            {showsTable && <InspectorToggle />}
+            {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}
+            {showsTable && <InspectorToggle pending={listPending} />}
           </>
         }
         trailing={<Launcher />}

@@ -35,9 +35,14 @@ test('the pencil turns 정보 into a form in place; 저장, ⌘↩ and ↩ in a 
     await selectRows(page, ['sample']);
     const pencil = page.getByTestId('info-edit');
     await expect(pencil).toHaveAccessibleName('정보 편집');
+    // One primary button per context: 열기 leads the panel until the form's 저장 does.
+    const open = page.getByTestId('inspector-open');
+    await expect(open).toHaveClass(/btn-primary/);
     await pencil.click();
     const editor = page.getByTestId('info-editor');
     await expect(editor).toBeVisible();
+    await expect(page.getByTestId('editor-save')).toHaveClass(/btn-primary/);
+    await expect(open).not.toHaveClass(/btn-primary/);
     await expect(field(page, 'title')).toBeFocused();
     await expect(field(page, 'title')).toHaveValue('sample');
     await expect(pencil).toHaveCount(0); // the form's own buttons take over

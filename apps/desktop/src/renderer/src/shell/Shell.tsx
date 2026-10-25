@@ -32,6 +32,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
   const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present).inspector;
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);
+  const inspectorSeparatorKey = useSeparatorKeyAfterFirstShow(present, inspectorHidden);
   // Mount-time size only: a changing defaultSize re-registers the panel; later changes go through the imperative effect.
   const [initialSize] = useState(() => (hidden ? 0 : sidebar.width));
 
@@ -130,7 +131,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
             </Panel>
             {present && (
               <>
-                <Separator className="inspector-separator" id="inspector-separator" aria-label={t.inspector.panel} />
+                <Separator key={inspectorSeparatorKey} className="inspector-separator" id="inspector-separator" aria-label={t.inspector.panel} />
                 <InspectorPanel panelRef={inspectorRef} hidden={inspectorHidden} width={inspector.width}>
                   {props.inspector}
                 </InspectorPanel>
@@ -142,6 +143,28 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
       {props.overlays}
     </div>
   );
+}
+
+/**
+ * A separator that mounted beside a folded panel never learns its aria values (aria-valuenow, aria-controls: axe's
+ * aria-required-attr on a focusable separator), not even when the panel is shown later; one that mounted beside a shown
+ * panel does, through every later fold. So a separator that began folded is mounted again once, right after its panel
+ * first opens, and the new one registers beside an open panel. Returns the key to give the separator.
+ */
+function useSeparatorKeyAfterFirstShow(present: boolean, hidden: boolean): number {
+  const [key, setKey] = useState(0);
+  /** null: not mounted; true: mounted beside a folded panel and not yet remounted; false: settled. */
+  const pending = useRef<boolean | null>(null);
+  if (!present) pending.current = null;
+  else if (pending.current === null) pending.current = hidden;
+  useEffect(() => {
+    if (!present || hidden || pending.current !== true) return;
+    pending.current = false;
+    // After the panel's own effect has resized it and the group has laid out: the next frame.
+    const frame = requestAnimationFrame(() => setKey((k) => k + 1));
+    return () => cancelAnimationFrame(frame);
+  }, [present, hidden]);
+  return key;
 }
 
 /**

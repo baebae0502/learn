@@ -221,6 +221,8 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
 
 // Spec 10 "axe (no serious violation)": every screen state the library adds beyond the keyboard journey's stops, in one library.
 test('axe at every M4 library state: nothing selected, several, a missing file, no search results, palette items, unsaved changes, busy and saved toasts, loading', async ({}, testInfo) => {
+  // About fourteen axe scans, four imports, an export with held copies and a reload: more than the suite's 120 s on a loaded run.
+  test.setTimeout(240_000);
   const src = testInfo.outputPath('src');
   fs.mkdirSync(src, { recursive: true });
   const gone = path.join(src, 'gone.pdf');

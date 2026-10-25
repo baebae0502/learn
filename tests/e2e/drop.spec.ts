@@ -110,7 +110,10 @@ test('a first drop into an empty library: the overlay goes first, a quiet screen
       const w = window as unknown as { __screens: Array<[string, number]>; __dropped?: boolean };
       w.__screens = [];
       addEventListener('drop', () => (w.__dropped = true), true);
-      const frame = (t: number) => {
+      // The time is read when the callback runs, not the frame's timestamp: that is the compositor's vsync, which a busy
+      // main thread leaves behind the commits it ran first, so a stall made the text look shorter than it stood.
+      const frame = () => {
+        const t = performance.now();
         const empty = document.querySelector('[data-testid="empty-state"]');
         const overlay = document.querySelector('[data-testid="drop-overlay"]') ? '+overlay' : '';
         if (w.__dropped) w.__screens.push([empty ? `${empty.getAttribute('data-busy') ?? 'empty'}:${empty.querySelectorAll('button').length}${overlay}` : `rows${overlay}`, t]);
@@ -142,7 +145,10 @@ test('a first drop into an empty library: the overlay goes first, a quiet screen
     const firstText = screens.find(([k]) => k === 'text:0')![1];
     const lastText = screens.filter(([k]) => k === 'text:0').at(-1)![1];
     expect(firstText - firstQuiet, 'quiet for its first 300 ms').toBeGreaterThanOrEqual(280);
-    expect(lastText - firstText, 'the text, once shown, at least 300 ms').toBeGreaterThanOrEqual(280);
+    // The first frame without the text, not the last one with it: the last frame that still showed it can precede its
+    // removal by a whole frame interval, which on a slow runner is most of the margin.
+    const firstAfter = screens.find(([k, t]) => t > firstText && k !== 'text:0')![1];
+    expect(firstAfter - firstText, 'the text, once shown, at least 300 ms').toBeGreaterThanOrEqual(280);
     // The success toast never says "가져왔습니다" over "가져오는 중…": it waits for the rows.
     await expect(page.getByTestId('import-done')).toBeVisible();
     // The mark is set at the toast's first painted frame, two frames after it is in the DOM: wait for it.

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, closeSheet, expectDisabledReason, SIDEBAR_TOP_TOLERANCE, expectSameShot, expectTooltipText, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, expectDisabledReason, expectSameShot, sidebarTop88, expectTooltipText, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -266,10 +266,7 @@ test('in a narrow window, showing the sidebar and folding it again is not a user
 
 test('layout B invariant: the sidebar top 88 px is pixel-identical in every view, and the width is shared', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
-  const top88 = async () => {
-    await page.mouse.move(900, 700);
-    return page.screenshot({ clip: { x: 0, y: 0, width: 240, height: 88 }, animations: 'disabled', caret: 'hide' });
-  };
+  const top88 = () => sidebarTop88(page);
   try {
     const empty = await top88();
     await importPaths(page, [PDF, MP4]);
@@ -283,7 +280,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     await openItem(page, 'sample-h264-aac');
     await expect(page.getByTestId('video')).toBeVisible();
     const video = await top88();
-    for (const [name, shot] of [['library', library], ['pdf', pdf], ['video', video]] as const) await expectSameShot(page, shot, empty, name, SIDEBAR_TOP_TOLERANCE);
+    for (const [name, shot] of [['library', library], ['pdf', pdf], ['video', video]] as const) await expectSameShot(page, testInfo, shot, empty, name);
     expect(pdfWidth).toBe(240);
     expect(await sidebarWidth(page)).toBe(240);
 
@@ -305,7 +302,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     // Shown again (from the PDF view): the sidebar top is still the one from the empty library.
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect.poll(() => sidebarWidth(page)).toBe(240);
-    await expectSameShot(page, await top88(), empty, 'shown again', SIDEBAR_TOP_TOLERANCE);
+    await expectSameShot(page, testInfo, await top88(), empty, 'shown again');
   } finally {
     await app.close();
   }

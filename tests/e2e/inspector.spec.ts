@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, expectDisabledReason, SIDEBAR_TOP_TOLERANCE, expectSameShot, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, expectSameShot, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, sidebarTop88, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -251,10 +251,7 @@ test('the item panel folds before the sidebar as the window narrows; shown on de
 
 test('layout B: the toolbar spans the content and the item panel, which starts under it; the sidebar top 88 px does not change', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
-  const top88 = async () => {
-    await page.mouse.move(900, 700);
-    return page.screenshot({ clip: { x: 0, y: 0, width: 240, height: 88 }, animations: 'disabled', caret: 'hide' });
-  };
+  const top88 = () => sidebarTop88(page);
   try {
     await roomForPanel(app, page);
     const empty = await top88();
@@ -275,10 +272,10 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
       .locator('[data-testid="import-menu"], [data-testid="search-field"], [data-testid="inspector-toggle"]')
       .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(['import-menu', 'search-field', 'inspector-toggle']);
-    await expectSameShot(page, await top88(), empty, 'with the panel', SIDEBAR_TOP_TOLERANCE);
+    await expectSameShot(page, testInfo, await top88(), empty, 'with the panel');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('hidden');
-    await expectSameShot(page, await top88(), empty, 'panel hidden', SIDEBAR_TOP_TOLERANCE);
+    await expectSameShot(page, testInfo, await top88(), empty, 'panel hidden');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {

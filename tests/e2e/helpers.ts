@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
@@ -611,23 +611,49 @@ export async function expectTooltipText(page: Page, expected: string | RegExp, h
   }
 }
 
+/** What decides how the sidebar's top 88 px is drawn, read when a shot of it is taken (see `sidebarTop88`). */
+const shotStates = new WeakMap<Buffer, Record<string, unknown>>();
+
 /**
- * The sidebar's top 88 px compared between views. On macOS the Mac runs showed 44 px differing by 1-2 per channel (84,87,93
- * against 83,89,95) in x 184-230, y 19-79: the toggle's icon and the launcher's keycaps, only on the glyphs' edge pixels,
- * while positions, sizes and fills were identical. That is the compositor's glyph anti-aliasing, not a layout or colour
- * change (a dimmed or moved glyph steps by tens), so a step of 3 still counts as the same there; elsewhere it is exact.
+ * The sidebar's top 88 px (the toggle, the launcher), shot with the pointer parked away from every control. The state
+ * the pixels depend on is read at the same moment and kept with the shot, so a comparison that fails names it: the
+ * window's key/main flags, the page's focus, which element has it, hover on the two controls, their disabled marks,
+ * the toggle's tooltip, and the document's scroll.
  */
-export const SIDEBAR_TOP_TOLERANCE = process.platform === 'darwin' ? 3 : 0;
+export async function sidebarTop88(page: Page): Promise<Buffer> {
+  await page.mouse.move(900, 700);
+  const state = await page.evaluate(() => {
+    const root = document.documentElement.dataset;
+    const control = (selector: string) => {
+      const el = document.querySelector(selector);
+      return el === null ? null : { hover: el.matches(':hover'), focus: el.matches(':focus, :focus-visible'), disabled: el.getAttribute('aria-disabled') === 'true' || el.matches(':disabled') };
+    };
+    const active = document.activeElement;
+    return {
+      windowInactive: 'windowInactive' in root,
+      windowNotMain: 'windowNotMain' in root,
+      hasFocus: document.hasFocus(),
+      activeElement: active === null ? null : `${active.tagName.toLowerCase()}${active.getAttribute('data-testid') ? `[${active.getAttribute('data-testid')}]` : ''}`,
+      toggle: control('.sidebar-top .icon-btn'),
+      launcher: control('.sidebar .launcher'),
+      tooltips: document.querySelectorAll('.tooltip').length,
+      innerWidth,
+    };
+  });
+  const shot = await page.screenshot({ clip: { x: 0, y: 0, width: 240, height: 88 }, animations: 'disabled', caret: 'hide' });
+  shotStates.set(shot, state);
+  return shot;
+}
 
 /**
  * Two screenshots of the same clip are byte-identical, or the failure says where they differ (pixel count, bounding box,
  * the first differing pixel's two colours), decoded in the page: a pixel-identity test that fails on a machine whose
- * images cannot be looked at must name what moved. `tolerance`: the largest per-channel step still counted as the same
- * (0: exact).
+ * images cannot be looked at must name what moved. A difference also attaches both PNGs and a diff image (differing
+ * pixels red on a dimmed copy, enlarged 4 times) to the test, and the page state each shot was taken in (`sidebarTop88`).
  */
-export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer, name: string, tolerance = 0): Promise<void> {
+export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffer, reference: Buffer, name: string): Promise<void> {
   if (shot.equals(reference)) return;
-  const report = await page.evaluate(async ([a, b, tolerance]) => {
+  const { report, diff } = await page.evaluate(async ([a, b]) => {
     const decode = async (b64: string) => {
       const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }));
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -636,13 +662,16 @@ export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer
       return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
     };
     const [x, y] = await Promise.all([decode(a!), decode(b!)]);
-    if (x.width !== y.width || x.height !== y.height) return `sizes differ: ${x.width}x${y.height} vs ${y.width}x${y.height}`;
+    if (x.width !== y.width || x.height !== y.height) return { report: `sizes differ: ${x.width}x${y.height} vs ${y.width}x${y.height}`, diff: null };
     let count = 0;
     let maxDelta = 0;
     let [x0, y0, x1, y1] = [x.width, x.height, -1, -1];
     let first = '';
+    const out = new ImageData(x.width, x.height);
     for (let i = 0; i < x.data.length; i += 4) {
-      if (x.data[i] === y.data[i] && x.data[i + 1] === y.data[i + 1] && x.data[i + 2] === y.data[i + 2] && x.data[i + 3] === y.data[i + 3]) continue;
+      const same = x.data[i] === y.data[i] && x.data[i + 1] === y.data[i + 1] && x.data[i + 2] === y.data[i + 2] && x.data[i + 3] === y.data[i + 3];
+      out.data.set(same ? [x.data[i]! >> 1, x.data[i + 1]! >> 1, x.data[i + 2]! >> 1, 255] : [255, 0, 0, 255], i);
+      if (same) continue;
       const px = (i / 4) % x.width;
       const py = Math.floor(i / 4 / x.width);
       count++;
@@ -650,10 +679,25 @@ export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer
       [x0, y0, x1, y1] = [Math.min(x0, px), Math.min(y0, py), Math.max(x1, px), Math.max(y1, py)];
       if (first === '') first = `first at ${px},${py}: ${Array.from(x.data.slice(i, i + 4))} vs ${Array.from(y.data.slice(i, i + 4))}`;
     }
-    if (maxDelta <= tolerance) return 'identical';
-    return count === 0 ? 'same pixels, different PNG bytes (encoder)' : `${count} px differ (largest channel step ${maxDelta}) in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`;
-  }, [shot.toString('base64'), reference.toString('base64'), tolerance] as const);
-  expect(report, `${name}: the shots differ`).toBe('identical');
+    if (count === 0) return { report: 'same pixels, different PNG bytes (encoder)', diff: null };
+    const big = new OffscreenCanvas(x.width * 4, x.height * 4);
+    const small = new OffscreenCanvas(x.width, x.height);
+    small.getContext('2d')!.putImageData(out, 0, 0);
+    const bigCtx = big.getContext('2d')!;
+    bigCtx.imageSmoothingEnabled = false;
+    bigCtx.drawImage(small, 0, 0, big.width, big.height);
+    const blob = await big.convertToBlob({ type: 'image/png' });
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return { report: `${count} px differ (largest channel step ${maxDelta}) in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`, diff: btoa(binary) };
+  }, [shot.toString('base64'), reference.toString('base64')] as const);
+  const states = { shot: shotStates.get(shot) ?? null, reference: shotStates.get(reference) ?? null };
+  await testInfo.attach(`${name}-shot.png`, { body: shot, contentType: 'image/png' });
+  await testInfo.attach(`${name}-reference.png`, { body: reference, contentType: 'image/png' });
+  if (diff !== null) await testInfo.attach(`${name}-diff.png`, { body: Buffer.from(diff, 'base64'), contentType: 'image/png' });
+  await testInfo.attach(`${name}-states.json`, { body: JSON.stringify(states, null, 2), contentType: 'application/json' });
+  expect(`${report}\nstates: ${JSON.stringify(states)}`, `${name}: the shots differ`).toBe('identical');
 }
 
 /** Whether the application-menu item exists, is visible and is enabled right now. */

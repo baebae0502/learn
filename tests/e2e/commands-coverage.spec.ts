@@ -208,6 +208,7 @@ test('every registry command runs without a page error (library and reader menus
     // matches the query, so the cursor is on the first command row, above the 라이브러리에서 검색 row.
     await rowByTitle(page, 'sample').click();
     await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
     await page.keyboard.type('정보 편집');
     await expect(page.getByTestId('palette-result')).toHaveCount(0);
     await expect(page.locator('.palette [role="option"][data-focused]')).toHaveAttribute('data-command-id', 'item.editInfo');

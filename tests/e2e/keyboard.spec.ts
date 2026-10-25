@@ -77,6 +77,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expect(page.getByTestId('library-table')).toBeVisible();
 
     await runMenuCommand(app, 'app.palette'); // ⌘K
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
     await expectNoSeriousA11y(page, 'palette');
     await page.keyboard.type('ㅅㅇㄷㅂ');
     await expectNoSeriousA11y(page, 'palette, 초성 results');
@@ -85,6 +86,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await runMenuCommand(app, 'view.toggleSidebar'); // ⌃⌘S
 
     await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
     await page.keyboard.type('효소 억제제');
     await expect(page.getByTestId('palette-empty')).toBeVisible();
     // The library has items: the hand-off to the quick search stays, the one row, under the cursor (spec §4.4).
@@ -95,6 +97,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
 
     const settings = await expectWindow(app, 'settings', async () => {
       await runMenuCommand(app, 'app.palette');
+      await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
       await page.keyboard.type('설정');
       await page.keyboard.press('Enter');
     });
@@ -254,6 +257,7 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
     await expectNoSeriousA11y(page, 'item panel, a linked file that is missing');
 
     await runMenuCommand(app, 'library.find');
+    await expect(page.getByTestId('search-field').getByRole('searchbox')).toBeFocused();
     await page.keyboard.type('효소 억제제');
     await expect(page.getByTestId('search-empty')).toBeVisible();
     await expectNoSeriousA11y(page, 'library, no search results');
@@ -261,6 +265,7 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
     await expect(page.getByTestId('item-row')).toHaveCount(4);
 
     await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
     await page.keyboard.type('sample');
     await expect(page.getByTestId('palette-result').first()).toBeVisible();
     await expectNoSeriousA11y(page, 'palette, item results');
@@ -559,6 +564,7 @@ test('a menu toggle after the palette closed moves no focus and pops no tooltip'
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused(); // the keys go to the field that has the focus when they arrive
     await page.keyboard.type('ㄱㅈㅇ');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('palette')).toHaveCount(0);

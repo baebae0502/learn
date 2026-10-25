@@ -681,6 +681,7 @@ test('M4 library: ⌘K finds items — 자료 above 명령, 라이브러리에�
       }
     } else await runMenuCommand(s.app, 'app.palette');
     await expect(palette).toBeVisible({ timeout: 5_000 });
+    await expect(s.page.getByTestId('palette-input')).toBeFocused({ timeout: 5_000 });
     await s.page.keyboard.insertText('형광');
     await guard('palette: 자료 above 명령, the cursor on the first item, 라이브러리에서 ‘신호’ 검색 last', async () => {
       await expect(s.page.getByTestId('palette-result')).toHaveCount(3, { timeout: 5_000 });

@@ -40,6 +40,9 @@ export interface LaunchOptions {
   colorScheme?: null | 'light' | 'dark';
 }
 
+/** How long a session's close may take before the app process is killed. */
+const CLOSE_GRACE_MS = 10_000;
+
 /**
  * Launch the built app. `null` for a directory leaves that variable unset so the app uses its
  * default location (only for disposable machines such as CI runners).
@@ -60,6 +63,19 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
     ...(opts.colorScheme !== undefined ? { colorScheme: opts.colorScheme } : {}),
   });
+  // The app refuses to quit while an edited field is invalid, so a test that failed in that state would wait on close()
+  // until the worker's teardown timeout and take the rest of the run with it. A close that has not finished by then is
+  // killed, so the test's own failure is what gets reported.
+  const close = app.close.bind(app);
+  app.close = async () => {
+    const child = app.process();
+    const timer = setTimeout(() => child.kill('SIGKILL'), CLOSE_GRACE_MS);
+    try {
+      await close();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   try {
     const page = await app.firstWindow();
     await expect(page.getByTestId('app-ready')).toBeAttached();
@@ -666,7 +682,8 @@ export async function sidebarTop88(page: Page): Promise<Buffer> {
  * images cannot be looked at must name what moved. A difference also attaches both PNGs and a diff image (differing
  * pixels red on a dimmed copy, enlarged 4 times) to the test, and the page state each shot was taken in (`sidebarTop88`).
  * On macOS, where the sidebar is clear over the window material, translucent pixels are compared after laying both shots
- * over the sidebar's opaque colour with a small tolerance (`compareShots`); on Linux the compare stays exact.
+ * over the sidebar's opaque colour with a small tolerance, and a few anti-aliased corner pixels may differ more (`compareShots`);
+ * on Linux the compare stays exact.
  */
 export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffer, reference: Buffer, name: string): Promise<void> {
   if (shot.equals(reference)) return;
@@ -696,7 +713,7 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
   if (x.width !== y.width || x.height !== y.height) report = `sizes differ: ${x.width}x${x.height} vs ${y.width}x${y.height}`;
   else {
     // Over the macOS window material the shots are translucent and the renderer's soft edges vary by a few steps from
-    // shot to shot; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
+    // shot to shot, and so do a rounded corner's anti-aliased pixels; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
     const result = compareShots(x, y, process.platform === 'darwin' ? decoded.fallback : null);
     if (result.count === 0) {
       if (process.platform === 'darwin' && (isTranslucent(x) || isTranslucent(y))) return;

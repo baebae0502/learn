@@ -4,6 +4,7 @@ import { _electron as electron, expect, type ElectronApplication, type Locator, 
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
+import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
   interface Window {
@@ -664,48 +665,63 @@ export async function sidebarTop88(page: Page): Promise<Buffer> {
  * the first differing pixel's two colours), decoded in the page: a pixel-identity test that fails on a machine whose
  * images cannot be looked at must name what moved. A difference also attaches both PNGs and a diff image (differing
  * pixels red on a dimmed copy, enlarged 4 times) to the test, and the page state each shot was taken in (`sidebarTop88`).
+ * On macOS, where the sidebar is clear over the window material, translucent pixels are compared after laying both shots
+ * over the sidebar's opaque colour with a small tolerance (`compareShots`); on Linux the compare stays exact.
  */
 export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffer, reference: Buffer, name: string): Promise<void> {
   if (shot.equals(reference)) return;
-  const { report, diff } = await page.evaluate(async ([a, b]) => {
+  const decoded = await page.evaluate(async ([a, b]) => {
     const decode = async (b64: string) => {
-      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(bitmap, 0, 0);
-      return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      let binary = '';
+      for (let i = 0; i < data.length; i += 0x8000) binary += String.fromCharCode(...data.subarray(i, i + 0x8000));
+      return { width, height, data: btoa(binary) };
     };
-    const [x, y] = await Promise.all([decode(a!), decode(b!)]);
-    if (x.width !== y.width || x.height !== y.height) return { report: `sizes differ: ${x.width}x${y.height} vs ${y.width}x${y.height}`, diff: null };
-    let count = 0;
-    let maxDelta = 0;
-    let [x0, y0, x1, y1] = [x.width, x.height, -1, -1];
-    let first = '';
-    const out = new ImageData(x.width, x.height);
-    for (let i = 0; i < x.data.length; i += 4) {
-      const same = x.data[i] === y.data[i] && x.data[i + 1] === y.data[i + 1] && x.data[i + 2] === y.data[i + 2] && x.data[i + 3] === y.data[i + 3];
-      out.data.set(same ? [x.data[i]! >> 1, x.data[i + 1]! >> 1, x.data[i + 2]! >> 1, 255] : [255, 0, 0, 255], i);
-      if (same) continue;
-      const px = (i / 4) % x.width;
-      const py = Math.floor(i / 4 / x.width);
-      count++;
-      for (let k = 0; k < 4; k++) maxDelta = Math.max(maxDelta, Math.abs(x.data[i + k]! - y.data[i + k]!));
-      [x0, y0, x1, y1] = [Math.min(x0, px), Math.min(y0, py), Math.max(x1, px), Math.max(y1, py)];
-      if (first === '') first = `first at ${px},${py}: ${Array.from(x.data.slice(i, i + 4))} vs ${Array.from(y.data.slice(i, i + 4))}`;
-    }
-    if (count === 0) return { report: 'same pixels, different PNG bytes (encoder)', diff: null };
-    const big = new OffscreenCanvas(x.width * 4, x.height * 4);
-    const small = new OffscreenCanvas(x.width, x.height);
-    small.getContext('2d')!.putImageData(out, 0, 0);
-    const bigCtx = big.getContext('2d')!;
-    bigCtx.imageSmoothingEnabled = false;
-    bigCtx.drawImage(small, 0, 0, big.width, big.height);
-    const blob = await big.convertToBlob({ type: 'image/png' });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let binary = '';
-    for (const byte of bytes) binary += String.fromCharCode(byte);
-    return { report: `${count} px differ (largest channel step ${maxDelta}) in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`, diff: btoa(binary) };
+    // The sidebar's opaque colour without the window material: the token the sidebar paints when it is not clear.
+    const token = getComputedStyle(document.documentElement).getPropertyValue('--bg-sidebar').trim();
+    const swatch = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    swatch.fillStyle = token === '' ? '#000' : token;
+    swatch.fillRect(0, 0, 1, 1);
+    const [r, g, bl] = swatch.getImageData(0, 0, 1, 1).data;
+    return { x: await decode(a!), y: await decode(b!), fallback: [r!, g!, bl!] };
   }, [shot.toString('base64'), reference.toString('base64')] as const);
+  const pixels = (d: { width: number; height: number; data: string }): Pixels => ({ width: d.width, height: d.height, data: Buffer.from(d.data, 'base64') });
+  const [x, y] = [pixels(decoded.x), pixels(decoded.y)];
+  let report: string;
+  let diff: string | null = null;
+  if (x.width !== y.width || x.height !== y.height) report = `sizes differ: ${x.width}x${x.height} vs ${y.width}x${y.height}`;
+  else {
+    // Over the macOS window material the shots are translucent and the renderer's soft edges vary by a few steps from
+    // shot to shot; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
+    const result = compareShots(x, y, process.platform === 'darwin' ? decoded.fallback : null);
+    if (result.count === 0) {
+      if (process.platform === 'darwin' && (isTranslucent(x) || isTranslucent(y))) return;
+      report = 'same pixels, different PNG bytes (encoder)';
+    } else {
+      const { box } = result;
+      report = `${result.count} px differ (largest channel step ${result.maxDelta}) in x ${box!.x0}–${box!.x1}, y ${box!.y0}–${box!.y1}; ${result.first}`;
+      diff = await page.evaluate(async ([a, flags, w, h]) => {
+        const src = Uint8Array.from(atob(a!), (c) => c.charCodeAt(0));
+        const mark = Uint8Array.from(atob(flags!), (c) => c.charCodeAt(0));
+        const out = new ImageData(w!, h!);
+        for (let i = 0; i < mark.length; i++) out.data.set(mark[i] ? [255, 0, 0, 255] : [src[i * 4]! >> 1, src[i * 4 + 1]! >> 1, src[i * 4 + 2]! >> 1, 255], i * 4);
+        const big = new OffscreenCanvas(w! * 4, h! * 4);
+        const small = new OffscreenCanvas(w!, h!);
+        small.getContext('2d')!.putImageData(out, 0, 0);
+        const bigCtx = big.getContext('2d')!;
+        bigCtx.imageSmoothingEnabled = false;
+        bigCtx.drawImage(small, 0, 0, big.width, big.height);
+        const bytes = new Uint8Array(await (await big.convertToBlob({ type: 'image/png' })).arrayBuffer());
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }, [Buffer.from(x.data).toString('base64'), Buffer.from(result.differs).toString('base64'), x.width, x.height] as const);
+    }
+  }
   const states = { shot: shotStates.get(shot) ?? null, reference: shotStates.get(reference) ?? null };
   await testInfo.attach(`${name}-shot.png`, { body: shot, contentType: 'image/png' });
   await testInfo.attach(`${name}-reference.png`, { body: reference, contentType: 'image/png' });

@@ -45,7 +45,7 @@ export function InfoHead({ item }: { item: LibraryItem }) {
       {byline && <div className="authors">{byline}</div>}
       <div className="actions">
         {relinkFirst && (
-          <Button variant="primary" testId="inspector-relink" onPress={() => run('item.relink', target)} isDisabled={!isEnabled('item.relink', target)} disabledReason={t.common.busy}>
+          <Button variant={editing ? 'secondary' : 'primary'} testId="inspector-relink" onPress={() => run('item.relink', target)} isDisabled={!isEnabled('item.relink', target)} disabledReason={t.common.busy}>
             {label('item.relink')}
           </Button>
         )}

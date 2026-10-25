@@ -13,6 +13,8 @@ export interface LibraryState extends SelectionState {
   setSelection(next: SelectionState): void;
   /** Keep only ids still shown (list change, search); an anchor or cursor that is gone goes too. */
   pruneSelected(shown: ReadonlySet<string>): void;
+  /** The ids the last prune took out of the selection (a new set each time): told apart from a deselect by the user. */
+  pruned: ReadonlySet<string>;
   /** The item the reader last opened, by whatever path (table, palette, import): the table shows its row on return. */
   lastOpenedId: string | null;
   setLastOpened(id: string | null): void;
@@ -31,6 +33,7 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   selected: NONE,
   anchorId: null,
   cursorId: null,
+  pruned: NONE,
   lastOpenedId: null,
   query: '',
   editingId: null,
@@ -53,6 +56,6 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
     const keep = (id: string | null) => (id !== null && shown.has(id) ? id : null);
     const kept = [...selected].every((id) => shown.has(id)) ? selected : new Set([...selected].filter((id) => shown.has(id)));
     if (kept === selected && keep(anchorId) === anchorId && keep(cursorId) === cursorId) return;
-    set({ selected: kept.size === 0 ? NONE : kept, anchorId: keep(anchorId), cursorId: keep(cursorId) });
+    set({ selected: kept.size === 0 ? NONE : kept, anchorId: keep(anchorId), cursorId: keep(cursorId), pruned: new Set([...selected].filter((id) => !shown.has(id))) });
   },
 }));

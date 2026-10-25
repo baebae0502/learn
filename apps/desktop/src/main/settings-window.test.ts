@@ -59,6 +59,9 @@ class FakeWindow extends EventEmitter {
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   /** The frame: the content plus a 28 pt title bar. */
   getBounds = () => ({ x: this.position?.[0] ?? 0, y: this.position?.[1] ?? 0, width: this.contentSize[0], height: this.contentSize[1] + 28 });
+  /** The colours set after creation, with whether the window was already on screen. */
+  backgrounds: { colour: string; shownThen: boolean }[] = [];
+  setBackgroundColor = (colour: string) => void this.backgrounds.push({ colour, shownThen: this.shown });
   show = () => void (this.shown = true);
   hide = () => {
     this.shown = false;
@@ -84,7 +87,8 @@ class FakeWindow extends EventEmitter {
 
 /** The display every frame lands on (tests change it). */
 const display = { workArea: { x: 0, y: 25, width: 1920, height: 1150 } };
-vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: true }, screen: { getDisplayMatching: () => display } }));
+const nativeTheme = { shouldUseDarkColors: true };
+vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme, screen: { getDisplayMatching: () => display } }));
 const { SETTINGS_WIDTH, createSettingsWindow, settingsPosition } = await import('./settings-window');
 
 const MAIN = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 40, width: 1440, height: 900 }) } as unknown as BrowserWindow;
@@ -96,6 +100,7 @@ async function ready(w: FakeWindow): Promise<void> {
 
 beforeEach(() => {
   FakeWindow.all = [];
+  nativeTheme.shouldUseDarkColors = true;
   fontsLoaded = Promise.resolve(true);
 });
 
@@ -280,6 +285,16 @@ describe('the settings window prepared hidden once the main window is idle (spec
     expect(w.shown).toBe(true);
     expect(w.focused).toBe(1);
     expect(w.position).toEqual([300 + (1200 - 600) / 2, 200 + 96]);
+  });
+
+  it('a theme change while it was hidden: its first shown frame has the current theme\'s colour', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    nativeTheme.shouldUseDarkColors = false; // changed while hidden; the theme follower skips a hidden window
+    settings.open();
+    expect(w.backgrounds).toEqual([{ colour: windowBackground.light, shownThen: false }]);
   });
 
   it('⌘, while it is still being measured shows it, sized and placed, once measured', async () => {

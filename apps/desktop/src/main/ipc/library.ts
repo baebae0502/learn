@@ -124,7 +124,7 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
 
   /**
    * The file to hand the OS for an item: a name the OS can open by its extension (openableFile: the named copy under
-   * derived/open/ for a managed asset, or for a linked file whose extension misleads; final review I1).
+   * derived/open/ for a managed asset, or for a linked file whose extension misleads).
    */
   async function existingFile(itemId: string): Promise<string> {
     const { ctx, item, asset, src } = await availableAsset(itemId);
@@ -164,7 +164,8 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
       // The file itself, never a link to it (a clone of a symlink is the symlink on macOS, as for the named copy).
       const source = await fs.realpath(src);
       // Never onto the source or into the library: the rename would replace a stored copy with its own copy.
-      if ((await exportDestinationRefusal(source, res.filePath, ctx.layout.root)) !== null) throw new LearnError('VALIDATION_FAILED', mainStrings.exportCopy.inLibrary);
+      const refusal = await exportDestinationRefusal(source, res.filePath, ctx.layout.root);
+      if (refusal !== null) throw new LearnError('VALIDATION_FAILED', refusal === 'source' ? mainStrings.exportCopy.onSource : mainStrings.exportCopy.inLibrary);
       await exportFile(source, res.filePath);
     } catch (e) {
       throw exportError(e);

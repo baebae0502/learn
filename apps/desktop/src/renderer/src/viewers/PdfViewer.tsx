@@ -49,6 +49,11 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
           setOpenFailed(true);
         },
       );
+    }).catch((e: unknown) => {
+      // The pdf.js module itself did not load.
+      if (cancelled) return;
+      logFailure(e);
+      setOpenFailed(true);
     });
     return () => {
       cancelled = true;

@@ -165,13 +165,13 @@ describe('사본 내보내기 (spec §7) — in order: the run remembers the las
     const snapshot = (dir: string): string[] => fs.readdirSync(dir, { recursive: true, encoding: 'utf8' }).sort();
     const refused = { ok: false, code: 'VALIDATION_FAILED', message: mainStrings.exportCopy.inLibrary };
 
-    it('the source file itself, by its path or through a symlink to it', async () => {
+    it('the source file itself, by its path or through a symlink to it: said as the original\'s own place, not as the library', async () => {
       const link = path.join(tmp, 'link-to-asset.pdf');
       fs.rmSync(link, { force: true });
       fs.symlinkSync(assetFile, link);
       for (const target of [assetFile, link]) {
         panel.answer = target;
-        expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
+        expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject({ ...refused, message: mainStrings.exportCopy.onSource });
       }
       expect(fs.readFileSync(assetFile, 'utf8')).toBe(BYTES);
       expect(fs.readdirSync(path.dirname(assetFile))).toEqual([SHA]);
@@ -186,6 +186,15 @@ describe('사본 내보내기 (spec §7) — in order: the run remembers the las
         panel.answer = target;
         expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
       }
+      expect(snapshot(layout.root)).toEqual(before);
+    });
+
+    it('a folder named like "..notes" inside the library is inside it, not a way out', async () => {
+      const dotted = path.join(layout.root, '..notes');
+      fs.mkdirSync(dotted, { recursive: true });
+      const before = snapshot(layout.root);
+      panel.answer = path.join(dotted, 'x.pdf');
+      expect(await invoke('library:exportCopy', { itemId: ITEM })).toMatchObject(refused);
       expect(snapshot(layout.root)).toEqual(before);
     });
 

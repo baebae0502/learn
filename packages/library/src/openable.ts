@@ -280,6 +280,9 @@ export function exportTempName(fileName: string, id: string = randomUUID()): str
 /** The real path with the case the file system reports (fs/promises' realpath keeps the case it was given). */
 const realpathNative = promisify(realpathCb.native);
 
+/** A relative path that stays under its base: a folder named `..notes` is inside, `..` and `../x` are not. */
+const isInside = (rel: string): boolean => rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+
 /**
  * Whether a chosen export path may not be written: it is the source file itself (the rename would replace the stored
  * asset, or a linked original, with itself half-copied away) or lies under the library root (managed copies, named
@@ -298,12 +301,12 @@ export async function exportDestinationRefusal(src: string, dst: string, library
   ]);
   if (target === realSrc || (there !== null && there.dev === source.dev && there.ino === source.ino && there.ino !== 0)) return 'source';
   const rel = path.relative(root, target);
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return 'library';
+  if (rel === '' || isInside(rel)) return 'library';
   // A symlink standing at the name is replaced by the rename, not followed — but one that leads into the library is refused all the same.
   const resolved = await realpathNative(target).catch(() => null);
   if (resolved !== null) {
     const via = path.relative(root, resolved);
-    if (!via.startsWith('..') && !path.isAbsolute(via)) return 'library';
+    if (isInside(via)) return 'library';
   }
   return null;
 }

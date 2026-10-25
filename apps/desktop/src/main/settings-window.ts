@@ -75,6 +75,8 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
   }
   function reveal(w: BrowserWindow): void {
     place(w);
+    // The theme may have changed while it was hidden (the theme follower skips a hidden window): its first frame has today's colour.
+    w.setBackgroundColor(windowBackground[currentTheme()]);
     phase = 'shown';
     // Awake before it is on screen: a prepared window sleeps (timers slowed, frames paused) and must paint at once.
     w.webContents.setBackgroundThrottling(false);

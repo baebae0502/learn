@@ -3,7 +3,7 @@
 // form (no menu accelerator), so it is pressed in the page.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, mainWindow, rowByTitle, runMenuCommand, selectRows, showItemPanel, windowKinds } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, menuItemEnabled, rowByTitle, runMenuCommand, selectRows, showItemPanel, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -374,6 +374,75 @@ test('one save at a time: a double press of 저장 writes once', async ({}, test
     await app.evaluate(() => (globalThis as { __learnRelease?: () => void }).__learnRelease?.());
     await expect(page.getByTestId('info-editor')).toHaveCount(0);
     expect(await app.evaluate(() => (globalThis as { __learnWrites?: number }).__learnWrites)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('an invalid edit whose row the quick search hides leaves the focus in the search field, the selection without the row, the unsaved line up', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF, KO_PDF]);
+    await showItemPanel(app, page);
+    await selectRows(page, ['sample']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'date').fill('2024-0');
+    await runMenuCommand(app, 'library.find');
+    const search = page.getByTestId('search-field').locator('input');
+    await expect(search).toBeFocused();
+    await page.keyboard.type('한글');
+    await expect(search).toHaveValue('한글');
+    await expect(rowByTitle(page, 'sample')).toHaveCount(0);
+    await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+    await page.keyboard.type(' 경로'); // a later keystroke still lands in the search field
+    await page.waitForTimeout(300); // past the retry frame
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue('한글 경로');
+    await expect(field(page, 'date')).toHaveValue('2024-0');
+    await expect(field(page, 'date')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    // The hidden row did not come back into the selection: no command acts on it (spec 3.3).
+    await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(false);
+    await expect(page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(0);
+  } finally {
+    await page.getByTestId('editor-discard').click({ timeout: 2000 }).catch(() => undefined); // an invalid edit would keep the app from closing
+    await app.close();
+  }
+});
+
+test('typing during a pending save is kept: the form stays open with what was typed after the write began', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    await showItemPanel(app, page);
+    await selectRows(page, ['sample']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'publisher').fill('학습출판');
+    await app.evaluate(({ ipcMain }) => {
+      const g = globalThis as { __learnRelease?: () => void };
+      const handlers = (ipcMain as unknown as { _invokeHandlers: Map<string, (...a: unknown[]) => Promise<unknown>> })._invokeHandlers;
+      const original = handlers.get('library:updateMetadata')!;
+      ipcMain.removeHandler('library:updateMetadata');
+      let held = false;
+      ipcMain.handle('library:updateMetadata', async (...a) => {
+        // Only the first write is held; the save that follows it goes straight through.
+        if (!held) {
+          held = true;
+          await new Promise<void>((r) => (g.__learnRelease = r));
+        }
+        return original(...(a as [unknown, unknown]));
+      });
+    });
+    await page.getByTestId('editor-save').dispatchEvent('click');
+    await expect(page.getByTestId('editor-save')).toHaveAttribute('data-pending', /.*/).catch(() => undefined);
+    await field(page, 'language').fill('영어'); // typed while the write is pending
+    await app.evaluate(() => (globalThis as { __learnRelease?: () => void }).__learnRelease?.());
+    await expect.poll(async () => (await detailOf(page, pdf!.id)).metadata.publisher).toBe('학습출판');
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    await expect(field(page, 'language')).toHaveValue('영어');
+    await page.getByTestId('editor-save').click();
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    expect((await detailOf(page, pdf!.id)).metadata).toMatchObject({ publisher: '학습출판', language: '영어' });
   } finally {
     await app.close();
   }

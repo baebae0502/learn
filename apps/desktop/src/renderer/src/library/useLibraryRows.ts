@@ -6,15 +6,14 @@ import { useSearch } from './useSearch';
 import { useLibrarySettings } from './useLibrarySettings';
 
 /**
- * The rows the table shows: the whole list in the stored sort. `total` is the list's size (for the "N개 / M개" count
- * once a search narrows the list); `titleMatches` is the search's matched range per title, null until a search exists.
+ * The rows the table shows: the whole list in the stored sort. `titleMatches` is the search's matched range per title, null until a search exists.
  */
-export function useLibraryRows(items: readonly LibraryItem[]): { rows: readonly LibraryItem[]; total: number; titleMatches: ReadonlyMap<string, Match> | null } {
+export function useLibraryRows(items: readonly LibraryItem[]): { rows: readonly LibraryItem[]; titleMatches: ReadonlyMap<string, Match> | null } {
   const { sort } = useLibrarySettings();
   const sorted = useMemo(() => sortItems(items, sort), [items, sort]);
   // Quick search filters the sorted rows: the order stays the table's (spec 4.2); relevance ranks only the palette.
   // The index is built once per list (buildSearchIndex) and each query searched once (search), shared with the toolbar.
   const found = useSearch(items);
   const rows = useMemo(() => (found ? sorted.filter((i) => found.ids.has(i.id)) : sorted), [sorted, found]);
-  return { rows, total: items.length, titleMatches: found?.titleMatches ?? null };
+  return { rows, titleMatches: found?.titleMatches ?? null };
 }

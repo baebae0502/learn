@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { commandById, commandLabel, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
-import { api, unwrap } from '../api';
+import { ApiError, api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
@@ -57,7 +57,6 @@ import { useWarmUp } from './useWarmUp';
 /** A failed relink, context-menu or file call: the message comes from main and is already Korean (cause + next step). */
 const actionFailed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' });
 
-/** The item's title as the list has it: the busy toast names what main is copying. */
 /** The busy toast's second line: the file being copied, by the name it came with. */
 const fileNameOf = (itemId: string): string => queryClient.getQueryData<LibraryItem[]>(keys.items)?.find((i) => i.id === itemId)?.originalName ?? '';
 
@@ -65,9 +64,8 @@ const fileNameOf = (itemId: string): string => queryClient.getQueryData<LibraryI
 const fileAction = (kind: 'open' | 'reveal', itemId: string, call: () => Promise<Result<void>>): void => void runFileAction(kind, fileNameOf(itemId), call).catch(actionFailed);
 /** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
 const DROP_CLEAR_FALLBACK_MS = 250;
-/** The list before its first read: one array, so the command env's memo holds (final review nit). */
+/** The list before its first read: one array, so the command env's memo holds. */
 const NO_ITEMS: readonly LibraryItem[] = [];
-/** The table selection until the table reports one: one function, so the env's memo holds. */
 
 export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
@@ -179,7 +177,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         revealLabel: commandLabel(commandById('item.showInFolder'), currentPlatform()),
         reveal: () => void unwrap(api().library.revealExport()).catch(actionFailed),
         show: showToast,
-        log: (e) => console.error('[export] the call failed', e),
+        log: (e) => console.error(`[export] the call failed: ${e instanceof ApiError ? e.code : ((e as Error)?.name ?? 'Error')}`),
       }),
     [],
   );
@@ -294,7 +292,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     showInFolder: (itemId) => fileAction('reveal', itemId, () => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction('open', itemId, () => api().library.openExternally({ itemId })),
     exportCopy: (itemId) => void exportCopy(itemId),
-    // Placeholder until the editor screen gives the command its handler (inspector/startEditing.ts).
+    // Opens the edit form on the selected item, showing a folded panel first (inspector/startEditing.ts).
     editInfo: startEditing,
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,

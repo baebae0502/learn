@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem } from '@learn/domain';
+import { ApiError } from '../api';
 import { useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
 import { useLibrarySettings } from '../library/useLibrarySettings';
@@ -101,7 +102,7 @@ export function ItemInfo({ item }: { item: LibraryItem }) {
   const detail = useItemDetail(item.id);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
   useEffect(() => {
-    if (detail.isError) console.warn(`[inspector] detail failed: ${detail.error.message}`);
+    if (detail.isError) console.warn(`[inspector] detail failed: ${detail.error instanceof ApiError ? detail.error.code : 'INTERNAL'}`);
   }, [detail.isError, detail.error]);
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>

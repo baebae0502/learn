@@ -41,6 +41,8 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
   const [focusRow, setFocusRow] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef(draft);
+  /** What the library holds as of now: the form the edit started from, then whatever was last saved (typing may go on during a write). */
+  const baseRef = useRef(initial);
   useLayoutEffect(() => {
     draftRef.current = draft;
   });
@@ -86,22 +88,25 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     useLibrary.getState().setEditing(null);
     if (returnFocus && hadFocus) requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="info-edit"]')?.focus());
   };
-  /** True once the library has it; a failure is a toast and the form stays (spec §5.3). */
+  /** Set when the quick search, not a pick of another row, took this item out of the selection. */
+  const hiddenRef = useRef(false);
   const saveInFlight = useRef<Promise<boolean> | null>(null);
   /** One save at a time: a second press, or a row change while one is pending, waits for that one's answer. */
   const save = (value: CleanInfo): Promise<boolean> => {
-    saveInFlight.current ??= write(value).finally(() => {
+    saveInFlight.current ??= write(value, draftRef.current).finally(() => {
       saveInFlight.current = null;
     });
     return saveInFlight.current;
   };
-  const write = async (value: CleanInfo): Promise<boolean> => {
+  /** True once the library has it; a failure is a toast and the form stays (spec §5.3). */
+  const write = async (value: CleanInfo, sent: InfoDraft): Promise<boolean> => {
     setSaving(true);
     try {
       const saved = await unwrap(api().library.updateMetadata({ itemId: item.id, title: value.title, metadata: value.metadata }));
       // What the panel and the row show next, before libraryChanged's reads come back (no frame of the old values).
       queryClient.setQueryData<ItemDetail>(keys.detail(item.id), (d) => (d ? { ...d, item: saved, metadata: value.metadata } : d));
       queryClient.setQueryData<LibraryItem[]>(keys.items, (list) => list?.map((i) => (i.id === saved.id ? saved : i)));
+      baseRef.current = sent;
       return true;
     } catch (err) {
       showToast({ kind: 'error', title: e.saveFailed, body: (err as Error).message, testId: 'save-failed' });
@@ -131,20 +136,23 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
       focusFirstError(v.errors);
       return;
     }
-    if (sameInfo(draftRef.current, initial)) return end(true);
-    if (await save(v.value)) end(true);
+    if (sameInfo(draftRef.current, baseRef.current)) return end(true);
+    // What was typed while the write ran is not saved yet: the form stays open with it (the next press saves it).
+    if ((await save(v.value)) && sameInfo(draftRef.current, baseRef.current)) end(true);
   };
   /** The session's answer when something leaves the item (spec §5.3). */
   const leave = async (): Promise<boolean> => {
-    const d = draftRef.current;
-    if (sameInfo(d, initial)) {
-      end(false);
-      return true;
-    }
-    const v = validateInfo(d);
-    if (v.ok && (await save(v.value))) {
-      end(false);
-      return true;
+    const hidden = hiddenRef.current;
+    hiddenRef.current = false;
+    let v = validateInfo(draftRef.current);
+    for (;;) {
+      if (sameInfo(draftRef.current, baseRef.current)) {
+        end(false);
+        return true;
+      }
+      v = validateInfo(draftRef.current);
+      if (!v.ok || !(await save(v.value))) break;
+      // Typing that came while the write ran is saved too (the loop asks again), never dropped with the form.
     }
     if (!v.ok) {
       setShowErrors(true);
@@ -153,30 +161,40 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     }
     // Back to the edited item (and after a failed save, whose toast says why): it is the anchor and the keyboard cursor
     // again too, so the arrows go on from it.
-    useLibrary.getState().setSelected([item.id]);
+    // Not when the quick search hid the row: nothing off screen may be selected (spec 3.3), and the panel keeps showing
+    // the edited item through editingId.
+    if (!hidden) useLibrary.getState().setSelected([item.id]);
     // The focus goes to the marked field, not on in the table: the field draws its halo and the table's selection turns
     // neutral by itself. The answer never waits for a paint (a hidden or occluded window runs no frames, and main's
     // flush would time out and let the window go): focus now, and once more after the next frame if the table took it back.
-    if (!v.ok) {
+    // Unless the person is typing elsewhere (the search field while the query hides this row): their keystrokes stay theirs.
+    if (!v.ok && !typingOutside()) {
       focusFirstError(v.errors);
       requestAnimationFrame(() => {
-        if (rootRef.current && !rootRef.current.contains(document.activeElement)) focusFirstError(v.errors);
+        if (rootRef.current && !rootRef.current.contains(document.activeElement) && !typingOutside()) focusFirstError(v.errors);
       });
     }
     return false;
+  };
+  /** The focus is in a text field that is not part of this form. */
+  const typingOutside = () => {
+    const a = document.activeElement;
+    return (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) && !(rootRef.current?.contains(a) ?? false);
   };
   const leaveRef = useRef(leave);
   useLayoutEffect(() => {
     leaveRef.current = leave;
   });
 
-  useEffect(() => openEditSession({ itemId: item.id, dirty: () => !sameInfo(draftRef.current, initial), leave: () => leaveRef.current() }), [item.id, initial]);
+  useEffect(() => openEditSession({ itemId: item.id, dirty: () => !sameInfo(draftRef.current, baseRef.current), leave: () => leaveRef.current() }), [item.id]);
   // Another row: whatever the table did — a press, an arrow, ⌘A, esc emptying it, the first press of a
   // double-click — the edit is asked first (a selection of exactly this item is no change; nor is our own setSelected).
   useEffect(
     () =>
       useLibrary.subscribe((s, prev) => {
         if (s.selected === prev.selected || (s.selected.size === 1 && s.selected.has(item.id))) return;
+        // The quick search hiding the row is not a pick of another row (store: pruned).
+        hiddenRef.current = s.pruned !== prev.pruned && s.pruned.has(item.id);
         void leaveEditing();
       }),
     [item.id],

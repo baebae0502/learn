@@ -8,7 +8,7 @@ export const toast = {
   /** `command`: 파일 가져오기 as prose names it (commandMention: no "…", critic T14-n2). */
   dropNoPathBody: (command: string) => `파일 위치를 확인할 수 없습니다. 파일 › ${command}로 다시 시도하세요.`,
   actionFailed: '작업을 마치지 못했습니다',
-  /** A first copy in main past 300 ms: what is being made; the item's title is the line under it. */
+  /** A first copy in main past 300 ms: what is being made; the file's original name is the line under it. */
   busy: { open: '여는 중…', reveal: '여는 중…', export: '내보내는 중…' },
   /** 사본 내보내기…: saved, with the reveal action; or why not (main's cause and next step as the body). */
   exportSaved: '사본을 저장했습니다',

@@ -578,7 +578,7 @@ test('M4 library: 정보 편집 — the form in place, ⌘↩ from a real keystr
 test('M4 library: 사본 내보내기… — the default name, nothing partial at the chosen path, no busy toast under the panel, 내보내는 중… after it', TAG, async ({}, testInfo) => {
   const dir = testInfo.outputPath('export');
   // A second profile beside the shared session (as shell.evidence.ts does): the shared window is hidden meanwhile — both
-  // open at the same place, and Chromium stops drawing the occluded one (run 39617644850: a blank capture).
+  // open at the same place, and Chromium stops drawing the occluded one (a blank capture).
   const shared = await mainWindow(s.app);
   await shared.evaluate((w) => w.hide());
   const x = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { colorScheme: null });
@@ -645,7 +645,7 @@ test('M4 library: 사본 내보내기… — the default name, nothing partial a
 });
 
 // ⌘K finds items (spec §4.4, design-spec 10.5), in the shared session: a second app could not be brought to the front on
-// the Mac (both processes are the same bundle, the shared one stayed frontmost, run 40127825772). The seeded titles hold
+// the Mac (both processes are the same bundle, the shared one stayed frontmost). The seeded titles hold
 // 신호 too, so three PDFs with a word of their own (형광) are imported and searched; the last one heads the list, which
 // is what the hint's 초성 example comes from (palette/items.ts initialsExample).
 test('M4 library: ⌘K finds items — 자료 above 명령, 라이브러리에서 검색 last, the launcher says 검색 및 명령', TAG, async ({}, testInfo) => {

@@ -36,8 +36,8 @@ export async function openTimer(app: ElectronApplication) {
 
 /**
  * The first ⌘/ sheet or the first settings window of a new app session, `sessions` times (each a fresh launch, which returns
- * with the settings window prepared, the window opened 1 s later): what the demo's viewer meets the first time (critique mac2 m3: 1.20 s and
- * 0.87 s in the run 2 video, against repeat medians of 292 and 197 ms).
+ * with the settings window prepared, the window opened 1 s later): what the demo's viewer meets the first time (1.20 s and
+ * 0.87 s in a demo video, against repeat medians of 292 and 197 ms).
  */
 export async function coldFirstOpens(dir: string, sessions: number, opts: LaunchOptions = {}): Promise<{ sheet: number[]; settings: number[] }> {
   const out = { sheet: [] as number[], settings: [] as number[] };

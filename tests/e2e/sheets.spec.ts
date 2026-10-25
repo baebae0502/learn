@@ -246,7 +246,7 @@ test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     // The ⌘/ sheet as well, in a window as tall as 1440 × 900 allows: in two columns (≈ 562 px with 자료, ≈ 591 with ⌘F,
     // ≈ 620 with ⌥⌘I) it fits with no scrolling everywhere — Linux (room 824), the 768-tall Mac runner (work area 684,
-    // room 652) and a 1440 × 900 Mac's ≈ 806-tall parent (room 774; critique, m3-08b-806).
+    // room 652) and a 1440 × 900 Mac's ≈ 806-tall parent (room 774).
     await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
     sheet = await open();
     await fitsNoStop(sheet);

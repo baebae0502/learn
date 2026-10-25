@@ -142,7 +142,7 @@ interface ThemeLogEntry {
   at: number;
 }
 
-// T13R4-m1, spec 8: a theme picked in the settings window. Both pages change on main's one prefsChanged broadcast (each
+// Spec 8: a theme picked in the settings window. Both pages change on main's one prefsChanged broadcast (each
 // says so right after its swap), each window's chrome follows its page, the app-wide native theme follows both, and
 // nativeTheme's 'updated' comes last. Times from the click, per window; reported only.
 test('theme switch order: click → each page shows it → its chrome → the native theme → nativeTheme updated', { tag: '@perf' }, async ({}, testInfo) => {

@@ -185,7 +185,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.editInfo', LIB, [linkedMissing])).toBe(true); // a missing file's info is still its own
     expect(isCommandAvailable('item.editInfo', LIB, [managedOk, managedOk])).toBe(false);
     expect(isCommandAvailable('item.editInfo', LIB)).toBe(false);
-    expect(isCommandAvailable('item.editInfo', VIEWER, [managedOk])).toBe(false); // the reader's own info comes with T1/M7
+    expect(isCommandAvailable('item.editInfo', VIEWER, [managedOk])).toBe(false); // the reader's own info comes with M7
     expect(isCommandAvailable('item.editInfo', { ...LIB, blocked: true }, [managedOk])).toBe(false);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 need one item whose file exists', () => {

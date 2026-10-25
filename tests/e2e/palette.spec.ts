@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
@@ -324,7 +324,7 @@ test('opening the palette closes an open tooltip, and none opens while it is up'
     // Playwright may become key only after the first hover (Mac run t14-diag2). Make it key first.
     await (await mainWindow(app)).evaluate((w) => w.focus());
     await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
-    await page.getByTestId('sidebar-toggle').hover();
+    await hoverLikeUser(page, 'sidebar-toggle');
     await expectTooltipText(page, /사이드바 가리기/, 'sidebar-toggle'); // after the 600 ms hover delay
     await runMenuCommand(app, 'app.palette'); // ⌘K from the menu bar
     await expect(page.getByTestId('palette')).toBeVisible();

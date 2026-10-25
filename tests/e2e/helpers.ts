@@ -586,6 +586,20 @@ export async function showItemPanel(app: ElectronApplication, page: Page): Promi
 }
 
 /**
+ * The pointer over a control as a person brings it there: first a move to a quiet spot of the window (its centre), then
+ * the hover. A hover tooltip opens only if the last input was a pointer one when the pointer enters the control, and a
+ * browser reports the entering before the move that carries it, so a single jump from outside the page, or from a
+ * keystroke, onto the control is a hover react-aria ignores (the window then has no pointer input yet, or the last
+ * input was a key; the Mac runner, whose cursor is not over a new window, never shows the tooltip). A person's pointer
+ * moves over the window on its way, which this move stands for.
+ */
+export async function hoverLikeUser(page: Page, testId: string): Promise<void> {
+  const [x, y] = await page.evaluate(() => [Math.round(innerWidth / 2), Math.round(innerHeight / 2)] as const);
+  await page.mouse.move(x, y);
+  await page.getByTestId(testId).hover();
+}
+
+/**
  * The tooltip after a hover has this text. When none shows, the failure says why the page held it back: which reasons
  * block tooltips (data-tooltip-block), whether the window is inactive or not main, whether the page has the focus, and
  * which element the pointer is over: a hover tooltip that never comes on a runner is one of those or the pointer itself.

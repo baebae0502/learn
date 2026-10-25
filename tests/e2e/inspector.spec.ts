@@ -272,10 +272,14 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
       .locator('[data-testid="import-menu"], [data-testid="search-field"], [data-testid="inspector-toggle"]')
       .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(['import-menu', 'search-field', 'inspector-toggle']);
+    // The toggle sits on a whole pixel in every view (a fraction of a pixel draws the glyph's edge differently).
+    const toggleX = () => page.getByTestId('sidebar-toggle').evaluate((el) => el.getBoundingClientRect().x);
+    expect(Number.isInteger(await toggleX()), 'the toggle is on a whole pixel with the panel').toBe(true);
     await expectSameShot(page, testInfo, await top88(), empty, 'with the panel');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('hidden');
     await expectSameShot(page, testInfo, await top88(), empty, 'panel hidden');
+    expect(Number.isInteger(await toggleX()), 'the toggle is on a whole pixel with the panel hidden').toBe(true);
     await runMenuCommand(app, 'view.toggleInspector');
     await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {

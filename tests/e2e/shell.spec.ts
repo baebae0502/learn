@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, closeSheet, expectDisabledReason, expectSameShot, sidebarTop88, expectTooltipText, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, expectDisabledReason, expectSameShot, sidebarTop88, expectTooltipText, expectWindow, hoverLikeUser, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -480,7 +480,7 @@ test('a tooltip is in the page only while it is open: one node then, none and no
     expect(await nodes()).toBe(0);
     expect(await describedBy('sidebar-toggle')).toBeNull();
     // Hover: one tooltip, named by the trigger.
-    await page.getByTestId('sidebar-toggle').hover();
+    await hoverLikeUser(page, 'sidebar-toggle');
     await expectTooltipText(page, /사이드바 가리기/, 'sidebar-toggle');
     expect(await nodes()).toBe(1);
     const tipId = await page.locator('.tooltip').getAttribute('id');

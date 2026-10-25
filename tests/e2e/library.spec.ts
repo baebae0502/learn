@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, type Session } from './helpers';
+import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -126,8 +126,7 @@ test('while an import runs, its controls are disabled with the reason as their t
     await drag(s.page, 'drop', 'source', { repeat: false });
     // The first-run screen gives way to the import's progress; the toolbar's 가져오기 stays.
     await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
-    await s.page.mouse.move(700, 880);
-    await s.page.getByTestId('import-menu').hover();
+    await hoverLikeUser(s.page, 'import-menu');
     await expectTooltipText(s.page, BUSY, 'import-menu');
     await s.app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
     await expectDisabledReason(managed, null); // nothing imported: the first-run screen is back

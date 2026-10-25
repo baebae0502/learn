@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, closeSheet, expectDisabledReason, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, expectDisabledReason, expectSameShot, expectWindow, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -283,7 +283,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     await openItem(page, 'sample-h264-aac');
     await expect(page.getByTestId('video')).toBeVisible();
     const video = await top88();
-    for (const [name, shot] of [['library', library], ['pdf', pdf], ['video', video]] as const) expect(shot.equals(empty), name).toBe(true);
+    for (const [name, shot] of [['library', library], ['pdf', pdf], ['video', video]] as const) await expectSameShot(page, shot, empty, name);
     expect(pdfWidth).toBe(240);
     expect(await sidebarWidth(page)).toBe(240);
 
@@ -305,7 +305,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     // Shown again (from the PDF view): the sidebar top is still the one from the empty library.
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect.poll(() => sidebarWidth(page)).toBe(240);
-    expect((await top88()).equals(empty), 'shown again').toBe(true);
+    await expectSameShot(page, await top88(), empty, 'shown again');
   } finally {
     await app.close();
   }

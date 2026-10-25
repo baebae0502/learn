@@ -557,6 +557,67 @@ export async function runMenuCommand(app: ElectronApplication, id: CommandId): P
   }, id);
 }
 
+/**
+ * The item panel shown, whatever the window's width: if it is folded (by the width or by the user) it is shown on demand
+ * as ⌥⌘I does, and the command is repeated only when a late resize folded it again. The window is judged only once its
+ * width has stopped changing (a macOS window that cannot reach the width asked for resizes after the first look), and
+ * the command waits for the page to answer before the state is read again, so one fold is never undone by a second
+ * press. No widening: a 1024 px screen cannot give 1440, and the tests that use this are about behaviour, not width.
+ */
+export async function showItemPanel(app: ElectronApplication, page: Page): Promise<void> {
+  const state = () => page.getByTestId('shell').getAttribute('data-inspector');
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        const width = await page.evaluate(() => innerWidth);
+        const settled = width === last;
+        last = width;
+        if (!settled) return 'resizing';
+        if ((await state()) !== 'shown') {
+          await runMenuCommand(app, 'view.toggleInspector');
+          await page.waitForFunction(() => document.querySelector('[data-testid="shell"]')?.getAttribute('data-inspector') === 'shown', undefined, { timeout: 2_000 }).catch(() => {});
+        }
+        return state();
+      },
+      { intervals: [200], timeout: 15_000, message: 'the item panel never showed' },
+    )
+    .toBe('shown');
+}
+
+/**
+ * Two screenshots of the same clip are byte-identical, or the failure says where they differ (pixel count, bounding box,
+ * the first differing pixel's two colours), decoded in the page: a pixel-identity test that fails on a machine whose
+ * images cannot be looked at must name what moved.
+ */
+export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer, name: string): Promise<void> {
+  if (shot.equals(reference)) return;
+  const report = await page.evaluate(async ([a, b]) => {
+    const decode = async (b64: string) => {
+      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }));
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(bitmap, 0, 0);
+      return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    };
+    const [x, y] = await Promise.all([decode(a!), decode(b!)]);
+    if (x.width !== y.width || x.height !== y.height) return `sizes differ: ${x.width}x${y.height} vs ${y.width}x${y.height}`;
+    let count = 0;
+    let [x0, y0, x1, y1] = [x.width, x.height, -1, -1];
+    let first = '';
+    for (let i = 0; i < x.data.length; i += 4) {
+      if (x.data[i] === y.data[i] && x.data[i + 1] === y.data[i + 1] && x.data[i + 2] === y.data[i + 2] && x.data[i + 3] === y.data[i + 3]) continue;
+      const px = (i / 4) % x.width;
+      const py = Math.floor(i / 4 / x.width);
+      count++;
+      [x0, y0, x1, y1] = [Math.min(x0, px), Math.min(y0, py), Math.max(x1, px), Math.max(y1, py)];
+      if (first === '') first = `first at ${px},${py}: ${Array.from(x.data.slice(i, i + 4))} vs ${Array.from(y.data.slice(i, i + 4))}`;
+    }
+    return count === 0 ? 'same pixels, different PNG bytes (encoder)' : `${count} px differ in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`;
+  }, [shot.toString('base64'), reference.toString('base64')] as const);
+  expect(report, `${name}: the shots differ`).toBe('identical');
+}
+
 /** Whether the application-menu item exists, is visible and is enabled right now. */
 export async function menuItemEnabled(app: ElectronApplication, id: CommandId): Promise<boolean> {
   return app.evaluate(({ Menu }, id) => {

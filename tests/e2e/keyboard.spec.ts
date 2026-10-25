@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import {
   FIXTURES, closeSheet, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow, openItem, releaseCopies, releaseOpenDialog,
-  releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, stubOpenDialog,
+  releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel, stubOpenDialog,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -155,6 +155,7 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect(row).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Home');
     await expect(row).toHaveAttribute('aria-selected', 'true');
+    await showItemPanel(app, page); // ⌥⌘I where the window is too narrow for the panel beside the table (the 1024 px macOS runner)
     await expect(page.getByTestId('inspector-head')).toContainText(KO);
     await expectNoSeriousA11y(page, 'item panel, one item');
 
@@ -239,6 +240,7 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
     });
     await expect(page.getByTestId('item-row')).toHaveCount(4);
 
+    await showItemPanel(app, page); // a window too narrow for the panel beside the table shows it on demand
     await expect(page.getByTestId('inspector-none')).toBeVisible();
     await expectNoSeriousA11y(page, 'item panel, nothing selected');
 

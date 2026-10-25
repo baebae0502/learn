@@ -3,7 +3,7 @@
 // form (no menu accelerator), so it is pressed in the page.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, mainWindow, rowByTitle, runMenuCommand, selectRows, windowKinds } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, rowByTitle, runMenuCommand, selectRows, showItemPanel, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -12,13 +12,6 @@ const SAVE_KEY = process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter';
 const dirs = (testInfo: { outputPath(...p: string[]): string }) => [testInfo.outputPath('library'), testInfo.outputPath('userdata')] as const;
 const contentWidth = async (app: ElectronApplication, width: number) =>
   (await mainWindow(app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), width);
-/** The window at 1440 px where it will go; a narrower one (the 1024 px macOS runner) folds the panel, so it is shown on demand as the user would (⌥⌘I). */
-async function showPanel(app: ElectronApplication, page: Page): Promise<void> {
-  await contentWidth(app, 1440);
-  await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(1000);
-  if ((await panelState(page)) !== 'shown') await runMenuCommand(app, 'view.toggleInspector');
-  await expect.poll(() => panelState(page)).toBe('shown');
-}
 const field = (page: Page, name: string) => page.locator(`[data-testid="editor-field"][data-field="${name}"] :is(input, textarea)`);
 const fieldBox = (page: Page, name: string) => page.locator(`[data-testid="editor-field"][data-field="${name}"]`);
 const infoValue = (page: Page, name: string) => page.locator(`[data-testid="info-row"][data-field="${name}"] dd`);
@@ -38,7 +31,7 @@ test('the pencil turns 정보 into a form in place; 저장, ⌘↩ and ↩ in a 
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     const pencil = page.getByTestId('info-edit');
     await expect(pencil).toHaveAccessibleName('정보 편집');
@@ -105,7 +98,7 @@ test('a bad date or URL is marked with its footnote and keeps the form, the firs
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     await field(page, 'date').fill('2024-13');
@@ -136,7 +129,7 @@ test('leaving the edit: another row after valid changes saves first; invalid one
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF, KO_PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     const head = page.getByTestId('inspector-head').locator('h2');
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
@@ -189,7 +182,7 @@ test('creator rows: added, reordered, given a role and removed; saved in that or
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     const rows = page.getByTestId('creator-row');
@@ -224,7 +217,7 @@ test('closing the window over invalid changes keeps it, the form saying why; val
   let { app, page } = await launch(lib, ud);
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     await field(page, 'url').fill('example.org');
@@ -250,7 +243,7 @@ test('quitting (⌘Q, app.quit) over invalid changes is called off; valid ones a
   let { app, page } = await launch(lib, ud);
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     await field(page, 'date').fill('2024-13');
@@ -275,7 +268,7 @@ test('정보 편집 from the palette edits the selected item, showing a folded i
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await importPaths(page, [PDF, KO_PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await runMenuCommand(app, 'view.toggleInspector'); // folded by the user
     await expect.poll(() => panelState(page)).toBe('hidden');
@@ -303,7 +296,7 @@ test('IME: ↩ and esc that belong to a composition neither save nor cancel; key
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     const title = field(page, 'title');
@@ -352,7 +345,7 @@ test('one save at a time: a double press of 저장 writes once', async ({}, test
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     await field(page, 'publisher').fill('학습출판');
@@ -385,7 +378,7 @@ test('a refused close answers at once even when the page runs no frames (invalid
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']);
     await page.getByTestId('info-edit').click();
     await field(page, 'date').fill('2024-13');

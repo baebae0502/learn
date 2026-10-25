@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, expectDisabledReason, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, expectSameShot, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -54,18 +54,12 @@ async function roomForPanel(app: ElectronApplication, page: Page): Promise<void>
   const width = await widen(app, page);
   test.skip(width < 1080, `a ${width} px window folds the item panel by design; Linux CI and the macOS evidence lane cover this`);
 }
-/** For the tests about behaviour: a window that folded the panel gets it shown on demand, as the user would (⌥⌘I). */
-async function showPanel(app: ElectronApplication, page: Page): Promise<void> {
-  if ((await panelState(page)) !== 'shown') await runMenuCommand(app, 'view.toggleInspector');
-  await expect.poll(() => panelState(page)).toBe('shown');
-}
-
 test('one item: the head, the info rows that have a value and the file section; nothing selected shows the library; several show a summary in table order', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await widen(app, page);
     const [pdf] = await importPaths(page, [PDF, KO_PDF, MP4]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await expect(page.getByTestId('item-row')).toHaveCount(3);
     // Nothing is selected: the import came from the page, so no focus entered the table (only that picks a first row).
     const none = page.getByTestId('inspector-none');
@@ -123,7 +117,7 @@ test('a missing original (P-8): a linked file leads with 다시 연결…, a man
   try {
     await widen(app, page);
     await importPaths(page, [KO_PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(PDF, gone);
     const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), gone);
@@ -175,7 +169,7 @@ test('⌥⌘I and the toolbar toggle hide and show the panel, named by what they
     await importPaths(page, [PDF]);
     const roomy = (await page.evaluate(() => innerWidth)) >= 1080;
     await expect.poll(() => panelState(page)).toBe(roomy ? 'shown' : 'hidden');
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     expect(await panelWidth(page)).toBe(320);
     const toggle = page.getByTestId('inspector-toggle');
     await expect(toggle).toHaveAccessibleName('항목 패널 가리기');
@@ -281,10 +275,10 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
       .locator('[data-testid="import-menu"], [data-testid="search-field"], [data-testid="inspector-toggle"]')
       .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(['import-menu', 'search-field', 'inspector-toggle']);
-    expect((await top88()).equals(empty), 'with the panel').toBe(true);
+    await expectSameShot(page, await top88(), empty, 'with the panel');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('hidden');
-    expect((await top88()).equals(empty), 'panel hidden').toBe(true);
+    await expectSameShot(page, await top88(), empty, 'panel hidden');
     await runMenuCommand(app, 'view.toggleInspector');
     await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {
@@ -297,7 +291,7 @@ test('F6 visits sidebar → table → item panel; a folded panel is skipped, and
   try {
     await widen(app, page);
     await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample']); // its row is the table's cursor: F6 lands there (roving tabindex)
     await expect(page.getByTestId('inspector-open')).toBeVisible();
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
@@ -325,7 +319,7 @@ test('전체 SHA-256 복사 puts the whole value on the clipboard and says 복�
   try {
     await widen(app, page);
     const [pdf] = await importPaths(page, [PDF]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     const sha = (await detailOf(page, pdf!.id)).file.sha256;
     await selectRows(page, ['sample']);
     const copy = page.getByTestId('copy-sha');
@@ -350,7 +344,7 @@ test('page count and length come from the file and are kept per revision; a long
   try {
     await widen(app, page);
     const [pdf] = await importPaths(page, [PDF, MP4]);
-    await showPanel(app, page);
+    await showItemPanel(app, page);
     await selectRows(page, ['sample-h264-aac']);
     await expect(page.getByTestId('inspector-kind')).toHaveText('동영상 · 0:10'); // the 10 s fixture, from its metadata
     await selectRows(page, ['sample']);

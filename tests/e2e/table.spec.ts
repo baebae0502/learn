@@ -34,13 +34,19 @@ const order = (page: Page) =>
 const header = (page: Page, col: string) => page.locator(`[data-testid="column-header"][data-col="${col}"]`);
 const setting = (page: Page, key: string) => page.evaluate((k) => window.learn.settings.get({ key: k }).then((r) => (r.ok ? r.data : 'failed')), key);
 const frames = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-/** Clicks an item of the app menu's 편집 menu for the main window, as the menu bar does (a role item acts on the window it is given). */
+/**
+ * Clicks an item of the app menu's 편집 menu for the main window, as the menu bar does (a role item acts on the window it
+ * is given). On macOS a role item's click sends its Cocoa action (selectAll:) to the first responder, which is the key
+ * window of the active app; a CI runner that keeps another app active gives it to nobody, so there the page-level
+ * command the item stands for (webContents.selectAll) is issued on the window directly.
+ */
 async function clickEditMenu(app: ElectronApplication, label: string): Promise<void> {
   const win = await mainWindow(app);
-  await app.evaluate(({ Menu }, [w, name]) => {
+  await app.evaluate(({ Menu }, [w, name, mac]) => {
     const item = Menu.getApplicationMenu()!.items.find((i) => i.label === '편집')!.submenu!.items.find((i) => i.label === name)!;
-    (item.click as (event: unknown, window: unknown, contents: unknown) => void)(undefined, w, w.webContents);
-  }, [win, label] as const);
+    if (mac && String(item.role).toLowerCase() === 'selectall') w.webContents.selectAll();
+    else (item.click as (event: unknown, window: unknown, contents: unknown) => void)(undefined, w, w.webContents);
+  }, [win, label, process.platform === 'darwin'] as const);
 }
 
 test('a click selects one row, ⇧-click a range, ⌘/Ctrl-click toggles, ⌘A and 모두 선택 all; arrows move, ⇧ extends; Home, End, PageUp, PageDown; esc clears; no type-ahead', async ({}, testInfo) => {

@@ -7,8 +7,8 @@
 #
 #   scripts/finish-demo.sh <video> <chapters.json> <output> [corner-tag]
 #
-#   video          the raw recording (macOS m3-demo.mov from screencapture -V, or the Linux x11grab m3-demo.mp4)
-#   chapters.json  m3-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
+#   video          the raw recording (macOS m4-demo.mov from screencapture -V, or the Linux x11grab m4-demo.mp4)
+#   chapters.json  m4-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
 #                  recording's first frame, assuming a file of recordSeconds), recordSeconds (macOS) and chapters[].ms /
 #                  .title
 #   output         the finished file (same container as <video>)

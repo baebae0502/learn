@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { READ_TITLE, VIDEOS, writeDemoMedia } from './demo-media';
+import { matchKorean } from '../../apps/desktop/src/renderer/src/palette/hangul';
+import { itemMetadataSchema } from '../../packages/domain/src/metadata';
+import { DEMO_METADATA, PALETTE_TITLE, READ_TITLE, VIDEOS, writeDemoMedia } from './demo-media';
 
 const pdfsIn = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.pdf'));
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -31,6 +33,28 @@ describe('the demo material when Chromium cannot print (re-review Important 1)',
       expect(path.basename(media.read)).toBe(`${READ_TITLE}.pdf`);
       expect(fs.existsSync(media.read)).toBe(true);
       expect(fs.existsSync(path.join(dir, '.pages'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(fixtures, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the demo table metadata (M4)', () => {
+  it('gives every demo title creators and a date the app accepts; 초성 ㅅㅍ finds the opened PDF only, "bayes" the palette one', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-media-'));
+    const fixtures = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-fixtures-'));
+    fs.writeFileSync(path.join(fixtures, 'sample.pdf'), '%PDF-1.7\n% three pages\n%%EOF\n');
+    for (const [from] of VIDEOS) fs.writeFileSync(path.join(fixtures, from), 'video');
+    try {
+      const media = await writeDemoMedia(dir, () => Promise.reject(new Error('no printing in a unit test')), () => {}, fixtures);
+      const titles = [media.read, ...media.drop].map((f) => path.basename(f, path.extname(f))).sort();
+      expect(Object.keys(DEMO_METADATA).sort()).toEqual(titles);
+      for (const meta of Object.values(DEMO_METADATA)) expect(itemMetadataSchema.parse(meta)).toEqual(meta);
+      // The quick search's short fields: title, creators, publisher; the original file name is the title + extension.
+      const shortFields = (title: string) => [title, ...DEMO_METADATA[title]!.creators.map((c) => c.name), DEMO_METADATA[title]!.publisher ?? ''];
+      expect(titles.filter((title) => shortFields(title).some((field) => matchKorean('ㅅㅍ', field) !== null))).toEqual([READ_TITLE]);
+      expect(titles.filter((title) => shortFields(title).some((field) => field.toLowerCase().includes('bayes')))).toEqual([PALETTE_TITLE]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(fixtures, { recursive: true, force: true });

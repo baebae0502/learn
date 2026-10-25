@@ -22,13 +22,23 @@ class FakeWindow extends EventEmitter {
   animated = false;
   position: [number, number] | null = null;
   url = '';
+  /** The page's own events (render-process-gone, did-fail-load). */
+  readonly pageEvents = new EventEmitter();
+  crashed = false;
+  /** Set by a test: what the next script run does instead of answering (a renderer that died mid-call). */
+  failScripts: Error | null = null;
   readonly webContents = {
     id: FakeWindow.nextId++,
     once: vi.fn(),
+    on: (event: string, fn: (...args: unknown[]) => void) => void this.pageEvents.on(event, fn),
+    isCrashed: () => this.crashed,
+    setBackgroundThrottling: vi.fn(),
     isDestroyed: () => this.destroyed,
     send: vi.fn(),
     executeJavaScript: (script: string) =>
-      script.includes('ResizeObserver')
+      this.failScripts
+        ? Promise.reject(this.failScripts)
+        : script.includes('ResizeObserver')
         ? new Promise<number>((resolve) => void (heightChanged = resolve))
         : script.includes('document.fonts')
           ? fontsLoaded
@@ -59,6 +69,11 @@ class FakeWindow extends EventEmitter {
   events: string[] = [];
   focus = () => void this.focused++;
   loadURL = async (url: string) => void (this.url = url);
+  destroy = () => {
+    this.events.push('destroyed');
+    this.destroyed = true;
+    this.emit('closed');
+  };
   close = () => {
     this.emit('close', { preventDefault: () => {} });
     this.events.push('torn down');
@@ -308,5 +323,135 @@ describe('the settings window prepared hidden once the main window is idle (spec
     heightChanged!(440);
     await new Promise((r) => setTimeout(r, 0));
     expect(w.contentSize).toEqual([600, 440]);
+  });
+});
+
+describe('a prepared window whose page died is replaced, and it sleeps until shown', () => {
+  const gone = { reason: 'crashed', exitCode: 11 };
+  const failed = (w: FakeWindow, mainFrame = true, code = -105) => w.pageEvents.emit('did-fail-load', {}, code, 'ERR', 'learn://app/index.html', mainFrame);
+
+  it('a renderer that died while the window was hidden: it is destroyed and forgotten, the next ⌘, makes a new one', async () => {
+    const settings = host();
+    settings.prepare();
+    const dead = FakeWindow.all[0]!;
+    await ready(dead);
+    dead.pageEvents.emit('render-process-gone', {}, gone);
+    expect(dead.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    const fresh = settings.open() as unknown as FakeWindow;
+    expect(fresh).not.toBe(dead);
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+    expect(dead.shown).toBe(false);
+  });
+
+  it('a renderer that died mid-measure with a ⌘, waiting: a fresh window is shown, sized, never the dead one', async () => {
+    const settings = host();
+    const dead = settings.open() as unknown as FakeWindow;
+    dead.emit('ready-to-show');
+    dead.failScripts = new Error('Render frame was disposed'); // the measure rejects
+    dead.crashed = true;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(dead.shown).toBe(false);
+    expect(dead.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(2);
+    const fresh = FakeWindow.all[1]!;
+    expect(settings.current()).toBe(fresh as unknown as BrowserWindow);
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+    expect(fresh.contentSize).toEqual([600, 412]);
+  });
+
+  it('the crash event first, then the measure rejecting: still one fresh window, the dead one never shown', async () => {
+    const settings = host();
+    const dead = settings.open() as unknown as FakeWindow;
+    dead.emit('ready-to-show');
+    dead.pageEvents.emit('render-process-gone', {}, gone);
+    dead.failScripts = new Error('gone');
+    await new Promise((r) => setTimeout(r, 5));
+    expect(dead.shown).toBe(false);
+    expect(FakeWindow.all).toHaveLength(2);
+  });
+
+  it('a hidden window nobody asked for, dead mid-measure: nothing is shown and the next ⌘, makes a new one', async () => {
+    const settings = host();
+    settings.prepare();
+    const dead = FakeWindow.all[0]!;
+    dead.emit('ready-to-show');
+    dead.failScripts = new Error('gone');
+    dead.crashed = true;
+    await new Promise((r) => setTimeout(r, 5));
+    expect(dead.shown).toBe(false);
+    expect(settings.current()).toBeNull();
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(settings.open()).not.toBe(dead as unknown as BrowserWindow);
+  });
+
+  it('a page that fails to load (main frame) is replaced the same way; a sub-frame or an aborted load is not', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    failed(w, false);
+    failed(w, true, -3);
+    expect(w.destroyed).toBe(false);
+    failed(w);
+    expect(w.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    const asked = settings.open() as unknown as FakeWindow;
+    failed(asked); // a ⌘, was waiting: one replacement is shown
+    expect(asked.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(3);
+    const fresh = FakeWindow.all[2]!;
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+  });
+
+  it('a replacement that fails too is not replaced again (no loop)', () => {
+    const settings = host();
+    const first = settings.open() as unknown as FakeWindow;
+    failed(first);
+    const second = FakeWindow.all[1]!;
+    failed(second);
+    expect(second.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(2);
+    expect(settings.current()).toBeNull();
+  });
+
+  it('a visible settings window whose renderer dies is left as it is', async () => {
+    const settings = host();
+    const w = settings.open() as unknown as FakeWindow;
+    await ready(w);
+    w.pageEvents.emit('render-process-gone', {}, gone);
+    expect(w.destroyed).toBe(false);
+    expect(settings.current()).toBe(w as unknown as BrowserWindow);
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('is throttled while it is only prepared, and unthrottled when shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(w.options['webPreferences']).toMatchObject({ backgroundThrottling: false }); // measuring needs its timers at full speed
+    await ready(w);
+    expect(w.webContents.setBackgroundThrottling).toHaveBeenLastCalledWith(true);
+    settings.open();
+    expect(w.webContents.setBackgroundThrottling).toHaveBeenLastCalledWith(false);
+    expect(w.shown).toBe(true);
+  });
+
+  it('a window asked for while it was measured is never throttled', async () => {
+    const w = host().open() as unknown as FakeWindow;
+    await ready(w);
+    expect(w.webContents.setBackgroundThrottling).not.toHaveBeenCalledWith(true);
+  });
+
+  it('a window never shown is destroyed outright when discarded, not closed', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    settings.discardPrepared();
+    expect(w.events).toEqual(['destroyed']);
+    expect(settings.current()).toBeNull();
   });
 });

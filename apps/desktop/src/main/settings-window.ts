@@ -76,10 +76,27 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
   function reveal(w: BrowserWindow): void {
     place(w);
     phase = 'shown';
+    // Awake before it is on screen: a prepared window sleeps (timers slowed, frames paused) and must paint at once.
+    w.webContents.setBackgroundThrottling(false);
     w.show();
   }
 
-  function create(show: boolean): BrowserWindow {
+  /**
+   * A window that is not on screen whose page died (its renderer went away, or its page did not load) shows a blank page
+   * if it is ever revealed. It is destroyed and forgotten; one a ⌘, was waiting for is replaced by a fresh window shown
+   * as a normal open does — once only, so a page that cannot load does not loop.
+   */
+  function replaceDead(dead: BrowserWindow, replacement: boolean): void {
+    if (win !== dead || phase === 'shown') return; // a visible window keeps what it has; a forgotten one is already handled
+    const asked = wanted;
+    win = null;
+    phase = 'measuring';
+    wanted = false;
+    if (!dead.isDestroyed()) dead.destroy();
+    if (asked && !replacement) create(true, true);
+  }
+
+  function create(show: boolean, replacement = false): BrowserWindow {
     phase = 'measuring';
     wanted = show;
     const created = new BrowserWindow({
@@ -107,6 +124,10 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
     win = created;
     // IPC knows the window by its webContents, the prepared one too: before its page loads.
     registerWindowKind(created.webContents, 'settings');
+    created.webContents.on('render-process-gone', () => replaceDead(created, replacement));
+    created.webContents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+      if (isMainFrame && errorCode !== -3) replaceDead(created, replacement); // -3: a load cancelled by the next one
+    });
     // ⌘W or the close light: off the screen first, then torn down. Closing tears the page down before AppKit takes the
     // window away, which showed an empty body for 2 frames on the Mac; hidden, that happens unseen.
     created.on('close', () => {
@@ -133,14 +154,17 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         if (created.isDestroyed()) return;
         phase = 'ready';
         if (wanted) reveal(created);
+        else created.webContents.setBackgroundThrottling(true); // only prepared: asleep until a ⌘, shows it
         // A message that appears (a refused folder) or goes makes the window as tall as its content again; on macOS the
         // bottom edge slides as AppKit's own windows do (`animate` is ignored elsewhere).
         followContentHeight(created.webContents, '[data-settings-root]', height, (next) => {
           if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, next, true);
         });
       })().catch(() => {
-        // Only a window closed mid-measure gets here; otherwise it is shown unsized when asked rather than not at all.
-        if (created.isDestroyed()) return;
+        // A window closed mid-measure gets here, and so does one whose renderer died (the call rejects, perhaps before the
+        // crash event): that one is replaced, never shown. Otherwise it is shown unsized when asked rather than not at all.
+        if (created.isDestroyed() || win !== created) return;
+        if (created.webContents.isCrashed()) return replaceDead(created, replacement);
         phase = 'ready';
         if (wanted) reveal(created);
       });
@@ -168,7 +192,11 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
     },
     discardPrepared(): void {
       const w = live();
-      if (w && phase !== 'shown' && !wanted) w.close();
+      // Never shown: torn down at once (close() is asynchronous and would let a quit go on with a window still alive).
+      if (w && phase !== 'shown' && !wanted) {
+        win = null;
+        w.destroy();
+      }
     },
   };
 }

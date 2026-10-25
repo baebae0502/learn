@@ -4,10 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, closeSheet, drag, dropSource, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, openItem, releaseOpenDialog, rowAt, runMenuCommand, stubOpenDialog } from './helpers';
+import {
+  FIXTURES, closeSheet, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow, openItem, releaseCopies, releaseOpenDialog,
+  releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, stubOpenDialog,
+} from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
+const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
+/** The Korean fixture's title (titleFromFile): the one 초성 ㅎㄱ finds. */
+const KO = '한글 경로 (테스트) #1';
 
 /** The data-pane the focus is in (sidebar, content, toasts), or null. */
 const inPane = (page: Page) => page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') ?? null);
@@ -16,6 +22,23 @@ const focusedTestId = (page: Page) => page.evaluate(() => document.activeElement
 /** The `?window=` kind of the focused BrowserWindow. */
 const focusedWindow = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) => /[?&]window=(\w+)/.exec(BrowserWindow.getFocusedWindow()?.webContents.getURL() ?? '')?.[1] ?? null);
+
+/** Tab, at most `max` times, until the focused element's nearest test id is `testId`. */
+async function tabTo(page: Page, testId: string, max = 12): Promise<void> {
+  for (let i = 0; i < max && (await focusedTestId(page)) !== testId; i++) await page.keyboard.press('Tab');
+  expect(await focusedTestId(page)).toBe(testId);
+}
+/** Tab, at most `max` times, until the focus is in the item panel editor's field `field` (its control or inside it). */
+async function tabToField(page: Page, field: string, max = 20): Promise<void> {
+  const there = () => page.evaluate((f) => (document.activeElement?.closest(`[data-testid="editor-field"][data-field="${f}"]`) ?? null) !== null, field);
+  for (let i = 0; i < max && !(await there()); i++) await page.keyboard.press('Tab');
+  expect(await there()).toBe(true);
+}
+/** F6, at most once round the four panes (sidebar → content → inspector → toasts), until the focus is in `pane`. */
+async function f6To(page: Page, pane: string): Promise<void> {
+  for (let i = 0; i < 4 && (await inPane(page)) !== pane; i++) await page.keyboard.press('F6');
+  expect(await inPane(page)).toBe(pane);
+}
 
 test('import → open → page → back → palette → settings → shortcuts, with axe at every stop', async ({}, testInfo) => {
   // No colour-scheme emulation: the theme the settings window picks reaches prefers-color-scheme (axe in both themes).
@@ -90,6 +113,203 @@ test('import → open → page → back → palette → settings → shortcuts, 
     const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts')); // ⌘/
     await expectNoSeriousA11y(sheet, 'shortcut sheet');
     await closeSheet(sheet, 'Enter');
+  } finally {
+    await app.close();
+  }
+});
+
+// Spec 1 condition 4: the way through the library by keyboard only. ⌘ shortcuts go through their menu items
+// (runMenuCommand) because CDP keys never reach native accelerators on Linux; every other key is a real key press.
+test('M4 keyboard only: import → find (⌘F) → select → edit the info → open → back to the library, with axe at every new stop', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const row = rowByTitle(page, KO);
+  const searchInput = page.getByTestId('search-field').getByRole('searchbox');
+  try {
+    // Import from the first-run screen.
+    await stubOpenDialog(app, [MP4, KO_PDF, PDF]);
+    await page.keyboard.press('F6'); // sidebar
+    await page.keyboard.press('F6'); // content: the first-run screen's first button
+    expect(await focusedTestId(page)).toBe('import-managed');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+    await expect(page.getByTestId('toolbar-count')).toHaveText('3개');
+    // The first-run screen hands the focus to the table's first row (by data-index: rows are placed absolutely).
+    await expect(rowAt(page, 0)).toBeFocused();
+    await expectNoSeriousA11y(page, 'library table');
+
+    // Find: ⌘F puts the focus in the quick search; 초성 ㅎㄱ leaves the Korean title, "1개 / 3개" (spec 4.1). The rows it
+    // hides leave the selection.
+    await runMenuCommand(app, 'library.find');
+    await expect(searchInput).toBeFocused();
+    await page.keyboard.type('ㅎㄱ');
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await expect(row).toBeVisible();
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 3개');
+    await expectNoSeriousA11y(page, 'library, quick search results');
+
+    // Select: ↓ takes the focus to the table's first result and selects it alone (spec 4.1, as an arrow selects in the
+    // table); Home, a table key, keeps it (Finder-style: the cursor's row is the selection).
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => inPane(page)).toBe('content');
+    await expect(row).toBeFocused();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Home');
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('inspector-head')).toContainText(KO);
+    await expectNoSeriousA11y(page, 'item panel, one item');
+
+    // Edit the info: F6 to the item panel, Tab to the pencil, ↩ opens the form with the focus kept in the panel, Tab to
+    // 날짜, and ↩ in that one-line field saves (spec 5.3).
+    await page.keyboard.press('F6');
+    await expect.poll(() => inPane(page)).toBe('inspector');
+    await tabTo(page, 'info-edit');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    await expect.poll(() => inPane(page)).toBe('inspector'); // never <body>
+    await expectNoSeriousA11y(page, 'item panel, editing');
+    await tabToField(page, 'date');
+    await page.keyboard.type('2024');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    await expect(page.locator('[data-testid="info-row"][data-field="date"]')).toContainText('2024');
+    await expect(row.locator('[data-col="year"]')).toHaveText('2024');
+    await expectNoSeriousA11y(page, 'item panel, after saving');
+
+    // Open: F6 back to the table, whose cursor is still on the row; ↩ opens the one selected item.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+
+    // Back to the library the first journey's way: F6 to the reader's controls, a page on, ⇧⇥ ×2 to 라이브러리로 돌아가기.
+    await page.keyboard.press('F6'); // sidebar
+    await page.keyboard.press('F6'); // content: 다음 쪽
+    expect(await focusedTestId(page)).toBe('pdf-next');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await page.keyboard.press('Shift+Tab'); // 이전 쪽
+    await page.keyboard.press('Shift+Tab'); // 라이브러리로 돌아가기
+    expect(await focusedTestId(page)).toBe('viewer-back');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+
+    // The selection and the quick search are as they were, the row in view (spec 3.3, 4.1).
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expect(row).toBeInViewport();
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 3개');
+    // The search ends by keyboard: ⌘F, esc clears it, esc again hands the focus back to the table — both escapes are the
+    // field's own, so the selection stays (the table's esc clears it only when the table has the focus).
+    await runMenuCommand(app, 'library.find');
+    await expect(searchInput).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(searchInput).toHaveValue('');
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => inPane(page)).toBe('content');
+    await expect(row).toBeFocused();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expectNoSeriousA11y(page, 'library, back from the reader');
+    // On the table esc clears the selection; the cursor stays on its row.
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(0);
+    await expect(row).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+// Spec 10 "axe (no serious violation)": every screen state the library adds beyond the keyboard journey's stops, in one library.
+test('axe at every M4 library state: nothing selected, several, a missing file, no search results, palette items, unsaved changes, busy and saved toasts, loading', async ({}, testInfo) => {
+  const src = testInfo.outputPath('src');
+  fs.mkdirSync(src, { recursive: true });
+  const gone = path.join(src, 'gone.pdf');
+  fs.copyFileSync(PDF, gone);
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  try {
+    await importPaths(page, [PDF, KO_PDF, MP4]);
+    // A linked file that went missing; library.get notices it (as the visual tour does).
+    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    fs.rmSync(gone);
+    await page.evaluate(async () => {
+      const list = await window.learn.library.list();
+      if (list.ok) for (const i of list.data) await window.learn.library.get({ itemId: i.id });
+    });
+    await expect(page.getByTestId('item-row')).toHaveCount(4);
+
+    await expect(page.getByTestId('inspector-none')).toBeVisible();
+    await expectNoSeriousA11y(page, 'item panel, nothing selected');
+
+    await selectRows(page, ['sample', KO], { modifier: 'Meta' });
+    await expect(page.getByTestId('inspector-multi')).toBeVisible();
+    await expectNoSeriousA11y(page, 'item panel, several items');
+
+    // A linked item whose file is gone heads the panel with 다시 연결….
+    await rowByTitle(page, 'gone').click();
+    await expect(page.getByTestId('inspector-relink')).toBeVisible();
+    await expectNoSeriousA11y(page, 'item panel, a linked file that is missing');
+
+    await runMenuCommand(app, 'library.find');
+    await page.keyboard.type('효소 억제제');
+    await expect(page.getByTestId('search-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'library, no search results');
+    await page.keyboard.press('Escape'); // clears the query
+    await expect(page.getByTestId('item-row')).toHaveCount(4);
+
+    await runMenuCommand(app, 'app.palette');
+    await page.keyboard.type('sample');
+    await expect(page.getByTestId('palette-result').first()).toBeVisible();
+    await expectNoSeriousA11y(page, 'palette, item results');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('palette')).toHaveCount(0);
+
+    // Unsaved changes (spec 5.3): an invalid date, then another row; the selection goes back and the form says why.
+    await rowByTitle(page, 'sample').click();
+    await page.getByTestId('info-edit').click();
+    const dateInput = page.locator('[data-testid="editor-field"][data-field="date"]').locator('xpath=descendant-or-self::input').first();
+    await dateInput.fill('2024년');
+    await expect(dateInput).toHaveValue('2024년');
+    await rowByTitle(page, KO).click();
+    await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+    await expect(rowByTitle(page, 'sample')).toHaveAttribute('aria-selected', 'true');
+    await expectNoSeriousA11y(page, 'item panel, unsaved changes');
+    await page.getByTestId('editor-discard').click();
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+
+    // A copy that takes long: the busy toast past 300 ms, then the saved toast with its action. The export counts its
+    // 300 ms from the save panel's close, so the panel is a stubbed one that closes, and main's copy is what is held.
+    const exportDir = testInfo.outputPath('exports');
+    fs.mkdirSync(exportDir, { recursive: true });
+    await holdSaveDialog(app, path.join(exportDir, 'sample.pdf'));
+    await rowByTitle(page, 'sample').click();
+    await runMenuCommand(app, 'item.exportCopy'); // waits until main's menu has the selection (one item, its file there)
+    await holdCopies(app);
+    await releaseSaveDialog(app);
+    await expect(page.getByTestId('file-busy')).toContainText('내보내는 중…');
+    await expectNoSeriousA11y(page, 'busy toast');
+    await releaseCopies(app);
+    await expect(page.getByTestId('file-busy')).toHaveCount(0);
+    await expect(page.getByTestId('export-done')).toBeVisible();
+    await expect(page.getByTestId('export-reveal')).toBeVisible();
+    await expectNoSeriousA11y(page, 'saved toast with its action');
+
+    // Loading (spec 3.5): a fresh renderer whose first list read is held past 300 ms; the table head stays. Last,
+    // because the reload resets the page's state. The handler is swapped in main directly, as table.spec does: the
+    // window-kind check guards createHandle's handlers, not this test stand-in.
+    const listed = await page.evaluate(() => window.learn.library.list());
+    await app.evaluate(({ ipcMain }, reply) => {
+      const g = globalThis as { __learnReleaseList?: Array<() => void> };
+      g.__learnReleaseList = [];
+      ipcMain.removeHandler('library:list');
+      ipcMain.handle('library:list', () => new Promise((resolve) => g.__learnReleaseList!.push(() => resolve(reply))));
+    }, listed);
+    await page.reload();
+    await expect(page.getByTestId('table-loading')).toBeVisible();
+    await expectNoSeriousA11y(page, 'library, loading');
+    await app.evaluate(() => {
+      for (const release of (globalThis as { __learnReleaseList?: Array<() => void> }).__learnReleaseList ?? []) release();
+    });
+    await expect(page.getByTestId('item-row')).toHaveCount(4);
   } finally {
     await app.close();
   }

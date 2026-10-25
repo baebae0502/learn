@@ -1,5 +1,5 @@
 // @demo — a 2–4 minute macOS screen recording of the M4 library (table, quick search, item panel, palette items, copy
-// export) with a chapter list (m4-demo.chapters.txt / .json), a caption per chapter on screen, and the chapters embedded
+// export) with a chapter list (m4-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen, and the chapters embedded
 // in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on Linux). Elsewhere
 // (Linux CI) the same script runs at 1/10 pace, unrecorded.
 //
@@ -458,22 +458,22 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      * 위치 card, mac1 m3).
      */
     type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
-    const caption = ({ target, place, top, maxWidth }: Captioned, text: string) =>
+    const caption = ({ target, place, top, maxWidth }: Captioned, text: string, holdMs?: number) =>
       target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), {
         text,
-        ms: text ? captionMs(text) : 1,
+        ms: text ? Math.max(captionMs(text), holdMs ?? 0) : 1,
         ...(place ? { place } : {}),
         ...(top !== undefined ? { top } : {}),
         ...(maxWidth !== undefined ? { maxWidth } : {}),
       });
     let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
-    const chapter = async (title: string, where: Page | Captioned = page) => {
+    const chapter = async (title: string, where: Page | Captioned = page, holdMs?: number) => {
       stopIfLost();
       const ms = Date.now() - started;
       chapters.push({ at: Math.floor(ms / 1000), ms, title });
       lastCaptioned = 'target' in where ? where : { target: where };
-      await caption(lastCaptioned, title);
+      await caption(lastCaptioned, title, holdMs);
     };
     /**
      * Where a settings chapter is captioned (mac1 m3, concern 4; demo-geometry.ts): in the main window (it shows a
@@ -670,9 +670,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     started = Date.now();
 
     // 1. First run: the empty library says how to bring files in.
-    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.');
+    // 37 characters were on screen 2.5 s (15 a second, design critique): 5.5 s is 7 a second, and the drag starts half
+    // a second after the caption has gone.
+    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.', page, 5500);
     await expect(page.getByTestId('content').getByRole('button').first()).toBeVisible();
-    await pause(4500);
+    await pause(6000);
 
     // 2. Files dragged in and dropped (a synthetic drag of real files: a Finder drag cannot be scripted): the window is the
     //    drop target, the drop imports copies, the result is a toast. The tag stays until the drop.
@@ -820,7 +822,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await afterKey(backAt, 3000);
 
     // 10. 사본 내보내기…: a right-click selects the row first; the item menu (real on macOS, the pick scripted) exports a
-    //     copy through the save panel (skipped, and said); the toast offers Finder에서 보기, which the pointer rests on.
+    //     copy through the save panel (skipped, and said); the toast offers Finder에서 보기, the pointer rests beside its link, not on it.
     const exportDir = path.join(work, '내보낸 사본');
     fs.rmSync(exportDir, { recursive: true, force: true });
     fs.mkdirSync(exportDir, { recursive: true });
@@ -835,18 +837,24 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect.poll(() => fs.existsSync(exportFile)).toBe(true);
     const reveal = page.locator('[data-pane="toasts"]').getByRole('button', { name: /에서 보기$/ });
     await expect(reveal).toBeVisible();
-    const revealBox = (await reveal.boundingBox())!;
-    await glide(page, 'main', revealBox.x + revealBox.width / 2, revealBox.y + revealBox.height / 2); // the toast waits while pointed at
+    // The pointer waits on the toast's left edge (the toast stays while it is pointed at) and not on the link, whose text it
+    // would cover until the click (design critique).
+    const toastBox = (await reveal.locator('xpath=ancestor::*[contains(@class,"toast")][1]').boundingBox())!;
+    await glide(page, 'main', toastBox.x + 10, toastBox.y + toastBox.height / 2);
     await pause(2500);
 
     // 11. macOS: Finder에서 보기 brings Finder to the front on the exported copy, and the Learn window turns inactive; then
-    //     back. Captioned once Learn is inactive; dropped with a note if it fails.
+    //     back. Captioned before the click (the pointer has not touched the link until then); dropped with a note if it fails.
     if (IS_MAC) {
       const title = `‘${label('item.showInFolder')}’를 누르면 Finder가 앞에 오고, Learn 창은 비활성으로 흐려집니다.`;
       let finderInFront = false;
       await macStep(
         'Finder in front',
         async () => {
+          // The chapter and its caption start before the click, so the action is never ahead of what the caption says
+          // (the window turned inactive 1 s before its caption). A failure below drops the chapter again.
+          await chapter(title, page, 7500);
+          await pause(1000);
           await glideClick(page, 'main', reveal);
           await expect.poll(() => frontmostProcess().name, { timeout: 5000 }).toBe('Finder');
           finderInFront = true;
@@ -857,7 +865,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           const left = Math.max(d.x + 20, Math.min(b.x + b.width * 0.45, d.x + d.width - FINDER_W - 20));
           const top = Math.max(d.y + 40, Math.min(b.y + b.height * 0.3, d.y + d.height - 400));
           arrangeFinderWindow([left, top, left + FINDER_W, top + 380]);
-          await chapter(title);
           if (cursor !== 'synthetic') {
             // The arrow rests on the desktop, off both windows.
             await pointerTo('elsewhere');
@@ -949,7 +956,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
     // 15. ⌘/: the shortcut sheet, now with the table's shortcuts (the 자료 group); ↩ closes it. The caption is read
     //     before the sheet comes (a sheet covers the window's middle).
-    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('CmdOrCtrl+F')} 빠른 검색과 ${key('Shift+CmdOrCtrl+R')} ‘${label('item.showInFolder')}’도 들어 있습니다.`);
+    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('CmdOrCtrl+F')} 빠른 검색과 ${key('Shift+CmdOrCtrl+R')} ‘${label('item.showInFolder')}’도 들어 있습니다.`, page, 9000); // read before the sheet (2.5 s) and kept up while it shows (5 s), until chapter 16 replaces it
     // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
     await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
     await pause(2500);
@@ -1003,7 +1010,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    const txt = outFile('m4-demo.chapters.txt');
+    const txt = outFile('m4-demo.chapters.raw.txt');
     const json = outFile('m4-demo.chapters.json');
     fs.writeFileSync(txt.abs, chapters.map((c) => `${mmss(inVideo(c))} ${c.title}`).join('\n') + '\n');
     fs.writeFileSync(
@@ -1017,7 +1024,15 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           ...(loss && entry?.file ? { partialRecording: entry.file } : {}),
           recordSeconds: IS_MAC ? RECORD_SECONDS : null,
           demoSeconds,
-          /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the video. */
+          /** Which clock each field is on, so no list is read against the wrong video. */
+          timelines: {
+            'chapters[].ms': "milliseconds on the demo script's clock (zero = the first chapter's start)",
+            offset: "seconds from that zero to the raw recording's first frame",
+            demoSeconds: "seconds on the script's clock",
+            'm4-demo.chapters.raw.txt': 'the raw recording (m4-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
+            'm4-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
+          },
+          /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the raw video. */
           offset,
           recordingExitSeconds: recordingExitMs !== null ? Math.round((recordingExitMs - started) / 100) / 10 : null,
           truncated: IS_MAC && entry?.file ? demoSeconds > RECORD_SECONDS : false,
@@ -1037,7 +1052,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         2,
       )}\n`,
     );
-    record({ file: txt.rel, kind: 'data', description: 'M4 demo chapter list (m:ss in the recording)' });
+    record({ file: txt.rel, kind: 'data', description: 'M4 demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
     record({ file: json.rel, kind: 'data', description: 'M4 demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }

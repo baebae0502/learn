@@ -11,7 +11,8 @@
 #
 # Output (gitignored): evidence/demo-linux/<UTC timestamp>/
 #   m4-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
-#   m4-demo.chapters.txt/.json the chapter list (m:ss in the video), input, screen and window bounds, notes
+#   m4-demo.chapters.raw.txt/.json the chapter list on the raw recording's timeline, input, screen and window bounds, notes
+#   m4-demo-linux.chapters.txt/.json the chapters on the finished video's own timeline (finish-demo.sh)
 #   frames/ch-NN.png           one frame per chapter: 3 s in, or halfway through a shorter chapter
 #   run.log, build.log         the Playwright run and the build
 # Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node, pnpm and python3. Builds the app first.
@@ -97,7 +98,7 @@ STATUS=${PIPESTATUS[0]}
 set -e
 
 SRC="evidence-results/$LABEL"
-for f in m4-demo.chapters.txt m4-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
+for f in m4-demo.chapters.raw.txt m4-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
 if [[ ! -s $SRC/m4-demo.mp4 ]]; then
   echo "no recording in $SRC (test exit $STATUS)" >&2
   exit 1
@@ -111,11 +112,11 @@ ffprobe -v error -show_chapters -of csv=p=0 "$VIDEO" | wc -l | xargs -I{} echo "
 
 # One frame per chapter: 3 s in, or halfway to the next chapter when it is shorter (n3).
 DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$VIDEO")
-SELECT=$(python3 -I - "$OUT/m4-demo.chapters.json" "$DURATION" <<'PY'
+SELECT=$(python3 -I - "${VIDEO%.*}.chapters.json" "$DURATION" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
-offset, end = float(d.get('offset') or 0), float(sys.argv[2])
-starts = [max(0.0, c['ms'] / 1000 - offset) for c in d['chapters']]
+end = float(sys.argv[2])
+starts = [c['start'] for c in d['chapters']]  # on the finished video's timeline
 picks = [min(s + 3, (s + (starts[i + 1] if i + 1 < len(starts) else end)) / 2) for i, s in enumerate(starts)]
 print('+'.join(f'gte(t,{t:.4f})*lt(t,{t + 1 / 30:.4f})' for t in picks))  # [t, t + 1 frame): exactly one frame each
 PY

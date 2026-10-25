@@ -35,15 +35,13 @@
   .sidebar-top {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     height: var(--toolbar-height);
     flex: none;
-    padding: 0 var(--space-12) 0 var(--traffic-light-inset);
+    /* The toggle sits 12 px from the boundary column, laid out from the left edge: the panel's width comes from a
+       percentage and is fractional on a 2x screen (240.0078), so a toggle placed from the right edge would sit at a
+       fraction of a pixel, and differently in each view. The left padding is the whole pixels to its place. */
+    padding: 0 0 0 round(down, calc(100% - var(--space-12) - var(--hit-target)), 1px);
     -webkit-app-region: drag;
-  }
-  /* Full screen has no traffic lights: no 84 px inset. */
-  :root[data-fullscreen] .sidebar-top {
-    padding-left: var(--space-12);
   }
   .launcher-wrap {
     flex: none;

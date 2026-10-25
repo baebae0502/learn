@@ -586,13 +586,48 @@ export async function showItemPanel(app: ElectronApplication, page: Page): Promi
 }
 
 /**
+ * The tooltip after a hover has this text. When none shows, the failure says why the page held it back: which reasons
+ * block tooltips (data-tooltip-block), whether the window is inactive or not main, whether the page has the focus, and
+ * which element the pointer is over: a hover tooltip that never comes on a runner is one of those or the pointer itself.
+ */
+export async function expectTooltipText(page: Page, expected: string | RegExp, hovered: string): Promise<void> {
+  try {
+    await expect(page.getByRole('tooltip')).toHaveText(expected);
+  } catch (error) {
+    const state = await page
+      .evaluate((testId) => {
+        const root = document.documentElement.dataset;
+        return {
+          tooltipBlock: root['tooltipBlock'] ?? null,
+          windowInactive: 'windowInactive' in root,
+          windowNotMain: 'windowNotMain' in root,
+          hasFocus: document.hasFocus(),
+          targetHovered: document.querySelector(`[data-testid="${testId}"]`)?.matches(':hover') ?? null,
+          tooltips: document.querySelectorAll('.tooltip').length,
+        };
+      }, hovered)
+      .catch((e: unknown) => ({ evaluateFailed: String(e) }));
+    throw new Error(`${(error as Error).message}\npage state when no tooltip showed: ${JSON.stringify(state)}`);
+  }
+}
+
+/**
+ * The sidebar's top 88 px compared between views. On macOS the Mac runs showed 44 px differing by 1-2 per channel (84,87,93
+ * against 83,89,95) in x 184-230, y 19-79: the toggle's icon and the launcher's keycaps, only on the glyphs' edge pixels,
+ * while positions, sizes and fills were identical. That is the compositor's glyph anti-aliasing, not a layout or colour
+ * change (a dimmed or moved glyph steps by tens), so a step of 3 still counts as the same there; elsewhere it is exact.
+ */
+export const SIDEBAR_TOP_TOLERANCE = process.platform === 'darwin' ? 3 : 0;
+
+/**
  * Two screenshots of the same clip are byte-identical, or the failure says where they differ (pixel count, bounding box,
  * the first differing pixel's two colours), decoded in the page: a pixel-identity test that fails on a machine whose
- * images cannot be looked at must name what moved.
+ * images cannot be looked at must name what moved. `tolerance`: the largest per-channel step still counted as the same
+ * (0: exact).
  */
-export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer, name: string): Promise<void> {
+export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer, name: string, tolerance = 0): Promise<void> {
   if (shot.equals(reference)) return;
-  const report = await page.evaluate(async ([a, b]) => {
+  const report = await page.evaluate(async ([a, b, tolerance]) => {
     const decode = async (b64: string) => {
       const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }));
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -603,6 +638,7 @@ export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer
     const [x, y] = await Promise.all([decode(a!), decode(b!)]);
     if (x.width !== y.width || x.height !== y.height) return `sizes differ: ${x.width}x${y.height} vs ${y.width}x${y.height}`;
     let count = 0;
+    let maxDelta = 0;
     let [x0, y0, x1, y1] = [x.width, x.height, -1, -1];
     let first = '';
     for (let i = 0; i < x.data.length; i += 4) {
@@ -610,11 +646,13 @@ export async function expectSameShot(page: Page, shot: Buffer, reference: Buffer
       const px = (i / 4) % x.width;
       const py = Math.floor(i / 4 / x.width);
       count++;
+      for (let k = 0; k < 4; k++) maxDelta = Math.max(maxDelta, Math.abs(x.data[i + k]! - y.data[i + k]!));
       [x0, y0, x1, y1] = [Math.min(x0, px), Math.min(y0, py), Math.max(x1, px), Math.max(y1, py)];
       if (first === '') first = `first at ${px},${py}: ${Array.from(x.data.slice(i, i + 4))} vs ${Array.from(y.data.slice(i, i + 4))}`;
     }
-    return count === 0 ? 'same pixels, different PNG bytes (encoder)' : `${count} px differ in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`;
-  }, [shot.toString('base64'), reference.toString('base64')] as const);
+    if (maxDelta <= tolerance) return 'identical';
+    return count === 0 ? 'same pixels, different PNG bytes (encoder)' : `${count} px differ (largest channel step ${maxDelta}) in x ${x0}–${x1}, y ${y0}–${y1}; ${first}`;
+  }, [shot.toString('base64'), reference.toString('base64'), tolerance] as const);
   expect(report, `${name}: the shots differ`).toBe('identical');
 }
 

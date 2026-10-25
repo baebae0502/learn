@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, expectDisabledReason, expectSameShot, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, SIDEBAR_TOP_TOLERANCE, expectSameShot, importPaths, launch, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -275,10 +275,10 @@ test('layout B: the toolbar spans the content and the item panel, which starts u
       .locator('[data-testid="import-menu"], [data-testid="search-field"], [data-testid="inspector-toggle"]')
       .evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(['import-menu', 'search-field', 'inspector-toggle']);
-    await expectSameShot(page, await top88(), empty, 'with the panel');
+    await expectSameShot(page, await top88(), empty, 'with the panel', SIDEBAR_TOP_TOLERANCE);
     await runMenuCommand(app, 'view.toggleInspector');
     await expect.poll(() => panelState(page)).toBe('hidden');
-    await expectSameShot(page, await top88(), empty, 'panel hidden');
+    await expectSameShot(page, await top88(), empty, 'panel hidden', SIDEBAR_TOP_TOLERANCE);
     await runMenuCommand(app, 'view.toggleInspector');
     await expect(page.getByRole('separator', { name: '항목 패널' })).toHaveCount(1); // the handle is named after its pane
   } finally {

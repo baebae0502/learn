@@ -2,7 +2,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -134,12 +134,38 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     // library at all, and main refuses its kind on those channels too (register.test.ts).
     expect(await sheet.evaluate(() => Object.keys(window.learn))).toEqual(['sheet']);
     expect(await sheet.evaluate(() => Object.keys(window.learn.sheet).sort())).toEqual(['payload', 'resolve']);
-    expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
+    expect(await windowKinds(s.app)).toEqual(['main', 'settings (hidden)', 'sheet']);
     // A click on a row (static text) leaves ↩ working.
     await sheet.getByTestId('shortcut-row').first().click();
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     await mainHasFocus(s.app);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a ⌘/ sheet is made at the height an earlier one measured (measured once, in its own font)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await s.app.evaluate(({ app }) => {
+      const g = globalThis as { __sheetMadeAt?: number[] };
+      g.__sheetMadeAt = [];
+      app.on('browser-window-created', (_event, win) => g.__sheetMadeAt!.push(win.getContentSize()[1]!));
+    });
+    const shown: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      shown.push(await sheet.evaluate(() => innerHeight));
+      await closeSheet(sheet, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
+    const madeAt = await s.app.evaluate(() => (globalThis as { __sheetMadeAt?: number[] }).__sheetMadeAt!);
+    expect(new Set(shown).size).toBe(1); // every one shown as tall as its content
+    // The first is made as tall as the room and fitted; once a measurement was taken in its font (the first, or the
+    // second when the font came late), the next ones are made at that height.
+    expect(madeAt[0]).toBeGreaterThanOrEqual(shown[0]!);
+    expect(madeAt[2]).toBe(shown[0]);
   } finally {
     await s.app.close();
   }

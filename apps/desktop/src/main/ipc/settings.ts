@@ -15,7 +15,7 @@ export function registerSettingsIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.prefs.set, prefsSetInput, (patch) => {
     const before = deps.prefs.get().theme;
     const prefs = deps.prefs.set(patch);
-    // The pages change first; the native theme follows them (T13R4-m1).
+    // The pages change first, both on this one broadcast; the native theme follows their reports.
     if (prefs.theme !== before) deps.theme.changed(prefs.theme);
     broadcast('prefsChanged', { prefs });
     return prefs;

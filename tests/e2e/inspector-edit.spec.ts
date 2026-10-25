@@ -3,7 +3,7 @@
 // form (no menu accelerator), so it is pressed in the page.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, mainWindow, rowByTitle, runMenuCommand, selectRows } from './helpers';
+import { FIXTURES, importPaths, launch, mainWindow, rowByTitle, runMenuCommand, selectRows, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -231,7 +231,7 @@ test('closing the window over invalid changes keeps it, the form saying why; val
     await (await mainWindow(app)).evaluate((w) => w.close()); // ⌘W / 윈도우 닫기
     await expect(page.getByTestId('editor-unsaved')).toBeVisible();
     await expect.poll(() => flushLog(app)).toEqual([{ action: 'close', result: 'invalid' }]);
-    expect(await windowCount(app)).toBe(1);
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']); // nothing closed, the prepared settings window neither
     await field(page, 'url').fill('https://example.org/a');
     const quit = process.platform === 'darwin' ? null : app.waitForEvent('close'); // Linux/Windows quit with the main window
     await (await mainWindow(app)).evaluate((w) => w.close());
@@ -257,7 +257,9 @@ test('quitting (⌘Q, app.quit) over invalid changes is called off; valid ones a
     await app.evaluate(({ app: electronApp }) => electronApp.quit()); // what ⌘Q and the Dock's 종료 do
     await expect(page.getByTestId('editor-unsaved')).toBeVisible();
     await expect.poll(() => flushLog(app)).toEqual([{ action: 'quit', result: 'invalid' }]);
-    expect(await windowCount(app)).toBe(1); // nothing closed: the quit is off
+    // Nothing closed: the quit is off, and the prepared settings window outlived the attempt the edit gate called off
+    // (it is discarded only on a before-quit nobody prevented).
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']);
     await field(page, 'date').fill('2024-03');
     const exited = app.waitForEvent('close');
     await app.evaluate(({ app: electronApp }) => electronApp.quit());
@@ -392,7 +394,7 @@ test('a refused close answers at once even when the page runs no frames (invalid
     });
     await (await mainWindow(app)).evaluate((w) => w.close());
     await expect.poll(() => flushLog(app)).toEqual([{ action: 'close', result: 'invalid' }]);
-    expect(await windowCount(app)).toBe(1);
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']);
     await expect(field(page, 'date')).toBeFocused();
     await page.getByTestId('editor-discard').click(); // an invalid edit would keep the app from closing
   } finally {

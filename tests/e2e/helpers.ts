@@ -64,6 +64,9 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     await expect(page.getByTestId('app-ready')).toBeAttached();
     // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuStateVersion?: number }).__learnMenuStateVersion ?? 0)).toBeGreaterThan(0);
+    // Once the main window is idle main prepares the settings window hidden. Every session starts from there (the
+    // main window and a prepared settings window), so no test races its making (window events, window counts).
+    await expect.poll(() => settingsPrepared(app), { message: 'main prepared the settings window once the main window was idle', timeout: 15_000 }).toBe(true);
     return { app, page };
   } catch (e) {
     await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
@@ -82,6 +85,27 @@ export function mainWindow(app: ElectronApplication) {
     const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=main'));
     if (!w) throw new Error('no main window (window=main)');
     return w;
+  });
+}
+
+/**
+ * Every window by its `?window=` kind, sorted, with " (hidden)" after one not on screen — e.g. ['main', 'settings (hidden)']:
+ * the settings window main prepares ahead of ⌘, is there from launch on.
+ */
+export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed())
+      .map((w) => `${/[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? ''}${w.isVisible() ? '' : ' (hidden)'}`)
+      .sort(),
+  );
+
+/** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
+export async function settingsPrepared(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(async ({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=settings'));
+    if (!w || w.webContents.isLoading()) return false;
+    return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true;
   });
 }
 
@@ -273,7 +297,9 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
 }
 
 /**
- * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. A sheet is
+ * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. The first ⌘, of a
+ * session shows the settings window main prepared hidden instead of making one: its page, already open, is the one
+ * returned. A sheet is
  * returned once main has shown it at its measured size (hidden → sized to its content → shown), and the page's
  * viewport has that size: geometry and screenshots never see the first, full-height layout. The settings window is
  * returned once it is shown and has the focus: it shows only after its measure and font wait, 120–150 ms after its
@@ -281,9 +307,11 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
  * ours has the focus (the app itself is not the active one, which macOS 14+ may refuse to change), shown is enough.
  */
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
-  const opened = app.waitForEvent('window', { timeout: 15_000 });
+  // ⌘, shows the settings window main prepared when there is one; every sheet is a new window.
+  const prepared = kind === 'settings' ? app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings')) : undefined;
+  const opened = prepared ? null : app.waitForEvent('window', { timeout: 15_000 });
   await trigger();
-  const page = await opened;
+  const page = prepared ?? (await opened!);
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
   if (kind === 'sheet') {

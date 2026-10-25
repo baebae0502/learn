@@ -7,7 +7,7 @@ import { CHANNEL_KINDS } from '../../apps/desktop/src/main/ipc/channel-kinds';
 import type { WindowKind } from '../../apps/desktop/src/main/window-kinds';
 import {
   FIXTURES, NativeInputNotPermitted, ROOT, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
-  recordedPopups, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
+  recordedPopups, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, windowKinds, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -212,7 +212,7 @@ test('⌘O (파일 가져오기…) opens the dialog exactly once', async ({}, t
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(page.getByTestId('duplicate-dialog')).toHaveCount(0);
     // …and no duplicate sheet window opened over it.
-    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']);
   } finally {
     await app.close();
   }

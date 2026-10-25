@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'react';
 import type { Prefs } from '@learn/domain';
 import { api } from '../api';
+import { useLearnEvent } from '../events';
 
 export type Shade = 'light' | 'dark';
 
@@ -38,28 +39,34 @@ export function applyShade(root: ShadeTarget, shade: Shade, opts: ShadeOptions =
   return true;
 }
 
+/** <html data-theme> on `theme` now, reported to main right after (ui.themeShown). */
+function showTheme(theme: Prefs['theme']): void {
+  const shade = resolveTheme(theme, matchMedia('(prefers-color-scheme: dark)').matches);
+  applyShade(document.documentElement, shade, { onShown: () => void api().ui.themeShown({ shade }).catch(() => {}) });
+}
+
 /**
- * Keeps <html data-theme> on `theme` (the main window: the pref; the settings window: the tile just picked, ahead of
- * the pref's round trip), and on the system appearance while it is 시스템 설정. Until `theme` is known the page follows
- * prefers-color-scheme, which main keeps on the same pref (nativeTheme.themeSource): the first value changes nothing
- * visible. Each value is reported once it is on screen (ui.themeShown): main's native theme follows a change a page
- * made (T13R4-m1).
+ * Keeps <html data-theme> on the saved theme pref, in the main and the settings window alike, and on the system
+ * appearance while it is 시스템 설정. Until `theme` is known the page follows prefers-color-scheme, which main keeps on the
+ * same pref (nativeTheme.themeSource): the first value changes nothing visible.
+ *
+ * A change made in a page reaches every page in one message: main saves the pref, then sends prefsChanged to all
+ * windows in one loop. Each page swaps in that message's own task, before the re-render the message also causes, and
+ * reports at once, so the main and the settings page change in the same frame and the native parts follow both (the
+ * clicked page no longer leads by its round trip). The settings window's tile shows the pick on the click; its theme
+ * waits for this message like the main window's.
  *
  * 시스템 설정 is resolved from prefers-color-scheme, which main moves only once it applies the native theme: the
  * appearance that change brings, like a change of the system's own appearance, is applied at once.
  */
 export function useApplyTheme(theme: Prefs['theme'] | undefined): void {
+  useLearnEvent('prefsChanged', ({ prefs }) => showTheme(prefs.theme));
   useLayoutEffect(() => {
     if (!theme) return;
-    const root = document.documentElement;
-    const system = matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const shade = resolveTheme(theme, system.matches);
-      applyShade(root, shade, { onShown: () => void api().ui.themeShown({ shade }).catch(() => {}) });
-    };
-    apply();
+    showTheme(theme);
     if (theme !== 'system') return;
-    const follow = () => apply();
+    const system = matchMedia('(prefers-color-scheme: dark)');
+    const follow = () => showTheme(theme);
     system.addEventListener('change', follow);
     return () => system.removeEventListener('change', follow);
   }, [theme]);

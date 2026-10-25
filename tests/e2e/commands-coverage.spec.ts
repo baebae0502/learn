@@ -16,8 +16,12 @@ const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 /** Closes what a command opened: sheets by Escape once they rendered, other windows directly, then the palette. */
 async function closeTransient(app: ElectronApplication, main: Page): Promise<void> {
   await main.waitForTimeout(250);
+  // The settings window main keeps prepared, hidden, is not something a command opened: it stays.
+  const shown = new Set(
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible()).map((w) => w.webContents.getURL())),
+  );
   for (const w of app.windows()) {
-    if (w === main || w.isClosed()) continue;
+    if (w === main || w.isClosed() || (w.url().includes('window=settings') && !shown.has(w.url()))) continue;
     await w.waitForLoadState('domcontentloaded').catch(() => {});
     if (w.url().includes('window=sheet')) {
       // R-12: the sheet handles Escape only after its payload arrived and rendered; wait for it, then for the close.
@@ -31,11 +35,11 @@ async function closeTransient(app: ElectronApplication, main: Page): Promise<voi
   await main.waitForTimeout(150);
 }
 
-/** The `?window=` kinds of the open windows other than the main one. */
+/** The `?window=` kinds of the windows on screen other than the main one (a prepared settings window is hidden). */
 const otherWindows = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .filter((w) => !w.isDestroyed())
+      .filter((w) => !w.isDestroyed() && w.isVisible())
       .map((w) => /[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? '')
       .filter((kind) => kind !== 'main'),
   );
@@ -66,6 +70,7 @@ test('every registry command runs without a page error (library and reader menus
     });
   };
   watch(page);
+  for (const p of app.windows()) if (p !== page) watch(p); // the prepared settings window
   app.on('window', watch);
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');

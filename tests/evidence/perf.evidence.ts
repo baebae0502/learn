@@ -85,6 +85,14 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
   const cold = await coldFirstOpens(testInfo.outputPath('cold'), COLD_SESSIONS);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
+    // What the prepared settings window costs while it waits — its renderer's working set — next to the main one's.
+    const memory = await s.app.evaluate(({ app, BrowserWindow }) => {
+      const pidOf = (kind: string) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(`window=${kind}`))?.webContents.getOSProcessId();
+      const metrics = app.getAppMetrics();
+      const kb = (pid: number | undefined) => metrics.find((m) => m.pid === pid)?.memory.workingSetSize ?? null;
+      return { settingsRendererKB: kb(pidOf('settings')), mainRendererKB: kb(pidOf('main')) };
+    });
+    expect(memory.settingsRendererKB, 'the prepared settings window has a renderer of its own').not.toBeNull();
     const { click, elapsed } = await openTimer(s.app);
     const sheetMs: number[] = [];
     const settingsMs: number[] = [];
@@ -103,14 +111,18 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     const result = {
       runsMs: { sheet: sheetMs, settings: settingsMs },
       medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
-      // The first open in a new session (report, not tune: checklist 7.1).
+      // The first open in a new session (report, not tune: checklist 7.1): the settings window shows the one main prepared.
       coldFirstMs: { runs: cold, median: { sheet: median(cold.sheet), settings: median(cold.settings) } },
-      // The first open of each is the first such window of the session; the target is the median.
+      // The first open in this session: the sheet is made (sheets are never prepared), the settings window was prepared.
+      firstOpenMs: { sheet: sheetMs[0]!, settings: settingsMs[0]! },
+      // Targets, reported: the ⌘/ sheet's median, and the settings window's first open of a new session.
       targetMs: 250,
+      firstOpenTargetMs: { settings: 300 },
+      memory,
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4)');
+    writeJson('open-latency.json', result, 'M3 menu command → ⌘/ sheet or settings window on screen (T13M-n4); the first opens and the prepared window\'s memory');
     console.log('[measure] open latency', JSON.stringify(result.runsMs), JSON.stringify(result.medianMs), 'cold', JSON.stringify(result.coldFirstMs));
     // The plan's CI rule (re-review minor 3): runner values are reported; Linux CI fails only beyond 2× the target.
     if (process.platform === 'linux' && process.env['CI']) {
@@ -130,9 +142,9 @@ interface ThemeLogEntry {
   at: number;
 }
 
-// T13R4-m1: a theme picked in the settings window. The pages lead (each says it has the change right after its swap,
-// Mac run 3 critique m4), each window's chrome follows its page, the app-wide native theme
-// follows both, and nativeTheme's 'updated' comes last. Times from the click, per window; reported only.
+// T13R4-m1, spec 8: a theme picked in the settings window. Both pages change on main's one prefsChanged broadcast (each
+// says so right after its swap), each window's chrome follows its page, the app-wide native theme follows both, and
+// nativeTheme's 'updated' comes last. Times from the click, per window; reported only.
 test('theme switch order: click → each page shows it → its chrome → the native theme → nativeTheme updated', { tag: '@perf' }, async ({}, testInfo) => {
   test.setTimeout(120_000);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
@@ -140,8 +152,21 @@ test('theme switch order: click → each page shows it → its chrome → the na
     const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
     await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL().includes('window=settings') && w.isVisible()))).toBe(true);
     const switches: Array<Record<string, unknown>> = [];
+    const apart: Array<number | null> = [];
     for (const theme of ['dark', 'light', 'dark'] as const) {
       await s.app.evaluate(() => void ((globalThis as { __learnThemeLog?: unknown[] }).__learnThemeLog = []));
+      // Each page's first frame in the new theme (epoch ms, its own clock): both should come in one frame (±1).
+      const watchPaint = (p: Page) =>
+        p.evaluate((shade) => {
+          const w = window as unknown as { __themePaintedAt?: number };
+          w.__themePaintedAt = undefined;
+          const tick = (t: number) => {
+            if (document.documentElement.dataset['theme'] === shade) w.__themePaintedAt = performance.timeOrigin + t;
+            else requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }, theme);
+      await Promise.all([watchPaint(s.page), watchPaint(settings)]);
       // The click, on the page's clock (epoch ms, as main's).
       const clickAt = await settings.evaluate((t) => {
         const at = performance.timeOrigin + performance.now();
@@ -155,6 +180,13 @@ test('theme switch order: click → each page shows it → its chrome → the na
         const e = log.find(pick);
         return e ? Math.round(e.at - clickAt) : null;
       };
+      const paintedAt = async (p: Page) => {
+        const at = await p.evaluate(() => (window as unknown as { __themePaintedAt?: number }).__themePaintedAt ?? null);
+        return at === null ? null : Math.round(at - clickAt);
+      };
+      const painted = { settings: await paintedAt(settings), main: await paintedAt(s.page) };
+      const pagesApartMs = painted.settings !== null && painted.main !== null ? Math.abs(painted.settings - painted.main) : null;
+      apart.push(pagesApartMs);
       switches.push({
         to: theme,
         msFromClick: {
@@ -164,18 +196,21 @@ test('theme switch order: click → each page shows it → its chrome → the na
           nativeApplied: ms((e) => e.event === 'source'),
           nativeThemeUpdated: ms((e) => e.event === 'updated'),
         },
+        paintedMs: painted,
+        pagesApartMs,
         nativeAppliedBecause: log.find((e) => e.event === 'source')?.reason ?? null,
         log: log.map((e) => ({ ...e, at: Math.round(e.at - clickAt) })),
       });
     }
     const result = {
       switches,
+      maxPagesApartMs: apart.includes(null) ? null : Math.max(...(apart as number[])),
       followMs: 250,
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
     writeJson('theme-switch.json', result, 'M3 theme switch: click → each page shows it → its chrome → native theme → nativeTheme updated (T13R4-m1)');
-    console.log('[measure] theme switch', JSON.stringify(switches.map((w) => ({ to: w['to'], ...(w['msFromClick'] as object), because: w['nativeAppliedBecause'] }))));
+    console.log('[measure] theme switch', JSON.stringify(switches.map((w) => ({ to: w['to'], ...(w['msFromClick'] as object), because: w['nativeAppliedBecause'], apart: w['pagesApartMs'] }))));
   } finally {
     await s.app.close();
   }

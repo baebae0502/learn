@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent, type Rea
 import { flushSync } from 'react-dom';
 import { Clapperboard, FileText, ListFilter, Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
-import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
+import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, paletteListed, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import type { CommandTarget } from '../commands/registry';
 import { COMMAND_ICONS } from '../commands/icons';
@@ -12,6 +12,7 @@ import { useOrganize } from '../organize/useOrganize';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
+import { tagPaletteCommands } from '../tags/paletteTags';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
@@ -131,8 +132,12 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
   // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
   // notice that says why the rest is missing.
+  // A colour key is listed only while a tag holds its slot (paletteListed), under the tag's name: "색 태그 3 · 중요" (spec 4.2).
   const commands = rankCommands(
-    COMMANDS.filter((c) => inPalette(c) && (needsTarget(c) ? targeted.has(c.id) : isEnabled(c.id))),
+    tagPaletteCommands(
+      COMMANDS.filter((c) => inPalette(c) && paletteListed(c, env) && (needsTarget(c) ? targeted.has(c.id) : isEnabled(c.id))),
+      (slot) => model?.tagByPosition(slot)?.name,
+    ),
     query,
     platform,
     state,

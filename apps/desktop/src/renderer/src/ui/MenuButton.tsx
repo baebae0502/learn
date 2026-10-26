@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
-import { SoftDisabled, type ForcedState } from './Button';
+import { IconButton, SoftDisabled, type ForcedState } from './Button';
 import { cx } from './cx';
 import { useDisabledReason } from './disabledReason';
 import { Icon } from './Icon';
@@ -135,5 +135,28 @@ export function MenuButton<K extends string>(props: {
       </MenuTrigger>
       {reason.description}
     </>
+  );
+}
+
+/**
+ * The "…" button of a web pop-up menu (design-spec 7.3 태그 선택기): an icon-only trigger with a tooltip, the same menu
+ * (MenuList) in the same popover. For a button inside the content that has no room for a label.
+ */
+export function MenuIconButton<K extends string>(props: {
+  label: string;
+  icon: LucideIcon;
+  items: readonly MenuEntry<K>[];
+  onAction(id: K): void;
+  placement?: 'bottom start' | 'bottom end';
+  size?: 'regular' | 'small';
+  testId?: string;
+}) {
+  return (
+    <MenuTrigger>
+      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} />
+      <Popover className="menu-popover" placement={props.placement ?? 'bottom end'} offset={4}>
+        <MenuList entries={props.items} onAction={props.onAction} aria-label={props.label} />
+      </Popover>
+    </MenuTrigger>
   );
 }

@@ -24,6 +24,19 @@ export type CommandId =
   | 'collection.rename'
   | 'collection.importInto'
   | 'collection.delete'
+  | 'tag.color1'
+  | 'tag.color2'
+  | 'tag.color3'
+  | 'tag.color4'
+  | 'tag.color5'
+  | 'tag.color6'
+  | 'tag.color7'
+  | 'tag.color8'
+  | 'tag.rename'
+  | 'tag.setColor'
+  | 'tag.clearColor'
+  | 'tag.delete'
+  | 'tags.clearFilter'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
   | 'app.shortcuts'
@@ -142,6 +155,18 @@ export interface CommandSpec {
 /** Electron accelerator grammar used by the registry (design-spec 7.4 keys included). */
 export const ACCELERATOR_SYNTAX = /^((CmdOrCtrl|Cmd|Ctrl|Alt|Shift)\+)*([A-Za-z0-9]|\[|\]|,|\/|-|Plus|F\d{1,2}|Enter|Delete|Backspace|Tab|Space|Escape)$/;
 
+/** The eight colour slots (design-spec 4): colour N is slot N is key N. */
+export const COLOR_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const colorId = (n: number) => `tag.color${n}` as CommandId;
+const colorCommand = (n: (typeof COLOR_SLOTS)[number]): CommandSpec => ({
+  id: colorId(n),
+  label: `색 태그 ${n}`,
+  key: { code: `Digit${n}` },
+  contexts: ['item'],
+  palette: true,
+  keywords: ['색 태그', '태그', '색', '붙이기', '떼기', '라벨', 'tag', 'label'],
+});
+
 export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 1 }, contexts: ['library'],
@@ -213,6 +238,19 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'collection.delete', label: '컬렉션 삭제…', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 3, order: 1 },
     keywords: ['삭제', '지우기', '컬렉션', 'delete', 'remove'],
   },
+  // 1–8 (spec 4.2): the key puts the tag at that slot on the selected items, or takes it off when every one has it. A
+  // member has no placement of its own — 색 태그 ▸ is the group in SUBMENUS, which lists the slots that have a tag. The
+  // palette lists a slot only while a tag holds it (paletteListed); the key itself always runs, to say a slot is empty.
+  ...COLOR_SLOTS.map(colorCommand),
+  // The tag chip's menu (spec 9.2): 이름 바꾸기 happens in the chip itself, 색 지정 ▸ lists the eight slots (the tag that
+  // holds one is named in its row) and 색 해제 needs a colour. A tag is reached from the selector, so none of these is a
+  // palette or menu-bar command.
+  { id: 'tag.rename', label: '이름 바꾸기', contexts: ['tag'], contextMenu: { kinds: ['tag'], group: 1, order: 1 } },
+  { id: 'tag.setColor', label: '색 지정', contexts: ['tag'], submenu: 'tagColors', palette: false, contextMenu: { kinds: ['tag'], group: 1, order: 2 } },
+  { id: 'tag.clearColor', label: '색 해제', contexts: ['tag'], contextMenu: { kinds: ['tag'], group: 1, order: 3 } },
+  { id: 'tag.delete', label: '태그 삭제…', contexts: ['tag'], contextMenu: { kinds: ['tag'], group: 2, order: 1 } },
+  // 태그 선택 해제 (spec 4.3): the selector's "…" menu, the empty state of a filter and the palette.
+  { id: 'tags.clearFilter', label: '태그 선택 해제', contexts: ['library'], palette: true, keywords: ['태그', '해제', '필터', '선택 해제', 'tag', 'filter', 'clear'] },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
@@ -261,6 +299,21 @@ export function commandById(id: CommandId): CommandSpec {
 /** A command that acts on targets (items, collections, tags) is not listed by default: the palette has none to give it. */
 const needsTargets = (c: CommandSpec): boolean => c.contexts.some((x) => x === 'item' || x === 'collection' || x === 'tag');
 export const inPalette = (c: CommandSpec): boolean => c.palette ?? !needsTargets(c);
+
+/** The slot (1–8) a colour key stands for, or null for any other command. */
+export function tagSlot(id: CommandId): number | null {
+  const m = /^tag\.color([1-8])$/.exec(id);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Whether the palette lists a command now, beside inPalette and availability: a colour key only while a tag holds its slot
+ * (spec 4.2) — a row for an empty slot could not do what its name says. The key itself still runs (it tells the user).
+ */
+export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 'tagPositions'>): boolean {
+  const slot = tagSlot(spec.id);
+  return slot === null || hasTagPosition(ctx.tagPositions, slot);
+}
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
  * is the reported context), else the platform label.
@@ -292,7 +345,7 @@ export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['
 /**
  * Commands grouped into one submenu (spec 9.1): "색 태그 ▸" lists `tag.color1`–`tag.color8`. The members stay commands
  * of their own (the key map, the ⌘/ sheet and the palette need each one), so they carry no placement; the group does.
- * Empty until the first handler for a member exists (a row without a handler cannot exist).
+ * A group exists only with its members' handlers (a row without a handler cannot exist): the colour keys' are in R/commands/registry.ts.
  */
 export interface SubmenuSpec {
   id: 'colorTags';
@@ -303,7 +356,16 @@ export interface SubmenuSpec {
   menu?: { menu: MenuName; group: number; order: number };
   contextMenu?: { kinds: readonly ContextMenuKind[]; group: number; order: number };
 }
-export const SUBMENUS: readonly SubmenuSpec[] = [];
+export const SUBMENUS: readonly SubmenuSpec[] = [
+  {
+    id: 'colorTags',
+    label: '색 태그',
+    commands: COLOR_SLOTS.map(colorId),
+    // 파일 group 2 after 컬렉션에 추가 ▸ (4) and 이 컬렉션에서 빼기 (5); the item menu's group 3 after the same two (1, 2).
+    menu: { menu: 'file', group: 2, order: 6 },
+    contextMenu: { kinds: ['item'], group: 3, order: 3 },
+  },
+];
 
 /** What is wrong with the submenus of a registry (empty: nothing). The real registry must give []. */
 export function submenuProblems(commands: readonly CommandSpec[], submenus: readonly SubmenuSpec[]): string[] {
@@ -481,6 +543,8 @@ export function selectionTargets(ctx: CommandContextState): ItemTargetInfo[] {
 }
 
 type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
+/** The colour keys act on the library table's selection (the key map and the palette hand it over). */
+const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'library.find': (c) => c.libraryCount > 0,
   // An empty library has no panel (design-spec 2.4).
@@ -499,6 +563,20 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'collection.rename': (_c, t) => t.collections.length === 1,
   'collection.importInto': (c, t) => c.view === 'library' && t.collections.length === 1,
   'collection.delete': (_c, t) => t.collections.length === 1,
+  // 1–8: any slot runs on a selection — an empty one says so (spec 4.2); the palette's own filter is paletteListed.
+  'tag.color1': colorKey,
+  'tag.color2': colorKey,
+  'tag.color3': colorKey,
+  'tag.color4': colorKey,
+  'tag.color5': colorKey,
+  'tag.color6': colorKey,
+  'tag.color7': colorKey,
+  'tag.color8': colorKey,
+  'tag.rename': (_c, t) => t.tags.length === 1,
+  'tag.setColor': (_c, t) => t.tags.length === 1,
+  'tag.clearColor': (_c, t) => t.tags.length === 1 && t.tags[0]!.hasColor,
+  'tag.delete': (_c, t) => t.tags.length === 1,
+  'tags.clearFilter': (c) => c.tagFilterCount > 0,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,

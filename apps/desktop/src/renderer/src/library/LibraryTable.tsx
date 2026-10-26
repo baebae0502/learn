@@ -4,7 +4,7 @@ import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode,
 } from 'react';
-import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem } from '@learn/domain';
+import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem, type OrganizeTag } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { usePrefs } from '../data/queries';
 import { defaultDensity, density as ROW_HEIGHT, layout } from '../design/tokens';
@@ -22,7 +22,9 @@ import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { gridKey } from './gridKeys';
-import { ItemMarks } from './ItemMarks';
+import { TagDots } from '../tags/TagDots';
+import { tagsDescription } from '../tags/tagDots';
+import { LinkMark, StatusFlags } from './ItemMarks';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
@@ -40,6 +42,8 @@ export interface LibraryTableProps {
   onContextMenu(itemIds: readonly string[], x: number, y: number): void;
   /** Matched range per title, for <mark> (the quick search's). */
   titleMatches?: ReadonlyMap<string, Match> | null;
+  /** The tags of an item (the organize model's, coloured ones first by slot): the colour dots after its title and the row's description. */
+  tagsOf?: (itemId: string) => readonly OrganizeTag[];
   /** Scroll this row into view once after mount (return from the reader). */
   revealId?: string | null;
   /** What the body shows while there are no rows (the loading line, a no-results state). The header stays. */
@@ -57,6 +61,8 @@ const NO_COLUMNS: readonly LibraryColumnId[] = [];
 /** Tabular figures (design-spec 6 표: 숫자는 tabular). */
 const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size']);
 const ROW = '[data-testid="item-row"]';
+const NO_TAGS: readonly OrganizeTag[] = [];
+const tagsDescriptionId = (itemId: string) => `row-tags-${itemId}`;
 /** A `contextmenu` this soon after the menu our own key opened is the browser's echo of the same key (Windows sends it on key-up). */
 const KEY_MENU_ECHO_MS = 500;
 const rowIdOf = (target: EventTarget): string | null =>
@@ -90,15 +96,18 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
   }
 }
 
-/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks. */
-function TitleCell({ item, match }: { item: LibraryItem; match: Match | null }) {
+/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks and the colour dots. */
+function TitleCell({ item, match, tags }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[] }) {
   return (
     <>
       <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>
-      <ItemMarks item={item} flagTestId="missing-flag" />
+      {/* The mockup's order: title, link mark, dots, status flags. */}
+      <LinkMark item={item} />
+      <TagDots tags={tags} />
+      <StatusFlags item={item} flagTestId="missing-flag" />
     </>
   );
 }
@@ -117,6 +126,8 @@ interface ItemRowProps {
   now: Date;
   /** The part of the title the quick search matched. */
   match: Match | null;
+  /** The item's tags, for its dots and its description. */
+  tags: readonly OrganizeTag[];
 }
 
 /**
@@ -124,13 +135,16 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags }: ItemRowProps) {
   const last = columns.length - 1;
+  // The names of the coloured tags are the row's description; they sit beside the cells, not in the title, so the row's name stays the title.
+  const description = tagsDescription(tags);
   return (
     <div
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}
+      aria-describedby={description !== null ? tagsDescriptionId(item.id) : undefined}
       tabIndex={tabStop ? 0 : -1}
       className="table-row"
       style={{ transform: `translateY(${top}px)` }}
@@ -151,7 +165,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           data-col={c.id}
         >
           {c.id === 'title' ? (
-            <TitleCell item={item} match={match} />
+            <TitleCell item={item} match={match} tags={tags} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}
@@ -159,6 +173,11 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           )}
         </div>
       ))}
+      {description !== null && (
+        <span hidden id={tagsDescriptionId(item.id)}>
+          {description}
+        </span>
+      )}
     </div>
   );
 });
@@ -534,6 +553,7 @@ export function LibraryTable(props: LibraryTableProps) {
                 columns={visible}
                 now={now}
                 match={props.titleMatches?.get(item.id) ?? null}
+                tags={props.tagsOf?.(item.id) ?? NO_TAGS}
               />
             );
           })}

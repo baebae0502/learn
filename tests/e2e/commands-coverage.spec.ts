@@ -7,8 +7,8 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, enabledMenuCommands, importPaths, launch, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, rowByTitle, runMenuCommand, saveDialogCalls, shellCalls,
-  stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, type MenuNode,
+  FIXTURES, assignTag, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls,
+  stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -72,6 +72,13 @@ const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'collection.rename': 'collections.spec.ts › rename by the ↩ key, the menu and the palette keeps the tree in name order and allows equal names',
   'collection.importInto': 'collections.spec.ts › an empty collection says so in the table and the item panel, and its button brings files into it',
   'collection.delete': 'collections.spec.ts › delete asks in the sheet words, the view moves to the parent, and 실행 취소 brings it back without what was deleted before it',
+  'tag.color2': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color3': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color4': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color5': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color6': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color7': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
+  'tag.color8': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {
@@ -244,6 +251,43 @@ test('every registry command runs without a page error (library and reader menus
     expect(opened).toMatch(/[\\/]derived[\\/]open[\\/][0-9a-f-]{36}[\\/]sample-mpeg4part2\.mp4$/);
     expect(fs.existsSync(opened)).toBe(true);
     await runMenuCommand(app, 'nav.back');
+
+    // Tag commands (M5 Task 6), on tags made for the purpose: 1 from 파일 › 색 태그 ▸ (the other seven keys are tags.spec's), the
+    // chip menu's rows through the native menu path, 태그 선택 해제 through the palette.
+    await rowByTitle(page, 'sample').click();
+    const sampleId = await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? (r.data.find((i) => i.title === 'sample')?.id ?? null) : null;
+    });
+    const [coloured, plain] = await makeTags(page, [{ name: '중요', slot: 1 }, { name: '복습' }]);
+    await expect.poll(() => menuItemEnabled(app, 'tag.color1')).toBe(true);
+    await runMenuCommand(app, 'tag.color1');
+    await expect.poll(async () => (await organizeSnapshot(page)).tagged[coloured]).toEqual([sampleId]);
+    ran.add('tag.color1');
+    await assignTag(page, plain!, [sampleId!]);
+    await stubContextMenu(app, ['색 지정', '3 초록']);
+    await tagChip(page, plain!).click({ button: 'right' });
+    await expect.poll(async () => (await organizeSnapshot(page)).tags.find((t) => t.id === plain)?.position).toBe(3);
+    ran.add('tag.setColor');
+    await stubContextMenu(app, '색 해제');
+    await tagChip(page, plain!).click({ button: 'right' });
+    await expect.poll(async () => (await organizeSnapshot(page)).tags.find((t) => t.id === plain)?.position).toBeNull();
+    ran.add('tag.clearColor');
+    await stubContextMenu(app, '이름 바꾸기');
+    await tagChip(page, plain!).click({ button: 'right' });
+    await expect(page.getByTestId('tag-rename-input')).toBeFocused();
+    await page.keyboard.press('Escape');
+    ran.add('tag.rename');
+    await tagChip(page, plain!).click(); // the filter, so there is one to clear
+    await expect(tagChip(page, plain!)).toHaveAttribute('aria-pressed', 'true');
+    await runPalette(page, app, '태그 선택 해제', 'tags.clearFilter');
+    await expect(tagChip(page, plain!)).toHaveAttribute('aria-pressed', 'false');
+    ran.add('tags.clearFilter');
+    await stubConfirm(app, 'confirm');
+    await stubContextMenu(app, '태그 삭제…');
+    await tagChip(page, plain!).click({ button: 'right' });
+    await expect(page.getByTestId(`tag-chip-${plain}`)).toHaveCount(0);
+    ran.add('tag.delete');
 
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.

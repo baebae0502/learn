@@ -50,6 +50,8 @@ import { collectionActions } from '../sidebar/actions';
 import { importTarget, type ImportTarget } from '../sidebar/importTarget';
 import { LibrarySidebar } from '../sidebar/LibrarySidebar';
 import { useExpandedRead } from '../sidebar/useExpanded';
+import { tagActions } from '../tags/actions';
+import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -323,6 +325,12 @@ export function MainWindow(_props: { info: AppInfo }) {
     newCollection: (opts) => collectionActions.startNew(opts),
     renameCollection: (id) => collectionActions.startRename(id),
     deleteCollection: (id) => void collectionActions.remove(id),
+    toggleTagPosition: (position, itemIds) => void tagActions.togglePosition(position, itemIds),
+    renameTag: (tagId) => tagActions.startRename(tagId),
+    setTagColor: (tagId, position) => void tagActions.setColor(tagId, position),
+    clearTagColor: (tagId) => void tagActions.clearColor(tagId),
+    deleteTag: (tagId) => void tagActions.remove(tagId),
+    clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => setView({ kind: 'library' }),
     // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
     open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
@@ -423,6 +431,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     <CommandProvider env={env}>
       <Shell
         sidebar={<LibrarySidebar />}
+        sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
         inspector={showsTable ? <Inspector mode="info" /> : undefined}

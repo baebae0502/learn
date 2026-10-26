@@ -5,7 +5,7 @@ import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../pa
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
-import type { TagColorId } from '../../packages/domain/src/tag-colors';
+import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
@@ -1118,4 +1118,35 @@ export async function runPalette(page: Page, app: ElectronApplication, query: st
   await runMenuCommand(app, 'app.palette');
   await page.getByTestId('palette-input').fill(query);
   await page.locator(`[data-testid="palette-item"][data-command-id="${commandId}"]`).click();
+}
+
+// ---- M5 tags (Task 6) ------------------------------------------------------------------------------------------------------
+
+/** A chip of the tag selector (the item panel may show the same tag too, so the selector is named). */
+export const tagChip = (page: Page, tagId: string): Locator => page.getByTestId('tag-selector').getByTestId(`tag-chip-${tagId}`);
+
+/** The colour a token resolves to in this page (light-dark() resolved), as getComputedStyle writes it. */
+export const tokenColor = (page: Page, token: string): Promise<string> =>
+  page.evaluate((name) => {
+    const probe = document.createElement('div');
+    probe.style.background = `var(${name})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return colour;
+  }, token);
+
+/**
+ * Tags through the page's API, as the screen sets them: the ids in the order given. `slot` is colour N = slot N (colour and
+ * slot together, as the screen always sets them); `items` are the ones the tag goes on.
+ */
+export async function makeTags<const S extends ReadonlyArray<{ name: string; slot?: number; items?: readonly string[] }>>(page: Page, specs: S): Promise<{ -readonly [K in keyof S]: string }> {
+  const ids: string[] = [];
+  for (const spec of specs) {
+    const tagId = await createTag(page, spec.name);
+    if (spec.slot !== undefined) await setTagColor(page, tagId, TAG_COLORS[spec.slot - 1]!.id, spec.slot);
+    if (spec.items && spec.items.length > 0) await assignTag(page, tagId, spec.items);
+    ids.push(tagId);
+  }
+  return ids as { -readonly [K in keyof S]: string };
 }

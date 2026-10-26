@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, NO_LIBRARY_VIEW, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { isSubmenu, type CommandEntry, type MenuEntries } from './entries';
 import { colorTagGroup, collectionRows, menuNeedsOrganize, menuText, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
 import { ADD_TO_COLLECTION, COLOR_GROUP, FUTURE_COMMANDS, FUTURE_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
@@ -132,13 +132,19 @@ describe('색 태그 ▸ (a group of commands)', () => {
   it('is left out when no tag has a slot, when the library was not read, or when a member is not a command', () => {
     expect(group({ organize: organize({ tags: [{ id: 't', name: '복습', color: null, position: null }] }) })).toBeNull();
     expect(group({ organize: null })).toBeNull();
-    expect(colorTagGroup(COLOR_GROUP, COMMANDS, input())).toBeNull(); // the real registry has none of the members yet
+    // The real registry has the members now: the group is built from it as from the stand-ins.
+    expect(rows(colorTagGroup(COLOR_GROUP, COMMANDS, input())!.submenu).map((r) => r.id)).toEqual(['tag.color1', 'tag.color3']);
   });
 });
 
 describe('which menus read the library', () => {
-  it('none of the real registry\'s do: nothing is read until a command that needs it exists', () => {
-    for (const where of ['menu', 'item', 'collection', 'tag', 'column'] as const) expect(menuNeedsOrganize(COMMANDS, [], where), where).toBe(false);
+  it('the real registry\'s colour commands make the menus that hold them read the library, and no other does', () => {
+    expect(menuNeedsOrganize(COMMANDS, [], 'tag')).toBe(true); // 색 지정 ▸ is built from the tags
+    for (const where of ['menu', 'item', 'collection', 'column'] as const) expect(menuNeedsOrganize(COMMANDS, [], where), where).toBe(false);
+    // The group's own placements count once the groups are handed in.
+    expect(menuNeedsOrganize(COMMANDS, SUBMENUS, 'menu')).toBe(true); // 색 태그 ▸ in 파일
+    expect(menuNeedsOrganize(COMMANDS, SUBMENUS, 'item')).toBe(true); // and in the item menu
+    expect(menuNeedsOrganize(COMMANDS, SUBMENUS, 'collection')).toBe(false);
   });
   it('a collections or colour source, or a group, makes the menu that holds it read the library', () => {
     expect(menuNeedsOrganize(FUTURE_COMMANDS, FUTURE_SUBMENUS, 'menu')).toBe(true);

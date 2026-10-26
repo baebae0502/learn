@@ -35,6 +35,11 @@ vi.mock('@learn/library', () => ({
   // The named copy the OS can open (library openable.ts, final review I1): its own tests cover the naming and copying.
   openableFile: vi.fn(async (_layout: unknown, asset: { id: string }, title: string, src: string) => `/library/derived/open/${asset.id}/${title}.pdf <- ${src}`),
 }));
+// The item menu reads the tags for 색 태그 ▸ (the fake database has no tables): none has a slot here, so the group is left out.
+vi.mock('@learn/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@learn/db')>()),
+  readOrganizeSnapshot: () => ({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [] }),
+}));
 vi.mock('../menu/context-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/context-menu')>()),
   popupCommandMenu: (entries: unknown, at: unknown) => popup(entries, at),
@@ -185,7 +190,7 @@ describe('collection and tag mutations broadcast reason collections / tags, only
   });
 });
 
-describe('the item context menu reads the selection once; kinds without commands answer nothing (spec 9.1)', () => {
+describe('the item context menu reads the selection once and its input is checked (spec 9.1)', () => {
   it('asks for the whole selection with one query, in the order given, and does not read item by item', async () => {
     repo.getItems.mockClear();
     repo.getItem.mockClear();
@@ -210,14 +215,7 @@ describe('the item context menu reads the selection once; kinds without commands
     expect(await call('ui:showContextMenu', { kind: 'item', itemIds: ['3c2d1e0f-9a8b-4c7d-8e6f-5a4b3c2d1e11'], x: 1, y: 2 })).toEqual({ ok: true, data: null });
     expect(popup).not.toHaveBeenCalled();
   });
-  it('a tag has no menu until a registry command lists its kind: null, no popup, nothing read', async () => {
-    repo.getItems.mockClear();
-    for (const input of [{ kind: 'tag', tagIds: [TAG] }]) {
-      expect(await call('ui:showContextMenu', { ...input, x: 1, y: 2 })).toEqual({ ok: true, data: null });
-    }
-    expect(popup).not.toHaveBeenCalled();
-    expect(repo.getItems).not.toHaveBeenCalled();
-    // The input is still checked: a menu for nothing is not a menu.
+  it('an input with no ids is not a menu: the input is still checked', async () => {
     expect(await call('ui:showContextMenu', { kind: 'collection', collectionIds: [], x: 1, y: 2 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   });
 });

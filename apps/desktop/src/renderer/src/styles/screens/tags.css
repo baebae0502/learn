@@ -1,0 +1,42 @@
+@layer screens {
+  /* The tag selector at the sidebar's foot (mockup .tag-selector): a hairline above, the head, the chips and the filter field,
+     at most 40 % of the sidebar's height — the chips scroll inside it while the head and the field stay. */
+  .tag-selector {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-height: 0;
+    max-height: 40%;
+    padding: var(--space-8) var(--space-16) var(--space-12) var(--space-24);
+    border-top: 1px solid var(--separator);
+  }
+  .tag-selector .head {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 24px; /* local: section header row, as .section-label */
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+    font-weight: var(--weight-semibold);
+  }
+  .tag-selector .head .icon-btn {
+    margin-right: -6px; /* local: the 22 px button's glyph lines up with the chips' right edge (mockup) */
+  }
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: var(--space-4);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .tag-field {
+    flex: none;
+  }
+  .tag-none {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+}

@@ -118,3 +118,23 @@ describe('the tag filter (spec 4.3)', () => {
   });
 });
 
+
+describe('the tag filter loses a tag that is gone (spec 4.1)', () => {
+  beforeEach(() => useLibrary.setState({ tagFilter: new Set(['t1', 't2']) }));
+  it('drops a deleted tag from the filter', () => {
+    useLibrary.getState().dropFromTagFilter('t1');
+    expect([...useLibrary.getState().tagFilter]).toEqual(['t2']);
+  });
+  it('hands the place of a merged tag to the tag that remains, once', () => {
+    useLibrary.getState().dropFromTagFilter('t1', 't9');
+    expect([...useLibrary.getState().tagFilter].sort()).toEqual(['t2', 't9']);
+    useLibrary.setState({ tagFilter: new Set(['t1', 't9']) });
+    useLibrary.getState().dropFromTagFilter('t1', 't9');
+    expect([...useLibrary.getState().tagFilter]).toEqual(['t9']);
+  });
+  it('is a no-op, with the same set, for a tag that was not in it', () => {
+    const before = useLibrary.getState().tagFilter;
+    useLibrary.getState().dropFromTagFilter('zz', 't9');
+    expect(useLibrary.getState().tagFilter).toBe(before);
+  });
+});

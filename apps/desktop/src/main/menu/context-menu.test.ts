@@ -47,11 +47,11 @@ describe('context menu entries (registry + isCommandAvailable)', () => {
   it('names the file manager off macOS (labelOff)', () => {
     expect(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'linux').at(-2)).toEqual({ id: 'item.showInFolder', label: '폴더에서 보기', enabled: true });
   });
-  it('kinds without commands yet (tag, column) give no entries and say so', () => {
-    for (const kind of ['tag', 'column'] as const) {
-      expect(contextMenuEntries(kind, COMMANDS, LIB, [], 'darwin')).toEqual([]);
-      expect(kindHasMenu(kind, COMMANDS), kind).toBe(false);
-    }
+  it('a kind without commands yet (column) gives no entries and says so; the tag kind has the chip menu, greyed with no tag', () => {
+    expect(contextMenuEntries('column', COMMANDS, LIB, [], 'darwin')).toEqual([]);
+    expect(kindHasMenu('column', COMMANDS)).toBe(false);
+    expect(kindHasMenu('tag', COMMANDS)).toBe(true);
+    expect(contextMenuEntries('tag', COMMANDS, LIB, [], 'darwin').every((e) => e === 'separator' || e.enabled === false)).toBe(true);
     expect(kindHasMenu('item', COMMANDS)).toBe(true);
     expect(kindHasMenu('collection', COMMANDS)).toBe(true);
     expect(kindHasMenu('collection', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(true); // a kind a command or a group lists is a menu
@@ -150,8 +150,7 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
   });
   it('a tag menu: 색 지정 ▸ for the one tag, the colours as radios with a dot', () => {
     const entries = contextMenuEntries('tag', FUTURE_COMMANDS, LIB, [{ kind: 'tag', id: 't-key', hasColor: true }], 'darwin', { organize: LIBRARY, tagId: 't-key' });
-    expect(entries).toHaveLength(1);
-    const [head] = entries as unknown as [{ label: string; enabled: boolean; submenu: Array<{ label: string; type: string; checked: boolean; dot: string }> }];
+    const head = (entries as unknown as Array<{ label: string; enabled: boolean; submenu: Array<{ label: string; type: string; checked: boolean; dot: string }> }>).find((e) => e.label === '색 지정')!;
     expect(head).toMatchObject({ label: '색 지정', enabled: true });
     expect(head.submenu.map((r) => [r.label, r.checked])).toEqual([
       ['1 노랑 — 시험 범위', false], ['2 빨강', false], ['3 초록', true], ['4 파랑', false], ['5 보라', false], ['6 자홍', false], ['7 주황', false], ['8 회색', false],
@@ -179,5 +178,32 @@ describe('popup: marks, values, submenus and colour dots reach the native templa
     expect(template[3]).toMatchObject({ icon: { scale: 2 } });
     click((template[1]!.submenu as MenuItemConstructorOptions[])[0]!);
     await expect(picked).resolves.toEqual({ commandId: 'collection.addItems', args: { collectionId: 'c-mb' } });
+  });
+});
+
+describe('the tag menu from the real registry (spec 9.2)', () => {
+  const LIB_CTX: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
+  /** The labels top to bottom, a submenu as { label: rows }, a separator as "-". */
+  type Line = string | { [label: string]: Line[] };
+  const lines = (entries: ReturnType<typeof contextMenuEntries>): Line[] =>
+    entries.map((e): Line => (e === 'separator' ? '-' : 'submenu' in e ? { [e.label]: lines(e.submenu) } : e.label));
+  const menu = (tagId: string, hasColor: boolean) =>
+    contextMenuEntries('tag', COMMANDS, LIB_CTX, [{ kind: 'tag', id: tagId, hasColor }], 'darwin', { organize: LIBRARY, tagId });
+
+  it('is 이름 바꾸기 · 색 지정 ▸ · 색 해제, a separator, 태그 삭제…, with the eight colours in the submenu and the slot another tag holds named', () => {
+    expect(lines(menu('t-key', true))).toEqual([
+      '이름 바꾸기',
+      { '색 지정': ['1 노랑 — 시험 범위', '2 빨강', '3 초록', '4 파랑', '5 보라', '6 자홍', '7 주황', '8 회색'] },
+      '색 해제',
+      '-',
+      '태그 삭제…',
+    ]);
+  });
+  it('greys 색 해제 for a tag with no colour, and marks the colour a tag has', () => {
+    const plain = menu('t-plain', false);
+    expect(plain.find((e) => e !== 'separator' && e.label === '색 해제')).toMatchObject({ enabled: false });
+    const coloured = menu('t-key', true);
+    const head = coloured.find((e) => e !== 'separator' && 'submenu' in e) as unknown as { submenu: Array<{ label: string; checked?: boolean }> };
+    expect(head.submenu.filter((r) => r.checked).map((r) => r.label)).toEqual(['3 초록']);
   });
 });

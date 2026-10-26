@@ -20,6 +20,12 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   newCollection: vi.fn(),
   renameCollection: vi.fn(),
   deleteCollection: vi.fn(),
+  toggleTagPosition: vi.fn(),
+  renameTag: vi.fn(),
+  setTagColor: vi.fn(),
+  clearTagColor: vi.fn(),
+  deleteTag: vi.fn(),
+  clearTagFilter: vi.fn(),
   back: vi.fn(),
   open: vi.fn(),
   relink: vi.fn(),
@@ -98,6 +104,38 @@ describe('renderer command registry', () => {
     // a context-menu pick runs with the target the menu was opened for
     expect(runPicked({ commandId: 'collection.delete' }, e, { collectionIds: ['c2'] })).toBe(true);
     expect(e.deleteCollection).toHaveBeenLastCalledWith('c2');
+  });
+  it('runs a colour key on the items handed over — any slot, in the library view with a selection — and the chip commands on the tag handed over', () => {
+    const targetsOf = (t: { itemIds?: readonly string[]; tagIds?: readonly string[] }): CommandTargetInfo[] => [
+      ...(t.itemIds ?? []).map((): CommandTargetInfo => ({ kind: 'item', storageMode: 'managed', availability: 'available' })),
+      ...(t.tagIds ?? []).map((id): CommandTargetInfo => ({ kind: 'tag', id, hasColor: id === 'coloured' })),
+    ];
+    const e = env({ targetsOf, selection: () => [ID, OTHER] });
+    expect(runCommand('tag.color3', e, menuTarget('tag.color3', e))).toBe(true);
+    expect(e.toggleTagPosition).toHaveBeenCalledExactlyOnceWith(3, [ID, OTHER]);
+    // Nothing selected, or the reader (no table): refused — the key map then leaves the key alone.
+    const none = env({ targetsOf });
+    expect(runCommand('tag.color1', none, menuTarget('tag.color1', none))).toBe(false);
+    const reader = env({ view: 'viewer', targetsOf, selection: () => [ID] });
+    expect(runCommand('tag.color1', reader, menuTarget('tag.color1', reader))).toBe(false);
+    // The chip's commands act on the one tag handed over; 색 해제 needs a colour.
+    expect(runCommand('tag.rename', e, { tagIds: ['t1'] })).toBe(true);
+    expect(e.renameTag).toHaveBeenCalledExactlyOnceWith('t1');
+    expect(runCommand('tag.delete', e, { tagIds: ['t1'] })).toBe(true);
+    expect(e.deleteTag).toHaveBeenCalledExactlyOnceWith('t1');
+    expect(runCommand('tag.clearColor', e, { tagIds: ['plain'] })).toBe(false);
+    expect(runCommand('tag.clearColor', e, { tagIds: ['coloured'] })).toBe(true);
+    expect(e.clearTagColor).toHaveBeenCalledExactlyOnceWith('coloured');
+    // A picked row of 색 지정 ▸ carries its slot; the head without a row does nothing.
+    expect(runPicked({ commandId: 'tag.setColor', args: { position: 3 } }, e, { tagIds: ['t1'] })).toBe(true);
+    expect(e.setTagColor).toHaveBeenCalledExactlyOnceWith('t1', 3);
+    runPicked({ commandId: 'tag.setColor' }, e, { tagIds: ['t1'] });
+    expect(e.setTagColor).toHaveBeenCalledTimes(1);
+    // 태그 선택 해제 runs only while a filter is set.
+    expect(runCommand('tags.clearFilter', e)).toBe(false);
+    const filtered = env({ tagFilterCount: 2 });
+    expect(runCommand('tags.clearFilter', filtered)).toBe(true);
+    expect(filtered.clearTagFilter).toHaveBeenCalledOnce();
   });
   it('runs through the shared availability predicate', () => {
     const lib = env();

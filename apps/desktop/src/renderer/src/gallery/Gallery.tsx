@@ -1,7 +1,13 @@
-import { useState, type CSSProperties } from 'react';
-import { Bookmark, ChevronDown, ChevronRight, Copy, FileText, Folder, FolderOpen, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
-import { commandById, commandLabel } from '@learn/domain';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { Bookmark, ChevronDown, ChevronRight, Copy, Ellipsis, FileText, Folder, FolderOpen, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { TAG_COLORS, commandById, commandLabel, type OrganizeTag } from '@learn/domain';
+import { DEFAULT_TAGS_SELECTOR } from '../organize/viewSettings';
 import { t } from '../strings';
+import { ChipGroup } from '../tags/ChipGroup';
+import { tagColorVar } from '../tags/tagColor';
+import { TagChip } from '../tags/TagChip';
+import { TagDots } from '../tags/TagDots';
+import { selectorMenu } from '../tags/TagSelector';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
@@ -484,11 +490,119 @@ function Part3() {
   );
 }
 
-const PARTS = { 1: Part1, 2: Part2, 3: Part3 } as const;
+const sample = (name: string, position: number | null = null): OrganizeTag => ({
+  id: `g-${name}`,
+  name,
+  color: position === null ? null : TAG_COLORS[position - 1]!.id,
+  position,
+});
+const G_TAGS = [sample('시험 범위', 1), sample('중요', 3)];
+
+/**
+ * Tag chips and colour dots (design-spec 4, 6 태그 칩·색 점; mockup components part 1 and 3): every state of the chip, the eight
+ * colours, the table's dots on a plain row and on the accent row, and the selector as the sidebar draws it.
+ */
+function Part4() {
+  const plain = sample('수용체');
+  const row = (label: string, ...chips: ReactNode[]) => (
+    <div className="g-row">
+      <span className="g-label">{label}</span>
+      {chips}
+    </div>
+  );
+  return (
+    <>
+      <section>
+        <h2 className="g-title">태그 칩</h2>
+        <div data-testid="g-chips">
+          {row('기본', <TagChip key="a" tag={plain} role="filter" />)}
+          {row('호버', <TagChip key="a" tag={plain} role="filter" force={['hover']} />)}
+          {row('포커스', <TagChip key="a" tag={plain} role="filter" force={['focus']} />)}
+          {row('선택(필터)', <TagChip key="a" tag={sample('시험 범위')} role="filter" on />)}
+          {row('흐린(현재 보기에 없음)', <TagChip key="a" tag={sample('회귀분석')} role="filter" dim />)}
+          {row('붙은 칩 · 호버', <TagChip key="a" tag={plain} role="assigned" force={['hover']} />, <TagChip key="b" tag={sample('중요', 3)} role="assigned" force={['focus']} />)}
+          {row(
+            '이름 칸',
+            <span key="a" className="chip is-editing">
+              <input className="chip-input" defaultValue="수용체" readOnly aria-label="이름 칸" />
+            </span>,
+          )}
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">태그 8색</h2>
+        <div className="g-swatches" data-testid="g-swatches">
+          {TAG_COLORS.map((c, i) => (
+            <span key={c.id} className="g-swatch">
+              <i style={{ background: tagColorVar(i + 1) }} />
+              <span>
+                {i + 1} · {c.label}
+              </span>
+              <code>--tag-{i + 1}</code>
+            </span>
+          ))}
+        </div>
+        <div className="g-row">
+          <ChipGroup label="색 태그" className="g-chipgroup">
+            {TAG_COLORS.map((c, i) => (
+              <TagChip key={c.id} tag={sample(`${i + 1} ${c.label}`, i + 1)} role="filter" />
+            ))}
+          </ChipGroup>
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">표의 색 점</h2>
+        <div className="g-table" data-testid="g-dots">
+          {(
+            [
+              ['기본', undefined],
+              ['선택(포커스)', 'selected focused'],
+            ] as const
+          ).map(([name, force]) => (
+            <div key={name} className="table-row" data-force={force}>
+              <div className="td is-first" data-col="title">
+                <Icon icon={FileText} />
+                <span className="item-title ellipsis">{name} · 분자생물학 6장</span>
+                <span className="linked-mark c-tertiary">
+                  <Icon icon={Link} size="sm" />
+                </span>
+                <TagDots tags={G_TAGS} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">태그 선택기</h2>
+        <div className="g-list tag-board">
+          <div className="tag-selector" data-testid="g-selector">
+            <div className="head">
+              <span>태그</span>
+              <span className="spacer" />
+              <IconButton icon={Ellipsis} label="태그 표시" size="small" />
+            </div>
+            <ChipGroup label="태그 목록" className="tag-cloud">
+              {[sample('시험 범위', 1), sample('중요', 3), sample('수용체'), sample('G 단백질')].map((tag) => (
+                <TagChip key={tag.id} tag={tag} role="filter" on={tag.name === '수용체'} />
+              ))}
+              <TagChip tag={sample('회귀분석')} role="filter" dim />
+            </ChipGroup>
+            <SearchField aria-label="태그 필터" placeholder="태그 필터" size="small" className="tag-field" />
+          </div>
+        </div>
+        <div className="g-row g-top">
+          <MenuList aria-label="태그 표시" entries={selectorMenu(DEFAULT_TAGS_SELECTOR, 2)} onAction={noop} />
+        </div>
+      </section>
+    </>
+  );
+}
+
+const PARTS = { 1: Part1, 2: Part2, 3: Part3, 4: Part4 } as const;
 
 /**
  * Component state board (design-spec 10.8): learn://app/index.html?window=gallery&part=1|2 for the visual tour,
- * part=3 for behaviour tests. Opened only by tests.
+ * part=3 for behaviour tests, part=4 for the tags. Opened only by tests.
  */
 export function Gallery() {
   const Part = PARTS[readWindowParams(location.search).part];

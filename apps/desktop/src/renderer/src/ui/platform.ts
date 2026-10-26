@@ -5,8 +5,8 @@ export interface WindowParams {
   deterministic: boolean;
   vibrancy: boolean;
   demo: boolean;
-  /** Gallery page: component board part 1 or 2 (visual tour), 3 = interactive fixture for behaviour tests. */
-  part: 1 | 2 | 3;
+  /** Gallery page: component board part 1 or 2 (visual tour), 3 = interactive fixture for behaviour tests, 4 = tag chips and colour dots. */
+  part: 1 | 2 | 3 | 4;
 }
 const KINDS: readonly RendererWindow[] = ['main', 'settings', 'sheet', 'gallery'];
 
@@ -19,7 +19,7 @@ export function readWindowParams(search: string): WindowParams {
     deterministic: p.get('det') === '1',
     vibrancy: p.get('vibrancy') === '1',
     demo: p.get('demo') === '1',
-    part: p.get('part') === '2' ? 2 : p.get('part') === '3' ? 3 : 1,
+    part: p.get('part') === '2' ? 2 : p.get('part') === '3' ? 3 : p.get('part') === '4' ? 4 : 1,
   };
 }
 

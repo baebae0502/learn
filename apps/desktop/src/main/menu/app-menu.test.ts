@@ -437,7 +437,7 @@ describe('in-place enabled toggle (the menu is built once; reports only flip ena
   it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
     const asked: string[] = [];
     applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
-    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1']);
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags']); // the group's head is placed in 파일 too
   });
 });
 
@@ -529,8 +529,8 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
       expect(labels(file(build2(ONE)))).toEqual([
         '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator',
         'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
-        { '색 태그': ['시험 범위', '중요'] },
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
+        { '색 태그': ['시험 범위', '중요'] },
         'separator', '윈도우 닫기',
       ]);
     });

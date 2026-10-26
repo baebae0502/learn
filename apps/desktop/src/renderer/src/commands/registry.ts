@@ -19,6 +19,17 @@ export interface CommandEnv extends CommandContextState {
   renameCollection(collectionId: string): void;
   /** 컬렉션 삭제…: the sheet, then the delete with its 실행 취소. */
   deleteCollection(collectionId: string): void;
+  /** 1–8 (spec 4.2): the tag at the slot goes on the items, or off them when every one has it; a slot with no tag says so. */
+  toggleTagPosition(position: number, itemIds: readonly string[]): void;
+  /** 이름 바꾸기 on a tag chip: the chip becomes its name field. */
+  renameTag(tagId: string): void;
+  /** 색 지정 ▸ N: colour N is slot N; the tag that held the slot loses it. */
+  setTagColor(tagId: string, position: number): void;
+  clearTagColor(tagId: string): void;
+  /** 태그 삭제…: the sheet, then the delete (no undo). */
+  deleteTag(tagId: string): void;
+  /** 태그 선택 해제. */
+  clearTagFilter(): void;
   back(): void;
   open(itemId: string): void;
   relink(itemId: string): void;
@@ -79,6 +90,10 @@ type Handler = (env: CommandEnv, target: CommandTarget) => void;
 const itemOf = (target: CommandTarget): string => target.itemIds![0]!;
 /** The one collection a collection command acts on (its availability rule asks for exactly one). */
 const collectionOf = (target: CommandTarget): string => target.collectionIds![0]!;
+/** The one tag a tag command acts on (its availability rule asks for exactly one). */
+const tagOf = (target: CommandTarget): string => target.tagIds![0]!;
+/** A colour key: the tag at the slot goes on the items handed over (the table selection), or off them when all have it. */
+const colorAt = (slot: number): Handler => (env, t) => env.toggleTagPosition(slot, t.itemIds ?? []);
 
 /** Renderer side of the registry: exactly one handler per command id (menus can only show handled commands). */
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
@@ -97,6 +112,22 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'collection.rename': (env, t) => env.renameCollection(collectionOf(t)),
   'collection.importInto': (env, t) => env.importFiles('managed', collectionOf(t)),
   'collection.delete': (env, t) => env.deleteCollection(collectionOf(t)),
+  'tag.color1': colorAt(1),
+  'tag.color2': colorAt(2),
+  'tag.color3': colorAt(3),
+  'tag.color4': colorAt(4),
+  'tag.color5': colorAt(5),
+  'tag.color6': colorAt(6),
+  'tag.color7': colorAt(7),
+  'tag.color8': colorAt(8),
+  'tag.rename': (env, t) => env.renameTag(tagOf(t)),
+  // The head of 색 지정 ▸ is not a row: with no slot there is nothing to set.
+  'tag.setColor': (env, t) => {
+    if (t.args?.position !== undefined) env.setTagColor(tagOf(t), t.args.position);
+  },
+  'tag.clearColor': (env, t) => env.clearTagColor(tagOf(t)),
+  'tag.delete': (env, t) => env.deleteTag(tagOf(t)),
+  'tags.clearFilter': (env) => env.clearTagFilter(),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),
   'app.shortcuts': (env) => env.showShortcuts(),

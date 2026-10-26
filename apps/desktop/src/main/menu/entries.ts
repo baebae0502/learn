@@ -55,7 +55,9 @@ export function entriesToTemplate(entries: MenuEntries, pick: (picked: PickedCom
       ...(entry.type ? { type: entry.type, checked: entry.checked === true } : {}),
       ...(entry.hint ? { accelerator: entry.hint, registerAccelerator: false } : {}),
       ...icon,
-      click: (item) => pick(item.enabled ? picked : null),
+      // A row that only shows a key must not run twice: macOS can still treat the hint as the menu bar's key equivalent, and the
+      // renderer's key map already owns the digit (and ignores it in a text field, which a menu key would not).
+      click: (item, _window, event) => pick(item.enabled && !(entry.hint && event?.triggeredByAccelerator === true) ? picked : null),
     };
   });
 }

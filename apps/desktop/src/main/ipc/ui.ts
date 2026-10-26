@@ -18,7 +18,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.showContextMenu, showContextMenuInput, async (input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    // A kind no registry command lists has no menu: answered before anything is read (tags, until theirs exist).
+    // A kind no registry command lists has no menu: answered before anything is read.
     if (!kindHasMenu(input.kind, COMMANDS, SUBMENUS)) return null;
     const ctx = deps.getContext();
     // Collections, tags and who has what: one read, and only when this menu has a submenu built from them or needs its targets.
@@ -102,11 +102,12 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
 
   // A native question in the renderer's words (deleting a collection, merging or deleting a tag): a sheet on the main
   // window, the confirming button first and the default, 취소 after it (esc).
-  handle(Channels.ui.confirm, confirmInput, async ({ message, detail, confirm }, event) => {
+  handle(Channels.ui.confirm, confirmInput, async ({ message, detail, confirm, caution }, event) => {
     const parent = mainWindowOf(event.sender);
     if (!parent) return false;
     const ask: MessageBoxOptions = {
-      type: 'warning',
+      // The caution symbol is for what cannot be undone and loses data; the other questions show the app icon.
+      type: caution ? 'warning' : 'none',
       message,
       ...(detail ? { detail } : {}),
       buttons: [confirm, mainStrings.confirmSheet.cancel],

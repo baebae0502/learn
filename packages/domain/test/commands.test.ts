@@ -114,6 +114,7 @@ describe('command registry', () => {
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
+      'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -243,7 +244,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'collection.new', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'collection.new', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected

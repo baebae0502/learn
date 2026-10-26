@@ -19,6 +19,8 @@ export const keys = {
   sort: ['settings', 'library.sort'] as const,
   /** The open collections of the sidebar (sidebar.expanded): read once, written whole (sidebar/useExpanded.ts). */
   expanded: ['settings', 'sidebar.expanded'] as const,
+  /** The tag selector's 표시·정렬 (tags.selector): read once, written optimistically (tags/useTagsSelector.ts). */
+  tagsSelector: ['settings', 'tags.selector'] as const,
   sortRecent: ['settings', 'library.sort.recent'] as const,
   /** The stored view (read once at start, then written by the store: useRestoreView, library-store). */
   view: ['settings', 'library.view'] as const,

@@ -56,6 +56,32 @@
     border-radius: var(--radius-lg);
     background: var(--bg-sidebar);
   }
+  /* The tag board: the selector inside a sidebar-wide box, the swatches in two columns. */
+  .gallery .g-list.tag-board {
+    padding: 0;
+    overflow: hidden;
+  }
+  .gallery .g-swatches {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4) var(--space-16);
+  }
+  .gallery .g-swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    font: var(--type-footnote);
+  }
+  .gallery .g-swatch i {
+    width: 16px; /* local: swatch */
+    height: 16px; /* local: swatch */
+    border-radius: var(--radius-sm);
+  }
+  .gallery .g-swatch code {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+  }
   /* Two sidebar widths side by side: the state rows of the sidebar fit the board without making it taller. */
   .gallery .g-list.g-cols {
     display: block;

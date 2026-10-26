@@ -47,8 +47,8 @@ describe('a value names a menu row (Q-24)', () => {
 });
 
 describe('submenu invariants (P-3, Q-25)', () => {
-  it('the real registry has none to check: no grouped submenu before its commands exist, and its value submenus are placed and kept out of the palette', () => {
-    expect(SUBMENUS).toEqual([]);
+  it('the real registry passes its own invariants: its one group is 색 태그 ▸, and its value submenus are placed and kept out of the palette', () => {
+    expect(SUBMENUS.map((s) => s.id)).toEqual(['colorTags']);
     expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
     for (const c of COMMANDS.filter((x) => x.submenu !== undefined)) expect(inPalette(c), c.id).toBe(false);
   });
@@ -94,7 +94,7 @@ describe('target kinds (P-4)', () => {
   });
   it('a collection or tag command needs a target of its kind, and is not in the palette by default', () => {
     const rename = cmd('collection.rename', { contexts: ['collection'] });
-    const recolor = cmd('tag.clearColor', { contexts: ['tag'] });
+    const recolor = cmd('tag.rename', { contexts: ['tag'] }); // a real id with the one-tag rule; 색 해제 would also need a colour
     expect(commandAvailable(rename, LIB, [COLLECTION])).toBe(true);
     expect(commandAvailable(rename, LIB, [])).toBe(false);
     expect(commandAvailable(rename, LIB, [TAG, FILE])).toBe(false);

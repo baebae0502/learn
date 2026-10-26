@@ -44,6 +44,9 @@
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher :is(.placeholder, .kbd) {
       color: var(--text-inactive);
     }
+    :root[data-window-not-main] .sidebar .tag-selector :is(.head, .chip:not(.is-on) .chip-main) {
+      color: var(--text-inactive);
+    }
     :root[data-window-not-main] .sidebar :is(.nav-row:is([data-current], [data-selected]), .nav-row:is([data-current], [data-selected]) .count) {
       color: var(--text-inactive-selected);
     }

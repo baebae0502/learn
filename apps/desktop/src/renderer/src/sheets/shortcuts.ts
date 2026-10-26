@@ -1,4 +1,4 @@
-import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, type CommandId } from '@learn/domain';
+import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, tagSlot, type CommandId } from '@learn/domain';
 import { t } from '../strings';
 
 export interface ShortcutRow {
@@ -47,6 +47,14 @@ const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
   return [{ label: t.sheets.fullScreen, keys: acceleratorKeys(accelerator, platform), spoken: acceleratorLabel(accelerator, platform), system: true }];
 };
 
+/** The colour keys as one line (spec 4.2): the first and last slot's key, spelled the way the platform spells a key. */
+function colorKeysGroup(platform: string): ShortcutGroup {
+  const slots = COMMANDS.filter((c) => tagSlot(c.id) !== null && c.key !== undefined);
+  const first = keySpecKeys(slots[0]!.key!, platform).at(-1)!;
+  const last = keySpecKeys(slots.at(-1)!.key!, platform).at(-1)!;
+  return { title: t.sheets.groups.organize, rows: [{ label: t.sheets.colorKeys.label, keys: [`${first}–${last}`], spoken: t.sheets.colorKeys.spoken(first, last) }] };
+}
+
 /**
  * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
  * after the app rows, then the palette and dialog keys.
@@ -54,7 +62,7 @@ const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
 export function shortcutGroups(platform: string): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => c.contexts[0] === ctx && (c.accelerator !== undefined || c.key !== undefined))
+    rows: COMMANDS.filter((c) => c.contexts[0] === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .map((c): ShortcutRow => {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
@@ -64,6 +72,8 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))
+    // The eight colour keys are one line under 정리, after 자료 (spec 4.2).
+    .flatMap((g, i) => (ORDER[i] === 'item' ? [g, colorKeysGroup(platform)] : [g]))
     .filter((g) => g.rows.length > 0);
   const dialogs: ShortcutGroup = {
     title: t.sheets.groups.dialogs,

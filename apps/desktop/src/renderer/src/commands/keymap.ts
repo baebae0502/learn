@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { setInteractionModality } from 'react-aria-components';
 import { COMMANDS, type CommandId, type CommandSpec } from '@learn/domain';
 import { noteKey } from '../ui/inputModality';
-import { runCommand, type CommandEnv } from './registry';
+import { menuTarget, runCommand, type CommandEnv } from './registry';
 
 export type KeyLike = Pick<KeyboardEvent, 'code' | 'key' | 'shiftKey' | 'altKey' | 'ctrlKey' | 'metaKey' | 'isComposing' | 'keyCode'>;
 
@@ -55,7 +55,8 @@ export function useKeymap(env: CommandEnv, active: boolean): void {
       if (id === null) return;
       noteKey(e);
       setInteractionModality('keyboard');
-      if (activeRef.current && !runCommand(id, envRef.current)) return; // unavailable now (another view's key): not ours to stop
+      // An item command (1–8) acts on the table's selection wherever the focus is (spec 4.2); the others take no target.
+      if (activeRef.current && !runCommand(id, envRef.current, menuTarget(id, envRef.current))) return; // unavailable now (another view's key): not ours to stop
       e.preventDefault();
       e.stopPropagation();
     };

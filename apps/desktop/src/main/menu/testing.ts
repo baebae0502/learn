@@ -1,26 +1,16 @@
-import { COMMANDS, type CommandId, type CommandSpec, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
+import { COMMANDS, SUBMENUS, commandById, type CommandId, type CommandSpec, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
 
-const colorId = (n: number) => `tag.color${n}` as CommandId;
-
-/** Stand-ins for the commands later tasks add; their handlers do not exist yet, so the real registry has none of them. */
-export const COLOR_COMMANDS: CommandSpec[] = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ id: colorId(n), label: `색 태그 ${n}`, key: { code: `Digit${n}` }, contexts: ['item'] }));
-export const COLOR_GROUP: SubmenuSpec = {
-  id: 'colorTags',
-  label: '색 태그',
-  commands: COLOR_COMMANDS.map((c) => c.id),
-  menu: { menu: 'file', group: 2, order: 4 },
-  contextMenu: { kinds: ['item'], group: 3, order: 1 },
-};
+/** The registry's own 색 태그 group and 색 지정 command, under the names the menu builders' tests use. */
+export const COLOR_GROUP: SubmenuSpec = SUBMENUS.find((s) => s.id === 'colorTags')!;
+export const SET_TAG_COLOR: CommandSpec = commandById('tag.setColor');
+/** A stand-in for the command a later task adds (its handler does not exist yet, so the real registry has none). */
 export const ADD_TO_COLLECTION: CommandSpec = {
   id: 'collection.addItems' as CommandId, label: '컬렉션에 추가', contexts: ['item'], submenu: 'collections', palette: false,
-  menu: { menu: 'file', group: 2, order: 5 }, contextMenu: { kinds: ['item'], group: 3, order: 0 },
+  menu: { menu: 'file', group: 2, order: 4 }, contextMenu: { kinds: ['item'], group: 3, order: 1 },
 };
-export const SET_TAG_COLOR: CommandSpec = {
-  id: 'tag.setColor' as CommandId, label: '색 지정', contexts: ['tag'], submenu: 'tagColors', palette: false, contextMenu: { kinds: ['tag'], group: 1, order: 2 },
-};
-/** The real registry plus the stand-ins: what Tasks 5–7 will have. */
-export const FUTURE_COMMANDS: CommandSpec[] = [...COMMANDS, ADD_TO_COLLECTION, SET_TAG_COLOR, ...COLOR_COMMANDS];
-export const FUTURE_SUBMENUS: SubmenuSpec[] = [COLOR_GROUP];
+/** The real registry plus the one stand-in left. */
+export const FUTURE_COMMANDS: CommandSpec[] = [...COMMANDS, ADD_TO_COLLECTION];
+export const FUTURE_SUBMENUS: SubmenuSpec[] = [...SUBMENUS];
 
 export function organize(over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot {
   return { collections: [], tags: [], members: {}, tagged: {}, duplicates: [], ...over };

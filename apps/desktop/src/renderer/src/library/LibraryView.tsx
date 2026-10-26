@@ -4,6 +4,7 @@ import { resolveScope } from '../organize/scope';
 import { useOrganize } from '../organize/useOrganize';
 import { ScopeEmpty } from '../sidebar/ScopeEmpty';
 import { useLibrary } from '../state/library-store';
+import { TagFilterEmpty } from '../tags/TagFilterEmpty';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { LibraryTable } from './LibraryTable';
 import { SearchEmpty } from './SearchEmpty';
@@ -35,6 +36,8 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   const { model } = useOrganize();
   const scope = useMemo(() => resolveScope(model, chosen), [model, chosen]);
   const scopeEmpty = rows.length === 0 && query === '' && tagFilterSize === 0 && scope.kind !== 'all';
+  // The chosen tags leave no item and the search says nothing else: the filter's own empty state (spec 3.6).
+  const tagEmpty = rows.length === 0 && query === '' && tagFilterSize > 0;
   const scopeName = scope.kind === 'collection' ? (model?.node(scope.id)?.name ?? '') : '';
   if (!settings.ready || !scopeReady) return null; // the stored columns, sort and view: one IPC round trip each, already in flight while the list loaded (LibraryLoading)
   return (
@@ -49,7 +52,8 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
       onContextMenu={onItemMenu}
       revealId={revealId}
       titleMatches={titleMatches}
-      empty={noResults ? <SearchEmpty query={query} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : undefined}
+      tagsOf={model?.tagsOfItem}
+      empty={noResults ? <SearchEmpty query={query} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
     />
   );
 }

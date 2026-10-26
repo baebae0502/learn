@@ -54,6 +54,20 @@ describe('menu entries as a native template', () => {
     ]);
     expect(pick.mock.calls[1]![0]).not.toHaveProperty('args');
   });
+  it('a row that only shows a key ignores a pick the system made with that key (the renderer\'s key map owns the digit), and still answers the mouse', () => {
+    const pick = vi.fn();
+    const row = (entriesToTemplate(ENTRIES, pick)[3]!.submenu as MenuItemConstructorOptions[])[0]!;
+    const press = (event: object) => row.click!({ enabled: true } as never, undefined, event as never);
+    press({ triggeredByAccelerator: true });
+    expect(pick.mock.calls).toEqual([[null]]);
+    press({ triggeredByAccelerator: false });
+    press({});
+    expect(pick.mock.calls.slice(1)).toEqual([[{ commandId: 'tag.color1' }], [{ commandId: 'tag.color1' }]]);
+    // A row without a hint has no key of its own to ignore.
+    const plain = entriesToTemplate([ENTRIES[6]!], pick)[0]!;
+    plain.click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
+    expect(pick.mock.calls.at(-1)).toEqual([{ commandId: 'item.open' }]);
+  });
   it('tells a submenu from a command, and names a row the way menuItemId does', () => {
     expect(isSubmenu(ENTRIES[3] as never)).toBe(true);
     expect(isSubmenu(ENTRIES[0] as never)).toBe(false);

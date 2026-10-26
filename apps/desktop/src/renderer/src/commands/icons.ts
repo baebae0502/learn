@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -18,6 +18,20 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'collection.rename': Pencil,
   'collection.importInto': FolderInput,
   'collection.delete': Trash2,
+  // The colour keys, the tag chip's menu and 태그 선택 해제; the palette lists the keys and the last only.
+  'tag.color1': Tag,
+  'tag.color2': Tag,
+  'tag.color3': Tag,
+  'tag.color4': Tag,
+  'tag.color5': Tag,
+  'tag.color6': Tag,
+  'tag.color7': Tag,
+  'tag.color8': Tag,
+  'tag.rename': Pencil,
+  'tag.setColor': Palette,
+  'tag.clearColor': Eraser,
+  'tag.delete': Trash2,
+  'tags.clearFilter': FilterX,
   'view.toggleSidebar': PanelLeft,
   'view.toggleInspector': PanelRight,
   'app.shortcuts': Keyboard,

@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { COMMANDS } from '@learn/domain';
+import { COMMANDS, tagSlot } from '@learn/domain';
 import { shortcutColumns, shortcutGroups } from './shortcuts';
 
 describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   it('lists every registry shortcut exactly once, app → library → reader, then the palette and dialog keys', () => {
     const groups = shortcutGroups('darwin');
     const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
-    for (const c of COMMANDS.filter((x) => x.accelerator || x.key)) expect(labels.filter((l) => l === c.label), c.id).toHaveLength(1);
-    expect(groups.map((g) => g.title)).toEqual(['앱', '라이브러리', '자료', '리더', '팔레트·대화상자']);
+    for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && tagSlot(x.id) === null)) expect(labels.filter((l) => l === c.label), c.id).toHaveLength(1);
+    expect(groups.map((g) => g.title)).toEqual(['앱', '라이브러리', '자료', '정리', '리더', '팔레트·대화상자']);
     expect(groups[1]!.rows[0]).toEqual({ label: '파일 가져오기…', keys: ['⌘', 'O'], spoken: '⌘O' });
     // The one row that is not a registry command: the system's 전체 화면 (design-spec 7.4), marked as such.
     const system = groups.flatMap((g) => g.rows).filter((r) => r.system);
@@ -50,13 +50,22 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(item('darwin')).toEqual([{ label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }]);
     expect(item('linux')).toEqual([{ label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }]);
   });
+  it('folds the eight colour keys into one line, 1–8, under 정리 after 자료 (spec 4.2)', () => {
+    const organize = (platform: string) => shortcutGroups(platform).find((g) => g.title === '정리')!.rows;
+    expect(organize('darwin')).toEqual([{ label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' }]);
+    expect(organize('linux')).toEqual([{ label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' }]);
+    const titles = shortcutGroups('darwin').map((g) => g.title);
+    expect(titles.indexOf('정리')).toBe(titles.indexOf('자료') + 1);
+    // The eight registry rows are not listed apart, in 자료 or anywhere.
+    expect(shortcutGroups('darwin').flatMap((g) => g.rows).filter((r) => /^색 태그 \d$/.test(r.label))).toEqual([]);
+  });
   it('lays the groups out in two columns read down then across, never splitting a group, the taller as short as it can be', () => {
     for (const platform of ['darwin', 'linux']) {
       const groups = shortcutGroups(platform);
       const [left, right] = shortcutColumns(groups);
       expect([...left, ...right], platform).toEqual(groups); // every group whole, in ORDER
       expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리']);
-      expect(right.map((g) => g.title), platform).toEqual(['자료', '리더', '팔레트·대화상자']);
+      expect(right.map((g) => g.title), platform).toEqual(['자료', '정리', '리더', '팔레트·대화상자']);
     }
     const group = (rows: number) => ({ title: `${rows}`, rows: Array.from({ length: rows }, (_, i) => ({ label: `${i}`, keys: [], spoken: '' })) });
     expect(shortcutColumns([group(12), group(2), group(2), group(2)]).map((c) => c.length)).toEqual([1, 3]);

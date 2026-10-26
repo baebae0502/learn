@@ -46,6 +46,8 @@ export interface LibraryState extends SelectionState {
   tagFilter: ReadonlySet<string>;
   toggleTagFilter(tagId: string): void;
   clearTagFilter(): void;
+  /** A tag was deleted (or merged into `replaceWith`, which takes its place): it leaves the filter, so no filter waits on a tag that is gone. */
+  dropFromTagFilter(tagId: string, replaceWith?: string): void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
@@ -89,6 +91,14 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   },
   clearTagFilter: () => {
     if (get().tagFilter.size > 0) set({ tagFilter: NO_TAGS });
+  },
+  dropFromTagFilter: (tagId, replaceWith) => {
+    const current = get().tagFilter;
+    if (!current.has(tagId)) return;
+    const next = new Set(current);
+    next.delete(tagId);
+    if (replaceWith !== undefined) next.add(replaceWith);
+    set({ tagFilter: next });
   },
   setEditing: (editingId) => set({ editingId }),
   setQuery: (query) => set({ query }),

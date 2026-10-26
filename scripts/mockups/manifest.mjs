@@ -1,7 +1,7 @@
 // Which mockup renders exist. Shared by scripts/render-mockups.mjs (Linux, xvfb) and
 // tests/evidence/mockups.evidence.ts (macOS runner, real SF fonts).
 
-/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant', label: string }} Render */
+/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor', label: string }} Render */
 
 export const SCREENS = [
   ['library', '라이브러리'],
@@ -74,4 +74,44 @@ export const VARIANTS = [
   ]),
 ];
 
-export const ALL = [...BASE, ...VARIANTS];
+/**
+ * Tutor mockup (T1, docs/superpowers/specs/2026-10-26-tutor-mockup-design.md): the ten states of §2
+ * in both themes (layout B only — the owner's layout), the sub-states, each §4 decision variant once,
+ * the one library-view sheet, the fake-backend marker, milestone badges and the components board part 4.
+ * @type {Render[]}
+ */
+const TUTOR_STATES = [
+  [1, 'mode', '모드 전환'],
+  [2, 'consent', '첫 사용 동의(패널 카드)'],
+  [3, 'agents', '에이전트 고르기'],
+  [4, 'empty', '빈 세션'],
+  [5, 'conversation', '대화 · 스트리밍(폭 380)'],
+  [6, 'citation', '인용 · 출처 없음'],
+  [7, 'proposals', '제안 카드'],
+  [8, 'failure', '실패 · 오프라인'],
+  [9, 'sessions', '세션 목록(사이드바)'],
+  [10, 'narrow', '좁은 창 · 접힘'],
+];
+const inTutor = (r) => ({ ...r, group: /** @type {const} */ ('tutor') });
+const tutor = (theme, query, suffix, label) => inTutor(variant('tutor', theme, 'B', query, suffix, `튜터 ${label}`));
+export const TUTOR = [
+  ...TUTOR_STATES.flatMap(([n, suffix, label]) => THEMES.map((t) => tutor(t, { state: String(n) }, `${n}-${suffix}`, `${n} ${label}`))),
+  ...THEMES.map((t) => tutor(t, { state: '10', fold: 'open' }, '10-narrow-open', '10 좁은 창 · 펼침')),
+  tutor('light', { state: '8', fail: 'agent' }, '8-failure-agent', '8 실패 · 에이전트 중단'),
+  tutor('light', { state: '8', fail: 'login' }, '8-failure-login', '8 실패 · 로그인 만료'),
+  // §4 decisions: each alternative once (the defaults are the base state renders above).
+  tutor('light', { state: '5', width: '340' }, '5-width-340', '결정 · 폭 340'),
+  tutor('light', { state: '5', width: '440' }, '5-width-440', '결정 · 폭 440'),
+  tutor('light', { state: '5', msg: 'bubble' }, '5-msg-bubble', '결정 · 메시지 말풍선'),
+  tutor('light', { state: '6', cite: 'p' }, '6-cite-p', '결정 · 인용 p. 42'),
+  tutor('light', { state: '6', cite: 'icon' }, '6-cite-icon', '결정 · 인용 아이콘 + 숫자'),
+  tutor('light', { state: '2', consent: 'sheet' }, '2-consent-sheet', '결정 · 동의 시트'),
+  tutor('light', { state: '9', sessions: 'panel' }, '9-sessions-panel', '결정 · 세션 목록 패널'),
+  tutor('light', { view: 'library' }, 'library', '라이브러리 보기의 튜터'),
+  tutor('light', { state: '5', backend: 'fake' }, '5-backend-fake', '가짜 백엔드 표시'),
+  tutor('light', { state: '5', ms: '1' }, '5-milestones', '마일스톤 표시 · 대화'),
+  tutor('light', { state: '7', ms: '1' }, '7-milestones', '마일스톤 표시 · 제안 카드'),
+  ...THEMES.map((t) => inTutor(variant('components', t, 'A', { part: '4' }, 'part4', '컴포넌트 상태 3 — 튜터'))),
+];
+
+export const ALL = [...BASE, ...VARIANTS, ...TUTOR];

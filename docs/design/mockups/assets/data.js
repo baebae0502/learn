@@ -132,5 +132,41 @@ window.MockupData = (() => {
     { at: 0.61, color: 1 },
   ];
 
-  return { tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos };
+  // Tutor (T1 mockup, tutor.html). The open PDF is 분자생물학 6장 at p. 42 (opened 오늘 오전 9:24);
+  // the session started at 9:31. Pages and quotes are the PDF's own text (views.js pageBody 41–42).
+  const tutor = {
+    item: '분자생물학 6장 · 신호 전달',
+    session: '증폭 배율이 곱해지는 이유',
+    started: '오늘 오전 9:31',
+    selection: { page: 42, text: '전체 증폭 배율은 각 단계 배율의 곱으로 근사할 수 있다.' },
+    // Sessions of the open item, newest first, grouped by day.
+    itemSessions: [
+      { group: '오늘', rows: [
+        { title: '증폭 배율이 곱해지는 이유', at: '9:31', current: true },
+        { title: 'cAMP와 칼슘 이온 비교', at: '8:50' },
+      ] },
+      { group: '어제', rows: [{ title: '6.3절 G 단백질 연결 수용체 요약', at: '오후 9:12' }] },
+      { group: '지난 7일', rows: [
+        { title: '연습 문제 3번 풀이 확인', at: '10. 22.' },
+        { title: '그림 6-2 읽는 법', at: '10. 21.' },
+      ] },
+    ],
+    // Library-wide sessions, grouped by item, item groups ordered by their latest session.
+    recentSessions: [
+      { item: '분자생물학 6장 · 신호 전달', kind: 'pdf', rows: [
+        { title: '증폭 배율이 곱해지는 이유', at: '9:31', current: true },
+        { title: 'cAMP와 칼슘 이온 비교', at: '8:50' },
+      ] },
+      { item: 'G Protein–Coupled Receptor Dynamics in Live Cells', kind: 'pdf', rows: [{ title: '초록을 한국어로 정리', at: '어제' }] },
+    ],
+    // Detected agents (ADR-0010 §1). Program names are the programs' own; our feature is only "튜터".
+    agents: [
+      { id: 'codex', name: 'Codex', status: 'ready', text: '질문은 OpenAI의 서버에서 처리됩니다.' },
+      { id: 'claude', name: 'Claude Code', status: 'login', text: '터미널에서 <span class="mono">claude</span>를 실행하고 안내에 따라 로그인한 뒤 다시 확인하세요.' },
+      { id: 'gemini', name: 'Gemini CLI', status: 'missing', text: '설치하면 여기에 나타납니다.' },
+      { id: 'opencode', name: 'opencode', status: 'old', text: '설치된 판은 Learn과 연결할 수 없습니다. 최신&nbsp;판으로 업데이트한 뒤 다시 확인하세요.' },
+    ],
+  };
+
+  return { tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor };
 })();

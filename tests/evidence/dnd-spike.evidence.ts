@@ -599,6 +599,28 @@ test('T8: esc cancels, the keymap is quiet during a drag, RAC keyboard drag for 
     }
     const parent = await api<string | null>(page, 'parentOf', 'c009');
     out['keyboardDrag'] = { handleLabel, visited, dropped, parentAfter: parent, lastDrop: await br(page, (b) => b.drops.slice(-1)[0]), actions: (await br(page, (b) => b.actions)).slice(-3), selectedAfter: await api(page, 'selected') };
+    // The handle is not a Tab stop (tabIndex -1) and → on a leaf row reaches it.
+    await openSpike(page);
+    await api(page, 'expandAll');
+    await page.waitForTimeout(800);
+    const leafParentBefore = await api<string | null>(page, 'parentOf', 'c136');
+    await treeRow(page, 'c136').scrollIntoViewIfNeeded();
+    await treeRow(page, 'c136').click();
+    const handleTabindex = await treeRow(page, 'c136').locator('button[slot="drag"]').getAttribute('tabindex');
+    await page.keyboard.press('ArrowRight');
+    const onHandle = await page.evaluate(() => document.activeElement?.getAttribute('slot') === 'drag');
+    await page.keyboard.press('Enter');
+    await frames(page, 3);
+    let leafTarget: string | null = null;
+    for (let i = 0; i < 12 && leafTarget === null; i++) {
+      await page.keyboard.press('ArrowDown');
+      await frames(page, 2);
+      const m = await marked(page);
+      if (m.length > 0) leafTarget = m[0]!;
+    }
+    await page.keyboard.press('Enter');
+    await frames(page, 3);
+    out['keyboardDragFromLeaf'] = { handleTabindex, reachedByRightArrow: onHandle, firstTarget: leafTarget, parentBefore: leafParentBefore, parentAfter: await api(page, 'parentOf', 'c136') };
     const km = raw.keymapDuring;
     const sweepNeeded = raw.markAfter.length > 0;
     const ok =

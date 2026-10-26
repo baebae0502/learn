@@ -107,7 +107,7 @@ function Node({ node, editing, onEdit, onToggle }: { node: CollectionNode; editi
             <Button slot="chevron" className="dnd-chevron" data-has-children={hasChildItems || undefined} data-expanded={isExpanded || undefined}>
               {hasChildItems ? <Icon icon={ChevronRight} size="xs" /> : null}
             </Button>
-            <Button slot="drag" className="dnd-draghandle">
+            <Button slot="drag" className="dnd-draghandle" excludeFromTabOrder>
               ≡
             </Button>
             <Icon icon={Folder} />

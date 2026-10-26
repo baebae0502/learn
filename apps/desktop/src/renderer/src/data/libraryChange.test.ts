@@ -63,6 +63,7 @@ describe('the library list after a change notice (spec 10.3)', () => {
       expect(calls.all, reason).toBe(0);
       expect(calls.getItems, reason).toEqual([['a']]);
       expect(calls.texts, reason).toBe(reason === 'metadata' ? 1 : 0);
+      expect(calls.organize, reason).toBe(reason === 'relink' ? 1 : 0); // a relinked file can move the duplicate groups
     }
   });
 

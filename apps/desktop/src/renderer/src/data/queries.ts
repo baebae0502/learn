@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type { LibraryItem, Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
@@ -54,13 +54,20 @@ export const useItemDetail = (itemId: string) => useQuery({ queryKey: keys.detai
  * Every change made through main pushes libraryChanged. Collections and tags read the snapshot only; a change to some
  * items' own rows reads those items and patches the list; the rest drops all cached library data (libraryChange.ts).
  */
+/**
+ * Stores a patched list and hands the search index to the array the cache then holds: structural sharing keeps a new array
+ * that reuses the unchanged rows, so `next` itself is never what readers get.
+ */
+export function putItems(client: QueryClient, prev: readonly LibraryItem[], next: readonly LibraryItem[]): void {
+  client.setQueryData(keys.items, next);
+  const held = client.getQueryData<LibraryItem[]>(keys.items);
+  if (held) carrySearchIndex(prev, held);
+}
+
 const onLibraryChanged = createChangeHandler({
   cached: () => queryClient.getQueryData<LibraryItem[]>(keys.items),
   refetching: () => queryClient.isFetching({ queryKey: keys.items }) > 0,
-  put: (prev, next) => {
-    queryClient.setQueryData(keys.items, next);
-    carrySearchIndex(prev, next);
-  },
+  put: (prev, next) => putItems(queryClient, prev, next),
   getItems: (ids) => unwrap(api().library.getItems({ ids })),
   invalidateAll: () => void queryClient.invalidateQueries({ queryKey: ['library'] }),
   invalidateOrganize: () => void queryClient.invalidateQueries({ queryKey: keys.organize }),

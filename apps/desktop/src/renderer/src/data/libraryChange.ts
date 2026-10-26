@@ -65,6 +65,8 @@ export function createChangeHandler(d: ChangeDeps): (change: LearnEventMap['libr
     }
     const started = epoch;
     for (const id of ids) d.invalidateItem(id);
+    // A relinked file can have another sha256, which moves the duplicate groups.
+    if (reason === 'relink') d.invalidateOrganize();
     if (reason === 'metadata') d.invalidateTexts();
     d.getItems(ids).then(
       (fresh) => {

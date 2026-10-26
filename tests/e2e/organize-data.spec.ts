@@ -1,7 +1,7 @@
-// Organize data in the library table (M5 Task 3), without a sidebar yet: the stored view reopens at start (a collection with
+// Organize data in the library table (no sidebar to change the scope yet): the stored view reopens at start (a collection with
 // its path, the recent view with its own sort and 마지막으로 연 날 column, a view that cannot be shown), and a change reads
 // only what it changes (counted in main, ipc/register.ts) — a tag or collection the snapshot, a metadata or opened notice
-// the items concerned. Scope changes by the sidebar are Task 5's.
+// the items concerned. Scope changes through the sidebar are checked where the sidebar is.
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';

@@ -108,7 +108,7 @@ test('one item: the head, the info rows that have a value and the file section; 
     await expect(multi.locator('h2')).toHaveText('자료 3개 선택');
     expect(plain(await multi.getByTestId('inspector-kind').textContent())).toMatch(/^PDF 2개 · 동영상 1개 · 합계 [\d.]+ MB$/);
     await expect(multi.getByTestId('multi-row')).toHaveText(await tableOrder(page));
-    await expect(multi.locator('button')).toHaveCount(0); // its actions arrive with tabs (M7) and collections (M5)
+    await expect(multi.locator('.item-head button')).toHaveText(['컬렉션에 추가']); // tabs (M7) are not drawn yet
   } finally {
     await app.close();
   }

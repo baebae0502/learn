@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
@@ -1151,4 +1152,24 @@ export async function makeTags<const S extends ReadonlyArray<{ name: string; slo
     ids.push(tagId);
   }
   return ids as { -readonly [K in keyof S]: string };
+}
+
+/**
+ * `count` PDFs that differ by one trailing comment: each imports as an item of its own, with its own file and revision
+ * (items the E2E hook seeds share one revision, so a page-count probe would be answered from the cache).
+ */
+export function distinctPdfs(dir: string, count: number): string[] {
+  fs.mkdirSync(dir, { recursive: true });
+  const bytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
+  return Array.from({ length: count }, (_, i) => {
+    const file = path.join(dir, `distinct-${String(i + 1).padStart(2, '0')}.pdf`);
+    fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from(`\n% copy ${i + 1}\n`)]));
+    return file;
+  });
+}
+
+/** Takes the tag off by the chip's × (it shows on hover and focus, so the chip is hovered first). The × is the chip body's sibling. */
+export async function removeChip(chip: Locator): Promise<void> {
+  await chip.hover();
+  await chip.locator('xpath=..').getByTestId('tag-chip-remove').click();
 }

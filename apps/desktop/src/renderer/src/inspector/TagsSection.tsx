@@ -73,7 +73,7 @@ export function TagsSection({ ids }: { ids: readonly string[] }) {
         )}
         <div className="tag-line">
           {tags.length > 0 && (
-            <ChipGroup label={t.organize.panel.tags.group}>
+            <ChipGroup role="list" label={t.organize.panel.tags.group}>
               {tags.map((tag) => (
                 <TagChip key={tag.id} tag={tag} role="assigned" onRemove={() => remove(tag)} />
               ))}

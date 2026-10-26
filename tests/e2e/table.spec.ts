@@ -283,7 +283,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     expect(await bg(5990)).toBe(await bg(5992));
     expect(await bg(5991)).not.toBe(await bg(5990));
     // ⌘A, then a right-click inside the selection: every id goes to the menu (more than the old 5000 bound)
-    // and none of M4's item commands applies to 6000 items.
+    // and none of M4's file commands applies to 6000 items; filing them into a collection does.
     await page.keyboard.press('ControlOrMeta+a');
     await expect(rowAt(page, 5999)).toHaveAttribute('aria-selected', 'true');
     await stubContextMenu(app, null);
@@ -291,7 +291,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
     const items = (await recordedPopups(app))[0]!.filter((i) => i.type !== 'separator');
     expect(items.length).toBeGreaterThan(0);
-    expect(items.every((i) => !i.enabled)).toBe(true);
+    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['컬렉션에 추가']);
     await expect(page.getByTestId('action-error')).toHaveCount(0);
   } finally {
     await app.close();

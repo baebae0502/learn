@@ -7,8 +7,8 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls,
-  stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, type MenuNode,
+  FIXTURES, assignTag, createCollection, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls, specialRow,
+  stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, treeRow, type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -104,6 +104,8 @@ test('every registry command runs without a page error (library and reader menus
   fs.mkdirSync(exported, { recursive: true });
   const exportFromMenu = path.join(exported, 'from-menu.pdf');
   const exportFromItemMenu = path.join(exported, 'from-item-menu.pdf');
+  let filedId = '';
+  let filing = '';
   /** What each command must visibly have done, beyond running without an error. */
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
@@ -136,6 +138,8 @@ test('every registry command runs without a page error (library and reader menus
     'library.find': () => expect(searchInput).toBeFocused(),
     // 보기 › 정렬 기준 ▸ 연도: the column row keeps the direction, so the table is sorted by 연도, newest first as it was.
     'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
+    // 컬렉션에 추가 ▸ 전수 시험: the selected sample is filed there (main has it, not only the screen).
+    'collection.addItems': () => expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([filedId]),
     // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
     'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
     'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
@@ -150,7 +154,8 @@ test('every registry command runs without a page error (library and reader menus
     },
   };
   try {
-    await importPaths(page, [PDF]);
+    filedId = (await importPaths(page, [PDF]))[0]!.id;
+    filing = await createCollection(page, '전수 시험'); // 컬렉션에 추가 ▸ runs from one of its rows: this collection's
     await stubOpenDialog(app, []); // import dialogs come back empty
     await stubShell(app); // no Finder and no other app on CI: main's shell calls are recorded instead
     await stubSaveDialog(app, exportFromMenu);
@@ -168,12 +173,13 @@ test('every registry command runs without a page error (library and reader menus
       } else await openItem(page, 'sample'); // a double-click: a single click only selects
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
-      const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
-      // Spec 6: the 자료 commands, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
-      if (view === 'library') expect(libraryOnly.sort()).toEqual(['item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'library.sortBy', 'view.toggleInspector']);
+      const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
+      // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
+      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {
-        await runMenuCommand(app, id, REPRESENTATIVE_ARGS[id]);
+        if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
+        await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
         await closeTransient(app, page);
         ran.add(id);
@@ -186,6 +192,15 @@ test('every registry command runs without a page error (library and reader menus
     await runMenuCommand(app, 'view.textReset');
     await expect.poll(() => fontSize(page)).toBe(13);
     ran.add('view.textReset');
+
+    // 이 컬렉션에서 빼기 is on only inside a collection: view the one the sample was just filed into, run it from the menu bar.
+    await treeRow(page, filing).click();
+    await rowByTitle(page, 'sample').click();
+    await runMenuCommand(app, 'collection.removeItems');
+    await expect(page.getByTestId('undo-toast')).toContainText('‘전수 시험’에서 자료 1개를 뺐습니다.');
+    await expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([]);
+    await specialRow(page, 'all').click();
+    ran.add('collection.removeItems');
 
     // The item context menu, through the native menu path: 열기, Finder에서 보기, 사본 내보내기… (design-spec 7.3).
     // A right-click selects the row first (spec 3.3).

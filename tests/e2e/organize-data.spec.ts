@@ -101,12 +101,15 @@ test('the recent view: opened items only, newest first by its own sort, with 마
     for (const id of [a.id, b.id]) {
       const r = await s.page.evaluate((itemId) => window.learn.reader.open({ itemId }), id);
       if (!r.ok) throw new Error(`reader.open failed: ${r.code}`);
+      // openedAt has millisecond precision and equal values keep the added-date order whatever the direction (sort.ts): on a
+      // fast runner two back-to-back opens can share a millisecond, so each open gets its own.
+      await s.page.waitForTimeout(10);
     }
     await storeView(s.page, { kind: 'recent' });
     await s.app.close();
     s = await launch(lib, ud);
     await expect(s.page.getByTestId('toolbar-title')).toHaveText('최근 연 자료');
-    expect(await titles(s.page)).toEqual([B, A]); // b was opened last
+    await expect.poll(() => titles(s.page)).toEqual([B, A]); // b was opened last
     await expect(s.page.getByTestId('toolbar-count')).toHaveText('2개');
     await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '추가일']);
     await expect(s.page.getByTestId('item-row').first().locator('[data-col="openedAt"]')).toHaveText(/\S/);
@@ -122,7 +125,7 @@ test('the recent view: opened items only, newest first by its own sort, with 마
 
     // Pressing its header flips the recent view's own sort; the main sort is untouched and the column stays out of the stored columns.
     await s.page.locator('[data-testid="column-header"][data-col="openedAt"] button').click();
-    expect(await titles(s.page)).toEqual([A, B]);
+    await expect.poll(() => titles(s.page)).toEqual([A, B]);
     await expect.poll(() => setting(s.page, 'library.sort.recent')).toEqual({ column: 'openedAt', direction: 'asc' });
     expect(await setting(s.page, 'library.sort')).toBeNull();
     expect(((await setting(s.page, 'library.columns')) as { visible?: string[] } | null)?.visible ?? []).not.toContain('openedAt');

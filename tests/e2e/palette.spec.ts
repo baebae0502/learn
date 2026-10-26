@@ -369,6 +369,8 @@ test('the reader lists reader commands and not library ones; its folded toolbar 
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
     await runMenuCommand(app, 'app.palette');
+    // The palette opens from a menu event and renders its list after it: read the ids once the list is there.
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="nav.back"]')).toBeVisible();
     const ids = await page.getByTestId('palette-item').evaluateAll((els) => els.map((e) => e.getAttribute('data-command-id')));
     expect(ids).toContain('nav.back');
     expect(ids).not.toContain('file.importManaged');

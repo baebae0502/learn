@@ -194,6 +194,40 @@ test('200 collections: the tree is virtual and its keys follow the model — Hom
   }
 });
 
+test('a chevron only folds or unfolds: the view and the selected row stay, unless the fold hides the viewed row, which moves the view to the folded collection', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    const bio = await createCollection(page, '분자생물학');
+    const c6 = await createCollection(page, '6장', bio);
+    const stats = await createCollection(page, '통계');
+    await createCollection(page, '회귀', stats);
+    await addToCollection(page, c6, [pdf!.id]);
+    await treeRow(page, bio).locator('.disclosure').click();
+    await treeRow(page, c6).click();
+    await expect(title(page)).toHaveText('6장');
+
+    // A collection that is not viewed: its chevron unfolds it and the view stays.
+    await expect(treeRow(page, stats)).toHaveAttribute('aria-expanded', 'false');
+    await treeRow(page, stats).locator('.disclosure').click();
+    await expect(treeRow(page, stats)).toHaveAttribute('aria-expanded', 'true');
+    await expect(title(page)).toHaveText('6장');
+    await expect(treeRow(page, c6)).toHaveAttribute('aria-selected', 'true');
+    await expect(treeRow(page, stats)).toHaveAttribute('aria-selected', 'false');
+    await treeRow(page, stats).locator('.disclosure').click();
+    await expect(treeRow(page, stats)).toHaveAttribute('aria-expanded', 'false');
+    await expect(title(page)).toHaveText('6장');
+
+    // Folding an ancestor of the viewed collection hides its row: the view goes to the folded one.
+    await treeRow(page, bio).locator('.disclosure').click();
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-expanded', 'false');
+    await expect(title(page)).toHaveText('분자생물학');
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    await app.close();
+  }
+});
+
 test('the open collections and the view are remembered across a restart', async ({}, testInfo) => {
   const [library, userData] = dirs(testInfo);
   let s = await launch(library, userData);

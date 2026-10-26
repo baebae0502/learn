@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
 import {
   Button, ListLayout, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
@@ -134,7 +134,7 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
                 {node.name}
               </span>
             )}
-            {count > 0 && <span className="count num">{count}</span>}
+            {count > 0 && !renaming && <span className="count num">{count}</span>}
           </>
         )}
       </TreeItemContent>
@@ -267,16 +267,34 @@ export function SidebarTree(props: SidebarTreeProps) {
   };
 
   /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
+  /** A pointer is down on a chevron: it folds or unfolds and nothing else — the row it takes the focus to is not the view. */
+  const chevronDown = useRef(false);
+  const onPointerDownCapture = (e: PointerEvent<HTMLDivElement>) => {
+    chevronDown.current = (e.target as HTMLElement).closest('.disclosure') !== null;
+    if (chevronDown.current) window.setTimeout(() => void (chevronDown.current = false), 400);
+  };
+
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
-    if (reader) return;
+    if (reader || chevronDown.current) return;
     const el = e.target as HTMLElement;
     if (!el.matches('[role="row"][data-key]')) return;
     const key = el.dataset['key']!;
     if (key !== DRAFT_KEY && key !== selectedKey) selectScope(key);
   };
 
+  /** Folding hides the rows below: when the viewed one is among them, the view moves to the collection that was folded. */
+  const onExpandedChange = (keys: Set<Key>) => {
+    const next = new Set([...keys].map(String));
+    const { model: m } = latest.current;
+    if (!reader && m && scope.kind === 'collection') {
+      const hiding = ancestorIds(m, scope.id).find((id) => expanded.has(id) && !next.has(id));
+      if (hiding !== undefined) selectScope(hiding);
+    }
+    saveExpanded(next);
+  };
+
   const onSelectionChange = (selection: Selection) => {
-    if (reader || selection === 'all') return;
+    if (reader || selection === 'all' || chevronDown.current) return;
     const key = [...selection][0];
     if (key !== undefined && String(key) !== DRAFT_KEY) selectScope(String(key));
   };
@@ -381,7 +399,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [restoreTo, focusRow]);
 
   return (
-    <div className="sidebar-body" onKeyDownCapture={onKeyDownCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
+    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
       <div className="section-label" aria-hidden="true">
         {t.shell.libraryHeading}
       </div>
@@ -399,7 +417,7 @@ export function SidebarTree(props: SidebarTreeProps) {
           selectedKeys={selectedKeys}
           onSelectionChange={onSelectionChange}
           expandedKeys={expanded}
-          onExpandedChange={(keys) => saveExpanded(new Set([...keys].map(String)))}
+          onExpandedChange={onExpandedChange}
           dragAndDropHooks={props.dragAndDropHooks}
         >
           <TreeSection aria-label={t.shell.libraryHeading}>

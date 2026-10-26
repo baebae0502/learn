@@ -495,7 +495,7 @@ async function menuRowSelected(target: string | number, index: number, label: st
 /**
  * Menu-bar menu `index` opened by the keyboard (⌃F2, → ×(index−1), ↓), then ↓ one row at a time — AppKit skips separators and
  * disabled rows, so no count of presses can be fixed in advance — until System Events says the row `label` is the selected
- * one, and → opens its submenu. `opened` is true only when the row is selected and the submenu then lists rows: the menu
+ * one, and → opens its submenu. `opened` is true only when the row was selected before → and the submenu then lists rows: the menu
  * being open and its rows readable is not the submenu being open (the rows are in the AX tree either way).
  */
 export async function captureOpenSubmenu(app: ElectronApplication, target: string | number, index: number, label: string, prefix: string, what: string) {
@@ -504,31 +504,34 @@ export async function captureOpenSubmenu(app: ElectronApplication, target: strin
   for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
   keys.push('key code 125', 'delay 0.4', 'end tell');
   const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
-  await sleep(600);
-  const rowCount = ((await menuItemNames(target, index)) ?? []).length;
-  let downs = 0;
-  let selected = false;
-  for (let step = 0; step <= rowCount + 1; step++) {
-    selected = (await menuRowSelected(target, index, label)) === true;
-    if (selected) break;
-    await tryExec('osascript', ['-e', 'tell application "System Events" to key code 125'], 10_000);
-    downs++;
-    await sleep(250);
+  try {
+    await sleep(600);
+    const rowCount = ((await menuItemNames(target, index)) ?? []).length;
+    let downs = 0;
+    let selected = false;
+    for (let step = 0; step <= rowCount + 1; step++) {
+      selected = (await menuRowSelected(target, index, label)) === true;
+      if (selected) break;
+      await tryExec('osascript', ['-e', 'tell application "System Events" to key code 125'], 10_000);
+      downs++;
+      await sleep(250);
+    }
+    let rows: Array<{ name: string; mark: string }> | null = null;
+    let stillSelected: boolean | null = null;
+    if (selected) {
+      await tryExec('osascript', ['-e', 'tell application "System Events" to key code 124'], 10_000);
+      await sleep(1000);
+      rows = await submenuItems(target, index, label);
+      stillSelected = await menuRowSelected(target, index, label); // information only: the highlight may move into the submenu
+    }
+    const opened = selected && rows !== null && rows.length > 0;
+    const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${downs + 1}, → via System Events`);
+    return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), downs, selected, stillSelected, opened, rows };
+  } finally {
+    await pressEscape();
+    await pressEscape();
+    await pressEscape();
   }
-  let rows: Array<{ name: string; mark: string }> | null = null;
-  let stillSelected = false;
-  if (selected) {
-    await tryExec('osascript', ['-e', 'tell application "System Events" to key code 124'], 10_000);
-    await sleep(1000);
-    rows = await submenuItems(target, index, label);
-    stillSelected = (await menuRowSelected(target, index, label)) === true;
-  }
-  const opened = selected && stillSelected && rows !== null && rows.length > 0;
-  const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${downs + 1}, → via System Events`);
-  await pressEscape();
-  await pressEscape();
-  await pressEscape();
-  return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), downs, selected, opened, rows };
 }
 
 /** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */

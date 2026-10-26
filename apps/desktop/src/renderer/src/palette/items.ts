@@ -1,7 +1,7 @@
 import type { LibraryItem } from '@learn/domain';
-import type { SearchResult } from '../library/search';
+import { parseQuery, type SearchResult } from '../library/search';
 import { t } from '../strings';
-import { initialOf, type Match } from './hangul';
+import { initialOf, matchKorean, type Match } from './hangul';
 
 /** Spec §4.4: the 자료 group lists five at most. */
 export const ITEM_RESULTS_MAX = 5;
@@ -39,6 +39,20 @@ export function rankItems(items: readonly LibraryItem[], result: SearchResult, m
 export function itemMeta(item: Pick<LibraryItem, 'creators' | 'year' | 'type'>): string {
   const parts = [item.creators.join(', '), item.year === null ? '' : String(item.year)].filter((p) => p !== '');
   return parts.length > 0 ? parts.join(' · ') : t.library.type[item.type];
+}
+
+/**
+ * Where the query matched in the row's 저자 · 연도 (for <mark>), the first query word found: a row the author or the year
+ * brought in, with nothing marked in its title, then shows why it is there. null on the kind (it is not searched).
+ */
+export function itemMetaMatch(item: Pick<LibraryItem, 'creators' | 'year' | 'type'>, query: string): Match | null {
+  if (item.creators.length === 0 && item.year === null) return null;
+  const meta = itemMeta(item);
+  for (const term of parseQuery(query)) {
+    const m = matchKorean(term.text, meta);
+    if (m) return m;
+  }
+  return null;
 }
 
 const HANGUL_WORD = /^[가-힣]{2,4}$/;

@@ -240,8 +240,7 @@
     text-wrap: balance;
   }
   .inspector .pane-empty .pe-stats {
-    margin-top: var(--space-12);
-    color: var(--text-tertiary);
+    margin-top: var(--space-12); /* the colour is .pe-text's secondary: 12 px text needs 4.5:1, which tertiary misses */
   }
   /* 정보 편집 (spec §5.3): the section's place, stacked fields (label above, 288 wide), the actions at the end. */
   .inspector .editor {

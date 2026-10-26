@@ -122,7 +122,7 @@ test('⌘F selects the field; 초성, two letters, AND over every field, the abs
     await expect(empty.locator('.pe-title')).toHaveText('‘효소 반응’과 일치하는 자료가 없습니다');
     await input(page).fill('신호 이영희');
     await expect(empty.locator('.pe-title')).toHaveText('‘신호 이영희’와 일치하는 자료가 없습니다');
-    await expect(empty.locator('.pe-text')).toHaveText('제목·저자·출판사·원래 파일 이름·초록·메모에서 찾았습니다.');
+    await expect(empty.locator('.pe-text')).toHaveText('제목·저자·출판사·원래 이름·초록·메모에서 찾았습니다.');
     await expect(page.getByTestId('toolbar-count')).toHaveText('0개 / 4개');
     await expect(page.getByTestId('item-row')).toHaveCount(0);
     await expectNoSeriousA11y(page, 'quick search, no results');

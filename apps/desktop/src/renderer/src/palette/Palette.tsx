@@ -14,7 +14,7 @@ import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { setTooltipBlock } from '../ui/tooltipGate';
 import { highlight } from './highlight';
-import { initialsExample, itemMeta, rankItems, type RankedItem } from './items';
+import { initialsExample, itemMeta, itemMetaMatch, rankItems, type RankedItem } from './items';
 import { rankCommands, type RankedCommand } from './rank';
 import { usePaletteRecent } from './recent';
 import { searchLibrary } from './searchRow';
@@ -241,7 +241,8 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
           <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
           <span className="p-title ellipsis">{highlight(item.title, match)}</span>
           <span className="p-meta">
-            <span className="p-sub ellipsis">{itemMeta(item)}</span>
+            {/* Only on a row whose title did not match: the author or the year that brought it in is marked instead. */}
+            <span className="p-sub ellipsis">{highlight(itemMeta(item), match ? null : itemMetaMatch(item, q))}</span>
             {/* palette.html: ↩ on the row under the cursor only. */}
             {index === cursor && <Kbd accelerator="Enter" />}
           </span>

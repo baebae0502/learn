@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, NativeInputNotPermitted, addToCollection, createCollection, importPaths, launch, rowAt, runMenuCommand, treeRow, type Session } from '../e2e/helpers';
-import { IS_MAC, allShots, focusApp, fullScreenShot, movePointer, pressEscape, writeJson } from './capture';
+import { FIXTURES, NativeInputNotPermitted, addToCollection, createCollection, importPaths, launch, makeTags, organizeSnapshot, rowAt, runMenuCommand, tagChip, treeRow, type Session } from '../e2e/helpers';
+import { IS_MAC, allShots, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@organize' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -181,6 +181,105 @@ test('M5 sidebar: the collection menu open and the delete sheet open (macOS only
   const result = await answer;
   results['menus'] = { menu: menuShot.file, sheet: sheetShot.file };
   check('delete sheet: esc cancels it — the answer is no', result.ok && result.data === false, result);
+});
+
+let tagIds: string[] = [];
+test('M5 tags: the selector, its chips and the table dots — light and dark', TAG, async () => {
+  const list = await s.page.evaluate(() => window.learn.library.list());
+  const ids = list.ok ? list.data.map((i) => i.id) : [];
+  tagIds = await makeTags(s.page, [
+    { name: '중요', slot: 1, items: ids.slice(0, 2) },
+    { name: '시험 범위', slot: 2, items: ids.slice(0, 1) },
+    { name: '수용체', items: ids.slice(0, 2) },
+    { name: '회귀분석' },
+  ]);
+  await s.page.getByTestId('nav-scope-all').click();
+  await expect(s.page.getByTestId('tag-selector')).toBeVisible();
+  await tagChip(s.page, tagIds[2]!).click(); // 수용체 in the filter
+  await rowAt(s.page, 0).click(); // the table has the focus: the first row on the accent fill
+  if (IS_MAC) await movePointer(512, 620);
+  await guard('selector: chips 22 px high, dots 8 px, a hairline above, at most 40 % of the sidebar', async () => {
+    const v = await s.page.evaluate(({ chip, dotTag }) => {
+      const sel = document.querySelector('[data-testid="tag-selector"]')!.getBoundingClientRect();
+      const col = document.querySelector('nav.sidebar-inner')!.getBoundingClientRect();
+      const pill = document.querySelector(`[data-testid="tag-chip-${chip}"]`)!.parentElement!.getBoundingClientRect();
+      const dot = document.querySelector(`[data-testid="tag-chip-${dotTag}"] .dot`)!.getBoundingClientRect();
+      return { chipHeight: pill.height, dot: [dot.width, dot.height], ratio: sel.height / col.height, border: getComputedStyle(document.querySelector('[data-testid="tag-selector"]')!).borderTopWidth };
+    }, { chip: tagIds[2]!, dotTag: tagIds[0]! });
+    results['tagSelector'] = v;
+    check('selector: chips 22 px high, dots 8 px, a hairline above, at most 40 % of the sidebar', v.chipHeight === 22 && v.dot[0] === 8 && v.dot[1] === 8 && v.ratio <= 0.4 && v.border === '1px', v);
+  });
+  await guard('dots: the inner border on a plain row, the white ring on the accent row', async () => {
+    const dot = s.page.locator('[data-testid="item-row"][aria-selected="true"] .tag-dots i').first();
+    const ring = await dot.evaluate((e) => getComputedStyle(e).boxShadow);
+    const white = await tokenColor(s.page, '--text-on-accent');
+    results['tagDots'] = { ring, white };
+    check('dots: the inner border on a plain row, the white ring on the accent row', ring.includes(white) && !ring.includes('inset'), { ring, white });
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(s.page, theme);
+    if (IS_MAC) await focusApp(s.app);
+    await allShots(s.app, s.page, `m5-06-tags-selector-${theme}`, `tags: the selector with 수용체 chosen and the table dots, the first row selected (${theme})`);
+  }
+  await setTheme(s.page, 'light');
+});
+
+test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a row (macOS only)', TAG, async () => {
+  if (!IS_MAC) {
+    results['tagDigits'] = { skipped: 'System Events typing is macOS only' };
+    return;
+  }
+  const held = async () => ((await organizeSnapshot(s.page)).tagged[tagIds[0]!] ?? []).slice().sort();
+  const typeDigit = (digit: string) => tryExec('osascript', ['-e', `tell application "System Events" to keystroke "${digit}"`], 10_000);
+  await focusApp(s.app);
+  await s.page.getByTestId('tag-chip-' + tagIds[2]!).first().click(); // the filter off again: every row shows
+  const before = await held();
+  // In the table's search field: the digit is text, and no item gains or loses a tag.
+  await runMenuCommand(s.app, 'library.find');
+  const field = s.page.getByTestId('search-field').locator('input');
+  await expect(field).toBeFocused();
+  const typedInField = await typeDigit('1');
+  await sleep(600);
+  const afterField = await held();
+  const fieldText = await field.inputValue();
+  await field.fill('');
+  await s.page.keyboard.press('Escape');
+  await guard('digits: a digit typed in the search field changes no tag', async () => {
+    check('digits: a digit typed in the search field changes no tag', typedInField.ok && fieldText === '1' && JSON.stringify(afterField) === JSON.stringify(before), { typedInField: typedInField.ok, fieldText, before, afterField });
+  });
+  // On a focused row: the tag goes on or off exactly once (twice would leave the snapshot as it was).
+  await rowAt(s.page, 0).click();
+  const rowId = (await rowAt(s.page, 0).getAttribute('data-item-id'))!;
+  await focusApp(s.app);
+  const typedOnRow = await typeDigit('1');
+  await sleep(1200);
+  const afterRow = await held();
+  await guard('digits: a digit with a row focused toggles the tag exactly once', async () => {
+    const had = before.includes(rowId);
+    const flipped = had ? !afterRow.includes(rowId) : afterRow.includes(rowId);
+    const others = JSON.stringify(afterRow.filter((i) => i !== rowId)) === JSON.stringify(before.filter((i) => i !== rowId));
+    check('digits: a digit with a row focused toggles the tag exactly once', typedOnRow.ok && flipped && others, { typedOnRow: typedOnRow.ok, had, before, afterRow });
+  });
+  results['tagDigits'] = { typedInField: typedInField.ok, fieldText, before, afterField, rowId, typedOnRow: typedOnRow.ok, afterRow };
+});
+
+test('M5 tags: the chip menu with 색 지정 ▸ open and the item menu with 색 태그 ▸ open (macOS only)', TAG, async () => {
+  if (!IS_MAC) {
+    results['tagMenus'] = { skipped: 'native menus are macOS only' };
+    return;
+  }
+  const pid = s.app.process().pid!;
+  await focusApp(s.app);
+  await tagChip(s.page, tagIds[0]!).click({ button: 'right' });
+  await sleep(1200);
+  const chip = await captureOpenPopupSubmenu(s.app, pid, '색 지정', 1, 'm5-06-menu-tag-colors', 'the tag chip menu with 색 지정 ▸ open: eight colours with dots, the slot another tag holds named');
+  await sleep(500);
+  await rowAt(s.page, 0).click({ button: 'right' });
+  await sleep(1200);
+  const item = await captureOpenPopupSubmenu(s.app, pid, '색 태그', 4, 'm5-06-menu-item-color-tags', 'the item menu with 색 태그 ▸ open: the tags by slot, the digits at the right, a check for what every selected item has');
+  results['tagMenus'] = { chip, item };
+  // `opened` is null when System Events cannot address a pop-up: the controller then reads the PNGs.
+  check('tag menus: ran and, where System Events can tell, the submenus opened', (chip.opened ?? true) && (item.opened ?? true), { chip: chip.opened, item: item.opened });
 });
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {

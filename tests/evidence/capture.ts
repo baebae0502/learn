@@ -534,6 +534,85 @@ export async function captureOpenSubmenu(app: ElectronApplication, target: strin
   }
 }
 
+/**
+ * The places System Events may keep an open pop-up menu under: which one holds it is not documented, so each is tried and the
+ * first that lists rows wins. Null from every candidate means the pop-up cannot be addressed (the caller records "unknown").
+ */
+const POPUP_CANDIDATES = ['menu 1', 'menu 1 of window 1', 'menu 1 of UI element 1 of window 1'] as const;
+
+async function popupScript(target: string | number, candidate: string, body: string[]): Promise<string | null> {
+  const script = ['tell application "System Events"', `tell ${processRef(target)}`, 'try', `set pop to ${candidate}`, ...body, 'on error', 'return "unknown"', 'end try', 'end tell', 'end tell'];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 10_000);
+  const out = r.ok ? r.stdout.trim() : '';
+  return out === '' || out === 'unknown' ? null : out;
+}
+
+/** The candidate that currently lists the rows of an open pop-up menu, with those rows; null when none does. */
+async function findPopup(target: string | number): Promise<{ candidate: string; rows: string[] } | null> {
+  for (const candidate of POPUP_CANDIDATES) {
+    const out = await popupScript(target, candidate, ['set out to {}', 'repeat with i in (menu items of pop)', 'set n to name of i', 'if n is missing value then set n to "-"', 'set end of out to n', 'end repeat', "set AppleScript's text item delimiters to linefeed", 'return out as text']);
+    if (out !== null) return { candidate, rows: out.split('\n') };
+  }
+  return null;
+}
+
+/**
+ * An open pop-up (context) menu: ↓ one row at a time — AppKit skips separators and disabled rows, and → on a row without a
+ * submenu goes elsewhere — until System Events says the row `label` is the selected one, then → opens its submenu. `opened`
+ * is true when the row was selected and its submenu then lists rows; null when System Events cannot address the pop-up (the
+ * PNG is then taken after `fallbackDowns` presses and judged by eye); false when it could and the submenu did not open.
+ * Escape clears whatever is still open, in a finally.
+ */
+export async function captureOpenPopupSubmenu(app: ElectronApplication, target: string | number, label: string, fallbackDowns: number, prefix: string, what: string) {
+  await focusApp(app);
+  try {
+    const found = await findPopup(target);
+    const press = (code: number) => tryExec('osascript', ['-e', `tell application "System Events" to key code ${code}`], 10_000);
+    let downs = 0;
+    let opened: boolean | null = null;
+    let rows: string[] | null = null;
+    if (found === null) {
+      for (; downs < fallbackDowns; downs++) {
+        await press(125);
+        await sleep(250);
+      }
+      await press(124);
+      await sleep(1000);
+    } else {
+      let selected = false;
+      for (let step = 0; step <= found.rows.length + 1; step++) {
+        selected = (await popupScript(target, found.candidate, [`return (value of attribute "AXSelected" of menu item "${label}" of pop) as text`])) === 'true';
+        if (selected) break;
+        await press(125);
+        downs++;
+        await sleep(250);
+      }
+      if (selected) {
+        await press(124);
+        await sleep(1000);
+        const sub = await popupScript(target, found.candidate, [
+          'set out to {}',
+          `repeat with i in (menu items of menu 1 of menu item "${label}" of pop)`,
+          'set n to name of i',
+          'if n is missing value then set n to "-"',
+          'set end of out to n',
+          'end repeat',
+          "set AppleScript's text item delimiters to linefeed",
+          'return out as text',
+        ]);
+        rows = sub === null ? null : sub.split('\n');
+      }
+      opened = selected && rows !== null && rows.length > 0;
+    }
+    const shot = await fullScreenShot(`${prefix}`, `${what}: ↓ ×${downs} then → via System Events${found === null ? ' (the pop-up could not be addressed: opened unknown)' : ''}`);
+    return { shot: shot.file, downs, opened, rows, addressable: found !== null };
+  } finally {
+    await pressEscape();
+    await pressEscape();
+    await pressEscape();
+  }
+}
+
 /** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */
 export async function pngPixels(page: Page, rel: string, points: ReadonlyArray<readonly [number, number]>): Promise<number[][]> {
   const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');

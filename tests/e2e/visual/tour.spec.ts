@@ -8,7 +8,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, addToCollection, closeSheet, createCollection, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  specialRow, stubContextMenu, stubSaveDialog, treeRow, type Session,
+  makeTags, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -740,6 +740,67 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
     await specialRow(s.page, 'unfiled').click();
     await shoot(s.page, 'sidebar-special-light', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M5 Task 6: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
+// dots in the title cell, a selected row on the accent fill) and components.html?part=1 (chips, the eight colours).
+test('organize: the tag selector with a filter and dim chips, the table dots with a selected row, and the filter that leaves nothing', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const [a, b, c, d] = items.map((i) => i.id) as [string, string, string, string];
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [a, b, c]);
+    const [, , , , receptor, , , regression] = await makeTags(s.page, [
+      { name: '중요', slot: 1, items: [a, b] },
+      { name: '시험 범위', slot: 2, items: [a] },
+      { name: '다시 보기', slot: 4, items: [b] },
+      { name: '질문 있음', slot: 5, items: [c] },
+      { name: '수용체', items: [a, b] },
+      { name: 'G 단백질', items: [a] },
+      { name: '인산화', items: [c] },
+      { name: '회귀분석', items: [d] },
+      { name: '표본 추출', items: [d] },
+    ]);
+    // A collection, 모든 태그 (the two tags of the item outside it are dim), one chip on, a row selected with the table focused.
+    await treeRow(s.page, bio).click();
+    await s.page.getByTestId('tag-selector-more').click();
+    await s.page.getByTestId('tag-menu-all').click();
+    await tagChip(s.page, receptor!).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    await expect(s.page.getByTestId('info-section')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-selector-${theme}`, { mask: dates() });
+    }
+    // A dim chip chosen too: nothing has both. The body says so; the chips keep their state.
+    await setTheme(s.page, 'light');
+    await tagChip(s.page, regression!).click();
+    await expect(s.page.getByTestId('tag-filter-empty')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-filter-empty-${theme}`, { mask: [s.page.getByTestId('inspector-panel')] });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('component state board: tag chips and colour dots (gallery part 4)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.goto('learn://app/index.html?window=gallery&part=4&platform=linux&det=1');
+      await s.page.getByTestId('gallery').waitFor();
+      expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await shoot(s.page, `gallery4-${theme}`);
+    }
   } finally {
     await s.app.close();
   }

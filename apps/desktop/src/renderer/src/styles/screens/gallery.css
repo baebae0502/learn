@@ -61,6 +61,14 @@
     padding: 0;
     overflow: hidden;
   }
+  /* The board's box has no height of its own for the selector's 40 % cap to count from: the chips take what they need. */
+  .gallery .tag-board .tag-selector {
+    max-height: none;
+  }
+  .gallery .tag-board .tag-cloud {
+    flex: none;
+    overflow: visible;
+  }
   .gallery .g-swatches {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

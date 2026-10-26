@@ -83,7 +83,7 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuStateVersion?: number }).__learnMenuStateVersion ?? 0)).toBeGreaterThan(0);
     // Once the main window is idle main prepares the settings window hidden. Every session starts from there (the
     // main window and a prepared settings window), so no test races its making (window events, window counts).
-    await expect.poll(() => settingsPrepared(app), { message: 'main prepared the settings window once the main window was idle', timeout: 15_000 }).toBe(true);
+    await expect.poll(() => settingsPreparedState(app), { message: 'main prepared the settings window once the main window was idle', timeout: 15_000 }).toBe('ready');
     return { app, page };
   } catch (e) {
     await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
@@ -117,13 +117,22 @@ export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
       .sort(),
   );
 
-/** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
-export async function settingsPrepared(app: ElectronApplication): Promise<boolean> {
+/**
+ * How far the settings window main prepares once the main window is idle has got: not made yet ('none'), loading, loaded
+ * but not yet measured ('unsized', data-sized), or ready. A launch that waits in vain says which step it stopped at.
+ */
+export async function settingsPreparedState(app: ElectronApplication): Promise<'none' | 'loading' | 'unsized' | 'ready'> {
   return app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=settings'));
-    if (!w || w.webContents.isLoading()) return false;
-    return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true;
+    if (!w) return 'none';
+    if (w.webContents.isLoading()) return 'loading';
+    return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true ? 'ready' : 'unsized';
   });
+}
+
+/** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
+export async function settingsPrepared(app: ElectronApplication): Promise<boolean> {
+  return (await settingsPreparedState(app)) === 'ready';
 }
 
 /**

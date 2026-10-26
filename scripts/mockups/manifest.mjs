@@ -124,6 +124,7 @@ export const TUTOR = [
   tutor('light', { state: '2', consent: 'sheet' }, '2-consent-sheet', '결정 · 동의 시트'),
   tutor('light', { state: '9', sessions: 'panel' }, '9-sessions-panel', '결정 · 세션 목록 패널'),
   tutor('light', { view: 'library' }, 'library', '라이브러리 보기의 튜터'),
+  tutor('dark', { state: '4', page: 'original' }, '4-empty-original-page', '4 붙은 구간 · 다크 앱 + 원본 쪽'),
   tutor('light', { state: '5', ms: '1' }, '5-milestones', '마일스톤 표시 · 대화'),
   tutor('light', { state: '7', ms: '1' }, '7-milestones', '마일스톤 표시 · 제안 카드'),
   ...THEMES.flatMap((t) => [

@@ -3382,8 +3382,27 @@ h2,
 }
 .agent-row .a-action {
   grid-column: 3;
-  grid-row: 1 / span 3;
+  grid-row: 1 / span 2;
   align-self: center;
+}
+/* The adapter's install command under the row text: code that wraps (a long package name), copy at its end. */
+.agent-row .a-cmd {
+  grid-column: 2 / 4;
+  grid-row: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+.agent-row .a-cmd .tu-cmd {
+  display: block; /* inline text that wraps (the base .tu-cmd is a one-line inline-flex box) */
+  flex: 0 1 auto;
+  height: auto;
+  min-height: 20px;
+  padding: 2px var(--space-8);
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word; /* breaks at spaces and after the scope's "/" (<wbr>), not inside a name */
 }
 .agent-row.is-unavailable .a-name {
   color: var(--text-secondary);
@@ -3584,18 +3603,33 @@ h2,
 .pdf-page p.has-attach {
   position: relative;
 }
+/* Page-theme values, like the find and highlight colours (proposed page tokens — tokens.test.ts should hold the
+   bar at 3:1 on each page colour): original 5.05:1, sepia ≈ 4.6:1, dark page ≈ 6:1. */
+.pdf-page {
+  --pg-attach-wash: oklch(0% 0 0 / 0.08); /* local: proposed page token */
+  --pg-attach-bar: oklch(53% 0.088 190); /* local: proposed page token (light accent ring) */
+}
+[data-page='sepia'] .pdf-page {
+  --pg-attach-wash: oklch(35% 0.04 70 / 0.1); /* local: proposed page token */
+  --pg-attach-bar: oklch(50% 0.088 190); /* local: proposed page token */
+}
+[data-page='dark'] .pdf-page {
+  --pg-attach-wash: oklch(100% 0 0 / 0.12); /* local: proposed page token */
+  --pg-attach-bar: oklch(72% 0.1 190); /* local: proposed page token */
+}
 .pdf-page .attach-bar {
+  /* Spans the attached lines: first line top + 3 to last line bottom − 3 (one line here). */
   position: absolute;
   left: -16px;
   top: 3px;
   width: 2px;
   height: 18px; /* local: one 24 px line of the page's own type, less 3 above and below */
   border-radius: 1px;
-  background: var(--accent-ring);
+  background: var(--pg-attach-bar);
 }
 .pdf-page .attached {
   border-radius: 2px;
-  background: var(--fill-pressed);
+  background: var(--pg-attach-wash);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }
@@ -3686,4 +3720,8 @@ h2,
 }
 .tu-title .t.ellipsis {
   display: block;
+}
+
+.nobr {
+  white-space: nowrap;
 }

@@ -140,8 +140,8 @@ window.MockupData = (() => {
     session: '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요',
     started: '오늘 오전 9:31',
     selection: { page: 42, text: '전체 증폭 배율은 각 단계 배율의 곱으로 근사할 수 있다.' },
-    // Sessions of the open item, newest first, grouped by day. Rows inside a day group show the short
-    // form (time today/yesterday, "10월 22일" in the last 7 days) — a design-spec 9 exception to approve.
+    // Sessions of the open item, newest first, grouped by day. Rows show no time (the day group says the
+    // day); `at` is the row's tooltip.
     itemSessions: [
       { group: '오늘', rows: [
         { title: '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요', at: '오전 9:31', current: true },
@@ -163,10 +163,11 @@ window.MockupData = (() => {
       { item: 'G Protein–Coupled Receptor Dynamics in Live Cells', kind: 'pdf', rows: [{ title: '초록을 한국어로 정리해 주세요', at: '어제 오후 4:52' }] },
     ],
     // Detected agents (ADR-0010 §1). Program names are the programs' own; our feature is only "튜터".
+    // Codex and Claude Code reach Learn through a separate ACP adapter (`cmd`); Gemini CLI and opencode have it built in.
     agents: [
       { id: 'codex', name: 'Codex', status: 'ready', text: '이&nbsp;프로그램에 설정한 계정으로 답합니다.' },
-      { id: 'claude', name: 'Claude Code', status: 'login', text: '터미널에서 <span class="mono">claude</span>를 실행하고 안내에 따라 로그인한 뒤 다시 확인하세요.' },
-      { id: 'gemini', name: 'Gemini CLI', status: 'missing', text: '설치되어 있지 않습니다. 설치하고 로그인한 뒤 다시 찾기를 누르세요.' },
+      { id: 'claude', name: 'Claude Code', status: 'adapter', text: 'Claude Code는 있지만 Learn과 연결하는 도구가 없습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 확인하세요(Node 22 이상).', cmd: 'npm i -g @agentclientprotocol/claude-agent-acp' },
+      { id: 'gemini', name: 'Gemini CLI', status: 'login', text: '터미널에서 <span class="mono">gemini</span>를 실행하고 안내에 따라 로그인한 뒤 다시 확인하세요.' },
       { id: 'opencode', name: 'opencode', status: 'old', text: '설치된 버전은 Learn과 연결할 수 없습니다. 최신&nbsp;버전으로 업데이트한 뒤 다시 확인하세요.' },
     ],
   };

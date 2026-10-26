@@ -34,6 +34,10 @@ export const entryItemId = (entry: CommandEntry): string => menuItemId(entry.id,
 export interface TemplateOptions {
   /** The native image of a colour dot; injected so this module stays free of the Electron runtime. */
   dotIcon?: (hex: string) => NativeImage;
+  /** Where the template is shown: the menu bar (key equivalents are live) or a popup (modal while open). Default: a popup. */
+  surface?: 'menubar' | 'popup';
+  /** The platform, injected (a menu-bar template needs it to decide about hints). */
+  platform?: string;
 }
 
 /**
@@ -47,17 +51,23 @@ export function entriesToTemplate(entries: MenuEntries, pick: (picked: PickedCom
     if (isSubmenu(entry)) {
       return { ...(entry.id ? { id: entry.id } : {}), label: entry.label, enabled: entry.enabled, submenu: entriesToTemplate(entry.submenu, pick, opts), ...icon };
     }
+    const menuBar = opts.surface === 'menubar';
+    // macOS offers a key without Cmd to the main menu BEFORE the page and ignores registerAccelerator: false, so a menu-bar row with
+    // an accelerator would swallow the digit (and keep it out of every text field). Darwin's menu bar therefore shows no hint at all;
+    // the renderer's key map owns the digit. Elsewhere the hint is display only.
+    const showHint = Boolean(entry.hint) && !(menuBar && opts.platform === 'darwin');
+    // A menu-bar row that only shows a key must not run twice (the renderer already ran it). A popup is modal while open, so the
+    // page never saw the key: a pick made with the hint's key from a popup is a real pick.
+    const dropAccelerator = menuBar && Boolean(entry.hint);
     const picked: PickedCommand = { commandId: entry.id, ...(entry.args ? { args: entry.args } : {}) };
     return {
       id: entryItemId(entry),
       label: entry.label,
       enabled: entry.enabled,
       ...(entry.type ? { type: entry.type, checked: entry.checked === true } : {}),
-      ...(entry.hint ? { accelerator: entry.hint, registerAccelerator: false } : {}),
+      ...(showHint ? { accelerator: entry.hint, registerAccelerator: false } : {}),
       ...icon,
-      // A row that only shows a key must not run twice: macOS can still treat the hint as the menu bar's key equivalent, and the
-      // renderer's key map already owns the digit (and ignores it in a text field, which a menu key would not).
-      click: (item, _window, event) => pick(item.enabled && !(entry.hint && event?.triggeredByAccelerator === true) ? picked : null),
+      click: (item, _window, event) => pick(item.enabled && !(dropAccelerator && event?.triggeredByAccelerator === true) ? picked : null),
     };
   });
 }

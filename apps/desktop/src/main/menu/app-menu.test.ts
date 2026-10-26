@@ -537,13 +537,28 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
         'separator', '윈도우 닫기',
       ]);
     });
-    it('shows the slots at the right edge without registering them, and a row runs its own command', () => {
+    const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
+      walk(buildAppMenu({ isDev: false, platform, commands: FUTURE_COMMANDS, submenus: FUTURE_SUBMENUS, enabled: ONE, onCommand, context: context(), organize: LIBRARY }))
+        .find((i) => i.id === 'submenu.colorTags')!.submenu as MenuItemConstructorOptions[];
+    it('on macOS the rows carry no key at all (a key equivalent without Cmd would reach the menu before the page), and a row runs its own command', () => {
       const onCommand = vi.fn();
-      const rows = walk(build2(ONE, LIBRARY, onCommand)).find((i) => i.id === 'submenu.colorTags')!.submenu as MenuItemConstructorOptions[];
+      const rows = colorRows('darwin', onCommand);
+      expect(rows.map((r) => [r.id, r.accelerator, r.registerAccelerator, r.type])).toEqual([
+        ['tag.color1', undefined, undefined, undefined],
+        ['tag.color3', undefined, undefined, undefined],
+      ]);
+      rows[1]!.click!({ enabled: true } as never, undefined, {} as never);
+      expect(onCommand).toHaveBeenCalledWith('tag.color3', undefined);
+    });
+    it('on linux the slots show at the right edge without being registered, and a pick made with the key is dropped', () => {
+      const onCommand = vi.fn();
+      const rows = colorRows('linux', onCommand);
       expect(rows.map((r) => [r.id, r.accelerator, r.registerAccelerator, r.type])).toEqual([
         ['tag.color1', '1', false, undefined],
         ['tag.color3', '3', false, undefined],
       ]);
+      rows[0]!.click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
+      expect(onCommand).not.toHaveBeenCalled();
       rows[1]!.click!({ enabled: true } as never, undefined, {} as never);
       expect(onCommand).toHaveBeenCalledWith('tag.color3', undefined);
     });

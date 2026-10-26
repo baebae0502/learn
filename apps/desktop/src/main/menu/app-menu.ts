@@ -4,7 +4,7 @@ import {
   type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type MenuName, type OrganizeSnapshot, type PickedCommand, type SubmenuSpec,
 } from '@learn/domain';
 import { mainStrings } from '../strings';
-import { entriesToTemplate } from './entries';
+import { entriesToTemplate, type TemplateOptions } from './entries';
 import { colorTagGroup, valueRows, type SubmenuInput } from './submenus';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
@@ -104,6 +104,9 @@ const picker = (opts: AppMenuOptions) => (picked: PickedCommand | null): void =>
   if (picked) opts.onCommand(picked.commandId, picked.args);
 };
 
+/** The menu bar's rows: key equivalents are live there (see entriesToTemplate). */
+const barOptions = (opts: AppMenuOptions): TemplateOptions => ({ surface: 'menubar', platform: opts.platform });
+
 /** What the submenus are built from: the reported context and the library read for the menu bar (no selection, so no marks). */
 function submenuInput(opts: AppMenuOptions): SubmenuInput {
   return { organize: opts.organize ?? null, itemIds: [], context: opts.context ?? DEFAULT_CONTEXT, enabledOf: (c) => isEnabled(c.id, opts.enabled) };
@@ -116,7 +119,7 @@ function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
     // The head is the command and is switched in place; its rows are always on (they are reachable only through it).
     // A submenu with nothing to list is left out rather than drawn empty.
     const rows = valueRows(c, submenuInput(opts), true);
-    return rows.length === 0 ? [] : [{ id: c.id, label, enabled, submenu: entriesToTemplate(rows, picker(opts)) }];
+    return rows.length === 0 ? [] : [{ id: c.id, label, enabled, submenu: entriesToTemplate(rows, picker(opts), barOptions(opts)) }];
   }
   const click = () => opts.onCommand(c.id);
   const [id, ...twinIds] = menuItemIds(c);
@@ -128,7 +131,7 @@ function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
 /** A group's head with its members, as one item; nothing when it has no member to show. */
 function groupItems(s: SubmenuSpec, opts: AppMenuOptions): Item[] {
   const entry = colorTagGroup(s, opts.commands, submenuInput(opts));
-  return entry ? entriesToTemplate([entry], picker(opts)) : [];
+  return entry ? entriesToTemplate([entry], picker(opts), barOptions(opts)) : [];
 }
 
 /** Registry commands and groups for one menu, merged by group then order (separator between groups) and built. */

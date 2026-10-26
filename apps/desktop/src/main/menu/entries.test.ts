@@ -54,9 +54,22 @@ describe('menu entries as a native template', () => {
     ]);
     expect(pick.mock.calls[1]![0]).not.toHaveProperty('args');
   });
-  it('a row that only shows a key ignores a pick the system made with that key (the renderer\'s key map owns the digit), and still answers the mouse', () => {
+  const colorRow = (opts: Parameters<typeof entriesToTemplate>[2], pick = vi.fn()) =>
+    (entriesToTemplate(ENTRIES, pick, opts)[3]!.submenu as MenuItemConstructorOptions[])[0]!;
+  it('the menu bar on darwin carries no key for a hint row (macOS would make it a key equivalent that swallows the digit); elsewhere it is display only', () => {
+    const mac = colorRow({ surface: 'menubar', platform: 'darwin' });
+    expect(mac).not.toHaveProperty('accelerator');
+    expect(mac).not.toHaveProperty('registerAccelerator');
+    expect(colorRow({ surface: 'menubar', platform: 'linux' })).toMatchObject({ accelerator: '1', registerAccelerator: false });
+    expect(colorRow({ surface: 'menubar', platform: 'win32' })).toMatchObject({ accelerator: '1', registerAccelerator: false });
+  });
+  it('a popup keeps the shown digit on every platform', () => {
+    expect(colorRow({ surface: 'popup', platform: 'darwin' })).toMatchObject({ accelerator: '1', registerAccelerator: false });
+    expect(colorRow({ surface: 'popup', platform: 'linux' })).toMatchObject({ accelerator: '1', registerAccelerator: false });
+  });
+  it('a menu-bar hint row ignores a pick the system made with its key (the renderer\'s key map owns the digit), and still answers the mouse', () => {
     const pick = vi.fn();
-    const row = (entriesToTemplate(ENTRIES, pick)[3]!.submenu as MenuItemConstructorOptions[])[0]!;
+    const row = colorRow({ surface: 'menubar', platform: 'linux' }, pick);
     const press = (event: object) => row.click!({ enabled: true } as never, undefined, event as never);
     press({ triggeredByAccelerator: true });
     expect(pick.mock.calls).toEqual([[null]]);
@@ -64,9 +77,14 @@ describe('menu entries as a native template', () => {
     press({});
     expect(pick.mock.calls.slice(1)).toEqual([[{ commandId: 'tag.color1' }], [{ commandId: 'tag.color1' }]]);
     // A row without a hint has no key of its own to ignore.
-    const plain = entriesToTemplate([ENTRIES[6]!], pick)[0]!;
+    const plain = entriesToTemplate([ENTRIES[6]!], pick, { surface: 'menubar', platform: 'linux' })[0]!;
     plain.click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
     expect(pick.mock.calls.at(-1)).toEqual([{ commandId: 'item.open' }]);
+  });
+  it('a popup is modal while open, so a pick made with the digit is a real pick and runs', () => {
+    const pick = vi.fn();
+    colorRow({ surface: 'popup', platform: 'darwin' }, pick).click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
+    expect(pick.mock.calls).toEqual([[{ commandId: 'tag.color1' }]]);
   });
   it('tells a submenu from a command, and names a row the way menuItemId does', () => {
     expect(isSubmenu(ENTRIES[3] as never)).toBe(true);

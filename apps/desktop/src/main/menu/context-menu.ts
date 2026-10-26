@@ -87,7 +87,7 @@ const open = new Set<Menu>();
 export function popupCommandMenu(entries: MenuEntries, at: { window: BaseWindow; x: number; y: number }): Promise<PickedCommand | null> {
   return new Promise((resolve) => {
     let settled = false;
-    const menu = Menu.buildFromTemplate(entriesToTemplate(entries, (picked) => settle(picked), { dotIcon }));
+    const menu = Menu.buildFromTemplate(entriesToTemplate(entries, (picked) => settle(picked), { dotIcon, surface: 'popup' }));
     function settle(value: PickedCommand | null): void {
       if (settled) return;
       settled = true;

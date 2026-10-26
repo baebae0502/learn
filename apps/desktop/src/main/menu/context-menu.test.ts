@@ -179,6 +179,11 @@ describe('popup: marks, values, submenus and colour dots reach the native templa
     click((template[1]!.submenu as MenuItemConstructorOptions[])[0]!);
     await expect(picked).resolves.toEqual({ commandId: 'collection.addItems', args: { collectionId: 'c-mb' } });
   });
+  it('a pick made with the shown digit is a real pick: a popup is modal, the page never saw the key', async () => {
+    const picked = popupCommandMenu([{ id: 'tag.color1' as never, label: '중요', enabled: true, hint: '1', type: 'checkbox', checked: false }], { window: win, x: 1, y: 2 });
+    popups[0]!.template[0]!.click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
+    await expect(picked).resolves.toEqual({ commandId: 'tag.color1' });
+  });
 });
 
 describe('the tag menu from the real registry (spec 9.2)', () => {

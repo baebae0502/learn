@@ -9,11 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, importPaths, launch, makeTags, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows, setTagColor, showItemPanel,
-  tagChip, tokenColor, treeRow, type Session,
+  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows,
+  setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS } from '../../packages/domain/src/commands';
-import { IS_MAC, allShots, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
+import { Channels } from '../../packages/domain/src/ipc-channels';
+import { IS_MAC, allShots, captureOpenSubmenu, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@organize' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -225,9 +226,14 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
   }
   const held = async () => ((await organizeSnapshot(s.page)).tagged[tagIds[0]!] ?? []).slice().sort();
   const typeDigit = (digit: string) => tryExec('osascript', ['-e', `tell application "System Events" to keystroke "${digit}"`], 10_000);
+  const same = (a: string[], b: string[]) => JSON.stringify(a) === JSON.stringify(b);
   await focusApp(s.app);
   await s.page.getByTestId('tag-chip-' + tagIds[2]!).first().click(); // the filter off again: every row shows
   const before = await held();
+  // A row is selected first: the menu bar's 파일 › 색 태그 ▸ rows are then enabled, which is when macOS used to take the digit.
+  await rowAt(s.page, 0).click();
+  const rowId = (await rowAt(s.page, 0).getAttribute('data-item-id'))!;
+  const menuRowEnabled = await menuItemEnabled(s.app, 'tag.color1');
   // In the table's search field: the digit is text, and no item gains or loses a tag.
   await runMenuCommand(s.app, 'library.find');
   const field = s.page.getByTestId('search-field').locator('input');
@@ -239,22 +245,59 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
   await field.fill('');
   await s.page.keyboard.press('Escape');
   await guard('digits: a digit typed in the search field changes no tag', async () => {
-    check('digits: a digit typed in the search field changes no tag', typedInField.ok && fieldText === '1' && JSON.stringify(afterField) === JSON.stringify(before), { typedInField: typedInField.ok, fieldText, before, afterField });
+    check('digits: a digit typed in the search field changes no tag', typedInField.ok && fieldText === '1' && same(afterField, before), { typedInField: typedInField.ok, fieldText, menuRowEnabled, before, afterField });
   });
-  // On a focused row: the tag goes on or off exactly once (twice would leave the snapshot as it was).
+  // In the item panel's year field (the metadata editor), then cancelled so the item is not saved.
+  let yearText: string | null = null;
+  let afterYear: string[] = before;
+  let typedInYear: boolean | null = null;
+  await guard('digits: a digit typed in the item panel\'s year field changes no tag', async () => {
+    await rowAt(s.page, 0).click();
+    await showItemPanel(s.app, s.page);
+    await s.page.getByTestId('info-edit').click();
+    const year = s.page.locator('[data-testid="editor-field"][data-field="year"] :is(input, textarea)');
+    await year.fill('');
+    await year.click();
+    await focusApp(s.app);
+    typedInYear = (await typeDigit('1')).ok;
+    await sleep(600);
+    yearText = await year.inputValue();
+    afterYear = await held();
+    await s.page.keyboard.press('Escape'); // cancel: nothing is saved
+    check('digits: a digit typed in the item panel\'s year field changes no tag', typedInYear === true && yearText === '1' && same(afterYear, before), { typedInYear, yearText, menuRowEnabled, before, afterYear });
+  });
+  // On the focused row: the tag goes on or off exactly once (twice would leave the snapshot as it was).
   await rowAt(s.page, 0).click();
-  const rowId = (await rowAt(s.page, 0).getAttribute('data-item-id'))!;
+  await s.page.evaluate(() => {
+    const w = window as unknown as { __digitKeys?: Array<{ key: string; code: string; target: string }> };
+    w.__digitKeys = [];
+    window.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement | null;
+      w.__digitKeys!.push({ key: e.key, code: e.code, target: t?.getAttribute?.('data-testid') ?? t?.tagName ?? '' });
+    }, true);
+  });
+  const toggles = async () => (await ipcCalls(s.app))[Channels.tags.togglePosition] ?? 0;
+  const togglesBefore = await toggles();
   await focusApp(s.app);
   const typedOnRow = await typeDigit('1');
   await sleep(1200);
   const afterRow = await held();
+  const keys = await s.page.evaluate(() => (window as unknown as { __digitKeys?: Array<{ key: string; code: string; target: string }> }).__digitKeys ?? []);
+  const togglesAfter = await toggles();
+  const digit1Keydowns = keys.filter((k) => k.code === 'Digit1').length;
+  const toggleCalls = togglesAfter - togglesBefore;
   await guard('digits: a digit with a row focused toggles the tag exactly once', async () => {
     const had = before.includes(rowId);
     const flipped = had ? !afterRow.includes(rowId) : afterRow.includes(rowId);
-    const others = JSON.stringify(afterRow.filter((i) => i !== rowId)) === JSON.stringify(before.filter((i) => i !== rowId));
-    check('digits: a digit with a row focused toggles the tag exactly once', typedOnRow.ok && flipped && others, { typedOnRow: typedOnRow.ok, had, before, afterRow });
+    const others = same(afterRow.filter((i) => i !== rowId), before.filter((i) => i !== rowId));
+    check('digits: a digit with a row focused toggles the tag exactly once', typedOnRow.ok && flipped && others && digit1Keydowns === 1 && toggleCalls === 1, {
+      typedOnRow: typedOnRow.ok, had, flipped, others, digit1Keydowns, toggleCalls, keys, menuRowEnabled, before, afterRow,
+    });
   });
-  results['tagDigits'] = { typedInField: typedInField.ok, fieldText, before, afterField, rowId, typedOnRow: typedOnRow.ok, afterRow };
+  // The menu bar's 파일 › 색 태그 ▸ with a row selected: the tag rows with no digits at the right (the PNG is read by eye).
+  await focusApp(s.app);
+  const menubar = await captureOpenSubmenu(s.app, s.app.process().pid!, 3, '색 태그', 'm5-06-menubar-color-tags', '파일 › 색 태그 ▸ open with a row selected: the tag rows, no digit at the right edge');
+  results['tagDigits'] = { typedInField: typedInField.ok, fieldText, menuRowEnabled, before, afterField, typedInYear, yearText, afterYear, rowId, typedOnRow: typedOnRow.ok, afterRow, digit1Keydowns, toggleCalls, keys, menubarOpened: menubar.opened };
 });
 
 /**

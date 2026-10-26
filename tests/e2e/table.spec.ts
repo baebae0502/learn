@@ -158,7 +158,7 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     const [menu] = await recordedPopups(s.app);
     expect(menu!.map((i) => [i.type === 'separator' ? '-' : i.label, i.checked, i.enabled])).toEqual([
       ['제목', true, false], ['저자', true, true], ['연도', true, true], ['종류', true, true], ['추가일', true, true],
-      ['수정일', false, true], ['보관', false, true], ['크기', false, true], ['원래 파일 이름', false, true],
+      ['수정일', false, true], ['보관', false, true], ['크기', false, true], ['원래 이름', false, true],
       ['-', false, true], ['열 구성 되돌리기', false, true],
     ]);
     const size = rowAt(s.page, 0).locator('[data-col="size"]');

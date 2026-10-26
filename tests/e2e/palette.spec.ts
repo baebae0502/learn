@@ -467,6 +467,14 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await expect(results.first().locator('.p-sub')).toHaveText('김하늘 · 2024');
     await expect(results.nth(3).locator('.p-sub')).toHaveText('PDF'); // no author, no year: the kind
     await expect(results.nth(4).locator('mark')).toHaveCount(0); // matched outside the title
+    await expect(results.first().locator('.p-sub mark')).toHaveCount(0); // its title matched: only the title is marked
+    // A row the author brought in, with nothing in its title, marks the author instead.
+    await page.getByTestId('palette-input').fill('김하늘');
+    await expect(results).toHaveCount(1);
+    await expect(results.first().locator('.p-title mark')).toHaveCount(0);
+    await expect(results.first().locator('.p-sub mark')).toHaveText('김하늘');
+    await page.getByTestId('palette-input').fill('신호');
+    await expect(results).toHaveCount(5);
     await expect(results.first().locator('.p-meta .kbd-group')).toHaveCount(1); // ↩ on the cursor row only
     await expect(results.nth(1).locator('.p-meta .kbd-group')).toHaveCount(0);
     await expect(page.getByTestId('palette-search-library')).toHaveText(/라이브러리에서 ‘신호’ 검색/);

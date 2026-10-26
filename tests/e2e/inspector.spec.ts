@@ -66,6 +66,9 @@ test('one item: the head, the info rows that have a value and the file section; 
     await expect(none).toContainText('선택한 자료 없음');
     await expect(none).toContainText('표에서 자료를 고르면 정보가 여기에 보입니다.');
     expect(plain(await page.getByTestId('inspector-stats').textContent())).toMatch(/^내 라이브러리 · 자료 3개\(PDF 2 · 동영상 1\) · [\d.]+ MB$/);
+    // The numbers are 12 px text: the description's secondary colour (4.5:1 and more), not tertiary (the owner's choice).
+    const [stats, text] = await none.evaluate((el) => [el.querySelector('.pe-stats')!, el.querySelector('.pe-text:not(.pe-stats)')!].map((e) => getComputedStyle(e).color));
+    expect(stats).toBe(text);
 
     await selectRows(page, ['sample']);
     const head = page.getByTestId('inspector-head');

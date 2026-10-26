@@ -25,7 +25,7 @@ export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
   { id: 'updatedAt', label: '수정일', defaultVisible: false, defaultWidth: 132, minWidth: 112, align: 'start' },
   { id: 'storageMode', label: '보관', defaultVisible: false, defaultWidth: 96, minWidth: 80, align: 'start' },
   { id: 'size', label: '크기', defaultVisible: false, defaultWidth: 80, minWidth: 64, align: 'end' },
-  { id: 'originalName', label: '원래 파일 이름', defaultVisible: false, defaultWidth: 200, minWidth: 120, align: 'start' },
+  { id: 'originalName', label: '원래 이름', defaultVisible: false, defaultWidth: 200, minWidth: 120, align: 'start' },
 ] satisfies LibraryColumnSpec[]);
 
 /** The widest a column may be dragged (spec §3.2). */

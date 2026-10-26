@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LibraryItem } from '@learn/domain';
 import { search, searchIndexFor } from '../library/search';
 import { t } from '../strings';
-import { initialsExample, itemMeta, rankItems } from './items';
+import { initialsExample, itemMeta, itemMetaMatch, rankItems } from './items';
 
 const item = (id: string, title: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
   id, title, type: 'pdf', mime: 'application/pdf', size: 1, storageMode: 'managed', availability: 'available', assetId: 'a', revisionId: 'r',
@@ -41,6 +41,17 @@ describe('palette 자료 results (spec §4.4)', () => {
     expect(itemMeta({ creators: ['박서준'], year: null, type: 'video' })).toBe('박서준');
     expect(itemMeta({ creators: [], year: null, type: 'video' })).toBe('동영상');
     expect(itemMeta({ creators: [], year: null, type: 'pdf' })).toBe('PDF');
+  });
+
+  it('marks where the query matched in 저자 · 연도 (a row the author or the year brought in says why); never on the kind', () => {
+    const kim = item('k', '세포 신호 전달 개요', { creators: ['김철수'], year: 2024 });
+    expect(itemMetaMatch(kim, '김철수')).toEqual({ start: 0, end: 3, kind: 'prefix' });
+    expect(itemMetaMatch(kim, 'ㄱㅊㅅ')).toEqual({ start: 0, end: 3, kind: 'initials' });
+    expect(itemMetaMatch(kim, '2024')).toEqual({ start: 6, end: 10, kind: 'word' });
+    expect(itemMetaMatch(item('j', 'Bayes', { creators: ['Jane Smith'] }), 'smith')).toEqual({ start: 5, end: 10, kind: 'word' });
+    expect(itemMetaMatch(kim, '단백질')).toBeNull();
+    expect(itemMetaMatch(item('p', 'sample'), 'pdf')).toBeNull();
+    expect(itemMetaMatch(kim, '  ')).toBeNull();
   });
 
   it('takes the 초성 example from the first title (list order) with a word of two to four Hangul syllables', () => {

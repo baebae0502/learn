@@ -16,7 +16,7 @@ describe('library table columns (M4 spec 3.1)', () => {
       ['updatedAt', '수정일', 132, 112, 'start', false],
       ['storageMode', '보관', 96, 80, 'start', false],
       ['size', '크기', 80, 64, 'end', false],
-      ['originalName', '원래 파일 이름', 200, 120, 'start', false],
+      ['originalName', '원래 이름', 200, 120, 'start', false],
     ]);
   });
   it('only the title is required, and only the title takes the remaining width', () => {

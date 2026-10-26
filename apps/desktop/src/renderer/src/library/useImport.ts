@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { ImportOutcome, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
+import { afterEditing } from '../inspector/editGuard';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useShell } from '../state/shell-store';
@@ -45,7 +46,11 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
         }
         // Not item.open through the registry: the user picked 기존 자료 열기 inside this import's own question, while the
         // import still holds the window (blocked), so the command would refuse. It is the import's result, not a new command.
-        if (report.openItemId) setView({ kind: 'reader', itemId: report.openItemId });
+        if (report.openItemId) {
+          const itemId = report.openItemId;
+          // An open 정보 편집 is asked first, as for every way into the reader.
+          afterEditing(() => setView({ kind: 'reader', itemId }));
+        }
       } catch (e) {
         showToast({ kind: 'error', title: t.toast.importFailed, body: (e as Error).message, testId: 'import-failures' });
       } finally {

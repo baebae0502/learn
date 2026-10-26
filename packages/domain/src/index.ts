@@ -8,6 +8,7 @@ export * from './ids';
 export * from './ipc';
 export * from './ipc-channels';
 export * from './library';
+export * from './library-columns';
 export * from './metadata';
 export * from './reading';
 export * from './result';

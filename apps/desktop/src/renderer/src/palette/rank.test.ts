@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commandById, type CommandSpec } from '@learn/domain';
+import { COMMANDS, commandById, inPalette, type CommandId, type CommandSpec } from '@learn/domain';
 import { rankCommands } from './rank';
 
 const C: CommandSpec[] = [
@@ -32,5 +32,27 @@ describe('rankCommands', () => {
     // Hidden, the label is 사이드바 보기: 가리기 is only a search word, so nothing is marked.
     expect(rankCommands(toggle, '가리기', 'darwin', { sidebar: 'hidden' })).toEqual([{ command: toggle[0], match: null }]);
     expect(rankCommands(toggle, 'ㅅㅇㄷㅂ ㅂ', 'darwin', { sidebar: 'hidden' })[0]!.match).toEqual({ start: 0, end: 6, kind: 'initials' });
+  });
+  it('matches the item panel toggle by the name its own pane state gives it (P-3)', () => {
+    const panel: CommandSpec = { id: 'nav.back', label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } }, keywords: ['항목 패널'], contexts: ['library'] };
+    expect(rankCommands([panel], '가리기', 'darwin', { inspector: 'shown' })[0]!.match).toEqual({ start: 6, end: 9, kind: 'word' });
+    expect(rankCommands([panel], '가리기', 'darwin', { inspector: 'hidden', sidebar: 'shown' })).toEqual([]);
+  });
+  it('puts the five commands run most recently first for an empty query, then the rest in registry order (spec §4.4)', () => {
+    const listed = COMMANDS.filter(inPalette);
+    const recent: CommandId[] = ['view.textSmaller', 'view.textBigger', 'app.settings', 'app.shortcuts', 'view.toggleSidebar', 'file.importLinked'];
+    const got = rankCommands(listed, '', 'darwin', {}, recent).map((r) => r.command.id);
+    expect(got.slice(0, 5)).toEqual(recent.slice(0, 5));
+    expect(got.slice(5)).toEqual(listed.map((c) => c.id).filter((id) => !recent.slice(0, 5).includes(id)));
+    // A recent command that cannot run now (not listed) is skipped; the next one takes its place.
+    expect(rankCommands(C, '', 'darwin', {}, ['view.textBigger', 'nav.back']).map((r) => r.command.id)).toEqual(['nav.back', 'file.importManaged', 'file.importLinked']);
+  });
+  it('lets the more recent command win a tie for a query, never a better match', () => {
+    const two = [commandById('view.textBigger'), commandById('view.textSmaller')];
+    const order = (recent: CommandId[]) => rankCommands(two, 'ㄱㅈ', 'darwin', {}, recent).map((r) => r.command.id);
+    expect(order([])).toEqual(['view.textBigger', 'view.textSmaller']); // both initials at 0: registry order
+    expect(order(['view.textSmaller'])).toEqual(['view.textSmaller', 'view.textBigger']);
+    // 파일: the prefix match stays above the word match however recent the other one is.
+    expect(rankCommands(C, '파일', 'darwin', {}, ['file.importLinked']).map((r) => r.command.id)).toEqual(['file.importManaged', 'file.importLinked']);
   });
 });

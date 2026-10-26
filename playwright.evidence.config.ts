@@ -6,9 +6,9 @@ export default defineConfig({
   testDir: 'tests/evidence',
   testMatch: '**/*.evidence.ts',
   timeout: 180_000,
-  // Whole-run cap below the workflow step limit (19 min) so a hang fails with a report. Worst case 1021 s, typical 591 s
-  // (tests/evidence/demo.evidence.ts DEMO_BUDGET_MS).
-  globalTimeout: 1_080_000,
+  // Whole-run cap below the workflow step limit (25 min) so a hang fails with a report. Worst case 1410 s, typical 884 s
+  // (M4: tests/evidence/demo.evidence.ts DEMO_BUDGET_MS).
+  globalTimeout: 1_440_000,
   expect: { timeout: 15_000 },
   workers: 1,
   reporter: [['list'], ['json', { outputFile: 'evidence-results/report.json' }]],

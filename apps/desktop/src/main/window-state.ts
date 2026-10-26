@@ -1,4 +1,4 @@
-import type { BrowserWindow } from 'electron';
+import { BrowserWindow } from 'electron';
 import type { WindowState } from '@learn/domain';
 import { sendEvent } from './events';
 import { releaseWhenKey } from './sheet-release';
@@ -8,7 +8,7 @@ import { releaseWhenKey } from './sheet-release';
  * one of our sheets — a sheet window or a native dialog attached to it — keeps it the main window.
  *
  * Sheets per parent: 'open' while one is attached; 'releasing' from its closing until the parent is key again, during
- * which the parent still counts as main (windowState.sheetOpen) but the sheet is gone (isSheetOpen).
+ * which the parent is still held and main (windowState.sheetOpen, .main) but the sheet is gone (isSheetOpen).
  */
 const sheets = new WeakMap<BrowserWindow, 'open' | 'releasing'>();
 /**
@@ -27,27 +27,40 @@ const bump = (map: WeakMap<BrowserWindow, number>, win: BrowserWindow, by: 1 | -
 };
 const releases = new WeakMap<BrowserWindow, () => void>();
 const pushers = new WeakMap<BrowserWindow, () => void>();
+/** Every tracked window's push, for a focus change anywhere among our windows (resyncAllWindowStates). */
+const tracked = new Set<() => void>();
+
+/**
+ * Whether a window of ours other than `win` and its own sheets has the key: AppKit then makes that
+ * window the main one, so `win` is neither key nor main even with a sheet attached. No key window at all (Electron's
+ * report between one window's blur and the next one's focus, or with another app in front) does not count, nor does
+ * `win` itself (Electron keeps reporting the parent of a native dialog key on macOS).
+ */
+function keyElsewhere(win: BrowserWindow): boolean {
+  const key = BrowserWindow.getFocusedWindow();
+  return key !== null && key.id !== win.id && key.getParentWindow()?.id !== win.id;
+}
 
 /** What the windowState push and the ui.windowState query report. */
-export const windowStateOf = (win: BrowserWindow): WindowState => ({
-  fullscreen: win.isFullScreen(),
-  focused: win.isFocused() && !nativeSheets.has(win),
-  sheetOpen: sheets.has(win),
-});
+export const windowStateOf = (win: BrowserWindow): WindowState => {
+  const focused = win.isFocused() && !nativeSheets.has(win);
+  const sheetOpen = sheets.has(win);
+  return { fullscreen: win.isFullScreen(), focused, sheetOpen, main: focused || (sheetOpen && !keyElsewhere(win)) };
+};
 
 /** Whether one of our sheets is attached to `win` now. */
 export const isSheetOpen = (win: BrowserWindow): boolean => sheets.get(win) === 'open';
 
 /**
  * The windowState push for `win`: its own state, sent to its own renderer on an actual change of full screen, focus or
- * sheet. Each window has its own; one window's focus never reaches another's renderer.
+ * sheet. Each window has its own; another window's focus reaches it only through resyncAllWindowStates.
  */
 export function trackWindowState(win: BrowserWindow): void {
   let last: WindowState | null = null;
   const pushState = () => {
     if (win.isDestroyed()) return;
     const next = windowStateOf(win);
-    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen) return;
+    if (last && last.fullscreen === next.fullscreen && last.focused === next.focused && last.sheetOpen === next.sheetOpen && last.main === next.main) return;
     last = next;
     sendEvent(win.webContents, 'windowState', next);
   };
@@ -58,6 +71,8 @@ export function trackWindowState(win: BrowserWindow): void {
   win.on('focus', pushState);
   win.on('blur', pushState);
   pushers.set(win, pushState);
+  tracked.add(pushState);
+  win.once('closed', () => tracked.delete(pushState));
 }
 
 /**
@@ -67,6 +82,15 @@ export function trackWindowState(win: BrowserWindow): void {
  */
 export function resyncWindowState(win: BrowserWindow): void {
   pushers.get(win)?.();
+}
+
+/**
+ * Re-reads every tracked window's state and pushes the ones that changed. main/index.ts runs it whenever a window of
+ * ours gains the focus (app 'browser-window-focus'): a window under a sheet stops being main when another window of
+ * ours takes the key, and is main again when its sheet takes it back, with no event of its own.
+ */
+export function resyncAllWindowStates(): void {
+  for (const push of tracked) push();
 }
 
 /**

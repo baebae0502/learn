@@ -1,6 +1,6 @@
 # macOS 검증 기록 (M0 증거 레인)
 
-- 갱신: 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
+- 갱신: 2026-10-26(M4 라이브러리, 최종 `all` run 40242680541이 전부 녹색 — 아래 "M4 라이브러리") · 2026-10-23(M3 셸 Task 14 반영, 5차 run 39920413383까지 — 아래 "M3 셸 (Task 14)") · 처음: 2026-10-20(수정 1회차 반영) · 브랜치 `m0-evidence` · 계획: [`superpowers/plans/2026-10-20-m0-macos-evidence.md`](superpowers/plans/2026-10-20-m0-macos-evidence.md)
 - 이 문서의 수치는 모두 아래 실행 기록의 artifact(`env.json`, `baseline.json`, `spikes.json`, Playwright 리포트)에서 옮겼다. GitHub 러너는 M1 **가상 머신**이므로 성능·코덱 값은 참고값이고, AC16 판정은 기준 장비(Apple Silicon 16 GB 실기)에서 한다.
 
 ## 목적
@@ -350,6 +350,146 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 - **냉시작 중앙값**(`perf.json`): app-ready 4차 679ms, 5차 586ms.
 - **데모**: 4차 175.7초, 5차 172.6초(artifact `demo-m3-39920413383`, `m3-demo.final.mov`, 1600×900, 60fps, 장 17개), 둘 다 첫 시도 녹화, `notes` 없음. 5차 장 목록은 3차와 같은 17장이고 시각만 몇 초 다르다(앞머리 자르기와 토스트 기다림).
 
+## M4 표 스파이크 (Task 1, 2026-10-24, macos-15 arm64, `suite=perf`, 브랜치 `m4-spike`)
+
+| # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (초 → 과금 분) | 결과 |
+|---|---|---|---|---|---|
+| 27(앞 기록의 마지막이 26) | [40034565009](https://github.com/baebae0502/learn/actions/runs/40034565009) | 10-23 22:35 | perf / 아니오 / 13e44c3 (Task 1 스파이크) | 213초 → 4분(공개 저장소: 무료) | **성공**: RAC 떨어짐(sort·select·keyboard·filter), TanStack 통과 → 결정 TanStack |
+
+**합계: macOS 27회, 183분.** 값은 `evidence/m4-spike/40034565009/evidence/evidence-results/table-spike.json`·`table-spike-tanstack.json`, 결정과 표는 ADR-0004 "M4 표". 같은 실행의 `perf.json`·`open-latency.json`·`theme-switch.json`·`drop-import.json`은 M3 코드 그대로의 참고값이다.
+
+## M4 작업별 실행 (브랜치 `m4-library`, macos-15 arm64)
+
+| # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (초 → 과금 분) | 결과 |
+|---|---|---|---|---|---|
+| 28 | [40097296461](https://github.com/baebae0502/learn/actions/runs/40097296461) | 10-24 13:14 | library / 아니오 / 71bd6fc (Task 3 표) | 112초 → 2분(공개 저장소: 무료) | **성공**: 증거 테스트 4개, `m4-library.json` 확인 11개 모두 ok(실제 ⌘A, 비활성 창, 네이티브 열 메뉴 포함) |
+| 29 | [40098108104](https://github.com/baebae0502/learn/actions/runs/40098108104) | 10-24 13:26 | library / 아니오 / a47d52e (Task 3 비활성 창 증거 수정 1) | 83초 → 2분(무료) | **실패**: 비활성 창 캡처는 맞게 찍혔으나(행 225,226,226, 도구 막대 236) 판정이 반투명 토큰 문자열과 비교 — 10/11 ok |
+| 30 | [40098357693](https://github.com/baebae0502/learn/actions/runs/40098357693) | 10-24 13:29 | library / 아니오 / bf52a9e (수정 2) | 78초 → 2분(무료) | **실패**: 기준 PNG(포커스 없는 선택)를 라벨 폴더 밖에서 찾음 — 10/11 ok |
+| 31 | [40098617639](https://github.com/baebae0502/learn/actions/runs/40098617639) | 10-24 13:33 | library / 아니오 / 1c9d1da (수정 3) | 70초 → 2분(무료) | **성공**: 증거 테스트 4개, 확인 11개 모두 ok — 비활성 창은 캡처 픽셀로 판정(행 = 포커스 없는 선택의 그려진 채움, 도구 막대 236) |
+| 32 | [40100366921](https://github.com/baebae0502/learn/actions/runs/40100366921) | 10-24 13:57 | library / 아니오 / 0d8733b (Task 4 선택 → 명령) | 103초 → 2분(무료) | **실패**: 16/18 ok — 메뉴 캡처가 메뉴를 닫으려 보낸 여분의 Esc가 표의 선택을 지워(표의 Esc = 선택 해제) 실제 ⇧⌘R에 대상이 없었고, 다음 ⌘-클릭이 선택을 켰다 |
+| 33 | [40100757864](https://github.com/baebae0502/learn/actions/runs/40100757864) | 10-24 14:02 | library / 아니오 / 3c9c9f4 (검사가 자기 행을 고른다) | 73초 → 2분(무료) | **성공**: 증거 테스트 5개, 확인 18개 모두 ok — 실제 ⇧⌘R이 네이티브로 고른 행을 보였다(이름 붙은 사본), 파일 메뉴 둘 다 켜짐/꺼짐, ⌘/ 시트 두 열·자연 높이 562 |
+| 34 | [40105921816](https://github.com/baebae0502/learn/actions/runs/40105921816) | 10-24 15:12 | library / 아니오 / 3ee388f (Task 5 빠른 검색) | 104초 → 2분(무료) | **성공**: 증거 테스트 6개, 확인 23개 모두 ok — 실제 ⌘F 네이티브, 편집 메뉴의 빠른 검색은 역할 항목 뒤(그 뒤의 AutoFill·받아쓰기·이모티콘은 macOS가 붙인다), 앞 작업의 선택 검사 회귀 없음 |
+| 35 | [40107292541](https://github.com/baebae0502/learn/actions/runs/40107292541) | 10-24 15:30 | library / 아니오 / 5db52b2 (Task 5 수정: 투어 경쟁, 균형 잡힌 빈 상태 문구, Linux 선택 색) | 106초 → 2분(무료) | **성공**: 확인 23개 모두 ok — 결과 없음 설명이 두 줄로 고르게 나뉜다(고아 어절 없음) |
+| 36 | [40112125869](https://github.com/baebae0502/learn/actions/runs/40112125869) | 10-24 16:33 | library / 아니오 / 6babaff (Task 6 인스펙터) | 111초 → 2분(무료) | **성공**: 증거 테스트 7개, 확인 27개 모두 ok — 1024 창에서 항목 패널은 기본으로 접힘, 실제 ⌥⌘I가 네이티브로 열었다(320, y 52), 보기 메뉴의 "항목 패널 가리기 ⌥⌘I" |
+| 37 | [40114025717](https://github.com/baebae0502/learn/actions/runs/40114025717) | 10-24 16:58 | library / 아니오 / e42c46c (Task 6 수정: 원본 없음 머리의 원인 표시, 검사가 실제 비교) | 93초 → 2분(무료) | **성공**: 확인 27개 모두 ok |
+| 38 | [40117002928](https://github.com/baebae0502/learn/actions/runs/40117002928) | 10-24 17:38 | library / 아니오 / 8f8c26d (Task 7 정보 편집) | 119초 → 2분(무료) | **성공**: 증거 테스트 8개, 확인 30개 모두 ok — 실제 ⌘↩가 폼에 닿아 저장, 표시한 필드 앞에서 실제 ⌘W는 창을 닫지 않고 실제 ⌘Q는 종료를 취소(flush 기록 close·quit 모두 invalid) |
+| 39 | [40118510941](https://github.com/baebae0502/learn/actions/runs/40118510941) | 10-24 17:57 | library / 아니오 / 7e434be (Task 7 수정 1: flush 안전, 막힌 떠나기의 포커스, 한 번에 저장 하나) | 100초 → 2분(무료) | **성공**: 확인 30개 모두 ok |
+| 40 | [40119488421](https://github.com/baebae0502/learn/actions/runs/40119488421) | 10-24 18:10 | library / 아니오 / d325421 (Task 7 수정 2: 막힌 떠나기가 그리기를 기다리지 않고 바로 답함) | 119초 → 2분(무료) | **성공**: 확인 30개 모두 ok |
+| 41 | [40123090917](https://github.com/baebae0502/learn/actions/runs/40123090917) | 10-24 18:57 | library / 아니오 / c031b33 (Task 8 사본 내보내기) | 130초 → 3분(무료) | **성공**: 증거 테스트 9개, 확인 35개 모두 ok — 저장 패널이 시트로 다운로드 폴더에서 열렸고, 바쁨 토스트가 949ms에 나타났다 |
+| 42 | [40125361565](https://github.com/baebae0502/learn/actions/runs/40125361565) | 10-24 19:27 | library / 아니오 / 9b9987f (Task 8 수정: 라이브러리 안·원본 위 저장 거부, 한 번에 하나, 토스트 링크 위치) | 131초 → 3분(무료) | **성공**: 확인 35개 모두 ok |
+| 43 | [40127825772](https://github.com/baebae0502/learn/actions/runs/40127825772) | 10-24 20:00 | library / 아니오 / 58800ab (Task 9 팔레트 자료 결과) | 140초 → 3분(무료) | **실패**: 팔레트 증거 테스트가 둘째 앱을 띄웠는데 공유 세션의 Electron이 맨 앞에 남아 실제 ⌘K 앞의 앞으로 가져오기가 실패 — 팔레트 확인과 PNG 없음 |
+| 44 | [40130074939](https://github.com/baebae0502/learn/actions/runs/40130074939) | 10-24 20:30 | library / 아니오 / aa99063 (⌘K를 공유 세션에서) | 109초 → 2분(무료) | **성공**: 증거 테스트 10개, 확인 39개 모두 ok — 실행기 "검색 및 명령", 자료가 명령 위, 초성 예, 결과 없음에도 검색 행 |
+| 45 | [40134381407](https://github.com/baebae0502/learn/actions/runs/40134381407) | 10-24 21:28 | perf / 아니오 / acca1f7 (Task 10 1만 항목과 드롭 프로파일) | 101초 → 2분(무료) | **성공**: 1만 항목 목록 IPC 중앙값 90, 첫 그리기 39, 입력→그리기 p95 30, 검색 p95 2.7, 스크롤 p95 18.7, 정렬 21, 항목 패널 18(ms) — 드롭 뒤 최장 프레임 간격 202ms(목표 100), 긴 프레임 항목 없음(`unmeasured`) → 수정 W·I |
+| 46 | [40136294230](https://github.com/baebae0502/learn/actions/runs/40136294230) | 10-24 21:54 | perf / 아니오 / 3a3670b (Task 10 수정 W·I) | 145초 → 3분(무료) | **성공(목표 미달)**: 드롭 뒤 최장 간격 201ms, 원인 script, 가장 긴 프레임 1660ms(스크립트·스타일 0), 완료 토스트 1284ms — 목록 IPC 159·정렬 45처럼 수정과 무관한 값도 느렸다 |
+| 47 | [40136585407](https://github.com/baebae0502/learn/actions/runs/40136585407) | 10-24 21:59 | perf / 아니오 / acca1f7 (임시 브랜치 `m4-t10-base`, 수정 전 비교) | 125초 → 3분(무료) | **성공**: 수정 전 코드에서도 최장 간격 166ms, 가장 긴 프레임 1121ms(스크립트·스타일 0), 완료 토스트 1341ms — 같은 현상 |
+| 48 | [40136618624](https://github.com/baebae0502/learn/actions/runs/40136618624) | 10-24 21:59 | perf / 아니오 / 3a3670b (47과 같은 시각) | 113초 → 2분(무료) | **성공**: 최장 간격 132ms, 가장 긴 프레임 1462ms(스크립트 0, 스타일 1), 완료 토스트 1260ms — 판정: 원인을 알 수 없는 1.1–1.7초 프레임은 러너(GPU 없는 가상 Mac) 현상이고 수정 W·I의 효과는 이 잡음 속에서 가를 수 없다. 실기 Mac 확인으로 넘긴다 |
+| 49 | [40142306581](https://github.com/baebae0502/learn/actions/runs/40142306581) | 10-24 23:20 | evidence / 아니오 / ab3eef6 (Task 11 창마다 다른 preload, 시트 부모 판정, main 문구) | 238초 → 4분(무료) | **성공**: 증거 테스트 16개(2개 건너뜀), `m3-shell.json` 확인 66개 모두 ok — m5: 시트 아래 메인 창은 메인으로 남고, 설정 창이 키를 가져가면 흐려지며, 시트가 키를 되찾으면 돌아온다; 시트·설정 창이 각자의 preload만으로 동작 |
+| 50 | [40149289047](https://github.com/baebae0502/learn/actions/runs/40149289047) | 10-25 01:06 | perf / 아니오 / 910b7e0 (Task 12 미리 준비한 설정 창, 시트 측정, 같은 프레임의 테마) | 170초 → 3분(무료) | **성공**: 설정 창 첫 열기 30ms(미리 준비, 목표 300), 이후 새 창 274–363, 테마 두 페이지 차이 0–20ms — ⌘/ 시트 중앙값 406ms(목표 250) |
+| 51 | [40149559452](https://github.com/baebae0502/learn/actions/runs/40149559452) | 10-25 01:10 | demo / 아니오 / 910b7e0 (테마 프레임) | 370초 → 7분(무료) | **성공**: 데모 테스트 1개 |
+| 52 | [40150161469](https://github.com/baebae0502/learn/actions/runs/40150161469) | 10-25 01:19 | perf / 아니오 / 910b7e0 (시트 지연 재측정) | 144초 → 3분(무료) | **성공**: ⌘/ 시트 중앙값 290ms(231–328 — M3의 292·300·311과 같은 수준, 50의 406은 잡음), 설정 첫 열기 50ms, 테마 차이 최대 1ms — 시트 250 목표는 러너에서 미달, 실기 확인으로 넘긴다 |
+| 53 | [40154334711](https://github.com/baebae0502/learn/actions/runs/40154334711) | 10-25 02:24 | all / 예 / 013eee0 (Task 13 첫 `all` + 데모) | 1199초 → 20분(무료) | **실패**: 증거 42/42 ok(셸 판정·라이브러리 판정 모두), 기능 E2E 9 — 하네스: 1024px 화면이 항목 패널 도우미를 위해 넓어지지 못함(6), 갤러리의 Linux 레이블, 첫 응답자 없는 모두 선택, 사이드바 위 88px 비교. 고침: d02da2a, bfe3b9b |
+| 54 | [40158520631](https://github.com/baebae0502/learn/actions/runs/40158520631) | 10-25 03:31 | e2e / 아니오 / bfe3b9b (위 고침 확인) | 647초 → 11분(무료) | **실패**: 181 통과, 5 — 위 88px 비교 2개, 툴팁 3개(러너의 변덕으로 판단, 진단 추가). 고침: 3a7981b |
+| 55 | [40162034858](https://github.com/baebae0502/learn/actions/runs/40162034858) | 10-25 04:29 | all / 예 / a2f5add (Task 13 최종 `all` + 데모) | 1335초 → 23분(무료) | **실패**(기능 E2E만): 증거 42/42 ok, 셸 69/69, 라이브러리 39/39, 데모 첫 시도에 녹화, 기능 E2E 184 통과 · 3 실패(사이드바 위 88px 비교 2개, `drop.spec.ts` 드롭 문구 시간 단언). 고침: 1d2b91e(3라운드) |
+| 56 | [40164735397](https://github.com/baebae0502/learn/actions/runs/40164735397) | 10-25 05:13 | e2e / 아니오 / 1d2b91e (3라운드 확인) | 690초 → 12분(무료) | **실패**: 183 통과, 4 — 사이드바 위 88px 비교 1개, 호버 툴팁 3개(react-aria는 포인터로 움직인 것이 확인된 뒤에만 호버 툴팁을 연다 — 키를 누른 뒤 컨트롤 위로 바로 옮긴 포인터는 무시). 고침: cc146f9(토글을 왼쪽에서 정수 픽셀에), 011fca7 |
+| 57 | [40166026616](https://github.com/baebae0502/learn/actions/runs/40166026616) | 10-25 05:34 | e2e / 아니오 / 011fca7 (4라운드 확인) | 610초 → 11분(무료) | **실패**: 185 통과, 2 — 툴팁은 통과, 남은 것은 위 88px 비교 2개(반투명 재질 위 글리프 가장자리). 고침: c030271(macOS만 불투명 색에 합성해 비교) |
+| 58 | [40167674805](https://github.com/baebae0502/learn/actions/runs/40167674805) | 10-25 06:02 | e2e / 아니오 / c030271 (5라운드 확인) | 887초 → 15분(무료) | **실패**: 170 통과, 3, 32 건너뜀 — 위 88px 비교 2개(런처 오른쪽 둥근 모서리 6픽셀의 알파 180 대 152, 두 시험이 같은 값), axe 시험의 포커스 경합(팔레트 입력란이 포커스를 받기 전에 친 글자가 빠른 검색으로 가서 행이 걸러짐). 그 시험이 잘못된 편집을 남긴 채 끝나 앱이 종료를 거부했고(제품 동작은 맞다) 작업자 정리 120초에 묶여 전체 840초 한도를 넘었다(14개 미실행). 고침: 8e2e0b0 이후 0a2b409(입력 전 포커스 대기, 닫기 10초 뒤 강제 종료, macOS 모서리 픽셀 8개 허용) |
+| 59 | [40242680541](https://github.com/baebae0502/learn/actions/runs/40242680541) | 10-25 22:59 | all / 예 / 0a2b409 (M4 최종 `all` + 데모) | 1338초 → 23분(무료) | **성공**: 증거 42/42, 셸 판정 69/69, 라이브러리 판정 39/39, 기능 E2E 189 통과 · 0 실패 · 18 건너뜀, 데모 `m4-demo.final.mov` 158초 16장 첫 시도에 녹화. 드롭 뒤 최장 프레임 간격 36ms, 바쁨 토스트는 저장 패널이 닫힌 뒤 345ms |
+
+**합계: macOS 59회, 362분.** Task 3의 판정 값과 PNG는 `evidence/m4-t3d/40098617639/evidence/evidence-results/`, Task 4는 `evidence/task4b/40100757864/evidence/evidence-results/`(`m4-library.json`, `task4b/m4-04*.png`), Task 5는 `evidence/task5b/40107292541/evidence/evidence-results/`(`task5b/m4-05*.png`), Task 6은 `evidence/m4-t6/40112125869/evidence/evidence-results/`(`m4-t6/m4-inspector-*.png`), Task 7은 `evidence/m4-t7c/40119488421/evidence/evidence-results/`(`m4-t7c/m4-inspector-edit-*.png`), Task 8은 `evidence/m4-t8b/40125361565/evidence/evidence-results/`(`m4-t8b/m4-08-*.png`), Task 9는 `evidence/m4-t9b/40130074939/evidence/evidence-results/`(`m4-t9b/m4-09-*.png`). 28회의 비활성 창 PNG는 키 창 상태로 찍혀 있었다(디자인 비평이 찾음): 그 실행의 검사는 계산된 스타일만 읽어 통과했다.
+
+## M4 라이브러리 (2026-10-25, macos-15 arm64)
+
+M4의 macOS 실행. 마지막 `all` 실행(**run 40162034858, a2f5add**)에서 증거 42/0, 셸 판정 69/69, 라이브러리 판정 39/39, 데모는 첫 시도에 녹화됐다. 같은 실행의 기능 E2E는 184 통과 · 3 실패 · 18 건너뜀(사이드바 위 88px 비교 2개와 `drop.spec.ts`의 드롭 문구 시간 단언)이었고, 3라운드 수정(1d2b91e, 테스트만)이 그 셋을 고쳤다. 그 뒤 기능 E2E만 세 번 더 돌려(표 56–58) 남은 Mac 차이를 고쳤고, 최종 검토 수정까지 들어간 **최종 `all`(run 40242680541, 0a2b409)은 처음으로 전부 녹색**이다: 증거 42/42, 셸 판정 69/69, 라이브러리 판정 39/39, 기능 E2E 189 통과 · 0 실패, 데모 158초 16장. 아래의 자세한 판정 값은 40162034858의 것이고, 최종 실행의 값도 모두 ok다(바뀐 숫자: 바쁨 토스트 345ms, 드롭 뒤 최장 프레임 간격 36ms). 아래 값은 `evidence/<label>/<run>/evidence/evidence-results/`의 JSON(`m4-library.json`, `m3-shell.json`, `library-perf.json`, `perf.json`, `open-latency.json`, `theme-switch.json`, `drop-import.json`, `e2e-report.json`)과 데모 파일에서 옮겼다. UI 작업마다 컨트롤러가 `library` suite를 한 번씩 돌렸다(P-25). 실행 기록은 위 "M4 표 스파이크"와 "M4 작업별 실행" 표이고, 거기서 Task 1 스파이크 1회(27), Task 3–9 `library`, Task 10·12 `perf`, Task 11 `evidence`, Task 12 `demo`, Task 13 `all` 2회와 `e2e` 1회(53–55)로 M4는 모두 29회다. 저장소가 공개라 모두 무료다.
+
+### 라이브러리 판정 값 (`m4-library.json`, run 40162034858)
+39개 모두 ok. Task 3–9의 판정 전부다. 요약: 실제 ⌘A가 모든 행을 고른다, 비활성 창은 중립 선택에 고리가 없다(캡처 픽셀로 판정), 네이티브 열 머리 메뉴를 잡았다, 실제 ⇧⌘R은 네이티브, 실제 ⌘F는 네이티브, 1024 폭에서 항목 패널이 접혀 있다가 실제 ⌥⌘I로 열린다(320px, y 52), 실제 ⌘↩가 저장한다, ⌘W는 창을 유지하고 ⌘Q는 잘못된 칸 앞에서 취소된다(flush 기록 close/invalid, quit/invalid), 저장 패널은 다운로드 폴더의 시트이고 바쁨 토스트는 패널이 닫힌 뒤 863ms에(Task 8 run에서는 949ms), 라이브러리 안이나 원본으로의 내보내기는 거절한다, 팔레트는 자료가 명령 위이고 초성 힌트는 라이브러리 제목에서 나오며 일치가 없어도 검색 행이 남는다.
+
+- header 28 px, rows 28 px at 보통, first row 4 px under the header — {header: 28, row: 28, pitch: 28, gap: 4}
+- header labels follow the column catalogue: 제목 · 저자 · 연도 · 종류 · 추가일 — {labels: [제목, 저자, 연도, 종류, 추가일], want: [제목, 저자, 연도, 종류, 추가일]}
+- the sorted header (추가일, newest first) is primary 500 with a 12 px chevron — {ariaSort: descending, weight: 500, color: oklch(0.23 0.008 250), primary: oklch(0.23 0.008 250), arrow: 12}
+- stripes on every second row — {row0: rgba(0, 0, 0, 0), row1: oklch(0.984 0.0015 250), row2: rgba(0, 0, 0, 0), alt: oklch(0.984 0.0015 250)}
+- focused selection: accent fill and white text — {fill: oklch(0.53 0.088 190), accent: oklch(0.53 0.088 190), text: oklch(1 0 0), onAccent: oklch(1 0 0)}
+- multiple selection with the keyboard cursor: a 75 % white ring on the filled cursor row — {selected: 3, ring: oklch(1 0 0 / 0.75) 0px 0px 0px 2px inset}
+- unfocused selection: neutral fill — {fill: oklch(0.23 0.01 250 / 0.13), neutral: oklch(0.23 0.01 250 / 0.13)}
+- ⌘A on the keyboard selects every row, not the page text — {drawn: 30, pageText: 0}
+- inactive window: neutral selection and no cursor ring — {ring: none, neutral: oklch(0.23 0.01 250 / 0.13), toolbarPoint: [600, 26], rowPixel: [225, 226, 226], toolbarPixel: [236, 236, 236], referencePixel: [225, 226, 226]}
+- column menu: the real native menu was captured — {}
+- column menu: every catalogue column, the shown ones checked, 제목 fixed, then 열 구성 되돌리기 — {items: [[제목, true, false], [저자, true, true], [연도, true, true], [종류, true, true], [추가일, true, true], [수정일, false, true], [보관, false, true], [크기, false, true], [원래 파일 이…
+- selection: a row to select was imported — [imported]
+- selection: one selected row enables both 파일 items — [true, true]
+- selection: 파일 lists Finder에서 보기 and 기본 앱으로 열기 — {names: [파일 가져오기…, 외부 파일 연결…, -, Finder에서 보기, 사본 내보내기…, 기본 앱으로 열기, -, 윈도우 닫기, Close All], selectedAfterMenu: false}
+- selection: ⇧⌘R reveals the selected row — {native: true, namedCopy: true}
+- selection: no selected row greys both 파일 items — [false, false]
+- selection: ⌘/ lists ⇧⌘R under 자료 — [Finder에서 보기⇧⌘R⇧⌘R]
+- selection: the ⌘/ sheet has two columns and fits the 806 pt room — {columns: [[앱, 라이브러리], [자료, 리더, 팔레트·대화상자]], natural: 620}
+- search: a row to find was imported — [imported]
+- search: ⌘F focuses the quick search field — {native: true}
+- search: 초성 ㅅㅎ finds the row and marks 신호 — {count: 3개 / 50개, mark: 신호}
+- search: 편집 lists 빠른 검색 — {names: [실행 취소, 실행 복귀, -, 오려두기, 복사하기, 붙여넣기, 모두 선택, -, 빠른 검색, -, AutoFill, Start Dictation…, Emoji & Symbols]}
+- search: no results in dark says which query — {title: ‘효소 억제제’와 일치하는 자료가 없습니다}
+- inspector: shown exactly when 240 + 520 + 320 fit (it folds before the sidebar) — {width: 1024, state: hidden}
+- inspector: ⌥⌘I reaches the 보기 item and toggles the panel — {native: true, after: shown}
+- inspector: under the 52 px toolbar, flush with the right edge, the toolbar over both — {panel: {x: 704, y: 52, width: 320, height: 632}, toolbarRight: 1024, vw: 1024}
+- inspector: 보기 lists 항목 패널 가리기 with ⌥⌘I, and no 개발자 도구 — [명령 팔레트…, -, 사이드바 가리기, 항목 패널 가리기, -, 글자 크게, 글자 작게, 기본 글자 크기, -, 전체 화면 시작]
+- edit: ⌘↩ saves — {native: true, publisher: 학습출판}
+- edit: closing the window over a marked field keeps it open — {native: true, open: true}
+- edit: quitting over a marked field is called off (the app stays) — {native: true, alive: true, flushLog: [{action: close, result: invalid}, {action: quit, result: invalid}]}
+- export: the save panel opens as a sheet on the title-named default in Downloads — {name: 세포 신호 개요.pdf, inDownloads: true, sheet: true}
+- export: no busy toast while the save panel is up — {shown: 0}
+- export: 내보내는 중… from 300 ms after the panel closed, while the copy runs — {ms: 863}
+- export: nothing at the chosen path before the copy is whole — {there: false}
+- export: 사본을 저장했습니다, and its Finder에서 보기 reveals the saved copy — {left: [세포 신호 개요.pdf], label: Finder에서 보기, revealedTheCopy: true}
+- palette: the launcher says 검색 및 명령 — {text: 검색 및 명령⌘K}
+- palette: 자료 above 명령, the cursor on the first item, 라이브러리에서 ‘신호’ 검색 last — {via: keystroke, groups: [자료, 명령], cursorOnItem: true, lastIsSearch: true, hint: ↑↓이동↩열기esc닫기초성 검색 지원 · ㅎㄱ → 형광}
+- palette: the 초성 hint comes from the library (ㅅㅎ → 신호) — {hint: ↑↓이동↩열기esc닫기초성 검색 지원 · ㅎㄱ → 형광}
+- palette: with no match the notice and the search row stay — {searchRow: 1, foot: [↩실행, esc닫기]}
+
+### 셸 판정 (M4에서 더한 것, `m3-shell.json`)
+- **실제 ⌘O 패널**(`openPanel`): 시트로 붙음 443ms, 그 아래 메인 창 `notKey` true · `notMain` false, 가져오기 명령 거절(`importEnabled` false), 실제 esc 뒤 사라짐, 다시 키 창이고 포커스 `content`, 가져온 것 없음(행 3 → 3). 캡처 `m4-shell-01-open-panel.screen.png`(링·커서 없음: 판정 필드는 기록하고, 확인은 Mac 비평이 캡처로 한다).
+- **하네스 정리**: 확대 테스트 뒤 틀 20, 45, 984×644(`zoomed` false), ⌘, 전체 화면 정리 `backAtFrame` true.
+
+### 성능 (참고값, 판정은 기준 장비)
+| 측정(명세 9절) | 예산 | Linux(xvfb, Task 10) | Mac run 40134381407 | Mac run 40162034858 |
+|---|---|---|---|---|
+| 1만 항목 목록 IPC | ≤ 150ms | 269 | 90 | 121 |
+| 첫 표 그리기 | ≤ 500ms | 98 | 39 | 57 |
+| 검색 입력 → 그리기 p95 | ≤ 50ms | 54 | 30 | 31 |
+| 메타데이터 검색 p95 | ≤ 300ms | 5.9 | 2.7 | 5.7 |
+| 스크롤 프레임 간격 p95 | ≤ 16.7ms | 16.7 | 18.7 | 18.5 |
+| 정렬 열 바꾸기 → 그리기 | ≤ 100ms | 48 | 21 | 25 |
+| 인스펙터: 선택 → 정보 | ≤ 100ms | 26 | 18 | 21 |
+- Linux CI는 예산의 2배(목록 IPC 300, 입력 → 그리기 100)에서 실패한다. 위 Linux 값은 Task 10의 로컬 xvfb 실행이고, GitHub의 Linux CI는 PR #5의 run 40244798965(24d139e, 녹색)다. Mac 러너는 스크롤 p95 18.7·18.5가 예산 16.7을 넘는다 — 그 러너는 가만히 있어도 p95가 약 33ms라 60Hz를 못 지킨다.
+- **시트·설정 창 열기**(`open-latency.json`, 목표 250ms / 설정 첫 열기 300ms, P-4 뒤): run 40149289047 — ⌘/ 시트 중앙값 406(403 · 463 · 406 · 343 · 416), 설정 중앙값 284, 첫 열기 시트 403 · 설정 30(미리 만든 창), 새 세션 첫 열기 설정 중앙값 42. run 40150161469 — 시트 290(290 · 231 · 257 · 328 · 310; 앞 실행의 406은 잡음), 설정 190(첫 열기 50), 새 세션 첫 열기 설정 27. run 40162034858 — 시트 305, 설정 246(첫 열기 41), 새 세션 첫 열기 시트 341 · 설정 41. M3의 시트 중앙값은 274 · 292 · 311 · 518 · 300이라 같은 수준이고, 250 목표는 러너에서 미달한다(M5 입력). 미리 만든 설정 창의 메모리: 렌더러 작업 집합 124,880 KB(메인 창 렌더러 146,416 KB).
+- **테마 전환**(`theme-switch.json`): 두 페이지 차 0–1ms(같은 프레임), 네이티브 적용은 두 페이지가 보인 뒤(`nativeAppliedBecause` shown). 데모 13장의 60fps 프레임 판독은 영상 비평에서 확인한다(열린 항목).
+- **드롭**(`drop-import.json`, 8개): 최종 run 페이지 최장 프레임 간격 34ms, main 최장 정지 3ms, 긴 프레임 하나(62ms, 스크립트 0ms), 원인 none. 이전 러너 실행(40136585407 · 40136294230 · 40136618624)은 132–202ms였고 1.1–1.7초의 긴 프레임에 귀속이 없어 러너의 효과로 판단했다(M5 입력으로 실기 확인).
+- **냉시작·번들**(`perf.json`): app-ready 중앙값 687ms, JS 2,858,393 B(M3 2,607,919 B), CSS 104,083 B, PDF.js 워커 1,264,342 B.
+- **시트 부모**(Task 11, run 40142306581): 시트 아래에서 메인 창은 계속 메인이고, 설정 창이 키를 가져가면 흐려진다.
+
+### 데모 (run 40162034858, 최종 run 40242680541)
+- 최종: artifact `demo-m4-final2-40242680541`, 파일 `m4-demo.final.mov`: 158초(157.6), 1600×900, 60fps, 장 16개, 첫 시도에 녹화. 장 목록과 장면은 아래(40162034858)와 같다.
+- artifact `demo-m4-40162034858`, 파일 `m4-demo.final.mov`: 158초, 1600×900, 60fps, 장 16개 내장. 첫 시도에 녹화, `notes` 없음, 커서 `system`, 네이티브 키 6회. 러너 화면을 1600×900으로 바꿔 녹화했다(`displaySwitch` switched).
+- 장 목록(`m4-demo.final.chapters.txt`, 완성된 영상의 시각):
+
+     | 시각 | 장 |
+     |---|---|
+     | 0:00 | Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다. |
+     | 0:04 | 자료 파일을 창으로 끌어 놓으면 사본으로 가져옵니다. (끌기는 스크립트로 재현합니다) |
+     | 0:14 | 열 머리를 누르면 그 열로 정렬하고, 한 번 더 누르면 순서를 뒤집습니다. (저자·연도는 데모에서 미리 적어 두었습니다) |
+     | 0:27 | 열 머리를 오른쪽 클릭하면 보일 열을 고르고, 경계를 끌어 폭을 바꿉니다. (메뉴 고르기는 스크립트로 재현합니다) |
+     | 0:38 | ⇧ 클릭으로 범위를, ⌘ 클릭으로 하나씩 더 고릅니다. 항목 패널이 고른 자료를 요약합니다. |
+     | 0:50 | ⌘F 키로 빠른 검색에 들어갑니다. 초성으로도 찾습니다: ㅅㅍ → 세포. |
+     | 1:01 | 항목 패널에서 정보를 바로 고칩니다. 저장하면 표에도 반영됩니다. |
+     | 1:17 | ⌘K 팔레트에서도 자료를 찾아 바로 엽니다. |
+     | 1:28 | ⌘1 키로 라이브러리로 돌아갑니다. 정렬과 열은 그대로입니다. |
+     | 1:33 | ‘사본 내보내기…’로 자료의 사본을 원하는 곳에 저장합니다. (메뉴 고르기와 저장 창은 스크립트로 재현합니다) |
+     | 1:41 | ‘Finder에서 보기’를 누르면 Finder가 앞에 오고, Learn 창은 비활성으로 흐려집니다. |
+     | 1:52 | 창이 좁아지면 표 자리를 지키려고 항목 패널이 먼저 접힙니다. 넓히면 다시 나옵니다. |
+     | 2:01 | ⌘, 설정 창에서 테마를 바꾸면 두 창이 같은 순간에 바뀝니다. |
+     | 2:12 | 다크 모드에서도 같은 화면, 같은 정보입니다. |
+     | 2:22 | ⌘/ 키로 단축키 도움말을 엽니다. ⌘F 빠른 검색과 ⇧⌘R ‘Finder에서 보기’도 들어 있습니다. |
+     | 2:32 | Learn 둘러보기를 마칩니다. |
+- 영상에서 확인할 것(열린 항목, 컨트롤러의 Mac 비평이 채운다): 장마다 자막과 화면이 맞는지, 15장의 첫 ⌘/ 열기(키 → 시트 첫 프레임 초), 13장의 테마 프레임, 비평(opus) 판정과 남은 부차·사소.
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.
@@ -365,6 +505,7 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
   - 가상 디스플레이와 마우스: 바탕 화면 그림이 없어 재질이 평평하다(246 / 56), 항상 보이는 옛 스크롤 막대(표에 15pt 여백, PDF와 ⌘/ 시트의 스크롤러), `.screen` 캡처 아래쪽 30–40pt의 Dock 그림자, 화면 녹화 점, Metal 디스플레이 정보 없음.
   - 1600×900 모드에서 가장 높은 부모 창이 802pt라 806pt의 ⌘/ 시트(1440×900 Mac + Dock)는 실기 항목으로 남는다. ⌘/ 시트는 10fa0bb의 전체 화면 줄로 29pt 높아졌다(802 부모에서 743 → 약 772pt).
   - `screencapture -v`의 첫 몇 초는 화면을 늦게 담는다. 시작 직후 수백 프레임이 거의 같은 시각(pts 2.78초 부근)에 몰리고, 3차에서는 3.42초까지 움직이는 것이 없었다. 페이지의 그리기 시점으로는 이것을 알 수 없다. 그래서 Mac 데모는 사전 녹화 4.5초 뒤에 첫 장을 시작하고, `finish-demo.sh`가 멈춘 머리를 0.5초로 자른다(a9766bf).
+  - M4: 러너의 1024×768 모드(녹화를 두 번 잃은 뒤의 계획)에서는 1024 − 240 − 320 = 464 < 520이라 항목 패널이 처음부터 접힌다. 데모는 그때 ⌥⌘I로 보이고 좁은 창 장을 뺀다(notes). 이번 최종 데모는 1600×900 모드로 녹화돼 좁은 창 장이 들어 있다.
   - 스파이크 X(HTML `<video>` 전체 화면): `exitFullscreen()`이 끝나지 않는 현상이 M3 실행에서도 같다(run 39892840988: "exitFullscreen did not resolve"). 위 "추가 발견" 참고.
 
 ## 남은 실기 확인 항목
@@ -377,6 +518,13 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 - Retina @2x에서 PDF 캔버스 선명도와 글꼴 렌더링.
 - 전체 화면 빠른 토글 시 멈춤이 실기에서도 나는지.
 - 서명·공증된 패키지(P6)에서 PDF·영상(AC20).
+- **M4 라이브러리**:
+  - VoiceOver: 표(grid — 행, 열 머리, 정렬 상태, 선택 알림), 항목 패널 폼(칸 이름, 오류 문구가 읽히는지), 팔레트 자료 결과;
+  - 검색 필드에서 실제 한국어 IME(조합 중 거르기, esc·↩). E2E는 CDP 조합과 keyCode 229만 확인한다;
+  - 트랙패드로 1만 행 스크롤(관성), Retina @2x의 표 글자;
+  - 실제 저장 패널(사본 내보내기, 덮어쓰기 확인). Mac 증거와 데모는 저장 패널을 건너뛴다;
+  - 1440×900 Mac(Dock 포함)에서 항목 패널과 사이드바가 함께 보이는지(1440 − 240 − 320 = 880 ≥ 520). 러너의 1024 모드에서는 항목 패널이 처음부터 접힌다;
+  - 드롭 뒤 멈춤과 ⌘/ 시트 열기 지연이 실제 Mac에서도 나는지(러너 값은 위 "성능").
 - **M3 셸**(Task 14 체크리스트의 실기 항목):
   - fn-F / Globe-F 전체 화면. 메뉴에는 우리 ⌃⌘F 항목만 보여야 한다(2.5);
   - VoiceOver: 팔레트 콤보박스·리스트박스, 실행기의 `aria-keyshortcuts`(⌘K)(2.6, 6.3);

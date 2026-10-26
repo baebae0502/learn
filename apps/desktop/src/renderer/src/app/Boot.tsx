@@ -36,7 +36,10 @@ function PanesGate({ info }: { info: AppInfo }) {
   if (panes.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
-    useShell.getState().setSidebar(parsePanes(panes.data ?? null));
+    // Both panes before the first paint: the item panel has its width in its first frame too.
+    const seed = parsePanes(panes.data ?? null);
+    useShell.getState().setSidebar(seed.sidebar);
+    useShell.getState().setInspector(seed.inspector);
   }
   return (
     <RenderBoundary>

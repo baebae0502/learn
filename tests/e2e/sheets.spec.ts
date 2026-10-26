@@ -2,7 +2,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -130,14 +130,42 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     await expect(sheet.getByTestId('shortcuts-done')).toBeFocused();
     expect(await ring(sheet.getByTestId('shortcuts-done'))).toBe('none');
     expect(await menuItemEnabled(s.app, 'app.shortcuts')).toBe(false);
-    // A sheet cannot open another sheet over itself (nor, from Task 10, the settings window): main window only.
-    expect(await sheet.evaluate(() => window.learn.ui.showShortcuts())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(2);
+    // A sheet's preload has its own namespace only: it cannot ask for another sheet, the settings window or the
+    // library at all, and main refuses its kind on those channels too (register.test.ts).
+    expect(await sheet.evaluate(() => Object.keys(window.learn))).toEqual(['sheet']);
+    expect(await sheet.evaluate(() => Object.keys(window.learn.sheet).sort())).toEqual(['payload', 'resolve']);
+    expect(await windowKinds(s.app)).toEqual(['main', 'settings (hidden)', 'sheet']);
     // A click on a row (static text) leaves ↩ working.
     await sheet.getByTestId('shortcut-row').first().click();
     await closeSheet(sheet, 'Enter');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     await mainHasFocus(s.app);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a ⌘/ sheet is made at the height an earlier one measured (measured once, in its own font)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await s.app.evaluate(({ app }) => {
+      const g = globalThis as { __sheetMadeAt?: number[] };
+      g.__sheetMadeAt = [];
+      app.on('browser-window-created', (_event, win) => g.__sheetMadeAt!.push(win.getContentSize()[1]!));
+    });
+    const shown: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      shown.push(await sheet.evaluate(() => innerHeight));
+      await closeSheet(sheet, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
+    const madeAt = await s.app.evaluate(() => (globalThis as { __sheetMadeAt?: number[] }).__sheetMadeAt!);
+    expect(new Set(shown).size).toBe(1); // every one shown as tall as its content
+    // The first is made as tall as the room and fitted; once a measurement was taken in its font (the first, or the
+    // second when the font came late), the next ones are made at that height.
+    expect(madeAt[0]).toBeGreaterThanOrEqual(shown[0]!);
+    expect(madeAt[2]).toBe(shown[0]);
   } finally {
     await s.app.close();
   }
@@ -156,11 +184,15 @@ const tokenIn = (page: Page, name: string) =>
 
 test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a name and a ring, between a fixed title and foot with scroll edges; one that fits is no stop', async ({}, testInfo) => {
   // Mac run 39779536146: on the 768-tall runner the sheet's body scrolled but no key could reach it (axe
-  // scrollable-region-focusable, serious). A window as short as the minimum makes it scroll here too.
+  // scrollable-region-focusable, serious). A 480-tall window makes it scroll on every platform.
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const open = () => expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
   try {
-    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1200, 600));
+    // Two columns fit even a 600-tall window on macOS (room 568): the minimum goes down for this half only.
+    await (await mainWindow(s.app)).evaluate((w) => {
+      w.setMinimumSize(800, 400);
+      w.setContentSize(1200, 480);
+    });
     let sheet = await open();
     let body = sheet.locator('.d-body');
     await expect.poll(() => body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
@@ -212,17 +244,12 @@ test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a
     await fitsNoStop(dup);
     await closeSheet(dup, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
-    // The ⌘/ sheet as well, in a window tall enough for the whole list (1440 × 900). The 768-tall Mac runner has no such
-    // room (its work area is 684 tall): there the list scrolls at any size, which the first half covers; an ≈806-tall
-    // parent stays a manual check (critique, m3-08b-806).
+    // The ⌘/ sheet as well, in a window as tall as 1440 × 900 allows: in two columns (≈ 562 px with 자료, ≈ 591 with ⌘F,
+    // ≈ 620 with ⌥⌘I) it fits with no scrolling everywhere — Linux (room 824), the 768-tall Mac runner (work area 684,
+    // room 652) and a 1440 × 900 Mac's ≈ 806-tall parent (room 774).
     await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
-    const room = await (await mainWindow(s.app)).evaluate((w) => w.getContentSize()[1] ?? 0);
     sheet = await open();
-    if (room >= 900) await fitsNoStop(sheet);
-    else {
-      expect(process.platform, 'only the Mac runner lacks the room').toBe('darwin');
-      await expect(sheet.locator('.d-body')).toHaveAttribute('role', 'region');
-    }
+    await fitsNoStop(sheet);
     await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();
@@ -261,11 +288,50 @@ test('the window greys only when the ⌘/ sheet is on screen; until then its com
   }
 });
 
-test('sheet IPC refuses a caller that is not an open sheet', async ({}, testInfo) => {
+test('sheet IPC belongs to the sheets: the main window has no sheet namespace (P-5)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    expect(await s.page.evaluate(() => window.learn.sheet.payload())).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await s.page.evaluate(() => window.learn.sheet.resolve({ kind: 'shortcuts' }))).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    // Main also refuses any caller that is not an open sheet: by its kind (register.test.ts), then by the open sheet
+    // itself (sheets.test.ts).
+    expect(await s.page.evaluate(() => 'sheet' in window.learn)).toBe(false);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('the ⌘/ sheet lays its groups out in two columns, read down then across, none split, and fits a 1440 × 900 window', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+    const columns = await sheet.evaluate(() =>
+      [...document.querySelectorAll('.shortcut-column')].map((column) =>
+        [...column.querySelectorAll('section')].map((section) => {
+          const box = section.getBoundingClientRect();
+          const rows = [...section.querySelectorAll('[data-testid="shortcut-row"]')].map((row) => row.getBoundingClientRect());
+          return {
+            title: section.getAttribute('aria-label'),
+            left: Math.round(box.left),
+            right: Math.round(box.right),
+            whole: rows.length > 0 && rows.every((r) => r.left >= box.left - 0.5 && r.right <= box.right + 0.5 && r.top >= box.top - 0.5 && r.bottom <= box.bottom + 0.5),
+          };
+        }),
+      ),
+    );
+    // Read down the first column, then the second, in the sheet's order (shortcuts.ts ORDER).
+    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리'], ['자료', '리더', '팔레트·대화상자']]);
+    // A group never splits: every section lies in one column with all its rows; the columns sit side by side.
+    for (const g of columns.flat()) expect(g.whole, `${g.title}`).toBe(true);
+    expect(new Set(columns[0]!.map((g) => g.left)).size).toBe(1);
+    expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
+    expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
+    // Short enough for every 1440 × 900 room (≈ 620 px with 자료, ⌘F and ⌥⌘I; Linux room 824, Mac 774): no scrolling.
+    const body = sheet.locator('.d-body');
+    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
+    const natural = await sheet.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
+    expect(natural).toBeLessThanOrEqual(700);
+    console.log(`[measure] ⌘/ sheet natural height: ${natural} px`);
+    await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();
   }

@@ -1,21 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, FileX } from 'lucide-react';
-import * as pdfjs from 'pdfjs-dist';
-import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { assetUrl, type LibraryItem } from '@learn/domain';
+import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
+import type { LibraryItem } from '@learn/domain';
 import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Notice } from '../ui/Notice';
 import { ratio, restorePageIndex } from './positionSaver';
 import { PdfErrorNotice } from './ReaderNotices';
+import { pdfSource, pdfjs } from './pdfjs';
 import { usePosition } from './usePosition';
 
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-
-/** pdf.js runtime data copied by scripts/copy-pdfjs-assets.mjs; same-origin in dev and production. */
-const dataUrl = (dir: string) => new URL(`pdfjs/${dir}/`, document.baseURI).href;
 const ZOOMS = [0.5, 1, 2] as const;
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
 
@@ -37,31 +32,32 @@ export function PdfViewer({ item }: { item: LibraryItem }) {
 
   useEffect(() => {
     let cancelled = false;
+    let task: PDFDocumentLoadingTask | null = null;
     setDoc(null);
     setPageNum(1);
     setRestored(false);
     setOpenFailed(false);
     setPageFailed(null);
-    const task = pdfjs.getDocument({
-      url: assetUrl(item.assetId),
-      cMapUrl: dataUrl('cmaps'),
-      cMapPacked: true,
-      standardFontDataUrl: dataUrl('standard_fonts'),
-      wasmUrl: dataUrl('wasm'),
-      iccUrl: dataUrl('iccs'),
-      enableXfa: false,
+    void pdfjs().then((lib) => {
+      if (cancelled) return;
+      task = lib.getDocument(pdfSource(item.assetId));
+      task.promise.then(
+        (d) => { if (!cancelled) setDoc(d); },
+        (e: unknown) => {
+          if (cancelled) return;
+          logFailure(e);
+          setOpenFailed(true);
+        },
+      );
+    }).catch((e: unknown) => {
+      // The pdf.js module itself did not load.
+      if (cancelled) return;
+      logFailure(e);
+      setOpenFailed(true);
     });
-    task.promise.then(
-      (d) => { if (!cancelled) setDoc(d); },
-      (e: unknown) => {
-        if (cancelled) return;
-        logFailure(e);
-        setOpenFailed(true);
-      },
-    );
     return () => {
       cancelled = true;
-      void task.destroy();
+      void task?.destroy();
     };
   }, [item.assetId]);
 

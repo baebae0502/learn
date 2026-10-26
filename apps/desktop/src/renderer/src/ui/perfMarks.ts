@@ -8,6 +8,10 @@
  * - `learn:import:busy-text`: the first painted frame of "자료 N개를 가져오는 중…", only when it showed;
  * - `learn:toast:import-done`: the success toast's first painted frame; `learn:import:end`: the import let go.
  * A new drop or import clears the previous set, so the timeline holds the last one only.
+ * The table and the item panel (spec 9 budgets; perfMarkLatest, one each):
+ * - `learn:table:render`: the library view began a render; `learn:inspector:render`: the item panel did;
+ * - `learn:table:painted`: the frame that paints rows that changed has begun (usePaintMark);
+ * - `learn:table:first-paint`: the same, once per window — the first rows after the list arrived.
  */
 export type PerfMark =
   | 'drop'
@@ -18,7 +22,14 @@ export type PerfMark =
   | 'import:listed'
   | 'import:busy-text'
   | 'import:end'
+  | 'table:render'
+  | 'table:painted'
+  | 'table:first-paint'
+  | 'inspector:render'
   | `toast:${string}`;
+
+/** Timed calls (performance.measure): one quick search over the library, and building its index (spec 9). */
+export type PerfMeasure = 'search' | 'search:index';
 
 const IMPORT_MARKS: readonly PerfMark[] = ['import:start', 'import:sent', 'import:answered', 'import:listed', 'import:busy-text', 'import:end', 'toast:import-done'];
 
@@ -27,6 +38,31 @@ export function perfMark(name: PerfMark): void {
     performance.mark(`learn:${name}`);
   } catch {
     // No timeline: nothing to record.
+  }
+}
+
+/** A mark that recurs with every search, sort or list change: only the newest is kept, so a long session holds one. */
+export function perfMarkLatest(name: PerfMark): void {
+  try {
+    performance.clearMarks(`learn:${name}`);
+    performance.mark(`learn:${name}`);
+  } catch {
+    // No timeline.
+  }
+}
+
+/** Runs `run` and records how long it took as the measure `learn:<name>` (the newest only); its result or throw passes through. */
+export function timed<T>(name: PerfMeasure, run: () => T): T {
+  const start = performance.now();
+  try {
+    return run();
+  } finally {
+    try {
+      performance.clearMeasures(`learn:${name}`);
+      performance.measure(`learn:${name}`, { start, end: performance.now() });
+    } catch {
+      // No timeline.
+    }
   }
 }
 

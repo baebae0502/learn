@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
+import { COMMANDS } from '@learn/domain';
+import { windowKindOf } from './window-kinds';
 
 /** A BrowserWindow stand-in: records what the host does with it; tests drive its lifecycle events. */
 class FakeWindow extends EventEmitter {
@@ -8,6 +10,8 @@ class FakeWindow extends EventEmitter {
   static nextId = 1;
   /** The natural height of the fake sheet page. */
   static pageHeight = 200;
+  /** Whether the fake page's `document.fonts.ready` resolves in time (fontsReady's answer). */
+  static fontsReady = true;
   destroyed = false;
   shown = false;
   contentSize: [number, number];
@@ -19,8 +23,9 @@ class FakeWindow extends EventEmitter {
     this.contentSize = [options.width, options.height];
     const contents = new EventEmitter() as FakeWindow['webContents'];
     contents.id = FakeWindow.nextId++;
-    // contentHeight polls in the page; markSized sets a flag. The fake page is 200 px tall.
-    contents.executeJavaScript = async (script: string) => (script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : undefined);
+    // contentHeight polls in the page; fontsReady waits for document.fonts; markSized sets a flag.
+    contents.executeJavaScript = async (script: string) =>
+      script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : script.includes('document.fonts') ? FakeWindow.fontsReady : undefined;
     this.webContents = contents;
     FakeWindow.all.push(this);
   }
@@ -42,7 +47,7 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS } = await import('./sheets');
+const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
 const parent = (id = 1, height = 900): FakeParent =>
@@ -51,6 +56,7 @@ const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
 async function ready(w: FakeWindow): Promise<void> {
+  w.webContents.emit('dom-ready'); // the page's document exists: measuring starts here, alongside the first paint
   w.emit('ready-to-show');
   for (let i = 0; i < 5 && !w.shown; i++) await tick();
 }
@@ -58,6 +64,7 @@ async function ready(w: FakeWindow): Promise<void> {
 beforeEach(() => {
   FakeWindow.all = [];
   FakeWindow.pageHeight = 200;
+  FakeWindow.fontsReady = true;
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -65,6 +72,12 @@ afterEach(() => {
 
 describe('sheet host', () => {
   const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+
+  it('registers each sheet window as a sheet, so only an open sheet reaches sheet:* (P-5)', async () => {
+    void host().open(parent(), { kind: 'shortcuts' });
+    await tick();
+    expect(windowKindOf(FakeWindow.all[0]!.webContents.id)).toBe('sheet');
+  });
 
   it('opens a hidden modal child, sizes it to its content, places it under the toolbar, then shows it', async () => {
     const h = host();
@@ -206,6 +219,7 @@ describe('sheet host', () => {
     void h.open(parent(), { kind: 'shortcuts' }).then((r) => (settled = r));
     await vi.advanceTimersByTimeAsync(0);
     const w = FakeWindow.all[0]!;
+    w.webContents.emit('dom-ready');
     w.emit('ready-to-show');
     await vi.advanceTimersByTimeAsync(0);
     expect(UNRESPONSIVE_GRACE_MS).toBe(5_000);
@@ -235,6 +249,7 @@ describe('sheet host', () => {
     w.webContents.executeJavaScript = async () => {
       throw new Error('measure failed');
     };
+    w.webContents.emit('dom-ready');
     w.emit('ready-to-show');
     await vi.advanceTimersByTimeAsync(0);
     expect(w.shown).toBe(true);
@@ -265,6 +280,7 @@ describe('sheet host', () => {
     void h.open(p, { kind: 'shortcuts' }).then((r) => (answer = r));
     await vi.advanceTimersByTimeAsync(0);
     const shown = FakeWindow.all[1]!;
+    shown.webContents.emit('dom-ready');
     shown.emit('ready-to-show');
     await vi.advanceTimersByTimeAsync(0);
     expect(shown.shown).toBe(true);
@@ -291,5 +307,72 @@ describe('sheet host', () => {
     await expect(second).resolves.toBeNull();
     FakeWindow.all[1]!.close();
     await expect(elsewhere).resolves.toBeNull();
+  });
+});
+
+describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
+  const keyed = () =>
+    createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux', staticKey: (p) => (p.kind === 'shortcuts' ? 'linux|13|regular|d' : null) });
+  /** One sheet over `p`, measured and shown, then closed; the scripts its page was asked. */
+  async function openOnce(h: ReturnType<typeof createSheetHost>, p = parent()) {
+    void h.open(p, { kind: 'shortcuts' });
+    await tick();
+    const w = FakeWindow.all.at(-1)!;
+    const asked: string[] = [];
+    const answer = w.webContents.executeJavaScript;
+    w.webContents.executeJavaScript = async (script: string) => {
+      asked.push(script);
+      return answer(script);
+    };
+    await ready(w);
+    const shown = w.shown;
+    w.close();
+    await tick();
+    return { w, asked, shown };
+  }
+
+  it('makes the next one at the height the last one measured, checking only that it has rendered', async () => {
+    const h = keyed();
+    const first = await openOnce(h);
+    expect(first.w.options.height).toBe(900 - SHEET_TOP - 16); // measured at full height first
+    expect(first.w.contentSize).toEqual([560, 200]);
+    FakeWindow.pageHeight = 260; // what a re-measure would see: it must not be asked
+    const second = await openOnce(h);
+    expect(second.w.options.height).toBe(200);
+    expect(second.w.contentSize).toEqual([560, 200]);
+    expect(second.shown).toBe(true);
+    expect(second.asked.some((s) => s.includes('> 5000'))).toBe(true); // rendered first: never an empty sheet
+    expect(second.asked.filter((s) => s.includes('> 500)'))).toEqual([]);
+  });
+
+  it('caps a remembered height to the room the parent leaves, as a measured one', async () => {
+    const h = keyed();
+    FakeWindow.pageHeight = 743;
+    await openOnce(h, parent(1, 900));
+    const short = await openOnce(h, parent(1, 500));
+    expect(short.w.options.height).toBe(500 - SHEET_TOP - 16);
+    expect(short.w.contentSize).toEqual([560, 500 - SHEET_TOP - 16]);
+  });
+
+  it('remembers no height measured before its fonts were ready, and none for a sheet without a key', async () => {
+    const h = keyed();
+    FakeWindow.fontsReady = false;
+    await openOnce(h);
+    FakeWindow.fontsReady = true;
+    expect((await openOnce(h)).w.options.height).toBe(900 - SHEET_TOP - 16);
+    const plain = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' }); // no staticKey: always measured
+    await openOnce(plain);
+    expect((await openOnce(plain)).w.options.height).toBe(900 - SHEET_TOP - 16);
+  });
+
+  it('names a height by platform, text size, density and what the sheet lists', () => {
+    expect(sheetHeightKey({ platform: 'darwin', fontSize: 13, density: 'regular', digest: 'abc' })).toBe('darwin|13|regular|abc');
+    const digest = shortcutsDigest(COMMANDS, 'darwin');
+    expect(digest).toMatch(/^[0-9a-f]{16}$/);
+    expect(shortcutsDigest(COMMANDS.map((c) => (c.id === 'app.settings' ? { ...c, label: '환경설정…' } : c)), 'darwin')).not.toBe(digest);
+    // Commands without a key are not on the sheet: where they sit in the registry changes nothing.
+    const keyless = COMMANDS.filter((c) => c.accelerator === undefined && c.key === undefined);
+    const listed = COMMANDS.filter((c) => c.accelerator !== undefined || c.key !== undefined);
+    expect(shortcutsDigest([...keyless, ...listed], 'darwin')).toBe(digest);
   });
 });

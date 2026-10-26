@@ -1,4 +1,4 @@
-export type WindowKind = 'main' | 'settings' | 'sheet';
+import type { WindowKind } from './window-kinds';
 
 export interface WindowUrlOptions {
   platform: NodeJS.Platform;

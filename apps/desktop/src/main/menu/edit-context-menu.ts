@@ -1,4 +1,5 @@
 import { BrowserWindow, Menu, type ContextMenuParams, type MenuItemConstructorOptions, type WebContents } from 'electron';
+import { mainStrings } from '../strings';
 
 type Params = Pick<ContextMenuParams, 'isEditable' | 'selectionText' | 'editFlags'>;
 
@@ -7,16 +8,17 @@ type Params = Pick<ContextMenuParams, 'isEditable' | 'selectionText' | 'editFlag
  * Enabled states come from Chromium's `editFlags`; cut/paste only make sense where the text is editable.
  */
 export function editContextMenuTemplate(p: Params): MenuItemConstructorOptions[] | null {
+  const copy = mainStrings.menu.edit;
   if (p.isEditable) {
     return [
-      { role: 'cut', label: '오려두기', enabled: p.editFlags.canCut },
-      { role: 'copy', label: '복사하기', enabled: p.editFlags.canCopy },
-      { role: 'paste', label: '붙여넣기', enabled: p.editFlags.canPaste },
+      { role: 'cut', label: copy.cut, enabled: p.editFlags.canCut },
+      { role: 'copy', label: copy.copy, enabled: p.editFlags.canCopy },
+      { role: 'paste', label: copy.paste, enabled: p.editFlags.canPaste },
       { type: 'separator' },
-      { role: 'selectAll', label: '모두 선택', enabled: p.editFlags.canSelectAll },
+      { role: 'selectAll', label: copy.selectAll, enabled: p.editFlags.canSelectAll },
     ];
   }
-  if (p.selectionText) return [{ role: 'copy', label: '복사하기', enabled: p.editFlags.canCopy }];
+  if (p.selectionText) return [{ role: 'copy', label: copy.copy, enabled: p.editFlags.canCopy }];
   return null;
 }
 

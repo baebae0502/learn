@@ -82,9 +82,16 @@
   }
   .palette .p-list {
     max-height: 360px; /* local: 9 rows + header */
-    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     padding: var(--space-8);
     outline: none;
+  }
+  /* The listbox is the scroller: the combobox's popup is the one scrolling region axe accepts without a Tab stop, and
+     the focus stays in the input (aria-activedescendant). */
+  .palette .p-options {
+    min-height: 0;
+    overflow-y: auto;
   }
   .palette .p-group {
     padding: var(--space-8) var(--space-12) var(--space-4);
@@ -117,6 +124,11 @@
     color: var(--text-tertiary);
     font: var(--type-footnote);
     white-space: nowrap;
+  }
+  /* An item row's 저자 · 연도 gives way (ellipsis) before the title does. */
+  .palette .p-item .p-sub {
+    min-width: 0;
+    max-width: 240px; /* local: the title keeps at least half of the 624 px row */
   }
   .palette .p-item mark {
     background: none;
@@ -153,6 +165,10 @@
   .palette .p-empty .pe-text {
     color: var(--text-secondary);
     font: var(--type-footnote);
+  }
+  /* palette.html ?state=none: the notice above the 명령 group with its search row, 24 from the notice to the group header. */
+  .palette .p-list > .p-empty + [role='listbox'] {
+    margin-top: var(--space-8);
   }
   .palette .p-foot {
     display: flex;

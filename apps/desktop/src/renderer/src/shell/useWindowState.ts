@@ -4,13 +4,13 @@ import { api } from '../api';
 import { useLearnEvent } from '../events';
 import { setTooltipBlock } from '../ui/tooltipGate';
 
-const apply = ({ fullscreen, focused, sheetOpen }: LearnEventMap['windowState']) => {
+const apply = ({ fullscreen, focused, main }: LearnEventMap['windowState']) => {
   const root = document.documentElement;
   root.toggleAttribute('data-fullscreen', fullscreen); // no traffic lights → no 84 px inset
-  // Not key: no rings or keyboard cursor, neutral selection. Not main as well (no sheet of ours attached): the chrome
-  // dims (design-spec 2.1).
+  // Not key: no rings or keyboard cursor, neutral selection. Not main as well — no sheet of ours holds it, or another
+  // window of ours has the key: the chrome dims (design-spec 2.1).
   root.toggleAttribute('data-window-inactive', !focused);
-  root.toggleAttribute('data-window-not-main', !focused && !sheetOpen);
+  root.toggleAttribute('data-window-not-main', !main);
   setTooltipBlock('inactive', !focused); // a sheet, another app or window: open tooltips close
 };
 

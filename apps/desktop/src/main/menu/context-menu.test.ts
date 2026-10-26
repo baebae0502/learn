@@ -14,7 +14,7 @@ vi.mock('electron', () => ({
 
 const { contextMenuEntries, popupCommandMenu } = await import('./context-menu');
 
-const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13 };
+const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
 const target = (storageMode: 'managed' | 'linked', availability: 'available' | 'missing'): CommandTargetInfo => ({ storageMode, availability });
 const ids = (entries: ReturnType<typeof contextMenuEntries>) => entries.map((e) => (e === 'separator' ? '-' : e.id));
 const win = {} as BaseWindow;
@@ -26,20 +26,24 @@ beforeEach(() => {
 });
 
 describe('context menu entries (registry + isCommandAvailable)', () => {
-  it('an available file: 열기, then Finder에서 보기; a missing linked file: 다시 연결… first (기본 앱으로 열기 never, C-1)', () => {
-    expect(ids(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'darwin'))).toEqual(['item.open', '-', 'item.showInFolder']);
+  it('an available file: 열기, then Finder에서 보기 and 사본 내보내기…; a missing linked file: 다시 연결… first (기본 앱으로 열기 never)', () => {
+    expect(ids(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'darwin'))).toEqual(['item.open', '-', 'item.showInFolder', 'item.exportCopy']);
     const missing = contextMenuEntries('item', COMMANDS, LIB, [target('linked', 'missing')], 'darwin');
-    expect(ids(missing)).toEqual(['item.relink', '-', 'item.open', '-', 'item.showInFolder']);
-    expect(missing.at(-1)).toEqual({ id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }); // no file to reveal
+    expect(ids(missing)).toEqual(['item.relink', '-', 'item.open', '-', 'item.showInFolder', 'item.exportCopy']);
+    // No file to reveal or copy.
+    expect(missing.slice(-2)).toEqual([
+      { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false },
+      { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
+    ]);
   });
   it('disables (not hides) the other commands that cannot run, and everything while blocked', () => {
-    const disabled = [{ id: 'item.open', label: '열기', enabled: false }, 'separator', { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }];
+    const disabled = [{ id: 'item.open', label: '열기', enabled: false }, 'separator', { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }, { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false }];
     const two = contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available'), target('managed', 'available')], 'darwin');
     expect(two).toEqual(disabled);
     expect(contextMenuEntries('item', COMMANDS, { ...LIB, blocked: true }, [target('linked', 'missing')], 'darwin')).toEqual(disabled);
   });
   it('names the file manager off macOS (labelOff)', () => {
-    expect(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'linux').at(-1)).toEqual({ id: 'item.showInFolder', label: '폴더에서 보기', enabled: true });
+    expect(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'linux').at(-2)).toEqual({ id: 'item.showInFolder', label: '폴더에서 보기', enabled: true });
   });
   it('kinds without commands yet (collection, tag, column) give no entries', () => {
     for (const kind of ['collection', 'tag', 'column'] as const) expect(contextMenuEntries(kind, COMMANDS, LIB, [], 'darwin')).toEqual([]);

@@ -144,6 +144,35 @@ test('toasts: an error stays and closes by × or Escape; success closes by itsel
   await expect(error).toHaveCount(0);
 });
 
+test('toasts: an action runs once and takes its toast away; a busy toast spins, has no button, stays until closed (P-29)', async () => {
+  const { page } = s;
+  await page.clock.install();
+  await open(page);
+  await page.getByTestId('g3-toast-action').click();
+  const withAction = page.getByTestId('toast-action');
+  await expect(withAction.getByRole('button')).toHaveText(['폴더에서 보기']); // the fixture page reports platform=linux whatever the host is, so its label is the Linux one
+  // The link's text ends where the toast's own padding says (12 px) less the pulled-out 8 px of the button's side padding, so the text ends 12 px in.
+  const [toastBox, linkBox] = await Promise.all([withAction.boundingBox(), withAction.getByTestId('toast-action-button').boundingBox()]);
+  expect(toastBox!.x + toastBox!.width - (linkBox!.x + linkBox!.width)).toBeCloseTo(12 - 8, 0);
+  expect(linkBox!.height).toBeGreaterThanOrEqual(22);
+  await withAction.getByTestId('toast-action-button').click();
+  await expect(withAction).toHaveCount(0);
+  await expect(page.getByTestId('g3-last')).toHaveText('reveal');
+
+  await page.getByTestId('g3-toast-busy').click();
+  const busy = page.getByTestId('toast-busy');
+  await expect(busy.locator('.t-icon .spinner')).toHaveCount(1);
+  await expect(busy.getByRole('button')).toHaveCount(0);
+  await page.mouse.move(0, 0); // a hovered region would hold timers; a busy toast has none to hold
+  await page.clock.runFor(60_000);
+  await expect(busy).toBeVisible();
+  await busy.focus();
+  await page.keyboard.press('Escape'); // only an error toast closes by esc
+  await expect(busy).toBeVisible();
+  await page.getByTestId('g3-toast-busy-close').click();
+  await expect(busy).toHaveCount(0);
+});
+
 test('an icon button tooltip shows its name and the platform shortcut (acceleratorLabel)', async () => {
   const { page } = s;
   for (const [platform, shortcut] of [
@@ -200,6 +229,18 @@ test('board geometry: toasts 42 / 58 with icon and × on the title line, tooltip
   const error = await box('.toast[data-kind="error"]');
   const close = await box('.toast[data-kind="error"] .icon-btn');
   expect(close.y + close.height / 2 - error.y).toBe(12 + 18 / 2); // × centred on the title line
+  // A one-line toast with an action stays 42, the small button centred on the title line like the ×.
+  const action = page.locator('.toast[data-kind="success"]').filter({ has: page.locator('.t-actions') });
+  const actionBox = (await action.boundingBox())!;
+  expect(actionBox.height).toBe(12 + 18 + 12);
+  const actionButton = (await action.locator('.t-actions .btn').boundingBox())!;
+  expect(actionButton.y + actionButton.height / 2 - actionBox.y).toBe(12 + 18 / 2);
+  // The busy toast: the 16 px spinner where the icon goes, title and one file line (58).
+  const busy = await box('.toast[data-kind="busy"]');
+  expect(busy.height).toBe(12 + 18 + 16 + 12);
+  const spinner = await box('.toast[data-kind="busy"] .spinner');
+  expect(spinner.width).toBe(16);
+  expect(spinner.y + spinner.height / 2 - busy.y).toBe(12 + 18 / 2);
 
   await page.goto(fixture());
   await page.getByTestId('g3-toast-error-title').click();

@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { Channels, LearnError, itemIdInput, type Result } from '@learn/domain';
+import type { WindowKind } from '../window-kinds';
+import { CHANNEL_KINDS } from './channel-kinds';
+import type { Channel } from './register';
+import { fakeSender } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -13,7 +17,13 @@ const { createHandle } = await import('./register');
 
 const APP_URL = 'learn://app/index.html';
 const ITEM = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
-const call = (channel: string, raw: unknown, url = APP_URL) => handlers.get(channel)!({ senderFrame: { url } }, raw);
+const KINDS = ['main', 'settings', 'sheet'] as const satisfies readonly WindowKind[];
+/** One sender of each kind, registered as main registers the windows it creates. */
+const FROM: Record<WindowKind, unknown> = { main: fakeSender(1, 'main'), settings: fakeSender(2, 'settings'), sheet: fakeSender(3, 'sheet') };
+/** A webContents main never registered: a page it did not create. */
+const STRANGER = { id: 99 };
+const REFUSED = { ok: false, code: 'PERMISSION_DENIED', message: '허용되지 않은 호출자입니다.', retryable: true }; // LearnError: PERMISSION_DENIED is retryable by default
+const call = (channel: string, raw: unknown, url = APP_URL, sender: unknown = FROM.main) => handlers.get(channel)!({ sender, senderFrame: { url } }, raw);
 
 let logged: unknown[][];
 beforeEach(() => {
@@ -24,7 +34,7 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('createHandle (the single IPC entry point)', () => {
-  it('rejects a sender from a foreign URL (and asset documents) without running the handler', async () => {
+  it('rejects a sender from a foreign URL (and asset documents) without running the handler, whatever its window', async () => {
     const fn = vi.fn(() => ({ version: 'x' }) as never);
     createHandle(null)(Channels.app.info, z.object({}).optional(), fn);
     for (const url of ['https://evil.example/', 'file:///tmp/x.html', 'learn://app/asset/abc', 'http://localhost:5173/']) {
@@ -37,6 +47,32 @@ describe('createHandle (the single IPC entry point)', () => {
   it('accepts the dev server origin only when one was configured', async () => {
     createHandle('http://localhost:5173')(Channels.app.info, z.object({}).optional(), () => ({ version: 'dev' }) as never);
     expect(await call(Channels.app.info, undefined, 'http://localhost:5173/')).toEqual({ ok: true, data: { version: 'dev' } });
+  });
+
+  it('answers each channel only for the window kinds CHANNEL_KINDS lists; any other sender is refused like a foreign page, before its input is read', async () => {
+    const handle = createHandle(null);
+    const ran: string[] = [];
+    const channels = Object.keys(CHANNEL_KINDS) as Channel[];
+    for (const channel of channels) {
+      handle(channel, z.object({ n: z.number() }), () => {
+        ran.push(channel);
+        return null as never;
+      });
+    }
+    for (const channel of channels) {
+      const allowed = CHANNEL_KINDS[channel];
+      for (const kind of KINDS) {
+        const r = await call(channel, { n: 1 }, APP_URL, FROM[kind]);
+        expect(r, `${channel} from a ${kind} window`).toEqual(allowed.includes(kind) ? { ok: true, data: null } : REFUSED);
+        // Refused before validation: a window that may not call the channel learns nothing about its input.
+        if (!allowed.includes(kind)) expect(await call(channel, { n: 'x' }, APP_URL, FROM[kind])).toEqual(REFUSED);
+      }
+      expect(await call(channel, { n: 1 }, APP_URL, STRANGER), `${channel} from a page main did not create`).toEqual(REFUSED);
+    }
+    expect(ran).toEqual(channels.flatMap((c) => CHANNEL_KINDS[c].map(() => c)));
+    // The same path as a foreign page: the channel and the code only.
+    expect(logged.length).toBeGreaterThan(0);
+    expect(logged.every(([line]) => /^\[ipc\] [a-z]+:[A-Za-z]+ failed: PERMISSION_DENIED$/.test(String(line)))).toBe(true);
   });
 
   it('answers VALIDATION_FAILED for invalid input without running the handler', async () => {

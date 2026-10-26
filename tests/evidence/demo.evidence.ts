@@ -1,6 +1,7 @@
-// @demo — a 2–4 minute macOS screen recording of the M3 shell with a chapter list (m3-demo.chapters.txt / .json), a
-// caption per chapter on screen, and the chapters embedded in the video afterwards (scripts/finish-demo.sh on the
-// server, scripts/record-demo-linux.sh on Linux). Elsewhere (Linux CI) the same script runs at 1/10 pace, unrecorded.
+// @demo — a 2–4 minute macOS screen recording of the M4 library (table, quick search, item panel, palette items, copy
+// export) with a chapter list (m4-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen, and the chapters embedded
+// in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on Linux). Elsewhere
+// (Linux CI) the same script runs at 1/10 pace, unrecorded.
 //
 // Honest, readable, polished, safe (Task 13 fix rounds 1 and 2):
 // - Every synthetic step is said: the drag "스크립트로 재현합니다" (in its caption, and a lasting tag while it is on
@@ -26,27 +27,27 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { commandById, commandLabel, type CommandId } from '../../packages/domain/src/commands';
-import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
+import { layout, motion } from '../../apps/desktop/src/renderer/src/design/tokens';
 import {
-  NativeInputNotPermitted, ROOT, bringAppToFront, closeSheet, drag, dropSource, expectWindow, launch, mainWindow, nativeKeystroke, osascript, osascriptLimits,
-  runMenuCommand, stubOpenDialog, type KeyModifier, type LaunchOptions, type Session,
+  NativeInputNotPermitted, ROOT, bringAppToFront, closeSheet, drag, dropSource, expectWindow, frontmostProcess, launch, mainWindow, nativeKeystroke, osascript, osascriptLimits,
+  rowByTitle, runMenuCommand, seedMetadata, stubSaveDialog, stubShell, type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
 import { captionSpot, desktopSpot } from './demo-geometry';
 import { pressKey } from './demo-keys';
-import { OSASCRIPT_MS, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, openFinderWindow, releaseMouse, renamedElectron } from './demo-mac';
-import { PDF_FOOTER, READ_TITLE, UNPLAYABLE_TITLE, writeDemoMedia } from './demo-media';
+import { OSASCRIPT_MS, arrangeFinderWindow, closeFinderWindow, dragCursor, glideCursor, hideDock, neutralDesktop, releaseMouse, renamedElectron } from './demo-mac';
+import { DEMO_METADATA, PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
 
 const PACE = IS_MAC || process.env['LEARN_DEMO_PACE'] === '1' ? 1 : 0.1;
 /**
- * The macOS recording's fixed length (screencapture -V): longer than any plausible demo (Linux at full pace 152 s in fix
- * round 2; macOS adds the full-screen and Finder chapters and System Events, about 3:10), then trimmed on the server
+ * The macOS recording's fixed length (screencapture -V): longer than any plausible demo (Linux at full pace 142 s with
+ * the M4 chapters; macOS adds the Finder chapter and System Events, about 162 s), then trimmed on the server
  * to the demo plus 3 s (scripts/finish-demo.sh, from chapters.json `demoSeconds` and `offset`). A demo that still
  * outran it fails at the end, after its files are written.
  */
@@ -61,7 +62,7 @@ const RECORD_SECONDS = 280;
  * scripts/finish-demo.sh cuts the still head back to 0.5 s and moves the chapters with it.
  */
 const PRE_ROLL_MS = IS_MAC ? 4500 : 1500;
-/** The Finder window in front (chapter 13): wide enough for the list view's Name, Size and Kind (critique mac2 n4). */
+/** The Finder window in front (chapter 11): wide enough for the list view's Name, Size and Kind. */
 const FINDER_W = 680;
 /** One PDF printed by Chromium may take this long; then the rest are fixture copies (re-review Important 1). */
 const PRINT_MS = 20_000;
@@ -73,6 +74,10 @@ const GRAB = (() => {
   return m ? { width: Number(m[1]), height: Number(m[2]), x: Number(m[3]), y: Number(m[4]) } : null;
 })();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** The platform's add-to-selection modifier for a click (⌘ on macOS, Ctrl elsewhere). */
+const MOD = IS_MAC ? 'Meta' : 'Control';
+/** The opened PDF's title after the item panel chapter adds to it. */
+const EDITED_TITLE = `${READ_TITLE} (4주차)`;
 
 /**
  * One way to take the recording. Mac run 39779536146 lost it: screencapture exited 8 s in, at 1600 × 900 ("capture
@@ -103,14 +108,18 @@ const PLANS: readonly DemoPlan[] = IS_MAC
   : [{ display: 'switch', capture: 'screencapture', why: 'the only attempt' }];
 /**
  * The demo's whole budget, attempts included. The `all` evidence step (playwright.evidence.config.ts globalTimeout
- * 1080 s, step limit 19 min), recomputed for the residual round from Mac run 39913204254:
- * - typically 591 s: the rest of the suite 283 s, the demo 298 s, Playwright's own 9 s;
- * - at worst 1021 s: the rest 283 s, plus 4.5 s for three opaque retakes and 60 s for four JXA handler lookups that
- *   each hit their 15 s limit; the demo at its own limit (560 + 60 s); the afterAll's restores after a timeout
- *   (RESTORE_HOOK_MS, 45 s); and Playwright's 9 s. That leaves 59 s to the globalTimeout.
- * The longer Mac pre-roll and the wait for the drop toast fall inside the demo's own budget.
+ * 1440 s, step limit 25 min), recomputed for M4 from the last Mac time of each suite:
+ * - typically 884 s: the rest of the suite 578 s (baseline and mockups 39 s, shell and spikes 238 s, perf 170 s,
+ *   library 131 s), the demo 297 s, Playwright's own 9 s;
+ * - at worst 1410 s: the rest 723 s with a 1.25 runner margin, plus 4.5 s for three opaque retakes and 60 s for four
+ *   JXA handler lookups that each hit their 15 s limit, 45 s for the open panel's bounded waits, the demo at its own
+ *   limit (463.5 + 60 s), the afterAll's restores after a timeout (RESTORE_HOOK_MS, 45 s) and Playwright's 9 s. That
+ *   leaves 30 s to the globalTimeout.
+ * The budget is cut from 560 s so the worst case fits the job's 45 minutes (5 set-up, 25 evidence, 15 functional
+ * E2E); it still holds one full attempt and a retry of an attempt that ended early. The longer Mac pre-roll and the
+ * wait for the drop toast fall inside the demo's own budget.
  */
-const DEMO_BUDGET_MS = 560_000;
+const DEMO_BUDGET_MS = 463_500;
 /** One full attempt: set-up, the fixed-length recording, teardown (Mac run 39779536146: 304 s). */
 const FULL_ATTEMPT_MS = 320_000;
 /** Set when this attempt's recording ended early (screencapture exited before RECORD_SECONDS). */
@@ -304,7 +313,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       const executablePath = await renamedElectron(path.join(work, 'app'));
       launchOptions = { ...launchOptions, executablePath, args: [path.join(ROOT, 'apps/desktop')] };
     });
-  } else notes.push('the full-screen and Finder-in-front chapters are macOS only: not in this recording');
+  } else notes.push('the Finder-in-front chapter is macOS only: not in this recording');
 
   try {
     s = await launch(libraryDir, userData, launchOptions);
@@ -419,11 +428,19 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       mouseAt.set(p, { x, y });
     };
     /** Glides onto the middle of an element, rests on it, presses it (where the pointer already is), and stays a beat. */
-    const glideClick = async (p: Page, kind: WindowKind, target: ReturnType<Page['getByTestId']>) => {
+    const glideClick = async (p: Page, kind: WindowKind, target: Locator, opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right' } = {}) => {
       const box = (await target.boundingBox())!;
       await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
       await pause(250);
-      await target.click();
+      await target.click({ ...(opts.modifiers ? { modifiers: opts.modifiers } : {}), ...(opts.button ? { button: opts.button } : {}) });
+      await pause(400);
+    };
+    /** Glides onto a table row, rests, and double-clicks it: a single click only selects (M4 spec 3.3). */
+    const glideOpen = async (p: Page, kind: WindowKind, target: ReturnType<Page['getByTestId']>) => {
+      const box = (await target.boundingBox())!;
+      await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
+      await pause(250);
+      await target.dblclick();
       await pause(400);
     };
     /**
@@ -441,22 +458,22 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      * 위치 card, mac1 m3).
      */
     type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
-    const caption = ({ target, place, top, maxWidth }: Captioned, text: string) =>
+    const caption = ({ target, place, top, maxWidth }: Captioned, text: string, holdMs?: number) =>
       target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), {
         text,
-        ms: text ? captionMs(text) : 1,
+        ms: text ? Math.max(captionMs(text), holdMs ?? 0) : 1,
         ...(place ? { place } : {}),
         ...(top !== undefined ? { top } : {}),
         ...(maxWidth !== undefined ? { maxWidth } : {}),
       });
     let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
-    const chapter = async (title: string, where: Page | Captioned = page) => {
+    const chapter = async (title: string, where: Page | Captioned = page, holdMs?: number) => {
       stopIfLost();
       const ms = Date.now() - started;
       chapters.push({ at: Math.floor(ms / 1000), ms, title });
       lastCaptioned = 'target' in where ? where : { target: where };
-      await caption(lastCaptioned, title);
+      await caption(lastCaptioned, title, holdMs);
     };
     /**
      * Where a settings chapter is captioned (mac1 m3, concern 4; demo-geometry.ts): in the main window (it shows a
@@ -555,31 +572,86 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       await closed;
     };
     const rows = page.getByTestId('item-row');
-    const firstTitle = page.getByTestId('open-item').first();
     const html = page.locator('html');
-    const backToLibrary = async () => {
-      if (await page.getByTestId('viewer-back').isVisible()) await runMenuCommand(app, 'nav.back');
-      await expect(page.getByTestId('library-table')).toBeVisible();
-    };
     const canvas = page.getByTestId('pdf-canvas');
-    const indicator = page.getByTestId('pdf-page-indicator');
+    const searchInput = page.getByTestId('search-field').getByRole('searchbox');
+    const header = (col: string) => page.locator(`[data-testid="column-header"][data-col="${col}"]`);
+    const widthOf = (target: Locator) => target.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    /** The item panel's width: 0 while it is folded (or not there). */
+    const inspectorWidth = () => page.evaluate(() => Math.round(document.querySelector('[data-testid="inspector"]')?.getBoundingClientRect().width ?? 0));
+    /** The library is on screen (⌘1 landed). */
+    const inLibrary = () => page.getByTestId('library-table').isVisible();
+    const paletteOpen = () => page.getByTestId('palette').isVisible();
+    const searchFocused = () => searchInput.evaluate((el) => el === document.activeElement).catch(() => false);
+    /** A settings window or a sheet is on screen (the settings window may wait hidden beforehand). */
+    const windowUp = (kind: 'settings' | 'sheet') => () =>
+      app.evaluate(({ BrowserWindow }, kind) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes(`window=${kind}`)), kind);
+    /** The control of an item panel editor field (the field's own input or the one inside it). */
+    const field = (name: string) => page.locator(`[data-testid="editor-field"][data-field="${name}"]`).locator('xpath=descendant-or-self::input').first();
+    /** Typing as a person does, a character at a time. */
+    const typeSlowly = (text: string) => page.keyboard.type(text, { delay: Math.round(70 * PACE) });
+    /** One drag along a line of the main window: the system cursor's own press and drag on macOS, Playwright's mouse elsewhere. */
+    const dragAcross = async (from: number, to: number, y: number) => {
+      await glide(page, 'main', from, y);
+      await pause(250);
+      if (cursor === 'system') {
+        const o = await originOf('main');
+        const dragged = await dragCursor({ x: o.x + from, y: o.y + y }, { x: o.x + to, y: o.y + y }).catch(async () => {
+          await releaseMouse().catch(() => {}); // never leave the button down
+          return false;
+        });
+        if (dragged) return;
+        notes.push('the system cursor could not drag: Playwright drags instead');
+      }
+      await page.mouse.move(from, y);
+      await page.mouse.down();
+      await page.mouse.move(to, y, { steps: 30 });
+      await page.mouse.up();
+      mouseAt.set(page, { x: to, y });
+    };
+    /**
+     * Native popups (the column menu, the item menu) as the camera should see them: on macOS the real menu opens and stays
+     * up for a moment, then the script picks the item (its own click(), as stubContextMenu does) and closes the menu — the
+     * chapter's caption says the pick is scripted. Elsewhere nothing is drawn and the pick is at once. A popup with no pick
+     * waiting closes after 1.5 s: no menu is ever left open on camera.
+     */
+    await app.evaluate(({ Menu }, show) => {
+      interface LiveItem { label: string; enabled: boolean; visible: boolean; click(): void }
+      const g = globalThis as { __learnDemoPick?: { label: string; holdMs: number } | null; __learnRealPopup?: Electron.Menu['popup'] };
+      g.__learnRealPopup ??= Menu.prototype.popup;
+      const real = g.__learnRealPopup;
+      Menu.prototype.popup = function popup(this: Electron.Menu, options?: Electron.PopupOptions) {
+        const pick = g.__learnDemoPick ?? null;
+        g.__learnDemoPick = null;
+        const target = pick ? (this.items as unknown as LiveItem[]).find((i) => i.label === pick.label && i.enabled && i.visible) : undefined;
+        if (show) real.call(this, options);
+        setTimeout(() => {
+          target?.click();
+          if (show) this.closePopup();
+          else options?.callback?.();
+        }, show ? (pick?.holdMs ?? 1500) : 0);
+      };
+    }, IS_MAC);
+    /** The item the next native popup picks, after showing itself `holdMs` on macOS. */
+    const pickFromNextPopup = (itemLabel: string, holdMs = 2200) =>
+      app.evaluate((_electron, p) => void ((globalThis as { __learnDemoPick?: unknown }).__learnDemoPick = p), { label: itemLabel, holdMs: Math.round(holdMs * PACE) });
 
     if (IS_MAC) await bringAppToFront(app);
     await drawFor(page);
     await park(page, 'main');
     if (GRAB) {
-      const x11 = await startX11Recording(GRAB, 'm3-demo', 'M3 shell demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
+      const x11 = await startX11Recording(GRAB, 'm4-demo', 'M4 library demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
       recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
     } else if (plan.capture === 'screencast') {
       // The last resort: the main window's page through CDP (no native chrome, menus, sheets or Finder in it).
-      const cast = await startScreencast(page, 'm3-demo', 'M3 shell demo: the main window page only (CDP screencast)');
+      const cast = await startScreencast(page, 'm4-demo', 'M4 library demo: the main window page only (CDP screencast)');
       recordingStartMs = Date.now();
       stopRec = () => cast.stop();
       notes.push('the recording is the main window page only (CDP screencast): screencapture was lost three times');
     } else {
-      rec = startRecording(RECORD_SECONDS, 'm3-demo', 'M3 shell demo (2–4 min)');
+      rec = startRecording(RECORD_SECONDS, 'm4-demo', 'M4 library demo (2–4 min)');
       const recordingFrom = Date.now();
       if (rec.file) {
         // Not for a skipped one (Linux CI). An exit before the demo has ended is a lost recording, with or without a
@@ -598,338 +670,209 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     started = Date.now();
 
     // 1. First run: the empty library says how to bring files in.
-    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.');
+    // 37 characters were on screen 2.5 s (15 a second, design critique): 5.5 s is 7 a second, and the drag starts half
+    // a second after the caption has gone.
+    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.', page, 5500);
     await expect(page.getByTestId('content').getByRole('button').first()).toBeVisible();
-    await pause(4500);
+    await pause(6000);
 
-    // 2. Files dragged in (a synthetic drag of real files: a Finder drag cannot be scripted): the window becomes the
-    //    drop target; holding ⌥ / Alt switches to linking; releasing it switches back. The tag stays until the drop.
+    // 2. Files dragged in and dropped (a synthetic drag of real files: a Finder drag cannot be scripted): the window is the
+    //    drop target, the drop imports copies, the result is a toast. The tag stays until the drop.
+    const all = [...media.drop, media.read];
     const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-    await dropSource(page, media.drop);
-    await chapter(`파일을 창으로 끌어 오면 창 전체가 놓을 곳이 됩니다. ${key('Alt')} 키를 누르고 있으면 연결로 바뀝니다. (끌기는 스크립트로 재현합니다)`);
+    await dropSource(page, all);
+    await chapter('자료 파일을 창으로 끌어 놓으면 사본으로 가져옵니다. (끌기는 스크립트로 재현합니다)');
     const overlay = page.getByTestId('drop-overlay');
     await glide(page, 'main', 14, mainH * 0.55); // the pointer comes in from the window's left edge
     await drag(page, 'dragenter', 'source');
     await expect(overlay).toHaveAttribute('data-mode', 'copy');
-    // On the drop overlay, for exactly as long as it is up (mac1 m4): never over the toolbar or the sidebar.
     await scriptedTag('스크립트로 재현');
     await glide(page, 'main', mainW * 0.5, mainH * 0.78); // under the cards, on the overlay's empty part
-    await pause(3500);
-    await page.keyboard.down('Alt'); // the held ⌥ pill (T13-m1); the drag itself carries the modifier
-    await drag(page, 'dragover', 'source', { altKey: true });
-    await expect(overlay).toHaveAttribute('data-mode', 'link');
-    await pause(3500);
-    await page.keyboard.up('Alt');
-    await drag(page, 'dragover', 'source');
-    await expect(overlay).toHaveAttribute('data-mode', 'copy');
-    await pause(1500);
-
-    // 3. Dropped: copies imported (the empty library says it is bringing them in), the result in a toast.
-    await chapter('놓으면 사본으로 가져오고, 결과를 알림으로 보여 줍니다.');
-    await scriptedTag(null); // with the drop that ends the overlay, never a frame after it (T13R4-n1)
+    await pause(3000);
+    await scriptedTag(null); // with the drop that ends the overlay, never a frame after it
     await drag(page, 'drop', 'source');
-    await expect(rows).toHaveCount(media.drop.length);
+    await expect(rows).toHaveCount(all.length);
     await expect(page.getByTestId('import-done')).toBeVisible();
     await park(page, 'main');
-    await pause(3500);
-    // Critique mac3 m5: the drop's toast closes by itself on camera (5 s from its first frame; what Mac run 2's M1
-    // broke), so ⌘O's toast is the only one and the glide below lands on it where it stays.
+    // What a user would type in the item panel, written in now (chapter 3's caption says so): the table's 저자 and 연도.
+    const ids = await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? Object.fromEntries(r.data.map((i) => [i.title, i.id])) : ({} as Record<string, string>);
+    });
+    for (const [title, meta] of Object.entries(DEMO_METADATA)) await seedMetadata(page, ids[title]!, meta);
+    await expect(rowByTitle(page, PALETTE_TITLE).locator('[data-col="creators"]')).toContainText('Jun Lee');
+    await pause(2500);
+    // The drop's toast closes by itself on camera, so each later toast is alone.
     await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
 
-    // 4. ⌘O, one file: the one F6 and ↩ will open. The file panel is skipped (said in the chapter line and caption).
-    //    The pointer goes to the result toast and holds it there (a toast waits while the pointer is on it).
-    await stubOpenDialog(app, [media.read], { once: true }); // a late second ⌘O is a cancel: nothing imported twice
-    await chapter(`${key('CmdOrCtrl+O')} 키로도 가져올 수 있습니다. (데모에서는 파일 선택 창을 건너뜁니다)`);
-    const dialogCalls = () => app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
-    const importedAt = await press('o', ['command'], 'file.importManaged', async () => (await dialogCalls()) > 0);
-    await expect(rows).toHaveCount(media.drop.length + 1);
-    await expect(firstTitle).toHaveAttribute('data-title', READ_TITLE);
-    // The ⌘O result (one item), the only toast now: the pointer comes to rest on it and holds it.
-    const toast = page.getByTestId('import-done').filter({ hasText: '1개' });
-    await expect(toast).toBeVisible();
-    const toastBox = (await toast.boundingBox())!;
-    await glide(page, 'main', toastBox.x + toastBox.width * 0.7, toastBox.y + toastBox.height / 2);
-    await afterKey(importedAt);
-
-    // 5. ⇧F6 from nowhere goes to the last pane, the toast (the focus holds it), then F6 cycles on: 내 라이브러리 (the
-    //    accent fill, no ring), the first title (its ring); ↩ opens it. A sequence: each stop is read with its pill.
-    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur()); // n1: a reset, not a gesture
-    await chapter(`${key('F6')} / ${key('Shift+F6')} 키로 사이드바, 표, 알림 패널 사이를 옮겨 다닙니다.`);
-    if (await toast.isVisible()) {
-      await page.keyboard.press('Shift+F6');
-      await expect.poll(() => inPane(page)).toBe('toasts');
-      await park(page, 'main');
-      await pause(2500);
-    } else notes.push('the ⌘O toast had closed before ⇧F6 reached it');
-    await page.keyboard.press('F6');
-    await expect(page.getByTestId('nav-library')).toBeFocused();
-    await pause(2500);
-    await page.keyboard.press('F6');
-    await expect(firstTitle).toBeFocused();
-    await pause(4500);
-    const openedAt = await keyIn(page, 'Enter');
-
-    // 6. The PDF reader: page 1, then the next page.
-    await chapter('PDF를 열어 다음 쪽으로 넘깁니다.');
-    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await afterKey(openedAt);
-    const pageOne = await indicator.textContent();
-    await glideClick(page, 'main', page.getByTestId('pdf-next'));
-    await park(page, 'main');
-    await expect(indicator).not.toHaveText(pageOne ?? '');
-    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await pause(3500);
-
-    // 7. macOS: full screen, where the title strip shows the window title, which follows the view; then back to the
-    //    frame. Captioned once the window is in full screen (T13R2-m7). Elsewhere: back to the library.
-    /** The library is on screen (⌘1 landed). */
-    const inLibrary = () => page.getByTestId('library-table').isVisible();
-    /** ⌘1 back to the library, its own chapter, held (Linux; macOS when full screen failed). */
-    const backByKey = async () => {
-      await chapter(`${key('CmdOrCtrl+1')} 키를 누르면 라이브러리로 돌아갑니다.`);
-      const backAt = await press('1', ['command'], 'nav.back', inLibrary);
-      await expect(page.getByTestId('library-table')).toBeVisible();
-      await afterKey(backAt);
-    };
-    if (IS_MAC) {
-      let revealed = false;
-      const title = `${key('Ctrl+Cmd+F')} 키로 전체 화면에 들어가도 위쪽 제목 띠에 지금 보는 화면의 이름이 나옵니다.`;
-      const isFull = async () => (await win()).evaluate((w) => w.isFullScreen());
-      // The full-screen animation is over when the window's frame is the screen's.
-      const fillsScreen = () =>
-        app.evaluate(({ BrowserWindow, screen }) => {
-          const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=main'));
-          if (!w?.isFullScreen()) return false;
-          const b = w.getBounds();
-          const d = screen.getDisplayMatching(b).bounds;
-          return b.x === d.x && b.y === d.y && b.width === d.width && b.height === d.height;
-        });
-      /** The pointer at the very top edge, held a second, so macOS reveals the menu bar and the title strip. */
-      const reveal = async () => {
-        await glide(page, 'main', (await page.evaluate(() => innerWidth)) / 2, 0);
-        await pause(1000);
-      };
-      await macStep(
-        'full screen',
-        async () => {
-          const before = await (await win()).evaluate((w) => w.getBounds());
-          const enteredAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(true)), isFull);
-          await expect.poll(isFull, { timeout: 4000 }).toBe(true);
-          await settle('full screen fills the screen', fillsScreen, 3000);
-          await chapter(title);
-          await reveal(); // the strip says "세포 신호 전달 개요"
-          revealed = true;
-          await afterKey(enteredAt, 3500);
-          await park(page, 'main');
-          await pause(1000);
-          const backAt = await press('1', ['command'], 'nav.back', inLibrary);
-          await expect(page.getByTestId('library-table')).toBeVisible();
-          await reveal(); // the strip now says 내 라이브러리
-          await afterKey(backAt, 3000);
-          await park(page, 'main');
-          const leftAt = await press('f', ['control', 'command'], async () => (await win()).evaluate((w) => w.setFullScreen(false)), async () => !(await isFull()));
-          await expect.poll(isFull, { timeout: 4000 }).toBe(false);
-          await settle('the window is back at its frame', async () => JSON.stringify(await (await win()).evaluate((w) => w.getBounds())) === JSON.stringify(before), 3000);
-          await park(page, 'main');
-          await afterKey(leftAt);
-        },
-        async () => {
-          // A chapter whose strip was shown stays (it happened); one that never got there goes (round 3 n3).
-          if (!revealed) await dropChapter(title);
-          if (await isFull()) {
-            await (await win()).evaluate((w) => w.setFullScreen(false));
-            await expect.poll(isFull, { timeout: 4000 }).toBe(false);
-            await sleep(1500);
-          }
-          await bringAppToFront(app);
-          await park(page, 'main');
-          // Still in the reader: the Linux chapter instead, ⌘1 back to the library with its hold.
-          if (!(await inLibrary())) await backByKey();
-        },
-      );
-      await backToLibrary();
-    } else await backByKey();
-
-    // 8. A video this platform cannot play: why, and what to do next; then ⌘1 back, held (T13R2-M1).
-    await chapter(`재생할 수 없는 동영상은 이유를 알리고 ‘${label('item.showInFolder')}’와 ‘${label('item.openExternally')}’를 권합니다.`);
-    await glideClick(page, 'main', page.locator(`[data-testid="open-item"][data-title="${UNPLAYABLE_TITLE}"]`));
-    await park(page, 'main');
-    await expect(page.getByTestId('video-error')).toBeVisible();
-    await pause(2200);
-    const revealButton = (await page.getByTestId('codec-reveal').boundingBox())!;
-    await glide(page, 'main', revealButton.x + revealButton.width / 2, revealButton.y + revealButton.height / 2); // pointed at, not pressed
-    await pause(1600);
-    await park(page, 'main');
+    // 3. A column header sorts by its column (primary 500 and an arrow): 저자 ascending, again descending, then 연도.
+    await chapter('열 머리를 누르면 그 열로 정렬하고, 한 번 더 누르면 순서를 뒤집습니다. (저자·연도는 데모에서 미리 적어 두었습니다)');
     await pause(1200);
-    const backFromVideoAt = await press('1', ['command'], 'nav.back', inLibrary);
-    await expect(page.getByTestId('library-table')).toBeVisible();
-    await afterKey(backFromVideoAt);
-
-    // 9. ⌃⌘S folds the sidebar and shows it again; then the boundary dragged wider and back.
-    await chapter(`${key('Ctrl+Cmd+S')} 키로 사이드바를 접고, 경계를 끌어 폭을 바꿉니다.`);
-    const shell = page.getByTestId('shell');
-    // A late ⌃⌘S is seen in the sidebar's state before the menu item toggles it again (round 3 m2).
-    const sidebarIs = (state: 'hidden' | 'shown') => async () => (await shell.getAttribute('data-sidebar')) === state;
-    const foldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar', sidebarIs('hidden'));
-    await expect(shell).toHaveAttribute('data-sidebar', 'hidden');
-    await afterKey(foldedAt);
-    const unfoldedAt = await press('s', ['control', 'command'], 'view.toggleSidebar', sidebarIs('shown'));
-    await expect(shell).toHaveAttribute('data-sidebar', 'shown');
-    await afterKey(unfoldedAt);
-    const sidebarWidth = () => page.locator('.sidebar').evaluate((el) => Math.round(el.getBoundingClientRect().width));
-    const width0 = await sidebarWidth();
-    const sep = (await page.locator('#pane-separator').boundingBox())!;
-    const y = Math.round(sep.y + sep.height * 0.5);
-    const x0 = Math.round(sep.x + sep.width / 2);
-    /** One drag of the separator: the system cursor's own press and drag on macOS, Playwright's mouse elsewhere. */
-    const dragSeparator = async (from: number, to: number) => {
-      await glide(page, 'main', from, y);
-      await pause(250);
-      if (cursor === 'system') {
-        const o = await originOf('main');
-        const dragged = await dragCursor({ x: o.x + from, y: o.y + y }, { x: o.x + to, y: o.y + y }).catch(async () => {
-          await releaseMouse().catch(() => {}); // re-review minor 2: never leave the button down
-          return false;
-        });
-        if (dragged) return;
-        notes.push('the system cursor could not drag the separator: Playwright drags it');
-      }
-      await page.mouse.move(from, y);
-      await page.mouse.down();
-      await page.mouse.move(to, y, { steps: 30 });
-      await page.mouse.up();
-      mouseAt.set(page, { x: to, y });
-    };
-    await dragSeparator(x0, x0 + 80);
-    await expect.poll(sidebarWidth).toBeGreaterThan(width0 + 40);
+    await glideClick(page, 'main', header('creators'));
+    await expect(header('creators')).toHaveAttribute('aria-sort', 'ascending');
     await pause(2200);
-    await dragSeparator(x0 + 80, x0);
-    await expect.poll(sidebarWidth).toBeLessThan(width0 + 10);
+    await glideClick(page, 'main', header('creators'));
+    await expect(header('creators')).toHaveAttribute('aria-sort', 'descending');
+    await pause(2200);
+    await glideClick(page, 'main', header('year'));
+    await expect(header('year')).toHaveAttribute('aria-sort', 'ascending');
     await park(page, 'main');
-    await pause(1500);
+    await pause(2500);
 
-    // 10. ⌘K: with an empty query the first row has the cursor; 초성 ㅅㅈ finds 설정…, and ↩ runs it.
-    await chapter(`${key('CmdOrCtrl+K')} 키로 여는 명령 팔레트는 초성으로도 찾습니다: ㅅㅈ → 설정.`);
-    const paletteOpen = () => page.getByTestId('palette').isVisible();
-    const paletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
-    await expect(page.getByTestId('palette-input')).toBeFocused();
-    const paletteCursor = page.locator('[data-testid="palette-item"][data-focused]');
-    await expect(paletteCursor).toHaveAttribute('data-command-id', 'file.importManaged');
-    await afterKey(paletteAt);
-    for (const ch of ['ㅅ', 'ㅈ']) {
+    // 4. Columns: the header's native menu lists the columns (on macOS the real menu; the pick is scripted) and 크기 comes
+    //    in; then a column boundary dragged narrower (the cursor changes, the line stays: design-spec 2.1).
+    await chapter('열 머리를 오른쪽 클릭하면 보일 열을 고르고, 경계를 끌어 폭을 바꿉니다. (메뉴 고르기는 스크립트로 재현합니다)');
+    await pause(1000);
+    await pickFromNextPopup('크기');
+    await glideClick(page, 'main', header('title'), { button: 'right' });
+    await expect(header('size')).toBeVisible();
+    await park(page, 'main');
+    await pause(2000);
+    const creatorsWidth = await widthOf(header('creators'));
+    const resizer = (await page.locator('[data-testid="column-resizer"][data-col="creators"]').boundingBox())!;
+    const rx = Math.round(resizer.x + resizer.width / 2);
+    // Leftward: 연도 is the next column and has only 8 px above its minimum, so a drag to the right would barely move.
+    await dragAcross(rx, rx - 60, Math.round(resizer.y + resizer.height / 2));
+    await expect.poll(() => widthOf(header('creators'))).toBeLessThan(creatorsWidth - 30);
+    await park(page, 'main');
+    await pause(2200);
+
+    // 5. Several items: a click, a ⇧-click range, a ⌘-click one more; the item panel sums them up. A window too narrow
+    //    for the item panel beside the sidebar (the runner's own 1024 mode) shows it with ⌥⌘I first.
+    const roomy = (await inspectorWidth()) > 0;
+    await chapter(`${key('Shift')} 클릭으로 범위를, ${key('CmdOrCtrl')} 클릭으로 하나씩 더 고릅니다. 항목 패널이 고른 자료를 요약합니다.`);
+    if (!roomy) {
+      notes.push('the window has no room for the item panel beside the sidebar: ⌥⌘I shows it, and the narrow-window chapter is left out');
+      const shownAt = await press('i', ['option', 'command'], 'view.toggleInspector', async () => (await inspectorWidth()) > 0);
+      await expect.poll(inspectorWidth).toBeGreaterThan(0);
+      await afterKey(shownAt, 1000);
+    }
+    await glideClick(page, 'main', rows.nth(0));
+    await expect(page.getByTestId('inspector-head')).toBeVisible();
+    await pause(1500);
+    await glideClick(page, 'main', rows.nth(2), { modifiers: ['Shift'] });
+    await pause(1200);
+    await glideClick(page, 'main', rows.nth(5), { modifiers: [MOD] });
+    await expect(page.getByTestId('inspector-multi')).toBeVisible();
+    await park(page, 'main');
+    await pause(4000);
+
+    // 6. ⌘F: the quick search; 초성 ㅅㅍ finds 세포 (the match marked in the title), "1개 / 9개".
+    await chapter(`${key('CmdOrCtrl+F')} 키로 빠른 검색에 들어갑니다. 초성으로도 찾습니다: ㅅㅍ → 세포.`);
+    const findAt = await press('f', ['command'], 'library.find', searchFocused);
+    await expect(searchInput).toBeFocused();
+    await afterKey(findAt, 800);
+    for (const ch of ['ㅅ', 'ㅍ']) {
       await page.keyboard.insertText(ch);
-      await expect(page.getByTestId('palette-input')).toHaveValue(new RegExp(`${ch}$`));
+      await expect(searchInput).toHaveValue(new RegExp(`${ch}$`));
       await pause(1000);
     }
-    await expect(paletteCursor).toHaveAttribute('data-command-id', 'app.settings');
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByTestId('toolbar-count')).toHaveText(`1개 / ${all.length}개`);
     await pause(2000);
-    const settings = await expectWindow(app, 'settings', () => page.keyboard.press('Enter'));
-    settingsPages.push(settings);
-    await drawFor(settings);
-
-    // 11a. The settings window is a window of its own: the main window behind it is not main, so its chrome dims.
-    //      Each settings chapter is captioned in the main window unless the settings window covers its caption box
-    //      (then at the top of the settings window, clear of its 라이브러리 위치 card; mac1 m3).
-    await chapter('설정은 따로 뜨는 창이고, 뒤의 메인 창은 흐려집니다.', await captionFor(settings));
-    if (IS_MAC) await expect(html).toHaveAttribute('data-window-not-main', '');
-    else await settle('the main window is not main behind the settings window', async () => (await html.getAttribute('data-window-not-main')) !== null, 3000);
-    await park(settings, 'settings');
-    await pause(3500);
-
-    // 11b. Density and text size reach the main window at once. The settings window moves aside first, as a user may,
-    //      so the list behind it shows the change. Shortened (mac1 n2): density back in one click here; the text size
-    //      back with ⌘0 in the dark act, where the main window is key. The move is 12 eased steps over 250 ms on every
-    //      platform (T13R2-n2's fallback): AppKit no longer animated setBounds(…, true), a 396 px jump in one frame
-    //      (Mac run 2, critique n1).
-    await app.evaluate(async ({ BrowserWindow }) => {
-      const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
-      const main = all.find((w) => w.webContents.getURL().includes('window=main'))!;
-      const set = all.find((w) => w.webContents.getURL().includes('window=settings'))!;
-      const m = main.getBounds();
-      const b = set.getBounds();
-      const to = Math.max(m.x, m.x + m.width - b.width - 24);
-      const steps = 12;
-      for (let i = 1; i <= steps && !set.isDestroyed(); i++) {
-        const t = i / steps;
-        const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
-        set.setPosition(Math.round(b.x + (to - b.x) * eased), b.y);
-        if (i < steps) await new Promise((r) => setTimeout(r, 250 / steps));
-      }
-    });
-    await pause(400); // the move has ended; a moment to see where it went
-    await chapter('밀도와 글자 크기는 메인 창에 바로 반영됩니다.', await captionFor(settings));
-    await park(settings, 'settings');
-    await pause(800);
-    for (const [id, attr, value, look] of [
-      ['density-compact', 'data-density', 'compact', 2800],
-      ['font-size-15', 'data-font-size', '15', 2800],
-      ['density-regular', 'data-density', 'regular', 1200],
-    ] as const) {
-      await glideClick(settings, 'settings', settings.getByTestId(id));
-      await park(settings, 'settings'); // off the segment: its "pt" tooltip never opens
-      await expect(html).toHaveAttribute(attr, value);
-      await pause(look);
-    }
-
-    // 11c. The theme changes both windows together.
-    await chapter('테마는 두 창이 함께 바뀝니다.', await captionFor(settings, { clicksTiles: true }));
-    await glideClick(settings, 'settings', settings.getByTestId('theme-tile-dark'));
-    await park(settings, 'settings');
-    await expect.poll(() => isDark(page)).toBe(true);
-    await expect.poll(() => isDark(settings)).toBe(true);
-    await pause(3000);
-    await closeSettings(settings);
-    if (IS_MAC) await expect(html).not.toHaveAttribute('data-window-not-main', '');
+    await glideClick(page, 'main', rows.first());
+    await expect(page.getByTestId('inspector-head')).toContainText(READ_TITLE);
     await park(page, 'main');
     await pause(2500);
 
-    // 12. Dark: the same screens and information — the document (it reopens on page 2, its diagram), the list, the palette.
-    //     First ⌘0, the text size of 11b back to 기본 (the main window is key again).
-    await chapter('다크 모드에서도 같은 화면, 같은 정보입니다.');
-    const resetAt = await press('0', ['command'], 'view.textReset', async () => (await html.getAttribute('data-font-size')) === '13');
-    await expect(html).toHaveAttribute('data-font-size', '13');
-    await afterKey(resetAt, 1200);
-    await glideClick(page, 'main', page.locator(`[data-testid="open-item"][data-title="${READ_TITLE}"]`));
+    // 7. The item panel's form: the title and the publisher, saved; the table and the panel follow (libraryChanged).
+    await chapter('항목 패널에서 정보를 바로 고칩니다. 저장하면 표에도 반영됩니다.');
+    await pause(1000);
+    await glideClick(page, 'main', page.getByTestId('info-edit'));
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    await pause(1200);
+    await glideClick(page, 'main', field('title'));
+    await field('title').press('End');
+    await typeSlowly(' (4주차)');
+    await pause(800);
+    await glideClick(page, 'main', field('publisher'));
+    await typeSlowly('세포생물학 강의');
+    await pause(1000);
+    await glideClick(page, 'main', page.getByTestId('editor-save'));
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    await expect(rowByTitle(page, EDITED_TITLE)).toBeVisible();
+    await expect(page.locator('[data-testid="info-row"][data-field="publisher"]')).toContainText('세포생물학 강의');
     await park(page, 'main');
-    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await expect(indicator).not.toHaveText(pageOne ?? '');
-    await pause(3000);
-    const darkBackAt = await press('1', ['command'], 'nav.back', inLibrary);
-    await expect(page.getByTestId('library-table')).toBeVisible();
-    await afterKey(darkBackAt);
-    const darkPaletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
-    await expect(page.getByTestId('palette-input')).toBeFocused();
-    await afterKey(darkPaletteAt);
-    const escAt = await keyIn(page, 'Escape');
-    await expect(page.getByTestId('palette')).toBeHidden();
-    await afterKey(escAt);
+    await pause(3500);
 
-    // 13. macOS: another app in front — a Finder window on the material that was dragged in — and the Learn window turns
-    //     inactive; then back. Captioned once Learn is inactive (T13R2-m7).
+    // 8. ⌘K finds items too (the 자료 group above the commands); ↩ opens the first. The quick search is cleared first, so
+    //    the table shows everything again.
+    await glideClick(page, 'main', page.getByTestId('search-field-clear'));
+    await expect(rows).toHaveCount(all.length);
+    await chapter(`${key('CmdOrCtrl+K')} 팔레트에서도 자료를 찾아 바로 엽니다.`);
+    const paletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
+    await expect(page.getByTestId('palette-input')).toBeFocused();
+    await afterKey(paletteAt, 800);
+    for (const ch of 'bayes') {
+      await page.keyboard.insertText(ch);
+      await pause(220);
+    }
+    await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-item-id', ids[PALETTE_TITLE]!);
+    await pause(2500);
+    const openedAt = await keyIn(page, 'Enter');
+    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await afterKey(openedAt);
+
+    // 9. ⌘1 back: the table as it was left — its sort and its columns.
+    await chapter(`${key('CmdOrCtrl+1')} 키로 라이브러리로 돌아갑니다. 정렬과 열은 그대로입니다.`);
+    const backAt = await press('1', ['command'], 'nav.back', inLibrary);
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(header('year')).toHaveAttribute('aria-sort', 'ascending');
+    await expect(header('size')).toBeVisible();
+    await afterKey(backAt, 3000);
+
+    // 10. 사본 내보내기…: a right-click selects the row first; the item menu (real on macOS, the pick scripted) exports a
+    //     copy through the save panel (skipped, and said); the toast offers Finder에서 보기, the pointer rests beside its link, not on it.
+    const exportDir = path.join(work, '내보낸 사본');
+    fs.rmSync(exportDir, { recursive: true, force: true });
+    fs.mkdirSync(exportDir, { recursive: true });
+    const exportFile = path.join(exportDir, `${PALETTE_TITLE}.pdf`);
+    await stubSaveDialog(app, exportFile);
+    if (!IS_MAC) await stubShell(app); // no file manager on Linux: the reveal is only recorded
+    await chapter(`‘${label('item.exportCopy')}’로 자료의 사본을 원하는 곳에 저장합니다. (메뉴 고르기와 저장 창은 스크립트로 재현합니다)`);
+    await pause(1000);
+    await pickFromNextPopup(label('item.exportCopy'));
+    await glideClick(page, 'main', rowByTitle(page, PALETTE_TITLE), { button: 'right' });
+    await expect(rowByTitle(page, PALETTE_TITLE)).toHaveAttribute('aria-selected', 'true');
+    await expect.poll(() => fs.existsSync(exportFile)).toBe(true);
+    const reveal = page.locator('[data-pane="toasts"]').getByRole('button', { name: /에서 보기$/ });
+    await expect(reveal).toBeVisible();
+    // The pointer waits on the toast's left edge (the toast stays while it is pointed at) and not on the link, whose text it
+    // would cover until the click (design critique).
+    const toastBox = (await reveal.locator('xpath=ancestor::*[contains(@class,"toast")][1]').boundingBox())!;
+    await glide(page, 'main', toastBox.x + 10, toastBox.y + toastBox.height / 2);
+    await pause(2500);
+
+    // 11. macOS: Finder에서 보기 brings Finder to the front on the exported copy, and the Learn window turns inactive; then
+    //     back. Captioned before the click (the pointer has not touched the link until then); dropped with a note if it fails.
     if (IS_MAC) {
-      const title = '다른 앱이 앞에 오면 Learn 창은 비활성으로 흐려집니다.';
-      let finderOpened = false;
+      const title = `‘${label('item.showInFolder')}’를 누르면 Finder가 앞에 오고, Learn 창은 비활성으로 흐려집니다.`;
+      let finderInFront = false;
       await macStep(
         'Finder in front',
         async () => {
+          // The chapter and its caption start before the click, so the action is never ahead of what the caption says
+          // (the window turned inactive 1 s before its caption). A failure below drops the chapter again.
+          await chapter(title, page, 7500);
+          await pause(1000);
+          await glideClick(page, 'main', reveal);
+          await expect.poll(() => frontmostProcess().name, { timeout: 5000 }).toBe('Finder');
+          finderInFront = true;
+          await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
           const b = await (await win()).evaluate((w) => w.getBounds());
           const d = shownDisplay.bounds;
-          // 680 × 380, list view: every file, its size and the sidebar readable, no horizontal scroll bar (mac1 m5;
-          // 600 was cramped, Mac run 2 critique n4).
+          // 680 × 380, list view: the files, their sizes and the sidebar readable, no horizontal scroll bar.
           const left = Math.max(d.x + 20, Math.min(b.x + b.width * 0.45, d.x + d.width - FINDER_W - 20));
           const top = Math.max(d.y + 40, Math.min(b.y + b.height * 0.3, d.y + d.height - 400));
-          openFinderWindow(materialDir, [left, top, left + FINDER_W, top + 380]);
-          finderOpened = true;
-          await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5000 });
-          await chapter(title);
+          arrangeFinderWindow([left, top, left + FINDER_W, top + 380]);
           if (cursor !== 'synthetic') {
-            // The arrow rests on the desktop, off both windows (not on the Finder window's path or status bar).
+            // The arrow rests on the desktop, off both windows.
             await pointerTo('elsewhere');
             await glideCursor(desktopSpot(d, b, { x: left, y: top, width: FINDER_W, height: 380 }), { warpOnly: cursor === 'warp' });
           }
           await pause(4000);
           closeFinderWindow();
-          finderOpened = false;
+          finderInFront = false;
           await bringAppToFront(app);
           await expect(html).not.toHaveAttribute('data-window-inactive', '');
           await park(page, 'main');
@@ -937,7 +880,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         },
         async () => {
           await dropChapter(title);
-          if (finderOpened) {
+          if (finderInFront) {
             try {
               closeFinderWindow();
             } catch {
@@ -948,21 +891,81 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           await park(page, 'main');
         },
       );
+    } else await park(page, 'main');
+
+    // 12. A narrow window: the item panel folds first, so the table keeps its room (CONTENT_MIN); wide again, it is back.
+    //     The window's minimum (960) folds only the item panel: the sidebar's fold (200 % zoom) is the E2E's.
+    if (roomy) {
+      await chapter('창이 좁아지면 표 자리를 지키려고 항목 패널이 먼저 접힙니다. 넓히면 다시 나옵니다.');
+      await pause(1500);
+      const wide = await (await win()).evaluate((w) => w.getBounds());
+      /** The main window's width eased from `from` to `to` in 16 steps over 600 ms (AppKit does not animate setBounds). */
+      const resize = (from: number, to: number) =>
+        app.evaluate(
+          async ({ BrowserWindow }, { from, to }) => {
+            const main = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=main'))!;
+            const b = main.getBounds();
+            const steps = 16;
+            for (let i = 1; i <= steps; i++) {
+              const t = i / steps;
+              const eased = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+              main.setBounds({ ...b, width: Math.round(from + (to - from) * eased) });
+              if (i < steps) await new Promise((r) => setTimeout(r, 600 / steps));
+            }
+          },
+          { from, to },
+        );
+      await resize(wide.width, layout.windowMinWidth);
+      await expect.poll(inspectorWidth).toBe(0);
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+      await pause(3500);
+      await resize(layout.windowMinWidth, wide.width);
+      await (await win()).evaluate((w, b) => w.setBounds(b), wide);
+      await expect.poll(inspectorWidth).toBeGreaterThan(0);
+      await park(page, 'main');
+      await pause(2000);
     }
 
-    // 14. ⌘/: the shortcut sheet as it is (F6 / ⇧F6 under 앱); ↩ closes it. The caption is read before the sheet comes
-    //     (at 1024 × 743 the sheet covers the window's middle, T13R2-m6).
-    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('F6')} / ${key('Shift+F6')}도 있습니다.`);
+    // 13. ⌘, the settings window; a theme tile changes both windows in the same moment (spec 8 row 2). Captioned where
+    //     the settings window leaves room, under its tiles otherwise (demo-geometry.ts).
+    const settings = await expectWindow(app, 'settings', () => press(',', ['command'], 'app.settings', windowUp('settings')));
+    settingsPages.push(settings);
+    await drawFor(settings);
+    await chapter(`${key('CmdOrCtrl+,')} 설정 창에서 테마를 바꾸면 두 창이 같은 순간에 바뀝니다.`, await captionFor(settings, { clicksTiles: true }));
+    await park(settings, 'settings');
+    await pause(2500);
+    await glideClick(settings, 'settings', settings.getByTestId('theme-tile-dark'));
+    await park(settings, 'settings');
+    await expect.poll(() => isDark(page)).toBe(true);
+    await expect.poll(() => isDark(settings)).toBe(true);
+    await pause(3000);
+    await closeSettings(settings);
+    await park(page, 'main');
+    await pause(2000);
+
+    // 14. Dark: the same screens and information — one item in the item panel, then two.
+    await chapter('다크 모드에서도 같은 화면, 같은 정보입니다.');
+    await pause(1000);
+    await glideClick(page, 'main', rowByTitle(page, EDITED_TITLE));
+    await expect(page.getByTestId('inspector-head')).toContainText(EDITED_TITLE);
+    await pause(2500);
+    await glideClick(page, 'main', rowByTitle(page, '광합성 명반응과 암반응'), { modifiers: [MOD] });
+    await expect(page.getByTestId('inspector-multi')).toBeVisible();
+    await park(page, 'main');
+    await pause(3000);
+
+    // 15. ⌘/: the shortcut sheet, now with the table's shortcuts (the 자료 group); ↩ closes it. The caption is read
+    //     before the sheet comes (a sheet covers the window's middle).
+    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('CmdOrCtrl+F')} 빠른 검색과 ${key('Shift+CmdOrCtrl+R')} ‘${label('item.showInFolder')}’도 들어 있습니다.`, page, 9000); // read before the sheet (2.5 s) and kept up while it shows (5 s), until chapter 16 replaces it
     // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
     await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
     await pause(2500);
-    const sheetUp = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=sheet')));
-    const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts', sheetUp));
-    await expect(sheet.getByTestId('shortcut-row').filter({ hasText: 'F6' }).first()).toBeVisible();
+    const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts', windowUp('sheet')));
+    await expect(sheet.getByTestId('shortcut-row').filter({ hasText: label('item.showInFolder') }).first()).toBeVisible();
     await pause(5000);
     await closeSheet(sheet, 'Enter');
 
-    // 15. The end: the populated library in dark, held. The pointer parks first, so it never crosses the final caption.
+    // 16. The end: the library in dark, held. The pointer parks first, so it never crosses the final caption.
     await park(page, 'main');
     await chapter('Learn 둘러보기를 마칩니다.');
     await pause(3000);
@@ -995,6 +998,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(libraryDir, { recursive: true, force: true });
+    fs.rmSync(path.join(work, '내보낸 사본'), { recursive: true, force: true }); // chapter 10's exported copy
     fs.rmSync(path.join(work, 'app'), { recursive: true, force: true }); // the macOS app copy (re-review minor 5)
     // macOS: the recording began when screencapture's first frame did, RECORD_SECONDS before it exited (T13-m9); Linux:
     // when ffmpeg had opened the screen. Negative: the recording started before the chapters' zero (the pre-roll).
@@ -1006,8 +1010,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    const txt = outFile('m3-demo.chapters.txt');
-    const json = outFile('m3-demo.chapters.json');
+    const txt = outFile('m4-demo.chapters.raw.txt');
+    const json = outFile('m4-demo.chapters.json');
     fs.writeFileSync(txt.abs, chapters.map((c) => `${mmss(inVideo(c))} ${c.title}`).join('\n') + '\n');
     fs.writeFileSync(
       json.abs,
@@ -1020,7 +1024,15 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           ...(loss && entry?.file ? { partialRecording: entry.file } : {}),
           recordSeconds: IS_MAC ? RECORD_SECONDS : null,
           demoSeconds,
-          /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the video. */
+          /** Which clock each field is on, so no list is read against the wrong video. */
+          timelines: {
+            'chapters[].ms': "milliseconds on the demo script's clock (zero = the first chapter's start)",
+            offset: "seconds from that zero to the raw recording's first frame",
+            demoSeconds: "seconds on the script's clock",
+            'm4-demo.chapters.raw.txt': 'the raw recording (m4-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
+            'm4-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
+          },
+          /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the raw video. */
           offset,
           recordingExitSeconds: recordingExitMs !== null ? Math.round((recordingExitMs - started) / 100) / 10 : null,
           truncated: IS_MAC && entry?.file ? demoSeconds > RECORD_SECONDS : false,
@@ -1040,8 +1052,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         2,
       )}\n`,
     );
-    record({ file: txt.rel, kind: 'data', description: 'M3 demo chapter list (m:ss in the recording)' });
-    record({ file: json.rel, kind: 'data', description: 'M3 demo chapters, offset, input, cursor, screen, display switch, notes' });
+    record({ file: txt.rel, kind: 'data', description: 'M4 demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
+    record({ file: json.rel, kind: 'data', description: 'M4 demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
@@ -1050,7 +1062,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   return { lost: null };
 }
 
-test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
+test('M4 demo recording with chapters', { tag: '@demo' }, async () => {
   test.setTimeout(DEMO_BUDGET_MS + 60_000);
   const began = Date.now();
   const history: string[] = [];
@@ -1065,7 +1077,7 @@ test('M3 demo recording with chapters', { tag: '@demo' }, async () => {
     }
   }
   // Every attempt lost its recording: the last attempt's chapters.json carries the history; the run reports it.
-  const json = outFile('m3-demo.chapters.json').abs;
+  const json = outFile('m4-demo.chapters.json').abs;
   try {
     const written = JSON.parse(fs.readFileSync(json, 'utf8')) as { notes: string[] };
     fs.writeFileSync(json, `${JSON.stringify({ ...written, notes: [...history, ...written.notes.filter((n) => !history.includes(n))] }, null, 2)}\n`);

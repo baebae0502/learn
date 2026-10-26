@@ -21,6 +21,8 @@ export interface LibraryItem {
   updatedAt: string;
   creators: string[];
   year: number | null;
+  /** From the metadata (quick search's short fields, spec 4.2); null when there is none. */
+  publisher: string | null;
   tagIds: string[];
   progress: number | null;
   openedAt: string | null;
@@ -41,6 +43,16 @@ export interface Tag {
   color: TagColorId | null;
   position: number | null;
   itemCount: number;
+}
+
+/**
+ * The long metadata fields quick search reads (spec 4.2: 초록, 메모 = `extra`), fetched once when the first query is
+ * typed rather than with every list read (10,000 abstracts would not fit the list's time budget).
+ */
+export interface SearchText {
+  id: string;
+  abstract: string | null;
+  extra: string | null;
 }
 
 export interface ItemDetail {

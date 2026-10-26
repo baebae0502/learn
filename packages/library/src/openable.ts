@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { constants as fsConstants } from 'node:fs';
+import { constants as fsConstants, realpath as realpathCb } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import type { LibraryLayout } from './layout';
 
 /**
@@ -71,12 +72,21 @@ export interface OpenableAsset {
   storageMode: 'managed' | 'linked';
 }
 
-/** Where the named copy of an asset lives (null: a type with no known extension, nothing to name). */
-export function namedCopyPath(layout: LibraryLayout, asset: OpenableAsset, title: string): string | null {
+/**
+ * The file name the OS sees for an asset under this title: the named copy's (namedCopyPath) and the default in
+ * 사본 내보내기's save panel — the title made safe (the original name's base when the title is empty) with the type's
+ * extension. null: a type with no known extension.
+ */
+export function openableName(asset: Pick<OpenableAsset, 'mime' | 'originalName'>, title: string): string | null {
   const ext = openExtension(asset.mime, asset.originalName);
   if (!ext) return null;
-  const base = safeBaseName(title, safeBaseName(path.parse(asset.originalName).name));
-  return path.join(layout.derivedDir, 'open', asset.id, `${base}.${ext}`);
+  return `${safeBaseName(title, safeBaseName(path.parse(asset.originalName).name))}.${ext}`;
+}
+
+/** Where the named copy of an asset lives (null: a type with no known extension, nothing to name). */
+export function namedCopyPath(layout: LibraryLayout, asset: OpenableAsset, title: string): string | null {
+  const name = openableName(asset, title);
+  return name === null ? null : path.join(layout.derivedDir, 'open', asset.id, name);
 }
 
 /** The mode of a named copy: read-only for everyone. */
@@ -250,4 +260,70 @@ export async function openableFile(layout: LibraryLayout, asset: OpenableAsset, 
   const { size } = await fs.stat(real);
   await ensureNamedCopy(real, dst, size);
   return dst;
+}
+
+/** A file name may take 255 bytes on every file system we write to; an export's temporary name stays within it. */
+export const EXPORT_TEMP_BYTES = 255;
+
+/**
+ * `.<name>.learn-export-<uuid>.part`: hidden (leading dot) and in the chosen folder, so the rename that finishes the
+ * export stays on one volume and is atomic. A long chosen name is cut at a character to keep within EXPORT_TEMP_BYTES.
+ */
+export function exportTempName(fileName: string, id: string = randomUUID()): string {
+  const tail = `.learn-export-${id}.part`;
+  const room = EXPORT_TEMP_BYTES - 1 - Buffer.byteLength(tail, 'utf8');
+  const chars = Array.from(fileName.normalize('NFC'));
+  while (Buffer.byteLength(chars.join(''), 'utf8') > room) chars.pop();
+  return `.${chars.join('')}${tail}`;
+}
+
+/** The real path with the case the file system reports (fs/promises' realpath keeps the case it was given). */
+const realpathNative = promisify(realpathCb.native);
+
+/** A relative path that stays under its base: a folder named `..notes` is inside, `..` and `../x` are not. */
+const isInside = (rel: string): boolean => rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+
+/**
+ * Whether a chosen export path may not be written: it is the source file itself (the rename would replace the stored
+ * asset, or a linked original, with itself half-copied away) or lies under the library root (managed copies, named
+ * copies and anything else Learn keeps there). Paths are compared as the file system spells them (real path of the
+ * folder, native so a case-insensitive volume reports its own case), and a file already there is compared by identity too.
+ * A folder that does not exist throws its ENOENT: the caller reports it like any other failed write.
+ */
+export async function exportDestinationRefusal(src: string, dst: string, libraryRoot: string): Promise<'source' | 'library' | null> {
+  const parent = await realpathNative(path.dirname(path.resolve(dst)));
+  const target = path.join(parent, path.basename(dst));
+  const [realSrc, root, there, source] = await Promise.all([
+    realpathNative(src),
+    realpathNative(libraryRoot).catch(() => path.resolve(libraryRoot)),
+    fs.stat(target).catch(() => null),
+    fs.stat(src),
+  ]);
+  if (target === realSrc || (there !== null && there.dev === source.dev && there.ino === source.ino && there.ino !== 0)) return 'source';
+  const rel = path.relative(root, target);
+  if (rel === '' || isInside(rel)) return 'library';
+  // A symlink standing at the name is replaced by the rename, not followed — but one that leads into the library is refused all the same.
+  const resolved = await realpathNative(target).catch(() => null);
+  if (resolved !== null) {
+    const via = path.relative(root, resolved);
+    if (isInside(via)) return 'library';
+  }
+  return null;
+}
+
+/**
+ * 사본 내보내기 (spec §7): copies `src` to `dst` through a temporary name beside it (copy-on-write where the volume has
+ * it), then renames it over `dst`. The chosen path only ever holds the whole file, and a file already there (the save
+ * panel asked before replacing it) is replaced in one step. Any failure removes the temporary file and is rethrown.
+ * The copy keeps the source's mode: the user's file, not a locked named copy.
+ */
+export async function exportFile(src: string, dst: string): Promise<void> {
+  const tmp = path.join(path.dirname(dst), exportTempName(path.basename(dst)));
+  try {
+    await fs.copyFile(src, tmp, fsConstants.COPYFILE_FICLONE);
+    await fs.rename(tmp, dst);
+  } catch (e) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw e;
+  }
 }

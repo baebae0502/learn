@@ -75,13 +75,15 @@ export interface IconButtonProps extends Omit<Base, 'aria-label'> {
   force?: ForcedState[];
   /** Why the button can be disabled here: while `isDisabled` the tooltip shows it after the name, instead of the shortcut (I1). */
   disabledReason?: string;
+  /** Show the tooltip now, whatever the pointer (with a label that confirms what just happened). */
+  tooltipOpen?: boolean;
 }
 
-export function IconButton({ icon, label, accelerator, isOn, size = 'regular', testId, force, disabledReason, ...rest }: IconButtonProps) {
+export function IconButton({ icon, label, accelerator, isOn, size = 'regular', testId, force, disabledReason, tooltipOpen, ...rest }: IconButtonProps) {
   const reason = useDisabledReason(rest.isDisabled, disabledReason, rest['aria-describedby']);
   return (
     <>
-      <Tooltip label={label} accelerator={accelerator} reason={reason.soft ? disabledReason : undefined}>
+      <Tooltip label={label} accelerator={accelerator} reason={reason.soft ? disabledReason : undefined} forceOpen={tooltipOpen}>
         <AriaButton
           {...withoutPresses(rest, reason.soft)}
           {...reason.controlProps}

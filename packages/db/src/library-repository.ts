@@ -1,6 +1,6 @@
 import {
   LearnError, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
-  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type StorageMode,
+  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
 } from '@learn/domain';
 import type { Db } from './connection';
 import { CollectionsRepository } from './collections-repository';
@@ -77,7 +77,7 @@ const toAsset = (r: AssetDbRow): AssetRow => ({
 const toItem = (r: ItemDbRow, tagIds: string[], meta: ItemMetadata = parseItemMetadata(r.metadata_json)): LibraryItem => ({
   id: r.id, title: r.title, type: r.type, mime: r.mime, size: r.size, storageMode: r.storage_mode,
   availability: r.availability, assetId: r.asset_id, revisionId: r.revision_id, originalName: r.original_name, createdAt: r.created_at,
-  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), tagIds, progress: r.progress, openedAt: r.opened_at,
+  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), publisher: meta.publisher || null, tagIds, progress: r.progress, openedAt: r.opened_at,
 });
 
 const itemNotFound = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
@@ -143,11 +143,61 @@ export class LibraryRepository {
     })();
   }
 
+  /**
+   * E2E seeding only (main's test hook under LEARN_E2E): items that share one existing asset and its revision, all in
+   * one transaction. Imports never come here (insertImported). Each row's revision must belong to its asset, and its
+   * metadata must be schema v1, as updateMetadata would store it.
+   */
+  insertItemsForAsset(
+    rows: ReadonlyArray<{ id: string; type: ItemType; title: string; createdAt: string; metadataJson: string; assetId: string; revisionId: string }>,
+  ): void {
+    this.db.transaction(() => {
+      const insertItem = this.db.prepare(`INSERT INTO items (id, type, title, metadata_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`);
+      const link = this.db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'original')`);
+      const revisionOf = this.db.prepare('SELECT 1 FROM source_revisions WHERE id = ? AND asset_id = ?');
+      const checked = new Set<string>();
+      for (const r of rows) {
+        const pair = `${r.revisionId}/${r.assetId}`;
+        if (!checked.has(pair)) {
+          if (!revisionOf.get(r.revisionId, r.assetId)) throw new Error(`insertItemsForAsset: revision ${r.revisionId} is not a revision of asset ${r.assetId}`);
+          checked.add(pair);
+        }
+        const meta = itemMetadataSchema.safeParse(JSON.parse(r.metadataJson));
+        if (!meta.success) throw new Error('insertItemsForAsset: metadata is not schema v1');
+        insertItem.run(r.id, r.type, r.title, JSON.stringify(meta.data), r.createdAt, r.createdAt);
+        link.run(r.id, r.assetId);
+      }
+    })();
+  }
+
   /** Non-trashed items, newest first. Tags come from one pairs query merged in memory (no per-item queries). */
   listItems(): LibraryItem[] {
     const rows = this.db.prepare(`${ITEM_SELECT} ORDER BY i.created_at DESC, i.rowid DESC`).all() as ItemDbRow[];
     const tags = this.tagIdsByItem(false);
     return rows.map((r) => toItem(r, tags.get(r.id) ?? []));
+  }
+
+  /**
+   * Quick search's long fields (spec 4.2): abstract and memo of the live items that have either. SQLite drops the rest
+   * first; `json_valid` comes first in a CASE because json_extract throws on malformed JSON. The schema still decides
+   * (a stored value that no longer parses reads as empty, as everywhere else).
+   */
+  searchTexts(): SearchText[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, metadata_json FROM items
+         WHERE deleted_at IS NULL
+           AND CASE WHEN json_valid(metadata_json)
+                    THEN coalesce(json_extract(metadata_json, '$.abstract'), '') || coalesce(json_extract(metadata_json, '$.extra'), '')
+                    ELSE '' END <> ''`,
+      )
+      .all() as Array<{ id: string; metadata_json: string }>;
+    return rows.flatMap((r) => {
+      const meta = parseItemMetadata(r.metadata_json);
+      const abstract = meta.abstract || null;
+      const extra = meta.extra || null;
+      return abstract || extra ? [{ id: r.id, abstract, extra }] : [];
+    });
   }
 
   /** Non-trashed item, or undefined. */

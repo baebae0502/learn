@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow } from 'electron';
 import { EventChannels } from '@learn/domain';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
+import { windowKindOf } from './window-kinds';
 
 /** The page's height changes, as main's ResizeObserver call would report them (one pending call at a time). */
 let heightChanged: ((height: number) => void) | null = null;
@@ -12,6 +13,7 @@ let fontsLoaded: Promise<boolean> = Promise.resolve(true);
 /** A BrowserWindow stand-in: records what the settings window does with it. The page is 412 px tall. */
 class FakeWindow extends EventEmitter {
   static all: FakeWindow[] = [];
+  static nextId = 500;
   destroyed = false;
   shown = false;
   focused = 0;
@@ -20,11 +22,23 @@ class FakeWindow extends EventEmitter {
   animated = false;
   position: [number, number] | null = null;
   url = '';
+  /** The page's own events (render-process-gone, did-fail-load). */
+  readonly pageEvents = new EventEmitter();
+  crashed = false;
+  /** Set by a test: what the next script run does instead of answering (a renderer that died mid-call). */
+  failScripts: Error | null = null;
   readonly webContents = {
+    id: FakeWindow.nextId++,
+    once: vi.fn(),
+    on: (event: string, fn: (...args: unknown[]) => void) => void this.pageEvents.on(event, fn),
+    isCrashed: () => this.crashed,
+    setBackgroundThrottling: vi.fn(),
     isDestroyed: () => this.destroyed,
     send: vi.fn(),
     executeJavaScript: (script: string) =>
-      script.includes('ResizeObserver')
+      this.failScripts
+        ? Promise.reject(this.failScripts)
+        : script.includes('ResizeObserver')
         ? new Promise<number>((resolve) => void (heightChanged = resolve))
         : script.includes('document.fonts')
           ? fontsLoaded
@@ -45,6 +59,9 @@ class FakeWindow extends EventEmitter {
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   /** The frame: the content plus a 28 pt title bar. */
   getBounds = () => ({ x: this.position?.[0] ?? 0, y: this.position?.[1] ?? 0, width: this.contentSize[0], height: this.contentSize[1] + 28 });
+  /** The colours set after creation, with whether the window was already on screen. */
+  backgrounds: { colour: string; shownThen: boolean }[] = [];
+  setBackgroundColor = (colour: string) => void this.backgrounds.push({ colour, shownThen: this.shown });
   show = () => void (this.shown = true);
   hide = () => {
     this.shown = false;
@@ -55,6 +72,11 @@ class FakeWindow extends EventEmitter {
   events: string[] = [];
   focus = () => void this.focused++;
   loadURL = async (url: string) => void (this.url = url);
+  destroy = () => {
+    this.events.push('destroyed');
+    this.destroyed = true;
+    this.emit('closed');
+  };
   close = () => {
     this.emit('close', { preventDefault: () => {} });
     this.events.push('torn down');
@@ -65,7 +87,8 @@ class FakeWindow extends EventEmitter {
 
 /** The display every frame lands on (tests change it). */
 const display = { workArea: { x: 0, y: 25, width: 1920, height: 1150 } };
-vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: true }, screen: { getDisplayMatching: () => display } }));
+const nativeTheme = { shouldUseDarkColors: true };
+vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme, screen: { getDisplayMatching: () => display } }));
 const { SETTINGS_WIDTH, createSettingsWindow, settingsPosition } = await import('./settings-window');
 
 const MAIN = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 40, width: 1440, height: 900 }) } as unknown as BrowserWindow;
@@ -77,10 +100,16 @@ async function ready(w: FakeWindow): Promise<void> {
 
 beforeEach(() => {
   FakeWindow.all = [];
+  nativeTheme.shouldUseDarkColors = true;
   fontsLoaded = Promise.resolve(true);
 });
 
 describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
+  it('is registered as the settings window, so IPC answers it as one (P-5)', () => {
+    const w = host().open() as unknown as FakeWindow;
+    expect(windowKindOf(w.webContents.id)).toBe('settings');
+  });
+
   it('is one standard window, 600 wide, not resizable, in the theme colour, hidden until sized', () => {
     const settings = host();
     const w = settings.open() as unknown as FakeWindow;
@@ -175,7 +204,7 @@ describe('the ⌘, settings window (design-spec 6 설정 창)', () => {
     const w = host().open() as unknown as FakeWindow;
     w.focused = 1;
     w.emit('focus');
-    expect(w.webContents.send).toHaveBeenCalledWith(EventChannels.windowState, { fullscreen: false, focused: true, sheetOpen: false });
+    expect(w.webContents.send).toHaveBeenCalledWith(EventChannels.windowState, { fullscreen: false, focused: true, sheetOpen: false, main: true });
   });
 });
 
@@ -224,5 +253,220 @@ describe('the settings window measures twice, the second time briefly (re-review
     expect(asked[0]).toContain('> 5000');
     expect(asked[1]).toContain('> 500)');
     expect(w.contentSize).toEqual([SETTINGS_WIDTH, 412]);
+  });
+});
+
+describe('the settings window prepared hidden once the main window is idle (spec 8, P-4)', () => {
+  it('prepare makes it hidden — loaded, measured, sized — and neither shows, focuses nor places it; once', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(w.options).toMatchObject({ width: 600, show: false, title: '설정' });
+    await ready(w);
+    expect(w.contentSize).toEqual([600, 412]);
+    expect(w.shown).toBe(false);
+    expect(w.focused).toBe(0);
+    expect(w.position).toBeNull();
+    expect(settings.current()).toBe(w as unknown as BrowserWindow);
+    settings.prepare();
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('⌘, then shows that same window over where the main window is now, and focuses it', async () => {
+    let bounds = { x: 100, y: 40, width: 1440, height: 900 };
+    const main = { isDestroyed: () => false, getBounds: () => bounds } as unknown as BrowserWindow;
+    const settings = host(main);
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    bounds = { x: 300, y: 200, width: 1200, height: 800 }; // moved since it was measured
+    expect(settings.open()).toBe(w as unknown as BrowserWindow);
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(w.shown).toBe(true);
+    expect(w.focused).toBe(1);
+    expect(w.position).toEqual([300 + (1200 - 600) / 2, 200 + 96]);
+  });
+
+  it('a theme change while it was hidden: its first shown frame has the current theme\'s colour', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    nativeTheme.shouldUseDarkColors = false; // changed while hidden; the theme follower skips a hidden window
+    settings.open();
+    expect(w.backgrounds).toEqual([{ colour: windowBackground.light, shownThen: false }]);
+  });
+
+  it('⌘, while it is still being measured shows it, sized and placed, once measured', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(settings.open()).toBe(w as unknown as BrowserWindow);
+    expect(w.shown).toBe(false);
+    await ready(w);
+    expect(w.shown).toBe(true);
+    expect(w.contentSize).toEqual([600, 412]);
+    expect(w.position).toEqual([100 + (1440 - 600) / 2, 40 + 96]);
+  });
+
+  it('discardPrepared closes a window never shown — also one being measured — and leaves one asked for or shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const measuring = FakeWindow.all[0]!;
+    settings.discardPrepared();
+    expect(measuring.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    settings.prepare();
+    const prepared = FakeWindow.all[1]!;
+    await ready(prepared);
+    settings.discardPrepared();
+    expect(prepared.destroyed).toBe(true);
+    const asked = settings.open() as unknown as FakeWindow; // a ⌘, while it is measured: the user wants it
+    settings.discardPrepared();
+    expect(asked.destroyed).toBe(false);
+    await ready(asked);
+    settings.discardPrepared();
+    expect(asked.destroyed).toBe(false);
+    expect(asked.shown).toBe(true);
+  });
+
+  it('follows its content height from the moment it is sized, hidden or shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    heightChanged!(440);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w.contentSize).toEqual([600, 440]);
+  });
+});
+
+describe('a prepared window whose page died is replaced, and it sleeps until shown', () => {
+  const gone = { reason: 'crashed', exitCode: 11 };
+  const failed = (w: FakeWindow, mainFrame = true, code = -105) => w.pageEvents.emit('did-fail-load', {}, code, 'ERR', 'learn://app/index.html', mainFrame);
+
+  it('a renderer that died while the window was hidden: it is destroyed and forgotten, the next ⌘, makes a new one', async () => {
+    const settings = host();
+    settings.prepare();
+    const dead = FakeWindow.all[0]!;
+    await ready(dead);
+    dead.pageEvents.emit('render-process-gone', {}, gone);
+    expect(dead.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    const fresh = settings.open() as unknown as FakeWindow;
+    expect(fresh).not.toBe(dead);
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+    expect(dead.shown).toBe(false);
+  });
+
+  it('a renderer that died mid-measure with a ⌘, waiting: a fresh window is shown, sized, never the dead one', async () => {
+    const settings = host();
+    const dead = settings.open() as unknown as FakeWindow;
+    dead.emit('ready-to-show');
+    dead.failScripts = new Error('Render frame was disposed'); // the measure rejects
+    dead.crashed = true;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(dead.shown).toBe(false);
+    expect(dead.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(2);
+    const fresh = FakeWindow.all[1]!;
+    expect(settings.current()).toBe(fresh as unknown as BrowserWindow);
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+    expect(fresh.contentSize).toEqual([600, 412]);
+  });
+
+  it('the crash event first, then the measure rejecting: still one fresh window, the dead one never shown', async () => {
+    const settings = host();
+    const dead = settings.open() as unknown as FakeWindow;
+    dead.emit('ready-to-show');
+    dead.pageEvents.emit('render-process-gone', {}, gone);
+    dead.failScripts = new Error('gone');
+    await new Promise((r) => setTimeout(r, 5));
+    expect(dead.shown).toBe(false);
+    expect(FakeWindow.all).toHaveLength(2);
+  });
+
+  it('a hidden window nobody asked for, dead mid-measure: nothing is shown and the next ⌘, makes a new one', async () => {
+    const settings = host();
+    settings.prepare();
+    const dead = FakeWindow.all[0]!;
+    dead.emit('ready-to-show');
+    dead.failScripts = new Error('gone');
+    dead.crashed = true;
+    await new Promise((r) => setTimeout(r, 5));
+    expect(dead.shown).toBe(false);
+    expect(settings.current()).toBeNull();
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(settings.open()).not.toBe(dead as unknown as BrowserWindow);
+  });
+
+  it('a page that fails to load (main frame) is replaced the same way; a sub-frame or an aborted load is not', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    failed(w, false);
+    failed(w, true, -3);
+    expect(w.destroyed).toBe(false);
+    failed(w);
+    expect(w.destroyed).toBe(true);
+    expect(settings.current()).toBeNull();
+    const asked = settings.open() as unknown as FakeWindow;
+    failed(asked); // a ⌘, was waiting: one replacement is shown
+    expect(asked.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(3);
+    const fresh = FakeWindow.all[2]!;
+    await ready(fresh);
+    expect(fresh.shown).toBe(true);
+  });
+
+  it('a replacement that fails too is not replaced again (no loop)', () => {
+    const settings = host();
+    const first = settings.open() as unknown as FakeWindow;
+    failed(first);
+    const second = FakeWindow.all[1]!;
+    failed(second);
+    expect(second.destroyed).toBe(true);
+    expect(FakeWindow.all).toHaveLength(2);
+    expect(settings.current()).toBeNull();
+  });
+
+  it('a visible settings window whose renderer dies is left as it is', async () => {
+    const settings = host();
+    const w = settings.open() as unknown as FakeWindow;
+    await ready(w);
+    w.pageEvents.emit('render-process-gone', {}, gone);
+    expect(w.destroyed).toBe(false);
+    expect(settings.current()).toBe(w as unknown as BrowserWindow);
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('is throttled while it is only prepared, and unthrottled when shown', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    expect(w.options['webPreferences']).toMatchObject({ backgroundThrottling: false }); // measuring needs its timers at full speed
+    await ready(w);
+    expect(w.webContents.setBackgroundThrottling).toHaveBeenLastCalledWith(true);
+    settings.open();
+    expect(w.webContents.setBackgroundThrottling).toHaveBeenLastCalledWith(false);
+    expect(w.shown).toBe(true);
+  });
+
+  it('a window asked for while it was measured is never throttled', async () => {
+    const w = host().open() as unknown as FakeWindow;
+    await ready(w);
+    expect(w.webContents.setBackgroundThrottling).not.toHaveBeenCalledWith(true);
+  });
+
+  it('a window never shown is destroyed outright when discarded, not closed', async () => {
+    const settings = host();
+    settings.prepare();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    settings.discardPrepared();
+    expect(w.events).toEqual(['destroyed']);
+    expect(settings.current()).toBeNull();
   });
 });

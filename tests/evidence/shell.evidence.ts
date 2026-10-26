@@ -14,7 +14,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, runMenuCommand, stubContextMenu, stubOpenDialog,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog,
   type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
@@ -402,14 +402,14 @@ async function timedOpen(page: Page, title: string, ready: string): Promise<{ bl
   return page.evaluate(
     async ({ title, ready }) => {
       const content = document.querySelector('[data-testid="content"]')!;
-      const button = document.querySelector<HTMLElement>(`[data-testid="open-item"][data-title="${CSS.escape(title)}"]`)!;
+      const row = document.querySelector<HTMLElement>(`[data-testid="item-row"][data-title="${CSS.escape(title)}"]`)!;
       const visible = (sel: string) => {
         const el = document.querySelector(sel);
         const r = el?.getBoundingClientRect();
         return Boolean(r && r.width > 0 && r.height > 0);
       };
       const t0 = performance.now();
-      button.click();
+      row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 })); // opens it (spec 3.3), timed from here
       let sawBlank = false;
       let blankMs: number | null = null;
       while (performance.now() - t0 < 15_000) {
@@ -601,19 +601,12 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
       await expect(s.page.getByRole('tooltip')).toHaveCount(1, { timeout: 3_000 }).catch(() => {});
       await tooltipFadedIn();
       const box = await tooltipBox(s.page);
-      // The window server can hold an older frame for a moment after the app comes to the front: t14-diag6 captured the
-      // focus still on the launcher, before the Shift+Tab, with the tooltip open in the page. Ask for a repaint and two
-      // frames, and take the capture again (up to 3 times, 700 ms apart) while it does not show the page's state yet.
-      let drawn: ReturnType<typeof tooltipInCapture> | null = null;
-      const attempts: Array<{ share: number | null; framed: boolean }> = [];
-      for (let i = 0; i < 3 && (drawn?.share ?? 0) < 0.5; i++) {
-        if (i > 0) await sleep(700);
-        const framed = await freshFrame();
-        const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
-        drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
-        attempts.push({ share: drawn?.share ?? null, framed });
-      }
-      results['tooltipDark'] = { toggleFocused, box, drawn, attempts };
+      // The window server can hold an older frame for a moment after the app comes to the front: a full repaint and two
+      // frames first, then the capture.
+      const framed = await freshFrame();
+      const shot = await nativeWindowShot(s.app, 'm3-14-tooltip-dark', 'dark: the sidebar toggle tooltip over the material', { focus: false });
+      const drawn = box && shot.file ? tooltipInCapture(shot.file, box) : null;
+      results['tooltipDark'] = { toggleFocused, box, drawn, framed };
       check('tooltip over the dark material is in the capture (pixels, R3-6)', (drawn?.share ?? 0) >= 0.5, results['tooltipDark']);
     });
   }
@@ -641,7 +634,7 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
         // Critique mac3 n7 (and run 1): the page had its rows, but the window capture showed an empty table, a frame not
         // yet on screen. The capture is taken again (up to 4 times, 500 ms apart) until it shows the first row's title:
         // a dark text pixel in its first 160 px, on three lines through its middle.
-        const title = (await opaque.page.getByTestId('item-row').first().locator('[data-testid="open-item"]').boundingBox())!;
+        const title = (await opaque.page.locator('[data-testid="item-row"][data-index="0"] .item-title').boundingBox())!;
         const along = Array.from({ length: Math.min(160, Math.floor(title.width)) * 3 }, (_, i) => [Math.round(title.x) + Math.floor(i / 3), Math.round(title.y + title.height / 2) + (i % 3) * 2 - 2] as const);
         let shot = await nativeWindowShot(opaque.app, 'm3-02-library-light-opaque', 'library, light, LEARN_VIBRANCY=0');
         let opaqueAttempts = 1;
@@ -1090,14 +1083,25 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
       check('a zoomed window comes back zoomed from a full-screen round trip, at its zoomed frame (polish minor 2)', before.zoomed && after.zoomed && same, results['fullScreenRoundTripZoomed']);
       check('un-zooming after that round trip gives back the frame from before the zoom (polish minor 2)', JSON.stringify(unzoomed) === JSON.stringify(userFrame), results['fullScreenRoundTripZoomed']);
     } finally {
-      // Whatever failed: out of full screen, not zoomed, back at the frame from before (bounded waits, never a throw).
+      // Whatever failed: out of full screen, not zoomed, back at a frame of the window's own (bounded waits, never a
+      // throw). A frame equal to the work area is AppKit's zoomed frame, which keeps this test's user frame (40, 65,
+      // 960 × 604) for the next un-zoom: a later full-screen round trip would come back there. So a frame from before that
+      // filled the work area comes back inset by 20 on each side.
       await leaveFullScreen(win);
       if (await zoomed().catch(() => false)) {
         await win.evaluate((w) => w.unmaximize()).catch(() => {});
         await sleep(800);
       }
-      await win.evaluate((w, r) => w.setBounds(r), restore).catch(() => {});
+      const { workArea: a } = await boundsNow();
+      const fills = restore.x === a.x && restore.y === a.y && restore.width === a.width && restore.height === a.height;
+      const width = Math.max(layout.windowMinWidth, a.width - 40);
+      const height = Math.max(layout.windowMinHeight, a.height - 40);
+      const frame = fills ? { x: a.x + Math.floor((a.width - width) / 2), y: a.y + Math.floor((a.height - height) / 2), width, height } : restore;
+      await win.evaluate((w, r) => w.setBounds(r), frame).catch(() => {});
       await sleep(800);
+      const left = { restore, frame, after: (await boundsNow()).bounds, zoomed: await zoomed().catch(() => null) };
+      results['zoomCleanup'] = left;
+      check('after the zoom test the window is unzoomed at a frame of its own (harness cleanup, M4 spec 8)', left.zoomed === false && JSON.stringify(left.after) === JSON.stringify(frame), left);
     }
   });
 
@@ -1270,6 +1274,44 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       }
     });
   }
+  // One of our sheets keeps its window main only while no other window of ours has the key.
+  // With the ⌘/ sheet on the main window, the settings window taking the key dims the main chrome as AppKit greys its
+  // lights; the sheet taking the key back undims it.
+  await guard('m5: a sheet keeps the main window main only while no other window of ours has the key', async () => {
+    if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+    const html = s.page.locator('html');
+    const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+    let sheet: Page | null = null;
+    try {
+      sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      await expect(html).toHaveAttribute('data-window-inactive', '', { timeout: 5_000 });
+      await s.page.waitForTimeout(600); // the colours ease in
+      const underSheet = await mainChrome();
+      await (await settingsWindow()).evaluate((w) => w.focus());
+      await expect(html).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+      await s.page.waitForTimeout(600); // AppKit repaints the main window's lights; the colours ease in
+      const elsewhere = await mainChrome();
+      const shot = await fullScreenShot('m4-11-sheet-parent-not-main', 'the ⌘/ sheet on the main window while the settings window has the key: the main chrome dims with its lights (final review m5)');
+      await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=sheet'))?.focus());
+      await expect(html).not.toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+      await s.page.waitForTimeout(600);
+      const back = await mainChrome();
+      results['m5SheetParent'] = { underSheet, elsewhere, back, shot: shot.file };
+      check(
+        'm5: under its sheet the main window stays main; the settings window taking the key dims it; the sheet taking the key back undims it',
+        underSheet.notKey && !underSheet.notMain && underSheet.title === underSheet.tokens.primary &&
+          elsewhere.notMain && elsewhere.title === elsewhere.tokens.inactive &&
+          !back.notMain && back.title === back.tokens.primary,
+        results['m5SheetParent'],
+      );
+    } finally {
+      if (sheet && !sheet.isClosed()) await closeSheet(sheet, 'Escape').catch(() => {});
+      await settings.close();
+      if (IS_MAC) await bringAppToFront(s.app).catch(() => {});
+      else await (await mainWindow(s.app)).evaluate((w) => w.focus());
+      await expect(html).not.toHaveAttribute('data-window-inactive', '', { timeout: 5_000 }).catch(() => {});
+    }
+  });
   await setTheme(s.page, 'light');
   if (!IS_MAC) return void save();
   const pid = s.app.process().pid!;
@@ -1477,6 +1519,7 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
         .toBe(JSON.stringify(frame))
         .then(() => true, () => false);
       v['cleanup'] = { outOfFullScreen: out, backAtFrame, frameAfter: await win.evaluate((w) => w.getBounds()).catch(() => null) };
+      check('after ⌘, in full screen the window leaves full screen at the frame it had (harness cleanup, M4 spec 8)', out && backAtFrame, v['cleanup']);
     }
   });
   save();
@@ -1541,7 +1584,7 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     });
     await stubContextMenu(s.app, 'Finder에서 보기');
     await bringAppToFront(s.app);
-    await s.page.getByTestId('item-row').filter({ has: s.page.locator('[data-testid="open-item"][data-title="sample"]') }).click({ button: 'right' });
+    await rowByTitle(s.page, 'sample').click({ button: 'right' });
     const t0 = Date.now();
     let front = frontmostProcess();
     while (front.name !== 'Finder' && Date.now() - t0 < 5_000) {
@@ -1669,6 +1712,78 @@ test('M3 chrome: Finder에서 보기 brings Finder to the front', TAG, async () 
     check('Finder reference captured', Object.values(finderRef).every((v) => !(v as { error?: string }).error), finderRef);
   });
   await bringAppToFront(s.app).catch(() => {});
+  save();
+});
+
+// M4 spec 8 (실제 ⌘O 패널): the real AppKit open panel of 파일 가져오기…, from a real ⌘O. It hangs on the main window as a
+// sheet (asSheet); under it the window is main but not key — no ring on the table row that had the keyboard focus, no
+// tooltip — and held (its commands refused); a real esc cancels it, imports nothing, and gives the window back its key
+// and its focus. The ring is judged on the capture by the critic; the states here.
+test('M4 chrome: the real ⌘O open panel is a sheet on the main window, which stays main but not key under it', TAG, async () => {
+  test.skip(!IS_MAC, 'a real AppKit open panel is macOS only');
+  const NAME =
+    '⌘O: the real open panel is a sheet on the main window, which stays main but not key (no ring) and held under it; a real esc cancels it, imports nothing, and the window is key again with its focus back (M4 spec 8)';
+  await guard(NAME, async () => {
+    const pid = s.app.process().pid!;
+    const win = await mainWindow(s.app);
+    const inPane = () => s.page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') ?? null);
+    const windowState = () =>
+      s.page.evaluate(() => ({ notKey: document.documentElement.hasAttribute('data-window-inactive'), notMain: document.documentElement.hasAttribute('data-window-not-main') }));
+    /** The focused table row's ring styles (diagnostics: the critic judges the ring on the capture). */
+    const ring = () =>
+      s.page.evaluate(() => {
+        const row = document.activeElement?.closest('[data-testid="item-row"]');
+        if (!row) return null;
+        const cs = getComputedStyle(row);
+        return { boxShadow: cs.boxShadow, outline: cs.outlineStyle, after: getComputedStyle(row, '::after').boxShadow };
+      });
+    // Earlier tests stubbed the open dialog (importFiles); this one needs the real panel.
+    await restoreOpenDialog(s.app);
+    const realPanel = await s.app.evaluate(({ dialog }) => {
+      const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+      return g.__learnRealOpenDialog === undefined || dialog.showOpenDialog === g.__learnRealOpenDialog;
+    });
+    if (await s.page.getByTestId('viewer-back').isVisible()) await runMenuCommand(s.app, 'nav.back');
+    await expect(s.page.getByTestId('library-table')).toBeVisible();
+    const rowsBefore = await s.page.getByTestId('item-row').count();
+    const title = await win.evaluate((w) => w.getTitle()); // the view's name: what System Events calls the window
+    await bringAppToFront(s.app);
+    // A keyboard user's focus on the table before ⌘O: its row shows the cursor ring.
+    for (let i = 0; i < 4 && (await inPane()) !== 'content'; i++) await s.page.keyboard.press('F6');
+    const before = { pane: await inPane(), ring: await ring(), ...(await windowState()) };
+    await nativeKeystroke(s.app, 'o', ['command']);
+    const t0 = Date.now();
+    let shown = await hasSheet(pid, title);
+    while (shown !== true && Date.now() - t0 < 8_000) {
+      await sleep(250);
+      shown = await hasSheet(pid, title);
+    }
+    const shownMs = shown ? Date.now() - t0 : null;
+    await sleep(700); // the sheet's slide-in
+    const under = { ...(await windowState()), ring: await ring(), importEnabled: await menuItemEnabled(s.app, 'file.importManaged') };
+    const shot = await fullScreenShot('m4-shell-01-open-panel', '⌘O: the real open panel as a sheet on the main window (no ring under it)');
+    const esc = await pressEscape();
+    const t1 = Date.now();
+    let gone = (await hasSheet(pid, title)) === false;
+    while (!gone && Date.now() - t1 < 5_000) {
+      await sleep(250);
+      gone = (await hasSheet(pid, title)) === false;
+    }
+    await expect.poll(() => windowState().then((v) => !v.notKey && !v.notMain), { timeout: 3_000 }).toBe(true).catch(() => {});
+    const after = { ...(await windowState()), pane: await inPane(), rows: await s.page.getByTestId('item-row').count() };
+    const v = { realPanel, title, shown: shown === true, shownMs, before, under, shot: shot.file, escape: esc.ok, gone, after, rowsBefore };
+    results['openPanel'] = v;
+    check(
+      NAME,
+      realPanel && v.shown && under.notKey && !under.notMain && !under.importEnabled && gone && !after.notKey && !after.notMain && after.pane === 'content' && after.rows === rowsBefore,
+      v,
+    );
+  });
+  // A panel that esc did not dismiss would hold the window for the restart test: take it down.
+  if (IS_MAC && (await hasSheet(s.app.process().pid!, await (await mainWindow(s.app)).evaluate((w) => w.getTitle()))) === true) {
+    await pressEscape();
+    await sleep(500);
+  }
   save();
 });
 

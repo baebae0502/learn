@@ -5,8 +5,11 @@
 //   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, expectWindow, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, runMenuCommand, type Session } from '../helpers';
+import { expect, test, type Page } from '@playwright/test';
+import {
+  FIXTURES, closeSheet, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  stubContextMenu, stubSaveDialog, type Session,
+} from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -19,6 +22,8 @@ test('component state board (gallery parts 1–2)', async ({}, testInfo) => {
       for (const part of [1, 2]) {
         await s.page.goto(`learn://app/index.html?window=gallery&part=${part}&platform=linux&det=1`);
         await s.page.getByTestId('gallery').waitFor();
+        // The board fits the 1440 × 900 window: nothing at its bottom is cut off.
+        expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
         await shoot(s.page, `gallery${part}-${theme}`);
       }
     }
@@ -36,9 +41,21 @@ const library = (dir: string) => [
   fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), dir, TOUR_VIDEO_BYTES.mpeg4),
 ];
 
+/** What changes between runs in the item panel: its dates, a fixture's SHA-256 (pdf-lib writes the date), an outside file's path. */
+const panelMasks = (page: Page) => [
+  page.locator('[data-testid="info-row"]:is([data-field="createdAt"], [data-field="updatedAt"]) dd'),
+  page.getByTestId('sha-value'),
+  page.locator('[data-testid="file-row"][data-field="location"] dd'),
+];
+/** One item in the panel as it stays: its kind line (the page count or length is read from the file, later) and its sections. */
+async function panelSettled(page: Page, kind: string | RegExp): Promise<void> {
+  await expect(page.getByTestId('inspector-kind')).toHaveText(kind);
+  await expect(page.getByTestId('info-section')).toBeVisible();
+}
+
 test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-col="added"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   try {
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
@@ -56,6 +73,9 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
       if (list.ok) for (const i of list.data) await window.learn.library.get({ itemId: i.id });
     });
     await expect(s.page.getByTestId('missing-flag')).toHaveCount(1);
+    await rowAt(s.page, 0).click(); // library.html: the first row selected while the table has the focus
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    await panelSettled(s.page, 'PDF'); // a missing original is not read
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await shoot(s.page, `library-${theme}`, { mask: dates() });
@@ -95,15 +115,169 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
   }
 });
 
+test('quick search: 초성 results with the count and the title mark, and no results', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-col="createdAt"]')];
+  const field = s.page.getByTestId('search-field').locator('input');
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    await seedMetadata(s.page, items[0]!.id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
+    await expect(rowByTitle(s.page, '세포 신호 전달 개요')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // ⌘F, then 초성: the focused field with its value, "1개 / 4개", 신호 marked in the one row.
+      // The menu command reaches the renderer asynchronously: wait for the focus before typing, and set the value the
+      // same way in both themes, so no key is lost to the focus's select().
+      await runMenuCommand(s.app, 'library.find');
+      await expect(field).toBeFocused();
+      await field.fill('ㅅㅎ');
+      await expect(field).toHaveValue('ㅅㅎ');
+      await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개 / 4개');
+      await shoot(s.page, `search-${theme}`, { mask: dates() });
+      await field.fill('효소 억제제');
+      await expect(s.page.getByTestId('search-empty')).toBeVisible();
+      await shoot(s.page, `search-none-${theme}`, { mask: dates() });
+      await field.fill('');
+      await expect(s.page.getByTestId('item-row')).toHaveCount(4);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     await setTheme(s.page, 'light');
     await s.page.keyboard.press('F6');
-    await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-col="added"]')] });
+    await shoot(s.page, 'focus-sidebar-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')] });
     await s.page.keyboard.press('F6');
-    await shoot(s.page, 'focus-row-light', { mask: [s.page.locator('[data-col="added"]')] });
+    await panelSettled(s.page, / · /);
+    await shoot(s.page, 'focus-row-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('item panel: nothing selected, one item, several, a missing original, folded, loading', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The table's dates in its rows only (the header keeps its sort arrow), and what moves in the panel (panelMasks).
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const LIBRARY = library(testInfo.outputPath('videos'));
+    const [sample] = await importPaths(s.page, LIBRARY);
+    await seedMetadata(s.page, sample!.id, {
+      creators: [{ name: '한서진', role: 'author' }, { name: '윤재하', role: 'author' }, { name: '배유나', role: 'editor' }],
+      date: '2024-03-15', publisher: '학습출판', language: '한국어', url: 'https://example.org/molbio/6',
+      abstract: ['세포가 바깥 신호를 받아들이는 과정을 수용체, G 단백질, 2차 전령의 순서로 정리한다.', '각 단계에서 신호가 어떻게 증폭되는지 그림 6-4와 함께 설명한다.', '신호를 끄는 장치와 그 속도가 반응의 크기를 정한다는 점을 다룬다.', '마지막 절은 수용체 타이로신 인산화효소를 소개한다.', '연습 문제는 66쪽에 있다.'].join('\n'),
+      extra: '시험 범위: 6장 전체',
+    });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect(s.page.getByTestId('inspector-none')).toBeVisible(); // imported from the page: no focus entered the table
+      await shoot(s.page, `inspector-none-${theme}`, { mask: masks() });
+    }
+    await selectRows(s.page, ['sample']);
+    await expect(s.page.getByTestId('inspector-kind')).toHaveText('PDF · 3쪽');
+    await expect(s.page.getByTestId('info-row')).toHaveCount(9);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `inspector-item-${theme}`, { mask: masks() });
+    }
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+    await expect(s.page.getByTestId('multi-row')).toHaveCount(3);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `inspector-multi-${theme}`, { mask: masks() });
+    }
+    await setTheme(s.page, 'light');
+    // A linked original that went missing: 다시 연결… leads.
+    const gone = testInfo.outputPath('gone.pdf');
+    fs.copyFileSync(LIBRARY[0]!, gone);
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    fs.rmSync(gone);
+    await s.page.evaluate(async () => {
+      const list = await window.learn.library.list();
+      if (list.ok) for (const i of list.data) await window.learn.library.get({ itemId: i.id });
+    });
+    await selectRows(s.page, ['gone']);
+    await expect(s.page.getByTestId('inspector-relink')).toBeVisible();
+    await panelSettled(s.page, 'PDF'); // a missing file is not read; its outside path is masked
+    await shoot(s.page, 'inspector-missing-light', { mask: masks() });
+    // Folded by the user: the toolbar toggle off.
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    await shoot(s.page, 'inspector-hidden-light', { mask: masks() });
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    // Loading past 300 ms (design-spec 6): the item's detail never answers. Last: the handler stays replaced.
+    await s.app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('library:detail');
+      ipcMain.handle('library:detail', () => new Promise(() => {}));
+    });
+    await selectRows(s.page, ['sample-mpeg4part2']);
+    await expect(s.page.getByTestId('inspector-loading')).toBeVisible();
+    await shoot(s.page, 'inspector-loading-light', { mask: masks() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('toasts: 내보내는 중… while a copy runs, then 사본을 저장했습니다 with 폴더에서 보기', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The table's date cells only, and what moves in the item panel.
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
+    await setTheme(s.page, 'light');
+    const out = testInfo.outputPath('exports');
+    fs.mkdirSync(out, { recursive: true });
+    await stubSaveDialog(s.app, path.join(out, 'sample.pdf'));
+    await holdCopies(s.app);
+    await stubContextMenu(s.app, '사본 내보내기…');
+    await rowByTitle(s.page, 'sample').click({ button: 'right' }); // selects it first (spec 3.3), then the item menu
+    await expect(s.page.getByTestId('file-busy')).toBeVisible();
+    await panelSettled(s.page, 'PDF · 3쪽'); // the panel reads the page count from the file, not through a copy
+    await shoot(s.page, 'toast-busy-light', { mask: dates() });
+    await releaseCopies(s.app);
+    // Shot at once: a success toast closes 5 s after it first paints.
+    await expect(s.page.getByTestId('export-done')).toBeVisible();
+    await shoot(s.page, 'toast-export-light', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('정보 편집: the form in place, its end, and a marked field with the unsaved line', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // What moves in the panel (the SHA-256 shows under the form) and the table's dates in its rows only.
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const [sample] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, '한글 경로 (테스트) #1.pdf')]);
+    await seedMetadata(s.page, sample!.id, {
+      creators: [{ name: '한서진', role: 'author' }, { name: '배유나', role: 'editor' }],
+      date: '2024-03-15', publisher: '학습출판', language: '한국어', url: 'https://example.org/molbio/6',
+      abstract: '세포가 바깥 신호를 받아들이는 과정을 수용체, G 단백질, 2차 전령의 순서로 정리한다.',
+    });
+    await selectRows(s.page, ['sample']);
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await s.page.getByTestId('info-edit').click();
+    await expect(s.page.getByTestId('info-editor')).toBeVisible();
+    await expect(s.page.locator('[data-testid="editor-field"][data-field="title"] input')).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `inspector-edit-${theme}`, { mask: masks() }); // the title field focused (its halo)
+    }
+    await setTheme(s.page, 'light');
+    await s.page.locator('.inspector-scroll').evaluate((e) => e.scrollTo(0, e.scrollHeight));
+    await shoot(s.page, 'inspector-edit-end-light', { mask: masks() }); // 메모, 취소 · 저장
+    await s.page.locator('[data-testid="editor-field"][data-field="date"] input').fill('2024-13');
+    await expect(s.page.locator('[data-testid="editor-field"][data-field="date"] input')).toHaveValue('2024-13');
+    await selectRows(s.page, ['한글 경로 (테스트) #1']); // refused: the selection comes back to sample
+    await expect(s.page.getByTestId('editor-unsaved')).toBeVisible();
+    await s.page.locator('.inspector-scroll').evaluate((e) => e.scrollTo(0, 0));
+    await shoot(s.page, 'inspector-edit-invalid-light', { mask: masks() });
+    await s.page.getByTestId('editor-discard').click(); // nothing left to hold the window when the app closes
   } finally {
     await s.app.close();
   }
@@ -129,39 +303,96 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   }
 });
 
-test('palette: empty query, 초성 results, several rows, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
+test('selection commands: the palette with one selected row lists 폴더에서 보기 and 기본 앱으로 열기', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-col="added"]')];
-  const input = s.page.getByTestId('palette-input');
-  const cursor = s.page.locator('[data-testid="palette-item"][data-focused]');
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await setTheme(s.page, 'light');
+    await rowByTitle(s.page, 'sample').click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(true);
+    await runMenuCommand(s.app, 'app.palette');
+    await expect(s.page.locator('[data-testid="palette-item"][data-command-id="item.openExternally"]')).toBeVisible();
+    await shoot(s.page, 'palette-selection-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+  } finally {
+    await s.app.close();
+  }
+});
+
+/** palette.html's items: 신호 in four titles, one of them a video; author and year on two (spec §4.4: 저자 · 연도, else the kind). */
+async function paletteLibrary(s: Session, dir: string): Promise<string[]> {
+  fs.mkdirSync(dir, { recursive: true });
+  const pdf = (name: string) => {
+    const p = path.join(dir, `${name}.pdf`);
+    fs.writeFileSync(p, `%PDF-1.4\n% ${name}\n%%EOF\n`);
+    return p;
+  };
+  const video = path.join(dir, 'c.mp4');
+  fs.renameSync(h264(dir), video);
+  // One import each, a few ms apart: the list (newest first) is d, c, b, a, and b and c, which match 신호 at the same
+  // place, keep that order in the palette too (the newer first) — the shot is the same on every run.
+  const imported: string[] = [];
+  for (const p of [pdf('a'), pdf('b'), video, pdf('d')]) {
+    imported.push(...(await importPaths(s.page, [p])).map((i) => i.id));
+    await s.page.waitForTimeout(5);
+  }
+  await s.page.evaluate(async (ids) => {
+    const set = (itemId: string, title: string, names: string[], date: string | null, role: 'author' | 'lecturer') =>
+      window.learn.library.updateMetadata({ itemId, title, metadata: { creators: names.map((name) => ({ name, role })), ...(date ? { date } : {}) } });
+    await set(ids[0]!, '세포 신호 그림 모음', [], null, 'author');
+    await set(ids[1]!, '분자생물학 6장 · 신호 전달', ['김하늘'], '2024', 'author');
+    await set(ids[2]!, '강의 04 · 세포 신호', ['박서준'], '2025', 'lecturer');
+    await set(ids[3]!, '신호 증폭의 정량 모델', ['이도윤', '최민서'], '2023', 'author');
+  }, imported);
+  await expect(rowByTitle(s.page, '신호 증폭의 정량 모델')).toBeVisible();
+  return imported;
+}
+
+test('palette: empty query, 자료 results (palette.html), commands only, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The table's dates in its rows only and whatever moves in the item panel behind the scrim.
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  const input = s.page.getByTestId('palette-input');
+  const cursor = s.page.locator('.palette [role="option"][data-focused]');
+  try {
+    const ids = await paletteLibrary(s, testInfo.outputPath('media'));
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await runMenuCommand(s.app, 'app.palette');
-      // Every available command, the cursor on the first (critic T9-M1, T9-n4).
+      // Every available command, the cursor on the first; nothing ran from the palette yet.
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
-      await input.fill('ㄱㅈㅇ'); // one row: 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게, Task 10)
+      // palette.html: 자료 above 명령, the matched 신호 in each title, 저자 · 연도 on the right, 라이브러리에서 ‘신호’ 검색 last.
+      await input.fill('신호');
+      await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
+      await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
+      await expect(s.page.locator('.p-foot')).toContainText('ㅅㅎ → 신호');
+      await shoot(s.page, `palette-items-${theme}`, { mask: dates() });
+      // Commands only, the search row under them (ㄱㅈㅇ: 파일 가져오기… alone, in no title) — M3's palette-{light,dark} state.
+      await input.fill('ㄱㅈㅇ');
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
+      await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
       await shoot(s.page, `palette-${theme}`, { mask: dates() });
       if (theme === 'light') {
-        // ㄱ: six rows, the <mark> in accent text on the rows the cursor is not on (설정… by its keyword 글자 크기: no mark).
+        // ㄱ: several command rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
         await input.fill('ㄱ');
-        await expect(s.page.getByTestId('palette-item')).toHaveCount(6);
+        await expect(s.page.getByTestId('palette-item').nth(2)).toBeVisible();
+        await expect(s.page.locator('[data-testid="palette-item"]:not([data-focused]) mark').first()).toBeVisible();
         await shoot(s.page, 'palette-multi-light', { mask: dates() });
       }
+      // palette.html ?state=none: the notice, then the search row under the cursor; the foot says ↩ 실행 · esc 닫기.
       await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();
+      await expect(cursor).toHaveAttribute('data-testid', 'palette-search-library');
       await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
-    // Another window takes the key: the palette stays, its cursor row is the neutral selection (design-spec 3.1).
+    // Another window takes the key: the palette stays, its cursor row (an item) is the neutral selection (design-spec 3.1).
     await setTheme(s.page, 'light');
     await runMenuCommand(s.app, 'app.palette');
-    await input.fill('ㄱ');
-    await expect(cursor).toHaveAttribute('data-command-id', 'view.textBigger');
+    await input.fill('신호');
+    await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
     await s.app.evaluate(({ BrowserWindow }) => {
       const w = new BrowserWindow({ width: 300, height: 200, show: true });
       void w.loadURL('about:blank');
@@ -173,6 +404,16 @@ test('palette: empty query, 초성 results, several rows, no results, and the cu
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+    // A long author list is cut with an ellipsis inside 240 px and the title keeps its width (spec 10.5).
+    await s.page.evaluate(
+      (id) => window.learn.library.updateMetadata({ itemId: id, title: '신호 증폭의 정량 모델', metadata: { creators: ['김하늘', '박서준', '이도윤', '최민서', '정우진', '한지민', '오세훈', '윤아름'].map((name) => ({ name, role: 'author' as const })), date: '2023' } }),
+      ids[3]!,
+    );
+    await input.fill('증폭');
+    const longSub = s.page.getByTestId('palette-result').first().locator('.p-sub');
+    await expect(longSub).toContainText('김하늘');
+    await expect.poll(() => longSub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await shoot(s.page, 'palette-long-light', { mask: dates() });
   } finally {
     await s.app.close();
   }
@@ -228,7 +469,7 @@ test('settings window (light, dark, focus, not key, a refused folder), compact d
   // The library as deep as the default macOS one, under a HOME in the test folder: the path reads the same everywhere.
   const home = tourHome(testInfo.outputPath());
   const s = await launchTour(path.join(home, 'Library', 'Application Support', 'Learn'), { HOME: home });
-  const dates = () => [s.page.locator('[data-col="added"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
   try {
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf'), h264(testInfo.outputPath('videos'))]);
     for (const theme of THEMES) {
@@ -320,6 +561,74 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('table: several rows selected with the keyboard cursor, sorted by title, and the window not key', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const [pdf] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await seedLibrary(s.app, { count: 11, from: pdf! });
+    await expect(s.page.getByTestId('toolbar-count')).toHaveText('12개');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // library.html?state=multi: rows 1, 3 and 6 selected, the keyboard cursor on 6 (← does nothing in the table, but
+      // it is a key: the cursor shows its ring).
+      await rowAt(s.page, 0).click();
+      await rowAt(s.page, 2).click({ modifiers: ['Control'] });
+      await rowAt(s.page, 5).click({ modifiers: ['Control'] });
+      await s.page.keyboard.press('ArrowLeft');
+      await expect(rowAt(s.page, 5)).toHaveAttribute('data-focus-visible', 'true');
+      await expect(s.page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(3);
+      await shoot(s.page, `table-multi-${theme}`, { mask: dates() });
+    }
+    await setTheme(s.page, 'light');
+    const title = s.page.locator('[data-testid="column-header"][data-col="title"]');
+    await title.click();
+    await expect(title).toHaveAttribute('aria-sort', 'ascending');
+    await rowAt(s.page, 0).click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await shoot(s.page, 'table-sorted-light', { mask: dates() });
+    // Another window takes the key: the selection turns neutral and the cursor ring goes (design-spec 2.1, 3.1).
+    await s.page.keyboard.press('ArrowDown');
+    await expect(rowAt(s.page, 1)).toHaveAttribute('data-focus-visible', 'true');
+    await s.app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await shoot(s.page, 'table-inactive-light', { mask: dates() });
+    await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+    await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('table: loading — the header, the search field and the item panel stay and 불러오는 중… comes after 300 ms', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await s.app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('library:list');
+      ipcMain.handle('library:list', () => new Promise(() => {})); // never answers: the loading state holds for the shot
+    });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.reload();
+      await expect(s.page.getByTestId('table-loading')).toBeVisible();
+      // The toolbar's right group and the item panel stay (disabled, no statistics): only the rows are on their way.
+      await expect(s.page.getByTestId('search-field').locator('input')).toHaveAttribute('aria-disabled', 'true');
+      await expect(s.page.getByTestId('inspector-none')).toBeVisible();
+      await shoot(s.page, `table-loading-${theme}`);
     }
   } finally {
     await s.app.close();

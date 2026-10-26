@@ -1,6 +1,8 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type * as Ipc from '../src/ipc';
 import type { LearnApi } from '../src/ipc';
+import type { LibraryItem, SearchText } from '../src/library';
+import type { LibraryColumnId } from '../src/library-columns';
 import type { Result } from '../src/result';
 
 type P<F> = F extends (i: infer I) => unknown ? I : never;
@@ -31,9 +33,20 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['reader']['getPosition']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['reader']['savePosition']>>().toEqualTypeOf<Ipc.SavePositionInput>();
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();
+    expectTypeOf<P<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Ipc.ShowColumnMenuInput>();
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
     expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
+    expectTypeOf<P<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Ipc.ItemIdInput>();
+    // The renderer learns only whether a copy was saved, never where: revealExport shows it.
+    expectTypeOf<ReturnType<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Promise<Result<{ saved: boolean }>>>();
+    expectTypeOf<ReturnType<LearnApi['library']['revealExport']>>().toEqualTypeOf<Promise<Result<void>>>();
+  });
+  it('library.searchTexts takes nothing and answers the long texts; the list row carries the publisher', () => {
+    expectTypeOf<Parameters<LearnApi['library']['searchTexts']>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<LearnApi['library']['searchTexts']>>().toEqualTypeOf<Promise<Result<SearchText[]>>>();
+    expectTypeOf<SearchText>().toEqualTypeOf<{ id: string; abstract: string | null; extra: string | null }>();
+    expectTypeOf<LibraryItem['publisher']>().toEqualTypeOf<string | null>();
   });
   it('the renderer never sends a library path (R4): prefs.set takes no libraryRoot; main\'s own patch does', () => {
     expectTypeOf<Ipc.PrefsSetInput>().not.toHaveProperty('libraryRoot');
@@ -41,8 +54,9 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<Parameters<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<[]>();
     expectTypeOf<ReturnType<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<Promise<Result<{ relaunching: boolean }>>>();
   });
-  it('context menus are typed by kind', () => {
-    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag' | 'column'>();
+  it('context menus are typed by kind; the column header has its own menu (P-9)', () => {
+    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag'>();
+    expectTypeOf<ReturnType<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>>();
   });
   it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {
     expectTypeOf<ReturnType<LearnApi['tags']['togglePosition']>>()

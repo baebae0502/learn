@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -67,8 +67,8 @@ registerAppIpc(
 );
 
 /** The settings window's webContents, and the main window's (allowed by the URL check, refused by the sender check). */
-const SETTINGS_PAGE = { id: 20 };
-const MAIN_PAGE = { id: 10 };
+const SETTINGS_PAGE = fakeSender(20, 'settings');
+const MAIN_PAGE = fakeSender(10, 'main');
 const invokeFrom = (sender: unknown, channel: string, raw?: unknown) =>
   handlers.get(channel)!({ sender, senderFrame: { url: 'learn://app/index.html?window=main' } }, raw);
 const invoke = (channel: string, raw?: unknown) => invokeFrom(SETTINGS_PAGE, channel, raw);

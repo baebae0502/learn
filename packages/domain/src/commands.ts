@@ -9,12 +9,16 @@ import type { Availability, StorageMode } from './library';
 export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
+  | 'library.find'
   | 'nav.back'
   | 'item.open'
   | 'item.showInFolder'
   | 'item.openExternally'
+  | 'item.editInfo'
+  | 'item.exportCopy'
   | 'item.relink'
   | 'view.toggleSidebar'
+  | 'view.toggleInspector'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -31,8 +35,10 @@ export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column'] as con
 /** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
+/** Whether a pane is shown — what a pane toggle's state label depends on. */
+export type PaneShown = 'shown' | 'hidden';
 /** Whether the sidebar is shown (layout B) — what the sidebar command's label depends on. */
-export type SidebarState = 'shown' | 'hidden';
+export type SidebarState = PaneShown;
 
 export interface CommandSpec {
   id: CommandId;
@@ -44,8 +50,9 @@ export interface CommandSpec {
   /**
    * Mac pattern for a toggle (design-spec 7.4): the menu, the tooltip and the palette name what the command does now —
    * "사이드바 가리기" while the sidebar is shown, "사이드바 보기" while it is hidden. One command, one id, one shortcut.
+   * Exactly one key: the reported pane state the label follows.
    */
-  stateLabels?: { sidebar: Readonly<Record<SidebarState, string>> };
+  stateLabels?: { sidebar?: Readonly<Record<PaneShown, string>>; inspector?: Readonly<Record<PaneShown, string>> };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
   /** Electron accelerator, owned by the native menu. */
@@ -80,20 +87,54 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 2 }, contexts: ['library'],
     keywords: ['연결', '외부', '링크', 'link'],
   },
+  // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
+  // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
+  {
+    id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'],
+    keywords: ['검색', '찾기', 'search', 'find'],
+  },
   {
     id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
     keywords: ['라이브러리', '뒤로', '목록', 'library', 'back'],
   },
   { id: 'item.relink', label: '다시 연결…', contexts: ['item'], contextMenu: { kinds: ['item'], group: 0, order: 1, onlyWhenAvailable: true } },
   { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
-  { id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } },
-  // Not in the item context menu: design-spec 7.3 lists no such item ("여기 없는 메뉴는 그리지 않는다", C-1).
-  // It is a notice button only: the unplayable video (10.7) and the PDF that cannot be opened (C-1 as amended).
-  { id: 'item.openExternally', label: '기본 앱으로 열기', contexts: ['item'] },
+  // ⇧⌘R (design-spec 7.4 라이브러리): 파일 › and the item menu act on the one selected row; the menu bar judges the
+  // reported selection counts, so it greys with no selection, several, or a missing file (and in the reader).
+  {
+    id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 },
+    contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+    keywords: ['폴더', '위치', '파인더', 'Finder', 'reveal'],
+  },
+  // 파일 › and the palette on the selected row, besides the notices' buttons. Still no item context-menu entry:
+  // design-spec 7.3 lists none ("여기 없는 메뉴는 그리지 않는다").
+  {
+    id: 'item.openExternally', label: '기본 앱으로 열기', menu: { menu: 'file', group: 2, order: 3 }, contexts: ['item'], palette: true,
+    keywords: ['기본 앱', '다른 앱', '외부 앱', 'open with', 'external'],
+  },
+  // 정보 편집 (spec §5.3): the palette and the 정보 section's pencil; the table selection is its target.
+  { id: 'item.editInfo', label: '정보 편집', contexts: ['item'], palette: true, keywords: ['정보', '편집', '메타데이터', '저자', '제목', '고치기', 'edit', 'info'] },
+  // 사본 내보내기… (design-spec 7.3, spec §7): a copy wherever the user picks, named like 기본 앱으로 열기's copy.
+  {
+    id: 'item.exportCopy',
+    label: '사본 내보내기…',
+    menu: { menu: 'file', group: 2, order: 2 },
+    contexts: ['item'],
+    contextMenu: { kinds: ['item'], group: 2, order: 2 },
+    palette: true,
+    keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+  },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
     keywords: ['사이드바', '패널', '가리기', '숨기기', '보기', 'sidebar'],
+  },
+  // The item panel: the library only, its right slot (the reader's is the tutor's). Named by what it does now
+  // (stateLabels), like the sidebar toggle.
+  {
+    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+    stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+    keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
   },
   {
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
@@ -116,6 +157,9 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'app.palette', label: '명령 팔레트…', accelerator: 'CmdOrCtrl+K', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'], palette: false },
 ];
 
+/** Every command id, in registry order: the zod enums of ipc.ts (commandIdSchema) and settings.ts (palette.recent). */
+export const COMMAND_IDS = COMMANDS.map((c) => c.id) as readonly CommandId[] as readonly [CommandId, ...CommandId[]];
+
 export function commandById(id: CommandId): CommandSpec {
   const c = COMMANDS.find((x) => x.id === id);
   if (!c) throw new Error(`unknown command: ${id}`);
@@ -127,8 +171,10 @@ export const inPalette = (c: CommandSpec): boolean => c.palette ?? !c.contexts.i
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
  * is the reported context), else the platform label.
  */
-export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
-  if (c.stateLabels && state.sidebar) return c.stateLabels.sidebar[state.sidebar];
+export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+  const labels = c.stateLabels;
+  if (labels?.sidebar && state.sidebar) return labels.sidebar[state.sidebar];
+  if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
@@ -137,7 +183,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: Pick<Comma
  * ellipsis where the command asks for more input (macOS HIG), in menus, buttons, the palette and the ⌘/ sheet; prose
  * that only names the command drops it (Apple Style Guide), and is built from the label so the two cannot drift.
  */
-export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar'> = {}): string {
+export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
   return commandLabel(c, platform, state).replace(/…$/, '');
 }
 
@@ -150,9 +196,19 @@ export interface CommandContextState {
   /** An import, a modal sheet or the fatal screen owns the window: nothing runs. */
   blocked: boolean;
   /** For state labels only (not availability): absent where the window has no sidebar (the fatal screen). */
-  sidebar?: SidebarState;
+  sidebar?: PaneShown;
+  /** The item panel (library view only), for its toggle's state label; absent where there is none. */
+  inspector?: PaneShown;
   /** UI text size in pt (prefs.fontSize, Task 10): ⌘+ / ⌘− stop at 15 / 12, ⌘0 only away from 13. */
   textSize: 12 | 13 | 14 | 15;
+  /** Items in the library; 0 is the empty library (nothing to find or inspect). */
+  libraryCount: number;
+  /** The table selection as counts, so the context stays flat (sameCommandContext). */
+  selectionCount: number;
+  /** Of the selection: items whose file is there. */
+  selectionAvailable: number;
+  /** Of the selection: linked items whose file is missing (what 다시 연결… needs). */
+  selectionRelinkable: number;
 }
 
 /** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */
@@ -176,12 +232,33 @@ export interface CommandSurface {
   modal: boolean;
 }
 
+const AVAILABLE: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'available' });
+const RELINKABLE: CommandTargetInfo = Object.freeze({ storageMode: 'linked', availability: 'missing' });
+const MISSING: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'missing' });
+
+/**
+ * Synthetic targets for the menu bar: `selectionAvailable` available, then `selectionRelinkable` linked+missing, the
+ * rest managed+missing. Main has only the reported counts; no rule reads the storage mode of an available target.
+ * Counts that do not add up are clamped to `selectionCount`.
+ */
+export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] {
+  const available = Math.min(ctx.selectionAvailable, ctx.selectionCount);
+  const relinkable = Math.min(ctx.selectionRelinkable, ctx.selectionCount - available);
+  return Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
+}
+
 type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
+  'library.find': (c) => c.libraryCount > 0,
+  // An empty library has no panel (design-spec 2.4).
+  'view.toggleInspector': (c) => c.libraryCount > 0,
+  // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
   'item.open': (_ctx, t) => t.length === 1,
   'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
   'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
   'item.openExternally': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
+  'item.exportCopy': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
+  'item.editInfo': (c, t) => t.length === 1 && c.view === 'library',
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,
@@ -201,7 +278,13 @@ export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targ
   return inContext && (RULES[id]?.(ctx, targets) ?? true);
 }
 
-/** Menu-bar commands available in `ctx` (item commands live in context menus). */
-export function availableMenuCommands(ctx: CommandContextState): CommandId[] {
-  return COMMANDS.filter((c) => c.menu !== undefined && !c.contexts.includes('item') && isCommandAvailable(c.id, ctx)).map((c) => c.id);
+/**
+ * Menu-bar commands available in `ctx`. An item command with a menu placement is judged on the selection's synthetic
+ * targets (selectionTargets), in the library view only: the renderer runs it on the selected items. `commands` is the
+ * registry; tests pass variants with other placements (availability is still the registry's, by id).
+ */
+export function availableMenuCommands(ctx: CommandContextState, commands: readonly CommandSpec[] = COMMANDS): CommandId[] {
+  // Spec 6: the menu bar's item commands act on the library table's selection, so the reader has none.
+  const targets = ctx.view === 'library' ? selectionTargets(ctx) : [];
+  return commands.filter((c) => c.menu !== undefined && isCommandAvailable(c.id, ctx, targets)).map((c) => c.id);
 }

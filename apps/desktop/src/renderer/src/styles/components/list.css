@@ -81,91 +81,150 @@
     box-shadow: none;
   }
 
-  .table-head,
-  .table-row {
-    display: grid;
-    grid-template-columns: var(--cols);
-    align-items: center;
-  }
+  /* Table (design-spec 6 표; M4 spec 3). These rules draw a header cell, a row and a cell; how they are laid out is the
+     library table's (screens/library.css: one CSS grid of columns, rows placed by the virtualizer) or the state board's
+     (screens/gallery.css: static flex rows). A row's fill is inset 8 px from the table's sides while its cells line up
+     with the header's (the first and last cells reach back out 8 px), so the first column's content starts 16 px in
+     (the header text over the icon) and the last column's ends 24 px in. */
   .table-head {
     height: var(--table-header-height);
-    flex: none;
-    padding: 0 var(--space-16);
-    border-bottom: 1px solid var(--separator);
+    box-shadow: inset 0 -1px 0 var(--separator);
+    background: var(--bg-content); /* the rows scroll under the sticky header */
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
   .table-head .th {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    min-width: 0;
+    padding: 0 var(--space-8);
+  }
+  /* The header's sort button fills its cell: the label and, on the sorted column, the arrow. */
+  .table-head .th-sort {
+    appearance: none;
+    flex: 1 1 auto;
     display: flex;
     align-items: center;
     gap: var(--space-4);
-    height: 100%;
-    padding: 0 var(--space-8);
-    position: relative;
     min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: default;
   }
-  .table-head .th:first-child {
-    padding-left: 0;
+  .table-head .th.end .th-sort {
+    justify-content: flex-end;
   }
-  .table-head .th + .th::before {
+  .table-head .th-sort > .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
+  .table-head .th.is-first,
+  .table-row .td.is-first {
+    padding-left: var(--space-16);
+  }
+  .table-head .th.is-last,
+  .table-row .td.is-last {
+    padding-right: var(--space-24);
+  }
+  .table-row .td.is-first {
+    margin-left: calc(-1 * var(--space-8));
+  }
+  .table-row .td.is-last {
+    margin-right: calc(-1 * var(--space-8));
+  }
+  .table-head .th:not(.is-first)::before {
     content: '';
     position: absolute;
     left: 0;
-    top: 6px; /* local: a 16 px divider in the header's 27 px above its 1 px border (6 + 16 + 5) */
-    bottom: 5px;
+    top: 6px; /* local: a 16 px divider in the 27 px above the header's 1 px line (6 + 16 + 5) */
+    bottom: 6px; /* local: 5 px + the line */
     width: 1px;
     background: var(--separator);
   }
-  .table-body {
-    padding-top: var(--space-4);
+  /* The sorted column (spec §3.1): primary text at 500 and a 12 px arrow. */
+  .table-head .th:is([data-sorted], [data-force~='sorted']) {
+    color: var(--text-primary);
+    font-weight: var(--weight-medium);
+  }
+  /* A column edge (design-spec 2.1, the pane boundary's grammar): only the cursor changes, never the line. The 8 px
+     left of the edge: a column clips what lies past its own box. */
+  .table-head .col-resizer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 8px; /* local: hit area */
+    cursor: col-resize;
+    touch-action: none;
   }
   .table-row {
     height: var(--row-height);
     margin: 0 var(--space-8);
-    padding: 0 var(--space-8);
     border-radius: var(--radius-md);
-  }
-  .table-row:nth-child(even) {
-    background: var(--bg-content-alt);
-  }
-  .table-row:is(:hover, [data-force~='hover']) {
-    background: var(--fill-hover);
-  }
-  .table-row:is(:has(.row-open:focus-visible), [data-force~='cursor']) {
-    box-shadow: inset 0 0 0 2px var(--focus);
+    outline: none;
+    cursor: default;
   }
   .table-row .td {
     display: flex;
     align-items: center;
     gap: var(--space-8);
     height: 100%;
-    padding: 0 var(--space-8);
     min-width: 0;
+    padding: 0 var(--space-8);
     color: var(--text-secondary);
   }
-  .table-row .td:first-child {
-    padding-left: 0;
+  .table-row .td[data-col='title'] {
     color: var(--text-primary);
   }
-  /* The kind icon (first in the title cell); later glyphs carry their own colour wrapper (.c-tertiary, .inline-flag). */
-  .table-row .td > .icon:first-child {
+  /* The kind icon (first in the title cell); later glyphs carry their own colour wrapper (.c-tertiary, .inline-flag).
+     :where keeps it below the selection's white so a filled row whitens it. */
+  :where(.table-row .td[data-col='title']) > .icon:first-child {
+    flex: none;
     color: var(--text-secondary);
   }
-  .table-row .td.end,
-  .table-head .th.end {
+  .table-row .td.end {
     justify-content: flex-end;
     text-align: right;
   }
-  .table-row[data-missing] .row-open {
+  .table-row[data-missing] .item-title {
     color: var(--text-secondary);
   }
-  .row-open {
-    all: unset;
-    min-width: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    cursor: default;
+  /* Stripes by the row's place in the list — data-index ending in an odd digit is the 2nd, 4th … row — never by DOM
+     order: a virtualized body holds some rows only, in any order. */
+  .table-row:is([data-index$='1'], [data-index$='3'], [data-index$='5'], [data-index$='7'], [data-index$='9'], [data-force~='stripe']) {
+    background: var(--bg-content-alt);
+  }
+  .table-row:is(:hover, [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  /* Selection (design-spec 3.1): neutral without the focus; the accent fill and white text (icons, flags too) while the
+     table has the focus in the key window. One accent selection per screen. */
+  .table-row:is([data-selected], [data-force~='selected']) {
+    background: var(--fill-selected);
+  }
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected],
+  .table-row[data-force~='focused'] {
+    background: var(--accent);
+  }
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] :is(.td, .icon, .item-title, .c-tertiary, .c-warning),
+  .table-row[data-force~='focused'] :is(.td, .icon, .item-title, .c-tertiary, .c-warning) {
+    color: var(--text-on-accent);
+  }
+  /* Keyboard cursor (design-spec 6): an inset 2 px focus ring, keyboard only (data-focus-visible, LibraryTable). On the
+     accent fill a 75 % white ring, which tells the cursor from the other filled rows of a multiple selection. */
+  .table-row:is([data-focus-visible], [data-force~='cursor']) {
+    box-shadow: inset 0 0 0 2px var(--focus);
+  }
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected][data-focus-visible],
+  .table-row[data-force~='focused'][data-force~='cursor'] {
+    box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
   }
   .inline-flag {
     display: inline-flex;

@@ -1,5 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { COMMANDS, MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
+import { mainStrings } from '../strings';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
 export interface AppMenuOptions {
@@ -12,7 +13,7 @@ export interface AppMenuOptions {
   /** Registry item clicked (mouse or accelerator). */
   onCommand(id: CommandId): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
-  labels?: Pick<CommandContextState, 'sidebar'>;
+  labels?: MenuLabelState;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
   fullScreenState?: boolean;
   /** Whether the macOS 전체 화면 item can run: a main window exists and none of our sheets is attached. Default true. */
@@ -21,11 +22,13 @@ export interface AppMenuOptions {
   onToggleFullScreen?(): void;
 }
 
+const copy = mainStrings.menu;
+
 /** The macOS 전체 화면 item: Apple Korean names it by what it will do; the neutral name is spec 7.4's. */
 export const FULL_SCREEN = {
   id: 'menu.view.fullScreen',
-  label: '전체 화면',
-  stateLabels: { windowed: '전체 화면 시작', fullscreen: '전체 화면 종료' },
+  label: copy.fullScreen.label,
+  stateLabels: { windowed: copy.fullScreen.windowed, fullscreen: copy.fullScreen.fullscreen },
 } as const;
 const fullScreenLabel = (fullscreen: boolean) => FULL_SCREEN.stateLabels[fullscreen ? 'fullscreen' : 'windowed'];
 
@@ -49,6 +52,19 @@ function fullScreenItems(opts: AppMenuOptions): Item[] {
 
 type Item = MenuItemConstructorOptions;
 const SEP: Item = { type: 'separator' };
+
+/** The reported pane states that state labels follow (design-spec 7.4). */
+export type MenuLabelState = Pick<CommandContextState, 'sidebar' | 'inspector'>;
+
+/** The pane states of a reported context, without the absent ones (the fatal screen reports neither). */
+export function menuLabelState(ctx: MenuLabelState): MenuLabelState {
+  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}) };
+}
+
+/** Whether a new report renames a menu item: a pane state that a state label follows has changed. */
+export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
+  return before.sidebar !== after.sidebar || before.inspector !== after.inspector;
+}
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
 const TWINS: Readonly<Record<string, readonly string[]>> = { 'CmdOrCtrl+Plus': ['CmdOrCtrl+='] };
@@ -108,47 +124,45 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
   const reg = (name: MenuName) => registryItems(name, opts);
   const appMenu: Item = {
     id: 'menu.app',
-    label: 'Learn',
+    label: copy.top.app,
     submenu: join(
-      // Apple Korean: "<앱>에 관하여" (Finder에 관하여, 이 Mac에 관하여); "정보" is the Windows Help › About wording (critique m4).
-      [{ role: 'about', label: 'Learn에 관하여' }],
+      [{ role: 'about', label: copy.app.about }],
       reg('app'),
-      [{ role: 'services', label: '서비스' }],
-      [{ role: 'hide', label: 'Learn 가리기' }, { role: 'hideOthers', label: '기타 가리기' }, { role: 'unhide', label: '모두 보기' }],
-      [{ role: 'quit', label: 'Learn 종료' }],
+      [{ role: 'services', label: copy.app.services }],
+      [{ role: 'hide', label: copy.app.hide }, { role: 'hideOthers', label: copy.app.hideOthers }, { role: 'unhide', label: copy.app.unhide }],
+      [{ role: 'quit', label: copy.app.quit }],
     ),
   };
-  // Apple Korean names the item after the 윈도우 menu ("윈도우 닫기"); Linux/Windows keep the body-copy word 창.
-  const close: Item = { role: 'close', label: mac ? '윈도우 닫기' : '창 닫기', accelerator: 'CmdOrCtrl+W' };
-  const file: Item = { id: 'menu.file', label: '파일', submenu: join(reg('file'), [close]) };
+  const close: Item = { role: 'close', label: mac ? copy.close.mac : copy.close.other, accelerator: 'CmdOrCtrl+W' };
+  const file: Item = { id: 'menu.file', label: copy.top.file, submenu: join(reg('file'), [close]) };
   const edit: Item = {
     id: 'menu.edit',
-    label: '편집',
+    label: copy.top.edit,
     submenu: join(
-      [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '실행 복귀' }],
-      [{ role: 'cut', label: '오려두기' }, { role: 'copy', label: '복사하기' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '모두 선택' }],
+      [{ role: 'undo', label: copy.edit.undo }, { role: 'redo', label: copy.edit.redo }],
+      [{ role: 'cut', label: copy.edit.cut }, { role: 'copy', label: copy.edit.copy }, { role: 'paste', label: copy.edit.paste }, { role: 'selectAll', label: copy.edit.selectAll }],
       reg('edit'),
     ),
   };
   const view: Item = {
     id: 'menu.view',
-    label: '보기',
-    submenu: join(reg('view'), fullScreenItems(opts), opts.isDev ? [{ role: 'toggleDevTools', label: '개발자 도구' }] : []),
+    label: copy.top.view,
+    // The item panel owns the role's default key on macOS, so a dev build moves the developer tools.
+    submenu: join(reg('view'), fullScreenItems(opts), opts.isDev ? [{ role: 'toggleDevTools', label: copy.devTools, accelerator: 'Alt+CmdOrCtrl+J' }] : []),
   };
-  const go: Item = { id: 'menu.go', label: '이동', submenu: reg('go') };
+  const go: Item = { id: 'menu.go', label: copy.top.go, submenu: reg('go') };
   const windowMenu: Item = {
     id: 'menu.window',
-    label: '윈도우',
+    label: copy.top.window,
     role: 'windowMenu',
     submenu: join(
       // Not 'close' off macOS: the file menu already has "창 닫기" with the same accelerator.
-      [{ role: 'minimize', label: '최소화' }, ...(mac ? [{ role: 'zoom', label: '확대/축소' } satisfies Item] : [])],
-      mac ? [{ role: 'front', label: '모두 앞으로 가져오기' }] : [],
+      [{ role: 'minimize', label: copy.window.minimize }, ...(mac ? [{ role: 'zoom', label: copy.window.zoom } satisfies Item] : [])],
+      mac ? [{ role: 'front', label: copy.window.front }] : [],
       reg('window'),
     ),
   };
-  // macOS keeps Learn에 관하여 in the app menu; elsewhere Learn 정보 ends 도움말 (S-2).
-  const help: Item = { id: 'menu.help', label: '도움말', role: 'help', submenu: join(reg('help'), mac ? [] : [{ role: 'about', label: 'Learn 정보' }]) };
+  const help: Item = { id: 'menu.help', label: copy.top.help, role: 'help', submenu: join(reg('help'), mac ? [] : [{ role: 'about', label: copy.aboutOther }]) };
   return [...(mac ? [appMenu] : []), file, edit, view, go, windowMenu, help].filter((m) => Array.isArray(m.submenu) && m.submenu.length > 0);
 }
 
@@ -180,7 +194,7 @@ export function applyMenuEnabled(menu: MenuItemLookup, enabled: ReadonlySet<Comm
 export function applyMenuLabels(
   menu: MenuItemLookup,
   platform: NodeJS.Platform,
-  state: Pick<CommandContextState, 'sidebar'>,
+  state: MenuLabelState,
   commands: readonly CommandSpec[] = COMMANDS,
 ): void {
   for (const c of commands) {

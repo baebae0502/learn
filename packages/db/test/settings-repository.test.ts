@@ -19,11 +19,13 @@ describe('SettingsRepository', () => {
     repo.set('layout.panes', { sidebar: 240, detail: 320 });
     const id = newId();
     repo.set('ui.lastOpenItemId', id);
+    repo.set('library.columns', { visible: ['title', 'year'], order: ['title', 'year'], widths: { year: 70 } });
 
     expect(repo.get('library.sort')).toEqual({ column: 'year', direction: 'desc' });
     expect(repo.get('layout.panes')).toEqual({ sidebar: 240, detail: 320 });
     expect(repo.get('ui.lastOpenItemId')).toBe(id);
-    expect(repo.keys()).toEqual(['layout.panes', 'library.sort', 'ui.lastOpenItemId']);
+    expect(repo.get('library.columns')).toEqual({ visible: ['title', 'year'], order: ['title', 'year'], widths: { year: 70 } });
+    expect(repo.keys()).toEqual(['layout.panes', 'library.columns', 'library.sort', 'ui.lastOpenItemId']);
     expect((db.prepare(`SELECT value FROM settings WHERE key = 'library.sort'`).get() as { value: string }).value)
       .toBe('{"column":"year","direction":"desc"}');
   });

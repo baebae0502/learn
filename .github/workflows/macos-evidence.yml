@@ -8,7 +8,7 @@ on:
       suite:
         description: Evidence suite (Playwright tag @<suite>; all = no filter)
         type: choice
-        options: [baseline, e2e, evidence, perf, demo, mockups, all]
+        options: [baseline, e2e, evidence, perf, demo, mockups, library, all]
         default: baseline
       runner:
         description: GitHub-hosted Apple Silicon runner image
@@ -83,7 +83,7 @@ jobs:
   mac:
     needs: fixtures
     runs-on: ${{ inputs.runner }}
-    # Setup ≈ 4 + build/package ≈ 1 + evidence ≤ 17 + functional E2E ≤ 15 ≈ 37 min, with room (S-8).
+    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 25 + functional E2E ≤ 15 = 45 min.
     timeout-minutes: 45
     env:
       SUITE: ${{ inputs.suite }}
@@ -176,12 +176,12 @@ jobs:
           fi
           echo "LEARN_PACKAGED_APP=$APP/Contents/MacOS/Learn" >> "$GITHUB_ENV"
 
-      # A hang fails this step (Playwright globalTimeout 18 min inside, step limit 19) instead of cancelling the job.
+      # A hang fails this step (Playwright globalTimeout 24 min inside, step limit 25) instead of cancelling the job.
       # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 19
+        timeout-minutes: 25
         run: |
           if [ "$SUITE" = all ]; then
             pnpm exec playwright test -c playwright.evidence.config.ts

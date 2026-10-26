@@ -1,0 +1,47 @@
+@layer components {
+  /* A pane's empty or waiting state (design-spec 6 형식: 24 px icon in the tertiary colour, a headline, a footnote of
+     at most 280, one action; mockup .pane-empty). `.top`: under a table's header (loading, no results). */
+  .pane-empty {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-8);
+    padding: var(--space-24) var(--space-20) 64px; /* local: optical centre (mockup) */
+    text-align: center;
+  }
+  .pane-empty > .icon {
+    width: 24px; /* local: empty-state glyph (design-spec 6) */
+    height: 24px;
+    margin-bottom: var(--space-4);
+    color: var(--text-tertiary);
+  }
+  .pane-empty .pe-title,
+  .pane-empty .pe-text {
+    text-wrap: balance; /* no one-word last line (design-spec 4) */
+  }
+  .pane-empty .pe-title {
+    font: var(--type-headline);
+  }
+  .pane-empty .pe-text {
+    max-width: 280px; /* local: design-spec 6 */
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .pane-empty .btn {
+    margin-top: var(--space-8);
+  }
+  .pane-empty.top {
+    justify-content: flex-start;
+    padding-top: var(--space-48);
+  }
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+}

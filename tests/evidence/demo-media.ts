@@ -8,6 +8,7 @@
 // so the files are tens of kilobytes and of different sizes, as real notes are.
 import fs from 'node:fs';
 import path from 'node:path';
+import type { ItemMetadata } from '../../packages/domain/src/metadata';
 import { FIXTURES, ROOT } from '../e2e/helpers';
 
 const FONT = path.join(ROOT, 'apps/desktop/src/renderer/src/design/fonts/PretendardVariable.woff2');
@@ -255,6 +256,27 @@ export const VIDEOS: ReadonlyArray<readonly [string, string]> = [
   ['sample-h264-aac.mp4', '광합성 실험 영상.mp4'],
   ['sample-mpeg4part2.mp4', `${UNPLAYABLE_TITLE}.mp4`],
 ];
+
+/** The PDF the palette chapter finds by "bayes" and opens; the export chapter saves its copy. */
+export const PALETTE_TITLE = 'Intro to Bayesian Inference';
+
+/**
+ * What the demo's table shows under 저자 and 연도 (M4): invented creators, dates and publishers — no real people or
+ * publishers. An M4 library fills them only by hand (no automatic metadata), so the demo writes them in after the
+ * import and says so on screen. The chapters rely on 초성 ㅅㅍ matching the opened PDF only (세포): no other title,
+ * creator or publisher here has ㅅ followed by ㅍ (demo-media.test.ts).
+ */
+export const DEMO_METADATA: Readonly<Record<string, ItemMetadata>> = {
+  [READ_TITLE]: { creators: [{ name: '김도윤', role: 'lecturer' }], date: '2025-09' },
+  '단백질 접힘 강의 노트': { creators: [{ name: '이서진', role: 'author' }], date: '2024-03', publisher: '분자생물학 연구회' },
+  '효소 반응 속도론 정리': { creators: [{ name: '박지후', role: 'author' }], date: '2023' },
+  '열역학 제2법칙 요약': { creators: [{ name: '최예린', role: 'author' }], date: '2022', publisher: '일반물리 스터디' },
+  'Linear Algebra — Eigenvalues': { creators: [{ name: 'Mina Park', role: 'author' }], date: '2024' },
+  [PALETTE_TITLE]: { creators: [{ name: 'Jun Lee', role: 'author' }, { name: 'Sora Kim', role: 'author' }], date: '2025' },
+  '광합성 명반응과 암반응': { creators: [{ name: '정하늘', role: 'author' }], date: '2021', publisher: '생명과학 II' },
+  '광합성 실험 영상': { creators: [{ name: '정하늘', role: 'lecturer' }], date: '2024-05' },
+  [UNPLAYABLE_TITLE]: { creators: [{ name: '김도윤', role: 'lecturer' }], date: '2019' },
+};
 
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

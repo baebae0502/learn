@@ -4,6 +4,7 @@ import { attachEditContextMenu } from './menu/edit-context-menu';
 import { markPerf } from './perf';
 import { FullScreenFrameKeeper, defaultFrame } from './window-frame';
 import { mainWindowChrome, type ChromeOptions } from './window-options';
+import { registerWindowKind } from './window-kinds';
 import { trackWindowState } from './window-state';
 
 export interface MainWindowOptions {
@@ -36,6 +37,8 @@ export function createMainWindow(opts: MainWindowOptions): BrowserWindow {
       spellcheck: false,
     },
   });
+  // IPC knows the window by its webContents, never by its page's URL.
+  registerWindowKind(win.webContents, 'main');
   // Cold-start marks (perf.ts): the page has painted, then the window is on screen.
   win.once('ready-to-show', () => {
     markPerf('firstPaint');

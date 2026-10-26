@@ -25,4 +25,14 @@ describe('freshTargets (command availability from the freshest fact)', () => {
     const client = new QueryClient();
     expect(freshTargets(client, [item(OTHER, 'available')], [OTHER, ID]).map((t) => t.id)).toEqual([OTHER]);
   });
+  it('looks many ids up in one index of the list (a ⌘A selection), in the order asked', () => {
+    const client = new QueryClient();
+    const list = Array.from({ length: 10_000 }, (_, i) => item(`item-${String(i).padStart(30, '0')}`, i % 3 === 0 ? 'missing' : 'available'));
+    const ids = list.map((i) => i.id).reverse();
+    const t0 = performance.now();
+    const targets = freshTargets(client, list, ids);
+    const ms = performance.now() - t0;
+    expect(targets.map((t) => t.id)).toEqual(ids);
+    expect(ms).toBeLessThan(150); // a per-id scan of the list took about a second here
+  });
 });

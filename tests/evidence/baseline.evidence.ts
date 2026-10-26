@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, launch, stubOpenDialog } from '../e2e/helpers';
+import { FIXTURES, launch, openItem, stubOpenDialog } from '../e2e/helpers';
 import { IS_MAC, allShots as captureAll, platformFonts, writeJson, EVIDENCE_ROOT, type ManifestEntry } from './capture';
 import { writeEnv } from './env';
 
@@ -49,8 +49,8 @@ function timeOpen(page: Page, title: string, ready: Ready): Promise<number> {
   return page.evaluate(
     ({ title, ready }) =>
       new Promise<number>((resolve, reject) => {
-        const btn = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="open-item"]')].find((b) => b.dataset['title'] === title);
-        if (!btn) return reject(new Error(`no open-item for ${title}`));
+        const row = [...document.querySelectorAll<HTMLElement>('[data-testid="item-row"]')].find((r) => r.dataset['title'] === title);
+        if (!row) return reject(new Error(`no item-row for ${title}`));
         const isReady = () => {
           if (ready === 'pdf') {
             const c = document.querySelector('[data-testid="pdf-canvas"]');
@@ -68,7 +68,9 @@ function timeOpen(page: Page, title: string, ready: Ready): Promise<number> {
           if (performance.now() - t0 > 30_000) return reject(new Error(`timeout waiting for ${ready} (${title})`));
           setTimeout(tick, 2);
         };
-        btn.click();
+        // A double-click opens a row (M4 spec 3.3). Sent from the page, so the timing starts where the old title
+        // button's click started it.
+        row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 }));
         tick();
       }),
     { title, ready },
@@ -143,8 +145,8 @@ test('library screen and fonts', TAG, async () => {
     '[data-testid="toolbar-title"]',
     '.sidebar .section-label',
     '[data-testid="nav-library"] .label',
-    '[data-testid="open-item"][data-title="sample"]',
-    '[data-testid="open-item"][data-title="한글 경로 (테스트) #1"]',
+    '[data-testid="item-row"][data-title="sample"] .item-title',
+    '[data-testid="item-row"][data-title="한글 경로 (테스트) #1"] .item-title',
   ]) {
     fonts.push(await platformFonts(page, sel).catch((e: Error) => ({ selector: sel, error: e.message })));
   }
@@ -215,7 +217,7 @@ test('MP4 (H.264/AAC): first frame and seek error', TAG, async () => {
 test('HEVC: record behaviour (not a pass/fail criterion)', TAG, async () => {
   test.skip(!HAS_HEVC, 'sample-hevc.mp4 not generated (no libx265)');
   await backToLibrary(page);
-  await page.locator('[data-testid="open-item"][data-title="sample-hevc"]').click();
+  await openItem(page, 'sample-hevc');
   const video = page.getByTestId('video');
   await expect(video).toBeAttached();
   await expect

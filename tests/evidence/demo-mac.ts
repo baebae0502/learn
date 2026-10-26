@@ -203,19 +203,17 @@ export function dragScript(from: { x: number; y: number }, to: { x: number; y: n
 }
 
 /**
- * T13-m8 / T13R2-n6 / critique mac1 m5: a Finder window on `folder` (the demo's own material, the files that were
- * dragged in) in list view at known screen bounds [left, top, right, bottom] (about 680 × 380: every file and the
- * sidebar readable), in front, so "another app in front" shows another app. The folder is passed as an alias (re-review
- * minor 1). `closeFinderWindow` closes it again before Learn comes back.
+ * The front Finder window — the one Learn's Finder에서 보기 opened on the exported copy — in list view at known screen
+ * bounds [left, top, right, bottom] (about 680 × 380: the files and the sidebar readable), so "another app in front"
+ * shows another app. `closeFinderWindow` closes it again before Learn comes back.
  */
-export function openFinderWindow(folder: string, bounds: readonly [number, number, number, number]): void {
+export function arrangeFinderWindow(bounds: readonly [number, number, number, number]): void {
   osascript(
     [
       'tell application "Finder"',
-      `make new Finder window to (POSIX file ${JSON.stringify(folder)} as alias)`,
       'set current view of front window to list view',
-      // Critique mac3 n4: at 680 wide the list still scrolled sideways and cut 종류. Name and size only, and room for
-      // the names (this folder's own view options; the demo's material folder is its own).
+      // At 680 wide the list still scrolled sideways and cut 종류: name and size only, and room for the names (this
+      // folder's own view options).
       'try',
       'tell list view options of front window',
       'set visible of column id modification date column to false',

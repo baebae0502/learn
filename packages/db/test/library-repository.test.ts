@@ -197,6 +197,44 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expectLearnError(() => repo.updateMetadata(itemId, { title: 'x' }), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
   });
 
+  it('carries the publisher on the list row; corrupt or invalid metadata reads as none', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const a = seedItem(db);
+    const b = seedItem(db);
+    const c = seedItem(db);
+    repo.updateMetadata(a.itemId, { metadata: { creators: [], publisher: '분자생물학회' } });
+    repo.updateMetadata(b.itemId, { metadata: { creators: [], publisher: '' } });
+    db.prepare(`UPDATE items SET metadata_json = '{"publisher":' WHERE id = ?`).run(c.itemId);
+    const byId = new Map(repo.listItems().map((i) => [i.id, i]));
+    expect(byId.get(a.itemId)!.publisher).toBe('분자생물학회');
+    expect(byId.get(b.itemId)!.publisher).toBeNull();
+    expect(byId.get(c.itemId)!.publisher).toBeNull(); // the list still reads (json_extract would throw here)
+    expect(repo.getItem(a.itemId)!.publisher).toBe('분자생물학회');
+    expect(warn).toHaveBeenCalledWith('METADATA_CORRUPT_JSON');
+  });
+
+  it('searchTexts: abstracts and memos of live items that have one, never corrupt or trashed rows', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const both = seedItem(db);
+    const memo = seedItem(db);
+    const none = seedItem(db);
+    const trashed = seedItem(db);
+    const corrupt = seedItem(db);
+    repo.updateMetadata(both.itemId, { metadata: { creators: [], abstract: '수용체가 신호를 증폭합니다.', extra: '시험 범위' } });
+    repo.updateMetadata(memo.itemId, { metadata: { creators: [], extra: '다시 읽기' } });
+    repo.updateMetadata(none.itemId, { metadata: { creators: [], publisher: 'MIT', abstract: '' } });
+    repo.updateMetadata(trashed.itemId, { metadata: { creators: [], abstract: 'gone' } });
+    repo.trash([trashed.itemId]);
+    db.prepare(`UPDATE items SET metadata_json = '{"abstract":' WHERE id = ?`).run(corrupt.itemId);
+    const texts = repo.searchTexts();
+    expect(texts.sort((x, y) => x.id.localeCompare(y.id))).toEqual(
+      [
+        { id: both.itemId, abstract: '수용체가 신호를 증폭합니다.', extra: '시험 범위' },
+        { id: memo.itemId, abstract: null, extra: '다시 읽기' },
+      ].sort((x, y) => x.id.localeCompare(y.id)),
+    );
+  });
+
   it('degrades corrupt stored metadata to empty without failing the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { itemId } = seedItem(db);
@@ -314,5 +352,40 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expect(repo.counts()).toEqual({
       items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1,
     });
+  });
+});
+
+describe('LibraryRepository.insertItemsForAsset (E2E seeding only, P-22)', () => {
+  const rowsFor = (a: AssetRow, revisionId: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: newId(),
+      type: 'pdf' as const,
+      title: `seeded ${i}`,
+      createdAt: `2026-10-01T00:00:0${i}.000Z`,
+      metadataJson: JSON.stringify({ creators: [{ name: `저자 ${i}`, role: 'author' }], date: String(2000 + i) }),
+      assetId: a.id,
+      revisionId,
+    }));
+
+  it('adds items that share the source asset and its revision, with their creators and year, in one go', () => {
+    const src = seedItem(db, { title: 'source' });
+    repo.insertItemsForAsset(rowsFor(src.asset, src.revisionId, 3));
+    const seeded = repo.listItems().filter((i) => i.title.startsWith('seeded'));
+    expect(seeded.map((i) => i.title)).toEqual(['seeded 2', 'seeded 1', 'seeded 0']); // created_at DESC
+    for (const i of seeded) expect([i.assetId, i.revisionId, i.availability]).toEqual([src.asset.id, src.revisionId, 'available']);
+    expect(seeded.at(-1)).toMatchObject({ creators: ['저자 0'], year: 2000, updatedAt: '2026-10-01T00:00:00.000Z' });
+    expect(repo.counts()).toMatchObject({ items: 4, assets: 1, revisions: 1 });
+  });
+
+  it('writes nothing when a row names another asset\'s revision or carries metadata outside schema v1', () => {
+    const src = seedItem(db, { title: 'source' });
+    const other = seedItem(db, { title: 'other' });
+    const foreign = rowsFor(src.asset, src.revisionId, 2);
+    foreign[1] = { ...foreign[1]!, revisionId: other.revisionId };
+    expect(() => repo.insertItemsForAsset(foreign)).toThrow(/revision/);
+    const invalid = rowsFor(src.asset, src.revisionId, 2);
+    invalid[1] = { ...invalid[1]!, metadataJson: JSON.stringify({ date: 'soon' }) };
+    expect(() => repo.insertItemsForAsset(invalid)).toThrow(/metadata/);
+    expect(repo.counts().items).toBe(2);
   });
 });

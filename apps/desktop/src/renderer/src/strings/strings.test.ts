@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMMANDS } from '@learn/domain';
+import { COMMANDS, LIBRARY_COLUMNS } from '@learn/domain';
 import { mainStrings } from '../../../main/strings';
 import { t } from './index';
 
@@ -19,7 +19,15 @@ const copy: Array<{ at: string; text: string }> = [];
 collect(t, 't', copy);
 // Main's own copy module (native dialogs, messages that reach the screen): the same rules as the renderer's (review minor 7).
 collect(mainStrings, 'mainStrings', copy);
-for (const c of COMMANDS) copy.push({ at: `command ${c.id}`, text: c.label });
+for (const c of COMMANDS) {
+  copy.push({ at: `command ${c.id}`, text: c.label });
+  // A toggle's state labels are menu, palette and tooltip names too.
+  for (const [pane, names] of Object.entries(c.stateLabels ?? {})) {
+    for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
+  }
+}
+// The table's column names (the header and main's column menu both show them) come from the domain catalogue.
+for (const c of LIBRARY_COLUMNS) copy.push({ at: `column ${c.id}`, text: c.label });
 
 /** Renderer sources (no tests) under src/, relative paths. */
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -50,6 +58,8 @@ const isHaeyo = (text: string): boolean => HAEYO.test(text.replace(YO_NOUNS, '')
 const DETERMINER = /(?:^|[\s(‘“])(이|그|저|새|다른|각|모든|어느) (?=[가-힣])/;
 const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
 const INTERNAL = /SHA-256|해시|staging|관리형|경로만 기록/;
+/** The technical values design-spec 9 allows, in the item panel's file section only; nothing else may say them. */
+const TECHNICAL_COPY = new Set(['t.inspector.fileSha', 't.inspector.copySha']);
 const show = (s: { at: string; text: string }) => `${s.at}: ${s.text}`;
 
 describe('UI copy (design-spec 4, 9)', () => {
@@ -64,8 +74,10 @@ describe('UI copy (design-spec 4, 9)', () => {
   it('uses 합니다체, never 해요체', () => {
     expect(copy.filter((s) => isHaeyo(s.text)).map(show)).toEqual([]);
   });
-  it('has no internal jargon', () => {
-    expect(copy.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
+  it('has no internal jargon (the file section\'s SHA-256 aside)', () => {
+    expect(copy.filter((s) => INTERNAL.test(s.text) && !TECHNICAL_COPY.has(s.at)).map(show)).toEqual([]);
+    // The allow-list names live strings only: a renamed key cannot leave a stale exception behind.
+    expect([...TECHNICAL_COPY].filter((at) => !copy.some((s) => s.at === at))).toEqual([]);
   });
   it('no renderer source shows a phase placeholder such as "P3 단계"', () => {
     expect(sources().filter((f) => /P[0-9]\s*단계/.test(read(f)))).toEqual([]);
@@ -118,5 +130,9 @@ describe('main-process and library copy users see (N-3, C-4)', () => {
   });
   it('has no internal jargon', () => {
     expect(main.filter((s) => INTERNAL.test(s.text)).map(show)).toEqual([]);
+  });  it('main keeps its Korean copy in main/strings.ts: no Korean literal anywhere else in main (spec §8)', () => {
+    const own = path.join('apps', 'desktop', 'src', 'main', 'strings.ts');
+    const inline = main.filter((s) => s.at.startsWith(path.join('apps', 'desktop', 'src', 'main')) && s.at !== own);
+    expect(inline.map(show)).toEqual([]);
   });
 });

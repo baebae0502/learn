@@ -38,14 +38,15 @@ export function SettingsApp() {
   useEffect(() => {
     document.title = t.settings.title; // the window title follows the page title in Electron
   }, []);
-  // The theme tile just picked: selected, and this window's theme changed, on the click (T13M-m6). It gives way to the
-  // saved pref once that has come round to it, or when the write fails.
+  // The theme tile just picked is selected on the click and gives way to the saved pref once that has come round to it,
+  // or when the write fails. The theme itself changes when main sends the saved prefs to both windows at once, not on
+  // the click: this window and the main window change in the same frame.
   const [pickedTheme, setPickedTheme] = useState<Prefs['theme'] | null>(null);
   const savedTheme = prefsQuery.data?.theme;
   useEffect(() => {
     if (pickSettled(pickedTheme, savedTheme)) setPickedTheme(null);
   }, [pickedTheme, savedTheme]);
-  useApplyTheme(pickedTheme ?? savedTheme);
+  useApplyTheme(savedTheme);
   if (prefsQuery.isPending || info.isPending) return null;
   const prefs = prefsQuery.data ?? DEFAULT_PREFS;
 

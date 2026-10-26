@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatDate, formatSize, homeRelative, msUntilMidnight } from './format';
+import { formatDate, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -57,5 +57,12 @@ describe('homeRelative (paths on screen show the home folder as ~)', () => {
     expect(homeRelative('/Users/a/x.pdf', null)).toBe('/Users/a/x.pdf');
     expect(homeRelative('/Users/a/x.pdf', '')).toBe('/Users/a/x.pdf');
     expect(homeRelative('/x.pdf', '/')).toBe('/x.pdf'); // a root "home" would abbreviate everything
+  });
+  it('writes a duration as a player does: m:ss under an hour, h:mm:ss from one, whole seconds (design-spec 9 "18:20")', () => {
+    expect(formatDuration(10_030)).toBe('0:10');
+    expect(formatDuration(59_999)).toBe('0:59');
+    expect(formatDuration(1_100_000)).toBe('18:20');
+    expect(formatDuration(3_725_000)).toBe('1:02:05');
+    expect(formatDuration(-5)).toBe('0:00');
   });
 });

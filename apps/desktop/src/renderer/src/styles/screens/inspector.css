@@ -1,0 +1,345 @@
+@layer screens {
+  /* The main column (design-spec 2.3): toolbar, then content | item panel. The panel library gives the group an inline
+     height of 100 %; a zero basis lets it take what the toolbar leaves. */
+  .main-panes {
+    flex: 1 1 0;
+    min-height: 0;
+  }
+  .content-pane {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  /* The item panel (design-spec 2.5; library.html .inspector): --bg-content, its 1 px boundary on the left edge. */
+  .inspector-panel {
+    height: 100%;
+    min-width: 0;
+    background: var(--bg-content);
+    box-shadow: inset 1px 0 0 var(--separator);
+  }
+  .inspector {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+    padding-left: 1px; /* local: the boundary line's column */
+  }
+  /* A pane F6 lands on as a whole (nothing to focus in it): the ring inside the clipped panel. */
+  .inspector:focus-visible {
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  /* Its resize handle, as the sidebar's: zero width on the boundary, ±4 px hit area, the line is the panel's own. */
+  .inspector-separator {
+    position: relative;
+    z-index: 3;
+    flex: 0 0 0px;
+    outline: none;
+  }
+  .inspector-separator::after {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+  }
+  .inspector-separator:focus-visible::before {
+    content: '';
+    position: absolute;
+    inset: 0 -2px 0 -1px; /* local: 3 px over the panel's line, which lies right of the handle */
+    background: var(--focus);
+  }
+  :root[data-window-inactive] .inspector-separator:focus-visible::before {
+    content: none;
+  }
+  .window[data-inspector='hidden'] .inspector-separator {
+    display: none;
+  }
+  .inspector-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .inspector-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Head (library.html .item-head). */
+  .inspector .item-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding: var(--space-16) var(--space-16) var(--space-12);
+  }
+  .inspector .item-head .kind {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* title3: the side panel never out-ranks the content's title; user text, so no text-wrap: pretty (design-spec 4). */
+  .inspector .item-head h2 {
+    margin: 0;
+    font: var(--type-title3);
+    overflow-wrap: anywhere;
+  }
+  .inspector .item-head .authors {
+    color: var(--text-secondary);
+  }
+  .inspector .item-head .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+
+  /* Sections (library.html .section, .section-head). */
+  .inspector .section {
+    border-top: 1px solid var(--separator);
+    padding: 0 var(--space-16) var(--space-12);
+  }
+  .inspector .section-head {
+    display: flex;
+    align-items: center;
+    height: 36px; /* local: section header row */
+    margin-left: -8px; /* local: the chevron on x 12, as the mockup's */
+  }
+  .inspector .section-title {
+    margin: 0;
+    font: var(--type-headline);
+  }
+  .inspector .section-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: var(--control-height-small);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    cursor: default;
+    outline: none;
+  }
+  .inspector .section-toggle .icon {
+    color: var(--text-tertiary);
+    transition: rotate var(--duration-fast) var(--ease-standard);
+  }
+  .inspector .section-toggle[aria-expanded='false'] .icon {
+    rotate: -90deg;
+  }
+  .inspector .section-toggle[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .inspector .section-head > :is(.icon-btn, .soft-disabled) {
+    margin-left: auto;
+    margin-right: -6px; /* local: the glyph on the section's right inset, as the mockup's */
+  }
+
+  /* Label–value rows (library.html .kv). */
+  .inspector .kv {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr); /* local: the label column */
+    column-gap: var(--space-12);
+    row-gap: var(--space-6);
+    align-items: baseline;
+    margin: 0;
+  }
+  .inspector .kv-row {
+    display: contents;
+  }
+  .inspector .kv dt {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .inspector .kv dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .inspector .kv dd.ellipsis {
+    overflow-wrap: normal;
+  }
+  .inspector .kv :is(.note, .long) {
+    white-space: pre-wrap;
+  }
+  /* A block, so its height can be measured open and clamped alike. */
+  .inspector .kv .long {
+    display: block;
+    font: var(--type-paragraph); /* an abstract is a paragraph: 20, not the body's 18 */
+  }
+  /* The head's title carries the table's status marks after it (link, 파일 없음): gap 4, left margin 6. */
+  .inspector .item-head h2 .item-marks {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-left: var(--space-6);
+    vertical-align: middle;
+  }
+  .inspector .kv .clamp {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    overflow: hidden;
+  }
+  .inspector .kv .link {
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+  .inspector .kv .link:hover {
+    text-decoration: underline;
+  }
+  .inspector .kv .more-row {
+    margin-left: calc(var(--space-8) * -1); /* the plain button's label on the value column */
+  }
+  .inspector .kv dd.sha {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+  }
+  .inspector .info-hint {
+    margin: 0 0 var(--space-8);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+
+  /* Several selected (library.html .multi-list). */
+  .inspector .multi-list {
+    display: flex;
+    flex-direction: column;
+    margin: var(--space-4) 0;
+    padding: 0;
+    list-style: none;
+  }
+  .inspector .multi-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: 24px; /* local: library.html .collection-path */
+    min-width: 0;
+  }
+  .inspector .multi-row .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
+  .inspector .multi-more {
+    padding-left: var(--space-20); /* on the titles' column: 14 icon + 6 gap */
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+
+  /* Empty and loading states (design-spec 6; library.html .pane-empty): the shape is components/pane-empty.css
+     (.pane-empty, .pane-empty.top, .pe-title, .pe-text, .loading) and ui/PaneEmpty. The panel adds balanced lines
+     in its narrow column and the library's numbers under 선택한 자료 없음. */
+  .inspector .pane-empty :is(.pe-title, .pe-text) {
+    text-wrap: balance;
+  }
+  .inspector .pane-empty .pe-stats {
+    margin-top: var(--space-12);
+    color: var(--text-tertiary);
+  }
+  /* 정보 편집 (spec §5.3): the section's place, stacked fields (label above, 288 wide), the actions at the end. */
+  .inspector .editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-12);
+  }
+  .inspector .ed-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+  .inspector .ed-label {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .inspector .ed-input {
+    width: 100%;
+  }
+  .inspector .ed-input:is(:focus, [data-force~='focus']) {
+    outline: none;
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  /* A marked field (design-spec 6): a danger border, its footnote under it. */
+  .inspector .ed-input[aria-invalid='true'] {
+    box-shadow: inset 0 0 0 1px var(--danger);
+  }
+  .inspector .ed-input[aria-invalid='true']:focus {
+    box-shadow: inset 0 0 0 1px var(--danger), 0 0 0 3px color-mix(in oklch, var(--danger) 28%, transparent);
+  }
+  :root[data-window-inactive] .inspector .ed-input:focus:not([aria-invalid='true']) {
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .inspector .ed-text {
+    height: auto;
+    min-height: 88px; /* local: four paragraph lines of 20 and the field's insets */
+    font: var(--type-paragraph); /* the view shows the same text in this face: entering the edit does not reflow it */
+    padding: var(--space-4) var(--space-8);
+    resize: vertical;
+  }
+  .inspector .ed-error {
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
+  .inspector :is(.ed-unsaved-text, .ed-error) {
+    text-wrap: pretty;
+  }
+  .inspector .ed-creators {
+    gap: var(--space-4);
+  }
+  .inspector .ed-creator {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 88px repeat(3, 22px); /* local: name, role, ↑ ↓ − */
+    gap: var(--space-4);
+    align-items: center;
+  }
+  .inspector .ed-creator .ed-name {
+    display: contents;
+  }
+  .inspector .ed-creator .ed-error {
+    order: 1; /* after the row's controls, on a line of its own */
+    grid-column: 1 / -1;
+  }
+  .inspector .ed-select {
+    padding: 0 var(--space-4);
+    appearance: auto;
+  }
+  .inspector .ed-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+    /* Stays at the panel's foot while the form is longer than the panel (the scroller is the panel). */
+    position: sticky;
+    bottom: 0;
+    padding-block: var(--space-8);
+    background: var(--bg-content);
+  }
+  /* Something tried to leave with a field still marked (spec §5.3): above the form, with 버리기. */
+  .inspector .ed-unsaved {
+    display: flex;
+    align-items: flex-start; /* the icon sits on the first line, not the middle of three */
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-12);
+    border-radius: var(--radius-md);
+    background: var(--warning-soft);
+    font: var(--type-footnote);
+  }
+  .inspector .ed-unsaved > .icon {
+    flex: none;
+    color: var(--warning-text);
+  }
+  .inspector .ed-unsaved > .btn {
+    margin: -3px calc(var(--space-8) * -1) -3px 0; /* the button's text sits as far from the right edge as the icon from the left */
+  }
+  .inspector .ed-unsaved-text {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}

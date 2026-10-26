@@ -1,13 +1,12 @@
 import { VIDEO_FORMATS } from '@learn/domain';
+import { waGwa } from './josa';
 
 export const library = {
   table: '자료 목록',
   listFailed: '자료 목록을 불러오지 못했습니다',
-  colTitle: '제목',
-  colType: '종류',
-  colSize: '크기',
-  colAdded: '추가일',
   type: { pdf: 'PDF', video: '동영상' },
+  /** 보관 column (spec §3.1): the user's words, never the internal "managed" (design-spec 9). */
+  storage: { managed: '사본', linked: '외부 연결' },
   linked: '외부 파일 연결',
   missing: '파일 없음',
   missingTitle: '원본\u00a0파일을 찾을 수 없습니다',
@@ -19,4 +18,16 @@ export const library = {
   /** The empty library while a drop's files are being brought in (critique T13R2-m1). */
   importingTitle: (n: number) => `자료 ${n}개를 가져오는 중…`,
   formats: `PDF와 ${VIDEO_FORMATS} 동영상을 지원합니다.`,
+  /** The table body while the first list read takes longer than 300 ms (design-spec 6; the header stays). */
+  loading: '불러오는 중…',
+  /** A column edge's accessible name (its separator, which VoiceOver reads with the width). */
+  resizeColumn: (column: string) => `${column} 열 폭`,
+  /** The toolbar's quick search (spec 4.1); 태그 joins it with tags in M5 (no word for what is not there yet). */
+  searchPlaceholder: '제목, 저자 검색',
+  /** Read out politely as the results change; with none, the no-results state speaks instead. */
+  searchStatus: (n: number) => `일치하는 자료 ${n}개`,
+  /** In the table body's place when nothing matches (spec 4.3). */
+  searchEmptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료가 없습니다`,
+  searchEmptyBody: '제목·저자·출판사·원래 파일 이름·초록·메모에서 찾았습니다.',
+  searchClear: '검색어 지우기',
 } as const;

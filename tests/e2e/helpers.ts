@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
-import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import type { LearnApi } from '../../packages/domain/src/ipc';
+import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
+import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
   interface Window {
@@ -39,6 +40,9 @@ export interface LaunchOptions {
   colorScheme?: null | 'light' | 'dark';
 }
 
+/** How long a session's close may take before the app process is killed. */
+const CLOSE_GRACE_MS = 10_000;
+
 /**
  * Launch the built app. `null` for a directory leaves that variable unset so the app uses its
  * default location (only for disposable machines such as CI runners).
@@ -59,11 +63,27 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
     ...(opts.colorScheme !== undefined ? { colorScheme: opts.colorScheme } : {}),
   });
+  // The app refuses to quit while an edited field is invalid, so a test that failed in that state would wait on close()
+  // until the worker's teardown timeout and take the rest of the run with it. A close that has not finished by then is
+  // killed, so the test's own failure is what gets reported.
+  const close = app.close.bind(app);
+  app.close = async () => {
+    const child = app.process();
+    const timer = setTimeout(() => child.kill('SIGKILL'), CLOSE_GRACE_MS);
+    try {
+      await close();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   try {
     const page = await app.firstWindow();
     await expect(page.getByTestId('app-ready')).toBeAttached();
     // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuStateVersion?: number }).__learnMenuStateVersion ?? 0)).toBeGreaterThan(0);
+    // Once the main window is idle main prepares the settings window hidden. Every session starts from there (the
+    // main window and a prepared settings window), so no test races its making (window events, window counts).
+    await expect.poll(() => settingsPrepared(app), { message: 'main prepared the settings window once the main window was idle', timeout: 15_000 }).toBe(true);
     return { app, page };
   } catch (e) {
     await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
@@ -82,6 +102,27 @@ export function mainWindow(app: ElectronApplication) {
     const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=main'));
     if (!w) throw new Error('no main window (window=main)');
     return w;
+  });
+}
+
+/**
+ * Every window by its `?window=` kind, sorted, with " (hidden)" after one not on screen — e.g. ['main', 'settings (hidden)']:
+ * the settings window main prepares ahead of ⌘, is there from launch on.
+ */
+export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
+  app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()
+      .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed())
+      .map((w) => `${/[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? ''}${w.isVisible() ? '' : ' (hidden)'}`)
+      .sort(),
+  );
+
+/** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
+export async function settingsPrepared(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(async ({ BrowserWindow }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && x.webContents.getURL().includes('window=settings'));
+    if (!w || w.webContents.isLoading()) return false;
+    return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true;
   });
 }
 
@@ -133,6 +174,102 @@ export const restoreOpenDialog = (app: ElectronApplication) =>
 export const openDialogCalls = (app: ElectronApplication): Promise<number> =>
   app.evaluate(() => (globalThis as { __learnOpenDialogCalls?: number }).__learnOpenDialogCalls ?? 0);
 
+/** What main handed the OS since the last stubShell, in order: Finder에서 보기 = reveal, 기본 앱으로 열기 = open. */
+export type ShellCall = ['reveal' | 'open', string];
+
+/** Record shell calls in main instead of opening Finder or another app; `openFails` makes openPath report an error. */
+export async function stubShell(app: ElectronApplication, opts: { openFails?: boolean } = {}): Promise<void> {
+  await app.evaluate(({ shell }, openFails) => {
+    const g = globalThis as { __learnShell?: Array<['reveal' | 'open', string]> };
+    g.__learnShell = [];
+    shell.showItemInFolder = (p: string) => void g.__learnShell!.push(['reveal', p]);
+    shell.openPath = async (p: string) => {
+      g.__learnShell!.push(['open', p]);
+      return openFails ? 'No application knows how to open this file' : '';
+    };
+  }, opts.openFails === true);
+}
+export const shellCalls = (app: ElectronApplication): Promise<ShellCall[]> => app.evaluate(() => (globalThis as { __learnShell?: ShellCall[] }).__learnShell ?? []);
+
+/** One call of the stubbed save panel: whether it hung on a window (a sheet), and what it was asked to show. */
+export interface SaveDialogCall {
+  parent: boolean;
+  title: string | null;
+  defaultPath: string | null;
+  properties: string[];
+  extensions: string[];
+}
+
+/**
+ * Replace the native save panel in main for the rest of the session: it answers `filePath` (null: cancelled) and records
+ * every call, from none (saveDialogCalls counts them, saveDialogLog says what each was asked to show).
+ */
+export async function stubSaveDialog(app: ElectronApplication, filePath: string | null): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] };
+    g.__learnSaveDialogCalls = [];
+    dialog.showSaveDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; defaultPath?: string; properties?: string[]; filters?: Array<{ extensions: string[] }> };
+      g.__learnSaveDialogCalls!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+        extensions: (o.filters ?? []).flatMap((f) => f.extensions),
+      });
+      return answer === null ? { canceled: true, filePath: '' } : { canceled: false, filePath: answer };
+    }) as typeof dialog.showSaveDialog;
+  }, filePath);
+}
+/** How many times the stubbed (or held) save panel was shown since the last stubSaveDialog / holdSaveDialog, as openDialogCalls counts. */
+export const saveDialogCalls = (app: ElectronApplication): Promise<number> =>
+  app.evaluate(() => (globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] }).__learnSaveDialogCalls?.length ?? 0);
+/** What each of those panels was asked to show, oldest first. */
+export const saveDialogLog = (app: ElectronApplication): Promise<SaveDialogCall[]> =>
+  app.evaluate(() => (globalThis as { __learnSaveDialogCalls?: SaveDialogCall[] }).__learnSaveDialogCalls ?? []);
+
+/** A save panel that stays up (the user still choosing) until releaseSaveDialog, then answers `filePath`; calls are recorded from none. */
+export const holdSaveDialog = (app: ElectronApplication, filePath: string) =>
+  app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnReleaseSave?: () => void; __learnSaveDialogCalls?: SaveDialogCall[] };
+    delete g.__learnReleaseSave;
+    g.__learnSaveDialogCalls = [];
+    dialog.showSaveDialog = ((...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; defaultPath?: string; properties?: string[]; filters?: Array<{ extensions: string[] }> };
+      g.__learnSaveDialogCalls!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+        extensions: (o.filters ?? []).flatMap((f) => f.extensions),
+      });
+      return new Promise((resolve) => (g.__learnReleaseSave = () => resolve({ canceled: false, filePath: answer })));
+    }) as typeof dialog.showSaveDialog;
+  }, filePath);
+/** Answers the held save panel; waits until main has shown it (the menu click returns before the IPC arrives). */
+export async function releaseSaveDialog(app: ElectronApplication): Promise<void> {
+  await expect.poll(() => app.evaluate(() => typeof (globalThis as { __learnReleaseSave?: () => void }).__learnReleaseSave)).toBe('function');
+  await app.evaluate(() => (globalThis as { __learnReleaseSave?: () => void }).__learnReleaseSave!());
+}
+
+/**
+ * Every copy main makes from now (node:fs/promises copyFile: imports, named copies, exports) waits until releaseCopies.
+ * The real copyFile is kept the first time, so holding again does not stack waits.
+ */
+export async function holdCopies(app: ElectronApplication): Promise<void> {
+  await app.evaluate(() => {
+    const fsp = process.getBuiltinModule('node:fs/promises');
+    const g = globalThis as { __learnRealCopyFile?: typeof fsp.copyFile; __learnReleaseCopy?: () => void };
+    const real = (g.__learnRealCopyFile ??= fsp.copyFile);
+    const held = new Promise<void>((resolve) => (g.__learnReleaseCopy = resolve));
+    fsp.copyFile = (async (...args: Parameters<typeof real>) => {
+      await held;
+      return real(...args);
+    }) as typeof real;
+  });
+}
+export const releaseCopies = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
+
 /** Import files through `learn.library.import` (managed); every path must come back as a new item. */
 export async function importPaths(page: Page, paths: string[]): Promise<LibraryItem[]> {
   const r = await page.evaluate((paths) => window.learn.library.import({ paths, mode: 'managed' }), paths);
@@ -142,6 +279,19 @@ export async function importPaths(page: Page, paths: string[]): Promise<LibraryI
     return o.item;
   });
 }
+
+/**
+ * Metadata (and, when given, a title) for an item through `learn.library.updateMetadata` from the page. Main
+ * broadcasts libraryChanged{metadata}, so the list is read again; the updated row comes back.
+ */
+export async function seedMetadata(page: Page, itemId: string, metadata: NonNullable<UpdateMetadataInput['metadata']>, title?: string): Promise<LibraryItem> {
+  const r = await page.evaluate((input) => window.learn.library.updateMetadata(input), { itemId, metadata, ...(title === undefined ? {} : { title }) });
+  if (!r.ok) throw new Error(`library.updateMetadata failed: ${r.code}`);
+  return r.data;
+}
+
+/** The system clipboard's text, read in main: the page may write the clipboard but never read it. */
+export const readClipboard = (app: ElectronApplication): Promise<string> => app.evaluate(({ clipboard }) => clipboard.readText());
 
 /** Import through the real menu path (stubbed dialog): 파일 › 파일 가져오기… or 외부 파일 연결…. */
 export async function importFiles(s: Session, paths: string[], mode: 'managed' | 'linked' = 'managed'): Promise<void> {
@@ -164,7 +314,9 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
 }
 
 /**
- * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. A sheet is
+ * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. The first ⌘, of a
+ * session shows the settings window main prepared hidden instead of making one: its page, already open, is the one
+ * returned. A sheet is
  * returned once main has shown it at its measured size (hidden → sized to its content → shown), and the page's
  * viewport has that size: geometry and screenshots never see the first, full-height layout. The settings window is
  * returned once it is shown and has the focus: it shows only after its measure and font wait, 120–150 ms after its
@@ -172,9 +324,11 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
  * ours has the focus (the app itself is not the active one, which macOS 14+ may refuse to change), shown is enough.
  */
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
-  const opened = app.waitForEvent('window', { timeout: 15_000 });
+  // ⌘, shows the settings window main prepared when there is one; every sheet is a new window.
+  const prepared = kind === 'settings' ? app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings')) : undefined;
+  const opened = prepared ? null : app.waitForEvent('window', { timeout: 15_000 });
   await trigger();
-  const page = await opened;
+  const page = prepared ?? (await opened!);
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
   if (kind === 'sheet') {
@@ -291,8 +445,79 @@ export function drag(page: Page, type: DragType, carry: DragCarry, opts: { altKe
   );
 }
 
+/**
+ * The table row of the item titled exactly `title` . The table is virtualized: a row far from the viewport is
+ * not in the DOM until it is scrolled to.
+ */
+export const rowByTitle = (page: Page, title: string): Locator => page.locator(`[data-testid="item-row"][data-title=${JSON.stringify(title)}]`);
+
+/** The row at `index` in the table's current order (data-index): a virtualized body's DOM order need not be the visual one. */
+export const rowAt = (page: Page, index: number): Locator => page.locator(`[data-testid="item-row"][data-index="${index}"]`);
+
+/** Opens an item as a user does: a double-click on its row (M4 spec 3.3). A single click only selects. */
 export async function openItem(page: Page, title: string): Promise<void> {
-  await page.locator(`[data-testid="open-item"][data-title="${title}"]`).click();
+  const row = rowByTitle(page, title);
+  await row.scrollIntoViewIfNeeded();
+  await row.dblclick();
+}
+
+/**
+ * Selects rows by title: a plain click on the first, a modifier-click on each of the rest. `Meta` (the default, toggle)
+ * is the platform's: ⌘ on macOS, Ctrl elsewhere (the table's own rule, LibraryTable).
+ */
+export async function selectRows(page: Page, titles: readonly string[], opts: { modifier?: 'Meta' | 'Shift' | 'Control' } = {}): Promise<void> {
+  const [first, ...rest] = titles;
+  if (first === undefined) return;
+  await rowByTitle(page, first).click();
+  const wanted = opts.modifier ?? 'Meta';
+  const modifier = wanted === 'Meta' && process.platform !== 'darwin' ? 'Control' : wanted;
+  for (const title of rest) await rowByTitle(page, title).click({ modifiers: [modifier] });
+}
+
+/** One seeded item's facts, as main's test hook takes them (apps/desktop/src/main/test-hooks.ts). */
+export interface SeedRow {
+  title: string;
+  creators: string[];
+  year: number | null;
+  createdAt: string;
+}
+
+const SEED_KO = ['세포', '신호', '전달', '단백질', '효소', '반응', '유전자', '발현', '대사', '경로', '면역', '수용체', '광합성', '열역학', '확률', '통계', '강의', '노트'];
+const SEED_EN = ['Signal', 'Protein', 'Enzyme', 'Kinetics', 'Bayesian', 'Inference', 'Linear', 'Algebra', 'Membrane', 'Transport', 'Genome', 'Lecture', 'Notes', 'Review'];
+const SEED_NAMES = ['김민지', '이서준', '박지훈', '최유나', '정하늘', 'Alice Kim', 'Brian Lee', 'Chen Wei', 'Dana Park', 'Erik Lund'];
+
+/**
+ * `count` seeded rows from a fixed generator (mulberry32): Korean and English titles, each ending in its running number
+ * (so every title is unique), 0–4 creators, a year or none, and 추가일 one minute apart going back from `base`.
+ */
+export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z')): SeedRow[] {
+  let a = seed | 0;
+  const rand = () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+  return Array.from({ length: count }, (_, i) => {
+    const words = rand() < 0.6 ? SEED_KO : SEED_EN;
+    return {
+      title: `${pick(words)} ${pick(words)} ${i + 1}`,
+      creators: Array.from({ length: Math.floor(rand() * 5) }, () => pick(SEED_NAMES)),
+      year: rand() < 0.1 ? null : 1985 + Math.floor(rand() * 41),
+      createdAt: new Date(base - i * 60_000).toISOString(),
+    };
+  });
+}
+
+/**
+ * Adds `count` items that share `from`'s file — one managed copy, one transaction — through main's E2E hook.
+ * Resolves once main has written them; the list follows its one libraryChanged.
+ */
+export async function seedLibrary(app: ElectronApplication, opts: { count: number; from: LibraryItem; seed?: number }): Promise<void> {
+  const input = { fromItemId: opts.from.id, rows: seedRows(opts.count, opts.seed) };
+  const added = await app.evaluate((_electron, arg) => (globalThis as unknown as { __learnTest: { seedItems(i: typeof arg): number } }).__learnTest.seedItems(arg), input);
+  if (added !== opts.count) throw new Error(`seedLibrary: ${added} of ${opts.count} items added`);
 }
 
 /** One application-menu entry as JSON. Runtime roles are lower-case (`selectall`, `togglefullscreen`). */
@@ -349,6 +574,179 @@ export async function runMenuCommand(app: ElectronApplication, id: CommandId): P
   }, id);
 }
 
+/**
+ * The item panel shown, whatever the window's width: if it is folded (by the width or by the user) it is shown on demand
+ * as ⌥⌘I does, and the command is repeated only when a late resize folded it again. The window is judged only once its
+ * width has stopped changing (a macOS window that cannot reach the width asked for resizes after the first look), and
+ * the command waits for the page to answer before the state is read again, so one fold is never undone by a second
+ * press. No widening: a 1024 px screen cannot give 1440, and the tests that use this are about behaviour, not width.
+ */
+export async function showItemPanel(app: ElectronApplication, page: Page): Promise<void> {
+  const state = () => page.getByTestId('shell').getAttribute('data-inspector');
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        const width = await page.evaluate(() => innerWidth);
+        const settled = width === last;
+        last = width;
+        if (!settled) return 'resizing';
+        if ((await state()) !== 'shown') {
+          await runMenuCommand(app, 'view.toggleInspector');
+          await page.waitForFunction(() => document.querySelector('[data-testid="shell"]')?.getAttribute('data-inspector') === 'shown', undefined, { timeout: 2_000 }).catch(() => {});
+        }
+        return state();
+      },
+      { intervals: [200], timeout: 15_000, message: 'the item panel never showed' },
+    )
+    .toBe('shown');
+}
+
+/**
+ * The pointer over a control as a person brings it there: first a move to a quiet spot of the window (its centre), then
+ * the hover. A hover tooltip opens only if the last input was a pointer one when the pointer enters the control, and a
+ * browser reports the entering before the move that carries it, so a single jump from outside the page, or from a
+ * keystroke, onto the control is a hover react-aria ignores (the window then has no pointer input yet, or the last
+ * input was a key; the Mac runner, whose cursor is not over a new window, never shows the tooltip). A person's pointer
+ * moves over the window on its way, which this move stands for.
+ */
+export async function hoverLikeUser(page: Page, testId: string): Promise<void> {
+  const [x, y] = await page.evaluate(() => [Math.round(innerWidth / 2), Math.round(innerHeight / 2)] as const);
+  await page.mouse.move(x, y);
+  await page.getByTestId(testId).hover();
+}
+
+/**
+ * The tooltip after a hover has this text. When none shows, the failure says why the page held it back: which reasons
+ * block tooltips (data-tooltip-block), whether the window is inactive or not main, whether the page has the focus, and
+ * which element the pointer is over: a hover tooltip that never comes on a runner is one of those or the pointer itself.
+ */
+export async function expectTooltipText(page: Page, expected: string | RegExp, hovered: string): Promise<void> {
+  try {
+    await expect(page.getByRole('tooltip')).toHaveText(expected);
+  } catch (error) {
+    const state = await page
+      .evaluate((testId) => {
+        const root = document.documentElement.dataset;
+        return {
+          tooltipBlock: root['tooltipBlock'] ?? null,
+          windowInactive: 'windowInactive' in root,
+          windowNotMain: 'windowNotMain' in root,
+          hasFocus: document.hasFocus(),
+          targetHovered: document.querySelector(`[data-testid="${testId}"]`)?.matches(':hover') ?? null,
+          tooltips: document.querySelectorAll('.tooltip').length,
+        };
+      }, hovered)
+      .catch((e: unknown) => ({ evaluateFailed: String(e) }));
+    throw new Error(`${(error as Error).message}\npage state when no tooltip showed: ${JSON.stringify(state)}`);
+  }
+}
+
+/** What decides how the sidebar's top 88 px is drawn, read when a shot of it is taken (see `sidebarTop88`). */
+const shotStates = new WeakMap<Buffer, Record<string, unknown>>();
+
+/**
+ * The sidebar's top 88 px (the toggle, the launcher), shot with the pointer parked away from every control. The state
+ * the pixels depend on is read at the same moment and kept with the shot, so a comparison that fails names it: the
+ * window's key/main flags, the page's focus, which element has it, hover on the two controls, their disabled marks,
+ * the toggle's tooltip, and the document's scroll.
+ */
+export async function sidebarTop88(page: Page): Promise<Buffer> {
+  await page.mouse.move(900, 700);
+  const state = await page.evaluate(() => {
+    const root = document.documentElement.dataset;
+    const control = (selector: string) => {
+      const el = document.querySelector(selector);
+      return el === null ? null : { hover: el.matches(':hover'), focus: el.matches(':focus, :focus-visible'), disabled: el.getAttribute('aria-disabled') === 'true' || el.matches(':disabled') };
+    };
+    const active = document.activeElement;
+    return {
+      windowInactive: 'windowInactive' in root,
+      windowNotMain: 'windowNotMain' in root,
+      hasFocus: document.hasFocus(),
+      activeElement: active === null ? null : `${active.tagName.toLowerCase()}${active.getAttribute('data-testid') ? `[${active.getAttribute('data-testid')}]` : ''}`,
+      toggle: control('.sidebar-top .icon-btn'),
+      launcher: control('.sidebar .launcher'),
+      tooltips: document.querySelectorAll('.tooltip').length,
+      innerWidth,
+    };
+  });
+  const shot = await page.screenshot({ clip: { x: 0, y: 0, width: 240, height: 88 }, animations: 'disabled', caret: 'hide' });
+  shotStates.set(shot, state);
+  return shot;
+}
+
+/**
+ * Two screenshots of the same clip are byte-identical, or the failure says where they differ (pixel count, bounding box,
+ * the first differing pixel's two colours), decoded in the page: a pixel-identity test that fails on a machine whose
+ * images cannot be looked at must name what moved. A difference also attaches both PNGs and a diff image (differing
+ * pixels red on a dimmed copy, enlarged 4 times) to the test, and the page state each shot was taken in (`sidebarTop88`).
+ * On macOS, where the sidebar is clear over the window material, translucent pixels are compared after laying both shots
+ * over the sidebar's opaque colour with a small tolerance, and a few anti-aliased corner pixels may differ more (`compareShots`);
+ * on Linux the compare stays exact.
+ */
+export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffer, reference: Buffer, name: string): Promise<void> {
+  if (shot.equals(reference)) return;
+  const decoded = await page.evaluate(async ([a, b]) => {
+    const decode = async (b64: string) => {
+      const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(bitmap, 0, 0);
+      const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+      let binary = '';
+      for (let i = 0; i < data.length; i += 0x8000) binary += String.fromCharCode(...data.subarray(i, i + 0x8000));
+      return { width, height, data: btoa(binary) };
+    };
+    // The sidebar's opaque colour without the window material: the token the sidebar paints when it is not clear.
+    const token = getComputedStyle(document.documentElement).getPropertyValue('--bg-sidebar').trim();
+    const swatch = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    swatch.fillStyle = token === '' ? '#000' : token;
+    swatch.fillRect(0, 0, 1, 1);
+    const [r, g, bl] = swatch.getImageData(0, 0, 1, 1).data;
+    return { x: await decode(a!), y: await decode(b!), fallback: [r!, g!, bl!] };
+  }, [shot.toString('base64'), reference.toString('base64')] as const);
+  const pixels = (d: { width: number; height: number; data: string }): Pixels => ({ width: d.width, height: d.height, data: Buffer.from(d.data, 'base64') });
+  const [x, y] = [pixels(decoded.x), pixels(decoded.y)];
+  let report: string;
+  let diff: string | null = null;
+  if (x.width !== y.width || x.height !== y.height) report = `sizes differ: ${x.width}x${x.height} vs ${y.width}x${y.height}`;
+  else {
+    // Over the macOS window material the shots are translucent and the renderer's soft edges vary by a few steps from
+    // shot to shot, and so do a rounded corner's anti-aliased pixels; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
+    const result = compareShots(x, y, process.platform === 'darwin' ? decoded.fallback : null);
+    if (result.count === 0) {
+      if (process.platform === 'darwin' && (isTranslucent(x) || isTranslucent(y))) return;
+      report = 'same pixels, different PNG bytes (encoder)';
+    } else {
+      const { box } = result;
+      report = `${result.count} px differ (largest channel step ${result.maxDelta}) in x ${box!.x0}–${box!.x1}, y ${box!.y0}–${box!.y1}; ${result.first}`;
+      diff = await page.evaluate(async ([a, flags, w, h]) => {
+        const src = Uint8Array.from(atob(a!), (c) => c.charCodeAt(0));
+        const mark = Uint8Array.from(atob(flags!), (c) => c.charCodeAt(0));
+        const out = new ImageData(w!, h!);
+        for (let i = 0; i < mark.length; i++) out.data.set(mark[i] ? [255, 0, 0, 255] : [src[i * 4]! >> 1, src[i * 4 + 1]! >> 1, src[i * 4 + 2]! >> 1, 255], i * 4);
+        const big = new OffscreenCanvas(w! * 4, h! * 4);
+        const small = new OffscreenCanvas(w!, h!);
+        small.getContext('2d')!.putImageData(out, 0, 0);
+        const bigCtx = big.getContext('2d')!;
+        bigCtx.imageSmoothingEnabled = false;
+        bigCtx.drawImage(small, 0, 0, big.width, big.height);
+        const bytes = new Uint8Array(await (await big.convertToBlob({ type: 'image/png' })).arrayBuffer());
+        let binary = '';
+        for (const byte of bytes) binary += String.fromCharCode(byte);
+        return btoa(binary);
+      }, [Buffer.from(x.data).toString('base64'), Buffer.from(result.differs).toString('base64'), x.width, x.height] as const);
+    }
+  }
+  const states = { shot: shotStates.get(shot) ?? null, reference: shotStates.get(reference) ?? null };
+  await testInfo.attach(`${name}-shot.png`, { body: shot, contentType: 'image/png' });
+  await testInfo.attach(`${name}-reference.png`, { body: reference, contentType: 'image/png' });
+  if (diff !== null) await testInfo.attach(`${name}-diff.png`, { body: Buffer.from(diff, 'base64'), contentType: 'image/png' });
+  await testInfo.attach(`${name}-states.json`, { body: JSON.stringify(states, null, 2), contentType: 'application/json' });
+  expect(`${report}\nstates: ${JSON.stringify(states)}`, `${name}: the shots differ`).toBe('identical');
+}
+
 /** Whether the application-menu item exists, is visible and is enabled right now. */
 export async function menuItemEnabled(app: ElectronApplication, id: CommandId): Promise<boolean> {
   return app.evaluate(({ Menu }, id) => {
@@ -362,6 +760,8 @@ export interface PopupItem {
   id: string | null;
   label: string;
   enabled: boolean;
+  /** A checkbox item's mark (the column header menu); false for the others. */
+  checked: boolean;
   type: string;
 }
 
@@ -372,11 +772,11 @@ export interface PopupItem {
  */
 export async function stubContextMenu(app: ElectronApplication, pick: string | null): Promise<void> {
   await app.evaluate(({ Menu }, pick) => {
-    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; type: string; click(): void }
+    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; click(): void }
     const g = globalThis as { __learnPopups?: PopupItem[][] };
     g.__learnPopups = [];
     Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { callback?: () => void }) {
-      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, type: i.type })));
+      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type })));
       const target = pick === null ? undefined : this.items.find((i) => i.label === pick && i.enabled && i.visible);
       setTimeout(() => {
         target?.click();

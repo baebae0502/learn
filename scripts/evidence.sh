@@ -4,13 +4,13 @@
 #   scripts/evidence.sh <branch> <suite> <label> [runner] [packaged]
 #
 #   branch    branch (or tag) whose workflow/tests to run, e.g. m0-evidence
-#   suite     baseline | e2e | evidence | perf | demo | mockups | all
+#   suite     baseline | e2e | evidence | perf | demo | mockups | library | all
 #   label     evidence label, [A-Za-z0-9._-]{1,64}
 #   runner    macos-15 (default) | macos-26
 #   packaged  false (default) | true   (also build and exercise an unsigned electron-builder --dir app)
 #
 # Output: evidence/<label>/<run_id>/{evidence,demo}/ plus run.json (timings, download speed); a demo recording is
-# also trimmed and given its chapters (demo/**/m3-demo.final.mov, scripts/finish-demo.sh).
+# also trimmed and given its chapters (demo/**/m4-demo.final.mov, scripts/finish-demo.sh).
 # EVIDENCE_RUN_ID=<id> skips the dispatch and attaches to (or re-downloads) an existing run.
 # Exit status: the run's (gh run watch --exit-status); 3 if the run passed but its evidence could not be downloaded.
 # Every macOS run costs billed minutes (x10 on a private repo): log it in docs/mac-verification.md.
@@ -22,7 +22,7 @@ usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 BRANCH=$1 SUITE=$2 LABEL=$3 RUNNER=${4:-macos-15} PACKAGED=${5:-false}
 
 [[ $BRANCH =~ ^[A-Za-z0-9._/-]{1,200}$ ]] || { echo "invalid branch: $BRANCH" >&2; exit 2; }
-case $SUITE in baseline|e2e|evidence|perf|demo|mockups|all) ;; *) echo "invalid suite: $SUITE" >&2; usage ;; esac
+case $SUITE in baseline|e2e|evidence|perf|demo|mockups|library|all) ;; *) echo "invalid suite: $SUITE" >&2; usage ;; esac
 [[ $LABEL =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "invalid label: $LABEL" >&2; exit 2; }
 case $RUNNER in macos-15|macos-26) ;; *) echo "invalid runner: $RUNNER" >&2; usage ;; esac
 case $PACKAGED in true|false) ;; *) echo "invalid packaged (true|false): $PACKAGED" >&2; usage ;; esac
@@ -115,7 +115,7 @@ if command -v ffmpeg >/dev/null && [[ -d $DEST/demo ]]; then
 fi
 
 # Demo recordings (screencapture -V runs longer than the demo): trimmed to the demo plus 2 s with the chapters embedded,
-# beside the raw file as m3-demo.final.mov (scripts/finish-demo.sh). A failed trim keeps the raw recording and says so;
+# beside the raw file as <name>.final.mov (scripts/finish-demo.sh). A failed trim keeps the raw recording and says so;
 # it never changes this script's exit status.
 if command -v ffmpeg >/dev/null && [[ -d $DEST/demo ]]; then
   while IFS= read -r -d '' mov; do
@@ -125,7 +125,7 @@ if command -v ffmpeg >/dev/null && [[ -d $DEST/demo ]]; then
       continue
     fi
     "$ROOT/scripts/finish-demo.sh" "$mov" "$json" "${mov%.*}.final.${mov##*.}" || echo "finish-demo: $mov kept untrimmed (see above)" >&2
-  done < <(find "$DEST/demo" -name 'm3-demo.mov' -print0)
+  done < <(find "$DEST/demo" -name 'm[0-9]*-demo.mov' -print0)
 fi
 
 python3 -I - "$DEST" "$RUN_ID" "$URL" "$BRANCH" "$SUITE" "$LABEL" "$RUNNER" "$PACKAGED" "$CONCLUSION" \

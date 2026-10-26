@@ -7,11 +7,12 @@
 #
 #   scripts/finish-demo.sh <video> <chapters.json> <output> [corner-tag]
 #
-#   video          the raw recording (macOS m3-demo.mov from screencapture -V, or the Linux x11grab m3-demo.mp4)
-#   chapters.json  m3-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
+#   video          the raw recording (macOS m4-demo.mov from screencapture -V, or the Linux x11grab m4-demo.mp4)
+#   chapters.json  m4-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
 #                  recording's first frame, assuming a file of recordSeconds), recordSeconds (macOS) and chapters[].ms /
 #                  .title
-#   output         the finished file (same container as <video>)
+#   output         the finished file (same container as <video>); beside it <output without extension>.chapters.txt and
+#                  .chapters.json list the chapters on ITS timeline (m4-demo.chapters.txt/.json are the raw recording's)
 #   corner-tag     optional text burned into the bottom-left corner, inside the drop overlay's 12 px inset (x 40,
 #                  48 above the bottom, device px; re-encodes; the Linux recording uses it)
 #
@@ -21,7 +22,7 @@
 # ffprobe and python3.
 set -euo pipefail
 
-[[ $# -ge 3 && $# -le 4 ]] || { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+[[ $# -ge 3 && $# -le 4 ]] || { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 VIDEO=$1 JSON=$2 OUT=$3 TAG=${4:-}
 for tool in ffmpeg ffprobe python3; do command -v "$tool" >/dev/null || { echo "$tool is required" >&2; exit 1; }; done
 [[ -f $VIDEO ]] || { echo "no video: $VIDEO" >&2; exit 1; }
@@ -58,7 +59,7 @@ if [[ $HEAD != 0 ]]; then
 fi
 
 # ffmetadata chapters (in video time: ms / 1000 − offset − head) and the trimmed length (demoSeconds − offset + 3 − head).
-LENGTH=$(python3 -I - "$JSON" "$RAW_SECONDS" "$WORK/chapters.txt" "$HEAD" <<'PY'
+LENGTH=$(python3 -I - "$JSON" "$RAW_SECONDS" "$WORK/chapters.txt" "$HEAD" "${OUT%.*}" <<'PY'
 import json, sys
 data = json.load(open(sys.argv[1], encoding='utf-8'))
 raw = float(sys.argv[2])
@@ -83,6 +84,20 @@ with open(sys.argv[3], 'w', encoding='utf-8') as f:
         if end <= start or start >= length:
             continue
         f.write(f"[CHAPTER]\nTIMEBASE=1/1000\nSTART={round(start * 1000)}\nEND={round(min(end, length) * 1000)}\ntitle={esc(c['title'])}\n")
+# The list a viewer of the finished file needs: the same starts the embedded chapters have (the trimmed video's own
+# timeline, not the raw recording's: that one is late by the offset and the cut head). m:ss as a player shows it.
+final = []
+for i, c in enumerate(data.get('chapters', [])):
+    end = starts[i + 1] if i + 1 < len(starts) else length
+    if end > starts[i] and starts[i] < length:
+        final.append({'title': c['title'], 'start': round(starts[i], 3), 'end': round(min(end, length), 3)})
+with open(sys.argv[5] + '.chapters.txt', 'w', encoding='utf-8') as f:
+    for c in final:
+        sec = int(c['start'])
+        f.write(f"{sec // 60}:{sec % 60:02d} {c['title']}\n")
+with open(sys.argv[5] + '.chapters.json', 'w', encoding='utf-8') as f:
+    json.dump({'timeline': 'the finished video (seconds from its first frame)', 'length': round(length, 3), 'chapters': final}, f, ensure_ascii=False, indent=2)
+    f.write('\n')
 print(f'{length:.3f}')
 PY
 )

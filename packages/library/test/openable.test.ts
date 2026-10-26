@@ -4,7 +4,10 @@ import path from 'node:path';
 import fsp from 'node:fs/promises';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { libraryLayout } from '../src/layout';
-import { NAMED_COPY_MODE, asideName, ensureNamedCopy, extensionAgrees, isAside, mayHoldEdits, namedCopyPath, openExtension, openableFile, safeBaseName, type OpenableAsset } from '../src/openable';
+import {
+  EXPORT_TEMP_BYTES, NAMED_COPY_MODE, asideName, ensureNamedCopy, exportFile, exportTempName, extensionAgrees, isAside, mayHoldEdits, namedCopyPath, openExtension,
+  openableFile, openableName, safeBaseName, type OpenableAsset,
+} from '../src/openable';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-openable-'));
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -271,5 +274,58 @@ describe('a file the OS can open by name (final review I1)', () => {
       expect(await ensureNamedCopy(src, dst, 9)).toEqual({ action: 'reused', keptAside: null });
       expect(fs.readdirSync(path.dirname(dst))).toEqual(['Exfat.pdf']);
     });
+  });
+});
+
+describe('사본 내보내기: the default name, the temporary file beside the target, the copy (spec §7)', () => {
+  const source = () => {
+    const p = path.join(tmp, 'export-src.pdf');
+    fs.writeFileSync(p, '%PDF-1.7\nexport\n');
+    return p;
+  };
+
+  it('names the export as the named copy is named: the safe title and the type extension, the original name for an empty title', () => {
+    expect(openableName(pdf, '세포 신호: 개요')).toBe('세포 신호 개요.pdf');
+    expect(openableName(pdf, '  ')).toBe('Lecture 3.pdf');
+    expect(openableName({ mime: 'video/quicktime', originalName: 'clip.MOV' }, '강의 04')).toBe('강의 04.mov');
+    expect(openableName({ mime: 'text/plain', originalName: 'a.txt' }, 'x')).toBeNull();
+    expect(path.basename(namedCopyPath(layout, pdf, '세포 신호: 개요')!)).toBe(openableName(pdf, '세포 신호: 개요'));
+  });
+
+  it('writes through a hidden temporary name beside the target, never longer than a file system allows', () => {
+    const id = '0f0e0d0c-0b0a-4908-8706-050403020100';
+    expect(exportTempName('세포 신호 개요.pdf', id)).toBe(`.세포 신호 개요.pdf.learn-export-${id}.part`);
+    const long = exportTempName(`${'가'.repeat(100)}.pdf`, id);
+    expect(Buffer.byteLength(long, 'utf8')).toBeLessThanOrEqual(EXPORT_TEMP_BYTES);
+    expect(long.startsWith('.가')).toBe(true);
+    expect(long.endsWith(`.learn-export-${id}.part`)).toBe(true);
+    expect(exportTempName('a.pdf')).toMatch(/^\.a\.pdf\.learn-export-[0-9a-f-]{36}\.part$/);
+  });
+
+  it('copies the bytes, leaves no temporary file, and replaces a file the save panel agreed to replace', async () => {
+    const dir = path.join(tmp, 'export-ok');
+    fs.mkdirSync(dir, { recursive: true });
+    const dst = path.join(dir, '세포 신호 개요.pdf');
+    fs.writeFileSync(dst, 'an older file at the chosen name');
+    await exportFile(source(), dst);
+    expect(fs.readFileSync(dst, 'utf8')).toBe('%PDF-1.7\nexport\n');
+    expect(fs.readdirSync(dir)).toEqual(['세포 신호 개요.pdf']);
+  });
+
+  it('a copy that fails leaves neither the target nor its temporary file', async () => {
+    const dir = path.join(tmp, 'export-fail');
+    fs.mkdirSync(dir, { recursive: true });
+    await expect(exportFile(path.join(tmp, 'no-such-source.pdf'), path.join(dir, 'x.pdf'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it('a rename that fails after the copy takes the temporary file away and leaves the target as it was', async () => {
+    const dir = path.join(tmp, 'export-rename');
+    // A folder where the file should go: the rename is refused after the copy has been made.
+    fs.mkdirSync(path.join(dir, 'taken.pdf'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'taken.pdf', 'inside'), 'x');
+    await expect(exportFile(source(), path.join(dir, 'taken.pdf'))).rejects.toThrow();
+    expect(fs.readdirSync(dir)).toEqual(['taken.pdf']);
+    expect(fs.readdirSync(path.join(dir, 'taken.pdf'))).toEqual(['inside']);
   });
 });

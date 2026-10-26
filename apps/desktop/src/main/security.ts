@@ -1,4 +1,5 @@
 import { app, session, shell } from 'electron';
+import { appMayUse } from './permissions';
 import { isAllowedAppUrl } from './url-policy';
 
 /** Must be called once, after 'ready' and before the first window is created. */
@@ -13,12 +14,9 @@ export function hardenApp(devOrigin: string | null): void {
       return { action: 'deny' };
     });
   });
-  // Only fullscreen (video viewer) is allowed, and only for our own pages. Everything else stays denied.
-  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) =>
-    callback(permission === 'fullscreen' && isAllowedAppUrl(details.requestingUrl, devOrigin)),
-  );
-  session.defaultSession.setPermissionCheckHandler(
-    (_wc, permission, requestingOrigin, details) =>
-      permission === 'fullscreen' && isAllowedAppUrl(details.requestingUrl ?? requestingOrigin, devOrigin),
+  // Our own pages only, and only what APP_PERMISSIONS lists (permissions.ts). Both handlers: Chromium asks either.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => callback(appMayUse(permission, details.requestingUrl, devOrigin)));
+  session.defaultSession.setPermissionCheckHandler((_wc, permission, requestingOrigin, details) =>
+    appMayUse(permission, details.requestingUrl ?? requestingOrigin, devOrigin),
   );
 }

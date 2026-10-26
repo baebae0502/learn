@@ -8,7 +8,7 @@
 ## 결정
 - Electron 44 + electron-vite 6 + React + TypeScript. Tauri는 채택하지 않는다.
 - renderer는 `file://`이 아닌 `learn://app`(standard·secure·stream 권한)으로 로드하고, 자료도 같은 origin의 `learn://app/asset/<assetId>`로 제공한다.
-- `sandbox`, `contextIsolation` 켬, `nodeIntegration` 끔. preload는 `LearnApi`만 노출. IPC 호출자는 프레임 URL(프로토콜+호스트)로 검증하고, 입력은 main에서 zod로 검증한다.
+- `sandbox`, `contextIsolation` 켬, `nodeIntegration` 끔. preload는 창 종류(메인·설정·시트)마다 따로 있고 저마다 그 창이 쓰는 `LearnApi`의 부분만 노출한다(M4, 공유 조각 없는 CommonJS 파일 셋). IPC 호출자는 프레임 URL(프로토콜+호스트)과, main이 창을 만들 때 그 `webContents`에 적어 둔 창 종류(`CHANNEL_KINDS`)로 검증하고, 입력은 main에서 zod로 검증한다. 페이지 URL의 `?window=`는 믿지 않는다.
 - CSP는 `script-src 'self' 'wasm-unsafe-eval'`이다. pdf.js의 wasm 디코더 때문에 `wasm-unsafe-eval`만 허용하며 `unsafe-eval`은 쓰지 않는다. CSP는 HTML 응답에만 붙는다.
 - 자산 응답(`learn://app/asset/*`)에는 `Content-Security-Policy: sandbox; default-src 'none'`을 붙여, 악성 문서가 열려도 스크립트·하위 리소스가 실행되지 않게 한다. 자산 URL은 최상위 탐색 대상이 아니므로 `isAllowedAppUrl`은 `learn://app/asset/*`를 거부한다.
 - 경로 탈출, 잘못된·모르는 asset id, Range 206/416 응답은 `tests/e2e/protocol.spec.ts`가 검증한다.

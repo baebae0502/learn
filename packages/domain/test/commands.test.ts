@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
-import { ACCELERATOR_SYNTAX, COMMANDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, sameCommandContext, type CommandContextState, type CommandTargetInfo } from '../src/commands';
+import {
+  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
+  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type CommandTargetInfo,
+} from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
 import { TAG_COLORS } from '../src/tag-colors';
@@ -24,16 +27,24 @@ describe('channels', () => {
   });
 });
 
-const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13 };
-const VIEWER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13 };
+/** An empty library with nothing selected (the counts every fixture starts from). */
+const NONE = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 } as const;
+const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13, ...NONE };
+const VIEWER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, ...NONE };
 const linkedMissing: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
 const managedOk: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
+const managedMissing: CommandTargetInfo = { storageMode: 'managed', availability: 'missing' };
+/** A library of 9 items with a selection of `count`, `available` of them with their file, `relinkable` linked and missing. */
+const selecting = (count: number, available: number, relinkable = 0, view: CommandContextState['view'] = 'library'): CommandContextState => ({
+  ...LIB, view, libraryCount: 9, selectionCount: count, selectionAvailable: available, selectionRelinkable: relinkable,
+});
 
 describe('command registry', () => {
   it('has unique ids and resolves by id', () => {
     const ids = COMMANDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const c of COMMANDS) expect(commandById(c.id)).toBe(c);
+    expect(COMMAND_IDS).toEqual(COMMANDS.map((c) => c.id)); // zod enums (ipc.ts, settings.ts) are built from it, in registry order
   });
   it('gives every accelerator and every single key to one command (one native menu serves every view in M3)', () => {
     // Compared per platform after mapping (⌃⌘ → Ctrl+Shift off macOS) and sorting modifiers, so 'Shift+CmdOrCtrl+X'
@@ -78,13 +89,37 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
     expect(inPalette(commandById('app.palette'))).toBe(false); // the palette does not list itself
   });
+  it('⌥⌘I shows or hides the item panel: 보기 after the sidebar toggle, the library with items only, named by what it does', () => {
+    const c = commandById('view.toggleInspector');
+    expect(c).toMatchObject({
+      label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+      stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
+    });
+    expect(inPalette(c)).toBe(true);
+    expect(acceleratorLabel(c.accelerator!, 'darwin')).toBe('⌥⌘I');
+    const withItems: CommandContextState = { ...LIB, libraryCount: 3 };
+    expect(isCommandAvailable('view.toggleInspector', withItems)).toBe(true);
+    expect(isCommandAvailable('view.toggleInspector', LIB)).toBe(false); // libraryCount 0: no panel to show (design-spec 2.4)
+    expect(isCommandAvailable('view.toggleInspector', { ...VIEWER, libraryCount: 3 })).toBe(false); // the reader's right slot is the tutor's
+    expect(isCommandAvailable('view.toggleInspector', { ...withItems, blocked: true })).toBe(false);
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('항목 패널 가리기');
+      expect(commandLabel(c, platform, { inspector: 'hidden' })).toBe('항목 패널 보기');
+      expect(commandLabel(c, platform)).toBe('항목 패널 보기/가리기');
+      expect(commandLabel(c, platform, { sidebar: 'hidden' })).toBe('항목 패널 보기/가리기'); // the sidebar's state never names it
+    }
+    const menu = availableMenuCommands(withItems);
+    expect(menu.indexOf('view.toggleInspector')).toBe(menu.indexOf('view.toggleSidebar') + 1);
+  });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'nav.back',
-      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleSidebar',
+      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
+      'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
+    // ⌘F (design-spec 7.4 라이브러리): 편집 › after the system's edit items, while the library has items.
+    expect(commandById('library.find')).toMatchObject({ label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'] });
     expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
     expect(commandById('view.toggleSidebar')).toMatchObject({
       label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
@@ -120,15 +155,38 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('nav.back', VIEWER)).toBe(true);
     for (const c of COMMANDS) expect(isCommandAvailable(c.id, { ...VIEWER, blocked: true }, [linkedMissing]), c.id).toBe(MAIN_OWNED_COMMANDS.has(c.id));
   });
+  it('⌘F needs the library view and an item to find (spec 3.5: no search field in the empty library)', () => {
+    expect(isCommandAvailable('library.find', LIB)).toBe(false); // libraryCount 0
+    expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 1 })).toBe(true);
+    expect(isCommandAvailable('library.find', { ...VIEWER, libraryCount: 1 })).toBe(false);
+    expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 1, blocked: true })).toBe(false);
+  });
   it('item commands need targets: 열기 one item, 다시 연결… one linked item whose file is missing', () => {
     expect(isCommandAvailable('item.open', LIB)).toBe(false);
     expect(isCommandAvailable('item.open', LIB, [managedOk])).toBe(true);
     expect(isCommandAvailable('item.open', LIB, [managedOk, managedOk])).toBe(false);
+    // 열기 also for a missing file — the reader's 원본 없음 notice is where it is relinked.
+    expect(isCommandAvailable('item.open', LIB, [linkedMissing])).toBe(true);
+    expect(isCommandAvailable('item.open', LIB, [managedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [managedOk])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'linked', availability: 'available' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'managed', availability: 'missing' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
+  });
+  it('정보 편집 is a palette command for one item in the library (P-15): no menu, no context menu, no key', () => {
+    const c = commandById('item.editInfo');
+    expect(c).toMatchObject({ label: '정보 편집', contexts: ['item'], palette: true });
+    expect(c.menu).toBeUndefined();
+    expect(c.contextMenu).toBeUndefined();
+    expect(c.accelerator).toBeUndefined();
+    expect(inPalette(c)).toBe(true);
+    expect(isCommandAvailable('item.editInfo', LIB, [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.editInfo', LIB, [linkedMissing])).toBe(true); // a missing file's info is still its own
+    expect(isCommandAvailable('item.editInfo', LIB, [managedOk, managedOk])).toBe(false);
+    expect(isCommandAvailable('item.editInfo', LIB)).toBe(false);
+    expect(isCommandAvailable('item.editInfo', VIEWER, [managedOk])).toBe(false); // the reader's own info comes with M7
+    expect(isCommandAvailable('item.editInfo', { ...LIB, blocked: true }, [managedOk])).toBe(false);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 need one item whose file exists', () => {
     for (const id of ['item.showInFolder', 'item.openExternally'] as const) {
@@ -140,19 +198,91 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     }
     expect(commandLabel(commandById('item.showInFolder'), 'darwin')).toBe('Finder에서 보기');
     expect(commandLabel(commandById('item.showInFolder'), 'linux')).toBe('폴더에서 보기');
-    expect(commandById('item.showInFolder')).toMatchObject({ contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 } });
-    // Not an item context-menu entry (design-spec 7.3 has none, C-1): only the unplayable-video notice's button.
-    expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', contexts: ['item'] });
+    // ⇧⌘R and 파일 › act on the table selection (design-spec 7.4); the palette lists them while the selection allows.
+    expect(commandById('item.showInFolder')).toMatchObject({
+      accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 }, contexts: ['item'],
+      contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+    });
+    expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', menu: { menu: 'file', group: 2, order: 3 }, contexts: ['item'], palette: true });
+    // Still no item context-menu entry (design-spec 7.3 lists none) and no shortcut of its own.
     expect(commandById('item.openExternally').contextMenu).toBeUndefined();
-    // No accelerator yet: ⇧⌘R needs the table selection (M4).
-    expect(commandById('item.showInFolder').accelerator).toBeUndefined();
     expect(commandById('item.openExternally').accelerator).toBeUndefined();
+    // 열기 and 다시 연결… stay with the table and the notices: never palette rows.
+    expect(inPalette(commandById('item.open'))).toBe(false);
+    expect(inPalette(commandById('item.relink'))).toBe(false);
   });
-  it('lists the menu-bar commands of a view (never item commands)', () => {
+  it('사본 내보내기… needs one item whose file exists; 파일 menu and the item menu after Finder에서 보기 (design-spec 7.3)', () => {
+    expect(commandById('item.exportCopy')).toEqual({
+      id: 'item.exportCopy',
+      label: '사본 내보내기…',
+      menu: { menu: 'file', group: 2, order: 2 },
+      contexts: ['item'],
+      contextMenu: { kinds: ['item'], group: 2, order: 2 },
+      palette: true,
+      keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+    });
+    expect(isCommandAvailable('item.exportCopy', LIB, [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.exportCopy', VIEWER, [{ storageMode: 'linked', availability: 'available' }])).toBe(true);
+    expect(isCommandAvailable('item.exportCopy', LIB, [linkedMissing])).toBe(false);
+    expect(isCommandAvailable('item.exportCopy', LIB, [managedOk, managedOk])).toBe(false);
+    expect(isCommandAvailable('item.exportCopy', LIB)).toBe(false);
+    expect(inPalette(commandById('item.exportCopy'))).toBe(true);
+    // The menu bar judges it on the reported selection: exactly one item, and its file is there.
+    const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
+    expect(availableMenuCommands(one)).toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, selectionAvailable: 0, selectionRelinkable: 1 })).not.toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, selectionCount: 2, selectionAvailable: 2 })).not.toContain('item.exportCopy');
+    expect(availableMenuCommands({ ...one, blocked: true })).not.toContain('item.exportCopy');
+  });
+  it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
+  });
+  it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
+    const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
+    expect(availableMenuCommands(one)).toEqual([
+      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+    ]);
+    const refused: CommandContextState[] = [
+      LIB, // nothing selected
+      { ...one, selectionCount: 2, selectionAvailable: 2 }, // two
+      { ...one, selectionAvailable: 0, selectionRelinkable: 1 }, // a linked file that went missing
+      { ...one, selectionAvailable: 0 }, // a managed copy that went missing
+      { ...one, blocked: true },
+    ];
+    for (const ctx of refused) {
+      expect(availableMenuCommands(ctx), JSON.stringify(ctx)).not.toContain('item.showInFolder');
+      expect(availableMenuCommands(ctx), JSON.stringify(ctx)).not.toContain('item.openExternally');
+    }
+  });
+  it('turns the reported selection counts into targets: available first, then linked and missing, then the rest (P-2)', () => {
+    const targets = (count: number, available: number, relinkable: number) => selectionTargets(selecting(count, available, relinkable));
+    expect(targets(0, 0, 0)).toEqual([]);
+    expect(targets(1, 1, 0)).toEqual([managedOk]);
+    expect(targets(1, 0, 1)).toEqual([linkedMissing]);
+    expect(targets(1, 0, 0)).toEqual([managedMissing]);
+    expect(targets(3, 1, 1)).toEqual([managedOk, linkedMissing, managedMissing]);
+    // Counts that do not add up never make more targets than items selected.
+    expect(targets(2, 5, 5)).toEqual([managedOk, managedOk]);
+    expect(targets(2, 1, 5)).toEqual([managedOk, linkedMissing]);
+  });
+  it('judges a menu-bar item command on the selection, in the library view only (P-2, spec 6)', () => {
+    // A variant of the registry stands in for 다시 연결…, which has no menu placement (availability is still by id).
+    const placed: CommandSpec[] = [
+      { ...commandById('item.showInFolder'), menu: { menu: 'file', group: 2, order: 1 } },
+      { ...commandById('item.relink'), menu: { menu: 'file', group: 2, order: 2 } },
+      commandById('file.importManaged'),
+    ];
+    expect(availableMenuCommands(LIB, placed)).toEqual(['file.importManaged']);
+    expect(availableMenuCommands(selecting(1, 1), placed)).toEqual(['item.showInFolder', 'file.importManaged']);
+    expect(availableMenuCommands(selecting(2, 2), placed)).toEqual(['file.importManaged']);
+    expect(availableMenuCommands(selecting(1, 0, 1), placed)).toEqual(['item.relink', 'file.importManaged']);
+    expect(availableMenuCommands(selecting(1, 0, 0), placed)).toEqual(['file.importManaged']);
+    // The reader shows no table: the menu bar's item commands are off there whatever the counts say.
+    expect(availableMenuCommands(selecting(1, 1, 0, 'viewer'), placed)).toEqual([]);
+    expect(availableMenuCommands({ ...selecting(1, 1), blocked: true }, placed)).toEqual([]);
   });
   it('focus movement (duringWork) runs while work holds the window, never under a modal surface; main, which knows no surface, keeps blocked', () => {
     const importing = { ...LIB, blocked: true };
@@ -185,7 +315,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14, blocked: true })).toBe(false);
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {
-    expect(sameCommandContext(LIB, { view: 'library', blocked: false, textSize: 13 })).toBe(true);
+    expect(sameCommandContext(LIB, { view: 'library', blocked: false, textSize: 13, ...NONE })).toBe(true);
     expect(sameCommandContext(LIB, { ...LIB, textSize: 14 })).toBe(false);
     expect(sameCommandContext(LIB, VIEWER)).toBe(false);
     expect(sameCommandContext(LIB, { ...LIB, blocked: true })).toBe(false);
@@ -194,6 +324,11 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     // The sidebar state is part of the report (it relabels the menu), so a change is a new context.
     expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'shown' })).toBe(true);
     expect(sameCommandContext({ ...LIB, sidebar: 'shown' }, { ...LIB, sidebar: 'hidden' })).toBe(false);
+    expect(sameCommandContext({ ...LIB, inspector: 'shown' }, { ...LIB, inspector: 'hidden' })).toBe(false);
+    // The counts enable the menu bar's item commands: each one alone is a new context.
+    for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable'] as const) {
+      expect(sameCommandContext(LIB, { ...LIB, [k]: 1 }), k).toBe(false);
+    }
   });
   it('a toggle is named by what it does now (Mac pattern, design-spec 7.4); the neutral name where no state applies', () => {
     const c = commandById('view.toggleSidebar');
@@ -205,6 +340,21 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     // The sidebar state never decides availability.
     expect(isCommandAvailable('view.toggleSidebar', { ...LIB, sidebar: 'hidden' })).toBe(true);
     expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리로 돌아가기');
+  });
+
+  it('names a toggle after its own pane: exactly one state-label key per command (P-3)', () => {
+    for (const c of COMMANDS) if (c.stateLabels) expect(Object.keys(c.stateLabels), c.id).toHaveLength(1);
+    // The item panel's toggle follows `inspector`; the sidebar's follows `sidebar`. Neither reads the other.
+    const panel: CommandSpec = { ...commandById('view.toggleSidebar'), label: '항목 패널 보기/가리기', stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } } };
+    const sidebar = commandById('view.toggleSidebar');
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(panel, platform, { inspector: 'shown' }), platform).toBe('항목 패널 가리기');
+      expect(commandLabel(panel, platform, { inspector: 'hidden', sidebar: 'shown' }), platform).toBe('항목 패널 보기');
+      expect(commandLabel(panel, platform, { sidebar: 'hidden' }), platform).toBe('항목 패널 보기/가리기');
+      expect(commandLabel(sidebar, platform, { sidebar: 'hidden', inspector: 'shown' }), platform).toBe('사이드바 보기');
+      expect(commandLabel(sidebar, platform, { inspector: 'shown' }), platform).toBe('사이드바 보기/가리기');
+    }
+    expect(commandMention(panel, 'darwin', { inspector: 'hidden' })).toBe('항목 패널 보기');
   });
 
   it('prose names a command by its label without the trailing ellipsis (critic T14-n2)', () => {

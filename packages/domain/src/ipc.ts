@@ -1,13 +1,14 @@
 import { z } from 'zod';
-import { COMMANDS, type CommandContextState, type CommandId } from './commands';
+import { COMMAND_IDS, type CommandContextState, type CommandId } from './commands';
 import type { LearnEventMap, WindowState } from './events';
-import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, Tag } from './library';
+import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
 import type { DuplicateChoice, SheetPayload } from './sheets';
-import { LIBRARY_SORT_COLUMNS, prefsFields } from './settings';
+import { prefsFields } from './settings';
+import { LIBRARY_COLUMN_IDS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
@@ -60,14 +61,22 @@ export const savePositionInput = z.object({
   locator: readingLocatorSchema,
   progress: z.number().min(0).max(1).nullable(),
 });
-export const commandIdSchema = z.enum(COMMANDS.map((c) => c.id) as [CommandId, ...CommandId[]]);
+export const commandIdSchema = z.enum(COMMAND_IDS);
+const paneShownSchema = z.enum(['shown', 'hidden']);
+/** An item count in a reported context (the library, the selection). */
+const contextCount = z.number().int().min(0).max(1_000_000);
 /** The main window's command context (ADR-0005 §2). Strict: later tasks add fields here and in CommandContextState together. */
 export const commandContextInput = z
   .object({
     view: z.enum(['library', 'viewer']),
     blocked: z.boolean(),
-    sidebar: z.enum(['shown', 'hidden']).optional(),
+    sidebar: paneShownSchema.optional(),
+    inspector: paneShownSchema.optional(),
     textSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
+    libraryCount: contextCount,
+    selectionCount: contextCount,
+    selectionAvailable: contextCount,
+    selectionRelinkable: contextCount,
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
@@ -81,13 +90,17 @@ export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
-/** Native context menus by kind (ADR-0005 §4). M3 has item commands only; the other kinds get theirs in M4–M5. */
+/** Native context menus by kind (ADR-0005 §4): items now; collections and tags get theirs in M5. */
 export const showContextMenuInput = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  // The whole table selection (⌘A in a large library): the bound of the reported selection counts.
+  z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(1_000_000), ...point }),
   z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
-  z.object({ kind: z.literal('column'), columnId: z.enum(LIBRARY_SORT_COLUMNS), ...point }),
 ]);
+/** The table header's native menu: which columns show now, and where the pointer is. */
+export const showColumnMenuInput = z
+  .object({ visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length), ...point })
+  .strict();
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
@@ -113,6 +126,7 @@ export type UpdateMetadataInput = z.input<typeof updateMetadataInput>;
 export type CreateCollectionInput = z.input<typeof createCollectionInput>;
 export type SavePositionInput = z.input<typeof savePositionInput>;
 export type ShowContextMenuInput = z.input<typeof showContextMenuInput>;
+export type ShowColumnMenuInput = z.input<typeof showColumnMenuInput>;
 
 /** The only surface the renderer sees (window.learn). */
 export interface LearnApi {
@@ -140,6 +154,16 @@ export interface LearnApi {
     showInFolder(input: ItemIdInput): Promise<Result<void>>;
     /** Open the file with the system's default app. */
     openExternally(input: ItemIdInput): Promise<Result<void>>;
+    /**
+     * 사본 내보내기…: main asks where in a save panel on the calling window (a sheet on macOS), then copies the item's
+     * file there through a temporary name and a rename. `saved: false` when the panel was cancelled. The path stays
+     * in main (revealExport).
+     */
+    exportCopy(input: ItemIdInput): Promise<Result<{ saved: boolean }>>;
+    /** Reveals the copy exported last in this run (NOT_FOUND when there is none, or it has gone since). */
+    revealExport(): Promise<Result<void>>;
+    /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
+    searchTexts(): Promise<Result<SearchText[]>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;
@@ -193,6 +217,13 @@ export interface LearnApi {
      * native theme follow it (T13R4-m1). Other windows are PERMISSION_DENIED.
      */
     themeShown(input: ThemeShownInput): Promise<Result<void>>;
+    /**
+     * The main window's page has drawn its first list and been idle once: main prepares the settings window hidden, so
+     * the first ⌘, only shows it (spec 8). Other windows are PERMISSION_DENIED.
+     */
+    reportIdle(): Promise<Result<void>>;
+    /** The column header menu: the column picked to show or hide, a reset, or null when dismissed. */
+    showColumnMenu(input: ShowColumnMenuInput): Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>;
   };
   /** Only callable from an open sheet window. */
   sheet: {

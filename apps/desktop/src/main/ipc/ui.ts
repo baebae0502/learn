@@ -1,7 +1,8 @@
 import path from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
-import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
+import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
+import { columnMenuEntries, popupColumnMenu } from '../menu/column-menu';
 import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
 import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
@@ -12,7 +13,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.showContextMenu, showContextMenuInput, async (input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    if (input.kind !== 'item') return null; // collection/tag/column menus get their commands in M4–M5
+    if (input.kind !== 'item') return null; // collection and tag menus get their commands in M5
     const ctx = deps.getContext();
     let targets: LibraryItem[] = input.itemIds.flatMap((id) => ctx.repo.getItem(id) ?? []);
     if (targets.length === 0) return null;
@@ -30,6 +31,14 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     return commandId ? { commandId } : null;
   });
 
+  // The table header's native menu: resolves the column to show or hide, a reset, or null when dismissed. Its items
+  // are the column catalogue's; the renderer sends only which columns show and where the pointer is.
+  handle(Channels.ui.showColumnMenu, showColumnMenuInput, async ({ visible, x, y }, event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return null;
+    return popupColumnMenu(columnMenuEntries(visible, mainStrings.columnMenu.reset), { window, x, y });
+  });
+
   // The main window's command context (ADR-0005 §2): main rebuilds the menu bar from it; other windows are ignored.
   handle(Channels.ui.reportContext, commandContextInput, (ctx, event) => {
     deps.uiContext.report(event.sender, ctx);
@@ -38,7 +47,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   // The current state for a renderer that (re)mounts after the last push; the windowState push stays.
   handle(Channels.ui.windowState, emptyInput, (_input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
-    if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', '창을 찾을 수 없습니다.');
+    if (!window || window.isDestroyed()) throw new LearnError('NOT_FOUND', mainStrings.windowGone);
     return windowStateOf(window);
   });
 
@@ -68,10 +77,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (parent) await deps.sheets.open(parent, { kind: 'shortcuts' });
   });
 
-  // The main-owned app.settings (⌘,): also the fatal screen's 설정 열기, so it needs no library. From the main window or
-  // the settings window only (a sheet has no reason to).
+  // The main-owned app.settings (⌘,) behind the fatal screen's 설정 열기: it needs no library. The main window only
+  // (CHANNEL_KINDS): the settings window's own ⌘, is the menu's, which main runs itself.
   handle(Channels.ui.openSettings, emptyInput, (_input, event) => {
-    if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
+    if (!deps.isMainWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.windows.openSettings();
   });
 
@@ -80,5 +89,12 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.themeShown, themeShownInput, ({ shade }, event) => {
     if (!deps.isMainWindow(event.sender) && !deps.isSettingsWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.theme.shown(event.sender, shade);
+  });
+
+  // The settings window is prepared once the main window's page has drawn its first list and gone idle, never while
+  // the app is still starting (spec 8). Only the main window's report counts.
+  handle(Channels.ui.reportIdle, emptyInput, (_input, event) => {
+    if (!deps.isMainWindow(event.sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
+    deps.prepareSettings();
   });
 }

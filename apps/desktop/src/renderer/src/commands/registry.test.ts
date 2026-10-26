@@ -1,23 +1,32 @@
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, type CommandId, type CommandTargetInfo } from '@learn/domain';
-import { COMMAND_HANDLERS, contextOf, isCommandEnabled, reportedContext, runCommand, runPicked, type CommandEnv } from './registry';
+import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
+const OTHER = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';
+/** An empty library with nothing selected, as every report starts. */
+const COUNTS = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 } as const;
 const missingLinked: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
 const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   view: 'library',
   blocked: false,
   textSize: 13,
+  ...COUNTS,
+  selection: () => [],
   targetsOf: (ids) => ids.map(() => missingLinked),
   importFiles: vi.fn(),
   back: vi.fn(),
   open: vi.fn(),
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
+  toggleInspector: vi.fn(),
   showShortcuts: vi.fn(),
   openPalette: vi.fn(),
   showInFolder: vi.fn(),
   openExternally: vi.fn(),
+  exportCopy: vi.fn(),
+  editInfo: vi.fn(),
+  focusSearch: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
@@ -30,8 +39,35 @@ describe('renderer command registry', () => {
     expect(Object.keys(COMMAND_HANDLERS).sort()).toEqual(COMMANDS.map((c) => c.id).sort());
   });
   it('reports only the context fields, never the handlers', () => {
-    expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false, textSize: 13 });
-    expect(contextOf(env({ textSize: 15, sidebar: 'hidden' }))).toEqual({ view: 'library', blocked: false, textSize: 15, sidebar: 'hidden' });
+    expect(contextOf(env({ view: 'viewer' }))).toEqual({ view: 'viewer', blocked: false, textSize: 13, ...COUNTS });
+    expect(contextOf(env({ textSize: 15, sidebar: 'hidden' }))).toEqual({ view: 'library', blocked: false, textSize: 15, sidebar: 'hidden', ...COUNTS });
+  });
+  it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
+    const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });
+    expect(contextOf(e)).toEqual({ view: 'library', blocked: false, textSize: 13, inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1 });
+    expect(contextOf(e)).not.toHaveProperty('selection');
+  });
+  it('runs a menu-bar item command on the table selection, in table order, in the library view only (P-2, spec 6)', () => {
+    const available = (ids: readonly string[]): CommandTargetInfo[] => ids.map(() => ({ storageMode: 'managed', availability: 'available' }));
+    const one = env({ selection: () => [ID], targetsOf: available });
+    expect(menuTarget('item.showInFolder', one)).toEqual({ itemIds: [ID] });
+    expect(menuTarget('file.importManaged', one)).toEqual({});
+    expect(menuTarget('file.nope' as CommandId, one)).toEqual({});
+    expect(runCommand('item.showInFolder', one, menuTarget('item.showInFolder', one))).toBe(true);
+    expect(one.showInFolder).toHaveBeenCalledWith(ID);
+    // Two selected: a one-item command is refused (main has its menu item disabled too).
+    const two = env({ selection: () => [ID, OTHER], targetsOf: available });
+    expect(menuTarget('item.openExternally', two)).toEqual({ itemIds: [ID, OTHER] });
+    expect(runCommand('item.openExternally', two, menuTarget('item.openExternally', two))).toBe(false);
+    // Nothing selected (the table reports none yet), or the reader, which shows no table: nothing to act on.
+    const none = env({ targetsOf: available });
+    expect(runCommand('item.showInFolder', none, menuTarget('item.showInFolder', none))).toBe(false);
+    const reader = env({ view: 'viewer', selection: () => [ID], targetsOf: available });
+    expect(menuTarget('item.showInFolder', reader)).toEqual({ itemIds: [] });
+    expect(runCommand('item.showInFolder', reader, menuTarget('item.showInFolder', reader))).toBe(false);
+    expect(two.openExternally).not.toHaveBeenCalled();
+    expect(none.showInFolder).not.toHaveBeenCalled();
+    expect(reader.showInFolder).not.toHaveBeenCalled();
   });
   it('runs through the shared availability predicate', () => {
     const lib = env();
@@ -170,12 +206,47 @@ describe('renderer command registry', () => {
     expect(runCommand('app.settings', held)).toBe(true); // main-owned: allowed under a sheet as well
     expect(runPicked('item.relink', held, [ID])).toBe(false);
     // Main's menu bar refuses them too.
-    expect(reportedContext(held)).toEqual({ view: 'library', blocked: true, textSize: 13 });
+    expect(reportedContext(held)).toEqual({ view: 'library', blocked: true, textSize: 13, ...COUNTS });
     expect(reportedContext(env())).toEqual(contextOf(env()));
+  });
+  it('⌘F focuses the quick search in the library while it has items, not in the reader', () => {
+    const lib = env({ libraryCount: 2 });
+    expect(runCommand('library.find', lib)).toBe(true);
+    expect(lib.focusSearch).toHaveBeenCalledTimes(1);
+    expect(runCommand('library.find', env({ libraryCount: 0 }))).toBe(false);
+    expect(runCommand('library.find', env({ view: 'viewer', libraryCount: 2 }))).toBe(false);
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);
     expect(runPicked('file.nope' as CommandId, env(), [ID])).toBe(false);
     expect(runPicked('toString' as CommandId, env(), [ID])).toBe(false); // not fooled by Object.prototype
+  });
+  it('⌥⌘I toggles the item panel in the library with items, never in the reader, the empty library or while blocked', () => {
+    const e = env({ libraryCount: 2 });
+    expect(runCommand('view.toggleInspector', e)).toBe(true);
+    expect(e.toggleInspector).toHaveBeenCalledTimes(1);
+    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }]) {
+      const off = env(over);
+      expect(runCommand('view.toggleInspector', off), JSON.stringify(over)).toBe(false);
+      expect(off.toggleInspector).not.toHaveBeenCalled();
+    }
+  });
+  it('reports the item panel state only while the view has one (the menu relabels from it)', () => {
+    expect(contextOf(env({ inspector: 'hidden' }))).toMatchObject({ inspector: 'hidden' });
+    expect(Object.hasOwn(contextOf(env()), 'inspector')).toBe(false);
+  });
+  it('사본 내보내기… runs for one item whose file is there, with that item', () => {
+    const available: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
+    const e = env({ targetsOf: (ids) => ids.map(() => available) });
+    expect(runCommand('item.exportCopy', e, { itemIds: [ID] })).toBe(true);
+    expect(e.exportCopy).toHaveBeenCalledWith(ID);
+    expect(runCommand('item.exportCopy', env(), { itemIds: [ID] })).toBe(false); // the factory's target has no file
+  });
+  it('정보 편집 edits the one target in the library; never in the reader or for several', () => {
+    const e = env();
+    expect(runCommand('item.editInfo', e, { itemIds: [ID] })).toBe(true);
+    expect(e.editInfo).toHaveBeenCalledWith(ID);
+    expect(runCommand('item.editInfo', env(), { itemIds: [ID, ID] })).toBe(false);
+    expect(runCommand('item.editInfo', env({ view: 'viewer' }), { itemIds: [ID] })).toBe(false);
   });
 });

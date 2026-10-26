@@ -35,15 +35,13 @@
   .sidebar-top {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
     height: var(--toolbar-height);
     flex: none;
-    padding: 0 var(--space-12) 0 var(--traffic-light-inset);
+    /* The toggle sits 12 px from the boundary column, laid out from the left edge: the panel's width comes from a
+       percentage and is fractional on a 2x screen (240.0078), so a toggle placed from the right edge would sit at a
+       fraction of a pixel, and differently in each view. The left padding is the whole pixels to its place. */
+    padding: 0 0 0 round(down, calc(100% - var(--space-12) - var(--hit-target)), 1px);
     -webkit-app-region: drag;
-  }
-  /* Full screen has no traffic lights: no 84 px inset. */
-  :root[data-fullscreen] .sidebar-top {
-    padding-left: var(--space-12);
   }
   .launcher-wrap {
     flex: none;
@@ -57,18 +55,21 @@
     padding: 0 var(--space-8) var(--space-12);
   }
   /* Resize handle: zero width on the boundary, ±4 px hit area; the line itself is the sidebar's inset shadow. */
-  .pane-separator {
+  .pane-separator,
+  .inspector-separator {
     position: relative;
     z-index: 3;
     flex: 0 0 0px;
     outline: none;
   }
-  .pane-separator::after {
+  .pane-separator::after,
+  .inspector-separator::after {
     content: '';
     position: absolute;
     inset: 0 -4px;
   }
-  .pane-separator:focus-visible::before {
+  .pane-separator:focus-visible::before,
+  .inspector-separator:focus-visible::before {
     content: '';
     position: absolute;
     inset: 0 -1px 0 -2px;
@@ -76,6 +77,16 @@
   }
   .window[data-sidebar='hidden'] .pane-separator {
     display: none;
+  }
+  /* Below the toolbar: the content and, in the library, the item panel side by side. */
+  .main-panes {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+  }
+  .content-pane {
+    display: flex;
+    flex-direction: column;
   }
   .main-column {
     display: flex;

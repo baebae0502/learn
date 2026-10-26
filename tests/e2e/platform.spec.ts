@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
-import { COMMANDS, commandLabel, isCommandAvailable, type MenuName } from '../../packages/domain/src/commands';
-import { Channels } from '../../packages/domain/src/ipc-channels';
+import { COMMANDS, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
+import { CHANNEL_KINDS } from '../../apps/desktop/src/main/ipc/channel-kinds';
+import type { WindowKind } from '../../apps/desktop/src/main/window-kinds';
 import {
-  FIXTURES, NativeInputNotPermitted, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
-  recordedPopups, runMenuCommand, stubContextMenu, stubOpenDialog, type MenuNode, type NativeKeystroke,
+  FIXTURES, NativeInputNotPermitted, ROOT, closeSheet, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeystroke, openDialogCalls, openItem,
+  recordedPopups, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, windowKinds, type MenuNode, type NativeKeystroke,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -16,6 +17,8 @@ test.beforeAll(() => {
   if (!fs.existsSync(PDF)) throw new Error(`fixture missing: ${PDF} — run \`pnpm fixtures\``);
 });
 
+/** What an empty library reports first: no items, nothing selected. */
+const EMPTY_LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
 const TOP_LABELS: Record<MenuName, string> = { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' };
 const HANGUL = /[가-힣]/;
 
@@ -29,15 +32,55 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
-/** 보기 up to its full-screen item: the palette, the sidebar toggle, the text size group (with ⌘+'s hidden ⌘= twin). */
+/** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin). */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
 ];
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
   return launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
 }
+
+/** A page's window.learn: every function by path, generic IPC names anywhere in it, and whether ipcRenderer leaked. */
+const scanSurface = (p: Page) =>
+  p.evaluate(() => {
+    const GENERIC = new Set([
+      'invoke', 'send', 'sendSync', 'sendTo', 'sendToHost', 'postMessage', 'ipcRenderer', 'once', 'addListener', 'removeAllListeners',
+    ]);
+    const functions: string[] = [];
+    const generic: string[] = [];
+    const seen = new Set<unknown>();
+    const walk = (value: unknown, at: string): void => {
+      if (value === null || (typeof value !== 'object' && typeof value !== 'function') || seen.has(value)) return;
+      seen.add(value);
+      for (const key of Object.keys(value)) {
+        const child = (value as Record<string, unknown>)[key];
+        const where = at ? `${at}.${key}` : key;
+        if (GENERIC.has(key)) generic.push(where);
+        if (typeof child === 'function') {
+          functions.push(where);
+          if (GENERIC.has(child.name)) generic.push(`${where} (named ${child.name})`);
+        }
+        walk(child, where);
+      }
+    };
+    walk(window.learn, '');
+    return { functions: functions.sort(), generic, windowIpc: typeof (window as unknown as { ipcRenderer?: unknown }).ipcRenderer };
+  });
+/** Whether window.learn.on(name, callback) throws in this page. */
+const onThrows = (p: Page, name: string, callback: 'function' | 'string' = 'function') =>
+  p.evaluate(
+    ([n, c]) => {
+      try {
+        (window.learn as unknown as { on(name: unknown, cb: unknown): unknown }).on(n, c === 'function' ? () => {} : 'not a function');
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    [name, callback] as const,
+  );
 
 async function importOnePdf(page: Page): Promise<string> {
   const [item] = await importPaths(page, [PDF]);
@@ -83,13 +126,15 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
         expect.objectContaining({
           label: commandLabel(c, process.platform, { sidebar: 'shown' }), // the shell opens with the sidebar shown
           accelerator: c.accelerator ? platformAccelerator(c.accelerator, process.platform) : null,
-          enabled: isCommandAvailable(c.id, { view: 'library', blocked: false, textSize: 13 }),
+          enabled: availableMenuCommands(EMPTY_LIBRARY).includes(c.id),
         }),
       ]);
     }
     // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
-      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''], ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
+      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''],
+      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], ['-', ''],
+      ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
     if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
@@ -113,6 +158,9 @@ test('menu: an unpackaged run without LEARN_E2E=1 does show 개발자 도구', a
   try {
     const view = topMenu(await menuSnapshot(app), '보기');
     expect(entries(view)).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면'], ['-', ''], ['toggledevtools', '개발자 도구']]);
+    // ⌥⌘I is the item panel's, so the developer tools moved to ⌥⌘J.
+    const devtools = view.find((n) => roleOf(n) === 'toggledevtools')?.accelerator;
+    expect(devtools && acceleratorLabel(devtools, process.platform)).toBe(acceleratorLabel('Alt+CmdOrCtrl+J', process.platform));
   } finally {
     await app.close();
   }
@@ -125,7 +173,7 @@ test('menu command 파일 가져오기… opens the (stubbed) dialog once and ad
     await stubOpenDialog(app, [PDF]);
     await runMenuCommand(app, 'file.importManaged');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
-    await expect(page.locator('[data-testid="open-item"][data-title="sample"]')).toBeVisible();
+    await expect(rowByTitle(page, 'sample')).toBeVisible();
     expect(await openDialogCalls(app)).toBe(1);
   } finally {
     await app.close();
@@ -164,7 +212,7 @@ test('⌘O (파일 가져오기…) opens the dialog exactly once', async ({}, t
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(page.getByTestId('duplicate-dialog')).toHaveCount(0);
     // …and no duplicate sheet window opened over it.
-    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']);
   } finally {
     await app.close();
   }
@@ -197,7 +245,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
-    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…']);
   } finally {
     await app.close();
   }
@@ -222,6 +270,31 @@ test('menu: enabled state follows the reported view (ui:reportContext)', async (
   }
 });
 
+// What main was told, read back (main keeps the last accepted report for tests). The selection counts stay 0 until
+// the table has a selection; the fatal screen reports the same zeros, or no report would pass the schema.
+test('menu: the reported context carries the library count and no selection yet; the fatal screen reports zeros', async ({}, testInfo) => {
+  const reported = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnMenuContext?: CommandContextState }).__learnMenuContext ?? null);
+  const { app, page } = await session(testInfo);
+  try {
+    await expect.poll(() => reported(app)).toEqual({ ...EMPTY_LIBRARY, sidebar: 'shown' });
+    await importOnePdf(page);
+    await expect.poll(async () => (await reported(app))?.libraryCount).toBe(1);
+    expect(await reported(app)).toMatchObject({ selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 });
+  } finally {
+    await app.close();
+  }
+  const broken = testInfo.outputPath('broken');
+  fs.mkdirSync(broken, { recursive: true });
+  fs.writeFileSync(path.join(broken, 'library.sqlite'), 'not a database');
+  const fatal = await launch(broken, testInfo.outputPath('userdata-broken'));
+  try {
+    await expect(fatal.page.getByTestId('fatal-screen')).toBeVisible();
+    expect(await reported(fatal.app)).toEqual({ ...EMPTY_LIBRARY, blocked: true });
+  } finally {
+    await fatal.app.close();
+  }
+});
+
 // No text input exists in M2, so the native edit roles can only be checked in the menu JSON.
 test('menu: 편집 carries the native edit roles with Korean labels', async ({}, testInfo) => {
   const { app } = await session(testInfo);
@@ -234,6 +307,8 @@ test('menu: 편집 carries the native edit roles with Korean labels', async ({},
       ['copy', '복사하기'],
       ['paste', '붙여넣기'],
       ['selectall', '모두 선택'],
+      ['-', ''],
+      [null, '빠른 검색'],
     ]);
   } finally {
     await app.close();
@@ -284,58 +359,38 @@ test('settings: library.sort survives a restart; an unregistered key is VALIDATI
   }
 });
 
-test('preload: window.learn has only the declared invokers, no generic IPC; on() rejects unknown events', async ({}, testInfo) => {
+test('preload: each window has only its own invokers and events (P-5), no generic IPC; on() rejects every other name', async ({}, testInfo) => {
+  // The built preloads: one standalone CommonJS file per window kind (a sandboxed preload cannot require a chunk).
+  const out = path.join(ROOT, 'apps/desktop/out/preload');
+  expect(fs.readdirSync(out).sort()).toEqual(['main.cjs', 'settings.cjs', 'sheet.cjs']);
+  for (const file of ['main.cjs', 'settings.cjs', 'sheet.cjs']) {
+    const required = [...fs.readFileSync(path.join(out, file), 'utf8').matchAll(/require\(([^)]*)\)/g)].map((m) => m[1]);
+    expect(required, file).toEqual(['"electron"']);
+  }
   const { app, page } = await session(testInfo);
   try {
-    const scan = await page.evaluate(() => {
-      const GENERIC = new Set([
-        'invoke', 'send', 'sendSync', 'sendTo', 'sendToHost', 'postMessage', 'ipcRenderer', 'once', 'addListener', 'removeAllListeners',
-      ]);
-      const functions: string[] = [];
-      const generic: string[] = [];
-      const seen = new Set<unknown>();
-      const walk = (value: unknown, at: string): void => {
-        if (value === null || (typeof value !== 'object' && typeof value !== 'function') || seen.has(value)) return;
-        seen.add(value);
-        for (const key of Object.keys(value)) {
-          const child = (value as Record<string, unknown>)[key];
-          const where = at ? `${at}.${key}` : key;
-          if (GENERIC.has(key)) generic.push(where);
-          if (typeof child === 'function') {
-            functions.push(where);
-            if (GENERIC.has(child.name)) generic.push(`${where} (named ${child.name})`);
-          }
-          walk(child, where);
-        }
-      };
-      walk(window.learn, '');
-      const throws = (fn: () => unknown) => {
-        try {
-          fn();
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      const learn = window.learn as unknown as { on(name: unknown, cb: unknown): unknown };
-      return {
-        functions: functions.sort(),
-        generic,
-        windowIpc: typeof (window as unknown as { ipcRenderer?: unknown }).ipcRenderer,
-        unknownEventThrows: throws(() => learn.on('notAllowed', () => {})),
-        protoKeyThrows: throws(() => learn.on('toString', () => {})),
-        badCallbackThrows: throws(() => learn.on('libraryChanged', 'not a function')),
-        knownEventReturns: typeof learn.on('libraryChanged', () => {}),
-      };
-    });
-    const declared = Object.entries(Channels).flatMap(([ns, verbs]) => Object.keys(verbs).map((verb) => `${ns}.${verb}`));
-    expect(scan.functions).toEqual([...declared, 'on', 'pathForFile'].sort());
-    expect(scan.generic).toEqual([]);
-    expect(scan.windowIpc).toBe('undefined');
-    expect(scan.unknownEventThrows).toBe(true);
-    expect(scan.protoKeyThrows).toBe(true);
-    expect(scan.badCallbackThrows).toBe(true);
-    expect(scan.knownEventReturns).toBe('function');
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
+    const pages: Record<WindowKind, Page> = { main: page, settings, sheet };
+    for (const kind of ['main', 'settings', 'sheet'] as const) {
+      const channels = Object.entries(CHANNEL_KINDS)
+        .filter(([, kinds]) => kinds.includes(kind))
+        .map(([channel]) => channel.replace(':', '.'));
+      const others = kind === 'main' ? ['on', 'pathForFile'] : kind === 'settings' ? ['on'] : [];
+      const scan = await scanSurface(pages[kind]);
+      expect(scan.functions, kind).toEqual([...channels, ...others].sort());
+      expect(scan.generic, kind).toEqual([]);
+      expect(scan.windowIpc, kind).toBe('undefined');
+    }
+    // The main window hears its events; another name, an Object.prototype key or a callback that is not one is refused.
+    expect(await onThrows(page, 'libraryChanged')).toBe(false);
+    expect(await onThrows(page, 'notAllowed')).toBe(true);
+    expect(await onThrows(page, 'toString')).toBe(true);
+    expect(await onThrows(page, 'libraryChanged', 'string')).toBe(true);
+    // The settings window hears its own events, not the main window's.
+    expect(await onThrows(settings, 'prefsChanged')).toBe(false);
+    expect(await onThrows(settings, 'libraryChanged')).toBe(true);
+    await closeSheet(sheet, 'Enter');
   } finally {
     await app.close();
   }
@@ -344,7 +399,7 @@ test('preload: window.learn has only the declared invokers, no generic IPC; on()
 test('ui.windowState() answers the current fullscreen and focus state that main sees', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
-    const mainSees = async () => (await mainWindow(app)).evaluate((w) => ({ fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false }));
+    const mainSees = async () => (await mainWindow(app)).evaluate((w) => ({ fullscreen: w.isFullScreen(), focused: w.isFocused(), sheetOpen: false, main: w.isFocused() }));
     const query = () => page.evaluate(() => window.learn.ui.windowState());
     expect(await query()).toEqual({ ok: true, data: await mainSees() });
     expect((await mainSees()).fullscreen).toBe(false);

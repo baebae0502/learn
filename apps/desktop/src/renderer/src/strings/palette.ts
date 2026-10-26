@@ -1,14 +1,24 @@
-/** ⌘K command palette (design-spec 10.5, palette.html). */
+import { waGwa } from './josa';
+
+/** ⌘K palette: 자료 (with a query) above 명령 (design-spec 10.5, palette.html, spec §4.4). */
 export const palette = {
   dialogLabel: '명령 팔레트',
-  inputLabel: '명령 검색',
-  placeholder: '명령 검색',
-  group: '명령',
-  emptyTitle: (query: string) => `‘${query}’에 맞는 명령이 없습니다`,
-  // The 초성 example finds one command, in every view: ㅅㅈ → 설정… (critic T10-m2; ㄱㅈ also finds 글자 크게 / 작게).
-  // `settings` is that command as prose names it (commandMention: no "…", critic T14-n2).
-  emptyBody: (settings: string) => `초성으로도 찾을 수 있습니다. 예: ㅅㅈ → ${settings}`,
-  /** While an import or a sheet holds the window (critic T9-n5): what is unavailable, then why and what next. */
+  /** It finds items and commands (M4); the launcher says the same (shell.launcher). */
+  inputLabel: '검색 및 명령',
+  placeholder: '검색 및 명령',
+  /** The listbox; its groups are named by their headers. */
+  listLabel: '검색 결과',
+  groups: { items: '자료', commands: '명령' },
+  /** 와/과 by the query's last syllable, as the quick search's no-results title (josa.ts). */
+  emptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료·명령이 없습니다`,
+  /** `example`: 초성 → word from the library's titles, or ㅅㅈ → 설정 (palette/items.ts initialsExample). */
+  emptyBody: (example: string) => `초성으로도 찾을 수 있습니다. 예: ${example}`,
+  example: (initials: string, word: string) => `${initials} → ${word}`,
+  /** The last row of 명령 while there is a query: the quick search takes the query over (⌘F). */
+  searchLibrary: (query: string) => `라이브러리에서 ‘${query}’ 검색`,
+  /** The same sentence in three pieces, so the row can mark the query between the quotes. */
+  searchLibraryParts: (query: string): [string, string, string] => ['라이브러리에서 ‘', query, '’ 검색'],
+  /** While an import or a sheet holds the window: what is unavailable, then why and what next. */
   busyTitle: '지금은 명령을 실행할 수 없습니다',
   busyBody: '진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.',
   /**
@@ -19,10 +29,14 @@ export const palette = {
   busyHeaderBody: '작업이 끝나면 다른\u00a0명령도 쓸 수 있습니다.',
   /** Read out (polite) with that header: the hold, then how many commands are listed. */
   busyStatus: (n: number) => `진행 중인 작업이 있습니다. 실행할 수 있는 명령 ${n}개`,
-  /** Read out (polite) when the number of results changes. */
-  resultCount: (n: number) => `명령 ${n}개`,
+  /** Read out (polite) when the results change. */
+  resultCount: (items: number, commands: number) =>
+    items > 0 && commands > 0 ? `자료 ${items}개, 명령 ${commands}개` : items > 0 ? `자료 ${items}개` : `명령 ${commands}개`,
   footMove: '이동',
+  /** ↩ on a command row (and the demo overlay's pill). */
   footRun: '실행',
+  /** ↩ on an item row. */
+  footOpen: '열기',
   footClose: '닫기',
-  footHint: (settings: string) => `초성 검색 지원 · ㅅㅈ → ${settings}`,
+  footHint: (example: string) => `초성 검색 지원 · ${example}`,
 } as const;

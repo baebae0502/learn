@@ -1,8 +1,10 @@
 // IME: keys that belong to a Korean composition must not act (quality spec M3 `ime`, ADR-0004 risk: Enter and the arrows).
 // CDP Input.imeSetComposition starts a real composition: Chromium then marks keydown events isComposing (R-13 spike,
 // Task 9: ↓ 40, ↩ 13 and esc 27 all arrived with isComposing true on Linux/Xvfb).
+import fs from 'node:fs';
+import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { launch, openDialogCalls, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, importPaths, launch, openDialogCalls, runMenuCommand, stubOpenDialog } from './helpers';
 
 test('palette: ↓, Enter and Escape during a composition neither move, run nor close; after commit ↩ runs once', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -62,6 +64,33 @@ test('palette: keyCode 229 keys (macOS IME) are ignored even without isComposing
     // The same keys without 229 do act (the control): ↓ moves the cursor.
     await page.keyboard.press('ArrowDown');
     await expect(cursor).not.toHaveAttribute('data-command-id', 'view.textBigger');
+  } finally {
+    await app.close();
+  }
+});
+
+test('palette: the 자료 group follows the composition; ↩ while composing opens nothing, after commit it opens the item', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const pdf = path.join(dir, '세포 신호.pdf');
+    fs.copyFileSync(path.join(FIXTURES, 'sample.pdf'), pdf);
+    const [item] = await importPaths(page, [pdf]);
+    await runMenuCommand(app, 'app.palette');
+    const input = page.getByTestId('palette-input');
+    await expect(input).toBeFocused();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition', { text: 'ㅅㅎ', selectionStart: 2, selectionEnd: 2 });
+    const result = page.locator(`[data-testid="palette-result"][data-item-id="${item!.id}"]`);
+    await expect(result).toHaveAttribute('data-focused', 'true'); // filtered while still composing (spec §4.1)
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeVisible();
+    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await cdp.send('Input.insertText', { text: 'ㅅㅎ' }); // commits the composition
+    await expect(input).toHaveValue('ㅅㅎ');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('viewer-title')).toHaveText('세포 신호');
   } finally {
     await app.close();
   }

@@ -14,21 +14,24 @@ import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
-import { sendEvent } from './events';
+import { createFlushGate } from './edit-flush';
+import { broadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu } from './menu/app-menu';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged } from './menu/app-menu';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
-import { createSheetHost } from './sheets';
+import { createSheetHost, sheetHeightKey, shortcutsDigest } from './sheets';
+import { mainStrings } from './strings';
+import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
-import { createThemeFollower, type ThemeMark } from './theme-follow';
+import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
-import { isSheetOpen, sheetClosed, sheetShown } from './window-state';
+import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -67,18 +70,32 @@ let ctx: LibraryContext | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
+/** Closing or quitting over an open 정보 편집 (spec §5.3): the page saves first, or keeps the window and the app (edit-flush.ts). */
+const editFlush = createFlushGate({
+  mainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+  quit: () => app.quit(),
+  record: (entry) => {
+    // E2E reads what each close or quit was answered.
+    if (isE2E(app.isPackaged, process.env)) ((globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ??= []).push(entry);
+  },
+});
+
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
-    preload: path.join(here, '../preload/index.cjs'),
+    preload: path.join(here, '../preload/main.cjs'),
     url: windowUrl(rendererBase, 'main', urlOptions),
     chrome: chrome(),
   });
   // The macOS 전체 화면 item says what it will do (전체 화면 시작 / 종료).
   win.on('enter-full-screen', refreshFullScreenItem);
   win.on('leave-full-screen', refreshFullScreenItem);
+  win.on('close', (event) => editFlush.onClose(win, event));
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
+    // A settings window prepared for this main window and never asked for goes with it on every platform: hidden, it
+    // would keep a Linux app alive (window-all-closed) and hold a renderer for nobody on macOS.
+    settingsWindow.discardPrepared();
     // Linux/Windows: closing the main window ends the app (window-all-closed), so the settings window goes with it;
     // there is no dock to bring a main window back. macOS keeps the app, and the settings window, open (R-22).
     if (process.platform !== 'darwin') settingsWindow.current()?.close();
@@ -102,7 +119,7 @@ function refreshFullScreenItem(): void {
 
 /** ⌘, (main-owned): one settings window, placed over the main window when there is one. */
 const settingsWindow = createSettingsWindow({
-  preload: path.join(here, '../preload/index.cjs'),
+  preload: path.join(here, '../preload/settings.cjs'),
   url: () => windowUrl(rendererBase, 'settings', urlOptions),
   main: () => mainWindow,
 });
@@ -118,11 +135,16 @@ const activation = createActivateGate({
 });
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
-const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({ view: 'library', blocked: true, textSize: 13 });
+const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({
+  view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0,
+});
 /** Last command context of the main window (ADR-0005 §2). */
 let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
-/** E2E marker: bumped on every accepted context report (tests wait for the first one). */
-const menuState = globalThis as { __learnMenuStateVersion?: number };
+/**
+ * E2E markers: the version is bumped on every accepted context report (tests wait for the first one); the context is
+ * the last accepted report, which tests read for what the renderer told main.
+ */
+const menuState = globalThis as { __learnMenuStateVersion?: number; __learnMenuContext?: CommandContextState };
 let appMenu: Menu | null = null;
 
 /**
@@ -137,7 +159,7 @@ function installAppMenu(): void {
       commands: COMMANDS,
       enabled: new Set(availableMenuCommands(uiContext)),
       onCommand: dispatchMenuCommand,
-      labels: { ...(uiContext.sidebar ? { sidebar: uiContext.sidebar } : {}) },
+      labels: menuLabelState(uiContext),
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
       fullScreenAvailable: mainWindow !== null && !mainWindow.isDestroyed() && !isSheetOpen(mainWindow),
       onToggleFullScreen: () => {
@@ -167,11 +189,11 @@ function setNativeMenuOpen(open: boolean): void {
 /** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open). */
 function setUiContext(next: CommandContextState): void {
   if (sameCommandContext(uiContext, next)) return;
-  const relabel = next.sidebar !== uiContext.sidebar;
+  const relabel = menuLabelsChanged(uiContext, next);
   uiContext = next;
   if (!appMenu) return;
   applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
-  if (relabel) applyMenuLabels(appMenu, process.platform, { ...(next.sidebar ? { sidebar: next.sidebar } : {}) });
+  if (relabel) applyMenuLabels(appMenu, process.platform, menuLabelState(next));
 }
 
 /**
@@ -263,8 +285,8 @@ if (!app.requestSingleInstanceLock()) {
         if (page === 'main') applyChromeTheme(mainWindow!, { ...chrome(), theme: shade });
         if (page === 'settings') settingsWindow.current()?.setBackgroundColor(windowBackground[shade]);
       },
-      followers: () =>
-        [mainWindow, settingsWindow.current()].flatMap((w) => (w && !w.isDestroyed() && !w.webContents.isDestroyed() ? [w.webContents.id] : [])),
+      // Pages on screen only: the settings window prepared hidden takes the change from the same broadcast, unseen.
+      followers: () => shownPages([mainWindow, settingsWindow.current()]),
       // Asked before the native theme moves: 시스템 설정 is drawn in the current appearance until it is applied.
       shadeOf: (theme) => (theme === 'system' ? currentTheme() : theme),
       mark: (m: ThemeMark) => themeLog()?.push({ ...m, window: m.windowId !== undefined ? pageOf(m.windowId) : undefined }),
@@ -273,7 +295,7 @@ if (!app.requestSingleInstanceLock()) {
     try {
       ctx = await openLibraryContext(libraryRoot);
     } catch (e) {
-      const le = toLearnError(e, '라이브러리를 여는 중 오류가 발생했습니다.');
+      const le = toLearnError(e, mainStrings.library.openFailed);
       libraryError = { code: le.code, message: le.message };
       console.error(`[library] open failed: ${le.code}`);
     }
@@ -291,9 +313,11 @@ if (!app.requestSingleInstanceLock()) {
       refreshFullScreenItem();
     };
 
+    /** The ⌘/ sheet lists the registry's shortcuts: its height is kept per what it is drawn from. */
+    const shortcutsSheetDigest = shortcutsDigest(COMMANDS, process.platform);
     const deps: IpcDeps = {
       getContext: () => {
-        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? '라이브러리를 열 수 없습니다.');
+        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
         return ctx;
       },
       appInfo: (): AppInfo => ({
@@ -312,6 +336,7 @@ if (!app.requestSingleInstanceLock()) {
           // Only the main window drives the menu (settings and sheet windows report nothing that counts).
           if (!isMainWindow(sender)) return;
           menuState.__learnMenuStateVersion = (menuState.__learnMenuStateVersion ?? 0) + 1; // received, even if unchanged
+          menuState.__learnMenuContext = ctx;
           setUiContext(ctx);
         },
         current: () => uiContext,
@@ -319,11 +344,15 @@ if (!app.requestSingleInstanceLock()) {
       isMainWindow,
       isSettingsWindow,
       sheets: createSheetHost({
-        preload: path.join(here, '../preload/index.cjs'),
+        preload: path.join(here, '../preload/sheet.cjs'),
         url: () => windowUrl(rendererBase, 'sheet', urlOptions),
         platform: process.platform,
         onSheetShown,
         onSheetClosed,
+        staticKey: (payload) =>
+          payload.kind === 'shortcuts'
+            ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
+            : null,
       }),
       windows: {
         openSettings: () => void settingsWindow.open(),
@@ -340,6 +369,7 @@ if (!app.requestSingleInstanceLock()) {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
+      prepareSettings: () => settingsWindow.prepare(),
       relaunch() {
         if (isE2E(app.isPackaged, process.env)) {
           // Playwright cannot follow a relaunched process: E2E only records the request.
@@ -353,6 +383,8 @@ if (!app.requestSingleInstanceLock()) {
       },
     };
     registerAllIpc(createHandle(devOrigin), deps);
+    // E2E only (LEARN_E2E=1, never packaged): the seeding hook a large-library test calls through app.evaluate.
+    if (isE2E(app.isPackaged, process.env)) installTestHooks({ repo: () => deps.getContext().repo, broadcast });
 
     activation.markReady();
     mainWindow = openMainWindow();
@@ -361,6 +393,23 @@ if (!app.requestSingleInstanceLock()) {
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
   app.on('activate', () => activation.onActivate());
+  // A window under a sheet is main only while no other window of ours has the key: every window is re-read whenever
+  // one of ours (a sheet included) gains the focus.
+  app.on('browser-window-focus', () => {
+    resyncAllWindowStates();
+    // On X11 the window still reports the old key window when the event arrives; read once more when it has settled.
+    setTimeout(resyncAllWindowStates, 50);
+  });
+
+  // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
+  // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).
+  app.on('before-quit', (event) => editFlush.onBeforeQuit(event));
+
+  // ⌘Q, the app menu's 종료, or a relaunch: a prepared settings window nobody opened is closed first — but only when the
+  // quit goes ahead; the edit-flush gate above may call this attempt off and quit again after saving.
+  app.on('before-quit', (event) => {
+    if (!event.defaultPrevented) settingsWindow.discardPrepared();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

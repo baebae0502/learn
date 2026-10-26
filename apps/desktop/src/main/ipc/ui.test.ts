@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
-import { stubDeps } from './test-deps';
+import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -23,17 +23,24 @@ vi.mock('electron', () => ({
   BrowserWindow: { fromWebContents: () => senderWindow, getAllWindows: () => [] },
 }));
 
+vi.mock('../menu/column-menu', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../menu/column-menu')>()),
+  popupColumnMenu: vi.fn(async () => ({ toggle: 'year' as const })),
+}));
+
 const { createHandle } = await import('./register');
 const { registerUiIpc } = await import('./ui');
+const { popupColumnMenu } = await import('../menu/column-menu');
 
-const MAIN = { id: 1 };
-const SHEET = { id: 2 };
-const SETTINGS = { id: 3 };
+const MAIN = fakeSender(1, 'main');
+const SHEET = fakeSender(2, 'sheet');
+const SETTINGS = fakeSender(3, 'settings');
 const ITEM_ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt: '2026-10-20T11:40:00.000Z', storageMode: 'managed' };
 const opened: unknown[] = [];
 const openSettings = vi.fn();
 const themeShown = vi.fn();
+const prepareSettings = vi.fn();
 registerUiIpc(
   createHandle(null),
   stubDeps({
@@ -52,11 +59,12 @@ registerUiIpc(
     windows: { openSettings, asSheet: (_owner, show) => show() },
     isSettingsWindow: (sender) => sender === (SETTINGS as never),
     theme: { changed: () => {}, shown: themeShown },
+    prepareSettings,
   }),
 );
 
 const invoke = (channel: string, sender: unknown, raw?: unknown) => handlers.get(channel)!({ sender, senderFrame: { url: 'learn://app/index.html' } }, raw);
-const call = (raw?: unknown) => invoke('ui:windowState', {}, raw);
+const call = (raw?: unknown) => invoke('ui:windowState', MAIN, raw);
 
 beforeEach(() => {
   Object.assign(win, { fullscreen: false, focused: true, destroyed: false });
@@ -83,30 +91,32 @@ describe('sheets are opened over the main window only', () => {
     await invoke('ui:showShortcuts', MAIN);
     expect(events).toEqual(['sheet:duplicate', 'sheet:shortcuts']);
   });
-  it('any other window (a sheet, later the settings window) is PERMISSION_DENIED and opens nothing', async () => {
-    expect(await invoke('ui:confirmDuplicate', SHEET, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    expect(await invoke('ui:showShortcuts', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+  it('any other window (a sheet, the settings window) is PERMISSION_DENIED and opens nothing', async () => {
+    for (const from of [SHEET, SETTINGS]) {
+      expect(await invoke('ui:confirmDuplicate', from, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+      expect(await invoke('ui:showShortcuts', from)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    }
     expect(opened).toEqual([]);
   });
 });
 
 describe('ui.openSettings (the main-owned ⌘, behind the fatal screen\'s 설정 열기)', () => {
-  it('opens (or brings forward) the settings window from the main or the settings window; a sheet is refused', async () => {
+  it('opens (or brings forward) the settings window from the main window; the settings window and a sheet are refused', async () => {
     openSettings.mockClear();
     expect(await invoke('ui:openSettings', MAIN)).toEqual({ ok: true, data: undefined });
-    expect(await invoke('ui:openSettings', SETTINGS)).toEqual({ ok: true, data: undefined });
-    expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(await invoke('ui:openSettings', SETTINGS)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await invoke('ui:openSettings', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(openSettings).toHaveBeenCalledTimes(1);
     expect(await invoke('ui:openSettings', MAIN, { x: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
-    expect(openSettings).toHaveBeenCalledTimes(2);
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('ui.windowState (query; the windowState push stays)', () => {
   it("answers the sender window's current fullscreen and focus state", async () => {
-    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false } });
+    expect(await call()).toEqual({ ok: true, data: { fullscreen: false, focused: true, sheetOpen: false, main: true } });
     Object.assign(win, { fullscreen: true, focused: false });
-    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false } });
+    expect(await call({})).toEqual({ ok: true, data: { fullscreen: true, focused: false, sheetOpen: false, main: false } });
   });
 
   it('NOT_FOUND when the sender has no (live) window; extra input is VALIDATION_FAILED', async () => {
@@ -132,5 +142,34 @@ describe('ui.themeShown (T13R4-m1: the native theme follows the pages)', () => {
     expect(await invoke('ui:themeShown', MAIN, { shade: 'system' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(await invoke('ui:themeShown', MAIN, { shade: 'dark', at: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(themeShown).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ui.showColumnMenu (P-9: the column header has its own channel)', () => {
+  beforeEach(() => {
+    senderWindow = fakeWindow;
+  });
+  it('pops the column menu over the sender window, the shown columns checked, and returns the pick', async () => {
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['title', 'year'], x: 12, y: 34 })).toEqual({ ok: true, data: { toggle: 'year' } });
+    const [entries, at] = vi.mocked(popupColumnMenu).mock.calls.at(-1)!;
+    expect(entries.filter((e) => e !== 'separator' && e.kind === 'column' && e.checked).map((e) => (e as { id: string }).id)).toEqual(['title', 'year']);
+    expect(at).toEqual({ window: fakeWindow, x: 12, y: 34 });
+  });
+  it('refuses columns it does not know (VALIDATION_FAILED) and answers null without a window', async () => {
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['tags'], x: 0, y: 0 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    senderWindow = null;
+    expect(await invoke('ui:showColumnMenu', MAIN, { visible: ['title'], x: 0, y: 0 })).toEqual({ ok: true, data: null });
+  });
+});
+
+describe('ui.reportIdle (spec 8, P-4: the settings window is prepared once the main window is idle)', () => {
+  it('prepares it for the main window only; a sheet or the settings window is PERMISSION_DENIED; it takes no input', async () => {
+    prepareSettings.mockClear();
+    expect(await invoke('ui:reportIdle', MAIN)).toEqual({ ok: true, data: undefined });
+    expect(prepareSettings).toHaveBeenCalledTimes(1);
+    expect(await invoke('ui:reportIdle', SHEET)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:reportIdle', SETTINGS)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:reportIdle', MAIN, { now: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(prepareSettings).toHaveBeenCalledTimes(1);
   });
 });

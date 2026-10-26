@@ -1,7 +1,8 @@
 // ⌘K command palette and launcher (design-spec 10.5, 6, 2.3; ADR-0005 §5).
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, dropSource, expectWindow, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
@@ -38,14 +39,14 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await stubOpenDialog(app, []);
-    // M3 finds commands only, and the launcher says so, like the palette's own field (critic T9-m1).
-    await expect(page.getByTestId('launcher')).toContainText('명령 검색');
+    // It finds items and commands, and the launcher says so, like the palette's own field (design-spec 10.5).
+    await expect(page.getByTestId('launcher')).toContainText('검색 및 명령');
     // Named by its visible text (WCAG 2.5.3, axe); the shortcut is aria-keyshortcuts (Task 12).
-    await expect(page.getByTestId('launcher')).toHaveAccessibleName('명령 검색');
+    await expect(page.getByTestId('launcher')).toHaveAccessibleName('검색 및 명령');
     await expect(page.getByTestId('launcher')).toHaveAttribute('aria-keyshortcuts', IS_MAC ? 'Meta+K' : 'Control+K');
     await page.getByTestId('launcher').click();
     await expect(page.getByTestId('palette')).toBeVisible();
-    await expect(page.getByTestId('palette-input')).toHaveAttribute('placeholder', '명령 검색');
+    await expect(page.getByTestId('palette-input')).toHaveAttribute('placeholder', '검색 및 명령');
     await expect(page.getByTestId('palette-input')).toBeFocused();
     await expect(page.getByTestId('palette-esc')).toHaveText(IS_MAC ? 'esc' : 'Esc'); // input-row keycap (palette.html, C-7), platform spelling
     // The scrim lies over the 52 px drag strips; it must not drag the window (R-23).
@@ -89,6 +90,7 @@ test('the cursor is on a row whenever the list has rows: on open and after every
   try {
     await stubOpenDialog(app, []);
     // On open, with an empty query: the first row; ↓ and ↑ move it; ↩ runs the cursor row, once.
+    // Runs picked here go to palette.recent; every expectation below already starts with the one run first (파일 가져오기…).
     await runMenuCommand(app, 'app.palette');
     await expect(input).toBeFocused();
     await expectCursor('file.importManaged');
@@ -145,11 +147,12 @@ test('ARIA: a combobox over a listbox, unique option ids, nothing to point at wi
     await expect(input).toHaveAttribute('role', 'combobox');
     await expect(input).toHaveAttribute('aria-autocomplete', 'list');
     await expect(input).toHaveAttribute('aria-expanded', 'true');
-    const listbox = page.getByRole('listbox', { name: '명령' });
+    const listbox = page.getByRole('listbox', { name: '검색 결과' });
     await expect(listbox).toHaveCount(1);
     await expect(input).toHaveAttribute('aria-controls', (await listbox.getAttribute('id'))!);
     const ids = await listbox.getByRole('option').evaluateAll((els) => els.map((e) => e.id));
     expect(ids.length).toBe(7);
+    await expect(listbox.getByRole('group')).toHaveText([/^명령/]); // one group with an empty query, named by its header
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.every((id) => id.length > 0)).toBe(true);
     await expect(listbox.getByRole('option', { selected: true })).toHaveCount(1);
@@ -165,8 +168,8 @@ test('ARIA: a combobox over a listbox, unique option ids, nothing to point at wi
     await expect(input).toHaveAttribute('aria-expanded', 'false');
     await expect(input).not.toHaveAttribute('aria-activedescendant', /.*/);
     await expect(input).not.toHaveAttribute('aria-controls', /.*/);
-    await expect(page.getByRole('listbox', { name: '명령' })).toHaveCount(0);
-    await expect(status).toHaveText('‘효소 억제제’에 맞는 명령이 없습니다');
+    await expect(page.getByRole('listbox', { name: '검색 결과' })).toHaveCount(0);
+    await expect(status).toHaveText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
     // Tab and ⇧Tab keep the focus inside the palette (the options are not tab stops; RAC's FocusScope contains it).
     await input.fill('');
     for (const key of ['Tab', 'Tab', 'Shift+Tab']) {
@@ -249,8 +252,9 @@ test('keywords, no results, esc, and a menu command while open', async ({}, test
     await input.fill('ㅅㅇㄷㅂ');
     await expect(page.getByTestId('palette-item').first()).toHaveAttribute('data-command-id', 'view.toggleSidebar');
     await input.fill('효소 억제제');
-    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’에 맞는 명령이 없습니다');
+    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
     await expect(page.getByTestId('palette-item')).toHaveCount(0);
+    await expect(page.getByTestId('palette-search-library')).toHaveCount(0); // an empty library has no quick search to hand the query to
     await expect(page.locator('.p-foot .row')).toHaveText([/닫기/]); // nothing to move to or run: only esc is hinted
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('palette')).toBeHidden();
@@ -320,8 +324,8 @@ test('opening the palette closes an open tooltip, and none opens while it is up'
     // Playwright may become key only after the first hover (Mac run t14-diag2). Make it key first.
     await (await mainWindow(app)).evaluate((w) => w.focus());
     await expect(page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
-    await page.getByTestId('sidebar-toggle').hover();
-    await expect(tooltip).toHaveText(/사이드바 가리기/); // after the 600 ms hover delay
+    await hoverLikeUser(page, 'sidebar-toggle');
+    await expectTooltipText(page, /사이드바 가리기/, 'sidebar-toggle'); // after the 600 ms hover delay
     await runMenuCommand(app, 'app.palette'); // ⌘K from the menu bar
     await expect(page.getByTestId('palette')).toBeVisible();
     await expect(tooltip).toHaveCount(0);
@@ -420,5 +424,233 @@ test('the palette stays open in an inactive window; its cursor row turns neutral
     await expect.poll(() => cursorRow.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(await tokenValue(page, 'backgroundColor', '--accent'));
   } finally {
     await app.close();
+  }
+});
+
+test('item results: 자료 above the commands, five at most; title matches by position, then other fields, then the last opened; ↩ opens one', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const real = path.join(dir, '신호 증폭.pdf'); // the one opened at the end: a real PDF
+    fs.copyFileSync(PDF, real);
+    const fake = (title: string) => {
+      const p = path.join(dir, `${title}.pdf`);
+      fs.writeFileSync(p, `%PDF-1.4\n% ${title}\n%%EOF\n`);
+      return p;
+    };
+    // One import each, a few ms apart: the order they were added breaks the last tie (createdAt).
+    const ids: Record<string, string> = {};
+    for (const p of [fake('세포 신호 전달'), real, fake('단백질 접힘'), fake('전달 신호 모음'), fake('강의 · 신호'), fake('효소 반응'), fake('열역학')]) {
+      const [item] = await importPaths(page, [p]);
+      ids[item!.title] = item!.id;
+      await page.waitForTimeout(5);
+    }
+    // Opened (openedAt) before the metadata writes: their libraryChanged brings the list with it (reader.open sends none).
+    await page.evaluate((itemId) => window.learn.reader.open({ itemId }), ids['전달 신호 모음']!);
+    await page.evaluate(async (i) => {
+      await window.learn.library.updateMetadata({ itemId: i.a, metadata: { creators: [{ name: '김하늘', role: 'author' }], date: '2024-03' } });
+      await window.learn.library.updateMetadata({ itemId: i.b, metadata: { creators: [], publisher: '신호 출판' } });
+      await window.learn.library.updateMetadata({ itemId: i.c, metadata: { creators: [], extra: '신호 경로를 그린 메모' } });
+    }, { a: ids['신호 증폭']!, b: ids['단백질 접힘']!, c: ids['효소 반응']! });
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('신호');
+    const results = page.getByTestId('palette-result');
+    // Title matches by position (0, 3, 3, 5; the tie at 3 to the one opened), then other fields: the memo (long field,
+    // read once the query is there) on the newer item before the publisher; the sixth match is left out.
+    await expect
+      .poll(() => results.evaluateAll((els) => els.map((e) => e.getAttribute('data-item-id'))))
+      .toEqual([ids['신호 증폭'], ids['전달 신호 모음'], ids['세포 신호 전달'], ids['강의 · 신호'], ids['효소 반응']]);
+    await expect(page.locator('.palette .p-group')).toHaveText(['자료', '명령']);
+    await expect(results.first()).toHaveAttribute('data-focused', 'true');
+    await expect(results.first().locator('mark')).toHaveText('신호');
+    await expect(results.first().locator('.p-sub')).toHaveText('김하늘 · 2024');
+    await expect(results.nth(3).locator('.p-sub')).toHaveText('PDF'); // no author, no year: the kind
+    await expect(results.nth(4).locator('mark')).toHaveCount(0); // matched outside the title
+    await expect(results.first().locator('.p-meta .kbd-group')).toHaveCount(1); // ↩ on the cursor row only
+    await expect(results.nth(1).locator('.p-meta .kbd-group')).toHaveCount(0);
+    await expect(page.getByTestId('palette-search-library')).toHaveText(/라이브러리에서 ‘신호’ 검색/);
+    await expect(page.getByTestId('palette-search-library').locator('mark')).toHaveText('신호'); // the query is marked, the text reads the same
+    await expect(page.locator('.p-foot .row').nth(1)).toHaveText(/열기/); // ↩ opens the item under the cursor
+    // The search row is not a command: no command matches 신호, so the status counts the five items alone.
+    await expect(page.getByTestId('palette-status')).toHaveText('자료 5개');
+    const input = page.getByTestId('palette-input');
+    const searchRow = page.getByTestId('palette-search-library');
+    for (let i = 1; i < 5; i++) {
+      await page.keyboard.press('ArrowDown');
+      await expect(results.nth(i)).toHaveAttribute('data-focused', 'true');
+    }
+    // ↓ from the last item crosses into the group below (here the search row alone): the cursor does not stop at 자료.
+    await page.keyboard.press('ArrowDown');
+    await expect(searchRow).toHaveAttribute('data-focused', 'true');
+    await expect(results.nth(4)).not.toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await searchRow.getAttribute('id'))!);
+    await page.keyboard.press('ArrowUp');
+    await expect(results.nth(4)).toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await results.nth(4).getAttribute('id'))!);
+    for (let i = 3; i >= 0; i--) await page.keyboard.press('ArrowUp');
+    await expect(results.first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('viewer-title')).toHaveText('신호 증폭');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a long author list ends in an ellipsis inside 240 px and the title keeps its width', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'a.pdf');
+    fs.writeFileSync(file, '%PDF-1.4\n% a\n%%EOF\n');
+    const [item] = await importPaths(page, [file]);
+    const names = ['김하늘', '박서준', '이도윤', '최민서', '정우진', '한지민', '오세훈', '윤아름', '장민호', '서지우'];
+    await page.evaluate(
+      (i) => window.learn.library.updateMetadata({ itemId: i.id, title: '신호 전달 경로의 정량 모델과 그 응용', metadata: { creators: i.names.map((name) => ({ name, role: 'author' as const })), date: '2024' } }),
+      { id: item!.id, names },
+    );
+    await runMenuCommand(app, 'app.palette');
+    const input = page.getByTestId('palette-input');
+    const title = page.getByTestId('palette-result').first().locator('.p-title');
+    await input.fill('신호');
+    await expect(page.getByTestId('palette-result')).toHaveCount(1);
+    const sub = page.getByTestId('palette-result').first().locator('.p-sub');
+    await expect(sub).toContainText('김하늘');
+    // The long list gave way first: it is cut at 240 px and the title shows whole.
+    await expect.poll(() => sub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await sub.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(240);
+    expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test('↓ and ↑ cross from 자료 into 명령 and back; ↩ on a command row runs the command and opens no item', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const fake = (title: string) => {
+      const p = path.join(dir, `${title}.pdf`);
+      fs.writeFileSync(p, `%PDF-1.4\n% ${title}\n%%EOF\n`);
+      return p;
+    };
+    await importPaths(page, [fake('글자 크게 연습'), fake('글자 크게 노트')]);
+    await runMenuCommand(app, 'app.palette');
+    const input = page.getByTestId('palette-input');
+    await input.fill('글자 크게');
+    const results = page.getByTestId('palette-result');
+    const commandRows = page.getByTestId('palette-item');
+    await expect(results).toHaveCount(2);
+    await expect(commandRows.first()).toHaveAttribute('data-command-id', 'view.textBigger');
+    const textSize = () => page.evaluate(() => document.documentElement.dataset['fontSize']);
+    const before = await textSize();
+    await expect(results.first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('ArrowDown');
+    await expect(results.nth(1)).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('ArrowDown'); // the boundary: the next row is the first command, not a stop on the last item
+    await expect(commandRows.first()).toHaveAttribute('data-focused', 'true');
+    await expect(results.nth(1)).not.toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await commandRows.first().getAttribute('id'))!);
+    await page.keyboard.press('ArrowUp');
+    await expect(results.nth(1)).toHaveAttribute('data-focused', 'true');
+    await expect(input).toHaveAttribute('aria-activedescendant', (await results.nth(1).getAttribute('id'))!);
+    await page.keyboard.press('ArrowDown');
+    await expect(commandRows.first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect.poll(textSize).not.toBe(before); // the command ran
+    await expect(page.getByTestId('viewer-title')).toHaveCount(0); // and no item was opened
+  } finally {
+    await app.close();
+  }
+});
+
+test('라이브러리에서 ‘…’ 검색 ⌘F: none in an empty library; it stays when nothing matches; from the reader it goes back and hands the query to the quick search', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  const input = page.getByTestId('palette-input');
+  const row = page.getByTestId('palette-search-library');
+  const field = page.getByTestId('search-field').locator('input');
+  try {
+    await runMenuCommand(app, 'app.palette');
+    await input.fill('효소 억제제');
+    await expect(page.getByTestId('palette-empty')).toBeVisible();
+    await expect(row).toHaveCount(0); // an empty library has no quick search to hand the query to
+    await page.keyboard.press('Escape');
+
+    await importPaths(page, [PDF]);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await runMenuCommand(app, 'app.palette');
+    await input.fill('효소 억제제');
+    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await expect(row).toHaveText(/라이브러리에서 ‘효소 억제제’ 검색/);
+    await expect(row).toHaveAttribute('data-focused', 'true');
+    await expect(row.locator('.kbd')).toHaveText(IS_MAC ? ['⌘', 'F'] : ['Ctrl', 'F']);
+    await expect(page.locator('.p-foot .row')).toHaveText([/실행/, /닫기/]); // palette.html ?state=none
+    await expect(page.getByTestId('palette-status')).toHaveText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('search-empty')).toBeVisible(); // back in the library, the quick search's own no-results state
+    await expect(field).toHaveValue('효소 억제제');
+    await expect(field).toBeFocused();
+
+    // A query that finds the item: 자료 first, the row still last; the pointer picks the row.
+    await runMenuCommand(app, 'app.palette');
+    await input.fill('sam');
+    await expect(page.getByTestId('palette-result')).toHaveCount(1);
+    await row.click();
+    await expect(field).toHaveValue('sam');
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('recent: commands run from the palette come first with an empty query (five at most), win ties, and survive a restart', async ({}, testInfo) => {
+  let session = await launch(...dirs(testInfo));
+  const cursor = (page: Page) => page.locator('[data-testid="palette-item"][data-focused]');
+  const listed = (page: Page) => page.getByTestId('palette-item').evaluateAll((els) => els.map((e) => e.getAttribute('data-command-id')));
+  /** Runs `id` from the palette by typing `query`; its row must be the cursor row. */
+  const pick = async (s: { app: ElectronApplication; page: Page }, query: string, id: string) => {
+    await runMenuCommand(s.app, 'app.palette');
+    await s.page.getByTestId('palette-input').fill(query);
+    await expect(cursor(s.page)).toHaveAttribute('data-command-id', id);
+    await s.page.keyboard.press('Enter');
+    await expect(s.page.getByTestId('palette')).toBeHidden();
+  };
+  try {
+    await stubOpenDialog(session.app, []);
+    await pick(session, '파일 가져오기', 'file.importManaged');
+    await pick(session, '외부 파일', 'file.importLinked');
+    const sheet = await expectWindow(session.app, 'sheet', () => pick(session, '단축키', 'app.shortcuts'));
+    await closeSheet(sheet, 'Escape');
+    await expect.poll(() => menuItemEnabled(session.app, 'app.palette')).toBe(true);
+    await pick(session, '글자 크게', 'view.textBigger');
+    await pick(session, '글자 작게', 'view.textSmaller');
+    await pick(session, 'ㅅㅇㄷㅂ', 'view.toggleSidebar');
+    // The five newest first, then the rest in registry order (설정… never ran; 파일 가져오기… is the sixth newest).
+    const expected = ['view.toggleSidebar', 'view.textSmaller', 'view.textBigger', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'app.settings'];
+    await runMenuCommand(session.app, 'app.palette');
+    expect(await listed(session.page)).toEqual(expected);
+    // 글자 크게 and 글자 작게 both match ㄱㅈ at 0: the one run last comes first.
+    await session.page.getByTestId('palette-input').fill('ㄱㅈ');
+    expect((await listed(session.page)).slice(0, 2)).toEqual(['view.textSmaller', 'view.textBigger']);
+    await session.page.keyboard.press('Escape');
+    // A library setting (ADR-0007 (b)): written whole, newest first.
+    await expect
+      .poll(() => session.page.evaluate(async () => {
+        const r = await window.learn.settings.get({ key: 'palette.recent' });
+        return r.ok ? r.data : null;
+      }))
+      .toEqual(['view.toggleSidebar', 'view.textSmaller', 'view.textBigger', 'app.shortcuts', 'file.importLinked', 'file.importManaged']);
+    await session.app.close();
+    session = await launch(...dirs(testInfo));
+    await runMenuCommand(session.app, 'app.palette');
+    await expect.poll(() => listed(session.page)).toEqual(expected);
+  } finally {
+    await session.app.close();
   }
 });

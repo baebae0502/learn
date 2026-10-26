@@ -12,6 +12,8 @@
     color: var(--text-primary);
     font: var(--type-body);
     min-width: 0;
+    /* A field may sit in a drag strip (the toolbar's quick search): it takes clicks like the launcher does. */
+    -webkit-app-region: no-drag;
   }
   /* Over the macOS vibrancy material the sidebar defines --field-placeholder (tokens.ts colorsVibrancySidebar). */
   .field .icon,
@@ -45,6 +47,12 @@
     color: var(--field-placeholder, var(--text-tertiary));
     opacity: 1;
   }
+  /* Off the Mac, Chromium paints a selected value in its own blue; the accent keeps it on the tokens. The Mac keeps
+     the system highlight, as native fields do. */
+  :root:not([data-platform='darwin']) .field .field-input::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+    color: inherit;
+  }
   .field .field-input::-webkit-search-cancel-button,
   .field .field-input::-webkit-search-decoration {
     appearance: none;
@@ -75,6 +83,14 @@
     opacity: 0.45;
   }
   .launcher[aria-disabled='true'] > .icon {
+    opacity: 0.4;
+  }
+  /* A search field held the same way (the library is still loading, or a sheet or an import holds the window). */
+  .field.is-disabled > .field-input::placeholder,
+  .field.is-disabled > .field-input {
+    opacity: 0.45;
+  }
+  .field.is-disabled > .icon {
     opacity: 0.4;
   }
 }

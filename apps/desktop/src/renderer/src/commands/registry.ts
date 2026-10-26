@@ -1,4 +1,4 @@
-import { isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
+import { COMMANDS, isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 
@@ -6,12 +6,19 @@ import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 export interface CommandEnv extends CommandContextState {
   /** Availability facts for item targets (from the library list). */
   targetsOf(itemIds: readonly string[]): CommandTargetInfo[];
+  /**
+   * The table selection in table order: the targets of an item command run from the menu bar. Read when the
+   * command runs, so a closing palette does not run it on an older selection.
+   */
+  selection(): readonly string[];
   importFiles(mode: StorageMode): void;
   back(): void;
   open(itemId: string): void;
   relink(itemId: string): void;
   /** ⌃⌘S (Task 4). */
   toggleSidebar(): void;
+  /** ⌥⌘I: the item panel, by the sidebar's rules (shell/layout.ts toggledInspector). */
+  toggleInspector(): void;
   /** ⌘/ (Task 6). */
   showShortcuts(): void;
   /** ⌘K (Task 9): opens the palette, or selects its field when it is already open. */
@@ -19,12 +26,18 @@ export interface CommandEnv extends CommandContextState {
   /** Finder에서 보기 / 기본 앱으로 열기 (Task 7). */
   showInFolder(itemId: string): void;
   openExternally(itemId: string): void;
+  /** 사본 내보내기…: main's save panel, then the copy; the toast that says it is saved can reveal it. */
+  exportCopy(itemId: string): void;
+  /** 정보 편집: the item panel shows (if folded) and its 정보 section becomes the form. */
+  editInfo(itemId: string): void;
   /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
   setTextSize(update: TextSizeUpdate): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
+  /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
+  focusSearch(): void;
   /**
    * A modal surface owns the keyboard: a sheet, the palette, the drop overlay (MainWindow derives it once). Not
    * reported to main; it tells an import (blocked alone) from a modal surface for `duringWork` commands.
@@ -50,12 +63,16 @@ type Handler = (env: CommandEnv, itemIds: readonly string[]) => void;
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
+  'library.find': (env) => env.focusSearch(),
   'nav.back': (env) => env.back(),
   'item.open': (env, [itemId]) => env.open(itemId!),
   'item.showInFolder': (env, [itemId]) => env.showInFolder(itemId!),
   'item.openExternally': (env, [itemId]) => env.openExternally(itemId!),
+  'item.exportCopy': (env, [itemId]) => env.exportCopy(itemId!),
+  'item.editInfo': (env, [itemId]) => env.editInfo(itemId!),
   'item.relink': (env, [itemId]) => env.relink(itemId!),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
+  'view.toggleInspector': (env) => env.toggleInspector(),
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
@@ -66,9 +83,28 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.previousPane': (env) => env.focusPane(-1),
 };
 
-/** Just the context fields (what main needs for the menu bar: availability, and the sidebar state for its labels). */
+/** Just the context fields (what main needs for the menu bar: availability and counts, and the pane states for its labels). */
 export function contextOf(env: CommandEnv): CommandContextState {
-  return { view: env.view, blocked: env.blocked, textSize: env.textSize, ...(env.sidebar ? { sidebar: env.sidebar } : {}) };
+  return {
+    view: env.view,
+    blocked: env.blocked,
+    textSize: env.textSize,
+    libraryCount: env.libraryCount,
+    selectionCount: env.selectionCount,
+    selectionAvailable: env.selectionAvailable,
+    selectionRelinkable: env.selectionRelinkable,
+    ...(env.sidebar ? { sidebar: env.sidebar } : {}),
+    ...(env.inspector ? { inspector: env.inspector } : {}),
+  };
+}
+
+/**
+ * The targets of a command from the menu bar (its accelerator or a click): an item command acts on the table's
+ * selection, which only the library view shows (spec 6: off in the reader, as main's availableMenuCommands judges it).
+ */
+export function menuTarget(id: CommandId, env: CommandEnv): CommandTarget {
+  if (!COMMANDS.find((c) => c.id === id)?.contexts.includes('item')) return {};
+  return { itemIds: env.view === 'library' ? env.selection() : [] };
 }
 
 /** The window a command is judged in: a held one counts as the blocked, modal window it is about to be. */

@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
-import { shortcutGroups } from './shortcuts';
+import { shortcutColumns, shortcutGroups } from './shortcuts';
 import { resolveSheet } from './SheetApp';
 import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
@@ -38,19 +38,23 @@ export function ShortcutsSheet() {
       </div>
       <div className="d-body" ref={body} {...region}>
         <div className="shortcut-groups">
-          {shortcutGroups(currentPlatform()).map((g) => (
-            <section key={g.title} aria-label={g.title}>
-              <div className="group-label">{g.title}</div>
-              <div className="card shortcut-list">
-                {g.rows.map((r) => (
-                  <div className="shortcut-row" key={r.label} data-testid="shortcut-row" data-system={r.system ? '' : undefined}>
-                    <span className="sr-label">{r.label}</span>
-                    <Kbd keys={r.keys} alternatives={r.alternatives} />
-                    <span className="visually-hidden">{r.spoken}</span>
+          {shortcutColumns(shortcutGroups(currentPlatform())).map((column, i) => (
+            <div className="shortcut-column" key={i}>
+              {column.map((g) => (
+                <section key={g.title} aria-label={g.title}>
+                  <div className="group-label">{g.title}</div>
+                  <div className="card shortcut-list">
+                    {g.rows.map((r) => (
+                      <div className="shortcut-row" key={r.label} data-testid="shortcut-row" data-system={r.system ? '' : undefined}>
+                        <span className="sr-label">{r.label}</span>
+                        <Kbd keys={r.keys} alternatives={r.alternatives} />
+                        <span className="visually-hidden">{r.spoken}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
+                </section>
+              ))}
+            </div>
           ))}
         </div>
       </div>

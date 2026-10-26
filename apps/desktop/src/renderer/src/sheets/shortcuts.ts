@@ -16,7 +16,8 @@ export interface ShortcutGroup {
   rows: ShortcutRow[];
 }
 
-const ORDER: CommandContext[] = ['app', 'library', 'viewer'];
+/** Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). */
+const ORDER: CommandContext[] = ['app', 'library', 'item', 'viewer'];
 /**
  * The sheet's own order (design-spec 7.4: ⌘, then ⌘K, ⌘/ and ⌃⌘S): these lead their group in this order, the rest
  * follow in registry order. COMMANDS itself keeps app.palette last (R-10).
@@ -74,4 +75,27 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
     })),
   };
   return [...groups, dialogs];
+}
+
+/** A group's height as sheet.css draws it: its label (16 + 8), the card (4 + 4) and 28 px rows with 1 px between. */
+const groupHeight = (g: ShortcutGroup): number => 31 + 29 * g.rows.length;
+const GROUP_GAP = 16;
+const columnHeight = (groups: readonly ShortcutGroup[]): number => groups.reduce((h, g, i) => h + groupHeight(g) + (i > 0 ? GROUP_GAP : 0), 0);
+
+/**
+ * The wide sheet's two columns (design-spec 6 시트, 넓게 560): the groups in ORDER, read down the first column and then
+ * the second, never split; cut where the taller column is shortest, so the sheet stays short as commands are added.
+ */
+export function shortcutColumns(groups: readonly ShortcutGroup[]): [ShortcutGroup[], ShortcutGroup[]] {
+  if (groups.length < 2) return [[...groups], []];
+  let cut = 1;
+  let best = Infinity;
+  for (let k = 1; k < groups.length; k++) {
+    const taller = Math.max(columnHeight(groups.slice(0, k)), columnHeight(groups.slice(k)));
+    if (taller < best) {
+      best = taller;
+      cut = k;
+    }
+  }
+  return [groups.slice(0, cut), groups.slice(cut)];
 }

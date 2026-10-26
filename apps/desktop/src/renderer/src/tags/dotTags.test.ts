@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TAG_COLORS, type OrganizeTag } from '@learn/domain';
-import { dotTags, tagsDescription } from './tagDots';
+import { dotTags, tagsDescription } from './dotTags';
 
 const tag = (id: string, name: string, position: number | null = null): OrganizeTag => ({ id, name, color: position === null ? null : TAG_COLORS[position - 1]!.id, position });
 const IMPORTANT = tag('a', '중요', 3);

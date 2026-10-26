@@ -1,6 +1,6 @@
 import type { OrganizeTag } from '@learn/domain';
 import { tagColorVar } from './tagColor';
-import { dotTags } from './tagDots';
+import { dotTags } from './dotTags';
 
 /**
  * The colour dots after a table title (spec 5.1; mockup .tag-dots): one 8 px dot per coloured tag, by slot, with a 0.5 px

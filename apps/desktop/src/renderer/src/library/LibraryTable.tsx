@@ -23,7 +23,7 @@ import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { gridKey } from './gridKeys';
 import { TagDots } from '../tags/TagDots';
-import { tagsDescription } from '../tags/tagDots';
+import { tagsDescription } from '../tags/dotTags';
 import { LinkMark, StatusFlags } from './ItemMarks';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';

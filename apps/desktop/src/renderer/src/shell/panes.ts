@@ -10,10 +10,10 @@ const FOCUSABLE =
   'button:not([disabled]):not([aria-disabled="true"]), [href], input:not([disabled]), select:not([disabled]), video[controls], [tabindex="0"]:not([aria-disabled="true"]), [role="option"]';
 
 /**
- * A grid (the library table) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the
+ * A grid (the library table, and the sidebar's tree) is one stop with a roving focus: F6 lands on its stop row (tabindex 0: the cursor, or the
  * first row before there is one), never on a header button or a column edge inside it (tabindex -1).
  */
-const landsOn = (el: Element): boolean => el.closest('[role="grid"]') === null || el.getAttribute('tabindex') === '0';
+const landsOn = (el: Element): boolean => el.closest('[role="grid"], [role="treegrid"]') === null || el.getAttribute('tabindex') === '0';
 
 /** The pane's element when F6 can visit it: there, not folded (inert or zero-wide); the toasts only with a toast. */
 function usablePane(name: (typeof PANES)[number]): HTMLElement | null {

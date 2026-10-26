@@ -17,6 +17,9 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   selection: () => [],
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
+  newCollection: vi.fn(),
+  renameCollection: vi.fn(),
+  deleteCollection: vi.fn(),
   back: vi.fn(),
   open: vi.fn(),
   relink: vi.fn(),
@@ -70,6 +73,31 @@ describe('renderer command registry', () => {
     expect(two.openExternally).not.toHaveBeenCalled();
     expect(none.showInFolder).not.toHaveBeenCalled();
     expect(reader.showInFolder).not.toHaveBeenCalled();
+  });
+  it('runs the collection commands on the one collection handed over; the library menu command on none; the import needs the library view', () => {
+    const targetsOf = (t: { collectionIds?: readonly string[] }): CommandTargetInfo[] => (t.collectionIds ?? []).map((id) => ({ kind: 'collection', id }));
+    const e = env({ targetsOf });
+    expect(runCommand('collection.new', e)).toBe(true);
+    expect(e.newCollection).toHaveBeenLastCalledWith();
+    expect(runCommand('collection.newChild', e, { collectionIds: ['c1'] })).toBe(true);
+    expect(e.newCollection).toHaveBeenLastCalledWith({ parentId: 'c1' });
+    expect(runCommand('collection.rename', e, { collectionIds: ['c1'] })).toBe(true);
+    expect(e.renameCollection).toHaveBeenCalledWith('c1');
+    expect(runCommand('collection.importInto', e, { collectionIds: ['c1'] })).toBe(true);
+    expect(e.importFiles).toHaveBeenLastCalledWith('managed', 'c1');
+    expect(runCommand('collection.delete', e, { collectionIds: ['c1'] })).toBe(true);
+    expect(e.deleteCollection).toHaveBeenCalledWith('c1');
+    // none or two collections: refused
+    expect(runCommand('collection.rename', e)).toBe(false);
+    expect(runCommand('collection.delete', e, { collectionIds: ['a', 'b'] })).toBe(false);
+    // the reader: the sidebar beside it renames and deletes, but nothing is imported into a collection and no library menu command runs
+    const viewer = env({ view: 'viewer', targetsOf });
+    expect(runCommand('collection.new', viewer)).toBe(false);
+    expect(runCommand('collection.importInto', viewer, { collectionIds: ['c1'] })).toBe(false);
+    expect(runCommand('collection.rename', viewer, { collectionIds: ['c1'] })).toBe(true);
+    // a context-menu pick runs with the target the menu was opened for
+    expect(runPicked({ commandId: 'collection.delete' }, e, { collectionIds: ['c2'] })).toBe(true);
+    expect(e.deleteCollection).toHaveBeenLastCalledWith('c2');
   });
   it('runs through the shared availability predicate', () => {
     const lib = env();

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderInput, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -13,6 +13,11 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'item.openExternally': ExternalLink,
   'item.editInfo': Pencil,
   'item.exportCopy': FileOutput,
+  'collection.new': FolderPlus,
+  'collection.newChild': FolderTree,
+  'collection.rename': Pencil,
+  'collection.importInto': FolderInput,
+  'collection.delete': Trash2,
   'view.toggleSidebar': PanelLeft,
   'view.toggleInspector': PanelRight,
   'app.shortcuts': Keyboard,

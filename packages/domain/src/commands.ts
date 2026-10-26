@@ -19,6 +19,11 @@ export type CommandId =
   | 'item.editInfo'
   | 'item.exportCopy'
   | 'item.relink'
+  | 'collection.new'
+  | 'collection.newChild'
+  | 'collection.rename'
+  | 'collection.importInto'
+  | 'collection.delete'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
   | 'app.shortcuts'
@@ -104,6 +109,11 @@ export interface CommandSpec {
   stateLabels?: { sidebar?: Readonly<Record<PaneShown, string>>; inspector?: Readonly<Record<PaneShown, string>> };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
+  /**
+   * The name the ⌘K palette shows when the menu around the command gives it a noun the palette lacks (spec 9.3): the
+   * collection menu says 이름 바꾸기, the palette 컬렉션 이름 바꾸기, so it is not taken for a tag's.
+   */
+  paletteLabel?: string;
   /** Electron accelerator, owned by the native menu. */
   accelerator?: string;
   /** Single-key shortcut, matched by physical key in the renderer keymap. */
@@ -141,6 +151,12 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 2 }, contexts: ['library'],
     keywords: ['연결', '외부', '링크', 'link'],
   },
+  // 새 컬렉션 (spec 3.4): Finder's new folder — the sidebar makes the row and names it in place. 파일 group 1 after the
+  // imports; the palette lists it too. Wherever the library shows, also while it is empty.
+  {
+    id: 'collection.new', label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N', menu: { menu: 'file', group: 1, order: 3 }, contexts: ['library'],
+    keywords: ['컬렉션', '폴더', '만들기', '새로 만들기', 'collection', 'folder', 'new'],
+  },
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
   {
@@ -177,6 +193,25 @@ export const COMMANDS: readonly CommandSpec[] = [
     contextMenu: { kinds: ['item'], group: 2, order: 2 },
     palette: true,
     keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+  },
+  // The collection commands act on one collection: the one a sidebar row's menu was opened on (a right click selects it
+  // first), and from the palette the one being viewed (spec 9.3). None is on the menu bar; the keyboard reaches them
+  // through the palette and the tree's own keys (↩ renames).
+  {
+    id: 'collection.newChild', label: '새\u00a0하위 컬렉션', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 1, order: 1 },
+    keywords: ['하위', '컬렉션', '폴더', '만들기', 'subcollection', 'new'],
+  },
+  {
+    id: 'collection.rename', label: '이름 바꾸기', paletteLabel: '컬렉션 이름 바꾸기', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 1, order: 2 },
+    keywords: ['컬렉션', '이름', '바꾸기', '고치기', 'rename'],
+  },
+  {
+    id: 'collection.importInto', label: '이\u00a0컬렉션으로 가져오기…', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 2, order: 1 },
+    keywords: ['가져오기', '컬렉션', '추가', '사본', 'import'],
+  },
+  {
+    id: 'collection.delete', label: '컬렉션 삭제…', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 3, order: 1 },
+    keywords: ['삭제', '지우기', '컬렉션', 'delete', 'remove'],
   },
   {
     id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
@@ -235,6 +270,11 @@ export function commandLabel(c: CommandSpec, platform: string, state: Pick<Comma
   if (labels?.sidebar && state.sidebar) return labels.sidebar[state.sidebar];
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
+}
+
+/** The name the palette shows: `paletteLabel` where the command has one, else what the menus call it. */
+export function paletteLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+  return c.paletteLabel ?? commandLabel(c, platform, state);
 }
 
 /**
@@ -454,6 +494,11 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.editInfo': (c, t) => t.items.length === 1 && c.view === 'library',
+  // One collection; the open panel needs the library the files come into.
+  'collection.newChild': (_c, t) => t.collections.length === 1,
+  'collection.rename': (_c, t) => t.collections.length === 1,
+  'collection.importInto': (c, t) => c.view === 'library' && t.collections.length === 1,
+  'collection.delete': (_c, t) => t.collections.length === 1,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,

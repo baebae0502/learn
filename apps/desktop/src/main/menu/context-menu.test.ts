@@ -47,13 +47,14 @@ describe('context menu entries (registry + isCommandAvailable)', () => {
   it('names the file manager off macOS (labelOff)', () => {
     expect(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'linux').at(-2)).toEqual({ id: 'item.showInFolder', label: '폴더에서 보기', enabled: true });
   });
-  it('kinds without commands yet (collection, tag, column) give no entries and say so', () => {
-    for (const kind of ['collection', 'tag', 'column'] as const) {
+  it('kinds without commands yet (tag, column) give no entries and say so', () => {
+    for (const kind of ['tag', 'column'] as const) {
       expect(contextMenuEntries(kind, COMMANDS, LIB, [], 'darwin')).toEqual([]);
       expect(kindHasMenu(kind, COMMANDS), kind).toBe(false);
     }
     expect(kindHasMenu('item', COMMANDS)).toBe(true);
-    expect(kindHasMenu('collection', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(false); // a kind a command or a group lists is a menu; these list item and tag
+    expect(kindHasMenu('collection', COMMANDS)).toBe(true);
+    expect(kindHasMenu('collection', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(true); // a kind a command or a group lists is a menu
     expect(kindHasMenu('tag', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(true);
   });
 });

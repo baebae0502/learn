@@ -52,7 +52,7 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
     // The scrim lies over the 52 px drag strips; it must not drag the window (R-23).
     expect(await page.locator('.palette-scrim').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region'))).toBe('no-drag');
     // What can run now, in registry order, the toggle by what it will do (사이드바 가리기 while shown; Task 8 m2).
-    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /사이드바 가리기/, /단축키 도움말/, /설정…/, /글자 크게/, /글자 작게/]);
+    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /새\u00a0컬렉션/, /사이드바 가리기/, /단축키 도움말/, /설정…/, /글자 크게/, /글자 작게/]);
     // ㄱㅈㅇ: only 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게 and 설정…'s 글자 크기, Task 10).
     await page.getByTestId('palette-input').fill('ㄱㅈㅇ');
     const first = page.getByTestId('palette-item').first();
@@ -111,7 +111,10 @@ test('the cursor is on a row whenever the list has rows: on open and after every
     await expectCursor('view.toggleSidebar');
     await page.keyboard.press('Backspace');
     await expect(input).toHaveValue('ㅅ');
-    await expect(page.getByTestId('palette-item')).toHaveCount(4); // 사이드바, 설정…, 가져오기 (사본), 글자 작게 (축소)
+    await expect(page.getByTestId('palette-item')).toHaveCount(5); // 사이드바, 설정…, 가져오기 (사본), 새 컬렉션 (새), 글자 작게 (축소)
+    await expectCursor('collection.new'); // 새 컬렉션 also starts with ㅅ and is registered first
+    await page.keyboard.press('ArrowDown');
+    await expectCursor('view.toggleSidebar');
     await page.keyboard.press('ArrowDown');
     await expectCursor('app.settings');
     await page.keyboard.press('Backspace');
@@ -151,16 +154,16 @@ test('ARIA: a combobox over a listbox, unique option ids, nothing to point at wi
     await expect(listbox).toHaveCount(1);
     await expect(input).toHaveAttribute('aria-controls', (await listbox.getAttribute('id'))!);
     const ids = await listbox.getByRole('option').evaluateAll((els) => els.map((e) => e.id));
-    expect(ids.length).toBe(7);
+    expect(ids.length).toBe(8);
     await expect(listbox.getByRole('group')).toHaveText([/^명령/]); // one group with an empty query, named by its header
     expect(new Set(ids).size).toBe(ids.length);
     expect(ids.every((id) => id.length > 0)).toBe(true);
     await expect(listbox.getByRole('option', { selected: true })).toHaveCount(1);
     // The result count is a polite status, and a cursor move does not change it.
     await expect(status).toHaveAttribute('role', 'status');
-    await expect(status).toHaveText('명령 7개');
+    await expect(status).toHaveText('명령 8개');
     await page.keyboard.press('ArrowDown');
-    await expect(status).toHaveText('명령 7개');
+    await expect(status).toHaveText('명령 8개');
     await input.fill('ㄱㅈㅇ');
     await expect(status).toHaveText('명령 1개');
     // No rows: collapsed, nothing controlled or active, the status reads the notice's title.
@@ -301,7 +304,7 @@ test('사이드바 가리기 from the palette opened by the sidebar launcher: th
     await expect(page.getByTestId('sidebar-top').locator('..').getByTestId('launcher')).toBeFocused();
     expect(await notBody()).toBe(true);
     // A row picked during the entry animation (↩ at once): the opener still gets the focus before the command runs.
-    await page.getByTestId('nav-library').focus();
+    await page.getByTestId('nav-scope-all').focus();
     await page.keyboard.press('ArrowDown');
     await runMenuCommand(app, 'app.palette');
     await expect(page.getByTestId('palette-input')).toBeFocused();
@@ -347,7 +350,7 @@ test('folded sidebar: the launcher is 232 × 28 at the toolbar end, centred in t
     expect(inSidebar).toMatchObject({ x: 8, y: 52, width: 223, height: 28 });
     const glyph = (await page.getByTestId('launcher').locator('.icon').boundingBox())!;
     expect(glyph.x).toBe(24);
-    const row = (await page.getByTestId('nav-library').boundingBox())!;
+    const row = (await page.getByTestId('nav-scope-all').boundingBox())!;
     expect([row.x, row.x + row.width]).toEqual([inSidebar.x, inSidebar.x + inSidebar.width]);
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('launcher')).toHaveCount(1);
@@ -642,7 +645,7 @@ test('recent: commands run from the palette come first with an empty query (five
     await pick(session, '글자 작게', 'view.textSmaller');
     await pick(session, 'ㅅㅇㄷㅂ', 'view.toggleSidebar');
     // The five newest first, then the rest in registry order (설정… never ran; 파일 가져오기… is the sixth newest).
-    const expected = ['view.toggleSidebar', 'view.textSmaller', 'view.textBigger', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'app.settings'];
+    const expected = ['view.toggleSidebar', 'view.textSmaller', 'view.textBigger', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'collection.new', 'app.settings'];
     await runMenuCommand(session.app, 'app.palette');
     expect(await listed(session.page)).toEqual(expected);
     // 글자 크게 and 글자 작게 both match ㄱㅈ at 0: the one run last comes first.

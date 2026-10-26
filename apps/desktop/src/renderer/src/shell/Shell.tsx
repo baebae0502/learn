@@ -109,7 +109,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
           groupResizeBehavior="preserve-pixel-size"
         >
           {/* inert while folded: nothing in a 0 px panel may take focus or be read out. */}
-          <nav className="sidebar-inner" aria-label={t.shell.sidebar} inert={hidden}>
+          <nav className="sidebar-inner" data-sidebar-area="" aria-label={t.shell.sidebar} inert={hidden}>
             <div className="sidebar-top" data-testid="sidebar-top">
               <SidebarToggle place="sidebar" />
             </div>

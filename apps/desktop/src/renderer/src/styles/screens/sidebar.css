@@ -1,0 +1,38 @@
+@layer screens {
+  /* The sidebar's body (the rows are components/list.css): the "라이브러리" label, the tree taking the rest of the height, and —
+     while there are no collections — the 컬렉션 label with its hint under the few rows. */
+  .sidebar-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .sidebar-tree {
+    display: block;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    outline: none;
+  }
+  /* A few rows and no collections: the tree is exactly its rows' height (set inline) and the hint follows right under it. */
+  .sidebar-tree[data-fit] {
+    flex: none;
+    overflow: hidden;
+  }
+  /* The 컬렉션 heading in the virtual list: the 12 px between the sections is part of its fixed 36 px box (rows are placed
+     absolutely, so a margin would not exist there). */
+  .sidebar-tree .section-label.tree-heading {
+    height: 36px; /* local: HEADING_HEIGHT (sidebar/layout.ts) = the 12 px gap + the 24 px label */
+    margin-top: 0;
+    padding-top: var(--space-12);
+  }
+  .section-label .icon-btn {
+    margin-right: -6px; /* local: the 22 px button's glyph lines up with the rows' counts (mockup) */
+  }
+  .sidebar-empty-hint {
+    padding: var(--space-4) var(--space-8) 0 var(--space-16);
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+}

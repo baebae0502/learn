@@ -4,7 +4,7 @@
 #   scripts/evidence.sh <branch> <suite> <label> [runner] [packaged]
 #
 #   branch    branch (or tag) whose workflow/tests to run, e.g. m0-evidence
-#   suite     baseline | e2e | evidence | perf | demo | mockups | library | all
+#   suite     baseline | e2e | evidence | perf | demo | mockups | library | organize | all
 #   label     evidence label, [A-Za-z0-9._-]{1,64}
 #   runner    macos-15 (default) | macos-26
 #   packaged  false (default) | true   (also build and exercise an unsigned electron-builder --dir app)
@@ -22,7 +22,7 @@ usage() { sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 BRANCH=$1 SUITE=$2 LABEL=$3 RUNNER=${4:-macos-15} PACKAGED=${5:-false}
 
 [[ $BRANCH =~ ^[A-Za-z0-9._/-]{1,200}$ ]] || { echo "invalid branch: $BRANCH" >&2; exit 2; }
-case $SUITE in baseline|e2e|evidence|perf|demo|mockups|library|all) ;; *) echo "invalid suite: $SUITE" >&2; usage ;; esac
+case $SUITE in baseline|e2e|evidence|perf|demo|mockups|library|organize|all) ;; *) echo "invalid suite: $SUITE" >&2; usage ;; esac
 [[ $LABEL =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "invalid label: $LABEL" >&2; exit 2; }
 case $RUNNER in macos-15|macos-26) ;; *) echo "invalid runner: $RUNNER" >&2; usage ;; esac
 case $PACKAGED in true|false) ;; *) echo "invalid packaged (true|false): $PACKAGED" >&2; usage ;; esac

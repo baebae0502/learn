@@ -68,6 +68,10 @@ const REPRESENTATIVE_ARGS: Partial<Record<CommandId, CommandArgs>> = { 'library.
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
+  'collection.newChild': 'collections.spec.ts › new sub-collection from the menu and the palette: the parent opens and the child is named under it',
+  'collection.rename': 'collections.spec.ts › rename by the ↩ key, the menu and the palette keeps the tree in name order and allows equal names',
+  'collection.importInto': 'collections.spec.ts › an empty collection says so in the table and the item panel, and its button brings files into it',
+  'collection.delete': 'collections.spec.ts › delete asks in the sheet words, the view moves to the parent, and 실행 취소 brings it back without what was deleted before it',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {
@@ -98,6 +102,12 @@ test('every registry command runs without a page error (library and reader menus
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
     'app.shortcuts': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
     'app.palette': () => expect(page.getByTestId('palette')).toBeVisible(),
+    // 새 컬렉션 starts the row in the tree and names it in place; esc drops it (collections.spec creates one for real).
+    'collection.new': async () => {
+      await expect(page.getByTestId('rename-input')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('rename-input')).toHaveCount(0);
+    },
     // Both states: hidden, then shown again by the same command.
     'view.toggleSidebar': async () => {
       await expect.poll(sidebar).toBe('hidden');

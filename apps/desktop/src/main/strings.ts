@@ -3,6 +3,8 @@
 // renderer's copy (design-spec 9: 합니다체, verb buttons, U+00A0 groups; cause + next step). No Electron import.
 export const mainStrings = {
   settingsWindow: { title: '설정' },
+  /** The sheets ui:confirm shows: the confirming button's text comes from the page, the cancel button is main's. */
+  confirmSheet: { cancel: '취소' },
   libraryFolder: {
     pickTitle: '라이브러리 폴더 선택',
     pickButton: '선택',

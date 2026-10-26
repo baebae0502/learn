@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, closeSheet, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  stubContextMenu, stubSaveDialog, type Session,
+  FIXTURES, addToCollection, closeSheet, createCollection, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  specialRow, stubContextMenu, stubSaveDialog, treeRow, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -663,5 +663,71 @@ test('fatal: the library cannot be opened (a short and a deep library folder)', 
     } finally {
       await s.app.close();
     }
+  }
+});
+
+// M5 Task 5: the sidebar. Pairs for the critic: library.html (tree open with a selection; the three special views),
+// library.html?state=empty-collection, and the unpaired row being named (design-spec 6 field, 3.1).
+test('organize: the sidebar tree with a selection, a row being named, an empty collection, the special views', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    const c6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    const c7 = await createCollection(s.page, '7장 · 세포 주기', bio);
+    await createCollection(s.page, '실험 노트', bio); // empty: its row shows no number
+    const stats = await createCollection(s.page, '통계');
+    await createCollection(s.page, '회귀분석', stats);
+    const conf = await createCollection(s.page, '학회 준비');
+    await addToCollection(s.page, bio, items.map((i) => i.id));
+    await addToCollection(s.page, c6, [items[0]!.id, items[1]!.id]);
+    await addToCollection(s.page, c7, [items[2]!.id]);
+    await addToCollection(s.page, stats, [items[3]!.id]);
+
+    // The tree open, 6장 viewed, the table focused: the sidebar's selection is the neutral one, as library.html draws it.
+    await treeRow(s.page, bio).locator('.disclosure').click();
+    await treeRow(s.page, c6).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    await expect(s.page.getByTestId('info-section')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `sidebar-tree-${theme}`, { mask: dates() });
+    }
+
+    // A new collection being named: the field with the default name selected, at the top of the tree.
+    await setTheme(s.page, 'light');
+    await runMenuCommand(s.app, 'collection.new');
+    const field = s.page.getByTestId('rename-input');
+    await expect(field).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect(field).toBeFocused();
+      await shoot(s.page, `sidebar-edit-${theme}`, { mask: dates() });
+    }
+    await s.page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+
+    // An empty collection: the table body and the item panel; the panel's day is masked.
+    await treeRow(s.page, conf).click();
+    await expect(s.page.getByTestId('collection-empty')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `collection-empty-${theme}`, { mask: [s.page.getByTestId('collection-empty-meta')] });
+    }
+
+    // The special views: 최근 연 자료 (an item was opened), 미분류 and 중복 항목 (the same file imported again, in no collection).
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'all').click();
+    await openItem(s.page, 'sample');
+    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await runMenuCommand(s.app, 'nav.back');
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), path.join(FIXTURES, 'sample.pdf'));
+    for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
+    await specialRow(s.page, 'unfiled').click();
+    await shoot(s.page, 'sidebar-special-light', { mask: dates() });
+  } finally {
+    await s.app.close();
   }
 });

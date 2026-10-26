@@ -51,6 +51,8 @@
   .sidebar-scroll {
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     padding: 0 var(--space-8) var(--space-12);
   }

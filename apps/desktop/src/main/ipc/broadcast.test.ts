@@ -210,9 +210,9 @@ describe('the item context menu reads the selection once; kinds without commands
     expect(await call('ui:showContextMenu', { kind: 'item', itemIds: ['3c2d1e0f-9a8b-4c7d-8e6f-5a4b3c2d1e11'], x: 1, y: 2 })).toEqual({ ok: true, data: null });
     expect(popup).not.toHaveBeenCalled();
   });
-  it('a collection or a tag has no menu until a registry command lists its kind: null, no popup, nothing read', async () => {
+  it('a tag has no menu until a registry command lists its kind: null, no popup, nothing read', async () => {
     repo.getItems.mockClear();
-    for (const input of [{ kind: 'collection', collectionIds: [COLL] }, { kind: 'tag', tagIds: [TAG] }]) {
+    for (const input of [{ kind: 'tag', tagIds: [TAG] }]) {
       expect(await call('ui:showContextMenu', { ...input, x: 1, y: 2 })).toEqual({ ok: true, data: null });
     }
     expect(popup).not.toHaveBeenCalled();

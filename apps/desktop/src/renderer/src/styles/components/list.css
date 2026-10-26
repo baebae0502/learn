@@ -26,10 +26,11 @@
     border-radius: var(--radius-md);
     color: var(--text-primary);
     min-width: 0;
+    position: relative;
     outline: none;
     cursor: default;
   }
-  .nav-row > .icon {
+  .nav-row .icon {
     color: var(--accent-text);
   }
   .nav-row .label {
@@ -39,6 +40,52 @@
     color: var(--text-tertiary);
     font: var(--type-footnote);
     font-variant-numeric: tabular-nums;
+  }
+  /* Tree rows (design-spec 6 트리; mockup .disclosure): every row has the 16 px gutter, so icons line up level by level; the
+     12 px chevron sits in the gutter of its own level. Leaves draw none, the gutter stays. */
+  .nav-row .disclosure {
+    position: absolute;
+    left: calc(var(--indent, 0) * 16px); /* local: one level is 16 px (design-spec 6 트리) */
+    top: 0;
+    width: 16px; /* local: the disclosure gutter */
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-tertiary);
+    outline: none;
+  }
+  .nav-row .disclosure .icon {
+    color: inherit;
+  }
+  /* The name being typed in a row (spec 3.4): the field of design-spec 6 (1 px focus border, 3 px halo), 22 px high. */
+  .nav-row .name-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 22px; /* local: a field inside a 24–32 px row */
+    padding: 0 var(--space-6);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+    color: var(--text-primary);
+    font: var(--type-body);
+    outline: none;
+  }
+  .nav-row .rename-note {
+    position: absolute;
+    left: calc(var(--space-16) + var(--indent, 0) * 16px + 16px + var(--space-6)); /* local: under the field: past the gutter and the icon */
+    top: 100%;
+    z-index: 2;
+    padding: var(--space-2) var(--space-8);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--danger-text);
+    font: var(--type-footnote);
+    white-space: nowrap;
   }
   .nav-row:is([data-hovered], [data-force~='hover']) {
     background: var(--fill-hover);
@@ -56,15 +103,15 @@
     background: var(--accent);
     color: var(--text-on-accent);
   }
-  .nav-list:focus-within .nav-row:is([data-current], [data-selected]) :is(.icon, .count),
-  .nav-row[data-force~='focused'] :is(.icon, .count) {
+  .nav-list:focus-within .nav-row:is([data-current], [data-selected]) :is(.icon, .count, .disclosure),
+  .nav-row[data-force~='focused'] :is(.icon, .count, .disclosure) {
     color: var(--text-on-accent);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) {
     background: var(--fill-selected);
     color: var(--text-primary);
   }
-  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) > .icon {
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .icon {
     color: var(--accent-text);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .count {
@@ -79,6 +126,11 @@
   .nav-list:focus-within .nav-row:is([data-current], [data-selected])[data-focus-visible],
   .nav-row[data-force~='focused'][data-force~='cursor'] {
     box-shadow: none;
+  }
+  /* A drop target (design-spec 6 트리): 2 px accent inside and the soft accent fill. the tree's drags set data-drop-target. */
+  .nav-row:is([data-drop-target], [data-force~='drop']) {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--accent-soft);
   }
 
   /* Table (design-spec 6 표; M4 spec 3). These rules draw a header cell, a row and a cell; how they are laid out is the

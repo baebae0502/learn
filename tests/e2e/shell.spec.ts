@@ -40,7 +40,7 @@ test('layout B: full-height 240 px sidebar, 52 px bars, navigator from y 88', as
     expect((await box(page, 'sidebar')).height).toBe(await page.evaluate(() => innerHeight));
     expect((await box(page, 'sidebar-top')).height).toBe(52);
     expect(await box(page, 'toolbar')).toMatchObject({ x: 240, y: 0, height: 52 });
-    expect(Math.round((await page.locator('.sidebar .section-label').boundingBox())!.y)).toBe(88);
+    expect(Math.round((await page.locator('.sidebar .section-label').first().boundingBox())!.y)).toBe(88);
     await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
     // The boundary line is the sidebar's last column: the toggle sits 12 and the row fill 8 inside it (mockup border-right).
     const right = async (testId: string) => {
@@ -48,7 +48,7 @@ test('layout B: full-height 240 px sidebar, 52 px bars, navigator from y 88', as
       return b.x + b.width;
     };
     expect(await right('sidebar-toggle')).toBe(240 - 13);
-    expect(await right('nav-library')).toBe(240 - 9);
+    expect(await right('nav-scope-all')).toBe(240 - 9);
   } finally {
     await app.close();
   }
@@ -98,9 +98,9 @@ test('⌃⌘S with the keyboard focus inside the sidebar hands it to the toolbar
   const tip = page.getByRole('tooltip');
   const ring = (id: string) => page.getByTestId(id).evaluate((el) => getComputedStyle(el).outlineStyle !== 'none');
   try {
-    await page.getByTestId('nav-library').focus();
+    await page.getByTestId('nav-scope-all').focus();
     await page.keyboard.press('ArrowDown'); // a keyboard user: the one row stays current
-    await expect(page.getByTestId('nav-library')).toBeFocused();
+    await expect(page.getByTestId('nav-scope-all')).toBeFocused();
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();
@@ -461,7 +461,7 @@ test('a menu toggle pops no tooltip or ring on the toggle unless the keyboard wa
     await expect(tooltip(page)).toHaveCount(0);
 
     // After a click (pointer), the same: the focus is let go, not rescued.
-    await page.getByTestId('nav-library').click();
+    await page.getByTestId('nav-scope-all').click();
     await runMenuCommand(app, 'view.toggleSidebar');
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     await page.waitForTimeout(300);
@@ -537,20 +537,20 @@ test('an open tooltip closes when the window becomes inactive and does not come 
 
 test('not key: no ring or cursor, neutral selection; not main as well: the chrome recedes; under a sheet it stays main (R3-2, R3-4, polish)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
-  const row = page.getByTestId('nav-library');
+  const row = page.getByTestId('nav-scope-all');
   const looks = () =>
     page.evaluate(() => {
       const css = (sel: string) => getComputedStyle(document.querySelector(sel)!);
       return {
-        cursor: css('[data-testid="nav-library"]').boxShadow,
-        rowFill: css('[data-testid="nav-library"]').backgroundColor,
+        cursor: css('[data-testid="nav-scope-all"]').boxShadow,
+        rowFill: css('[data-testid="nav-scope-all"]').backgroundColor,
         title: css('[data-testid="toolbar-title"]').color,
         toggle: css('[data-testid="sidebar-toggle"]').color,
         toggleOpacity: css('[data-testid="sidebar-toggle"] > .icon').opacity,
         section: css('.sidebar .section-label').color,
-        rowIcon: css('[data-testid="nav-library"] > .icon').color,
-        rowIconOpacity: css('[data-testid="nav-library"] > .icon').opacity,
-        selectedRowText: css('[data-testid="nav-library"]').color,
+        rowIcon: css('[data-testid="nav-scope-all"] .icon').color,
+        rowIconOpacity: css('[data-testid="nav-scope-all"] .icon').opacity,
+        selectedRowText: css('[data-testid="nav-scope-all"]').color,
         toolbarFill: css('[data-testid="toolbar"]').backgroundColor,
         toolbarLine: css('[data-testid="toolbar"]').borderBottomColor,
         sidebarEdge: css('.sidebar').boxShadow,

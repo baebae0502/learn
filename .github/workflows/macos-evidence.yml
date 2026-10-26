@@ -8,7 +8,7 @@ on:
       suite:
         description: Evidence suite (Playwright tag @<suite>; all = no filter)
         type: choice
-        options: [baseline, e2e, evidence, perf, demo, mockups, library, all]
+        options: [baseline, e2e, evidence, perf, demo, mockups, library, organize, all]
         default: baseline
       runner:
         description: GitHub-hosted Apple Silicon runner image

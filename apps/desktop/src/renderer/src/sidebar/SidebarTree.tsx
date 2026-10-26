@@ -1,0 +1,422 @@
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
+import {
+  Button, ListLayout, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
+} from 'react-aria-components';
+import type { LibraryScope } from '@learn/domain';
+import { api, unwrap } from '../api';
+import { useCommands } from '../commands/CommandProvider';
+import { runPicked } from '../commands/registry';
+import type { CollectionNode, OrganizeModel } from '../organize/model';
+import { useLibrary } from '../state/library-store';
+import { t } from '../strings';
+import { Icon } from '../ui/Icon';
+import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
+import { showToast } from '../ui/toasts';
+import { addExpanded, collectionActions } from './actions';
+import { CollectionsHeading } from './CollectionsHeading';
+import { HEADING_HEIGHT } from './layout';
+import { NameField } from './NameField';
+import { DRAFT_KEY, SCOPE_KEYS, ancestorIds, keyOfScope, scopeOfKey, visibleCollectionKeys, type SpecialKind, type SpecialRow } from './rows';
+import { useSidebarEdit } from './sidebarEdit';
+import { treeKeyAction } from './treeKeys';
+import { saveExpanded } from './useExpanded';
+
+const SPECIAL: Record<SpecialKind, { icon: LucideIcon; label: string }> = {
+  all: { icon: LibraryBig, label: t.shell.myLibrary },
+  recent: { icon: Clock, label: t.organize.scopes.recent },
+  unfiled: { icon: Inbox, label: t.organize.scopes.unfiled },
+  duplicates: { icon: Copy, label: t.organize.scopes.duplicates },
+};
+
+export interface SidebarTreeProps {
+  model: OrganizeModel | undefined;
+  /** The view shown (resolveScope of the one chosen). */
+  scope: LibraryScope;
+  specials: readonly SpecialRow[];
+  /** The collections are known: the snapshot and the stored open rows have both arrived. */
+  settled: boolean;
+  expanded: ReadonlySet<string>;
+  /** The reader is showing: a row is the way back to the library, and moving the cursor changes no view. */
+  reader: boolean;
+  /** A row's height in px (the density). */
+  rowSize: number;
+  /** Drag and drop is Task 8's: handed to the Tree as it is. */
+  dragAndDropHooks?: TreeProps<object>['dragAndDropHooks'];
+}
+
+interface RowContext {
+  model: OrganizeModel;
+  reader: boolean;
+  tap: { current: TreeState<unknown> | null };
+  onReaderPress(key: string): void;
+}
+
+/** Hands the tree's state (its selection manager) out of a row: the keys that move the cursor to a row that may be unmounted need it. */
+function StateTap({ tap, state }: { tap: RowContext['tap']; state: TreeState<unknown> }) {
+  useEffect(() => {
+    tap.current = state;
+  });
+  return null;
+}
+
+const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as CSSProperties;
+
+function SpecialItem({ row, tap, reader, onReaderPress }: { row: SpecialRow; tap: RowContext['tap']; reader: boolean; onReaderPress(key: string): void }) {
+  const { icon, label } = SPECIAL[row.kind];
+  const key = SCOPE_KEYS[row.kind];
+  return (
+    <TreeItem id={key} textValue={label} className="nav-row" data-testid={`nav-scope-${row.kind}`} {...(reader ? { onPress: () => onReaderPress(key) } : {})}>
+      <TreeItemContent>
+        {({ state }) => (
+          <>
+            <StateTap tap={tap} state={state} />
+            <Icon icon={icon} />
+            <span className="label ellipsis">{label}</span>
+            {row.count !== null && <span className="count num">{row.count}</span>}
+          </>
+        )}
+      </TreeItemContent>
+    </TreeItem>
+  );
+}
+
+/**
+ * The row of a collection being created: not a collection yet, so the selection handler ignores its key. It is not disabled:
+ * a disabled row clears the tree's focused key when the field takes the focus, and React Aria then moves the focus back to
+ * the tree, out of the field.
+ */
+function DraftItem({ text }: { text: string }) {
+  return (
+    <TreeItem id={DRAFT_KEY} textValue={t.organize.sidebar.newName} className="nav-row" style={indent} data-testid="draft-row">
+      <TreeItemContent>
+        {({ state }) => (
+          <>
+            <Icon icon={Folder} />
+            <NameField initial={text} rowKey={DRAFT_KEY} state={state} />
+          </>
+        )}
+      </TreeItemContent>
+    </TreeItem>
+  );
+}
+
+function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }) {
+  const edit = useSidebarEdit((s) => s.edit);
+  const renaming = edit?.kind === 'rename' && edit.id === node.id ? edit : null;
+  const draftBelow = edit?.kind === 'new' && edit.parentId === node.id ? edit : null;
+  const count = ctx.model.count(node.id);
+  const path = ctx.model.path(node.id).map((n) => n.name).join(t.organize.pathSeparator);
+  return (
+    <TreeItem
+      id={node.id}
+      textValue={node.name}
+      className="nav-row"
+      style={indent}
+      data-testid={`nav-collection-${node.id}`}
+      {...(ctx.reader ? { onPress: () => ctx.onReaderPress(node.id) } : {})}
+    >
+      <TreeItemContent>
+        {({ hasChildItems, isExpanded, state }) => (
+          <>
+            <StateTap tap={ctx.tap} state={state} />
+            {hasChildItems && (
+              <Button slot="chevron" className="disclosure">
+                <Icon icon={isExpanded ? ChevronDown : ChevronRight} size="xs" />
+              </Button>
+            )}
+            <Icon icon={isExpanded ? FolderOpen : Folder} />
+            {renaming ? (
+              <NameField initial={renaming.text} rowKey={node.id} state={state} />
+            ) : (
+              <span className="label ellipsis" title={path}>
+                {node.name}
+              </span>
+            )}
+            {count > 0 && <span className="count num">{count}</span>}
+          </>
+        )}
+      </TreeItemContent>
+      {draftBelow && <DraftItem text={draftBelow.text} />}
+      {node.children.map((child) => (
+        <CollectionItem key={child.id} node={child} ctx={ctx} />
+      ))}
+    </TreeItem>
+  );
+}
+
+/**
+ * The sidebar's navigator (spec 3.2, 3.3): React Aria's Tree inside its Virtualizer, in two sections — the special views, then
+ * the collections under their "컬렉션" heading. Selection is the view and follows the cursor. What React Aria does not do is
+ * done by the wrapper above the tree, in the capture phase, from facts (treeKeys.ts): no type-ahead, ↩ renames, → goes to the
+ * first child and ← to the parent by the model (a row may not be mounted), and the name field keeps its own keys.
+ */
+export function SidebarTree(props: SidebarTreeProps) {
+  const { model, scope, specials, settled, expanded, reader, rowSize } = props;
+  const { env, run } = useCommands();
+  const edit = useSidebarEdit((s) => s.edit);
+  const restoreTo = useSidebarEdit((s) => s.restoreTo);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const tap = useRef<TreeState<unknown> | null>(null);
+  const selectedKey = keyOfScope(scope);
+  const selectedKeys = useMemo(() => new Set<Key>([selectedKey]), [selectedKey]);
+  const hasCollections = settled && model !== undefined && (model.collectionCount > 0 || edit?.kind === 'new');
+  const fit = !hasCollections;
+  const layoutOptions = useMemo(() => ({ rowSize, headingSize: HEADING_HEIGHT }), [rowSize]);
+  const latest = useRef({ model, expanded, selectedKey });
+  latest.current = { model, expanded, selectedKey };
+
+  const selectScope = useCallback((key: string) => useLibrary.getState().setScope(scopeOfKey(key)), []);
+  const toggle = useCallback(
+    (id: string) => {
+      const next = new Set(expanded);
+      if (!next.delete(id)) next.add(id);
+      saveExpanded(next);
+    },
+    [expanded],
+  );
+  /** The cursor to a row, mounted or not: React Aria mounts it (the focused key is kept) and focuses it. */
+  const focusRow = useCallback((key: string) => {
+    const manager = tap.current?.selectionManager;
+    if (manager) {
+      manager.setFocused(true);
+      manager.setFocusedKey(key);
+    } else treeRef.current?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`)?.focus();
+  }, []);
+  const onReaderPress = useCallback((key: string) => void (run('nav.back') && selectScope(key)), [run, selectScope]);
+  const openMenu = useCallback(
+    async (id: string, at: { x: number; y: number }) => {
+      try {
+        const picked = await unwrap(api().ui.showContextMenu({ kind: 'collection', collectionIds: [id], x: at.x, y: at.y }));
+        if (picked) runPicked(picked, env, { collectionIds: [id] });
+      } catch (e) {
+        showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' });
+      }
+    },
+    [env],
+  );
+  const ctx = useMemo<RowContext | null>(() => (model ? { model, reader, tap, onReaderPress } : null), [model, reader, onReaderPress]);
+
+  // ---- keys (capture phase, before the row's own) -------------------------------------------------------------------
+  const onKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const field = target instanceof HTMLInputElement && target.dataset['renameInput'] !== undefined;
+    const rowEl = !field && target.matches('[role="row"][data-key]') ? target : null;
+    const key = rowEl?.dataset['key'] ?? null;
+    const node = key !== null ? model?.node(key) : undefined;
+    const action = treeKeyAction({
+      key: e.key,
+      shiftKey: e.shiftKey,
+      altKey: e.altKey,
+      ctrlKey: e.ctrlKey,
+      metaKey: e.metaKey,
+      composing: e.nativeEvent.isComposing || e.keyCode === 229,
+      target: field ? 'rename' : rowEl ? 'row' : 'other',
+      contextMenuKey: isContextMenuKey(e),
+      reader,
+      row:
+        key === null
+          ? null
+          : { key, collection: node !== undefined, expanded: expanded.has(key), hasChildren: (node?.children.length ?? 0) > 0, firstChild: node?.children[0]?.id ?? null, parent: node?.parentId ?? null },
+    });
+    if (action.do === 'none') return;
+    e.stopPropagation();
+    if (action.do === 'swallow' || action.do === 'block') return; // kept from the row; the browser's default (typing) stays
+    e.preventDefault();
+    switch (action.do) {
+      case 'commit':
+        void collectionActions.finish((target as HTMLInputElement).value, 'enter');
+        break;
+      case 'cancel':
+        collectionActions.cancel();
+        break;
+      case 'rename':
+        collectionActions.startRename(action.key);
+        break;
+      case 'menu':
+        if (!reader) selectScope(action.key);
+        void openMenu(action.key, menuPointFor(rowEl!));
+        break;
+      case 'goto':
+        selectScope(action.key);
+        focusRow(action.key);
+        break;
+      case 'ignoreMenu':
+        break;
+    }
+  };
+
+  const onContextMenu = (e: MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('input')) return; // the field keeps the browser's own
+    const key = target.closest<HTMLElement>('[role="row"][data-key]')?.dataset['key'];
+    if (key === undefined) return;
+    e.preventDefault();
+    if (!model?.node(key)) return; // a special view has no menu (spec 9.2)
+    if (!reader) selectScope(key); // a right click selects first (design-spec 7.1)
+    void openMenu(key, { x: e.clientX, y: e.clientY });
+  };
+
+  const onDoubleClick = (e: MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.disclosure, input')) return;
+    const key = target.closest<HTMLElement>('[role="row"][data-key]')?.dataset['key'];
+    if (key !== undefined && (model?.node(key)?.children.length ?? 0) > 0) toggle(key);
+  };
+
+  /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
+  const onFocus = (e: FocusEvent<HTMLDivElement>) => {
+    if (reader) return;
+    const el = e.target as HTMLElement;
+    if (!el.matches('[role="row"][data-key]')) return;
+    const key = el.dataset['key']!;
+    if (key !== DRAFT_KEY && key !== selectedKey) selectScope(key);
+  };
+
+  const onSelectionChange = (selection: Selection) => {
+    if (reader || selection === 'all') return;
+    const key = [...selection][0];
+    if (key !== undefined && String(key) !== DRAFT_KEY) selectScope(String(key));
+  };
+
+  // ---- effects --------------------------------------------------------------------------------------------------------
+  // The keyboard cursor follows the view when something else moved it (an item panel path, the palette): tabbing into the
+  // tree then lands on the view's row and does not move the view to where the cursor was.
+  useEffect(() => {
+    if (!reader) tap.current?.selectionManager.setFocusedKey(selectedKey);
+  }, [selectedKey, reader]);
+
+  // A view inside a closed collection opens the way to its row — when the view changes, not whenever the user folds a parent.
+  useEffect(() => {
+    const { model: m, expanded: open } = latest.current;
+    if (scope.kind !== 'collection' || !m) return;
+    const closed = ancestorIds(m, scope.id).filter((id) => !open.has(id));
+    if (closed.length > 0) addExpanded(closed);
+  }, [selectedKey]); // the latest model and open rows are read on purpose: only a change of view opens the way
+
+  // The row being named is brought into view (once per edit); the virtualizer then mounts it and its field takes the focus.
+  const revealed = useRef<string | null>(null);
+  /** The scroll that reveals the row is ours: only the user's scrolling can take the field out of sight. */
+  const ownScroll = useRef(false);
+  const editKey = edit === null ? null : edit.kind === 'new' ? DRAFT_KEY : edit.id;
+  const editParent = edit?.kind === 'new' ? edit.parentId : undefined;
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (editKey === null) {
+      revealed.current = null;
+      return;
+    }
+    const signature = `${editKey}|${editParent ?? ''}`;
+    if (!tree || !model || revealed.current === signature) return;
+    const index = visibleCollectionKeys(model, expanded, editParent).indexOf(editKey);
+    if (index < 0) return;
+    revealed.current = signature;
+    const top = specials.length * rowSize + HEADING_HEIGHT + index * rowSize;
+    if (top < tree.scrollTop || top + rowSize > tree.scrollTop + tree.clientHeight) {
+      ownScroll.current = true;
+      requestAnimationFrame(() => void (ownScroll.current = false));
+      tree.scrollTop = Math.max(0, Math.round(top - (tree.clientHeight - rowSize) / 2));
+    }
+  }, [editKey, editParent, model, expanded, specials.length, rowSize]);
+
+  // A row that scrolled out of the virtual window takes its field along: the edit ends with the text typed so far.
+  useEffect(() => {
+    const tree = treeRef.current;
+    if (editKey === null || !tree) return;
+    let seen = tree.querySelector('[data-rename-input]') !== null;
+    let frame = 0;
+    const check = () => {
+      frame = 0;
+      const s = useSidebarEdit.getState();
+      if (!s.edit || s.busy) return;
+      const input = tree.querySelector('[data-rename-input]');
+      if (input) seen = true;
+      // React Aria keeps the row that has the focus mounted wherever it scrolls to: the field counts as gone when it is out of sight.
+      const out = input ? input.getBoundingClientRect() : null;
+      const box = tree.getBoundingClientRect();
+      if ((input === null && seen) || (out !== null && (out.bottom <= box.top || out.top >= box.bottom))) void collectionActions.finish(s.edit.text, 'scroll');
+    };
+    const onScroll = () => {
+      if (ownScroll.current) return;
+      if (frame === 0) frame = requestAnimationFrame(check);
+    };
+    tree.addEventListener('scroll', onScroll);
+    return () => {
+      tree.removeEventListener('scroll', onScroll);
+      if (frame !== 0) cancelAnimationFrame(frame);
+    };
+  }, [editKey]);
+
+  // After an edit the focus goes back to where it was (the table, say); from inside the tree, to the cursor row.
+  useEffect(() => {
+    if (restoreTo === null) return;
+    useSidebarEdit.getState().clearRestore();
+    const tree = treeRef.current;
+    const opener = restoreTo.opener;
+    if (opener instanceof HTMLElement && opener.isConnected && opener !== document.body && !tree?.contains(opener)) {
+      // The field left with the focus in it, so no blur told the tree: it must not go on believing it has the focus.
+      tap.current?.selectionManager.setFocused(false);
+      opener.focus({ preventScroll: true });
+      return;
+    }
+    // From inside the tree the focus goes to the row it was on: the cursor row, or the view's.
+    const openerKey = opener instanceof HTMLElement ? opener.closest<HTMLElement>('[role="row"][data-key]')?.dataset['key'] : undefined;
+    const key = openerKey && openerKey !== DRAFT_KEY ? openerKey : (tap.current?.selectionManager.focusedKey?.toString() ?? latest.current.selectedKey);
+    const row = tree?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`);
+    if (row) row.focus({ preventScroll: true });
+    else if (tree) focusRow(key);
+  }, [restoreTo, focusRow]);
+
+  return (
+    <div className="sidebar-body" onKeyDownCapture={onKeyDownCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
+      <div className="section-label" aria-hidden="true">
+        {t.shell.libraryHeading}
+      </div>
+      <Virtualizer layout={ListLayout} layoutOptions={layoutOptions}>
+        <Tree
+          ref={treeRef}
+          aria-label={t.organize.sidebar.tree}
+          className="nav-list sidebar-tree"
+          data-testid="sidebar-tree"
+          data-fit={fit || undefined}
+          style={fit ? { height: specials.length * rowSize } : undefined}
+          selectionMode="single"
+          selectionBehavior="replace"
+          disallowEmptySelection
+          selectedKeys={selectedKeys}
+          onSelectionChange={onSelectionChange}
+          expandedKeys={expanded}
+          onExpandedChange={(keys) => saveExpanded(new Set([...keys].map(String)))}
+          dragAndDropHooks={props.dragAndDropHooks}
+        >
+          <TreeSection aria-label={t.shell.libraryHeading}>
+            {specials.map((row) => (
+              <SpecialItem key={row.kind} row={row} tap={tap} reader={reader} onReaderPress={onReaderPress} />
+            ))}
+          </TreeSection>
+          {hasCollections && ctx && model && (
+            <TreeSection aria-label={t.organize.sidebar.collections}>
+              <TreeHeader className="section-label tree-heading">
+                <CollectionsHeading />
+              </TreeHeader>
+              {edit?.kind === 'new' && edit.parentId === null && <DraftItem text={edit.text} />}
+              {model.roots.map((node) => (
+                <CollectionItem key={node.id} node={node} ctx={ctx} />
+              ))}
+            </TreeSection>
+          )}
+        </Tree>
+      </Virtualizer>
+      {fit && settled && (
+        <>
+          <div className="section-label">
+            <CollectionsHeading />
+          </div>
+          <div className="sidebar-empty-hint" data-testid="sidebar-hint">
+            {t.organize.sidebar.emptyHint}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

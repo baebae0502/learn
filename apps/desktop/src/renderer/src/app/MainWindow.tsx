@@ -22,7 +22,6 @@ import { InspectorToggle } from '../inspector/InspectorToggle';
 import { startEditing } from '../inspector/startEditing';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
-import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
@@ -45,7 +44,12 @@ import { Toolbar } from '../shell/Toolbar';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
+import type { OrganizeModel } from '../organize/model';
 import { useRestoreView } from '../organize/useRestoreView';
+import { collectionActions } from '../sidebar/actions';
+import { importTarget, type ImportTarget } from '../sidebar/importTarget';
+import { LibrarySidebar } from '../sidebar/LibrarySidebar';
+import { useExpandedRead } from '../sidebar/useExpanded';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -106,6 +110,10 @@ export function MainWindow(_props: { info: AppInfo }) {
       setQuestionOpen(false);
     }
   }, []);
+  // Where an import goes, read when it runs (spec 3.7): the collection being viewed, if any. Refs, so the command env and the
+  // drop handler do not change with the view.
+  const intoRef = useRef<ImportTarget | null>(null);
+  const modelRef = useRef<OrganizeModel | undefined>(undefined);
   const runImport = useImport(confirm);
   /** 다시 연결…'s open panel is up: a sheet on this window (follow-up D), which holds it like ours do (blocked). */
   const [relinking, setRelinking] = useState(false);
@@ -191,6 +199,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     (paths: string[], mode: StorageMode, unresolved: number) => {
       clearImportMarks(true);
       perfMark('drop');
+      const into = intoRef.current;
       // The overlay leaves in the frame after the drop, whatever the import does (Mac run 3, critique n6: it stayed
       // 0.55 s over a frozen screen). The import is held (the window too) from now, but its request goes to main only
       // once the frame without the overlay has been painted, so main's import work cannot keep that frame off screen.
@@ -207,10 +216,11 @@ export function MainWindow(_props: { info: AppInfo }) {
           async () => {
             await cleared;
             perfMark('import:sent');
-            return api().library.import({ paths, mode });
+            return api().library.import({ paths, mode, ...(into ? { collectionId: into.id } : {}) });
           },
           mode,
           paths.length,
+          into,
         );
     },
     [runImport],
@@ -240,6 +250,9 @@ export function MainWindow(_props: { info: AppInfo }) {
   const found = useSearch(list);
   // The toolbar names the scope and counts its rows: "N개 / M개" with M the scope's items and N what the tags and the search leave.
   const scopeView = useScopeView(list);
+  modelRef.current = scopeView.model;
+  intoRef.current = importTarget(scopeView.model, scopeView.scope, undefined);
+  const sidebarReady = useExpandedRead().isFetched;
   const tagCount = useLibrary((s) => s.tagFilter.size);
   const shown = useMemo(() => (found ? scopeView.filtered.reduce((n, i) => n + (found.ids.has(i.id) ? 1 : 0), 0) : scopeView.filtered.length), [found, scopeView.filtered]);
   // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
@@ -303,7 +316,13 @@ export function MainWindow(_props: { info: AppInfo }) {
     selection: () => inTableOrder(listRef.current, useLibrary.getState().selected, sortRef.current),
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
     targetsOf: (target) => commandTargets(queryClient, listRef.current, target),
-    importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
+    importFiles: (mode, collectionId) => {
+      const into = collectionId === undefined ? intoRef.current : importTarget(modelRef.current, { kind: 'all' }, collectionId);
+      void runImport(() => api().library.pickAndImport({ mode, ...(into ? { collectionId: into.id } : {}) }), mode, undefined, into);
+    },
+    newCollection: (opts) => collectionActions.startNew(opts),
+    renameCollection: (id) => collectionActions.startRename(id),
+    deleteCollection: (id) => void collectionActions.remove(id),
     back: () => setView({ kind: 'library' }),
     // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
     open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
@@ -403,7 +422,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={<LibrarySidebar count={count} />}
+        sidebar={<LibrarySidebar />}
         launcher={<Launcher />}
         toolbar={toolbar}
         inspector={showsTable ? <Inspector mode="info" /> : undefined}
@@ -411,7 +430,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           <>
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
-            <DropOverlay enabled={view.kind === 'library' && !blocked && !held} onDrop={onDrop} />
+            <DropOverlay enabled={view.kind === 'library' && !blocked && !held} onDrop={onDrop} intoName={intoRef.current?.name} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}
@@ -420,7 +439,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       >
         {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
       </Shell>
-      {(items.isSuccess || items.isError) && scopeReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
+      {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
     </CommandProvider>
   );
 }

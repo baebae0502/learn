@@ -52,12 +52,12 @@
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
       color: var(--text-primary);
     }
-    :root[data-window-not-main] .sidebar .nav-row > .icon {
+    :root[data-window-not-main] .sidebar .nav-row .icon {
       color: var(--accent-text);
     }
     :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn > .icon,
     :root[data-window-not-main] .titlebar .btn .icon,
-    :root[data-window-not-main] .sidebar .nav-row > .icon,
+    :root[data-window-not-main] .sidebar .nav-row .icon,
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
       opacity: var(--opacity-inactive);
     }

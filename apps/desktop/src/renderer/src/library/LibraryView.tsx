@@ -1,5 +1,8 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useMemo } from 'react';
 import type { LibraryItem } from '@learn/domain';
+import { resolveScope } from '../organize/scope';
+import { useOrganize } from '../organize/useOrganize';
+import { ScopeEmpty } from '../sidebar/ScopeEmpty';
 import { useLibrary } from '../state/library-store';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { LibraryTable } from './LibraryTable';
@@ -26,6 +29,13 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   const query = useLibrary((s) => s.query).trim();
   const noResults = titleMatches !== null && rows.length === 0 && query !== '';
   const revealId = useLibrary((s) => s.lastOpenedId);
+  // A view with nothing in it and nothing that would explain it (a query, tags): the view says so (spec 3.6).
+  const chosen = useLibrary((s) => s.scope);
+  const tagFilterSize = useLibrary((s) => s.tagFilter.size);
+  const { model } = useOrganize();
+  const scope = useMemo(() => resolveScope(model, chosen), [model, chosen]);
+  const scopeEmpty = rows.length === 0 && query === '' && tagFilterSize === 0 && scope.kind !== 'all';
+  const scopeName = scope.kind === 'collection' ? (model?.node(scope.id)?.name ?? '') : '';
   if (!settings.ready || !scopeReady) return null; // the stored columns, sort and view: one IPC round trip each, already in flight while the list loaded (LibraryLoading)
   return (
     <LibraryTable
@@ -39,7 +49,7 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
       onContextMenu={onItemMenu}
       revealId={revealId}
       titleMatches={titleMatches}
-      empty={noResults ? <SearchEmpty query={query} /> : undefined}
+      empty={noResults ? <SearchEmpty query={query} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : undefined}
     />
   );
 }

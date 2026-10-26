@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { BrowserWindow, type WebContents } from 'electron';
+import { BrowserWindow, dialog, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
-  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmDuplicateInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
+  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmDuplicateInput, confirmInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
   type CommandTargetInfo,
 } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
@@ -18,7 +18,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.ui.showContextMenu, showContextMenuInput, async (input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    // A kind no registry command lists has no menu: answered before anything is read (collections and tags, until theirs exist).
+    // A kind no registry command lists has no menu: answered before anything is read (tags, until theirs exist).
     if (!kindHasMenu(input.kind, COMMANDS, SUBMENUS)) return null;
     const ctx = deps.getContext();
     // Collections, tags and who has what: one read, and only when this menu has a submenu built from them or needs its targets.
@@ -98,6 +98,24 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
       existing: { title: existing.title, type: existing.type, size: existing.size, createdAt: existing.createdAt, storageMode: existing.storageMode },
     });
     return { choice: result?.kind === 'duplicate' ? result.choice : ('skip' as const) };
+  });
+
+  // A native question in the renderer's words (deleting a collection, merging or deleting a tag): a sheet on the main
+  // window, the confirming button first and the default, 취소 after it (esc).
+  handle(Channels.ui.confirm, confirmInput, async ({ message, detail, confirm }, event) => {
+    const parent = mainWindowOf(event.sender);
+    if (!parent) return false;
+    const ask: MessageBoxOptions = {
+      type: 'warning',
+      message,
+      ...(detail ? { detail } : {}),
+      buttons: [confirm, mainStrings.confirmSheet.cancel],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    };
+    const { response } = await deps.windows.asSheet(parent, () => dialog.showMessageBox(parent, ask));
+    return response === 0;
   });
 
   handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {

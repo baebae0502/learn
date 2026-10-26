@@ -4,6 +4,7 @@ import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
+const messageBox = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ response: 0, checkboxChecked: false })));
 const win = { fullscreen: false, focused: true, destroyed: false };
 /** What happened to the main window and its sheets, in order ('focus', 'sheet:<kind>'). */
 const events: string[] = [];
@@ -21,6 +22,7 @@ let senderWindow: typeof fakeWindow | null = fakeWindow;
 vi.mock('electron', () => ({
   ipcMain: { handle: (channel: string, fn: Listener) => handlers.set(channel, fn) },
   BrowserWindow: { fromWebContents: () => senderWindow, getAllWindows: () => [] },
+  dialog: { showMessageBox: messageBox },
 }));
 
 vi.mock('../menu/column-menu', async (importOriginal) => ({
@@ -171,5 +173,24 @@ describe('ui.reportIdle (spec 8, P-4: the settings window is prepared once the m
     expect(await invoke('ui:reportIdle', SETTINGS)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(await invoke('ui:reportIdle', MAIN, { now: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(prepareSettings).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ui.confirm (a question as a sheet on the main window, in the renderer\'s words)', () => {
+  const ask = { message: '‘학회 준비’를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' };
+  beforeEach(() => messageBox.mockClear());
+
+  it('shows the message with the confirming button first and the default, 취소 after it, and answers whether the first was chosen', async () => {
+    expect(await invoke('ui:confirm', MAIN, ask)).toEqual({ ok: true, data: true });
+    expect(messageBox).toHaveBeenCalledExactlyOnceWith(fakeWindow, { type: 'warning', message: ask.message, detail: ask.detail, buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1, noLink: true });
+    messageBox.mockResolvedValueOnce({ response: 1, checkboxChecked: false });
+    expect(await invoke('ui:confirm', MAIN, { message: ask.message, confirm: '삭제' })).toEqual({ ok: true, data: false });
+    expect(messageBox.mock.lastCall?.[1]).not.toHaveProperty('detail');
+  });
+  it('is refused from any other window and for input it is not meant to take', async () => {
+    for (const from of [SHEET, SETTINGS]) expect(await invoke('ui:confirm', from, ask)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+    expect(await invoke('ui:confirm', MAIN, { message: '', confirm: '삭제' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await invoke('ui:confirm', MAIN, { ...ask, extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(messageBox).not.toHaveBeenCalled();
   });
 });

@@ -47,7 +47,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expectNoSeriousA11y(page, 'empty library');
     await stubOpenDialog(app, [MP4, PDF]); // newest first: the PDF heads the list
     await page.keyboard.press('F6'); // sidebar
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.keyboard.press('F6'); // content: first control of the first-run screen
     expect(await focusedTestId(page)).toBe('import-managed');
     await page.keyboard.press('Enter');
@@ -57,7 +57,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expectNoSeriousA11y(page, 'library list');
 
     await page.keyboard.press('Shift+F6'); // sidebar (whether or not the success toast is still up)
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.keyboard.press('F6'); // content: the table's cursor row
     expect(await focusedTestId(page)).toBe('item-row');
     await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
@@ -332,7 +332,7 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.getByTestId('content').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('sidebar');
-    await expect(page.getByTestId('nav-library')).toHaveAttribute('data-focus-visible', 'true');
+    await expect(page.getByTestId('nav-scope-all')).toHaveAttribute('data-focus-visible', 'true');
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('content');
     await page.keyboard.press('Shift+F6');
@@ -436,13 +436,13 @@ test('the palette, the drop overlay and the ⌘/ sheet keep the focus on F6 / �
     await expect(page.getByTestId('palette')).toHaveCount(0);
 
     await page.keyboard.press('F6');
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await drag(page, 'dragenter', [['a.pdf', 'application/pdf']]);
     await expect(page.getByTestId('drop-overlay')).toBeVisible();
     await expectNoSeriousA11y(page, 'drop overlay');
     for (const key of ['F6', 'Shift+F6']) {
       await page.keyboard.press(key);
-      expect(await focusedTestId(page)).toBe('nav-library');
+      expect(await focusedTestId(page)).toBe('nav-scope-all');
     }
     await drag(page, 'dragleave', [['a.pdf', 'application/pdf']]);
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
@@ -615,7 +615,7 @@ test('a fold after the user left the sidebar row moves no focus', async ({}, tes
   const zoom = async (f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
   try {
     await page.keyboard.press('F6');
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.getByTestId('content').click({ position: { x: 300, y: 300 } }); // nothing there takes the focus
     expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
     await page.keyboard.press('ArrowDown'); // the keyboard is in use again, on nothing
@@ -637,7 +637,7 @@ test('a sidebar that folds by itself hands a keyboard focus to the toolbar toggl
   try {
     await page.getByTestId('content').click({ position: { x: 5, y: 5 } }); // a pointer user first…
     await page.keyboard.press('F6'); // …who now navigates by keyboard: F6 counts as keyboard input
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await zoom(2);
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();

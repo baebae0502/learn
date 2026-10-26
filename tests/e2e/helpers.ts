@@ -1035,3 +1035,87 @@ export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500)
   }
   return JSON.parse(last) as Record<string, number>;
 }
+
+// ---- M5 sidebar and collections (Task 5) ---------------------------------------------------------------------------
+
+/** A special view's row (spec 3.2): 내 라이브러리, 최근 연 자료, 미분류, 중복 항목. */
+export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates'): Locator => page.getByTestId(`nav-scope-${kind}`);
+/** A collection's row in the tree. */
+export const treeRow = (page: Page, collectionId: string): Locator => page.getByTestId(`nav-collection-${collectionId}`);
+
+/**
+ * dialog.showMessageBox replaced in main for the rest of the session (the ui.confirm sheet): it answers `answer` — 'confirm'
+ * is the first button — and records every question. Calling it again resets the record.
+ */
+export async function stubConfirm(app: ElectronApplication, answer: 'confirm' | 'cancel'): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnConfirms?: unknown[]; __learnRealMessageBox?: typeof dialog.showMessageBox };
+    g.__learnConfirms = [];
+    g.__learnRealMessageBox ??= dialog.showMessageBox;
+    dialog.showMessageBox = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number };
+      g.__learnConfirms!.push({ message: o.message, detail: o.detail ?? '', buttons: o.buttons ?? [], defaultId: o.defaultId ?? null, cancelId: o.cancelId ?? null });
+      return { response: answer === 'confirm' ? 0 : 1, checkboxChecked: false };
+    }) as typeof dialog.showMessageBox;
+  }, answer);
+}
+export interface ConfirmCall {
+  message: string;
+  detail: string;
+  buttons: string[];
+  defaultId: number | null;
+  cancelId: number | null;
+}
+/** The questions the stubbed sheet was asked since `stubConfirm`, oldest first. */
+export const confirmCalls = (app: ElectronApplication): Promise<ConfirmCall[]> =>
+  app.evaluate(() => (globalThis as { __learnConfirms?: ConfirmCall[] }).__learnConfirms ?? []);
+
+/** A made-up tree of collections: ids in creation order, each one's parent (null at the top) and children (in creation order). */
+export interface CollectionTree {
+  ids: string[];
+  parent: Record<string, string | null>;
+  children: Record<string, string[]>;
+}
+/**
+ * `count` collections named 과목 000, 과목 001 … (so creation order is name order), eight at the top and then breadth first
+ * with four children each, at most four levels deep (200 fit). Made through the page's own API, one call each.
+ */
+export async function createCollectionTree(page: Page, count: number): Promise<CollectionTree> {
+  return page.evaluate(async (count) => {
+    const ids: string[] = [];
+    const parent: Record<string, string | null> = {};
+    const children: Record<string, string[]> = {};
+    const depth: Record<string, number> = {};
+    const queue: string[] = [];
+    for (let i = 0; i < count; i++) {
+      let parentId: string | null = null;
+      if (i >= 8) {
+        while ((children[queue[0]!] ?? []).length >= 4 || depth[queue[0]!]! >= 4) queue.shift();
+        parentId = queue[0]!;
+      }
+      const made = await window.learn.collections.create({ name: `과목 ${String(i).padStart(3, '0')}`, parentId });
+      if (!made.ok) throw new Error(`collections.create failed: ${made.code}`);
+      const id = made.data.id;
+      ids.push(id);
+      parent[id] = parentId;
+      children[id] = [];
+      depth[id] = parentId === null ? 1 : depth[parentId]! + 1;
+      if (parentId !== null) children[parentId]!.push(id);
+      queue.push(id);
+    }
+    return { ids, parent, children };
+  }, count);
+}
+/** Every collection that has children stored as open (sidebar.expanded), then the page reloaded so the tree starts that way. */
+export async function expandAll(page: Page, tree: CollectionTree): Promise<void> {
+  const open = tree.ids.filter((id) => tree.children[id]!.length > 0);
+  await page.evaluate((ids) => window.learn.settings.set({ key: 'sidebar.expanded', value: ids }), open);
+  await page.reload();
+  await page.getByTestId('app-ready').waitFor({ state: 'attached' });
+}
+/** ⌘K, the query, and the row of `commandId` (the palette closes and the command runs from where the focus was). */
+export async function runPalette(page: Page, app: ElectronApplication, query: string, commandId: CommandId): Promise<void> {
+  await runMenuCommand(app, 'app.palette');
+  await page.getByTestId('palette-input').fill(query);
+  await page.locator(`[data-testid="palette-item"][data-command-id="${commandId}"]`).click();
+}

@@ -6,6 +6,7 @@ import { useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
 import { useScopeView } from '../library/useScopeView';
 import { useLibrarySettings } from '../library/useLibrarySettings';
+import { EmptyCollectionPanel } from '../sidebar/EmptyCollectionPanel';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
@@ -28,7 +29,7 @@ const LOADING_DELAY_MS = 300;
 export function InfoPane() {
   const list = useItems().data;
   const items = list ?? NO_ITEMS;
-  const { scoped, label } = useScopeView(items);
+  const { scope, model, scoped, label } = useScopeView(items);
   const selected = useLibrary((s) => s.selected);
   const editingId = useLibrary((s) => s.editingId);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -39,6 +40,10 @@ export function InfoPane() {
     if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
   }, [editingId, byId]);
   if (editing) return <ItemInfo key={editing.id} item={editing} />;
+  // An empty collection: its name and the day it was made instead of numbers that would all be zero (spec 3.6). Items only in a
+  // sub-collection make it non-empty (scoped counts them).
+  const viewed = scope.kind === 'collection' ? model?.node(scope.id) : undefined;
+  if (chosen.length === 0 && viewed && scoped.length === 0 && list !== undefined) return <EmptyCollectionPanel name={viewed.name} createdAt={viewed.createdAt} />;
   if (chosen.length === 0) return <NoSelection label={label} items={scoped} stats={list !== undefined} />;
   if (chosen.length > 1) return <MultiSelection items={chosen} />;
   return <ItemInfo key={chosen[0]!.id} item={chosen[0]!} />;

@@ -107,6 +107,9 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('shortcuts') }),
 ]);
 export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
+/** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4, P-5. */
+export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40) }).strict();
+export type ConfirmInput = z.input<typeof confirmInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
@@ -237,6 +240,8 @@ export interface LearnApi {
     reportContext(input: CommandContextInput): Promise<Result<void>>;
     /** The duplicate sheet over the calling window; closing it without an answer is 'skip'. */
     confirmDuplicate(input: ConfirmDuplicateInput): Promise<Result<{ choice: DuplicateChoice }>>;
+    /** A sheet on the main window with the confirming button first (the default) and 취소: true when it was chosen. */
+    confirm(input: ConfirmInput): Promise<Result<boolean>>;
     /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */
     showShortcuts(): Promise<Result<void>>;
     /** ⌘, : opens the settings window, or brings it to the front (the main-owned app.settings command). */

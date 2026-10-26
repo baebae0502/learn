@@ -149,7 +149,7 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
     await allShots(s.app, s.page, 'm4-02-multi-light', 'three rows selected (1, 3, 6), the keyboard cursor on the sixth');
   });
   await guard('unfocused selection: neutral fill', async () => {
-    await s.page.getByTestId('nav-library').focus();
+    await s.page.getByTestId('nav-scope-all').focus();
     const v = { fill: await fill(0), neutral: await tokenColor(s.page, '--fill-selected') };
     check('unfocused selection: neutral fill', v.fill === v.neutral, v);
     unfocusedWindowShot = (await allShots(s.app, s.page, 'm4-02-unfocused-light', 'the selection while the sidebar has the focus')).find((e) => e.kind === 'window')?.file ?? null;

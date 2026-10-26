@@ -45,6 +45,7 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.file', label: '파일', submenu: [
     { id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' },
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
+    { id: 'collection.new', label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N' },
     SEP,
     // The selected item's commands (design-spec 7.3, 7.4 ⇧⌘R), in the 파일 menu's order.
     { id: 'item.showInFolder', label: platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R' },
@@ -526,7 +527,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
 
     it('puts 색 태그 ▸ and 컬렉션에 추가 ▸ in 파일 after the file commands (by order), from the library read for the menu bar, with no marks', () => {
       expect(labels(file(build2(ONE)))).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', 'separator',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator',
         'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
         { '색 태그': ['시험 범위', '중요'] },
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
@@ -545,7 +546,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     });
     it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
       expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', 'separator', '윈도우 닫기',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', 'separator', '윈도우 닫기',
       ]);
       expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
     });

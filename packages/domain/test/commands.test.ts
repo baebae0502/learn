@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
-  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
-  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type ItemTargetInfo,
+  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
+  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -235,7 +235,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(availableMenuCommands({ ...one, blocked: true })).not.toContain('item.exportCopy');
   });
   it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
-    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
+    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'collection.new', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
     expect(availableMenuCommands(VIEWER)).toEqual(['nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
@@ -243,7 +243,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'collection.new', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected
@@ -394,5 +394,48 @@ describe('tag colors and reading locator', () => {
     expect(readingLocatorSchema.safeParse({ kind: 'video', timeMs: 1.5 }).success).toBe(false);
     expect(readingLocatorSchema.safeParse({ kind: 'epub', cfi: 'x' }).success).toBe(false);
     expect(readingLocatorSchema.safeParse({ kind: 'pdf', pageIndex: 0, scale: 0 }).success).toBe(false);
+  });
+});
+
+describe('collection commands (M5 spec 3.4, 9.3)', () => {
+  const coll = (id: string): CommandTargetInfo => ({ kind: 'collection', id });
+  const lib: CommandContextState = { ...LIB, libraryCount: 3 };
+
+  it('are the five of 9.3, named as the spec names them (U+00A0 after 새 and 이)', () => {
+    expect(commandById('collection.new')).toMatchObject({ label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N', menu: { menu: 'file', group: 1, order: 3 }, contexts: ['library'] });
+    expect(commandById('collection.newChild').label).toBe('새\u00a0하위 컬렉션');
+    expect(commandById('collection.rename').label).toBe('이름 바꾸기');
+    expect(commandById('collection.importInto').label).toBe('이\u00a0컬렉션으로 가져오기…');
+    expect(commandById('collection.delete').label).toBe('컬렉션 삭제…');
+  });
+  it('새 컬렉션 is ⇧⌘N in 파일 right after the two imports; it works wherever the library shows and not in the reader', () => {
+    expect(isCommandAvailable('collection.new', lib)).toBe(true);
+    expect(isCommandAvailable('collection.new', LIB)).toBe(true); // the empty library can have collections too
+    expect(isCommandAvailable('collection.new', VIEWER)).toBe(false);
+    expect(isCommandAvailable('collection.new', { ...lib, blocked: true })).toBe(false);
+    const file = availableMenuCommands(lib).filter((id) => commandById(id).menu?.menu === 'file');
+    expect(file.slice(0, 3)).toEqual(['file.importManaged', 'file.importLinked', 'collection.new']);
+  });
+  it('the other four act on exactly one collection; only the import needs the library view', () => {
+    for (const id of ['collection.newChild', 'collection.rename', 'collection.importInto', 'collection.delete'] as const) {
+      expect(isCommandAvailable(id, lib, [coll('a')]), id).toBe(true);
+      expect(isCommandAvailable(id, lib), `${id} with no target`).toBe(false);
+      expect(isCommandAvailable(id, lib, [coll('a'), coll('b')]), `${id} with two`).toBe(false);
+      expect(isCommandAvailable(id, lib, [managedOk]), `${id} with an item`).toBe(false);
+      expect(isCommandAvailable(id, { ...lib, blocked: true }, [coll('a')]), `${id} blocked`).toBe(false);
+    }
+    expect(isCommandAvailable('collection.rename', VIEWER, [coll('a')])).toBe(true); // the sidebar stays beside the reader
+    expect(isCommandAvailable('collection.importInto', VIEWER, [coll('a')])).toBe(false);
+  });
+  it('the collection menu lists them in the spec order — 새 하위 · 이름 바꾸기 | 가져오기 | 삭제 — and none of them is on the menu bar but 새 컬렉션', () => {
+    const menu = COMMANDS.filter((c) => c.contextMenu?.kinds.includes('collection')).sort((a, b) => a.contextMenu!.group - b.contextMenu!.group || a.contextMenu!.order - b.contextMenu!.order);
+    expect(menu.map((c) => [c.id, c.contextMenu!.group])).toEqual([['collection.newChild', 1], ['collection.rename', 1], ['collection.importInto', 2], ['collection.delete', 3]]);
+    for (const id of ['collection.newChild', 'collection.rename', 'collection.importInto', 'collection.delete'] as const) expect(commandById(id).menu, id).toBeUndefined();
+  });
+  it('the palette lists all five; the rename carries the longer name the palette needs, the others keep theirs', () => {
+    for (const id of ['collection.new', 'collection.newChild', 'collection.rename', 'collection.importInto', 'collection.delete'] as const) expect(inPalette(commandById(id)), id).toBe(true);
+    expect(paletteLabel(commandById('collection.rename'), 'darwin')).toBe('컬렉션 이름 바꾸기');
+    expect(commandLabel(commandById('collection.rename'), 'darwin')).toBe('이름 바꾸기');
+    expect(paletteLabel(commandById('collection.delete'), 'darwin')).toBe('컬렉션 삭제…');
   });
 });

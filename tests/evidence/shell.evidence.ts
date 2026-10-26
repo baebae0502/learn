@@ -127,20 +127,20 @@ function mainChrome() {
     return {
       notKey: document.documentElement.hasAttribute('data-window-inactive'),
       notMain: document.documentElement.hasAttribute('data-window-not-main'),
-      cursor: css('[data-testid="nav-library"]').boxShadow,
+      cursor: css('[data-testid="nav-scope-all"]').boxShadow,
       title: css('[data-testid="toolbar-title"]').color,
       count: css('[data-testid="toolbar-count"]').color,
       toggle: css('[data-testid="sidebar-toggle"]').color,
       toggleOpacity: css('[data-testid="sidebar-toggle"] > .icon').opacity,
       section: css('.sidebar .section-label').color,
-      rowIcon: css('[data-testid="nav-library"] > .icon').color,
-      rowIconOpacity: css('[data-testid="nav-library"] > .icon').opacity,
-      selectedRow: css('[data-testid="nav-library"]').color,
+      rowIcon: css('[data-testid="nav-scope-all"] .icon').color,
+      rowIconOpacity: css('[data-testid="nav-scope-all"] .icon').opacity,
+      selectedRow: css('[data-testid="nav-scope-all"]').color,
       toolbarFill: css('[data-testid="toolbar"]').backgroundColor,
       toolbarLine: css('[data-testid="toolbar"]').borderBottomColor,
       tokens,
       titleBox: box('[data-testid="toolbar-title"]'),
-      selectedLabelBox: box('[data-testid="nav-library"] .label'),
+      selectedLabelBox: box('[data-testid="nav-scope-all"] .label'),
     };
   });
 }
@@ -156,7 +156,7 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   const shot = await nativeWindowShot(s.app, name, description, { focus: false });
   const frontmostAtShot = frontmostProcess().name; // R2-5: read before the app comes back
   const closeButton = shot.file ? (await pngPixels(s.page, shot.file, [[25, 26]]))[0] ?? null : null;
-  const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+  const navRow = await s.page.getByTestId('nav-scope-all').evaluate((el) => getComputedStyle(el).backgroundColor);
   const chrome = await mainChrome();
   // The drawn title and the selected row's label, measured like Finder's (finderRef): ink and ratio on their surface;
   // the toolbar's own fill at (600, 26), where it is empty (polish Q2: 236 light, 20 dark).
@@ -546,9 +546,9 @@ test('M3 chrome: library light/dark, active and inactive, and vibrancy on/off', 
   await importPaths(s.page, [PDF, MP4, MPEG4]);
   await expect(s.page.getByTestId('item-row')).toHaveCount(3);
   // A keyboard user in the sidebar: the current row has the accent fill while the window is active.
-  await s.page.getByTestId('nav-library').focus();
+  await s.page.getByTestId('nav-scope-all').focus();
   await s.page.keyboard.press('ArrowDown');
-  const navRow = () => s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+  const navRow = () => s.page.getByTestId('nav-scope-all').evaluate((el) => getComputedStyle(el).backgroundColor);
   const [, light] = await allShots(s.app, s.page, 'm3-02-library-light', 'library, light (sidebar list focused: accent selection)');
   const activeRow = await navRow();
   const inactive: Record<string, unknown> = {};
@@ -790,9 +790,9 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   save();
 
   // The sidebar list holds the keyboard focus, so its current row has the accent selection while the window is active.
-  const navRow = s.page.getByTestId('nav-library');
+  const navRow = s.page.getByTestId('nav-scope-all');
+  // (No arrow key: the tree's next row is 최근 연 자료 by now, and selection follows the cursor.)
   await navRow.focus();
-  await s.page.keyboard.press('ArrowDown');
   const accentRow = await navRow.evaluate((el) => getComputedStyle(el).backgroundColor);
   /**
    * 38e3a9e: once a sheet has closed, the main window is active again within 500 ms (no data-window-inactive) and the
@@ -836,7 +836,7 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
       notKey: document.documentElement.hasAttribute('data-window-inactive'),
       notMain: document.documentElement.hasAttribute('data-window-not-main'),
       title: getComputedStyle(document.querySelector('[data-testid="toolbar-title"]')!).color,
-      cursor: getComputedStyle(document.querySelector('[data-testid="nav-library"]')!).boxShadow,
+      cursor: getComputedStyle(document.querySelector('[data-testid="nav-scope-all"]')!).boxShadow,
     }));
     const primary = await s.page.evaluate(() => {
       const p = document.createElement('span');
@@ -1243,7 +1243,7 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
         await expect(s.page.locator('html')).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
         await s.page.waitForTimeout(600); // AppKit repaints the main window's lights and material as inactive
         const chrome = await mainChrome();
-        const navRow = await s.page.getByTestId('nav-library').evaluate((el) => getComputedStyle(el).backgroundColor);
+        const navRow = await s.page.getByTestId('nav-scope-all').evaluate((el) => getComputedStyle(el).backgroundColor);
         const accent = await s.page.evaluate(() => {
           const p = document.createElement('span');
           document.body.append(p);

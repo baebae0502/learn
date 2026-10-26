@@ -56,6 +56,16 @@
     border-radius: var(--radius-lg);
     background: var(--bg-sidebar);
   }
+  /* Two sidebar widths side by side: the state rows of the sidebar fit the board without making it taller. */
+  .gallery .g-list.g-cols {
+    display: block;
+    width: calc(2 * 240px + var(--space-16)); /* local: two sidebar-wide columns */
+    columns: 2 240px;
+    column-gap: var(--space-16);
+  }
+  .gallery .g-list.g-cols > * {
+    break-inside: avoid;
+  }
   /* The board's table rows are static (the library table is virtualized): flex rows, the title taking the rest and
      the other columns their widths inline; the header keeps the body's 4 px top inset. */
   .gallery .g-table .table-head,

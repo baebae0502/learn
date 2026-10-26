@@ -1,4 +1,4 @@
-import { commandLabel, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { paletteLabel, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { MATCH_RANK, matchKorean, type Match } from './hangul';
 
 export interface RankedCommand {
@@ -33,7 +33,7 @@ export function rankCommands(
   };
   return commands
     .flatMap((command, index): Array<RankedCommand & { score: number; index: number }> => {
-      const onLabel = matchKorean(query, commandLabel(command, platform, state));
+      const onLabel = matchKorean(query, paletteLabel(command, platform, state));
       if (onLabel) return [{ command, match: onLabel, score: MATCH_RANK[onLabel.kind] * 100 + onLabel.start, index }];
       const kinds = (command.keywords ?? []).flatMap((k) => {
         const m = matchKorean(query, k);

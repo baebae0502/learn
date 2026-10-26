@@ -19,8 +19,10 @@ import { dropSummaryText, windowDropTarget, type DropState, type WindowDropHandl
  * focus rings: they stay at full strength while the window is not key (Finder's drop target in a background window).
  * The overlay is opaque over the whole window, so it never outlives the drag: it also goes on blur, on dragend and
  * after a second without a dragover (shell/drop.ts).
+ *
+ * `intoName`: the collection being viewed, which the files go into (spec 3.7) — the title says so.
  */
-export function DropOverlay({ enabled, onDrop }: { enabled: boolean; onDrop: WindowDropHandler }) {
+export function DropOverlay({ enabled, onDrop, intoName }: { enabled: boolean; onDrop: WindowDropHandler; intoName?: string }) {
   const [state, setState] = useState<DropState | null>(null);
   const onDropRef = useRef(onDrop);
   useEffect(() => {
@@ -74,7 +76,7 @@ export function DropOverlay({ enabled, onDrop }: { enabled: boolean; onDrop: Win
         <div className="glyph">
           <Icon icon={Download} size="xl" />
         </div>
-        <h2 className="ui-balance">{t.drop.title}</h2>
+        <h2 className="ui-balance">{intoName === undefined ? t.drop.title : t.drop.titleInto(intoName)}</h2>
         <div className="files" data-testid="drop-summary">
           {dropSummaryText(state.summary)}
         </div>

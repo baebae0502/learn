@@ -17,6 +17,8 @@ export const keys = {
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
   columns: ['settings', 'library.columns'] as const,
   sort: ['settings', 'library.sort'] as const,
+  /** The open collections of the sidebar (sidebar.expanded): read once, written whole (sidebar/useExpanded.ts). */
+  expanded: ['settings', 'sidebar.expanded'] as const,
   sortRecent: ['settings', 'library.sort.recent'] as const,
   /** The stored view (read once at start, then written by the store: useRestoreView, library-store). */
   view: ['settings', 'library.view'] as const,

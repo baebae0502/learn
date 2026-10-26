@@ -2,11 +2,14 @@ import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent, type Rea
 import { flushSync } from 'react-dom';
 import { Clapperboard, FileText, ListFilter, Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
-import { COMMANDS, commandById, commandLabel, commandMention, inPalette, type CommandId, type LibraryItem } from '@learn/domain';
+import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
+import type { CommandTarget } from '../commands/registry';
 import { COMMAND_ICONS } from '../commands/icons';
 import { useItems, useSearchTexts } from '../data/queries';
 import { search, searchIndexFor } from '../library/search';
+import { useOrganize } from '../organize/useOrganize';
+import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
@@ -113,16 +116,23 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   // selection, which only the library view shows. Judged once per env rather than on every keystroke: a selection can
   // hold every row (⌘A).
   const itemTarget = useMemo(() => ({ itemIds: env.view === 'library' ? env.selection() : [] }), [env]);
-  const itemCommands = useMemo(
-    () => new Set(COMMANDS.filter((c) => c.contexts.includes('item') && inPalette(c) && isEnabled(c.id, itemTarget)).map((c) => c.id)),
-    [isEnabled, itemTarget],
+  // The collection commands act on the collection being viewed (spec 9.3): the palette hands it over as their target, and
+  // they are off — so not listed — while none is.
+  const scope = useLibrary((s) => s.scope);
+  const { model } = useOrganize();
+  const collectionTarget = useMemo(() => (scope.kind === 'collection' && model?.node(scope.id) ? { collectionIds: [scope.id] } : {}), [scope, model]);
+  const targetFor = (c: CommandSpec): CommandTarget => (c.contexts.includes('item') ? itemTarget : c.contexts.includes('collection') ? collectionTarget : {});
+  const needsTarget = (c: CommandSpec) => c.contexts.includes('item') || c.contexts.includes('collection');
+  const targeted = useMemo(
+    () => new Set(COMMANDS.filter((c) => needsTarget(c) && inPalette(c) && isEnabled(c.id, targetFor(c))).map((c) => c.id)),
+    [isEnabled, itemTarget, collectionTarget], // targetFor reads exactly these two
   );
-  const targetOf = (id: CommandId) => (commandById(id).contexts.includes('item') ? itemTarget : {});
+  const targetOf = (id: CommandId) => targetFor(commandById(id));
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows
   // availability while open. While an import or a sheet holds the window that is the main-owned 설정… alone, under the
   // notice that says why the rest is missing.
   const commands = rankCommands(
-    COMMANDS.filter((c) => inPalette(c) && (c.contexts.includes('item') ? itemCommands.has(c.id) : isEnabled(c.id))),
+    COMMANDS.filter((c) => inPalette(c) && (needsTarget(c) ? targeted.has(c.id) : isEnabled(c.id))),
     query,
     platform,
     state,
@@ -272,7 +282,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
     return option(row, index, { 'data-testid': 'palette-item', 'data-command-id': command.id }, (
       <>
         <Icon icon={COMMAND_ICONS[command.id]} />
-        <span className="p-title ellipsis">{highlight(commandLabel(command, platform, state), match)}</span>
+        <span className="p-title ellipsis">{highlight(paletteLabel(command, platform, state), match)}</span>
         {command.accelerator && (
           <span className="p-meta">
             <Kbd accelerator={command.accelerator} />

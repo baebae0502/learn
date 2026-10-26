@@ -11,7 +11,14 @@ export interface CommandEnv extends CommandContextState {
    * command runs, so a closing palette does not run it on an older selection.
    */
   selection(): readonly string[];
-  importFiles(mode: StorageMode): void;
+  /** `into`: undefined = the collection being viewed, if any (⌘O in a collection files there); null = none; an id = that collection. */
+  importFiles(mode: StorageMode, into?: string | null): void;
+  /** ⇧⌘N and 새 하위 컬렉션: a row for the new collection (at the top, or under `parentId`), named in place by the sidebar. */
+  newCollection(opts?: { parentId?: string | null; onCreated?: (collectionId: string) => void }): void;
+  /** 이름 바꾸기: the collection's row becomes its name field. */
+  renameCollection(collectionId: string): void;
+  /** 컬렉션 삭제…: the sheet, then the delete with its 실행 취소. */
+  deleteCollection(collectionId: string): void;
   back(): void;
   open(itemId: string): void;
   relink(itemId: string): void;
@@ -70,6 +77,8 @@ type Handler = (env: CommandEnv, target: CommandTarget) => void;
 
 /** The one item an item command acts on (its availability rule asks for exactly one). */
 const itemOf = (target: CommandTarget): string => target.itemIds![0]!;
+/** The one collection a collection command acts on (its availability rule asks for exactly one). */
+const collectionOf = (target: CommandTarget): string => target.collectionIds![0]!;
 
 /** Renderer side of the registry: exactly one handler per command id (menus can only show handled commands). */
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
@@ -83,6 +92,11 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.exportCopy': (env, t) => env.exportCopy(itemOf(t)),
   'item.editInfo': (env, t) => env.editInfo(itemOf(t)),
   'item.relink': (env, t) => env.relink(itemOf(t)),
+  'collection.new': (env) => env.newCollection(),
+  'collection.newChild': (env, t) => env.newCollection({ parentId: collectionOf(t) }),
+  'collection.rename': (env, t) => env.renameCollection(collectionOf(t)),
+  'collection.importInto': (env, t) => env.importFiles('managed', collectionOf(t)),
+  'collection.delete': (env, t) => env.deleteCollection(collectionOf(t)),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),
   'app.shortcuts': (env) => env.showShortcuts(),

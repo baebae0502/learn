@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bookmark, ChevronDown, Copy, FileText, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { Bookmark, ChevronDown, ChevronRight, Copy, FileText, Folder, FolderOpen, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { t } from '../strings';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
@@ -267,7 +267,7 @@ function Part2() {
       </section>
       <section>
         <h2 className="g-title">사이드바 행</h2>
-        <div className="g-list nav-list">
+        <div className="g-list g-cols nav-list">
           {(
             [
               ['기본'],
@@ -276,6 +276,7 @@ function Part2() {
               ['선택(포커스)', 'selected focused'],
               ['키보드 커서', 'cursor'],
               ['선택(포커스) + 커서: 링 없음', 'selected focused cursor'],
+              ['드롭 대상', 'drop'],
             ] as const
           ).map(([name, force]) => (
             <div key={name} className="nav-row" data-force={force}>
@@ -284,6 +285,32 @@ function Part2() {
               <span className="count num">12</span>
             </div>
           ))}
+          {/* The tree's rows (design-spec 6 트리): the 16 px gutter on every row with the 12 px chevron in it, 16 px per level, the name being typed. */}
+          <div className="nav-row" data-testid="g-row-closed">
+            <span className="disclosure">
+              <Icon icon={ChevronRight} size="xs" />
+            </span>
+            <Icon icon={Folder} />
+            <span className="label ellipsis">펼침 칸: 접힘</span>
+            <span className="count num">48</span>
+          </div>
+          <div className="nav-row">
+            <span className="disclosure">
+              <Icon icon={ChevronDown} size="xs" />
+            </span>
+            <Icon icon={FolderOpen} />
+            <span className="label ellipsis">펼침 칸: 펼침</span>
+            <span className="count num">14</span>
+          </div>
+          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties}>
+            <Icon icon={Folder} />
+            <span className="label ellipsis">들여쓴 행</span>
+            <span className="count num">9</span>
+          </div>
+          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties} data-force="selected focused">
+            <Icon icon={Folder} />
+            <input className="name-field" defaultValue={'새\u00a0컬렉션'} readOnly aria-label="이름 칸" data-testid="g-name-field" />
+          </div>
         </div>
       </section>
       <section>

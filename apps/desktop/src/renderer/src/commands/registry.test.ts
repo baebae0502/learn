@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-  import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
-  import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv, type CommandTarget } from './registry';
+import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
+import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv, type CommandTarget } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const OTHER = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';
-  /** An empty library with nothing selected, as every report starts: the counts and the default library view. */
-  const COUNTS = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW } as const;
-  const missingLinked: CommandTargetInfo = { kind: 'item', storageMode: 'linked', availability: 'missing' };
-  /** The items of a target, all with a file there. */
-  const available = (target: CommandTarget): CommandTargetInfo[] => (target.itemIds ?? []).map(() => ({ kind: 'item', storageMode: 'managed', availability: 'available' }));
+/** An empty library with nothing selected, as every report starts: the counts and the default library view. */
+const COUNTS = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW } as const;
+const missingLinked: CommandTargetInfo = { kind: 'item', storageMode: 'linked', availability: 'missing' };
+/** The items of a target, all with a file there. */
+const available = (target: CommandTarget): CommandTargetInfo[] => (target.itemIds ?? []).map(() => ({ kind: 'item', storageMode: 'managed', availability: 'available' }));
 const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   view: 'library',
   blocked: false,

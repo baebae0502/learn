@@ -88,6 +88,10 @@ test('the menu bar is not rebuilt under an open menu: the radios wait for it to 
     const rebuilt = () => app.evaluate(({ Menu }) => !(Menu.getApplicationMenu() as unknown as { __open?: true }).__open);
     await runMenuCommand(app, 'library.sortBy', { column: 'title' });
     await expect(header(page, 'title')).toHaveAttribute('aria-sort', 'descending'); // the click landed at once
+    // Electron flips a clicked radio in place, in the open menu too: that is why the test tells a rebuild by the object.
+    expect(await radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    // Main has the new context (the rebuild is asked for) before the wait starts, so the wait really covers the guard.
+    await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuContext?: { sortColumn: string } }).__learnMenuContext?.sortColumn)).toBe('title');
     await page.waitForTimeout(500); // five rebuild delays
     expect(await rebuilt()).toBe(false); // the open menu was not replaced
     await app.evaluate(({ Menu }) => void Menu.getApplicationMenu()!.emit('menu-will-close'));

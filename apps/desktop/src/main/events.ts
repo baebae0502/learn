@@ -1,5 +1,5 @@
 import { BrowserWindow, type WebContents } from 'electron';
-import { EventChannels, type LearnEventMap } from '@learn/domain';
+import { EventChannels, toLearnError, type LearnEventMap } from '@learn/domain';
 
 /** Main -> renderer push to one renderer. Only names in EventChannels exist; the preload drops the IPC event object. */
 export function sendEvent<K extends keyof LearnEventMap>(contents: WebContents, name: K, payload: LearnEventMap[K]): void {
@@ -21,8 +21,8 @@ export function broadcast<K extends keyof LearnEventMap>(name: K, payload: Learn
   for (const observer of observers) {
     try {
       observer({ name, payload } as BroadcastEvent);
-    } catch {
-      console.warn(`[events] an observer of ${name} failed`); // the event name only
+    } catch (e) {
+      console.warn(`[events] an observer of ${name} failed: ${toLearnError(e).code}`); // the event name and the code only
     }
   }
   for (const win of BrowserWindow.getAllWindows()) {

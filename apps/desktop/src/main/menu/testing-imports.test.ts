@@ -3,6 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const MAIN = path.resolve(__dirname, '..');
+/** An import of a testing module: `from './testing'`, a side-effect `import './testing'`, `import('./testing')`, `require('./testing')`. */
+const TESTING_IMPORT = /(?:from\s+|import\s*\(?\s*|require\(\s*)['"][^'"]*\/testing(?:\.[jt]s)?['"]/;
 
 /** Every non-test source of main, as paths relative to it. */
 function sources(dir: string, out: string[] = []): string[] {
@@ -15,18 +17,18 @@ function sources(dir: string, out: string[] = []): string[] {
 }
 
 describe('test helpers stay out of the shipped code', () => {
-  // The strings check skips testing.ts files (their Korean is sample data, not screen copy): that is only safe while
-  // nothing shipped can import one.
+  // The strings check skips main/menu/testing.ts (its Korean is sample data, not screen copy): that is only safe while
+  // nothing shipped can import it.
   it('no non-test source of main imports a testing module', () => {
     const files = sources(MAIN);
     expect(files.length).toBeGreaterThan(10);
-    const importing = files.filter((f) => !/(^|\/)testing\.ts$/.test(f) && /from\s+['"][^'"]*\/testing(\.[jt]s)?['"]|import\(\s*['"][^'"]*\/testing(\.[jt]s)?['"]\s*\)|require\(\s*['"][^'"]*\/testing(\.[jt]s)?['"]\s*\)/.test(fs.readFileSync(path.join(MAIN, f), 'utf8')));
+    const importing = files.filter((f) => !/(^|\/)testing\.ts$/.test(f) && TESTING_IMPORT.test(fs.readFileSync(path.join(MAIN, f), 'utf8')));
     expect(importing).toEqual([]);
   });
-  it('the check can fail: a source that imports one is found by the same pattern', () => {
-    const pattern = /from\s+['"][^'"]*\/testing(\.[jt]s)?['"]/;
-    expect(pattern.test("import { LIBRARY } from './testing';")).toBe(true);
-    expect(pattern.test("import { x } from '../menu/testing.js';")).toBe(true);
-    expect(pattern.test("import { x } from './testing-imports';")).toBe(false);
+  it('the check can fail: the same pattern finds each way of importing one', () => {
+    for (const code of ["import { LIBRARY } from './testing';", "import { x } from '../menu/testing.js';", "import './testing';", "await import('./testing')", "require('./testing')"]) {
+      expect(TESTING_IMPORT.test(code), code).toBe(true);
+    }
+    expect(TESTING_IMPORT.test("import { x } from './testing-imports';")).toBe(false);
   });
 });

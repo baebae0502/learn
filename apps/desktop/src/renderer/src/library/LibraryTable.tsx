@@ -295,7 +295,7 @@ export function LibraryTable(props: LibraryTableProps) {
     if (e.target instanceof Element && e.target.closest('[role="separator"]')) return; // a column edge has its own keys
     if (isContextMenuKey(e.nativeEvent)) {
       // ⇧F10 and the menu key open the focused row's menu under it, as a right-click would (spec 9.1); the browser's own
-      // menu event for the key is not wanted (Q-29).
+      // menu event for the key is not wanted (it would open a second menu elsewhere).
       const row = e.target instanceof Element ? e.target.closest<HTMLElement>(ROW) : null;
       const id = row ? rowIdOf(row) : null;
       if (row === null || id === null) return; // the header and the empty body keep the browser's

@@ -87,16 +87,16 @@ export const commandContextInput = z
     selectionCount: contextCount,
     selectionAvailable: contextCount,
     selectionRelinkable: contextCount,
-      scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
-      collectionCount: contextCount,
-      /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */
-      tagPositions: z.number().int().min(0).max(255),
-      tagFilterCount: contextCount,
-      searchActive: z.boolean(),
-      sortColumn: z.enum(LIBRARY_SORT_COLUMNS),
-      sortDirection: z.enum(['asc', 'desc']),
-      /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
-      columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
+    scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
+    collectionCount: contextCount,
+    /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */
+    tagPositions: z.number().int().min(0).max(255),
+    tagFilterCount: contextCount,
+    searchActive: z.boolean(),
+    sortColumn: z.enum(LIBRARY_SORT_COLUMNS),
+    sortDirection: z.enum(['asc', 'desc']),
+    /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
+    columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;

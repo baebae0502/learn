@@ -109,7 +109,7 @@ const slotOf = (id: string): number | null => {
 };
 
 /**
- * 색 태그 ▸ (spec 9.2, P-3): a group of commands, one per slot that has a tag, named by the tag with the slot at the right
+ * 색 태그 ▸ (spec 9.2): a group of commands, one per slot that has a tag, named by the tag with the slot at the right
  * edge. A tag that every selected item has is checked. Left out when no tag has a slot (or the library was not read).
  */
 export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {

@@ -5,7 +5,7 @@ import { freshTargets } from '../data/targets';
 import type { CommandTarget } from './registry';
 
 /**
- * The facts a command is judged on, by kind (P-4): items from the freshest read (data/targets.ts), collections by id,
+ * The facts a command is judged on, by kind: items from the freshest read (data/targets.ts), collections by id,
  * tags with whether they have a colour (from the organize snapshot; a tag it does not know is no target).
  */
 export function commandTargets(client: QueryClient, list: readonly LibraryItem[], target: CommandTarget): CommandTargetInfo[] {

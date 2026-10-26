@@ -452,6 +452,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });
 }

@@ -250,7 +250,7 @@ export function commandMention(c: CommandSpec, platform: string, state: Pick<Com
 export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['app.settings']);
 
 /**
- * Commands grouped into one submenu (spec 9.1, P-3): "색 태그 ▸" lists `tag.color1`–`tag.color8`. The members stay commands
+ * Commands grouped into one submenu (spec 9.1): "색 태그 ▸" lists `tag.color1`–`tag.color8`. The members stay commands
  * of their own (the key map, the ⌘/ sheet and the palette need each one), so they carry no placement; the group does.
  * Empty until the first handler for a member exists (a row without a handler cannot exist).
  */

@@ -329,10 +329,10 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable'] as const) {
       expect(sameCommandContext(LIB, { ...LIB, [k]: 1 }), k).toBe(false);
     }
-      // The view fields enable and label the menu bar's library items: each one alone is a new context too.
-      for (const [k, v] of [['scope', 'collection'], ['collectionCount', 1], ['tagPositions', 1], ['tagFilterCount', 1], ['searchActive', true], ['sortColumn', 'title'], ['sortDirection', 'asc'], ['columnsShown', 1]] as const) {
-        expect(sameCommandContext(LIB, { ...LIB, [k]: v }), k).toBe(false);
-      }
+    // The view fields enable and label the menu bar's library items: each one alone is a new context too.
+    for (const [k, v] of [['scope', 'collection'], ['collectionCount', 1], ['tagPositions', 1], ['tagFilterCount', 1], ['searchActive', true], ['sortColumn', 'title'], ['sortDirection', 'asc'], ['columnsShown', 1]] as const) {
+      expect(sameCommandContext(LIB, { ...LIB, [k]: v }), k).toBe(false);
+    }
   });
   it('a toggle is named by what it does now (Mac pattern, design-spec 7.4); the neutral name where no state applies', () => {
     const c = commandById('view.toggleSidebar');

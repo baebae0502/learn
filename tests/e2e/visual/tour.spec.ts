@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
+  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -822,6 +822,78 @@ test('organize: the first tag chip focused from the keyboard — the ring is who
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       await shoot(s.page, `tags-focus-${theme}`, { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M5 Task 7: the item panel's 태그 and 컬렉션 sections, the add field with its suggestions, several items with their common
+// sections, and the open 컬렉션에 추가 ▾ menu. Pairs for the critic: library.html (inspectorItem) and library.html?state=multi.
+test('organize: the item panel with tags and collections, the add field, several items, the open 컬렉션에 추가 menu', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const [sample, ko, h264] = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    const c6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    await createCollection(s.page, '통계');
+    await addToCollection(s.page, bio, [sample!.id, ko!.id, h264!.id]);
+    await addToCollection(s.page, c6, [sample!.id, ko!.id]);
+    const important = await createTag(s.page, '중요');
+    await setTagColor(s.page, important, 'yellow', 1);
+    const exam = await createTag(s.page, '시험 범위');
+    await setTagColor(s.page, exam, 'red', 2);
+    for (const name of ['수용체', 'G 단백질', '2차 전령']) await assignTag(s.page, await createTag(s.page, name), [sample!.id]);
+    await assignTag(s.page, important, [sample!.id, ko!.id]);
+    await assignTag(s.page, exam, [sample!.id]);
+    for (const name of ['수용체 억제제', '수용체 작용제', '수용기', '신경 수용 경로']) await createTag(s.page, name); // what the field will offer
+
+    // One item with four colours' worth of chips (two coloured, three plain) in two collections (library.html inspectorItem).
+    await selectRows(s.page, ['sample']);
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await expect(s.page.getByTestId('tags-section').getByTestId(`tag-chip-${important}`)).toBeVisible();
+    await expect(s.page.getByTestId('collection-path')).toHaveCount(2);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-item-${theme}`, { mask: masks() });
+    }
+    // The add field with "수용" typed and the second suggestion chosen.
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('tag-add-chip').click();
+      await s.page.getByTestId('tag-input').fill('수용');
+      await expect(s.page.getByTestId('tag-suggestion')).toHaveCount(4);
+      await s.page.keyboard.press('ArrowDown');
+      await s.page.keyboard.press('ArrowDown');
+      await shoot(s.page, `organize-tag-add-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('tag-field')).toHaveCount(0);
+    }
+    // Three items, no tag in common, one collection (library.html?state=multi).
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+    await expect(s.page.getByTestId('multi-row')).toHaveCount(3);
+    await expect(s.page.getByTestId('tags-common-none')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-multi-${theme}`, { mask: masks() });
+    }
+    // Two items that share a tag and two collections: the common chips and both rows.
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1'], { modifier: 'Meta' });
+    await expect(s.page.getByTestId('tags-section').getByTestId(`tag-chip-${important}`)).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-multi-common-${theme}`, { mask: masks() });
+    }
+    // The 컬렉션에 추가 ▾ menu open on the three: 분자생물학 marked and off, 6장 and 통계 on.
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('add-to-collection').click();
+      await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toBeVisible();
+      await shoot(s.page, `organize-multi-menu-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toHaveCount(0);
     }
   } finally {
     await s.app.close();

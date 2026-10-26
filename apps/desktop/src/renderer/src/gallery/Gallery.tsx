@@ -521,6 +521,7 @@ function Part4() {
           {row('선택(필터)', <TagChip key="a" tag={sample('시험 범위')} role="filter" on />)}
           {row('흐린(현재 보기에 없음)', <TagChip key="a" tag={sample('회귀분석')} role="filter" dim />)}
           {row('선택 + 흐림', <TagChip key="a" tag={sample('회귀분석')} role="filter" on dim />, <TagChip key="b" tag={sample('회귀분석')} role="filter" on dim force={['hover']} />)}
+          {row('붙은 칩 · 기본 (× 자리 비워 둠)', <TagChip key="a" tag={plain} role="assigned" />, <TagChip key="b" tag={sample('중요', 1)} role="assigned" />)}
           {row('붙은 칩 · 호버', <TagChip key="a" tag={plain} role="assigned" force={['hover']} />, <TagChip key="b" tag={sample('중요', 1)} role="assigned" force={['focus']} />)}
           {row(
             '긴 이름(160 박스)',

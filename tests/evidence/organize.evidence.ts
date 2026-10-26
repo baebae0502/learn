@@ -8,7 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, NativeInputNotPermitted, addToCollection, createCollection, importPaths, launch, makeTags, organizeSnapshot, rowAt, runMenuCommand, tagChip, tokenColor, treeRow, type Session } from '../e2e/helpers';
+import {
+  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, importPaths, launch, makeTags, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows, setTagColor, showItemPanel,
+  tagChip, tokenColor, treeRow, type Session,
+} from '../e2e/helpers';
 import { COMMANDS, SUBMENUS } from '../../packages/domain/src/commands';
 import { IS_MAC, allShots, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
 
@@ -285,6 +288,117 @@ test('M5 tags: the chip menu with 색 지정 ▸ open and the item menu with 색
   results['tagMenus'] = { chip, item };
   // `opened` is null when System Events cannot address a pop-up: the controller then reads the PNGs.
   check('tag menus: ran and, where System Events can tell, the submenus opened', (chip.opened ?? true) && (item.opened ?? true), { chip: chip.opened, item: item.opened });
+});
+
+test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestions, several items with the open 컬렉션에 추가 ▾ — light and dark', TAG, async () => {
+  const listed = await s.page.evaluate(async () => {
+    const r = await window.learn.library.list();
+    return r.ok ? r.data.map((i) => ({ id: i.id, title: i.title })) : [];
+  });
+  const idOf = (title: string) => listed.find((i) => i.title === title)!.id;
+  const important = await createTag(s.page, '중요');
+  await setTagColor(s.page, important, 'yellow', 1);
+  const exam = await createTag(s.page, '시험 범위');
+  await setTagColor(s.page, exam, 'red', 2);
+  const receptor = await createTag(s.page, '수용체');
+  for (const name of ['수용체 억제제', '수용체 작용제', '수용기']) await createTag(s.page, name);
+  for (const id of [important, exam, receptor]) await assignTag(s.page, id, [idOf('sample')]);
+  await showItemPanel(s.app, s.page);
+  await rowByTitle(s.page, 'sample').click();
+  const section = s.page.getByTestId('tags-section');
+  await expect(section.getByTestId(`tag-chip-${important}`)).toBeVisible();
+  if (IS_MAC) await movePointer(512, 620);
+  await guard('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 16 px folder', async () => {
+    const v = await s.page.evaluate((id) => {
+      const chip = document.querySelector(`[data-testid="tags-section"] [data-testid="tag-chip-${id}"]`)!;
+      const add = document.querySelector('[data-testid="tag-add-chip"]')!;
+      const path = document.querySelector('[data-testid="collection-path"]')!;
+      return {
+        chip: chip.getBoundingClientRect().height,
+        dot: chip.querySelector('.dot')?.getBoundingClientRect().width ?? null,
+        add: add.getBoundingClientRect().height,
+        addRing: getComputedStyle(add).boxShadow,
+        path: path.getBoundingClientRect().height,
+        folder: path.querySelector('svg')!.getBoundingClientRect().width,
+      };
+    }, important);
+    results['panel'] = v;
+    check('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 16 px folder', v.chip === 22 && v.dot === 8 && v.add === 22 && v.addRing !== 'none' && v.path === 24 && v.folder === 16, v);
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(s.page, theme);
+    if (IS_MAC) await focusApp(s.app);
+    await allShots(s.app, s.page, `m5-07-panel-item-${theme}`, `item panel: tags and collections of one item (${theme})`);
+  }
+
+  await setTheme(s.page, 'light');
+  await s.page.getByTestId('tag-add-chip').click();
+  await s.page.getByTestId('tag-input').fill('수용');
+  await s.page.keyboard.press('ArrowDown');
+  await expect(s.page.getByTestId('tag-suggestion')).toHaveCount(3);
+  await guard('add field: a 22 px pill with the focus border and halo, suggestion rows 24 px, the chosen row in the accent', async () => {
+    const focus = await tokenColor(s.page, '--focus');
+    const accent = await tokenColor(s.page, '--accent');
+    const v = await s.page.evaluate(() => {
+      const wrap = document.querySelector('.tag-input-wrap')!;
+      const rows = [...document.querySelectorAll('[data-testid="tag-suggestion"]')];
+      return { field: wrap.getBoundingClientRect().height, shadow: getComputedStyle(wrap).boxShadow, rows: rows.map((r) => r.getBoundingClientRect().height), chosen: rows.map((r) => getComputedStyle(r).backgroundColor) };
+    });
+    results['field'] = { ...v, focus, accent };
+    check('add field: a 22 px pill with the focus border and halo, suggestion rows 24 px, the chosen row in the accent', v.field === 22 && v.shadow.includes(focus) && v.rows.every((h) => h === 24) && v.chosen[0] === accent, { ...v, focus, accent });
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(s.page, theme);
+    await expect(s.page.getByTestId('tag-input')).toBeFocused();
+    if (IS_MAC) await focusApp(s.app);
+    await allShots(s.app, s.page, `m5-07-panel-tag-add-${theme}`, `item panel: the add field with suggestions, the first chosen (${theme})`);
+  }
+  await s.page.keyboard.press('Escape');
+
+  await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+  await expect(s.page.getByTestId('inspector-multi')).toBeVisible();
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(s.page, theme);
+    await s.page.getByTestId('add-to-collection').click();
+    await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toBeVisible();
+    await guard('컬렉션에 추가 ▾: a level indents 16 px, the collection holding all three is marked and off', async () => {
+      const v = await s.page.evaluate(({ a, b }) => {
+        const label = (id: string) => {
+          const el = document.querySelector(`[data-testid="add-to-collection-${id}"] .mi-label`)!;
+          return el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft); // the indent is the label's padding: where its text starts
+        };
+        const item = document.querySelector(`[data-testid="add-to-collection-${a}"]`)!;
+        return { step: label(b) - label(a), checked: item.getAttribute('aria-checked'), disabled: item.getAttribute('aria-disabled') };
+      }, { a: bio, b: c6 });
+      results['menu'] = v;
+      check('컬렉션에 추가 ▾: a level indents 16 px, the collection holding all three is marked and off', v.step === 16 && v.checked === 'true' && v.disabled === 'true', v);
+    });
+    if (IS_MAC) await focusApp(s.app);
+    await allShots(s.app, s.page, `m5-07-panel-multi-menu-${theme}`, `item panel: three items with 컬렉션에 추가 ▾ open (${theme})`);
+    await s.page.keyboard.press('Escape');
+    await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toHaveCount(0);
+  }
+  await setTheme(s.page, 'light');
+});
+
+test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)', TAG, async () => {
+  if (!IS_MAC) {
+    results['itemMenu'] = { skipped: 'native menus are macOS only' };
+    return;
+  }
+  await focusApp(s.app);
+  await rowByTitle(s.page, 'sample').click({ button: 'right' });
+  await sleep(1200);
+  // 열기 · Finder에서 보기 · 사본 내보내기… | 컬렉션에 추가 ▸: four rows a key reaches (a separator is skipped), then → opens the submenu.
+  const keys = ['tell application "System Events"', 'delay 0.3', ...Array.from({ length: 4 }, () => ['key code 125', 'delay 0.15']).flat(), 'delay 0.3', 'key code 124', 'end tell'];
+  const typed = await tryExec('osascript', keys.flatMap((line) => ['-e', line]), 20_000);
+  await sleep(1000);
+  const shot = await fullScreenShot('m5-07-menu-item-add', 'item context menu on sample: 컬렉션에 추가 ▸ open (새 컬렉션, the tree as submenus)');
+  await pressEscape();
+  await pressEscape();
+  await sleep(300);
+  results['itemMenu'] = { shot: shot.file, keysOk: typed.ok };
+  check('item menu: the keys reached the submenu (System Events accepted them)', typed.ok, typed.stderr);
 });
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {

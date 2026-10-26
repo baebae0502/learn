@@ -79,4 +79,31 @@ export const organize = {
     /** Under it: how many tags were chosen, and which when there are few ("태그 N개" never breaks across lines). */
     filterEmptyBody: (count: number, names: string) => `고른 태그\u00a0${count}개${names === '' ? '' : `(${names})`}로 거른 결과입니다.`,
   },
+  /** The item panel's 태그 and 컬렉션 sections, what several items have in common, and 컬렉션에 추가 ▾ (M5 spec 6.1, 6.2). */
+  panel: {
+    tags: {
+      title: '태그',
+      commonTitle: '공통 태그',
+      /** The chips' group name for a screen reader. */
+      group: '붙은 태그',
+      add: '태그 추가',
+      addAll: '모두에 태그 추가',
+      /** The add field's placeholder. */
+      field: '태그 이름',
+      suggestions: '태그 제안',
+      /** Under the field while the typed name is no tag yet: what ↩ will do. */
+      create: (name: string) => `↩ 새 태그 ‘${name}’ 만들기`,
+      tooLong: '태그 이름은 200자까지 쓸 수 있습니다.',
+      noCommon: '고른 자료에 함께 붙은 태그가 없습니다.',
+    },
+    collections: {
+      title: '컬렉션',
+      none: '컬렉션에 없음',
+      noCommon: '고른 자료가 함께 든 컬렉션이 없습니다.',
+    },
+    addToCollection: '컬렉션에 추가',
+    newCollection: '새 컬렉션',
+    /** The undo toast of 이 컬렉션에서 빼기 (spec 9.2): `n` items, however many memberships went. */
+    removed: (collection: string, n: number) => `‘${collection}’에서 자료 ${n}개를 뺐습니다.`,
+  },
 } as const;

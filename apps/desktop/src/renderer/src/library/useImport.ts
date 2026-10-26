@@ -32,7 +32,7 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
           {
             confirm,
             importAgain: (path, m, collectionId) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true, ...(collectionId ? { collectionId } : {}) })),
-            fileExisting: (collectionId, itemIds) => unwrap(api().collections.addItems({ collectionId, itemIds: [...itemIds] })),
+            fileExisting: async (collectionId, itemIds) => (await unwrap(api().collections.addItems({ collectionId, itemIds: [...itemIds] }))).length,
           },
           into?.id ?? null,
         );

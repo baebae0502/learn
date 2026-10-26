@@ -984,7 +984,7 @@ export async function createCollection(page: Page, name: string, parentId: strin
 export async function addToCollection(page: Page, collectionId: string, itemIds: readonly string[]): Promise<number> {
   const r = await page.evaluate((input) => window.learn.collections.addItems(input), { collectionId, itemIds: [...itemIds] });
   if (!r.ok) throw new Error(`collections.addItems failed: ${r.code}`);
-  return r.data;
+  return r.data.length;
 }
 
 export async function createTag(page: Page, name: string): Promise<string> {

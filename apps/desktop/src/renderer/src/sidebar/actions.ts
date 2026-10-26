@@ -3,6 +3,7 @@ import { api, unwrap } from '../api';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { organizeModelFor, type OrganizeModel } from '../organize/model';
+import { patchSnapshot } from '../organize/snapshotCache';
 import { parseExpanded } from '../organize/viewSettings';
 import { sidebarHidden, toggledSidebar } from '../shell/layout';
 import { useLibrary } from '../state/library-store';
@@ -19,10 +20,8 @@ export function currentModel(): OrganizeModel | undefined {
   return snapshot && items ? organizeModelFor(snapshot, items) : undefined;
 }
 
-/** Changes the organize snapshot in the cache; the notice main sends next brings the real one. */
-export function patchOrganize(update: (s: OrganizeSnapshot) => OrganizeSnapshot): void {
-  queryClient.setQueryData<OrganizeSnapshot>(keys.organize, (s) => (s ? update(s) : s));
-}
+/** Changes the organize snapshot in the cache (the notice main sends next brings the real one). */
+export const patchOrganize = patchSnapshot;
 
 /** Opens these collections' rows (and remembers it): the stored list plus the new ones. */
 export function addExpanded(ids: readonly string[]): void {

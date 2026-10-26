@@ -44,6 +44,7 @@ import { Toolbar } from '../shell/Toolbar';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
+import { membershipCommands } from '../organize/actions';
 import type { OrganizeModel } from '../organize/model';
 import { useRestoreView } from '../organize/useRestoreView';
 import { collectionActions } from '../sidebar/actions';
@@ -344,6 +345,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     exportCopy: (itemId) => void exportCopy(itemId),
     // Opens the edit form on the selected item, showing a folded panel first (inspector/startEditing.ts).
     editInfo: startEditing,
+    addToCollection: membershipCommands.add,
+    removeFromCollection: (itemIds) => void membershipCommands.remove(itemIds),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,

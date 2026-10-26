@@ -51,6 +51,8 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     { id: 'item.showInFolder', label: platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R' },
     { id: 'item.exportCopy', label: '사본 내보내기…' },
     { id: 'item.openExternally', label: '기본 앱으로 열기' },
+    // 컬렉션에 추가 ▸ has no row without the library read for the menu bar (those tests build without it).
+    { id: 'collection.removeItems', label: '이\u00a0컬렉션에서 빼기' },
     SEP,
     ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
@@ -190,7 +192,7 @@ describe('buildAppMenu', () => {
     const items = walk(build('darwin'));
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
-      expect(found, c.id).toHaveLength(c.menu ? 1 : 0);
+      expect(found, c.id).toHaveLength(c.menu && c.submenu !== 'collections' ? 1 : 0); // the head of 컬렉션에 추가 ▸ is a label over its rows, with no id
       if (found[0]) {
         expect(found[0].label).toBe(c.label);
         expect(found[0].accelerator).toBe(c.accelerator);
@@ -530,6 +532,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
         '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator',
         'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
+        '이\u00a0컬렉션에서 빼기',
         { '색 태그': ['시험 범위', '중요'] },
         'separator', '윈도우 닫기',
       ]);
@@ -546,7 +549,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     });
     it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
       expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', 'separator', '윈도우 닫기',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '윈도우 닫기',
       ]);
       expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
     });

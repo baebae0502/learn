@@ -13,9 +13,12 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { PaneEmpty } from '../ui/PaneEmpty';
 import { Spinner } from '../ui/Spinner';
+import { AddToCollectionButton } from './AddToCollectionButton';
+import { CollectionsSection } from './CollectionsSection';
 import { FileSection } from './FileSection';
 import { InfoHead } from './InfoHead';
 import { InfoSection } from './InfoSection';
+import { TagsSection } from './TagsSection';
 import { libraryStats, multiSummary } from './summary';
 import { useShownAfter } from './useShownAfter';
 
@@ -39,7 +42,7 @@ export function InfoPane() {
   useEffect(() => {
     if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
   }, [editingId, byId]);
-  if (editing) return <ItemInfo key={editing.id} item={editing} />;
+  if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} />;
   // An empty collection: its name and the day it was made instead of numbers that would all be zero (spec 3.6). Items only in a
   // sub-collection make it non-empty (scoped counts them).
   const viewed = scope.kind === 'collection' ? model?.node(scope.id) : undefined;
@@ -74,12 +77,13 @@ function NoSelection({ label, items, stats: withStats }: { label: string; items:
   );
 }
 
-/** library.html?state=multi without its M5/M7 parts (no action buttons, no common sections): the kinds, the count, the titles. */
+/** library.html?state=multi without its M7 part (the tabs button): the kinds, the count, the titles, 컬렉션에 추가 ▾, the common tag and collection sections. */
 function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
   const { sort } = useLibrarySettings();
   // The table's own sort over the selected rows, which come in list order (ties keep it): the table's relative order.
   const shown = useMemo(() => sortItems(items, sort).slice(0, MULTI_TITLES), [items, sort]);
   const summary = useMemo(() => multiSummary(items), [items]);
+  const ids = useMemo(() => items.map((i) => i.id), [items]);
   return (
     <div className="inspector-scroll" data-testid="inspector-multi">
       <header className="item-head">
@@ -99,24 +103,30 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
           ))}
           {items.length > MULTI_TITLES && <li className="multi-more">{t.inspector.more(items.length - MULTI_TITLES)}</li>}
         </ul>
+        <AddToCollectionButton ids={ids} />
       </header>
+      <TagsSection ids={ids} />
+      <CollectionsSection ids={ids} />
     </div>
   );
 }
 
 /** One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile). */
-export function ItemInfo({ item }: { item: LibraryItem }) {
+export function ItemInfo({ item, probe = true }: { item: LibraryItem; probe?: boolean }) {
   const detail = useItemDetail(item.id);
+  const ids = useMemo(() => [item.id], [item.id]);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
   useEffect(() => {
     if (detail.isError) console.warn(`[inspector] detail failed: ${detail.error instanceof ApiError ? detail.error.code : 'INTERNAL'}`);
   }, [detail.isError, detail.error]);
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
-      <InfoHead item={item} />
+      <InfoHead item={item} probe={probe} />
       {detail.data ? (
         <>
           <InfoSection item={item} detail={detail.data} />
+          <TagsSection ids={ids} />
+          <CollectionsSection ids={ids} />
           <FileSection detail={detail.data} />
         </>
       ) : detail.isError ? (

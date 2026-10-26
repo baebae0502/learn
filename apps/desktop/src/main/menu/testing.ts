@@ -1,15 +1,11 @@
-import { COMMANDS, SUBMENUS, commandById, type CommandId, type CommandSpec, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
+import { COMMANDS, SUBMENUS, commandById, type CommandSpec, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
 
 /** The registry's own 색 태그 group and 색 지정 command, under the names the menu builders' tests use. */
 export const COLOR_GROUP: SubmenuSpec = SUBMENUS.find((s) => s.id === 'colorTags')!;
 export const SET_TAG_COLOR: CommandSpec = commandById('tag.setColor');
-/** A stand-in for the command a later task adds (its handler does not exist yet, so the real registry has none). */
-export const ADD_TO_COLLECTION: CommandSpec = {
-  id: 'collection.addItems' as CommandId, label: '컬렉션에 추가', contexts: ['item'], submenu: 'collections', palette: false,
-  menu: { menu: 'file', group: 2, order: 4 }, contextMenu: { kinds: ['item'], group: 3, order: 1 },
-};
-/** The real registry plus the one stand-in left. */
-export const FUTURE_COMMANDS: CommandSpec[] = [...COMMANDS, ADD_TO_COLLECTION];
+export const ADD_TO_COLLECTION: CommandSpec = commandById('collection.addItems');
+/** The whole registry (its commands and groups), under the names the menu builders' tests use. */
+export const FUTURE_COMMANDS: CommandSpec[] = [...COMMANDS];
 export const FUTURE_SUBMENUS: SubmenuSpec[] = [...SUBMENUS];
 
 export function organize(over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot {

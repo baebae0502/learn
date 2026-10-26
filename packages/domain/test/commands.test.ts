@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
-  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
-  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
+  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
+  sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -244,7 +244,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'collection.new', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'collection.new', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'collection.addItems', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected
@@ -438,5 +438,47 @@ describe('collection commands (M5 spec 3.4, 9.3)', () => {
     expect(paletteLabel(commandById('collection.rename'), 'darwin')).toBe('컬렉션 이름 바꾸기');
     expect(commandLabel(commandById('collection.rename'), 'darwin')).toBe('이름 바꾸기');
     expect(paletteLabel(commandById('collection.delete'), 'darwin')).toBe('컬렉션 삭제…');
+  });
+});
+
+describe('collection.addItems and collection.removeItems (M5 spec 9.2, 9.3)', () => {
+  const viewing = (scope: CommandContextState['scope']): CommandContextState => ({ ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1, scope });
+
+  it('are named as the spec names them: the add is a value submenu with no palette line, the remove a palette command', () => {
+    expect(commandById('collection.addItems')).toMatchObject({ label: '컬렉션에 추가', submenu: 'collections', palette: false, contexts: ['item'] });
+    expect(commandById('collection.removeItems')).toMatchObject({ label: '이 컬렉션에서 빼기', palette: true, contexts: ['item'] });
+    expect(inPalette(commandById('collection.addItems'))).toBe(false);
+    expect(inPalette(commandById('collection.removeItems'))).toBe(true);
+    expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]); // a value submenu has a place and no palette line
+  });
+  it('컬렉션에 추가 works on any selection in the library — a missing file is filed too — and not in the reader, with no selection or while blocked', () => {
+    expect(isCommandAvailable('collection.addItems', viewing('all'), [managedOk])).toBe(true);
+    expect(isCommandAvailable('collection.addItems', viewing('unfiled'), [managedOk, linkedMissing])).toBe(true);
+    expect(isCommandAvailable('collection.addItems', viewing('collection'), [managedOk])).toBe(true);
+    expect(isCommandAvailable('collection.addItems', viewing('all'))).toBe(false);
+    expect(isCommandAvailable('collection.addItems', { ...viewing('all'), view: 'viewer' }, [managedOk])).toBe(false);
+    expect(isCommandAvailable('collection.addItems', { ...viewing('all'), blocked: true }, [managedOk])).toBe(false);
+  });
+  it('이 컬렉션에서 빼기 needs a collection to be viewed (the scope the owner chose to take out of, with what is below it)', () => {
+    expect(isCommandAvailable('collection.removeItems', viewing('collection'), [managedOk])).toBe(true);
+    for (const scope of ['all', 'recent', 'unfiled', 'duplicates'] as const) expect(isCommandAvailable('collection.removeItems', viewing(scope), [managedOk]), scope).toBe(false);
+    expect(isCommandAvailable('collection.removeItems', viewing('collection'))).toBe(false);
+    expect(isCommandAvailable('collection.removeItems', { ...viewing('collection'), blocked: true }, [managedOk])).toBe(false);
+  });
+  it('the menu bar judges them on the reported selection: the add everywhere in the library, the remove only inside a collection', () => {
+    expect(availableMenuCommands(viewing('all'))).toContain('collection.addItems');
+    expect(availableMenuCommands(viewing('all'))).not.toContain('collection.removeItems');
+    expect(availableMenuCommands(viewing('collection'))).toEqual(expect.arrayContaining(['collection.addItems', 'collection.removeItems']));
+    expect(availableMenuCommands({ ...viewing('collection'), selectionCount: 0, selectionAvailable: 0 })).not.toContain('collection.addItems');
+  });
+  it('both follow 기본 앱으로 열기 in 파일, and sit in their own group of the item menu after 사본 내보내기… (7.3 order: 추가 · 빼기)', () => {
+    const file = COMMANDS.filter((c) => c.menu?.menu === 'file').sort((a, b) => a.menu!.group - b.menu!.group || a.menu!.order - b.menu!.order).map((c) => c.id);
+    expect(file.slice(-5)).toEqual(['item.showInFolder', 'item.exportCopy', 'item.openExternally', 'collection.addItems', 'collection.removeItems']);
+    const item = COMMANDS.filter((c) => c.contextMenu?.kinds.includes('item')).sort((a, b) => a.contextMenu!.group - b.contextMenu!.group || a.contextMenu!.order - b.contextMenu!.order);
+    expect(item.map((c) => [c.id, c.contextMenu!.group])).toEqual([
+      ['item.relink', 0], ['item.open', 1], ['item.showInFolder', 2], ['item.exportCopy', 2], ['collection.addItems', 3], ['collection.removeItems', 3],
+    ]);
+    expect(commandById('collection.removeItems').contextMenu?.onlyWhenAvailable).toBe(true); // absent outside a collection, not greyed
+    expect(commandById('collection.addItems').contextMenu?.onlyWhenAvailable).toBeUndefined();
   });
 });

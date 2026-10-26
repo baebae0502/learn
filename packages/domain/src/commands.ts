@@ -18,6 +18,8 @@ export type CommandId =
   | 'item.openExternally'
   | 'item.editInfo'
   | 'item.exportCopy'
+  | 'collection.addItems'
+  | 'collection.removeItems'
   | 'item.relink'
   | 'collection.new'
   | 'collection.newChild'
@@ -218,6 +220,19 @@ export const COMMANDS: readonly CommandSpec[] = [
     contextMenu: { kinds: ['item'], group: 2, order: 2 },
     palette: true,
     keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
+  },
+  // 컬렉션에 추가 ▸ (spec 9.2, 9.3): one command, one row per collection (a value submenu, so no palette line of its own);
+  // the menu bar, the item menu and the item panel's button file the selection, and 새 컬렉션 is the first row.
+  {
+    id: 'collection.addItems', label: '컬렉션에 추가', submenu: 'collections', palette: false, contexts: ['item'],
+    menu: { menu: 'file', group: 2, order: 4 }, contextMenu: { kinds: ['item'], group: 3, order: 1 },
+  },
+  // 이 컬렉션에서 빼기 (spec 0, 9.2): out of the collection being viewed and the ones below it, so the item leaves the view.
+  // The item menu does not list it elsewhere (nothing to take out of).
+  {
+    id: 'collection.removeItems', label: '이\u00a0컬렉션에서 빼기', palette: true, contexts: ['item'],
+    menu: { menu: 'file', group: 2, order: 5 }, contextMenu: { kinds: ['item'], group: 3, order: 2, onlyWhenAvailable: true },
+    keywords: ['컬렉션', '빼기', '제거', '꺼내기', 'remove'],
   },
   // The collection commands act on one collection: the one a sidebar row's menu was opened on (a right click selects it
   // first), and from the palette the one being viewed (spec 9.3). None is on the menu bar; the keyboard reaches them
@@ -558,6 +573,10 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.editInfo': (c, t) => t.items.length === 1 && c.view === 'library',
+  // Filing needs the selection only (any file state: the file is not touched); the library view, as the menu bar judges it.
+  'collection.addItems': (c) => c.view === 'library',
+  // Takes the selection out of the collection viewed and what is below it: nothing to take out of anywhere else.
+  'collection.removeItems': (c) => c.view === 'library' && c.scope === 'collection',
   // One collection; the open panel needs the library the files come into.
   'collection.newChild': (_c, t) => t.collections.length === 1,
   'collection.rename': (_c, t) => t.collections.length === 1,

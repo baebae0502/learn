@@ -204,8 +204,9 @@ export interface LearnApi {
     move(input: MoveCollectionInput): Promise<Result<Collection>>;
     remove(input: CollectionIdInput): Promise<Result<void>>;
     restore(input: CollectionIdInput): Promise<Result<Collection>>;
-    addItems(input: CollectionItemsInput): Promise<Result<number>>;
-    removeItems(input: CollectionItemsInput): Promise<Result<number>>;
+    /** The ids whose membership really changed. */
+    addItems(input: CollectionItemsInput): Promise<Result<string[]>>;
+    removeItems(input: CollectionItemsInput): Promise<Result<string[]>>;
   };
   tags: {
     list(): Promise<Result<Tag[]>>;

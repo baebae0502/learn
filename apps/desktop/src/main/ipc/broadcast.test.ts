@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_LIBRARY_VIEW, commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
+import { mainStrings } from '../strings';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -156,10 +157,10 @@ describe('library mutations broadcast libraryChanged', () => {
 describe('collection and tag mutations broadcast reason collections / tags, only when something changed', () => {
   it('collections: create announces; addItems/removeItems announce the items that changed, or nothing', async () => {
     await call('collections:create', { name: '세포 신호' });
-    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: 1 });
-    expect(await call('collections:removeItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: 0 });
+    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: [ITEM] });
+    expect(await call('collections:removeItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: [] });
     collections.addItemsChanged.mockReturnValueOnce([]);
-    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: 0 });
+    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: [] });
     expect(sent).toEqual([
       [CHANGED, { reason: 'collections' }],
       [CHANGED, { reason: 'collections', itemIds: [ITEM] }],
@@ -231,6 +232,8 @@ describe('item context menu re-checks the file first', () => {
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: false },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
+      'separator',
+      { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
@@ -251,6 +254,8 @@ describe('item context menu re-checks the file first', () => {
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: true },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: true },
+      'separator',
+      { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
     ]);
     expect(sent).toEqual([]);
   });

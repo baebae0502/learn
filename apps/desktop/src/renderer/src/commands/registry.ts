@@ -48,6 +48,10 @@ export interface CommandEnv extends CommandContextState {
   exportCopy(itemId: string): void;
   /** 정보 편집: the item panel shows (if folded) and its 정보 section becomes the form. */
   editInfo(itemId: string): void;
+  /** 컬렉션에 추가 ▸: the items into the collection a menu row names, or (addSelection) into a new one named in the tree. */
+  addToCollection(itemIds: readonly string[], args: CommandArgs): void;
+  /** 이 컬렉션에서 빼기: out of the collection viewed and below it; the toast offers 실행 취소. */
+  removeFromCollection(itemIds: readonly string[]): void;
   /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
@@ -106,6 +110,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.openExternally': (env, t) => env.openExternally(itemOf(t)),
   'item.exportCopy': (env, t) => env.exportCopy(itemOf(t)),
   'item.editInfo': (env, t) => env.editInfo(itemOf(t)),
+  'collection.addItems': (env, target) => env.addToCollection(target.itemIds ?? [], target.args ?? {}),
+  'collection.removeItems': (env, target) => env.removeFromCollection(target.itemIds ?? []),
   'item.relink': (env, t) => env.relink(itemOf(t)),
   'collection.new': (env) => env.newCollection(),
   'collection.newChild': (env, t) => env.newCollection({ parentId: collectionOf(t) }),

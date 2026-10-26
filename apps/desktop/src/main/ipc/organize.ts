@@ -19,6 +19,11 @@ function changed<T>(reason: Reason, result: T): T {
   announce(reason);
   return result;
 }
+/** Bulk membership change: announce the items that changed, if any; answer with their ids (what an undo puts back). */
+function changedIds(reason: Reason, itemIds: readonly string[]): string[] {
+  if (itemIds.length > 0) announce(reason, itemIds);
+  return [...itemIds];
+}
 /** Bulk membership/tag changes: announce the items that changed, if any; answer with their count. */
 function changedItems(reason: Reason, itemIds: readonly string[]): number {
   if (itemIds.length > 0) announce(reason, itemIds);
@@ -40,9 +45,9 @@ export function registerOrganizeIpc(handle: Handle, deps: IpcDeps): void {
     return collection;
   });
   handle(Channels.collections.addItems, collectionItemsInput, ({ collectionId, itemIds }) =>
-    changedItems('collections', collections().addItemsChanged(collectionId, itemIds)));
+    changedIds('collections', collections().addItemsChanged(collectionId, itemIds)));
   handle(Channels.collections.removeItems, collectionItemsInput, ({ collectionId, itemIds }) =>
-    changedItems('collections', collections().removeItemsChanged(collectionId, itemIds)));
+    changedIds('collections', collections().removeItemsChanged(collectionId, itemIds)));
 
   handle(Channels.tags.list, emptyInput, () => tags().list());
   handle(Channels.tags.create, createTagInput, ({ name }) => {

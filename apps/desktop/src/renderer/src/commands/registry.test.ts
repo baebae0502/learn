@@ -37,6 +37,8 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openExternally: vi.fn(),
   exportCopy: vi.fn(),
   editInfo: vi.fn(),
+  addToCollection: vi.fn(),
+  removeFromCollection: vi.fn(),
   focusSearch: vi.fn(),
   sortBy: vi.fn(),
   openSettings: vi.fn(),
@@ -352,5 +354,30 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     expect(Object.keys(contextOf(e)).sort()).toEqual(
       ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'view'].sort(),
     );
+  });
+  it('컬렉션에 추가 passes the target items and the row\'s value to the env, in the library, for any file state', () => {
+    const e = env({ libraryCount: 3 });
+    expect(runCommand('collection.addItems', e, { itemIds: [ID, OTHER], args: { collectionId: 'c1' } })).toBe(true);
+    expect(e.addToCollection).toHaveBeenLastCalledWith([ID, OTHER], { collectionId: 'c1' });
+    expect(runCommand('collection.addItems', e, { itemIds: [ID], args: { addSelection: true } })).toBe(true);
+    expect(e.addToCollection).toHaveBeenLastCalledWith([ID], { addSelection: true });
+    expect(runCommand('collection.addItems', e, { itemIds: [ID] })).toBe(true); // a bare run (no row): the env decides there is nothing to file into
+    expect(e.addToCollection).toHaveBeenLastCalledWith([ID], {});
+  });
+  it('컬렉션에 추가 is refused in the reader, while blocked and with no target', () => {
+    expect(runCommand('collection.addItems', env({ view: 'viewer' }), { itemIds: [ID], args: { collectionId: 'c1' } })).toBe(false);
+    expect(runCommand('collection.addItems', env({ blocked: true }), { itemIds: [ID], args: { collectionId: 'c1' } })).toBe(false);
+    expect(runCommand('collection.addItems', env(), { args: { collectionId: 'c1' } })).toBe(false);
+  });
+  it('이 컬렉션에서 빼기 runs only while a collection is viewed', () => {
+    const inside = env({ scope: 'collection' });
+    expect(runCommand('collection.removeItems', inside, { itemIds: [ID, OTHER] })).toBe(true);
+    expect(inside.removeFromCollection).toHaveBeenCalledWith([ID, OTHER]);
+    for (const scope of ['all', 'recent', 'unfiled', 'duplicates'] as const) expect(runCommand('collection.removeItems', env({ scope }), { itemIds: [ID] }), scope).toBe(false);
+  });
+  it('a pick from the item menu reaches the env with its value (main judged it)', () => {
+    const e = env();
+    expect(runPicked({ commandId: 'collection.addItems', args: { collectionId: 'c1' } }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.addToCollection).toHaveBeenCalledWith([ID], { collectionId: 'c1' });
   });
 });

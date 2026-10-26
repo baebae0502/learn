@@ -1,4 +1,4 @@
-import type { CommandId } from './commands';
+import type { CommandArgs, CommandId } from './commands';
 import type { Prefs } from './settings';
 
 /** The window's state as its renderer draws it: pushed on change (windowState event) and answered by `ui.windowState()`. */
@@ -23,7 +23,8 @@ export type LibraryChangeReason =
   | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'collections' | 'tags' | 'availability' | 'opened';
 
 export interface LearnEventMap {
-  menuCommand: { commandId: CommandId };
+  /** A menu-bar click or accelerator; `args` is the value of a submenu row (정렬 기준 › 연도). */
+  menuCommand: { commandId: CommandId; args?: CommandArgs };
   /**
    * Sent only when something changed. `itemIds`: the items that actually changed (absent when the change is not
    * per item, e.g. a collection or tag was created, renamed or removed).

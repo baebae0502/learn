@@ -1,3 +1,4 @@
+import { NO_LIBRARY_VIEW } from '@learn/domain';
 import { registerWindowKind, type KindedContents, type WindowKind } from '../window-kinds';
 import type { IpcDeps } from './register';
 
@@ -13,7 +14,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     prefs: {} as IpcDeps['prefs'],
     uiContext: {
       report: () => {},
-      current: () => ({ view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 }),
+      current: () => ({ view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW }),
     },
     sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {} },
     isMainWindow: () => true,

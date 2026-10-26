@@ -1,4 +1,4 @@
-import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, type CommandContext, type CommandId } from '@learn/domain';
+import { COMMANDS, acceleratorKeys, acceleratorLabel, commandLabel, keySpecKeys, type CommandId } from '@learn/domain';
 import { t } from '../strings';
 
 export interface ShortcutRow {
@@ -17,7 +17,7 @@ export interface ShortcutGroup {
 }
 
 /** Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). */
-const ORDER: CommandContext[] = ['app', 'library', 'item', 'viewer'];
+const ORDER = ['app', 'library', 'item', 'viewer'] as const;
 /**
  * The sheet's own order (design-spec 7.4: ⌘, then ⌘K, ⌘/ and ⌃⌘S): these lead their group in this order, the rest
  * follow in registry order. COMMANDS itself keeps app.palette last (R-10).

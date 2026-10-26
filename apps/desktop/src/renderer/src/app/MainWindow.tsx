@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { commandById, commandLabel, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
+import { columnsMask, commandById, commandLabel, commandMention, tagPositionsMask, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
+import { commandTargets } from '../commands/targets';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
 import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
-import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
+import { visibleColumns } from '../library/columns';
+import { sortFromArgs } from '../library/sort';
 import { createExportCopy } from '../library/exportCopy';
 import { whenPanelCloses } from '../library/fileActions';
 import { runFileAction } from '../library/runFileAction';
@@ -249,9 +251,15 @@ export function MainWindow(_props: { info: AppInfo }) {
   const selected = useLibrary((s) => s.selected);
   const selection = useMemo(() => selectionCounts(list, selected), [list, selected]);
   /** The sort in force, read (like listRef) when a menu or palette item command takes the selection in table order. */
-  const { sort } = useLibrarySettings();
+  const { sort, setSort, columns, forced } = useLibrarySettings();
   const sortRef = useRef(sort);
   sortRef.current = sort;
+  // What the menu bar's 정렬 기준 and the 1–8 keys need to know, as flat values (the reported context has no arrays).
+  const columnsShown = useMemo(() => columnsMask(visibleColumns(columns, forced).map((c) => c.id)), [columns, forced]);
+  const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
+  const scopeKind = scopeView.scope.kind;
+  const collectionCount = scopeView.model?.collectionCount ?? 0;
+  const searching = found !== null;
   // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
@@ -283,10 +291,18 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionCount: selection.count,
     selectionAvailable: selection.available,
     selectionRelinkable: selection.relinkable,
+    scope: scopeKind,
+    collectionCount,
+    tagPositions,
+    tagFilterCount: tagCount,
+    searchActive: searching,
+    sortColumn: sort.column,
+    sortDirection: sort.direction,
+    columnsShown,
     // Item commands from the menu bar and the palette run on these ids, in the order the table shows them.
     selection: () => inTableOrder(listRef.current, useLibrary.getState().selected, sortRef.current),
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
-    targetsOf: (ids) => freshTargets(queryClient, listRef.current, ids),
+    targetsOf: (target) => commandTargets(queryClient, listRef.current, target),
     importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
     back: () => setView({ kind: 'library' }),
     // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
@@ -305,8 +321,12 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     focusSearch: focusQuickSearch,
+    sortBy: (args) => {
+      const next = sortFromArgs(sortRef.current, args);
+      if (next) setSort(next);
+    },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, scopeKind, collectionCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -324,7 +344,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const showItemMenu = useCallback(async (itemIds: readonly string[], x: number, y: number) => {
     try {
       const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [...itemIds], x, y }));
-      if (picked) runPicked(picked.commandId, envRef.current, itemIds);
+      if (picked) runPicked(picked, envRef.current, { itemIds });
     } catch (e) {
       actionFailed(e);
     }

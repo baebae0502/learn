@@ -16,6 +16,7 @@ import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
+import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
@@ -56,6 +57,8 @@ const NO_COLUMNS: readonly LibraryColumnId[] = [];
 /** Tabular figures (design-spec 6 표: 숫자는 tabular). */
 const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size']);
 const ROW = '[data-testid="item-row"]';
+/** A `contextmenu` this soon after the menu our own key opened is the browser's echo of the same key (Windows sends it on key-up). */
+const KEY_MENU_ECHO_MS = 500;
 const rowIdOf = (target: EventTarget): string | null =>
   target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['itemId'] ?? null) : null;
 const isMac = () => currentPlatform() === 'darwin';
@@ -260,6 +263,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // The ring shows for keyboard use only (design-spec 6: 마우스 클릭으로는 링을 띄우지 않는다): a key turns it on, a
   // press turns it off, and focus that enters the table brings it when the last input was a key (F6, Tab).
   const [ring, setRing] = useState(false);
+  const keyMenuAt = useRef(Number.NEGATIVE_INFINITY);
   const focusStop = useCallback(() => {
     grid.current?.querySelector<HTMLElement>(`${ROW}[data-index="${latest.current.stop}"]`)?.focus({ preventScroll: true });
   }, []);
@@ -289,6 +293,20 @@ export function LibraryTable(props: LibraryTableProps) {
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
     if (isNavigationKey(e)) setRing(true);
     if (e.target instanceof Element && e.target.closest('[role="separator"]')) return; // a column edge has its own keys
+    if (isContextMenuKey(e.nativeEvent)) {
+      // ⇧F10 and the menu key open the focused row's menu under it, as a right-click would (spec 9.1); the browser's own
+      // menu event for the key is not wanted (Q-29).
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>(ROW) : null;
+      const id = row ? rowIdOf(row) : null;
+      if (row === null || id === null) return; // the header and the empty body keep the browser's
+      e.preventDefault();
+      setRing(true);
+      keyMenuAt.current = performance.now();
+      apply({ kind: 'contextMenu', id });
+      const at = menuPointFor(row);
+      latest.current.props.onContextMenu(inOrder(useLibrary.getState().selected, latest.current.order), at.x, at.y);
+      return;
+    }
     const key = gridKey(e.nativeEvent, isMac());
     if (!key) return;
     e.preventDefault();
@@ -341,6 +359,10 @@ export function LibraryTable(props: LibraryTableProps) {
   // Right-click selects first (design-spec 7.1, Finder): a row outside the selection becomes the selection; inside it,
   // the menu acts on every selected item, in table order.
   const onBodyContextMenu = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    if (performance.now() - keyMenuAt.current < KEY_MENU_ECHO_MS) {
+      e.preventDefault();
+      return;
+    }
     const id = rowIdOf(e.target);
     if (id === null) return;
     e.preventDefault();

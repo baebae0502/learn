@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
-import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
+import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
@@ -538,6 +538,7 @@ export interface MenuNode {
   accelerator: string | null;
   id: string | null;
   enabled: boolean;
+  checked: boolean;
   type: string;
   submenu: MenuNode[] | null;
 }
@@ -546,7 +547,7 @@ export interface MenuNode {
 export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]> {
   return app.evaluate(({ Menu }) => {
     interface LiveItem {
-      label: string; role?: string; accelerator?: string; id?: string; enabled: boolean; type: string; submenu?: { items: LiveItem[] };
+      label: string; role?: string; accelerator?: string; id?: string; enabled: boolean; checked: boolean; type: string; submenu?: { items: LiveItem[] };
     }
     const walk = (items: LiveItem[]): MenuNode[] =>
       items.map((i) => ({
@@ -555,6 +556,7 @@ export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]
         accelerator: i.accelerator ?? null,
         id: i.id ?? null,
         enabled: i.enabled,
+        checked: i.checked,
         type: i.type,
         submenu: i.submenu ? walk(i.submenu.items) : null,
       }));
@@ -571,18 +573,20 @@ export async function enabledMenuCommands(app: ElectronApplication): Promise<Com
 }
 
 /**
- * Click an application-menu item by id the way Electron does for a mouse click: the MenuItem's own `click()`
- * with the focused window. Waits up to 5 s for the item to become clickable (the renderer reports its context
- * asynchronously), then throws when it is missing, hidden or disabled (a user couldn't click it).
+ * Click an application-menu item the way Electron does for a mouse click: the MenuItem's own `click()` with the focused
+ * window. `args` names a row of the command's submenu (보기 › 정렬 기준 ▸ 연도 = `{ column: 'year' }`); the command's own
+ * item (the submenu's head) is what must be on. Waits up to 5 s for it to become clickable (the renderer reports its
+ * context asynchronously), then throws when the item is missing, hidden or disabled (a user couldn't click it).
  */
-export async function runMenuCommand(app: ElectronApplication, id: CommandId): Promise<void> {
+export async function runMenuCommand(app: ElectronApplication, id: CommandId, args?: CommandArgs): Promise<void> {
   await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
-  await app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
-    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
-    if (!item) throw new Error(`no application menu item with id ${id}`);
-    if (!item.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
+  const itemId = menuItemId(id, args);
+  await app.evaluate(({ BrowserWindow, Menu, webContents }, itemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(itemId);
+    if (!item) throw new Error(`no application menu item with id ${itemId}`);
+    if (!item.enabled || !item.visible) throw new Error(`menu item ${itemId} is not clickable`);
     item.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
-  }, id);
+  }, itemId);
 }
 
 /**
@@ -759,7 +763,7 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
 }
 
 /** Whether the application-menu item exists, is visible and is enabled right now. */
-export async function menuItemEnabled(app: ElectronApplication, id: CommandId): Promise<boolean> {
+export async function menuItemEnabled(app: ElectronApplication, id: string): Promise<boolean> {
   return app.evaluate(({ Menu }, id) => {
     const item = Menu.getApplicationMenu()?.getMenuItemById(id);
     return Boolean(item && item.enabled && item.visible);
@@ -774,21 +778,37 @@ export interface PopupItem {
   /** A checkbox item's mark (the column header menu); false for the others. */
   checked: boolean;
   type: string;
+  /** The rows of a submenu (컬렉션에 추가 ▸, 색 태그 ▸), as recorded. */
+  submenu?: PopupItem[];
 }
 
 /**
- * Replace native popups in main for the rest of the session: every `Menu.prototype.popup` records its items, then
- * (one task later, like a user) clicks the enabled item labelled `pick` through its own `click()` and closes the
- * menu. A null `pick`, or no enabled item with that label, only closes it (dismissed).
+ * Replace native popups in main for the rest of the session: every `Menu.prototype.popup` records its items (submenus
+ * too) and the point it opened at, then (one task later, like a user) clicks the enabled row `pick` names through its
+ * own `click()` and closes the menu. `pick` is a label, or a path of labels down the submenus (`['컬렉션에 추가', '학회']`);
+ * a path that ends on a submenu's head, a null `pick`, or no enabled row with that label only closes the menu (dismissed).
  */
-export async function stubContextMenu(app: ElectronApplication, pick: string | null): Promise<void> {
+export async function stubContextMenu(app: ElectronApplication, pick: string | readonly string[] | null): Promise<void> {
   await app.evaluate(({ Menu }, pick) => {
-    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; click(): void }
-    const g = globalThis as { __learnPopups?: PopupItem[][] };
+    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; submenu?: { items: LiveItem[] }; click(): void }
+    interface Recorded { id: string | null; label: string; enabled: boolean; checked: boolean; type: string; submenu?: Recorded[] }
+    const g = globalThis as { __learnPopups?: Recorded[][]; __learnPopupAt?: Array<{ x: number; y: number }> };
     g.__learnPopups = [];
-    Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { callback?: () => void }) {
-      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type })));
-      const target = pick === null ? undefined : this.items.find((i) => i.label === pick && i.enabled && i.visible);
+    g.__learnPopupAt = [];
+    const record = (items: LiveItem[]): Recorded[] =>
+      items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type, ...(i.submenu ? { submenu: record(i.submenu.items) } : {}) }));
+    Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { x?: number; y?: number; callback?: () => void }) {
+      g.__learnPopups!.push(record(this.items));
+      g.__learnPopupAt!.push({ x: options?.x ?? Number.NaN, y: options?.y ?? Number.NaN });
+      const path = pick === null ? [] : typeof pick === 'string' ? [pick] : pick;
+      let level: LiveItem[] = this.items;
+      let found: LiveItem | undefined;
+      for (const label of path) {
+        found = level.find((i) => i.label === label && i.enabled && i.visible);
+        if (!found) break;
+        level = found.submenu?.items ?? [];
+      }
+      const target = path.length > 0 && found && !found.submenu ? found : undefined;
       setTimeout(() => {
         target?.click();
         options?.callback?.();
@@ -796,6 +816,10 @@ export async function stubContextMenu(app: ElectronApplication, pick: string | n
     };
   }, pick);
 }
+
+/** The point (window coordinates) each popup menu recorded since `stubContextMenu` opened at, oldest first. */
+export const recordedPopupPoints = (app: ElectronApplication): Promise<Array<{ x: number; y: number }>> =>
+  app.evaluate(() => (globalThis as { __learnPopupAt?: Array<{ x: number; y: number }> }).__learnPopupAt ?? []);
 
 /** Every popup menu recorded since `stubContextMenu`, oldest first. */
 export const recordedPopups = (app: ElectronApplication): Promise<PopupItem[][]> =>

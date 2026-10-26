@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
 import { newId } from '../src/ids';
 import { showColumnMenuInput } from '../src/ipc';
-import { LIBRARY_COLUMN_IDS, columnSpec } from '../src/library-columns';
+import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, columnSpec } from '../src/library-columns';
 import { libraryScopeSchema } from '../src/organize';
-import { LIBRARY_SORT_COLUMNS, SETTINGS, SIDEBAR_EXPANDED_MAX, parseSetting } from '../src/settings';
+import { SETTINGS, SIDEBAR_EXPANDED_MAX, parseSetting } from '../src/settings';
 
 const code = (fn: () => unknown): string | undefined => {
   try {

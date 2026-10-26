@@ -3,6 +3,23 @@
 export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName'] as const;
 export type LibraryColumnId = (typeof LIBRARY_COLUMN_IDS)[number];
 
+/** Sortable fields. `progress` has no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). It lives here, not in settings.ts: command arguments need the type and settings.ts imports the command registry. */
+export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
+export type LibrarySortColumn = (typeof LIBRARY_SORT_COLUMNS)[number];
+
+/** The columns shown, as a bitmask over LIBRARY_COLUMN_IDS (bit i = the i-th id): the reported command context carries no arrays. */
+export function columnsMask(ids: Iterable<LibraryColumnId>): number {
+  let mask = 0;
+  for (const id of ids) {
+    const i = LIBRARY_COLUMN_IDS.indexOf(id);
+    if (i >= 0) mask |= 1 << i;
+  }
+  return mask;
+}
+
+/** The ids a mask names, in catalogue order; a bit past the catalogue names nothing. */
+export const columnsOfMask = (mask: number): LibraryColumnId[] => LIBRARY_COLUMN_IDS.filter((_, i) => (mask & (1 << i)) !== 0);
+
 export interface LibraryColumnSpec {
   id: LibraryColumnId;
   /** Korean header (spec §3.1); also the column header menu's item. */

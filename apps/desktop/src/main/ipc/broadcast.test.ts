@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
+import { NO_LIBRARY_VIEW, commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -7,7 +7,7 @@ const handlers = new Map<string, Listener>();
 const sent: Array<[string, unknown]> = [];
 const fakeWindow = { isDestroyed: () => false, webContents: { isDestroyed: () => false, send: (ch: string, p: unknown) => sent.push([ch, p]) } };
 const disk: { availability: Availability } = { availability: 'available' };
-const popup = vi.fn(async (_entries: unknown, _at: unknown): Promise<string | null> => null);
+const popup = vi.fn(async (_entries: unknown, _at: unknown): Promise<{ commandId: string; args?: unknown } | null> => null);
 /** shell.showItemInFolder / shell.openPath: what main asked the OS to show or open. */
 const shellCalls: Array<[string, string]> = [];
 const openPathResult = { value: '' };
@@ -57,6 +57,8 @@ const repo = {
   trashChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   restoreChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   updateMetadata: vi.fn((_id: string, _u: unknown) => item()),
+  /** The menu's one query for a selection: the items it knows, in the order asked. */
+  getItems: vi.fn((ids: string[]) => ids.flatMap((id) => (id === ITEM ? [item()] : id === OTHER ? [{ ...item(), id: OTHER }] : []))),
   getItem: vi.fn((id: string) => (id === ITEM ? item() : undefined)),
   getAsset: vi.fn((id: string) => (id === ASSET ? { id: ASSET, availability: stored.availability } : undefined)),
   setAvailability: vi.fn((_id: string, a: Availability) => void (stored.availability = a)),
@@ -76,7 +78,7 @@ const tags = {
   togglePositionChanged: vi.fn((): { tagId: string; assigned: boolean; itemIds: string[] } | null => null),
 };
 /** The main window's report each test starts from: the context menu judges its own fresh targets, not these counts. */
-const LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
+const LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
 /** What the main window last reported (deps.uiContext.current()). */
 const reported: { ctx: CommandContextState } = { ctx: LIBRARY };
 const deps = stubDeps({
@@ -180,6 +182,43 @@ describe('collection and tag mutations broadcast reason collections / tags, only
       [CHANGED, { reason: 'tags', itemIds: [ITEM, OTHER] }],
       [CHANGED, { reason: 'tags', itemIds: [OTHER] }],
     ]);
+  });
+});
+
+describe('the item context menu reads the selection once; kinds without commands answer nothing (spec 9.1)', () => {
+  it('asks for the whole selection with one query, in the order given, and does not read item by item', async () => {
+    repo.getItems.mockClear();
+    repo.getItem.mockClear();
+    await call('ui:showContextMenu', { kind: 'item', itemIds: [OTHER, ITEM], x: 1, y: 2 });
+    expect(repo.getItems).toHaveBeenCalledTimes(1);
+    expect(repo.getItems).toHaveBeenCalledWith([OTHER, ITEM]);
+    expect(repo.getItem).not.toHaveBeenCalled(); // two targets: no single-target file check either
+    expect(popup).toHaveBeenCalledTimes(1);
+  });
+  it('a single target still has its file re-checked (the stored state may be a session old)', async () => {
+    repo.getItem.mockClear();
+    await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
+    expect(repo.getItem).toHaveBeenCalled();
+  });
+  it('answers the picked command with its row\'s value, and null when dismissed or when no item is known', async () => {
+    popup.mockResolvedValueOnce({ commandId: 'library.sortBy', args: { column: 'year' } });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: { commandId: 'library.sortBy', args: { column: 'year' } } });
+    popup.mockResolvedValueOnce({ commandId: 'item.open' });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: { commandId: 'item.open' } });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: null }); // dismissed
+    popup.mockClear();
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: ['3c2d1e0f-9a8b-4c7d-8e6f-5a4b3c2d1e11'], x: 1, y: 2 })).toEqual({ ok: true, data: null });
+    expect(popup).not.toHaveBeenCalled();
+  });
+  it('a collection or a tag has no menu until a registry command lists its kind: null, no popup, nothing read', async () => {
+    repo.getItems.mockClear();
+    for (const input of [{ kind: 'collection', collectionIds: [COLL] }, { kind: 'tag', tagIds: [TAG] }]) {
+      expect(await call('ui:showContextMenu', { ...input, x: 1, y: 2 })).toEqual({ ok: true, data: null });
+    }
+    expect(popup).not.toHaveBeenCalled();
+    expect(repo.getItems).not.toHaveBeenCalled();
+    // The input is still checked: a menu for nothing is not a menu.
+    expect(await call('ui:showContextMenu', { kind: 'collection', collectionIds: [], x: 1, y: 2 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   });
 });
 

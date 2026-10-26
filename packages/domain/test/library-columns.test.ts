@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { newId } from '../src/ids';
 import { showColumnMenuInput, showContextMenuInput } from '../src/ipc';
-import { COLUMN_WIDTH_MAX, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, columnSpec } from '../src/library-columns';
-import { LIBRARY_SORT_COLUMNS } from '../src/settings';
+import { COLUMN_WIDTH_MAX, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, columnSpec, columnsMask, columnsOfMask } from '../src/library-columns';
 
 describe('library table columns (M4 spec 3.1)', () => {
   it('lists the ten columns in catalogue order with the spec labels, widths and alignment', () => {
@@ -34,6 +33,16 @@ describe('library table columns (M4 spec 3.1)', () => {
   });
   it('every column is also a sort column (library.sort)', () => {
     for (const id of LIBRARY_COLUMN_IDS) expect(LIBRARY_SORT_COLUMNS).toContain(id);
+  });
+  it('keeps the columns shown as a bitmask over the catalogue order: the reported context carries no arrays', () => {
+    expect(columnsMask([])).toBe(0);
+    expect(columnsMask(['title'])).toBe(1);
+    expect(columnsMask(DEFAULT_COLUMN_CONFIG.visible)).toBe(0b11111); // 제목·저자·연도·종류·추가일: the first five of the catalogue
+    expect(columnsMask(['createdAt', 'title', 'title'])).toBe(0b10001); // order and repeats do not matter
+    for (const id of LIBRARY_COLUMN_IDS) expect(columnsOfMask(columnsMask([id])), id).toEqual([id]);
+    expect(columnsOfMask(0b10001)).toEqual(['title', 'createdAt']);
+    expect(columnsOfMask(2 ** LIBRARY_COLUMN_IDS.length - 1)).toEqual([...LIBRARY_COLUMN_IDS]);
+    expect(columnsOfMask(2 ** LIBRARY_COLUMN_IDS.length)).toEqual([]); // a bit past the catalogue names no column
   });
 });
 

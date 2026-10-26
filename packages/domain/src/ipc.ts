@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMMAND_IDS, type CommandContextState, type CommandId } from './commands';
+import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
@@ -9,7 +9,7 @@ import type { Result } from './result';
 import type { Prefs } from './settings';
 import type { DuplicateChoice, SheetPayload } from './sheets';
 import { prefsFields } from './settings';
-import { LIBRARY_COLUMN_IDS, type LibraryColumnId } from './library-columns';
+import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
@@ -87,6 +87,16 @@ export const commandContextInput = z
     selectionCount: contextCount,
     selectionAvailable: contextCount,
     selectionRelinkable: contextCount,
+      scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
+      collectionCount: contextCount,
+      /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */
+      tagPositions: z.number().int().min(0).max(255),
+      tagFilterCount: contextCount,
+      searchActive: z.boolean(),
+      sortColumn: z.enum(LIBRARY_SORT_COLUMNS),
+      sortDirection: z.enum(['asc', 'desc']),
+      /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
+      columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
@@ -100,7 +110,7 @@ export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
-/** Native context menus by kind (ADR-0005 §4): items now; collections and tags get theirs in M5. */
+/** Native context menus by kind (ADR-0005 §4): the registry commands that list the kind fill it; a kind none lists answers null. */
 export const showContextMenuInput = z.discriminatedUnion('kind', [
   // The whole table selection (⌘A in a large library): the bound of the reported selection counts.
   z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(1_000_000), ...point }),
@@ -220,7 +230,7 @@ export interface LearnApi {
     savePosition(input: SavePositionInput): Promise<Result<void>>;
   };
   ui: {
-    showContextMenu(input: ShowContextMenuInput): Promise<Result<{ commandId: CommandId } | null>>;
+    showContextMenu(input: ShowContextMenuInput): Promise<Result<PickedCommand | null>>;
     /** The calling window's current state (the windowState push only reports changes). */
     windowState(): Promise<Result<WindowState>>;
     /** The main window's command context changed; main re-derives the menu bar from it (other windows are ignored). */

@@ -1,11 +1,11 @@
-import { COMMANDS, isCommandAvailable, type CommandContextState, type CommandId, type CommandTargetInfo } from '@learn/domain/commands';
+import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
 import type { StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
-  /** Availability facts for item targets (from the library list). */
-  targetsOf(itemIds: readonly string[]): CommandTargetInfo[];
+  /** The availability facts of a target: its items (the library list, the file re-checked), its collections and tags. */
+  targetsOf(target: CommandTarget): CommandTargetInfo[];
   /**
    * The table selection in table order: the targets of an item command run from the menu bar. Read when the
    * command runs, so a closing palette does not run it on an older selection.
@@ -38,6 +38,8 @@ export interface CommandEnv extends CommandContextState {
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
   focusSearch(): void;
+  /** 보기 › 정렬 기준: sets the sort of the view shown from a column and/or a direction (the other stays as it is). */
+  sortBy(args: CommandArgs): void;
   /**
    * A modal surface owns the keyboard: a sheet, the palette, the drop overlay (MainWindow derives it once). Not
    * reported to main; it tells an import (blocked alone) from a modal surface for `duringWork` commands.
@@ -53,11 +55,21 @@ export interface CommandEnv extends CommandContextState {
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
 
+/**
+ * What a command acts on: the table's items, a sidebar collection, a tag chip, and the value of the menu row that ran it.
+ * Every way in (the menu bar, the palette, the key map, a context menu, the buttons) hands a handler this one shape.
+ */
 export interface CommandTarget {
   itemIds?: readonly string[];
+  collectionIds?: readonly string[];
+  tagIds?: readonly string[];
+  args?: CommandArgs;
 }
 
-type Handler = (env: CommandEnv, itemIds: readonly string[]) => void;
+type Handler = (env: CommandEnv, target: CommandTarget) => void;
+
+/** The one item an item command acts on (its availability rule asks for exactly one). */
+const itemOf = (target: CommandTarget): string => target.itemIds![0]!;
 
 /** Renderer side of the registry: exactly one handler per command id (menus can only show handled commands). */
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
@@ -65,12 +77,12 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importLinked': (env) => env.importFiles('linked'),
   'library.find': (env) => env.focusSearch(),
   'nav.back': (env) => env.back(),
-  'item.open': (env, [itemId]) => env.open(itemId!),
-  'item.showInFolder': (env, [itemId]) => env.showInFolder(itemId!),
-  'item.openExternally': (env, [itemId]) => env.openExternally(itemId!),
-  'item.exportCopy': (env, [itemId]) => env.exportCopy(itemId!),
-  'item.editInfo': (env, [itemId]) => env.editInfo(itemId!),
-  'item.relink': (env, [itemId]) => env.relink(itemId!),
+  'item.open': (env, t) => env.open(itemOf(t)),
+  'item.showInFolder': (env, t) => env.showInFolder(itemOf(t)),
+  'item.openExternally': (env, t) => env.openExternally(itemOf(t)),
+  'item.exportCopy': (env, t) => env.exportCopy(itemOf(t)),
+  'item.editInfo': (env, t) => env.editInfo(itemOf(t)),
+  'item.relink': (env, t) => env.relink(itemOf(t)),
   'view.toggleSidebar': (env) => env.toggleSidebar(),
   'view.toggleInspector': (env) => env.toggleInspector(),
   'app.shortcuts': (env) => env.showShortcuts(),
@@ -81,6 +93,10 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.textReset': (env) => env.setTextSize(() => 13),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
+  // A value submenu's head is not a row: with no value there is nothing to sort by.
+  'library.sortBy': (env, t) => {
+    if (t.args) env.sortBy(t.args);
+  },
 };
 
 /** Just the context fields (what main needs for the menu bar: availability and counts, and the pane states for its labels). */
@@ -93,6 +109,14 @@ export function contextOf(env: CommandEnv): CommandContextState {
     selectionCount: env.selectionCount,
     selectionAvailable: env.selectionAvailable,
     selectionRelinkable: env.selectionRelinkable,
+    scope: env.scope,
+    collectionCount: env.collectionCount,
+    tagPositions: env.tagPositions,
+    tagFilterCount: env.tagFilterCount,
+    searchActive: env.searchActive,
+    sortColumn: env.sortColumn,
+    sortDirection: env.sortDirection,
+    columnsShown: env.columnsShown,
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
   };
@@ -115,23 +139,24 @@ export const reportedContext = (env: CommandEnv): CommandContextState => context
 
 export function isCommandEnabled(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
   if (!Object.hasOwn(COMMAND_HANDLERS, id)) return false;
-  const itemIds = target.itemIds ?? [];
-  return isCommandAvailable(id, contextOf(env), env.targetsOf(itemIds), { modal: env.modal });
+  return isCommandAvailable(id, contextOf(env), env.targetsOf(target), { modal: env.modal });
 }
 
 /** Runs a command if it is available now; returns whether it ran. */
 export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget = {}): boolean {
   if (!isCommandEnabled(id, judged(env), target)) return false;
-  COMMAND_HANDLERS[id](env, target.itemIds ?? []);
+  COMMAND_HANDLERS[id](env, target);
   return true;
 }
 
 /**
- * A command picked from a native context menu: main enabled it with fresh file state (the renderer's list may lag
- * one libraryChanged behind), so only the window-level block is checked here.
+ * A command picked from a native menu (a context menu): main enabled it with fresh file state (the renderer's list may lag
+ * one libraryChanged behind), so only the window-level block is checked here. The row's value joins the target the menu
+ * was opened for.
  */
-export function runPicked(id: CommandId, env: CommandEnv, itemIds: readonly string[]): boolean {
-  if (!Object.hasOwn(COMMAND_HANDLERS, id) || judged(env).blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
-  COMMAND_HANDLERS[id](env, itemIds);
+export function runPicked(picked: PickedCommand, env: CommandEnv, target: CommandTarget): boolean {
+  const { commandId, args } = picked;
+  if (!Object.hasOwn(COMMAND_HANDLERS, commandId) || judged(env).blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
+  COMMAND_HANDLERS[commandId](env, args ? { ...target, args } : target);
   return true;
 }

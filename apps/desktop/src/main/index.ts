@@ -4,9 +4,10 @@ import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
+import { readOrganizeSnapshot } from '@learn/db';
 import {
-  COMMANDS, LearnError, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandContextState, type CommandId,
-  type ErrorCode,
+  COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
+  type ErrorCode, type OrganizeSnapshot,
 } from '@learn/domain';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { aboutPanelOptions } from './about';
@@ -15,11 +16,13 @@ import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol
 import { isDemoOverlay } from './demo';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
 import { createFlushGate } from './edit-flush';
-import { broadcast, sendEvent } from './events';
+import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { openLibraryContext, type LibraryContext } from './library-context';
-import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged } from './menu/app-menu';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
+import { createMenuRebuilder } from './menu/rebuild';
+import { menuNeedsOrganize } from './menu/submenus';
 import { openPrefsStore, resolveLibraryRoot } from './prefs';
 import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
@@ -136,7 +139,7 @@ const activation = createActivateGate({
 
 /** The command context before the main window's renderer reports, and after it closed or crashed: nothing runs. */
 const BEFORE_FIRST_REPORT: CommandContextState = Object.freeze({
-  view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0,
+  view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
 });
 /** Last command context of the main window (ADR-0005 §2). */
 let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
@@ -147,9 +150,23 @@ let uiContext: CommandContextState = BEFORE_FIRST_REPORT;
 const menuState = globalThis as { __learnMenuStateVersion?: number; __learnMenuContext?: CommandContextState };
 let appMenu: Menu | null = null;
 
+/** Whether any menu-bar item is read from the library (collections, colour tags): only then are its notices heard and its snapshot read. */
+const menuUsesOrganize = menuNeedsOrganize(COMMANDS, SUBMENUS, 'menu');
+/** Collections and tags for the menu bar's submenus; null when no item uses them, the library is not open, or reading failed. */
+function menuOrganize(): OrganizeSnapshot | null {
+  if (!menuUsesOrganize || !ctx) return null;
+  try {
+    return readOrganizeSnapshot(ctx.db);
+  } catch (e) {
+    console.warn(`[menu] reading the library for the menu bar failed: ${toLearnError(e).code}`); // the code only: no names in a log
+    return null;
+  }
+}
+
 /**
- * Builds and installs the application menu. Once at startup: labels and accelerators do not change at runtime
- * (rebuild here only for a platform or label change), and context reports flip `enabled` in place (setUiContext).
+ * Builds and installs the application menu: once at startup, and again when what its submenus list changes — the sort
+ * and the columns drawn (the reported context) and the collections and tags (main's own notices). Everything else in a
+ * report flips `enabled` in place (setUiContext), so an open dropdown stays open.
  */
 function installAppMenu(): void {
   appMenu = Menu.buildFromTemplate(
@@ -160,6 +177,8 @@ function installAppMenu(): void {
       enabled: new Set(availableMenuCommands(uiContext)),
       onCommand: dispatchMenuCommand,
       labels: menuLabelState(uiContext),
+      context: uiContext,
+      organize: menuOrganize(),
       fullScreenState: mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.isFullScreen(),
       fullScreenAvailable: mainWindow !== null && !mainWindow.isDestroyed() && !isSheetOpen(mainWindow),
       onToggleFullScreen: () => {
@@ -178,22 +197,38 @@ function installAppMenu(): void {
   }
 }
 
+/** The menu bar is rebuilt debounced, and never under an open menu (menu/rebuild.ts). */
+const menuRebuild = createMenuRebuilder(() => {
+  try {
+    installAppMenu();
+  } catch (e) {
+    console.warn(`[menu] rebuilding the menu bar failed: ${toLearnError(e).code}`);
+  }
+});
+// The collections and tags main announces change the menu bar's submenus, when it has any that list them.
+onBroadcast((e) => {
+  if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags')) menuRebuild.request();
+});
+
 let nativeMenuOpen = false;
-/** Tells the main window's renderer a menu-bar menu is open, so no tooltip stays under it. */
+/** Tells the main window's renderer a menu-bar menu is open, so no tooltip stays under it; a rebuild waits for it to close. */
 function setNativeMenuOpen(open: boolean): void {
   if (open === nativeMenuOpen) return;
   nativeMenuOpen = open;
+  menuRebuild.menuOpenChanged(open);
   if (mainWindow && !mainWindow.isDestroyed()) sendEvent(mainWindow.webContents, 'nativeMenu', { open });
 }
 
-/** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open). */
+/** Records the main window's context and updates the registry items in place (no rebuild, open menus stay open) — except where the submenus' rows change. */
 function setUiContext(next: CommandContextState): void {
   if (sameCommandContext(uiContext, next)) return;
   const relabel = menuLabelsChanged(uiContext, next);
+  const reshape = submenuShapeKey(uiContext) !== submenuShapeKey(next);
   uiContext = next;
   if (!appMenu) return;
   applyMenuEnabled(appMenu, new Set(availableMenuCommands(next)));
   if (relabel) applyMenuLabels(appMenu, process.platform, menuLabelState(next));
+  if (reshape) menuRebuild.request();
 }
 
 /**
@@ -233,7 +268,7 @@ const isSettingsWindow = (sender: WebContents): boolean => {
  * Menu clicks and accelerators act on the main window (also when a settings or sheet window is focused), except the
  * main-owned 설정…, which main runs itself: it works even when the library failed to open or no main window exists.
  */
-function dispatchMenuCommand(commandId: CommandId): void {
+function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs): void {
   if (commandId === 'app.settings') {
     const c = commandById('app.settings');
     demoShortcut(c.accelerator!, commandLabel(c, process.platform));
@@ -243,7 +278,7 @@ function dispatchMenuCommand(commandId: CommandId): void {
   const target = mainWindow;
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
-  sendEvent(target.webContents, 'menuCommand', { commandId });
+  sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}) });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -294,6 +329,7 @@ if (!app.requestSingleInstanceLock()) {
     const libraryRoot = resolveLibraryRoot({ envDir: process.env['LEARN_LIBRARY_DIR'], prefs: prefs.get(), userData: app.getPath('userData') });
     try {
       ctx = await openLibraryContext(libraryRoot);
+      if (menuUsesOrganize) menuRebuild.request(); // the menu bar was built before the library opened
     } catch (e) {
       const le = toLearnError(e, mainStrings.library.openFailed);
       libraryError = { code: le.code, message: le.message };

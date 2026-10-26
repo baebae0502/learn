@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
-  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
-  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type CommandTargetInfo,
+  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable,
+  sameCommandContext, selectionTargets, type CommandContextState, type CommandSpec, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
 import { EventChannels } from '../src/event-channels';
@@ -29,11 +29,11 @@ describe('channels', () => {
 
 /** An empty library with nothing selected (the counts every fixture starts from). */
 const NONE = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 } as const;
-const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13, ...NONE };
-const VIEWER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, ...NONE };
-const linkedMissing: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
-const managedOk: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
-const managedMissing: CommandTargetInfo = { storageMode: 'managed', availability: 'missing' };
+const LIB: CommandContextState = { view: 'library', blocked: false, textSize: 13, ...NONE, ...NO_LIBRARY_VIEW };
+const VIEWER: CommandContextState = { view: 'viewer', blocked: false, textSize: 13, ...NONE, ...NO_LIBRARY_VIEW };
+const linkedMissing: ItemTargetInfo = { kind: 'item', storageMode: 'linked', availability: 'missing' };
+const managedOk: ItemTargetInfo = { kind: 'item', storageMode: 'managed', availability: 'available' };
+const managedMissing: ItemTargetInfo = { kind: 'item', storageMode: 'managed', availability: 'missing' };
 /** A library of 9 items with a selection of `count`, `available` of them with their file, `relinkable` linked and missing. */
 const selecting = (count: number, available: number, relinkable = 0, view: CommandContextState['view'] = 'library'): CommandContextState => ({
   ...LIB, view, libraryCount: 9, selectionCount: count, selectionAvailable: available, selectionRelinkable: relinkable,
@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
@@ -170,8 +170,8 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('item.open', LIB, [managedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [managedOk])).toBe(false);
-    expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'linked', availability: 'available' }])).toBe(false);
-    expect(isCommandAvailable('item.relink', LIB, [{ storageMode: 'managed', availability: 'missing' }])).toBe(false);
+    expect(isCommandAvailable('item.relink', LIB, [{ kind: 'item', storageMode: 'linked', availability: 'available' }])).toBe(false);
+    expect(isCommandAvailable('item.relink', LIB, [{ kind: 'item', storageMode: 'managed', availability: 'missing' }])).toBe(false);
     expect(isCommandAvailable('item.relink', LIB, [linkedMissing, linkedMissing])).toBe(false);
   });
   it('정보 편집 is a palette command for one item in the library (P-15): no menu, no context menu, no key', () => {
@@ -191,7 +191,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it('Finder에서 보기 / 기본 앱으로 열기 need one item whose file exists', () => {
     for (const id of ['item.showInFolder', 'item.openExternally'] as const) {
       expect(isCommandAvailable(id, LIB, [managedOk])).toBe(true);
-      expect(isCommandAvailable(id, VIEWER, [{ storageMode: 'linked', availability: 'available' }])).toBe(true);
+      expect(isCommandAvailable(id, VIEWER, [{ kind: 'item', storageMode: 'linked', availability: 'available' }])).toBe(true);
       expect(isCommandAvailable(id, LIB, [linkedMissing])).toBe(false);
       expect(isCommandAvailable(id, LIB, [managedOk, managedOk])).toBe(false);
       expect(isCommandAvailable(id, LIB)).toBe(false);
@@ -222,7 +222,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
       keywords: ['내보내기', '사본', '저장', '복사', 'export', 'save'],
     });
     expect(isCommandAvailable('item.exportCopy', LIB, [managedOk])).toBe(true);
-    expect(isCommandAvailable('item.exportCopy', VIEWER, [{ storageMode: 'linked', availability: 'available' }])).toBe(true);
+    expect(isCommandAvailable('item.exportCopy', VIEWER, [{ kind: 'item', storageMode: 'linked', availability: 'available' }])).toBe(true);
     expect(isCommandAvailable('item.exportCopy', LIB, [linkedMissing])).toBe(false);
     expect(isCommandAvailable('item.exportCopy', LIB, [managedOk, managedOk])).toBe(false);
     expect(isCommandAvailable('item.exportCopy', LIB)).toBe(false);
@@ -243,7 +243,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected
@@ -315,7 +315,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14, blocked: true })).toBe(false);
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {
-    expect(sameCommandContext(LIB, { view: 'library', blocked: false, textSize: 13, ...NONE })).toBe(true);
+    expect(sameCommandContext(LIB, { view: 'library', blocked: false, textSize: 13, ...NONE, ...NO_LIBRARY_VIEW })).toBe(true);
     expect(sameCommandContext(LIB, { ...LIB, textSize: 14 })).toBe(false);
     expect(sameCommandContext(LIB, VIEWER)).toBe(false);
     expect(sameCommandContext(LIB, { ...LIB, blocked: true })).toBe(false);
@@ -329,6 +329,10 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable'] as const) {
       expect(sameCommandContext(LIB, { ...LIB, [k]: 1 }), k).toBe(false);
     }
+      // The view fields enable and label the menu bar's library items: each one alone is a new context too.
+      for (const [k, v] of [['scope', 'collection'], ['collectionCount', 1], ['tagPositions', 1], ['tagFilterCount', 1], ['searchActive', true], ['sortColumn', 'title'], ['sortDirection', 'asc'], ['columnsShown', 1]] as const) {
+        expect(sameCommandContext(LIB, { ...LIB, [k]: v }), k).toBe(false);
+      }
   });
   it('a toggle is named by what it does now (Mac pattern, design-spec 7.4); the neutral name where no state applies', () => {
     const c = commandById('view.toggleSidebar');

@@ -441,6 +441,61 @@ export async function captureOpenMenu(app: ElectronApplication, target: string |
   return { click, keyboard };
 }
 
+/**
+ * The rows of the submenu `label` of menu-bar menu `index` as System Events sees them, each with its check mark
+ * (AXMenuItemMarkChar; empty when unchecked). Null when the submenu is not open or System Events refuses.
+ */
+export async function submenuItems(target: string | number, index: number, label: string): Promise<Array<{ name: string; mark: string }> | null> {
+  const script = [
+    'set out to {}',
+    'tell application "System Events"',
+    `tell ${processRef(target)}`,
+    `set sub to menu 1 of menu item "${label}" of menu 1 of menu bar item ${index} of menu bar 1`,
+    'repeat with i in (menu items of sub)',
+    'set n to name of i',
+    'if n is missing value then set n to "-"',
+    'set m to ""',
+    'try',
+    'set mark to value of attribute "AXMenuItemMarkChar" of i',
+    'if mark is not missing value then set m to mark',
+    'end try',
+    'set end of out to n & "|" & m',
+    'end repeat',
+    'end tell',
+    'end tell',
+    "set AppleScript's text item delimiters to linefeed",
+    'return out as text',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 20_000);
+  if (!r.ok || r.stdout.trim() === '') return null;
+  return r.stdout.trim().split('\n').map((line) => {
+    const at = line.lastIndexOf('|');
+    return { name: line.slice(0, at), mark: line.slice(at + 1) };
+  });
+}
+
+/**
+ * Menu-bar menu `index` opened by the keyboard (⌃F2, → ×(index−1), ↓), then ↓ × `rowsDown` and → to open the submenu
+ * `label` on the row reached; captures the screen and reads the submenu's rows. Rows a key cannot reach (separators,
+ * disabled ones) are skipped by AppKit, so `rowsDown` counts the reachable rows above the submenu's head.
+ */
+export async function captureOpenSubmenu(app: ElectronApplication, target: string | number, index: number, label: string, rowsDown: number, prefix: string, what: string) {
+  await focusApp(app);
+  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
+  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
+  keys.push('key code 125', 'delay 0.4');
+  for (let i = 0; i < rowsDown; i++) keys.push('key code 125', 'delay 0.15');
+  keys.push('key code 124', 'end tell');
+  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
+  await sleep(1200);
+  const rows = await submenuItems(target, index, label);
+  const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${rowsDown + 1}, → via System Events`);
+  await pressEscape();
+  await pressEscape();
+  await pressEscape();
+  return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), rowsDown, rows };
+}
+
 /** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */
 export async function pngPixels(page: Page, rel: string, points: ReadonlyArray<readonly [number, number]>): Promise<number[][]> {
   const b64 = fs.readFileSync(path.join(EVIDENCE_ROOT, rel)).toString('base64');

@@ -1,11 +1,8 @@
 import { z } from 'zod';
 import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
-import { COLUMN_WIDTH_MAX } from './library-columns';
+import { COLUMN_WIDTH_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
-
-/** Sortable fields. progress has no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). */
-export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
 
 const storedColumnId = z.string().min(1).max(64);
 /**

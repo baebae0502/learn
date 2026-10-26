@@ -83,6 +83,10 @@ export const mainStrings = {
     devTools: '개발자 도구',
     window: { minimize: '최소화', zoom: '확대/축소', front: '모두 앞으로 가져오기' },
     aboutOther: 'Learn 정보',
+    /** 보기 › 정렬 기준 ▸ (menu/submenus.ts): the two directions; the columns are named by the catalogue. */
+    sort: { asc: '오름차순', desc: '내림차순' },
+    /** The first row of 컬렉션에 추가 ▸: a collection made for the selection (no dialog, spec 3.4). */
+    newCollection: '새\u00a0컬렉션',
   },
   /** The About panel's credits, one line each (README "런타임 의존성 라이선스"). */
   about: {

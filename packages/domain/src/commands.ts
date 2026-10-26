@@ -1,5 +1,7 @@
 import type { KeySpec } from './accelerator';
 import type { Availability, StorageMode } from './library';
+import { DEFAULT_COLUMN_CONFIG, columnsMask, type LibrarySortColumn } from './library-columns';
+import type { LibraryScope } from './organize';
 
 /**
  * Single command registry (ADR-0005): the menu bar, ⌘K palette, native context menus, toolbar tooltips and the
@@ -26,14 +28,61 @@ export type CommandId =
   | 'view.textSmaller'
   | 'view.textReset'
   | 'view.nextPane'
-  | 'view.previousPane';
-/** `app`: anywhere in the main window; `library` / `viewer`: the current view; `item`: needs item targets. */
-export type CommandContext = 'app' | 'library' | 'viewer' | 'item';
+  | 'view.previousPane'
+  | 'library.sortBy';
+/**
+ * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag`: needs a
+ * target of that kind (judged on the targets handed in; the first of these a command lists decides).
+ */
+export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
 export type MenuName = 'app' | 'file' | 'edit' | 'view' | 'go' | 'window' | 'help';
 export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column'] as const;
 /** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
+
+/**
+ * The value a menu row gives a command beyond its target (spec 9.1): a value submenu is one command with a row per
+ * value, and the row's value travels with the pick to the handler as `target.args`.
+ */
+export interface CommandArgs {
+  /** collection.addItems: the collection to file the selection into. */
+  collectionId?: string;
+  /** tag.setColor: the colour slot 1–8 (colour N = slot N = key N). */
+  position?: number;
+  /** library.sortBy: the column and/or the direction. */
+  column?: LibrarySortColumn;
+  direction?: 'asc' | 'desc';
+  /** collection.addItems without a collectionId: a new collection that takes the selection. */
+  addSelection?: true;
+}
+/** What a native menu answers, and what a menu-bar click sends the renderer. */
+export interface PickedCommand {
+  commandId: CommandId;
+  args?: CommandArgs;
+}
+
+/** `k=v` pairs, keys sorted: one name for a value, so a menu item's id and a test name a row the same way. */
+export const argsKey = (args: CommandArgs): string =>
+  Object.entries(args)
+    .filter(([, v]) => v !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, v]) => `${k}=${String(v)}`)
+    .join('&');
+/** The id of a menu item: the command's, with its value when the row carries one (`library.sortBy?column=year`). */
+export const menuItemId = (id: CommandId, args?: CommandArgs): string => {
+  const key = args ? argsKey(args) : '';
+  return key === '' ? id : `${id}?${key}`;
+};
+
+/** Where a value submenu's rows come from: main builds them from the library (collections, colours) or the reported context (columns). */
+export type SubmenuSource = 'collections' | 'tagColors' | 'sortColumns';
+/** Which menus each source can fill: `submenuProblems` checks a command's placement against it. */
+export const SUBMENU_SOURCES: Readonly<Record<SubmenuSource, { menuBar: boolean; contextKinds: readonly ContextMenuKind[] }>> = {
+  collections: { menuBar: true, contextKinds: ['item', 'collection'] },
+  tagColors: { menuBar: false, contextKinds: ['tag'] },
+  sortColumns: { menuBar: true, contextKinds: [] },
+};
 
 /** Whether a pane is shown — what a pane toggle's state label depends on. */
 export type PaneShown = 'shown' | 'hidden';
@@ -62,6 +111,11 @@ export interface CommandSpec {
   menu?: { menu: MenuName; group: number; order: number };
   /** Native context menus listing this command; separators between groups. */
   contextMenu?: { kinds: readonly ContextMenuKind[]; group: number; order: number; onlyWhenAvailable?: boolean };
+  /**
+   * Shown as a submenu (spec 9.1): one row per value, built by main from this source; a row runs this command with its
+   * value as `args`. The command owns the whole submenu and is kept out of the palette (a palette run carries no value).
+   */
+  submenu?: SubmenuSource;
   contexts: CommandContext[];
   /** In the ⌘K palette while available. Default: yes, unless the command needs item targets. */
   palette?: boolean;
@@ -136,6 +190,9 @@ export const COMMANDS: readonly CommandSpec[] = [
     stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
     keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
   },
+  // 정렬 기준 ▸ (spec 5.2): the keyboard-only sort. Its rows are the shown columns and the two directions, built by main
+  // from the reported context; a pick sets the sort of the view shown. Not in the palette: a run there carries no value.
+  { id: 'library.sortBy', label: '정렬 기준', menu: { menu: 'view', group: 2, order: 3 }, contexts: ['library'], submenu: 'sortColumns', palette: false },
   {
     id: 'app.shortcuts', label: '단축키 도움말', accelerator: 'CmdOrCtrl+/', menu: { menu: 'help', group: 1, order: 1 }, contexts: ['app'],
     keywords: ['단축키', '키보드', '도움말', 'shortcuts', 'keyboard'],
@@ -166,7 +223,9 @@ export function commandById(id: CommandId): CommandSpec {
   return c;
 }
 
-export const inPalette = (c: CommandSpec): boolean => c.palette ?? !c.contexts.includes('item');
+/** A command that acts on targets (items, collections, tags) is not listed by default: the palette has none to give it. */
+const needsTargets = (c: CommandSpec): boolean => c.contexts.some((x) => x === 'item' || x === 'collection' || x === 'tag');
+export const inPalette = (c: CommandSpec): boolean => c.palette ?? !needsTargets(c);
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
  * is the reported context), else the platform label.
@@ -190,6 +249,56 @@ export function commandMention(c: CommandSpec, platform: string, state: Pick<Com
 /** Commands main runs itself: always available, even before (or without) a renderer. */
 export const MAIN_OWNED_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(['app.settings']);
 
+/**
+ * Commands grouped into one submenu (spec 9.1, P-3): "색 태그 ▸" lists `tag.color1`–`tag.color8`. The members stay commands
+ * of their own (the key map, the ⌘/ sheet and the palette need each one), so they carry no placement; the group does.
+ * Empty until the first handler for a member exists (a row without a handler cannot exist).
+ */
+export interface SubmenuSpec {
+  id: 'colorTags';
+  /** Korean, as the menu shows it. */
+  label: string;
+  /** The members, in menu order. */
+  commands: readonly CommandId[];
+  menu?: { menu: MenuName; group: number; order: number };
+  contextMenu?: { kinds: readonly ContextMenuKind[]; group: number; order: number };
+}
+export const SUBMENUS: readonly SubmenuSpec[] = [];
+
+/** What is wrong with the submenus of a registry (empty: nothing). The real registry must give []. */
+export function submenuProblems(commands: readonly CommandSpec[], submenus: readonly SubmenuSpec[]): string[] {
+  const problems: string[] = [];
+  const byId = new Map(commands.map((c) => [c.id, c]));
+  for (const c of commands) {
+    if (c.submenu === undefined) continue;
+    const source = SUBMENU_SOURCES[c.submenu];
+    if (!c.menu && !c.contextMenu) problems.push(`${c.id}: a value submenu with no placement`);
+    if (inPalette(c)) problems.push(`${c.id}: a value submenu listed in the palette (a palette run carries no value)`);
+    if (c.menu && !source.menuBar) problems.push(`${c.id}: ${c.submenu} has no menu-bar form`);
+    for (const kind of c.contextMenu?.kinds ?? []) if (!source.contextKinds.includes(kind)) problems.push(`${c.id}: ${c.submenu} does not build a${kind === 'item' ? 'n' : ''} ${kind} menu`);
+  }
+  const seen = new Set<string>();
+  const members = new Set<CommandId>();
+  for (const s of submenus) {
+    if (seen.has(s.id)) problems.push(`${s.id}: listed twice`);
+    seen.add(s.id);
+    if (!s.menu && !s.contextMenu) problems.push(`${s.id}: no placement`);
+    if (!/[가-힣]/.test(s.label)) problems.push(`${s.id}: the label is not Korean`);
+    if (s.commands.length === 0) problems.push(`${s.id}: no members`);
+    for (const id of s.commands) {
+      const c = byId.get(id);
+      if (!c) {
+        problems.push(`${s.id}: ${id} is not a command`);
+        continue;
+      }
+      if (members.has(id)) problems.push(`${id}: in two submenus`);
+      members.add(id);
+      if (c.menu || c.contextMenu) problems.push(`${id}: a member of ${s.id} with a placement of its own`);
+    }
+  }
+  return problems;
+}
+
 /** What availability depends on. The main window's renderer owns it and reports it (ui:reportContext). */
 export interface CommandContextState {
   view: 'library' | 'viewer';
@@ -209,7 +318,42 @@ export interface CommandContextState {
   selectionAvailable: number;
   /** Of the selection: linked items whose file is missing (what 다시 연결… needs). */
   selectionRelinkable: number;
+  /** The kind of view the table shows (spec 3.1). */
+  scope: LibraryScope['kind'];
+  /** Live collections (0: nothing to file into). */
+  collectionCount: number;
+  /** The colour slots 1–8 that have a tag, bit n−1 for slot n (0–255): the 1–8 keys and the palette need to know. */
+  tagPositions: number;
+  /** Tags in the sidebar's filter. */
+  tagFilterCount: number;
+  /** The quick search has a query. */
+  searchActive: boolean;
+  /** The sort of the view shown (the recent view has its own) and the columns drawn, for 보기 › 정렬 기준 (spec 5.2). */
+  sortColumn: LibrarySortColumn;
+  sortDirection: 'asc' | 'desc';
+  /** The columns drawn, forced ones included: a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
+  columnsShown: number;
 }
+
+/** The view fields of a context with no library view yet: the first report, the fatal screen, a test's fixture. */
+export const NO_LIBRARY_VIEW = Object.freeze({
+  scope: 'all',
+  collectionCount: 0,
+  tagPositions: 0,
+  tagFilterCount: 0,
+  searchActive: false,
+  sortColumn: 'createdAt',
+  sortDirection: 'desc',
+  columnsShown: columnsMask(DEFAULT_COLUMN_CONFIG.visible),
+} as const satisfies Pick<CommandContextState, 'scope' | 'collectionCount' | 'tagPositions' | 'tagFilterCount' | 'searchActive' | 'sortColumn' | 'sortDirection' | 'columnsShown'>);
+
+/** The colour slots with a tag as a bitmask (bit n−1 = slot n); `null` and slots outside 1–8 count for nothing. */
+export function tagPositionsMask(positions: Iterable<number | null>): number {
+  let mask = 0;
+  for (const p of positions) if (p !== null && p >= 1 && p <= 8) mask |= 1 << (p - 1);
+  return mask;
+}
+export const hasTagPosition = (mask: number, position: number): boolean => position >= 1 && position <= 8 && (mask & (1 << (position - 1))) !== 0;
 
 /** Same context, field by field (every field is a primitive): main skips a report that changes nothing. */
 export function sameCommandContext(a: CommandContextState, b: CommandContextState): boolean {
@@ -217,11 +361,31 @@ export function sameCommandContext(a: CommandContextState, b: CommandContextStat
   return ka.length === Object.keys(b).length && ka.every((k) => Object.hasOwn(b, k) && Object.is(a[k], b[k]));
 }
 
-/** A command target, as far as availability goes (fresh from disk in main's context menus). */
-export interface CommandTargetInfo {
+/** An item as a command target, as far as availability goes (fresh from disk in main's context menus). */
+export interface ItemTargetInfo {
+  kind: 'item';
   storageMode: StorageMode;
   availability: Availability;
 }
+export interface CollectionTargetInfo {
+  kind: 'collection';
+  id: string;
+}
+/** `hasColor`: 색 해제 needs a colour to clear. */
+export interface TagTargetInfo {
+  kind: 'tag';
+  id: string;
+  hasColor: boolean;
+}
+/** What a command acts on, by kind: the item rules read the item ones only. */
+export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo;
+
+/** The availability facts of an item (a list row, a freshly read item) as a target. */
+export const itemTarget = (item: { storageMode: StorageMode; availability: Availability }): ItemTargetInfo => ({
+  kind: 'item',
+  storageMode: item.storageMode,
+  availability: item.availability,
+});
 
 /**
  * What only the renderer knows, beside the reported context (never reported, so main's `blocked` stays as it is).
@@ -232,59 +396,98 @@ export interface CommandSurface {
   modal: boolean;
 }
 
-const AVAILABLE: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'available' });
-const RELINKABLE: CommandTargetInfo = Object.freeze({ storageMode: 'linked', availability: 'missing' });
-const MISSING: CommandTargetInfo = Object.freeze({ storageMode: 'managed', availability: 'missing' });
+const AVAILABLE: ItemTargetInfo = Object.freeze({ kind: 'item', storageMode: 'managed', availability: 'available' });
+const RELINKABLE: ItemTargetInfo = Object.freeze({ kind: 'item', storageMode: 'linked', availability: 'missing' });
+const MISSING: ItemTargetInfo = Object.freeze({ kind: 'item', storageMode: 'managed', availability: 'missing' });
+
+/** Targets by kind: a rule reads the kind it is about. A split array is never changed afterwards. */
+export interface Targets {
+  items: readonly ItemTargetInfo[];
+  collections: readonly CollectionTargetInfo[];
+  tags: readonly TagTargetInfo[];
+}
+const NO_TARGETS: Targets = Object.freeze({ items: [], collections: [], tags: [] });
+/** One split per array: the menu bar judges every command on the same selection array. */
+const split = new WeakMap<readonly CommandTargetInfo[], Targets>();
+function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
+  if (targets.length === 0) return NO_TARGETS;
+  let found = split.get(targets);
+  if (!found) {
+    const items: ItemTargetInfo[] = [];
+    const collections: CollectionTargetInfo[] = [];
+    const tags: TagTargetInfo[] = [];
+    for (const t of targets) {
+      if (t.kind === 'item') items.push(t);
+      else if (t.kind === 'collection') collections.push(t);
+      else tags.push(t);
+    }
+    found = { items, collections, tags };
+    split.set(targets, found);
+  }
+  return found;
+}
 
 /**
  * Synthetic targets for the menu bar: `selectionAvailable` available, then `selectionRelinkable` linked+missing, the
  * rest managed+missing. Main has only the reported counts; no rule reads the storage mode of an available target.
  * Counts that do not add up are clamped to `selectionCount`.
  */
-export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] {
+export function selectionTargets(ctx: CommandContextState): ItemTargetInfo[] {
   const available = Math.min(ctx.selectionAvailable, ctx.selectionCount);
   const relinkable = Math.min(ctx.selectionRelinkable, ctx.selectionCount - available);
-  return Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
+  const targets = Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
+  split.set(targets, { items: targets, collections: [], tags: [] }); // items only: no pass over a selection of the whole library
+  return targets;
 }
 
-type Rule = (ctx: CommandContextState, targets: readonly CommandTargetInfo[]) => boolean;
+type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'library.find': (c) => c.libraryCount > 0,
   // An empty library has no panel (design-spec 2.4).
   'view.toggleInspector': (c) => c.libraryCount > 0,
+  // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
+  'library.sortBy': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
-  'item.open': (_ctx, t) => t.length === 1,
-  'item.relink': (_ctx, t) => t.length === 1 && t[0]!.storageMode === 'linked' && t[0]!.availability === 'missing',
-  'item.showInFolder': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
-  'item.openExternally': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
-  'item.exportCopy': (_ctx, t) => t.length === 1 && t[0]!.availability === 'available',
-  'item.editInfo': (c, t) => t.length === 1 && c.view === 'library',
+  'item.open': (_ctx, t) => t.items.length === 1,
+  'item.relink': (_ctx, t) => t.items.length === 1 && t.items[0]!.storageMode === 'linked' && t.items[0]!.availability === 'missing',
+  'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
+  'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
+  'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
+  'item.editInfo': (c, t) => t.items.length === 1 && c.view === 'library',
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,
 };
 
 /**
- * The single availability predicate: main (menu bar, context menus) and the renderer (palette, toolbar, keymap).
+ * The single availability predicate, for a spec: main (menu bar, context menus) and the renderer (palette, toolbar, keymap).
  * `surface` is the renderer's: with it, a `duringWork` command is stopped by a modal surface only; without it (main),
- * by `blocked` like every other command.
+ * by `blocked` like every other command. A command that lists `item`, `collection` or `tag` needs a target of that kind.
  */
+export function commandAvailable(spec: CommandSpec, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = [], surface?: CommandSurface): boolean {
+  if (MAIN_OWNED_COMMANDS.has(spec.id)) return true;
+  if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
+  const t = targetsByKind(targets);
+  const needed = spec.contexts.includes('item') ? t.items : spec.contexts.includes('collection') ? t.collections : spec.contexts.includes('tag') ? t.tags : null;
+  const inContext = needed ? needed.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view);
+  return inContext && (RULES[spec.id]?.(ctx, t) ?? true);
+}
+
+/** `commandAvailable` for a registry command by id. */
 export function isCommandAvailable(id: CommandId, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = [], surface?: CommandSurface): boolean {
   const spec = COMMANDS.find((c) => c.id === id);
-  if (!spec) return false;
-  if (MAIN_OWNED_COMMANDS.has(id)) return true;
-  if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
-  const inContext = spec.contexts.includes('item') ? targets.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view);
-  return inContext && (RULES[id]?.(ctx, targets) ?? true);
+  return spec !== undefined && commandAvailable(spec, ctx, targets, surface);
 }
 
 /**
- * Menu-bar commands available in `ctx`. An item command with a menu placement is judged on the selection's synthetic
- * targets (selectionTargets), in the library view only: the renderer runs it on the selected items. `commands` is the
- * registry; tests pass variants with other placements (availability is still the registry's, by id).
+ * Menu-bar commands available in `ctx`: the placed ones, and the members of a group that is placed (they carry no
+ * placement of their own). An item command is judged on the selection's synthetic targets (selectionTargets), in the
+ * library view only: the renderer runs it on the selected items. `commands` and `submenus` are the registry; tests pass
+ * variants (availability is the same predicate).
  */
-export function availableMenuCommands(ctx: CommandContextState, commands: readonly CommandSpec[] = COMMANDS): CommandId[] {
+export function availableMenuCommands(ctx: CommandContextState, commands: readonly CommandSpec[] = COMMANDS, submenus: readonly SubmenuSpec[] = SUBMENUS): CommandId[] {
   // Spec 6: the menu bar's item commands act on the library table's selection, so the reader has none.
   const targets = ctx.view === 'library' ? selectionTargets(ctx) : [];
-  return commands.filter((c) => c.menu !== undefined && isCommandAvailable(c.id, ctx, targets)).map((c) => c.id);
+  const grouped = new Set<CommandId>(submenus.flatMap((s) => (s.menu ? s.commands : [])));
+  return commands.filter((c) => (c.menu !== undefined || grouped.has(c.id)) && commandAvailable(c, ctx, targets)).map((c) => c.id);
 }

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -24,4 +24,6 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'view.textReset': Type,
   'view.nextPane': ArrowRightToLine,
   'view.previousPane': ArrowLeftToLine,
+  // Not listed in the palette (a run there carries no value); the table is exhaustive.
+  'library.sortBy': ArrowUpDown,
 };

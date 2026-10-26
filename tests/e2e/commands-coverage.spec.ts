@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
+import { COMMANDS, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
   FIXTURES, enabledMenuCommands, importPaths, launch, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, rowByTitle, runMenuCommand, saveDialogCalls, shellCalls,
   stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, type MenuNode,
@@ -57,6 +57,9 @@ async function menuLabel(app: ElectronApplication, id: CommandId): Promise<strin
   return flat(await menuSnapshot(app)).find((n) => n.id === id)?.label ?? null;
 }
 const escaped = (p: string) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A value submenu's command runs from one of its rows (P-18): this value; the other rows are the menu unit tests'. */
+const REPRESENTATIVE_ARGS: Partial<Record<CommandId, CommandArgs>> = { 'library.sortBy': { column: 'year' } };
 
 /**
  * Commands this test does not run, each with the test that does (`<spec file> › <test title>`): F6 / ⇧F6 are keys of
@@ -114,6 +117,8 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(second));
     },
     'library.find': () => expect(searchInput).toBeFocused(),
+    // 보기 › 정렬 기준 ▸ 연도: the column row keeps the direction, so the table is sorted by 연도, newest first as it was.
+    'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
     // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
     'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
     'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
@@ -146,12 +151,12 @@ test('every registry command runs without a page error (library and reader menus
       } else await openItem(page, 'sample'); // a double-click: a single click only selects
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
-      const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'library.find' || id === 'view.toggleInspector');
-      // Spec 6: the 자료 commands, ⌘F and the item panel belong to the library view; the reader's menu has them greyed.
-      if (view === 'library') expect(libraryOnly.sort()).toEqual(['item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'view.toggleInspector']);
+      const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
+      // Spec 6: the 자료 commands, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
+      if (view === 'library') expect(libraryOnly.sort()).toEqual(['item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {
-        await runMenuCommand(app, id);
+        await runMenuCommand(app, id, REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
         await closeTransient(app, page);
         ran.add(id);

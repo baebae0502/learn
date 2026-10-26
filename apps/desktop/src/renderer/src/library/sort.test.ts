@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem } from '@learn/domain';
-import { DEFAULT_SORT, DEFAULT_SORT_RECENT, firstDirection, parseSort, sortItems } from './sort';
+import { DEFAULT_SORT, DEFAULT_SORT_RECENT, firstDirection, parseSort, sortFromArgs, sortItems } from './sort';
 
 let n = 0;
 const item = (over: Partial<LibraryItem>): LibraryItem => ({
@@ -66,5 +66,20 @@ describe('the recent view\'s own sort (spec 3.2)', () => {
     expect(parseSort({ column: 'title', direction: 'asc' }, DEFAULT_SORT_RECENT)).toEqual({ column: 'title', direction: 'asc' });
     expect(parseSort(null)).toEqual({ column: 'createdAt', direction: 'desc' });
     expect(firstDirection('openedAt')).toBe('desc');
+  });
+});
+
+describe('sortFromArgs (보기 › 정렬 기준: a column and/or a direction)', () => {
+  const current = { column: 'createdAt', direction: 'desc' } as const;
+  it('changes only what the row names: a column keeps the direction, a direction keeps the column', () => {
+    expect(sortFromArgs(current, { column: 'title' })).toEqual({ column: 'title', direction: 'desc' }); // not firstDirection: the two radio sets are independent
+    expect(sortFromArgs(current, { direction: 'asc' })).toEqual({ column: 'createdAt', direction: 'asc' });
+    expect(sortFromArgs(current, { column: 'size', direction: 'asc' })).toEqual({ column: 'size', direction: 'asc' });
+  });
+  it('is nothing to do when there is no value or it changes nothing', () => {
+    expect(sortFromArgs(current, undefined)).toBeNull();
+    expect(sortFromArgs(current, {})).toBeNull();
+    expect(sortFromArgs(current, { column: 'createdAt' })).toBeNull();
+    expect(sortFromArgs(current, { column: 'createdAt', direction: 'desc' })).toBeNull();
   });
 });

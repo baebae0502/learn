@@ -1,19 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, type CommandId, type CommandTargetInfo } from '@learn/domain';
-import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv } from './registry';
+  import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
+  import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv, type CommandTarget } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const OTHER = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';
-/** An empty library with nothing selected, as every report starts. */
-const COUNTS = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 } as const;
-const missingLinked: CommandTargetInfo = { storageMode: 'linked', availability: 'missing' };
+  /** An empty library with nothing selected, as every report starts: the counts and the default library view. */
+  const COUNTS = { libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW } as const;
+  const missingLinked: CommandTargetInfo = { kind: 'item', storageMode: 'linked', availability: 'missing' };
+  /** The items of a target, all with a file there. */
+  const available = (target: CommandTarget): CommandTargetInfo[] => (target.itemIds ?? []).map(() => ({ kind: 'item', storageMode: 'managed', availability: 'available' }));
 const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   view: 'library',
   blocked: false,
   textSize: 13,
   ...COUNTS,
   selection: () => [],
-  targetsOf: (ids) => ids.map(() => missingLinked),
+  targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
   back: vi.fn(),
   open: vi.fn(),
@@ -27,6 +29,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   exportCopy: vi.fn(),
   editInfo: vi.fn(),
   focusSearch: vi.fn(),
+  sortBy: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
@@ -44,11 +47,10 @@ describe('renderer command registry', () => {
   });
   it('reports the library and selection counts and the item panel state, never the selected ids (P-2)', () => {
     const e = env({ inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, selection: () => [ID, OTHER] });
-    expect(contextOf(e)).toEqual({ view: 'library', blocked: false, textSize: 13, inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1 });
+    expect(contextOf(e)).toEqual({ view: 'library', blocked: false, textSize: 13, inspector: 'shown', libraryCount: 48, selectionCount: 3, selectionAvailable: 2, selectionRelinkable: 1, ...NO_LIBRARY_VIEW });
     expect(contextOf(e)).not.toHaveProperty('selection');
   });
   it('runs a menu-bar item command on the table selection, in table order, in the library view only (P-2, spec 6)', () => {
-    const available = (ids: readonly string[]): CommandTargetInfo[] => ids.map(() => ({ storageMode: 'managed', availability: 'available' }));
     const one = env({ selection: () => [ID], targetsOf: available });
     expect(menuTarget('item.showInFolder', one)).toEqual({ itemIds: [ID] });
     expect(menuTarget('file.importManaged', one)).toEqual({});
@@ -164,12 +166,11 @@ describe('renderer command registry', () => {
   it('item commands use the targets of the given items', () => {
     const e = env();
     expect(isCommandEnabled('item.relink', e, { itemIds: [ID] })).toBe(true);
-    expect(isCommandEnabled('item.relink', env({ targetsOf: () => [{ storageMode: 'managed', availability: 'available' }] }), { itemIds: [ID] })).toBe(false);
+    expect(isCommandEnabled('item.relink', env({ targetsOf: available }), { itemIds: [ID] })).toBe(false);
     expect(runCommand('item.open', e, { itemIds: [ID] })).toBe(true);
     expect(e.open).toHaveBeenCalledWith(ID);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 run for one item whose file exists, in any view, never while blocked', () => {
-    const available = (): CommandTargetInfo[] => [{ storageMode: 'managed', availability: 'available' }];
     for (const view of ['library', 'viewer'] as const) {
       const e = env({ view, targetsOf: available });
       expect(runCommand('item.showInFolder', e, { itemIds: [ID] })).toBe(true);
@@ -187,9 +188,9 @@ describe('renderer command registry', () => {
   });
   it('runs a context-menu pick (main already judged it) unless the window is blocked', () => {
     const e = env({ targetsOf: () => [] });
-    expect(runPicked('item.relink', e, [ID])).toBe(true);
+    expect(runPicked({ commandId: 'item.relink' }, e, { itemIds: [ID] })).toBe(true);
     expect(e.relink).toHaveBeenCalledWith(ID);
-    expect(runPicked('item.open', env({ blocked: true }), [ID])).toBe(false);
+    expect(runPicked({ commandId: 'item.open' }, env({ blocked: true }), { itemIds: [ID] })).toBe(false);
   });
   it('a held window (a sheet asked for, not up yet) refuses what the sheet will refuse, but draws nothing disabled', () => {
     const held = env({ held: true });
@@ -204,7 +205,7 @@ describe('renderer command registry', () => {
     expect(held.showShortcuts).not.toHaveBeenCalled();
     expect(held.focusPane).not.toHaveBeenCalled();
     expect(runCommand('app.settings', held)).toBe(true); // main-owned: allowed under a sheet as well
-    expect(runPicked('item.relink', held, [ID])).toBe(false);
+    expect(runPicked({ commandId: 'item.relink' }, held, { itemIds: [ID] })).toBe(false);
     // Main's menu bar refuses them too.
     expect(reportedContext(held)).toEqual({ view: 'library', blocked: true, textSize: 13, ...COUNTS });
     expect(reportedContext(env())).toEqual(contextOf(env()));
@@ -218,8 +219,8 @@ describe('renderer command registry', () => {
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);
-    expect(runPicked('file.nope' as CommandId, env(), [ID])).toBe(false);
-    expect(runPicked('toString' as CommandId, env(), [ID])).toBe(false); // not fooled by Object.prototype
+    expect(runPicked({ commandId: 'file.nope' as CommandId }, env(), { itemIds: [ID] })).toBe(false);
+    expect(runPicked({ commandId: 'toString' as CommandId }, env(), { itemIds: [ID] })).toBe(false); // not fooled by Object.prototype
   });
   it('⌥⌘I toggles the item panel in the library with items, never in the reader, the empty library or while blocked', () => {
     const e = env({ libraryCount: 2 });
@@ -236,8 +237,7 @@ describe('renderer command registry', () => {
     expect(Object.hasOwn(contextOf(env()), 'inspector')).toBe(false);
   });
   it('사본 내보내기… runs for one item whose file is there, with that item', () => {
-    const available: CommandTargetInfo = { storageMode: 'managed', availability: 'available' };
-    const e = env({ targetsOf: (ids) => ids.map(() => available) });
+    const e = env({ targetsOf: available });
     expect(runCommand('item.exportCopy', e, { itemIds: [ID] })).toBe(true);
     expect(e.exportCopy).toHaveBeenCalledWith(ID);
     expect(runCommand('item.exportCopy', env(), { itemIds: [ID] })).toBe(false); // the factory's target has no file
@@ -248,5 +248,43 @@ describe('renderer command registry', () => {
     expect(e.editInfo).toHaveBeenCalledWith(ID);
     expect(runCommand('item.editInfo', env(), { itemIds: [ID, ID] })).toBe(false);
     expect(runCommand('item.editInfo', env({ view: 'viewer' }), { itemIds: [ID] })).toBe(false);
+  });
+});
+
+describe('the handler target and the value of a menu row (P-2, spec 9.1)', () => {
+  it('hands a handler the whole target, including the row\'s value, from every way in', () => {
+    const lib = env({ libraryCount: 3 });
+    expect(runCommand('library.sortBy', lib, { args: { column: 'year' } })).toBe(true);
+    expect(lib.sortBy).toHaveBeenCalledWith({ column: 'year' });
+    expect(runPicked({ commandId: 'library.sortBy', args: { direction: 'asc' } }, lib, {})).toBe(true);
+    expect(lib.sortBy).toHaveBeenLastCalledWith({ direction: 'asc' });
+    // The head of the submenu is not a row: with no value there is nothing to sort by.
+    expect(runCommand('library.sortBy', lib)).toBe(true);
+    expect(lib.sortBy).toHaveBeenCalledTimes(2);
+  });
+  it('a value picked from a menu is added to the target it was opened for, and replaces none of it', () => {
+    const e = env({ libraryCount: 3, targetsOf: () => [] });
+    expect(runPicked({ commandId: 'item.open', args: { column: 'year' } }, e, { itemIds: [ID], collectionIds: ['c1'] })).toBe(true);
+    expect(e.open).toHaveBeenCalledWith(ID);
+  });
+  it('judges a command on every kind of the target it is given', () => {
+    const targetsOf = vi.fn(() => [] as CommandTargetInfo[]);
+    const e = env({ targetsOf });
+    isCommandEnabled('item.open', e, { itemIds: [ID], collectionIds: ['c1'], tagIds: ['t1'], args: { column: 'year' } });
+    expect(targetsOf).toHaveBeenCalledWith({ itemIds: [ID], collectionIds: ['c1'], tagIds: ['t1'], args: { column: 'year' } });
+  });
+  it('sorts in the library view while it has items: not in the reader, not in the empty library, not under a sheet', () => {
+    for (const over of [{ view: 'viewer', libraryCount: 3 }, { libraryCount: 0 }, { libraryCount: 3, blocked: true }] as const) {
+      const e = env(over);
+      expect(runCommand('library.sortBy', e, { args: { column: 'year' } }), JSON.stringify(over)).toBe(false);
+      expect(e.sortBy).not.toHaveBeenCalled();
+    }
+  });
+  it('reports the library view for the menu bar: the scope, the counts, the sort, the columns drawn — no handlers, no ids', () => {
+    const e = env({ scope: 'collection', collectionCount: 2, tagPositions: 0b101, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b111 });
+    expect(contextOf(e)).toMatchObject({ scope: 'collection', collectionCount: 2, tagPositions: 5, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 7 });
+    expect(Object.keys(contextOf(e)).sort()).toEqual(
+      ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'view'].sort(),
+    );
   });
 });

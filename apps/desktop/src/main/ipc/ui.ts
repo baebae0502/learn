@@ -1,34 +1,62 @@
 import path from 'node:path';
 import { BrowserWindow, type WebContents } from 'electron';
-import { COMMANDS, Channels, LearnError, commandContextInput, confirmDuplicateInput, emptyInput, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError, type LibraryItem } from '@learn/domain';
+import { readOrganizeSnapshot } from '@learn/db';
+import {
+  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmDuplicateInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
+  type CommandTargetInfo,
+} from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
 import { columnMenuEntries, popupColumnMenu } from '../menu/column-menu';
-import { contextMenuEntries, popupCommandMenu } from '../menu/context-menu';
+import { contextMenuEntries, kindHasMenu, popupCommandMenu } from '../menu/context-menu';
+import { menuNeedsOrganize } from '../menu/submenus';
 import { windowStateOf } from '../window-state';
 import type { Handle, IpcDeps } from './register';
 import { mainStrings } from '../strings';
 
 export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
-  // Resolves when the native menu closes: the picked command (the renderer runs it with runPicked) or null.
+  // Resolves when the native menu closes: the picked command with its row's value (the renderer runs it with runPicked) or null.
   handle(Channels.ui.showContextMenu, showContextMenuInput, async (input, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    if (input.kind !== 'item') return null; // collection and tag menus get their commands in M5
+    // A kind no registry command lists has no menu: answered before anything is read (collections and tags, until theirs exist).
+    if (!kindHasMenu(input.kind, COMMANDS, SUBMENUS)) return null;
     const ctx = deps.getContext();
-    let targets: LibraryItem[] = input.itemIds.flatMap((id) => ctx.repo.getItem(id) ?? []);
-    if (targets.length === 0) return null;
-    if (targets.length === 1) {
-      // Same check as library.get, so "다시 연결…" shows for a linked file that went missing this session.
-      try {
-        targets = [await refreshItemAvailability(ctx, targets[0]!.id)];
-      } catch (e) {
-        console.warn(`[ui] availability check failed: ${toLearnError(e).code}`); // fall back to the stored state
+    // Collections, tags and who has what: one read, and only when this menu has a submenu built from them or needs its targets.
+    const organize = input.kind !== 'item' || menuNeedsOrganize(COMMANDS, SUBMENUS, 'item') ? readOrganizeSnapshot(ctx.db) : null;
+    let targets: CommandTargetInfo[];
+    let itemIds: string[] = [];
+    let tagId: string | undefined;
+    if (input.kind === 'item') {
+      // One query for the whole selection, in the order asked (the old read per id made ⌘A on 10 000 rows 10 000 reads).
+      let items = ctx.repo.getItems(input.itemIds);
+      if (items.length === 0) return null;
+      if (items.length === 1) {
+        // Same check as library.get, so "다시 연결…" shows for a linked file that went missing this session.
+        try {
+          items = [await refreshItemAvailability(ctx, items[0]!.id)];
+        } catch (e) {
+          console.warn(`[ui] availability check failed: ${toLearnError(e).code}`); // fall back to the stored state
+        }
       }
+      targets = items.map((i) => itemTarget(i));
+      itemIds = items.map((i) => i.id);
+    } else if (input.kind === 'collection') {
+      const live = new Set(organize!.collections.map((c) => c.id));
+      targets = input.collectionIds.filter((id) => live.has(id)).map((id) => ({ kind: 'collection', id }));
+    } else {
+      const known = new Map(organize!.tags.map((t) => [t.id, t]));
+      const asked = input.tagIds.flatMap((id) => known.get(id) ?? []);
+      targets = asked.map((t) => ({ kind: 'tag', id: t.id, hasColor: t.color !== null }));
+      tagId = asked[0]?.id;
     }
-    const entries = contextMenuEntries('item', COMMANDS, deps.uiContext.current(), targets, process.platform);
+    if (targets.length === 0) return null;
+    const entries = contextMenuEntries(input.kind, COMMANDS, deps.uiContext.current(), targets, process.platform, {
+      organize,
+      itemIds,
+      ...(tagId !== undefined ? { tagId } : {}),
+    });
     if (entries.length === 0) return null;
-    const commandId = await popupCommandMenu(entries, { window, x: input.x, y: input.y });
-    return commandId ? { commandId } : null;
+    return popupCommandMenu(entries, { window, x: input.x, y: input.y });
   });
 
   // The table header's native menu: resolves the column to show or hide, a reset, or null when dismissed. Its items

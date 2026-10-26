@@ -1,6 +1,11 @@
 import type { MenuItemConstructorOptions } from 'electron';
-import { COMMANDS, MAIN_OWNED_COMMANDS, commandLabel, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec, type MenuName } from '@learn/domain';
+import {
+  COMMANDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, commandLabel, platformAccelerator,
+  type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type MenuName, type OrganizeSnapshot, type PickedCommand, type SubmenuSpec,
+} from '@learn/domain';
 import { mainStrings } from '../strings';
+import { entriesToTemplate } from './entries';
+import { colorTagGroup, valueRows, type SubmenuInput } from './submenus';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
 export interface AppMenuOptions {
@@ -10,8 +15,8 @@ export interface AppMenuOptions {
   commands: readonly CommandSpec[];
   /** availableMenuCommands(context at build time): the only registry items that start enabled (applyMenuEnabled flips them later). */
   enabled: ReadonlySet<CommandId>;
-  /** Registry item clicked (mouse or accelerator). */
-  onCommand(id: CommandId): void;
+  /** Registry item clicked (mouse or accelerator); `args` is the value of a submenu row. */
+  onCommand(id: CommandId, args?: CommandArgs): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
   labels?: MenuLabelState;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
@@ -20,6 +25,12 @@ export interface AppMenuOptions {
   fullScreenAvailable?: boolean;
   /** macOS: the 전체 화면 item's click and ⌃⌘F toggle the main window's full screen. */
   onToggleFullScreen?(): void;
+  /** The reported context the value submenus are drawn from (the sort in force, the columns drawn); the empty library view before the first report. */
+  context?: CommandContextState;
+  /** Collections and tags as the menu bar's submenus list them; absent or null when no item uses them or the library is not open. */
+  organize?: OrganizeSnapshot | null;
+  /** The grouped submenus; the registry's by default. */
+  submenus?: readonly SubmenuSpec[];
 }
 
 const copy = mainStrings.menu;
@@ -77,37 +88,73 @@ export function menuItemIds(c: CommandSpec): string[] {
 
 const isEnabled = (id: CommandId, enabled: ReadonlySet<CommandId>): boolean => enabled.has(id) || MAIN_OWNED_COMMANDS.has(id);
 
-/** Where a command lands on this platform: "app" items move to the end of 파일 off macOS. */
-function placement(c: CommandSpec, platform: NodeJS.Platform): { menu: MenuName; group: number; order: number } | null {
-  if (!c.menu) return null;
-  if (c.menu.menu === 'app' && platform !== 'darwin') return { menu: 'file', group: 90 + c.menu.group, order: c.menu.order };
-  return c.menu;
+/** Where a command or a group lands on this platform: "app" items move to the end of 파일 off macOS. */
+function placement(at: CommandSpec['menu'], platform: NodeJS.Platform): { menu: MenuName; group: number; order: number } | null {
+  if (!at) return null;
+  if (at.menu === 'app' && platform !== 'darwin') return { menu: 'file', group: 90 + at.group, order: at.order };
+  return at;
+}
+
+const DEFAULT_CONTEXT: CommandContextState = Object.freeze({
+  view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
+});
+
+/** A pick from a row of a submenu is a command with the row's value. */
+const picker = (opts: AppMenuOptions) => (picked: PickedCommand | null): void => {
+  if (picked) opts.onCommand(picked.commandId, picked.args);
+};
+
+/** What the submenus are built from: the reported context and the library read for the menu bar (no selection, so no marks). */
+function submenuInput(opts: AppMenuOptions): SubmenuInput {
+  return { organize: opts.organize ?? null, itemIds: [], context: opts.context ?? DEFAULT_CONTEXT, enabledOf: (c) => isEnabled(c.id, opts.enabled) };
 }
 
 function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
   const enabled = isEnabled(c.id, opts.enabled);
-  const click = () => opts.onCommand(c.id);
   const label = commandLabel(c, opts.platform, opts.labels);
+  if (c.submenu !== undefined) {
+    // The head is the command and is switched in place; its rows are always on (they are reachable only through it).
+    // A submenu with nothing to list is left out rather than drawn empty.
+    const rows = valueRows(c, submenuInput(opts), true);
+    return rows.length === 0 ? [] : [{ id: c.id, label, enabled, submenu: entriesToTemplate(rows, picker(opts)) }];
+  }
+  const click = () => opts.onCommand(c.id);
   const [id, ...twinIds] = menuItemIds(c);
   const item: Item = { id, label, enabled, click };
   if (c.accelerator) item.accelerator = platformAccelerator(c.accelerator, opts.platform);
   return [item, ...twinAccelerators(c).map((acc, i): Item => ({ id: twinIds[i], label, enabled, visible: false, accelerator: platformAccelerator(acc, opts.platform), click }))];
 }
 
-/** Registry commands for one menu, grouped (separator between groups) and ordered. */
+/** A group's head with its members, as one item; nothing when it has no member to show. */
+function groupItems(s: SubmenuSpec, opts: AppMenuOptions): Item[] {
+  const entry = colorTagGroup(s, opts.commands, submenuInput(opts));
+  return entry ? entriesToTemplate([entry], picker(opts)) : [];
+}
+
+/** Registry commands and groups for one menu, merged by group then order (separator between groups) and built. */
 function registryItems(name: MenuName, opts: AppMenuOptions): Item[] {
-  const placed = opts.commands
-    .flatMap((c) => {
-      const at = placement(c, opts.platform);
-      return at?.menu === name ? [{ c, at }] : [];
-    })
-    .sort((a, b) => a.at.group - b.at.group || a.at.order - b.at.order);
+  interface Placed {
+    at: { group: number; order: number };
+    build(): Item[];
+  }
+  const commands = opts.commands.flatMap((c): Placed[] => {
+    const at = placement(c.menu, opts.platform);
+    return at?.menu === name ? [{ at, build: () => commandItems(c, opts) }] : [];
+  });
+  const groups = (opts.submenus ?? SUBMENUS).flatMap((s): Placed[] => {
+    const at = placement(s.menu, opts.platform);
+    return at?.menu === name ? [{ at, build: () => groupItems(s, opts) }] : [];
+  });
+  const built = [...commands, ...groups]
+    .sort((a, b) => a.at.group - b.at.group || a.at.order - b.at.order)
+    .map((p) => ({ at: p.at, items: p.build() }))
+    .filter((p) => p.items.length > 0);
   const out: Item[] = [];
   let group: number | null = null;
-  for (const { c, at } of placed) {
+  for (const { at, items } of built) {
     if (group !== null && at.group !== group) out.push(SEP);
     group = at.group;
-    out.push(...commandItems(c, opts));
+    out.push(...items);
   }
   return out;
 }
@@ -173,19 +220,38 @@ export interface MenuItemLookup {
 
 /**
  * Applies a reported context to an already-built menu by flipping `enabled` in place on every registry item and its
- * hidden twins. No rebuild: an open dropdown stays open, no window gets setMenu again, and it stays cheap when reports
- * come quickly. Commands without a menu-bar placement are not looked up; ids the menu lacks are skipped.
+ * hidden twins, on the members of a placed group and on the group's head. No rebuild: an open dropdown stays open, no
+ * window gets setMenu again, and it stays cheap when reports come quickly. Commands without a menu-bar placement are not
+ * looked up; ids the menu lacks are skipped.
  */
-export function applyMenuEnabled(menu: MenuItemLookup, enabled: ReadonlySet<CommandId>, commands: readonly CommandSpec[] = COMMANDS): void {
+export function applyMenuEnabled(
+  menu: MenuItemLookup,
+  enabled: ReadonlySet<CommandId>,
+  commands: readonly CommandSpec[] = COMMANDS,
+  submenus: readonly SubmenuSpec[] = SUBMENUS,
+): void {
+  const grouped = new Set<CommandId>(submenus.flatMap((s) => (s.menu ? s.commands : [])));
   for (const c of commands) {
-    if (!c.menu) continue;
+    if (!c.menu && !grouped.has(c.id)) continue;
     const on = isEnabled(c.id, enabled);
     for (const id of menuItemIds(c)) {
       const item = menu.getMenuItemById(id);
       if (item) item.enabled = on;
     }
   }
+  for (const s of submenus) {
+    if (!s.menu) continue;
+    const head = menu.getMenuItemById(`submenu.${s.id}`);
+    if (head) head.enabled = s.commands.some((id) => isEnabled(id, enabled));
+  }
 }
+
+/**
+ * What the menu bar's value submenus are drawn from in a reported context. A change is a different menu (the rows are
+ * the columns drawn, the radios the sort in force), so main rebuilds it; every other part of a report flips `enabled`.
+ */
+export const submenuShapeKey = (ctx: Pick<CommandContextState, 'sortColumn' | 'sortDirection' | 'columnsShown'>): string =>
+  `${ctx.sortColumn}|${ctx.sortDirection}|${ctx.columnsShown}`;
 
 /**
  * Relabels the items of commands with state labels in place (MenuItem.label is dynamic in Electron 44; macOS picks it

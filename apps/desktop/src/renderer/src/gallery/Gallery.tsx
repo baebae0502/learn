@@ -280,7 +280,7 @@ function Part2() {
             ] as const
           ).map(([name, force]) => (
             <div key={name} className="nav-row" data-force={force}>
-              <Icon icon={LibraryBig} />
+              <Icon icon={Folder} />
               <span className="label ellipsis">{name}</span>
               <span className="count num">12</span>
             </div>
@@ -307,7 +307,7 @@ function Part2() {
             <span className="label ellipsis">들여쓴 행</span>
             <span className="count num">9</span>
           </div>
-          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties} data-force="selected focused">
+          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties} data-force="selected">
             <Icon icon={Folder} />
             <input className="name-field" defaultValue={'새\u00a0컬렉션'} readOnly aria-label="이름 칸" data-testid="g-name-field" />
           </div>

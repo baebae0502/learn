@@ -64,8 +64,9 @@
   .nav-row .name-field {
     flex: 1 1 auto;
     min-width: 0;
-    height: 22px; /* local: a field inside a 24–32 px row */
-    padding: 0 var(--space-6);
+    height: min(22px, calc(var(--row-height) - 6px)); /* local: a field inside a 24–32 px row; its 3 px halo stays inside the row */
+    padding: 0 var(--space-4);
+    margin-inline-start: calc(-1 * var(--space-4)); /* the name stays where the row's name was */
     border: 0;
     border-radius: var(--radius-sm);
     background: var(--bg-field);
@@ -76,7 +77,7 @@
   }
   .nav-row .rename-note {
     position: absolute;
-    left: calc(var(--space-16) + var(--indent, 0) * 16px + 16px + var(--space-6)); /* local: under the field: past the gutter and the icon */
+    left: calc(var(--space-16) + var(--indent, 0) * 16px + 16px + var(--space-2)); /* local: under the field: past the gutter and the icon */
     top: 100%;
     z-index: 2;
     padding: var(--space-2) var(--space-8);
@@ -111,11 +112,35 @@
     background: var(--fill-selected);
     color: var(--text-primary);
   }
-  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .icon {
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .icon:not(.disclosure .icon) {
     color: var(--accent-text);
+  }
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .disclosure,
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .disclosure .icon {
+    color: var(--text-tertiary);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .count {
     color: var(--sidebar-count-selected, var(--text-secondary));
+  }
+  /* The keyboard is in the name field, not in the list (design-spec 3.1): the selection is the neutral one, and the row that
+     holds the field has no fill — the field is its selection. These out-rank the focus-within fill above. */
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) {
+    background: var(--fill-selected);
+    color: var(--text-primary);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .icon:not(.disclosure .icon) {
+    color: var(--accent-text);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .count {
+    color: var(--sidebar-count-selected, var(--text-secondary));
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .disclosure,
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .disclosure .icon {
+    color: var(--text-tertiary);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]):has(.name-field),
+  .nav-row[data-force~='selected']:has(.name-field) {
+    background: none;
   }
   /* Keyboard cursor: inset 2 px ring on a row that is not filled. The sidebar is a single-selection list: on its
      accent-filled row the cursor draws no ring, since the neutral → accent fill change already shows that the list has

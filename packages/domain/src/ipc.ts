@@ -107,7 +107,7 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('shortcuts') }),
 ]);
 export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
-/** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4, P-5. */
+/** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40) }).strict();
 export type ConfirmInput = z.input<typeof confirmInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;

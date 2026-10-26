@@ -33,6 +33,14 @@ export function addExpanded(ids: readonly string[]): void {
   saveExpanded(new Set([...open, ...ids.filter(known)]));
 }
 
+/** Takes these collections out of the stored open rows: one deleted and then restored comes back folded. */
+function forgetExpanded(ids: readonly string[]): void {
+  const open = new Set(parseExpanded(queryClient.getQueryData(keys.expanded), () => true));
+  if (!ids.some((id) => open.has(id))) return;
+  for (const id of ids) open.delete(id);
+  saveExpanded(open);
+}
+
 function showSidebar(): void {
   const { sidebar, setSidebar } = useShell.getState();
   if (sidebarHidden(sidebar, innerWidth)) setSidebar(toggledSidebar(sidebar, innerWidth));
@@ -51,7 +59,8 @@ export const collectionActions = createCollectionActions({
   scope: () => useLibrary.getState().scope,
   setScope: (scope) => useLibrary.getState().setScope(scope),
   patch: patchOrganize,
-  expand: (id) => addExpanded([id]),
+  expand: addExpanded,
+  forget: forgetExpanded,
   showSidebar,
   opener: () => document.activeElement,
   failed: (e) => showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' }),

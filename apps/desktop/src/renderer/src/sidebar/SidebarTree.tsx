@@ -18,6 +18,7 @@ import { CollectionsHeading } from './CollectionsHeading';
 import { HEADING_HEIGHT } from './layout';
 import { NameField } from './NameField';
 import { DRAFT_KEY, SCOPE_KEYS, ancestorIds, keyOfScope, scopeOfKey, visibleCollectionKeys, type SpecialKind, type SpecialRow } from './rows';
+import { NEW_COLLECTION_NAME } from './nameEdit';
 import { useSidebarEdit } from './sidebarEdit';
 import { treeKeyAction } from './treeKeys';
 import { saveExpanded } from './useExpanded';
@@ -86,14 +87,14 @@ function SpecialItem({ row, tap, reader, onReaderPress }: { row: SpecialRow; tap
  * a disabled row clears the tree's focused key when the field takes the focus, and React Aria then moves the focus back to
  * the tree, out of the field.
  */
-function DraftItem({ text }: { text: string }) {
+function DraftItem() {
   return (
     <TreeItem id={DRAFT_KEY} textValue={t.organize.sidebar.newName} className="nav-row" style={indent} data-testid="draft-row">
       <TreeItemContent>
         {({ state }) => (
           <>
             <Icon icon={Folder} />
-            <NameField initial={text} rowKey={DRAFT_KEY} state={state} />
+            <NameField initial={NEW_COLLECTION_NAME} rowKey={DRAFT_KEY} state={state} />
           </>
         )}
       </TreeItemContent>
@@ -102,9 +103,9 @@ function DraftItem({ text }: { text: string }) {
 }
 
 function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }) {
-  const edit = useSidebarEdit((s) => s.edit);
-  const renaming = edit?.kind === 'rename' && edit.id === node.id ? edit : null;
-  const draftBelow = edit?.kind === 'new' && edit.parentId === node.id ? edit : null;
+  // Booleans, not the edit: the text changes with every keystroke, and no row but the edited one may render for it.
+  const renaming = useSidebarEdit((s) => s.edit?.kind === 'rename' && s.edit.id === node.id);
+  const draftBelow = useSidebarEdit((s) => s.edit?.kind === 'new' && s.edit.parentId === node.id);
   const count = ctx.model.count(node.id);
   const path = ctx.model.path(node.id).map((n) => n.name).join(t.organize.pathSeparator);
   return (
@@ -127,7 +128,7 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
             )}
             <Icon icon={isExpanded ? FolderOpen : Folder} />
             {renaming ? (
-              <NameField initial={renaming.text} rowKey={node.id} state={state} />
+              <NameField initial={node.name} rowKey={node.id} state={state} />
             ) : (
               <span className="label ellipsis" title={path}>
                 {node.name}
@@ -137,7 +138,7 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
           </>
         )}
       </TreeItemContent>
-      {draftBelow && <DraftItem text={draftBelow.text} />}
+      {draftBelow && <DraftItem />}
       {node.children.map((child) => (
         <CollectionItem key={child.id} node={child} ctx={ctx} />
       ))}
@@ -154,13 +155,14 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
 export function SidebarTree(props: SidebarTreeProps) {
   const { model, scope, specials, settled, expanded, reader, rowSize } = props;
   const { env, run } = useCommands();
-  const edit = useSidebarEdit((s) => s.edit);
+  const editKey = useSidebarEdit((s) => (s.edit === null ? null : s.edit.kind === 'new' ? DRAFT_KEY : s.edit.id));
+  const editParent = useSidebarEdit((s) => (s.edit?.kind === 'new' ? s.edit.parentId : undefined));
   const restoreTo = useSidebarEdit((s) => s.restoreTo);
   const treeRef = useRef<HTMLDivElement>(null);
   const tap = useRef<TreeState<unknown> | null>(null);
   const selectedKey = keyOfScope(scope);
   const selectedKeys = useMemo(() => new Set<Key>([selectedKey]), [selectedKey]);
-  const hasCollections = settled && model !== undefined && (model.collectionCount > 0 || edit?.kind === 'new');
+  const hasCollections = settled && model !== undefined && (model.collectionCount > 0 || editParent !== undefined);
   const fit = !hasCollections;
   const layoutOptions = useMemo(() => ({ rowSize, headingSize: HEADING_HEIGHT }), [rowSize]);
   const latest = useRef({ model, expanded, selectedKey });
@@ -298,8 +300,6 @@ export function SidebarTree(props: SidebarTreeProps) {
   const revealed = useRef<string | null>(null);
   /** The scroll that reveals the row is ours: only the user's scrolling can take the field out of sight. */
   const ownScroll = useRef(false);
-  const editKey = edit === null ? null : edit.kind === 'new' ? DRAFT_KEY : edit.id;
-  const editParent = edit?.kind === 'new' ? edit.parentId : undefined;
   useEffect(() => {
     const tree = treeRef.current;
     if (editKey === null) {
@@ -345,6 +345,19 @@ export function SidebarTree(props: SidebarTreeProps) {
       tree.removeEventListener('scroll', onScroll);
       if (frame !== 0) cancelAnimationFrame(frame);
     };
+  }, [editKey]);
+
+  // An edit that ended with no focus to give back (a click elsewhere, a scroll) leaves no blur for the tree: when the focus
+  // is not in it, it must not go on believing it has it.
+  const hadEdit = useRef(false);
+  useEffect(() => {
+    if (editKey !== null) {
+      hadEdit.current = true;
+      return;
+    }
+    if (!hadEdit.current) return;
+    hadEdit.current = false;
+    if (useSidebarEdit.getState().restoreTo === null && !treeRef.current?.contains(document.activeElement)) tap.current?.selectionManager.setFocused(false);
   }, [editKey]);
 
   // After an edit the focus goes back to where it was (the table, say); from inside the tree, to the cursor row.
@@ -399,7 +412,7 @@ export function SidebarTree(props: SidebarTreeProps) {
               <TreeHeader className="section-label tree-heading">
                 <CollectionsHeading />
               </TreeHeader>
-              {edit?.kind === 'new' && edit.parentId === null && <DraftItem text={edit.text} />}
+              {editParent === null && <DraftItem />}
               {model.roots.map((node) => (
                 <CollectionItem key={node.id} node={node} ctx={ctx} />
               ))}

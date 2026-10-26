@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, closeSheet, expectDisabledReason, expectSameShot, sidebarTop88, expectTooltipText, expectWindow, hoverLikeUser, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
+import { FIXTURES, closeSheet, createCollection, treeRow, expectDisabledReason, expectSameShot, sidebarTop88, expectTooltipText, expectWindow, hoverLikeUser, importFiles, importPaths, launch, mainWindow, menuSnapshot, openItem, runMenuCommand, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -693,6 +693,47 @@ test('in full screen there are no traffic lights: a hidden sidebar leaves the to
     expect(await left()).toBe(84);
     await page.evaluate(() => document.documentElement.setAttribute('data-fullscreen', ''));
     expect(await left()).toBe(12);
+  } finally {
+    await app.close();
+  }
+});
+
+test('not main: the tree\'s chevrons stay tertiary while the row glyphs are accent, in both the selected and the other rows', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    const bio = await createCollection(page, '분자생물학');
+    const c6 = await createCollection(page, '6장', bio);
+    const stats = await createCollection(page, '통계');
+    await createCollection(page, '회귀', stats);
+    await treeRow(page, bio).locator('.disclosure').click();
+    await treeRow(page, bio).click(); // the selected row has a chevron too
+    const colors = () =>
+      page.evaluate(({ a, b }) => {
+        const c = (el: Element | null) => getComputedStyle(el!).color;
+        const row = (id: string) => document.querySelector(`[data-testid="nav-collection-${id}"]`)!;
+        return { selectedChevron: c(row(a).querySelector('.disclosure .icon')), otherChevron: c(document.querySelector('[data-testid^="nav-collection-"][aria-expanded="false"] .disclosure .icon')), glyph: c(row(b).querySelector(':scope > [role="gridcell"] > .icon')) };
+      }, { a: bio, b: c6 });
+    await app.evaluate(({ BrowserWindow }) => {
+      const w = new BrowserWindow({ width: 300, height: 200, show: true });
+      void w.loadURL('about:blank');
+      w.focus();
+      (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+    });
+    await expect(page.locator('html')).toHaveAttribute('data-window-not-main', '');
+    const token = (name: string) =>
+      page.evaluate((v) => {
+        const probe = document.createElement('span');
+        document.body.append(probe);
+        probe.style.color = `var(${v})`;
+        const out = getComputedStyle(probe).color;
+        probe.remove();
+        return out;
+      }, name);
+    await expect(page.locator('html')).toHaveAttribute('data-window-inactive', '');
+    await expect.poll(async () => (await colors()).glyph).toBe(await token('--accent-text'));
+    await expect.poll(async () => (await colors()).selectedChevron).toBe(await token('--text-tertiary'));
+    expect((await colors()).otherChevron).toBe(await token('--text-tertiary'));
   } finally {
     await app.close();
   }

@@ -52,7 +52,7 @@
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
       color: var(--text-primary);
     }
-    :root[data-window-not-main] .sidebar .nav-row .icon {
+    :root[data-window-not-main] .sidebar .nav-row .icon:not(.disclosure .icon) {
       color: var(--accent-text);
     }
     :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn > .icon,

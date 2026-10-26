@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { FIXTURES, importPaths, launch, menuItemEnabled, menuSnapshot, runMenuCommand, type Session } from '../e2e/helpers';
-import { IS_MAC, captureOpenSubmenu, menuItemNames, writeJson } from './capture';
+import { IS_MAC, captureOpenSubmenu, writeJson } from './capture';
 
 const TAG = { tag: '@evidence' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -48,22 +48,12 @@ test('M5 menus: 보기 › 정렬 기준 ▸ open — the sort in force on, then
     return;
   }
   const pid = s.app.process().pid!;
-  const names = (await menuItemNames(pid, 5)) ?? [];
-  const at = names.indexOf('정렬 기준');
-  expect(at, `정렬 기준 is in 보기: ${JSON.stringify(names)}`).toBeGreaterThan(0);
-  const reachable = names.slice(0, at).filter((n) => n !== '-').length;
-  // Whether the first ↓ only opens the menu or also lands on its first row depends on the system: try both counts.
-  const open = async (prefix: string, what: string) => {
-    for (const rowsDown of [reachable - 1, reachable]) {
-      const captured = await captureOpenSubmenu(s.app, pid, 5, '정렬 기준', rowsDown, prefix, what);
-      if (captured.rows !== null) return captured;
-    }
-    return captureOpenSubmenu(s.app, pid, 5, '정렬 기준', reachable - 1, prefix, what);
-  };
+  const open = (prefix: string, what: string) => captureOpenSubmenu(s.app, pid, 5, '정렬 기준', prefix, what);
   const on = (rows: Array<{ name: string; mark: string }> | null) => (rows ?? []).filter((r) => r.mark !== '').map((r) => r.name);
 
   const first = await open('m5-04-menu-view-sort', '보기 › 정렬 기준 ▸ open: 추가일 and 내림차순 on');
   results['first'] = first;
+  expect(first.opened, 'the submenu opened').toBe(true);
   expect.soft((first.rows ?? []).map((r) => r.name), 'the rows').toEqual(['제목', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순']);
   expect.soft(on(first.rows), 'the marks').toEqual(['추가일', '내림차순']);
 
@@ -71,5 +61,6 @@ test('M5 menus: 보기 › 정렬 기준 ▸ open — the sort in force on, then
   await expect.poll(marked).toEqual(['추가일', '오름차순']);
   const second = await open('m5-04b-menu-view-sort-asc', '보기 › 정렬 기준 ▸ open after 오름차순: 추가일 and 오름차순 on');
   results['second'] = second;
+  expect(second.opened, 'the submenu opened the second time').toBe(true);
   expect.soft(on(second.rows), 'the marks after the change').toEqual(['추가일', '오름차순']);
 });

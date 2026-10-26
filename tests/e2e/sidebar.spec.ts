@@ -148,8 +148,11 @@ test('200 collections: the tree is virtual and its keys follow the model — Hom
     // No type-ahead: a letter or a Hangul syllable moves nothing.
     // Playwright's press() knows no Hangul key: the syllable is sent as the keydown a Korean layout sends.
     const cdp = await page.context().newCDPSession(page);
-    for (const key of ['a', '과']) {
+    // The syllables are the first letters of rows type-ahead would go to from here (내 라이브러리, 미분류): without the
+    // wrapper's block the cursor and the view would move. A search lasts 1 s, so the probes are apart.
+    for (const key of ['내', '미', 'a']) {
       for (const type of ['keyDown', 'keyUp'] as const) await cdp.send('Input.dispatchKeyEvent', { type, key, text: type === 'keyDown' ? key : undefined });
+      await page.waitForTimeout(1100);
       expect(await focusedKey(page), key).toBe(first);
       await expect(title(page)).toHaveText('과목 000');
     }
@@ -269,6 +272,15 @@ test('in the reader the sidebar is the way back: a row returns to the library at
     await expect(page.getByTestId('viewer-title')).toHaveCount(0);
     await expect(title(page)).toHaveText('가');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
+    // ↩ on a collection row is the way back too, not a rename (renaming is for the library view).
+    await specialRow(page, 'all').click();
+    await openItem(page, pdf!.title);
+    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await treeRow(page, a).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.getByTestId('rename-input')).toHaveCount(0);
+    await expect(title(page)).toHaveText('가');
   } finally {
     await app.close();
   }

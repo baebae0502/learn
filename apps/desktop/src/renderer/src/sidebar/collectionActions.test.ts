@@ -34,6 +34,7 @@ function setup(over: Partial<ActionDeps> = {}, startAt: LibraryScope = { kind: '
     setScope: vi.fn((s: LibraryScope) => void (scope = s)),
     patch: vi.fn((update: (s: OrganizeSnapshot) => OrganizeSnapshot) => void (snapshot = update(snapshot))),
     expand: vi.fn(),
+    forget: vi.fn(),
     showSidebar: vi.fn(),
     opener: () => null,
     failed: vi.fn(),
@@ -63,11 +64,16 @@ describe('a new collection (spec 3.4)', () => {
     const onCreated = vi.fn();
     const { actions, deps } = setup();
     actions.startNew({ parentId: 'bio', onCreated });
-    expect(deps.expand).toHaveBeenCalledExactlyOnceWith('bio');
+    expect(deps.expand).toHaveBeenCalledExactlyOnceWith(['bio']);
     await actions.finish('8장', 'blur');
     expect(deps.collections.create).toHaveBeenCalledExactlyOnceWith({ name: '8장', parentId: 'bio' });
     expect(onCreated).toHaveBeenCalledExactlyOnceWith('new1');
     expect(useSidebarEdit.getState().restoreTo).toBeNull(); // the click that left the field put the focus somewhere: not taken back
+  });
+  it('under a deep parent every closed ancestor opens with it, or the row would not be drawn', () => {
+    const { actions, deps } = setup();
+    actions.startNew({ parentId: 'lab' });
+    expect(deps.expand).toHaveBeenCalledExactlyOnceWith(['bio', 'c6', 'lab']);
   });
   it('a parent that is not there starts nothing', () => {
     const { actions, deps } = setup();
@@ -125,6 +131,13 @@ describe('renaming (spec 3.4)', () => {
     expect(snapshot().collections.find((c) => c.id === 'stats')?.name).toBe('통계학');
     expect(editNow()).toBeNull();
   });
+  it('renaming a collection below closed ancestors opens them; a top-level one opens nothing', () => {
+    const { actions, deps } = setup();
+    actions.startRename('lab');
+    expect(deps.expand).toHaveBeenCalledExactlyOnceWith(['bio', 'c6']);
+    actions.startRename('stats');
+    expect(deps.expand).toHaveBeenCalledTimes(1);
+  });
   it('an empty name, or the same name, is no call and no error; an unknown collection starts nothing', async () => {
     const { actions, deps } = setup();
     actions.startRename('stats');
@@ -160,6 +173,7 @@ describe('deleting (spec 3.4)', () => {
     expect(vi.mocked(deps.undoToast).mock.calls[0]![0]).toBe('‘분자생물학’을 삭제했습니다');
     await vi.mocked(deps.undoToast).mock.calls[0]![1]();
     expect(deps.collections.restore).toHaveBeenCalledExactlyOnceWith({ collectionId: 'bio' });
+    expect(deps.forget).toHaveBeenCalledExactlyOnceWith(['bio', 'c6', 'lab', 'c7']); // restored folded
   });
   it('a collection with no sub-collections says only that the items stay, and a vowel name takes 를', async () => {
     const { actions, deps } = setup();
@@ -176,6 +190,12 @@ describe('deleting (spec 3.4)', () => {
     const elsewhere = setup({}, { kind: 'collection', id: 'stats' });
     await elsewhere.actions.remove('bio');
     expect(elsewhere.deps.setScope).not.toHaveBeenCalled();
+  });
+  it('a sheet that fails is told and deletes nothing', async () => {
+    const { actions, deps } = setup({ confirm: vi.fn(async () => Promise.reject(new Error('x'))) });
+    await actions.remove('bio');
+    expect(deps.failed).toHaveBeenCalledTimes(1);
+    expect(deps.collections.remove).not.toHaveBeenCalled();
   });
   it('cancelling the sheet, a refused delete, and an unknown collection change nothing', async () => {
     const cancelled = setup({ confirm: vi.fn(async () => false) });

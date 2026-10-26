@@ -3,7 +3,7 @@ import type { OrganizeModel } from '../organize/model';
 import { t } from '../strings';
 import { NEW_COLLECTION_NAME, finishName } from './nameEdit';
 import { withCollection, withRenamed, withoutCollections } from './organizeCache';
-import { descendantIds } from './rows';
+import { ancestorIds, descendantIds } from './rows';
 import { useSidebarEdit } from './sidebarEdit';
 
 /** Everything the collection actions touch outside themselves, so they run in a test without a window. */
@@ -22,8 +22,10 @@ export interface ActionDeps {
   setScope(scope: LibraryScope): void;
   /** Changes the organize snapshot in the cache (the notice that follows brings the real one). */
   patch(update: (s: OrganizeSnapshot) => OrganizeSnapshot): void;
-  /** Opens a collection's row in the tree and remembers it. */
-  expand(collectionId: string): void;
+  /** Opens these collections' rows in the tree and remembers it. */
+  expand(collectionIds: readonly string[]): void;
+  /** Drops these collections from the remembered open rows (deleted ones come back folded). */
+  forget(collectionIds: readonly string[]): void;
   /** The sidebar is shown (it may be hidden when ⇧⌘N is pressed). */
   showSidebar(): void;
   /** What has the focus now (given back when the edit ends). */
@@ -52,7 +54,9 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
       const parentId = opts.parentId ?? null;
       if (parentId !== null && deps.model()?.node(parentId) === undefined) return;
       deps.showSidebar();
-      if (parentId !== null) deps.expand(parentId);
+      // The row is drawn only below open parents: every closed ancestor opens, or the edit would wait on a hidden row.
+      const model = deps.model();
+      if (parentId !== null && model) deps.expand([...ancestorIds(model, parentId), parentId]);
       edit().begin({ kind: 'new', parentId, text: NEW_COLLECTION_NAME, ...(opts.onCreated ? { onCreated: opts.onCreated } : {}) }, deps.opener());
     },
 
@@ -60,6 +64,8 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
       const node = deps.model()?.node(collectionId);
       if (!node) return;
       deps.showSidebar();
+      const closed = ancestorIds(deps.model()!, collectionId);
+      if (closed.length > 0) deps.expand(closed);
       edit().begin({ kind: 'rename', id: collectionId, text: node.name }, deps.opener());
     },
 
@@ -100,7 +106,13 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
       const node = model?.node(collectionId);
       if (!model || !node) return;
       const below = descendantIds(model, collectionId);
-      const sure = await deps.confirm({ message: t.organize.remove.message(node.name), detail: t.organize.remove.detail(below.length), confirm: t.organize.remove.confirm });
+      let sure: boolean;
+      try {
+        sure = await deps.confirm({ message: t.organize.remove.message(node.name), detail: t.organize.remove.detail(below.length), confirm: t.organize.remove.confirm });
+      } catch (e) {
+        deps.failed(e);
+        return;
+      }
       if (!sure) return;
       const scope = deps.scope();
       const viewed = scope.kind === 'collection' && (scope.id === collectionId || below.includes(scope.id));
@@ -111,6 +123,7 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
         return;
       }
       deps.patch((snap) => withoutCollections(snap, new Set([collectionId, ...below])));
+      deps.forget([collectionId, ...below]);
       if (viewed) deps.setScope(node.parentId === null ? { kind: 'all' } : { kind: 'collection', id: node.parentId });
       deps.undoToast(t.organize.remove.done(node.name), async () => {
         await deps.collections.restore({ collectionId });

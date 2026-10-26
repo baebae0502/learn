@@ -60,7 +60,7 @@
   .gallery .g-list.g-cols {
     display: block;
     width: calc(2 * 240px + var(--space-16)); /* local: two sidebar-wide columns */
-    columns: 2 240px;
+    columns: 2;
     column-gap: var(--space-16);
   }
   .gallery .g-list.g-cols > * {

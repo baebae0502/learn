@@ -247,6 +247,7 @@ test('delete asks in the sheet words, the view moves to the parent, and 실행 �
     // 분자생물학 and 7장 are back; 6장 stays deleted — it was deleted by its own act, before its parent.
     await expect.poll(async () => (await names(page)).sort()).toEqual(['7장', '분자생물학']);
     await expect(treeRow(page, bio)).toBeVisible();
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-expanded', 'false'); // it comes back folded, though it was open
 
     // Cancelling the sheet changes nothing; a name ending in a vowel takes 를.
     const stats = await createCollection(page, '통계');
@@ -323,7 +324,7 @@ test('imports go into the collection being viewed: ⌘O, a window drop with the 
     await expect(page.getByTestId('drop-overlay').getByRole('heading')).toHaveText('‘논문’으로 가져오기');
     await drag(page, 'dragover', 'source');
     await drag(page, 'drop', 'source');
-    await expect(page.getByTestId('import-done').filter({ hasText: '‘논문’에 자료 1개를 가져왔습니다' }).last()).toBeVisible();
+    await expect(page.getByTestId('import-done').filter({ hasText: '‘논문’에 자료 1개를 가져왔습니다' }).first()).toBeVisible(); // newest first
     await expect.poll(async () => (await organizeSnapshot(page)).members[a]?.length).toBe(2);
 
     // 가져오지 않음 for a duplicate files the item that is already in the library into this collection.
@@ -394,6 +395,41 @@ test('a name being typed survives a small scroll and is saved when its row scrol
     await scroller.evaluate((e) => void (e.scrollTop = e.scrollHeight));
     await expect(field(page)).toHaveCount(0); // the row left the window; the edit ended
     await expect.poll(async () => (await organizeSnapshot(page)).collections.find((c) => c.id === first)?.name).toBe('첫째');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the palette renames or adds under the viewed collection from a tree folded in the stored list: the field is focused and the parents are open', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    const bio = await createCollection(page, '분자생물학');
+    const c6 = await createCollection(page, '6장', bio);
+    await addToCollection(page, c6, [pdf!.id]); // a row in the table to take the focus from the tree
+    await treeRow(page, bio).locator('.disclosure').click();
+    await treeRow(page, c6).click();
+    // Folding by the chevron moves the view to the parent, and a restored view opens its ancestors, so the row cannot be hidden
+    // from the UI; the stored list is emptied and the page reloaded to start from the folded tree.
+    const foldAll = async () => {
+      await page.evaluate(() => window.learn.settings.set({ key: 'sidebar.expanded', value: [] }));
+      await page.reload();
+      await page.getByTestId('app-ready').waitFor({ state: 'attached' });
+      await expect(title(page)).toHaveText('6장');
+    };
+    await foldAll();
+
+    await runPalette(page, app, '컬렉션 이름', 'collection.rename');
+    await expect(field(page)).toBeFocused();
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(field(page)).toHaveCount(0);
+
+    await foldAll();
+    await runPalette(page, app, '하위', 'collection.newChild');
+    await expect(field(page)).toBeFocused();
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
   } finally {
     await app.close();
   }

@@ -474,26 +474,61 @@ export async function submenuItems(target: string | number, index: number, label
   });
 }
 
+/** Whether the menu row `label` of menu-bar menu `index` is the selected (highlighted) one; null when System Events cannot say. */
+async function menuRowSelected(target: string | number, index: number, label: string): Promise<boolean | null> {
+  const script = [
+    'tell application "System Events"',
+    `tell ${processRef(target)}`,
+    'try',
+    `return (value of attribute "AXSelected" of menu item "${label}" of menu 1 of menu bar item ${index} of menu bar 1) as text`,
+    'on error',
+    'return "unknown"',
+    'end try',
+    'end tell',
+    'end tell',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 10_000);
+  const out = r.ok ? r.stdout.trim() : '';
+  return out === 'true' ? true : out === 'false' ? false : null;
+}
+
 /**
- * Menu-bar menu `index` opened by the keyboard (⌃F2, → ×(index−1), ↓), then ↓ × `rowsDown` and → to open the submenu
- * `label` on the row reached; captures the screen and reads the submenu's rows. Rows a key cannot reach (separators,
- * disabled ones) are skipped by AppKit, so `rowsDown` counts the reachable rows above the submenu's head.
+ * Menu-bar menu `index` opened by the keyboard (⌃F2, → ×(index−1), ↓), then ↓ one row at a time — AppKit skips separators and
+ * disabled rows, so no count of presses can be fixed in advance — until System Events says the row `label` is the selected
+ * one, and → opens its submenu. `opened` is true only when the row is selected and the submenu then lists rows: the menu
+ * being open and its rows readable is not the submenu being open (the rows are in the AX tree either way).
  */
-export async function captureOpenSubmenu(app: ElectronApplication, target: string | number, index: number, label: string, rowsDown: number, prefix: string, what: string) {
+export async function captureOpenSubmenu(app: ElectronApplication, target: string | number, index: number, label: string, prefix: string, what: string) {
   await focusApp(app);
   const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
   for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
-  keys.push('key code 125', 'delay 0.4');
-  for (let i = 0; i < rowsDown; i++) keys.push('key code 125', 'delay 0.15');
-  keys.push('key code 124', 'end tell');
+  keys.push('key code 125', 'delay 0.4', 'end tell');
   const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
-  await sleep(1200);
-  const rows = await submenuItems(target, index, label);
-  const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${rowsDown + 1}, → via System Events`);
+  await sleep(600);
+  const rowCount = ((await menuItemNames(target, index)) ?? []).length;
+  let downs = 0;
+  let selected = false;
+  for (let step = 0; step <= rowCount + 1; step++) {
+    selected = (await menuRowSelected(target, index, label)) === true;
+    if (selected) break;
+    await tryExec('osascript', ['-e', 'tell application "System Events" to key code 125'], 10_000);
+    downs++;
+    await sleep(250);
+  }
+  let rows: Array<{ name: string; mark: string }> | null = null;
+  let stillSelected = false;
+  if (selected) {
+    await tryExec('osascript', ['-e', 'tell application "System Events" to key code 124'], 10_000);
+    await sleep(1000);
+    rows = await submenuItems(target, index, label);
+    stillSelected = (await menuRowSelected(target, index, label)) === true;
+  }
+  const opened = selected && stillSelected && rows !== null && rows.length > 0;
+  const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${downs + 1}, → via System Events`);
   await pressEscape();
   await pressEscape();
   await pressEscape();
-  return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), rowsDown, rows };
+  return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), downs, selected, opened, rows };
 }
 
 /** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */

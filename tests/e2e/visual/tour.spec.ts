@@ -709,6 +709,19 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await s.page.keyboard.press('Escape');
     await expect(field).toHaveCount(0);
 
+    // The viewed collection being renamed (↩ on its row): the selection stays the neutral one and the row holds only the field.
+    await setTheme(s.page, 'light');
+    await treeRow(s.page, c6).click();
+    await s.page.keyboard.press('Enter');
+    await expect(field).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect(field).toBeFocused();
+      await shoot(s.page, `sidebar-rename-${theme}`, { mask: dates() });
+    }
+    await s.page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+
     // An empty collection: the table body and the item panel; the panel's day is masked.
     await treeRow(s.page, conf).click();
     await expect(s.page.getByTestId('collection-empty')).toBeVisible();

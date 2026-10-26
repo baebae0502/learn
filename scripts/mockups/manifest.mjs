@@ -90,28 +90,46 @@ const TUTOR_STATES = [
   [7, 'proposals', '제안 카드'],
   [8, 'failure', '실패 · 오프라인'],
   [9, 'sessions', '세션 목록(사이드바)'],
-  [10, 'narrow', '좁은 창 · 접힘'],
+  [10, 'narrow', '좁은 창(1040) · 접힘'],
 ];
 const inTutor = (r) => ({ ...r, group: /** @type {const} */ ('tutor') });
 const tutor = (theme, query, suffix, label) => inTutor(variant('tutor', theme, 'B', query, suffix, `튜터 ${label}`));
 export const TUTOR = [
   ...TUTOR_STATES.flatMap(([n, suffix, label]) => THEMES.map((t) => tutor(t, { state: String(n) }, `${n}-${suffix}`, `${n} ${label}`))),
-  ...THEMES.map((t) => tutor(t, { state: '10', fold: 'open' }, '10-narrow-open', '10 좁은 창 · 펼침')),
-  tutor('light', { state: '8', fail: 'agent' }, '8-failure-agent', '8 실패 · 에이전트 중단'),
-  tutor('light', { state: '8', fail: 'login' }, '8-failure-login', '8 실패 · 로그인 만료'),
+  // Sub-states, both themes.
+  ...[
+    [{ state: '1', mode: 'info' }, '1-mode-info', '1 정보 모드(리더, 320)'],
+    [{ state: '1', mode: 'info', view: 'library' }, '1-mode-info-library', '1 정보 모드(라이브러리)'],
+    [{ state: '2', later: '1' }, '2-consent-later', '2 동의 카드 · 나중에 뒤'],
+    [{ state: '3', agents: 'none' }, '3-agents-none', '3 에이전트 없음'],
+    [{ state: '3', agents: 'searching' }, '3-agents-searching', '3 에이전트 찾는 중'],
+    [{ state: '3', agents: 'blocked' }, '3-agents-blocked', '3 준비된 에이전트 없음'],
+    [{ state: '5', menu: 'agent' }, 'menu-agent', '에이전트 메뉴'],
+    [{ state: '8', fail: 'agent' }, '8-failure-agent', '8 실패 · 에이전트 중단'],
+    [{ state: '8', fail: 'login' }, '8-failure-login', '8 실패 · 로그인 만료'],
+    [{ state: '9', empty: '1' }, '9-sessions-empty', '9 세션 없음'],
+    [{ state: '9', sheet: 'delete' }, '9-delete', '9 세션 삭제 시트'],
+    [{ state: '10', fold: 'open' }, '10-narrow-open', '10 좁은 창(1040) · 펼침'],
+    [{ state: '10', fold: '960' }, '10-narrow-960', '10 최소 창(960) · 펼침'],
+    [{ state: '5', backend: 'fake' }, '5-backend-fake', '가짜 백엔드 표시'],
+  ].flatMap(([q, suffix, label]) => THEMES.map((t) => tutor(t, q, suffix, label))),
   // §4 decisions: each alternative once (the defaults are the base state renders above).
   tutor('light', { state: '5', width: '340' }, '5-width-340', '결정 · 폭 340'),
   tutor('light', { state: '5', width: '440' }, '5-width-440', '결정 · 폭 440'),
   tutor('light', { state: '5', msg: 'bubble' }, '5-msg-bubble', '결정 · 메시지 말풍선'),
+  tutor('light', { state: '5', scroll: 'top' }, '5-msg-doc-top', '결정 · 문서식(처음부터)'),
+  tutor('light', { state: '5', msg: 'bubble', scroll: 'top' }, '5-msg-bubble-top', '결정 · 말풍선(처음부터)'),
   tutor('light', { state: '6', cite: 'p' }, '6-cite-p', '결정 · 인용 p. 42'),
   tutor('light', { state: '6', cite: 'icon' }, '6-cite-icon', '결정 · 인용 아이콘 + 숫자'),
   tutor('light', { state: '2', consent: 'sheet' }, '2-consent-sheet', '결정 · 동의 시트'),
   tutor('light', { state: '9', sessions: 'panel' }, '9-sessions-panel', '결정 · 세션 목록 패널'),
   tutor('light', { view: 'library' }, 'library', '라이브러리 보기의 튜터'),
-  tutor('light', { state: '5', backend: 'fake' }, '5-backend-fake', '가짜 백엔드 표시'),
   tutor('light', { state: '5', ms: '1' }, '5-milestones', '마일스톤 표시 · 대화'),
   tutor('light', { state: '7', ms: '1' }, '7-milestones', '마일스톤 표시 · 제안 카드'),
-  ...THEMES.map((t) => inTutor(variant('components', t, 'A', { part: '4' }, 'part4', '컴포넌트 상태 3 — 튜터'))),
+  ...THEMES.flatMap((t) => [
+    inTutor(variant('components', t, 'A', { part: '4' }, 'part4', '컴포넌트 상태 3 — 튜터')),
+    inTutor(variant('components', t, 'A', { part: '5' }, 'part5', '컴포넌트 상태 4 — 튜터 목록 · 선택')),
+  ]),
 ];
 
 export const ALL = [...BASE, ...VARIANTS, ...TUTOR];

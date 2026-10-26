@@ -134,37 +134,40 @@ window.MockupData = (() => {
 
   // Tutor (T1 mockup, tutor.html). The open PDF is 분자생물학 6장 at p. 42 (opened 오늘 오전 9:24);
   // the session started at 9:31. Pages and quotes are the PDF's own text (views.js pageBody 41–42).
+  // A session is named after its first question (T1); the user can rename it.
   const tutor = {
     item: '분자생물학 6장 · 신호 전달',
-    session: '증폭 배율이 곱해지는 이유',
+    session: '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요',
     started: '오늘 오전 9:31',
     selection: { page: 42, text: '전체 증폭 배율은 각 단계 배율의 곱으로 근사할 수 있다.' },
-    // Sessions of the open item, newest first, grouped by day.
+    // Sessions of the open item, newest first, grouped by day. Rows inside a day group show the short
+    // form (time today/yesterday, "10월 22일" in the last 7 days) — a design-spec 9 exception to approve.
     itemSessions: [
       { group: '오늘', rows: [
-        { title: '증폭 배율이 곱해지는 이유', at: '9:31', current: true },
-        { title: 'cAMP와 칼슘 이온 비교', at: '8:50' },
+        { title: '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요', at: '오전 9:31', current: true },
+        { title: 'cAMP와 칼슘 이온은 어떻게 다른가요?', at: '오전 8:50', rename: true },
       ] },
-      { group: '어제', rows: [{ title: '6.3절 G 단백질 연결 수용체 요약', at: '오후 9:12' }] },
+      { group: '어제', rows: [{ title: '6.3절을 다섯 줄로 요약해 주세요', at: '오후 9:12' }] },
       { group: '지난 7일', rows: [
-        { title: '연습 문제 3번 풀이 확인', at: '10. 22.' },
-        { title: '그림 6-2 읽는 법', at: '10. 21.' },
+        { title: '연습 문제 3번 풀이가 맞는지 봐 주세요', at: '10월 22일' },
+        { title: '그림 6-2는 어떻게 읽나요?', at: '10월 21일' },
       ] },
     ],
-    // Library-wide sessions, grouped by item, item groups ordered by their latest session.
+    // Library-wide sessions, grouped by item, item groups ordered by their latest session (no times: the
+    // order is the information; the date is in the tooltip). Up to 5 items × 3 sessions.
     recentSessions: [
       { item: '분자생물학 6장 · 신호 전달', kind: 'pdf', rows: [
-        { title: '증폭 배율이 곱해지는 이유', at: '9:31', current: true },
-        { title: 'cAMP와 칼슘 이온 비교', at: '8:50' },
+        { title: '‘각 단계 배율의 곱’이 무슨 뜻인지 예를 들어 설명해 주세요', at: '오늘 오전 9:31' },
+        { title: 'cAMP와 칼슘 이온은 어떻게 다른가요?', at: '오늘 오전 8:50' },
       ] },
-      { item: 'G Protein–Coupled Receptor Dynamics in Live Cells', kind: 'pdf', rows: [{ title: '초록을 한국어로 정리', at: '어제' }] },
+      { item: 'G Protein–Coupled Receptor Dynamics in Live Cells', kind: 'pdf', rows: [{ title: '초록을 한국어로 정리해 주세요', at: '어제 오후 4:52' }] },
     ],
     // Detected agents (ADR-0010 §1). Program names are the programs' own; our feature is only "튜터".
     agents: [
-      { id: 'codex', name: 'Codex', status: 'ready', text: '질문은 OpenAI의 서버에서 처리됩니다.' },
+      { id: 'codex', name: 'Codex', status: 'ready', text: '이&nbsp;프로그램에 설정한 계정으로 답합니다.' },
       { id: 'claude', name: 'Claude Code', status: 'login', text: '터미널에서 <span class="mono">claude</span>를 실행하고 안내에 따라 로그인한 뒤 다시 확인하세요.' },
-      { id: 'gemini', name: 'Gemini CLI', status: 'missing', text: '설치하면 여기에 나타납니다.' },
-      { id: 'opencode', name: 'opencode', status: 'old', text: '설치된 판은 Learn과 연결할 수 없습니다. 최신&nbsp;판으로 업데이트한 뒤 다시 확인하세요.' },
+      { id: 'gemini', name: 'Gemini CLI', status: 'missing', text: '설치되어 있지 않습니다. 설치하고 로그인한 뒤 다시 찾기를 누르세요.' },
+      { id: 'opencode', name: 'opencode', status: 'old', text: '설치된 버전은 Learn과 연결할 수 없습니다. 최신&nbsp;버전으로 업데이트한 뒤 다시 확인하세요.' },
     ],
   };
 

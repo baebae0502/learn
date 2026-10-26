@@ -117,7 +117,8 @@ window.Mockup = (() => {
       if (!anchor) continue;
       const r = anchor.getBoundingClientRect();
       const host = menu.offsetParent.getBoundingClientRect();
-      menu.style.top = `${r.bottom - host.top + 4}px`;
+      // data-place="above": no room below (a button at the window's bottom edge) — open 4 px above it instead.
+      menu.style.top = menu.dataset.place === 'above' ? `${r.top - host.top - 4 - menu.offsetHeight}px` : `${r.bottom - host.top + 4}px`;
       if (menu.dataset.align === 'end') menu.style.right = `${host.right - r.right}px`;
       else menu.style.left = `${r.left - host.left}px`;
     }
@@ -180,7 +181,7 @@ window.Mockup = (() => {
    * User/document text (titles, subtitles, PDF pages) is out of scope.
    */
   const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files, ' +
-    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd';
+    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];
@@ -197,7 +198,14 @@ window.Mockup = (() => {
   function scrollToEnd() {
     for (const el of document.querySelectorAll('.to-end')) {
       el.classList.remove('to-end');
-      if (el.scrollHeight > el.clientHeight + 1) el.classList.add('to-end');
+      const overflow = el.scrollHeight - el.clientHeight;
+      if (overflow > 1) {
+        el.classList.add('to-end');
+        // Scrolled past the session's title (or the title is far above): the title line under the panel head appears.
+        const title = el.querySelector(':scope > .tu-title');
+        const sticky = el.previousElementSibling;
+        if (sticky && sticky.classList.contains('tu-sticky') && (!title || overflow > title.offsetHeight + 16)) sticky.hidden = false;
+      }
     }
   }
 

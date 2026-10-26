@@ -12,10 +12,16 @@
      ?consent=card|sheet           consent (state 2): card in the tutor panel (default) or sheet on the window
      ?sessions=sidebar|panel       session list (state 9): left sidebar (default) or a list button in the tutor head
   Sub-states:
+     ?mode=tutor|info              state 1: 정보 mode under the same head (reader 320 wide; with &view=library the library)
+     ?consent=card&later=1         state 2: the card after 나중에 (tutor off)
+     ?agents=list|none|searching|blocked   state 3: detected list · none installed · searching · none ready
      ?fail=offline|agent|login     state 8 (default offline)
-     ?fold=collapsed|open          state 10 (default collapsed)
+     ?sessions=…&empty=1           state 9: no sessions for this item; &sheet=delete: the delete sheet
+     ?fold=collapsed|open|960      state 10: window 1040 folded · 1040 opened (sidebar folds) · 960 opened
+     ?menu=agent                   the composer's agent menu (opens above the button)
      ?view=reader|library          library = the one library-view sheet (tutor mode beside the item table)
      ?backend=agent|fake           fake = the fake backend's marker (dev and demo builds only)
+     ?scroll=top                   a conversation from its top (to compare ?msg= on the same content)
 -->
 <html lang="ko">
   <head>

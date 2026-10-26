@@ -24,6 +24,8 @@ import { gridKey } from './gridKeys';
 import { ItemMarks } from './ItemMarks';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
+import { bridge } from '../spike/bridge';
+import { useRowDnd } from '../spike/rowDnd';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
 
 export interface LibraryTableProps {
@@ -118,8 +120,13 @@ interface ItemRowProps {
  */
 const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match }: ItemRowProps) {
   const last = columns.length - 1;
+  const rowRef = useRef<HTMLDivElement>(null);
+  const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id);
   return (
     <div
+      ref={rowRef}
+      {...rowProps}
+      data-drop-target={isDropTarget || undefined}
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}
@@ -184,10 +191,13 @@ export function LibraryTable(props: LibraryTableProps) {
   const rangeExtractor = useCallback(
     (range: Range) => {
       const shown = defaultRangeExtractor(range);
-      if (stop < range.count && !shown.includes(stop)) return [...shown, stop].sort((a, b) => a - b);
+      const extra = [stop];
+      if (bridge.pin && bridge.draggingRowId !== null) extra.push(order.indexOf(bridge.draggingRowId));
+      const add = extra.filter((i) => i >= 0 && i < range.count && !shown.includes(i));
+      if (add.length > 0) return [...shown, ...add].sort((a, b) => a - b);
       return shown;
     },
-    [stop],
+    [stop, order],
   );
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -308,12 +318,25 @@ export function LibraryTable(props: LibraryTableProps) {
   }, [apply]);
 
   // ---- rows: press, double-click, right-click (delegated: the rows keep no handlers of their own) ----------------
+  const pendingCollapse = useRef<string | null>(null);
   const onBodyMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const mac = isMac();
     if (mac && e.ctrlKey) return; // ⌃-click is the context menu on macOS (onContextMenu)
     const id = rowIdOf(e.target);
-    if (id !== null) apply({ kind: 'click', id, shift: e.shiftKey, toggle: mac ? e.metaKey : e.ctrlKey });
+    pendingCollapse.current = null;
+    const toggle = mac ? e.metaKey : e.ctrlKey;
+    // Spike (R1): a press on a row inside a multi-selection keeps the selection until release, so a drag can carry it all.
+    if (id !== null && !e.shiftKey && !toggle && useLibrary.getState().selected.size > 1 && useLibrary.getState().selected.has(id)) {
+      pendingCollapse.current = id;
+      return;
+    }
+    if (id !== null) apply({ kind: 'click', id, shift: e.shiftKey, toggle });
+  }, [apply]);
+  const onBodyClick = useCallback(() => {
+    const id = pendingCollapse.current;
+    pendingCollapse.current = null;
+    if (id !== null) apply({ kind: 'click', id, shift: false, toggle: false });
   }, [apply]);
   // A double-click opens its row, which the first press selected alone (spec §3.3; M3's single-click open is gone).
   const onBodyDoubleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -477,6 +500,7 @@ export function LibraryTable(props: LibraryTableProps) {
           className="table-body"
           style={{ height: virtualizer.getTotalSize() }}
           onMouseDown={onBodyMouseDown}
+          onClick={onBodyClick}
           onDoubleClick={onBodyDoubleClick}
           onContextMenu={onBodyContextMenu}
         >

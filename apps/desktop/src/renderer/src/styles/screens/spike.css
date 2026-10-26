@@ -1,0 +1,21 @@
+/* M5 Task 1 drag-and-drop spike (branch m5-spike only): enough layout to measure real rows and a real tree. */
+@layer screens {
+  .dnd-spike { position: fixed; inset: 0; display: flex; background: var(--bg-content); color: var(--text-primary); font: var(--type-body); }
+  .dnd-sidebar { flex: none; width: 240px; display: flex; flex-direction: column; border-right: 1px solid var(--separator); background: var(--bg-sidebar, var(--bg-content)); }
+  .dnd-tree { flex: 1 1 auto; min-height: 0; overflow: auto; outline: none; padding: 0 8px; }
+  .dnd-main { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+  .dnd-main > .library-table { flex: 1 1 auto; }
+  .dnd-row { align-items: center; }
+  .dnd-chevron { all: unset; flex: none; width: 16px; height: 16px; display: inline-grid; place-items: center; }
+  .dnd-chevron[data-expanded] svg { transform: rotate(90deg); }
+  .dnd-draghandle { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .dnd-row { position: relative; }
+  .dnd-rename { flex: 1 1 auto; min-width: 0; font: inherit; }
+  .dnd-tags { flex: none; display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--separator); }
+  .dnd-chip { height: 22px; padding: 0 10px; border-radius: 11px; background: var(--fill-hover); font: var(--type-footnote); display: inline-flex; align-items: center; cursor: grab; }
+  .dnd-row[data-drop-target], .table-row[data-drop-target], .dnd-root-header[data-drop-target] { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+  .dnd-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg-content); opacity: 0.96; z-index: 5; }
+  .dnd-preview { position: fixed; left: -1000px; top: 0; display: inline-flex; gap: 8px; align-items: center; padding: 4px 10px; border-radius: 6px; background: var(--bg-content); border: 1px solid var(--separator); font: var(--type-body); max-width: 240px; pointer-events: none; }
+  .dnd-preview-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dnd-preview-badge { background: var(--accent); color: var(--text-on-accent); border-radius: 10px; padding: 0 8px; font: var(--type-caption); }
+}

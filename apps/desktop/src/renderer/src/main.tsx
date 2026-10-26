@@ -1,3 +1,4 @@
+import './spike/asMac';
 import { StrictMode, type ComponentType } from 'react';
 import { createRoot } from 'react-dom/client';
 import { I18nProvider } from 'react-aria-components';
@@ -28,6 +29,8 @@ const VIEWS: Record<RendererWindow, () => Promise<ComponentType>> = {
   main: () => import('./App').then((m) => m.App),
   settings: () => Promise.resolve(SettingsApp),
   gallery: () => import('./gallery/Gallery').then((m) => m.Gallery),
+  // M5 Task 1 drag-and-drop spike (branch m5-spike only).
+  spike: () => import('./spike/DndSpike').then((m) => m.DndSpike),
   sheet: () => Promise.resolve(SheetApp),
 };
 const View = await VIEWS[params.window]();

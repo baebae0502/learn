@@ -26,3 +26,4 @@ import './screens/palette.css';
 import './screens/settings.css';
 import './screens/drop.css';
 import './screens/demo.css';
+import './screens/spike.css';

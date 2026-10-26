@@ -1,4 +1,4 @@
-export type RendererWindow = 'main' | 'settings' | 'sheet' | 'gallery';
+export type RendererWindow = 'main' | 'settings' | 'sheet' | 'gallery' | 'spike';
 export interface WindowParams {
   window: RendererWindow;
   platform: string;
@@ -8,7 +8,7 @@ export interface WindowParams {
   /** Gallery page: component board part 1 or 2 (visual tour), 3 = interactive fixture for behaviour tests. */
   part: 1 | 2 | 3;
 }
-const KINDS: readonly RendererWindow[] = ['main', 'settings', 'sheet', 'gallery'];
+const KINDS: readonly RendererWindow[] = ['main', 'settings', 'sheet', 'gallery', 'spike'];
 
 export function readWindowParams(search: string): WindowParams {
   const p = new URLSearchParams(search);

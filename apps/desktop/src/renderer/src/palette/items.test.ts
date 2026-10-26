@@ -7,7 +7,7 @@ import { initialsExample, itemMeta, itemMetaMatch, rankItems } from './items';
 const item = (id: string, title: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
   id, title, type: 'pdf', mime: 'application/pdf', size: 1, storageMode: 'managed', availability: 'available', assetId: 'a', revisionId: 'r',
   originalName: `${title}.pdf`, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null,
-  publisher: null, tagIds: [], progress: null, openedAt: null, ...over,
+  publisher: null, progress: null, openedAt: null, ...over,
 });
 const at = (start: number) => ({ start, end: start + 2, kind: 'word' as const });
 

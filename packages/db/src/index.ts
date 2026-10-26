@@ -6,3 +6,4 @@ export * from './settings-repository';
 export * from './reading-repository';
 export * from './collections-repository';
 export * from './tags-repository';
+export * from './organize-query';

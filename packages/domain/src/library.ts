@@ -23,7 +23,6 @@ export interface LibraryItem {
   year: number | null;
   /** From the metadata (quick search's short fields, spec 4.2); null when there is none. */
   publisher: string | null;
-  tagIds: string[];
   progress: number | null;
   openedAt: string | null;
 }
@@ -77,7 +76,8 @@ export interface DuplicateGroup {
 }
 
 export type ImportOutcome =
-  | { status: 'imported'; path: string; item: LibraryItem }
+  /** `collectionId`: the collection the item was filed into — present only when that really happened (it is absent if the import asked for none, or the collection was gone by then). */
+  | { status: 'imported'; path: string; item: LibraryItem; collectionId?: string }
   | { status: 'duplicate'; path: string; existingItemId: string }
   | { status: 'failed'; path: string; code: ErrorCode; message: string };
 

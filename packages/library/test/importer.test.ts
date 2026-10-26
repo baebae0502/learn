@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
+import { CollectionsRepository, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, sha256File, type ImportHooks } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
@@ -248,5 +248,59 @@ describe('reused managed assets', () => {
     const asset2 = repo.getAsset(out2.item.assetId)!;
     expect(asset1.id).toBe(asset2.id);
     expect(asset2.externalPath).toBe(src);
+  });
+});
+
+describe('import into a collection', () => {
+  const members = (db: Db, collectionId: string) =>
+    (db.prepare('SELECT item_id FROM collection_items WHERE collection_id = ?').all(collectionId) as { item_id: string }[]).map((r) => r.item_id);
+
+  it('files each imported item in the collection and says so in its outcome', async () => {
+    const { db, importer } = setup();
+    const coll = new CollectionsRepository(db).create({ name: '강의' });
+    const dir = tempDir('src');
+    const outs = await importer.importMany([writePdf(dir, 'a.pdf', 'one'), writeMp4(dir, 'b.mp4', 'two')], { mode: 'managed', collectionId: coll.id });
+    const ids = outs.map((o) => (o.status === 'imported' ? o.item.id : ''));
+    expect(outs.map((o) => o.status === 'imported' && o.collectionId)).toEqual([coll.id, coll.id]);
+    expect(members(db, coll.id).sort()).toEqual([...ids].sort());
+  });
+
+  it('imports without a membership when the collection was deleted before the import', async () => {
+    const { db, repo, importer } = setup();
+    const cols = new CollectionsRepository(db);
+    const coll = cols.create({ name: '곧 지울 것' });
+    cols.softDelete(coll.id);
+    const out = await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'x'), { mode: 'managed', collectionId: coll.id });
+    expect(out.status).toBe('imported');
+    expect(out.status === 'imported' && 'collectionId' in out).toBe(false);
+    expect(repo.counts()).toMatchObject({ items: 1, collectionItems: 0 });
+    expect(members(db, coll.id)).toEqual([]);
+  });
+
+  it('skips the membership when the collection is deleted between the file copy and the commit', async () => {
+    let cols!: CollectionsRepository;
+    let coll!: { id: string };
+    // The hook is fixed when the importer is made, before the collection exists: both are assigned right after.
+    const { db, repo, importer } = setup({ beforeCommit: () => cols.softDelete(coll.id) });
+    cols = new CollectionsRepository(db);
+    coll = cols.create({ name: '가져오는 중에 지움' });
+    const out = await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'mid'), { mode: 'managed', collectionId: coll.id });
+    expect(out.status).toBe('imported');
+    expect(out.status === 'imported' && 'collectionId' in out).toBe(false);
+    expect(repo.counts()).toMatchObject({ items: 1, collectionItems: 0 });
+  });
+
+  it('files nothing for a duplicate that is not imported, and files the new item when allowDuplicate adds it', async () => {
+    const { db, importer } = setup();
+    const coll = new CollectionsRepository(db).create({ name: 'c' });
+    const src = writePdf(tempDir('src'), 'a.pdf', 'same');
+    const first = await importer.importOne(src, { mode: 'managed' });
+    expect(first.status === 'imported' && 'collectionId' in first).toBe(false); // none asked for, none reported
+    const dup = await importer.importOne(src, { mode: 'managed', collectionId: coll.id });
+    expect(dup.status).toBe('duplicate');
+    expect(members(db, coll.id)).toEqual([]);
+    const again = await importer.importOne(src, { mode: 'managed', allowDuplicate: true, collectionId: coll.id });
+    expect(again.status === 'imported' && again.collectionId).toBe(coll.id);
+    expect(members(db, coll.id)).toEqual([again.status === 'imported' ? again.item.id : '']);
   });
 });

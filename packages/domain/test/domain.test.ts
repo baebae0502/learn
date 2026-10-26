@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
   VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
@@ -61,6 +61,28 @@ describe('ipc contract', () => {
   it('rejects empty path lists and unknown modes', () => {
     expect(importPathsInput.safeParse({ paths: [], mode: 'managed' }).success).toBe(false);
     expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'copy' }).success).toBe(false);
+  });
+  it('takes the collection an import files into: a uuid, null, or nothing', () => {
+    const COLL = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(pickAndImportInput.parse({ mode: 'managed', collectionId: COLL })).toEqual({ mode: 'managed', allowDuplicate: false, collectionId: COLL });
+    expect(importPathsInput.parse({ paths: ['/a.pdf'], mode: 'linked', collectionId: null })).toEqual({
+      paths: ['/a.pdf'], mode: 'linked', allowDuplicate: false, collectionId: null,
+    });
+    // Without a collection the key stays absent, so the importer sees "none", not a value.
+    expect(importPathsInput.parse({ paths: ['/a.pdf'], mode: 'linked' })).not.toHaveProperty('collectionId');
+    for (const bad of ['', 'not-a-uuid', 7, {}]) {
+      expect(pickAndImportInput.safeParse({ mode: 'managed', collectionId: bad }).success, String(bad)).toBe(false);
+      expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'managed', collectionId: bad }).success, String(bad)).toBe(false);
+    }
+  });
+  it('asks for items by id: 1 to 5,000 uuids', () => {
+    const id = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(getItemsInput.parse({ ids: [id] })).toEqual({ ids: [id] });
+    expect(getItemsInput.safeParse({ ids: Array.from({ length: 5000 }, () => id) }).success).toBe(true);
+    expect(getItemsInput.safeParse({ ids: Array.from({ length: 5001 }, () => id) }).success).toBe(false);
+    expect(getItemsInput.safeParse({ ids: [] }).success).toBe(false);
+    expect(getItemsInput.safeParse({ ids: ['not-a-uuid'] }).success).toBe(false);
+    expect(getItemsInput.safeParse({}).success).toBe(false);
   });
   it('takes the reported command context strictly, with the library and selection counts (P-2)', () => {
     const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1 };

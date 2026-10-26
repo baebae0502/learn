@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReadingPosition, Result } from '@learn/domain';
+import { LearnError, type ReadingPosition, type Result } from '@learn/domain';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -40,11 +40,21 @@ describe('reader IPC', () => {
     expect(reading.save).not.toHaveBeenCalled();
   });
 
-  it('open records the open once per call and broadcasts nothing', async () => {
+  it('open records the open once per call and announces it, so a list that shows openedAt can follow', async () => {
     expect(await call('reader:open', { itemId: ITEM })).toEqual({ ok: true, data: undefined });
     expect(reading.markOpened).toHaveBeenCalledTimes(1);
     expect(reading.markOpened).toHaveBeenCalledWith(ITEM);
     expect(reading.get).not.toHaveBeenCalled();
+    expect(sent).toEqual([['evt:library-changed', { reason: 'opened', itemIds: [ITEM] }]]);
+  });
+
+  it('announces nothing for an open that failed, nor for a read or a save of the position', async () => {
+    reading.markOpened.mockImplementationOnce(() => {
+      throw new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
+    });
+    expect(await call('reader:open', { itemId: ITEM })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(await call('reader:getPosition', { itemId: ITEM })).toEqual({ ok: true, data: stored });
+    expect(await call('reader:savePosition', { itemId: ITEM, revisionId: REV, locator: { kind: 'pdf', pageIndex: 1 }, progress: 0.1 })).toEqual({ ok: true, data: undefined });
     expect(sent).toEqual([]);
   });
 });

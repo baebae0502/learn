@@ -88,9 +88,35 @@ describe('TagsRepository: color and position', () => {
     const b = repo.create('b');
     expect(repo.setColor(a.id, 'yellow', 1)).toMatchObject({ color: 'yellow', position: 1 });
     expect(repo.setColor(b.id, 'red', 1)).toMatchObject({ id: b.id, color: 'red', position: 1 });
-    expect(repo.list().find((t) => t.id === a.id)).toMatchObject({ color: 'yellow', position: null });
+    expect(repo.list().find((t) => t.id === a.id)).toMatchObject({ color: null, position: null });
     expect(repo.setColor(b.id, 'red', 1)).toMatchObject({ position: 1 }); // re-assigning its own position is fine
     expect(repo.setColor(b.id, null, null)).toMatchObject({ color: null, position: null });
+  });
+
+  it('clears the color of the tag whose position is taken, in the same step, and touches no other tag', () => {
+    const a = repo.create('a');
+    const b = repo.create('b');
+    const c = repo.create('c');
+    const colorOnly = repo.create('color only');
+    repo.setColor(a.id, 'yellow', 1);
+    repo.setColor(b.id, 'red', 2);
+    repo.setColor(colorOnly.id, 'green', null); // a color without a position holds nothing to take
+    expect(repo.setColor(c.id, 'blue', 1)).toMatchObject({ id: c.id, color: 'blue', position: 1 });
+    const byId = new Map(repo.list().map((t) => [t.id, t]));
+    expect(byId.get(a.id)).toMatchObject({ color: null, position: null });
+    expect(byId.get(b.id)).toMatchObject({ color: 'red', position: 2 });
+    expect(byId.get(colorOnly.id)).toMatchObject({ color: 'green', position: null });
+    expect(repo.list().map((t) => t.name)).toEqual(['c', 'b', 'a', 'color only']); // positioned tags first, then creation order
+  });
+
+  it('keeps the other tag as it was when the new position is null or the tag takes its own position again', () => {
+    const a = repo.create('a');
+    const b = repo.create('b');
+    repo.setColor(a.id, 'yellow', 1);
+    repo.setColor(b.id, 'red', null);
+    expect(repo.list().find((t) => t.id === a.id)).toMatchObject({ color: 'yellow', position: 1 });
+    repo.setColor(a.id, 'yellow', 1);
+    expect(repo.list().find((t) => t.id === a.id)).toMatchObject({ color: 'yellow', position: 1 });
   });
 
   it('rejects unknown colors, out-of-range positions and unknown tags', () => {

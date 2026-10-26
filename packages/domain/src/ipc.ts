@@ -3,6 +3,7 @@ import { COMMAND_IDS, type CommandContextState, type CommandId } from './command
 import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
+import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
@@ -12,17 +13,26 @@ import { LIBRARY_COLUMN_IDS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
-export const pickAndImportInput = z.object({ mode: storageModeSchema, allowDuplicate: z.boolean().default(false) });
+/** The collection an import files its items into: a uuid, or null/absent for none. */
+const importCollectionSchema = z.uuid().nullable().optional();
+export const pickAndImportInput = z.object({
+  mode: storageModeSchema,
+  allowDuplicate: z.boolean().default(false),
+  collectionId: importCollectionSchema,
+});
 export const importPathsInput = z.object({
   paths: z.array(z.string().min(1).max(4096)).min(1).max(500),
   mode: storageModeSchema,
   allowDuplicate: z.boolean().default(false),
+  collectionId: importCollectionSchema,
 });
 export const itemIdInput = z.object({ itemId: z.uuid() });
 export const assetIdInput = z.object({ assetId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
+/** library.getItems: items by id. 5,000 like the other id lists; main asks the database 500 at a time. */
+export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) });
 /** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
 export const nameSchema = z.string().normalize('NFC').trim().min(1).max(200);
 /** Item titles allow more than collection/tag names. */
@@ -104,6 +114,7 @@ export const showColumnMenuInput = z
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
+export type GetItemsInput = z.input<typeof getItemsInput>;
 
 export type ItemIdInput = z.input<typeof itemIdInput>;
 export type AssetIdInput = z.input<typeof assetIdInput>;
@@ -164,6 +175,10 @@ export interface LearnApi {
     revealExport(): Promise<Result<void>>;
     /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
     searchTexts(): Promise<Result<SearchText[]>>;
+    /** Collections, tags, memberships, tag assignments and duplicate groups in one read (the sidebar's data). */
+    organize(): Promise<Result<OrganizeSnapshot>>;
+    /** The non-trashed items among `ids`, once each in the order asked; unknown and trashed ids are skipped. */
+    getItems(input: GetItemsInput): Promise<Result<LibraryItem[]>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;

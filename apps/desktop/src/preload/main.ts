@@ -10,7 +10,7 @@ exposeSurface({
     app: ['info'],
     library: [
       'pickAndImport', 'import', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'listTrash',
-      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport',
+      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems',
     ],
     collections: ['list', 'create', 'rename', 'move', 'remove', 'restore', 'addItems', 'removeItems'],
     tags: ['list', 'create', 'rename', 'setColor', 'remove', 'assign', 'unassign', 'togglePosition'],

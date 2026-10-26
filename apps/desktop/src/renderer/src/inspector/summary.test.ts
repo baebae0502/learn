@@ -6,7 +6,7 @@ let n = 0;
 const item = (type: LibraryItem['type'], size: number): LibraryItem => ({
   id: `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`, title: `t${n}`, type, mime: type === 'pdf' ? 'application/pdf' : 'video/mp4', size,
   storageMode: 'managed', availability: 'available', assetId: 'a', revisionId: 'r', originalName: 'x', createdAt: '2026-10-01T00:00:00.000Z',
-  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, tagIds: [], progress: null, openedAt: null, publisher: null,
+  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, progress: null, openedAt: null, publisher: null,
 });
 
 describe('item panel summaries (spec §5.4, library.html none / multi)', () => {

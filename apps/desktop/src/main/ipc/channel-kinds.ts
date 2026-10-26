@@ -36,6 +36,8 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'library:showInFolder': MAIN,
   'library:openExternally': MAIN,
   'library:searchTexts': MAIN,
+  'library:organize': MAIN,
+  'library:getItems': MAIN,
   'library:exportCopy': MAIN,
   'library:revealExport': MAIN,
 

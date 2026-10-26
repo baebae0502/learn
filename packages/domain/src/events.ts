@@ -18,6 +18,10 @@ export interface WindowState {
   main: boolean;
 }
 
+/** Why `libraryChanged` was sent; the renderer decides from it what to read again. */
+export type LibraryChangeReason =
+  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'collections' | 'tags' | 'availability' | 'opened';
+
 export interface LearnEventMap {
   menuCommand: { commandId: CommandId };
   /**
@@ -25,9 +29,10 @@ export interface LearnEventMap {
    * per item, e.g. a collection or tag was created, renamed or removed).
    * `collections` / `tags`: the collection tree or memberships / the tag list or assignments changed.
    * `availability`: a file was found missing (or back) when an item was opened or right-clicked.
+   * `opened`: the reader opened the item, so its `openedAt` changed.
    */
   libraryChanged: {
-    reason: 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'collections' | 'tags' | 'availability';
+    reason: LibraryChangeReason;
     itemIds?: string[];
   };
   windowState: WindowState;

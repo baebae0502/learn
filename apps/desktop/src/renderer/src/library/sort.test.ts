@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem } from '@learn/domain';
-import { DEFAULT_SORT, firstDirection, parseSort, sortItems } from './sort';
+import { DEFAULT_SORT, DEFAULT_SORT_RECENT, firstDirection, parseSort, sortItems } from './sort';
 
 let n = 0;
 const item = (over: Partial<LibraryItem>): LibraryItem => ({
@@ -56,5 +56,15 @@ describe('library sort (M4 spec 3.1)', () => {
   it('a first press sorts dates and sizes newest or largest first, the rest A to Z (Finder; ruling 7)', () => {
     expect((['createdAt', 'updatedAt', 'openedAt', 'size', 'progress'] as const).map((c) => firstDirection(c))).toEqual(['desc', 'desc', 'desc', 'desc', 'desc']);
     expect((['title', 'creators', 'year', 'type', 'storageMode', 'originalName'] as const).map((c) => firstDirection(c))).toEqual(['asc', 'asc', 'asc', 'asc', 'asc', 'asc']);
+  });
+});
+
+describe('the recent view\'s own sort (spec 3.2)', () => {
+  it('defaults to 마지막으로 연 날, newest first, and reads its stored value like the main sort', () => {
+    expect(DEFAULT_SORT_RECENT).toEqual({ column: 'openedAt', direction: 'desc' });
+    expect(parseSort(null, DEFAULT_SORT_RECENT)).toEqual(DEFAULT_SORT_RECENT);
+    expect(parseSort({ column: 'title', direction: 'asc' }, DEFAULT_SORT_RECENT)).toEqual({ column: 'title', direction: 'asc' });
+    expect(parseSort(null)).toEqual({ column: 'createdAt', direction: 'desc' });
+    expect(firstDirection('openedAt')).toBe('desc');
   });
 });

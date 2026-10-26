@@ -6,10 +6,13 @@ export type LibrarySort = { column: LibrarySortColumn; direction: 'asc' | 'desc'
 /** 추가일, newest first (spec §3.1). */
 export const DEFAULT_SORT: LibrarySort = { column: 'createdAt', direction: 'desc' };
 
-/** library.sort as stored, else the default. */
-export function parseSort(raw: unknown): LibrarySort {
+/** The recent view sorts by when the item was opened, newest first (spec 3.2). */
+export const DEFAULT_SORT_RECENT: LibrarySort = { column: 'openedAt', direction: 'desc' };
+
+/** library.sort (or library.sort.recent, with its own fallback) as stored, else the fallback. */
+export function parseSort(raw: unknown, fallback: LibrarySort = DEFAULT_SORT): LibrarySort {
   const r = SETTINGS['library.sort'].safeParse(raw);
-  return r.success ? r.data : DEFAULT_SORT;
+  return r.success ? r.data : fallback;
 }
 
 const NEWEST_FIRST: ReadonlySet<LibrarySortColumn> = new Set<LibrarySortColumn>(['createdAt', 'updatedAt', 'openedAt', 'size', 'progress']);

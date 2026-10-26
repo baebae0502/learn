@@ -1,6 +1,6 @@
 // The library table's column catalogue (M4 spec 3.1). No zod: main builds the column header menu from it and the
 // renderer draws the header and the cells from it, so the menu and the header name every column alike.
-export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
+export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName'] as const;
 export type LibraryColumnId = (typeof LIBRARY_COLUMN_IDS)[number];
 
 export interface LibraryColumnSpec {
@@ -23,6 +23,7 @@ export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
   { id: 'type', label: '종류', defaultVisible: true, defaultWidth: 88, minWidth: 72, align: 'start' },
   { id: 'createdAt', label: '추가일', defaultVisible: true, defaultWidth: 132, minWidth: 112, align: 'start' },
   { id: 'updatedAt', label: '수정일', defaultVisible: false, defaultWidth: 132, minWidth: 112, align: 'start' },
+  { id: 'openedAt', label: '마지막으로 연 날', defaultVisible: false, defaultWidth: 132, minWidth: 112, align: 'start' },
   { id: 'storageMode', label: '보관', defaultVisible: false, defaultWidth: 96, minWidth: 80, align: 'start' },
   { id: 'size', label: '크기', defaultVisible: false, defaultWidth: 80, minWidth: 64, align: 'end' },
   { id: 'originalName', label: '원래 이름', defaultVisible: false, defaultWidth: 200, minWidth: 120, align: 'start' },

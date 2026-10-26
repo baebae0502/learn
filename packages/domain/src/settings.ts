@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX } from './library-columns';
+import { libraryScopeSchema } from './organize';
 
-/** Sortable fields. openedAt / progress have no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). */
+/** Sortable fields. progress has no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). */
 export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
 
 const storedColumnId = z.string().min(1).max(64);
@@ -18,9 +19,21 @@ export const columnConfigSchema = z.object({
   widths: z.record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX)),
 });
 
+const sortSchema = z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) });
+/** The most collection ids the sidebar remembers as open: a bound, so a runaway list cannot grow the settings value. */
+export const SIDEBAR_EXPANDED_MAX = 2000;
+
 /** Library-scoped settings (stored in the library DB). */
 export const SETTINGS = {
-  'library.sort': z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) }),
+  'library.sort': sortSchema,
+  /** The recent view's own sort (spec 3.2): the other views share `library.sort`. */
+  'library.sort.recent': sortSchema,
+  /** The scope the table showed last (spec 3.1). A collection that is gone is dropped by the renderer on read, not here. */
+  'library.view': libraryScopeSchema,
+  /** The collections the sidebar tree shows open. Ids of collections that no longer exist are dropped on read (the renderer). */
+  'sidebar.expanded': z.array(z.uuid()).max(SIDEBAR_EXPANDED_MAX),
+  /** The tag selector's display and order (spec 4.3). */
+  'tags.selector': z.object({ show: z.enum(['view', 'all']), sort: z.enum(['name', 'count']) }),
   'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),

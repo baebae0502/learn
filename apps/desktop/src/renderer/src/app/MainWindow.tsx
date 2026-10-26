@@ -27,6 +27,7 @@ import { ListFailed } from '../library/ListFailed';
 import { inTableOrder, selectionCounts } from '../library/selection';
 import { useImport } from '../library/useImport';
 import { useLibrarySettings } from '../library/useLibrarySettings';
+import { useScopeView } from '../library/useScopeView';
 import { useSearch } from '../library/useSearch';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
@@ -42,6 +43,7 @@ import { Toolbar } from '../shell/Toolbar';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
+import { useRestoreView } from '../organize/useRestoreView';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -71,6 +73,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  const scopeReady = useRestoreView();
   usePanePersistence();
   const items = useItems();
   const prefs = usePrefs().data;
@@ -233,6 +236,10 @@ export function MainWindow(_props: { info: AppInfo }) {
   const list = items.data ?? NO_ITEMS;
   const count = list.length;
   const found = useSearch(list);
+  // The toolbar names the scope and counts its rows: "N개 / M개" with M the scope's items and N what the tags and the search leave.
+  const scopeView = useScopeView(list);
+  const tagCount = useLibrary((s) => s.tagFilter.size);
+  const shown = useMemo(() => (found ? scopeView.filtered.reduce((n, i) => n + (found.ids.has(i.id) ? 1 : 0), 0) : scopeView.filtered.length), [found, scopeView.filtered]);
   // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
   // one here when a command is judged.
   const listRef = useRef(list);
@@ -345,8 +352,9 @@ export function MainWindow(_props: { info: AppInfo }) {
       <ReaderToolbar itemId={view.itemId} />
     ) : (
       <Toolbar
-        title={t.shell.myLibrary}
-        count={count > 0 ? (found ? t.shell.countOf(found.ids.size, count) : t.shell.count(count)) : undefined}
+        title={scopeView.label}
+        titleTip={scopeView.tooltip}
+        count={count > 0 ? (found || tagCount > 0 ? t.shell.countOf(shown, scopeView.scoped.length) : t.shell.count(scopeView.scoped.length)) : undefined}
         actions={
           <>
             <ImportMenuButton />
@@ -392,7 +400,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       >
         {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
       </Shell>
-      {(items.isSuccess || items.isError) && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
+      {(items.isSuccess || items.isError) && scopeReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
     </CommandProvider>
   );
 }

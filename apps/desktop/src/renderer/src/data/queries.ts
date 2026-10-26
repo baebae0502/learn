@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import type { Prefs } from '@learn/domain';
+import type { LibraryItem, Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
+import { carrySearchIndex } from '../library/search';
+import { createChangeHandler } from './libraryChange';
 import { queryClient } from './query-client';
 
 export const keys = {
@@ -15,6 +17,11 @@ export const keys = {
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
   columns: ['settings', 'library.columns'] as const,
   sort: ['settings', 'library.sort'] as const,
+  sortRecent: ['settings', 'library.sort.recent'] as const,
+  /** The stored view (read once at start, then written by the store: useRestoreView, library-store). */
+  view: ['settings', 'library.view'] as const,
+  /** The organize snapshot (spec 10.1): collections, tags, memberships, assignments, duplicate groups. */
+  organize: ['library', 'organize'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -43,9 +50,28 @@ export const usePanes = () => useQuery({ queryKey: keys.panes, queryFn: () => un
 /** The item panel's facts (metadata, file, SHA-256): the same cache entry as the reader's missing notice (ViewerHost). */
 export const useItemDetail = (itemId: string) => useQuery({ queryKey: keys.detail(itemId), queryFn: () => unwrap(api().library.detail({ itemId })) });
 
-/** Every change made through main pushes libraryChanged: drop the cached library data. */
+/**
+ * Every change made through main pushes libraryChanged. Collections and tags read the snapshot only; a change to some
+ * items' own rows reads those items and patches the list; the rest drops all cached library data (libraryChange.ts).
+ */
+const onLibraryChanged = createChangeHandler({
+  cached: () => queryClient.getQueryData<LibraryItem[]>(keys.items),
+  refetching: () => queryClient.isFetching({ queryKey: keys.items }) > 0,
+  put: (prev, next) => {
+    queryClient.setQueryData(keys.items, next);
+    carrySearchIndex(prev, next);
+  },
+  getItems: (ids) => unwrap(api().library.getItems({ ids })),
+  invalidateAll: () => void queryClient.invalidateQueries({ queryKey: ['library'] }),
+  invalidateOrganize: () => void queryClient.invalidateQueries({ queryKey: keys.organize }),
+  invalidateItem: (itemId) => {
+    void queryClient.invalidateQueries({ queryKey: keys.item(itemId) });
+    void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) });
+  },
+  invalidateTexts: () => void queryClient.invalidateQueries({ queryKey: keys.searchTexts }),
+});
 export function useLibrarySync(): void {
-  useLearnEvent('libraryChanged', () => void queryClient.invalidateQueries({ queryKey: ['library'] }));
+  useLearnEvent('libraryChanged', onLibraryChanged);
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

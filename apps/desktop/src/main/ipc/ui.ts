@@ -33,10 +33,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
 
   // The table header's native menu: resolves the column to show or hide, a reset, or null when dismissed. Its items
   // are the column catalogue's; the renderer sends only which columns show and where the pointer is.
-  handle(Channels.ui.showColumnMenu, showColumnMenuInput, async ({ visible, x, y }, event) => {
+  handle(Channels.ui.showColumnMenu, showColumnMenuInput, async ({ visible, locked, x, y }, event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) return null;
-    return popupColumnMenu(columnMenuEntries(visible, mainStrings.columnMenu.reset), { window, x, y });
+    return popupColumnMenu(columnMenuEntries(visible, mainStrings.columnMenu.reset, locked), { window, x, y });
   });
 
   // The main window's command context (ADR-0005 §2): main rebuilds the menu bar from it; other windows are ignored.

@@ -15,11 +15,15 @@ function tally(items: readonly LibraryItem[]): { pdf: number; video: number; byt
   return { pdf, video: items.length - pdf, bytes };
 }
 
-/** Nothing selected: "내 라이브러리 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB"; a kind without items is left out. */
-export function libraryStats(items: readonly LibraryItem[]): string {
+/**
+ * Nothing selected: "분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB" (the view's name, then its items); a kind without
+ * items is left out, and a view without items says only "자료 0개".
+ */
+export function libraryStats(scope: string, items: readonly LibraryItem[]): string {
+  if (items.length === 0) return t.inspector.statsNone(scope);
   const k = tally(items);
   const kinds = [k.pdf ? t.inspector.kindCount(t.library.type.pdf, k.pdf) : '', k.video ? t.inspector.kindCount(t.library.type.video, k.video) : ''].filter(Boolean);
-  return t.inspector.stats(t.shell.myLibrary, items.length, kinds.join(' · '), bound(formatSize(k.bytes)));
+  return t.inspector.stats(scope, items.length, kinds.join(' · '), bound(formatSize(k.bytes)));
 }
 
 /** Several selected: "PDF 2개 · 동영상 1개 · 합계 9.8 MB". */

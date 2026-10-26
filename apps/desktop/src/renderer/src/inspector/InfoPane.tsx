@@ -4,6 +4,7 @@ import type { LibraryItem } from '@learn/domain';
 import { ApiError } from '../api';
 import { useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
+import { useScopeView } from '../library/useScopeView';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
@@ -27,6 +28,7 @@ const LOADING_DELAY_MS = 300;
 export function InfoPane() {
   const list = useItems().data;
   const items = list ?? NO_ITEMS;
+  const { scoped, label } = useScopeView(items);
   const selected = useLibrary((s) => s.selected);
   const editingId = useLibrary((s) => s.editingId);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -37,7 +39,7 @@ export function InfoPane() {
     if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
   }, [editingId, byId]);
   if (editing) return <ItemInfo key={editing.id} item={editing} />;
-  if (chosen.length === 0) return <NoSelection items={items} stats={list !== undefined} />;
+  if (chosen.length === 0) return <NoSelection label={label} items={scoped} stats={list !== undefined} />;
   if (chosen.length > 1) return <MultiSelection items={chosen} />;
   return <ItemInfo key={chosen[0]!.id} item={chosen[0]!} />;
 }
@@ -47,8 +49,8 @@ export function InfoPane() {
  * library's numbers in tertiary, last, in the slot after the text (no button there). Before the first list has come
  * there are no numbers to give (`stats` false): the text alone.
  */
-function NoSelection({ items, stats: withStats }: { items: readonly LibraryItem[]; stats: boolean }) {
-  const stats = useMemo(() => libraryStats(items), [items]);
+function NoSelection({ label, items, stats: withStats }: { label: string; items: readonly LibraryItem[]; stats: boolean }) {
+  const stats = useMemo(() => libraryStats(label, items), [label, items]);
   return (
     <PaneEmpty
       icon={MousePointer2}

@@ -5,7 +5,7 @@ import { COLUMN_WIDTH_MAX, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUM
 import { LIBRARY_SORT_COLUMNS } from '../src/settings';
 
 describe('library table columns (M4 spec 3.1)', () => {
-  it('lists the nine columns in catalogue order with the spec labels, widths and alignment', () => {
+  it('lists the ten columns in catalogue order with the spec labels, widths and alignment', () => {
     expect(LIBRARY_COLUMNS.map((c) => c.id)).toEqual([...LIBRARY_COLUMN_IDS]);
     expect(LIBRARY_COLUMNS.map((c) => [c.id, c.label, c.defaultWidth, c.minWidth, c.align, c.defaultVisible])).toEqual([
       ['title', '제목', null, 200, 'start', true],
@@ -14,6 +14,7 @@ describe('library table columns (M4 spec 3.1)', () => {
       ['type', '종류', 88, 72, 'start', true],
       ['createdAt', '추가일', 132, 112, 'start', true],
       ['updatedAt', '수정일', 132, 112, 'start', false],
+      ['openedAt', '마지막으로 연 날', 132, 112, 'start', false],
       ['storageMode', '보관', 96, 80, 'start', false],
       ['size', '크기', 80, 64, 'end', false],
       ['originalName', '원래 이름', 200, 120, 'start', false],

@@ -29,6 +29,8 @@ import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort
 export interface LibraryTableProps {
   rows: readonly LibraryItem[];
   columns: ColumnConfig;
+  /** Columns the view shows whatever `columns` says (the recent view's 마지막으로 연 날): drawn after the title, locked in the header menu. */
+  forced?: readonly LibraryColumnId[];
   sort: LibrarySort;
   onSortChange(sort: LibrarySort): void;
   /** Resize release, column-menu toggle / reset. */
@@ -50,8 +52,9 @@ const BODY_BOTTOM = 8;
 const OVERSCAN = 8;
 /** ← / → on a focused column edge. */
 const RESIZE_STEP = 8;
+const NO_COLUMNS: readonly LibraryColumnId[] = [];
 /** Tabular figures (design-spec 6 표: 숫자는 tabular). */
-const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'size']);
+const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size']);
 const ROW = '[data-testid="item-row"]';
 const rowIdOf = (target: EventTarget): string | null =>
   target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['itemId'] ?? null) : null;
@@ -73,6 +76,8 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
       return formatDate(item.createdAt, now);
     case 'updatedAt':
       return formatDate(item.updatedAt, now);
+    case 'openedAt':
+      return item.openedAt === null ? '' : formatDate(item.openedAt, now);
     case 'storageMode':
       return t.library.storage[item.storageMode];
     case 'size':
@@ -170,7 +175,8 @@ export function LibraryTable(props: LibraryTableProps) {
   const cursorId = useLibrary((s) => s.cursorId);
   const rowHeight = ROW_HEIGHT[usePrefs().data?.density ?? defaultDensity];
   const header = layout.tableHeaderHeight;
-  const visible = useMemo(() => visibleColumns(columns), [columns]);
+  const forced = props.forced ?? NO_COLUMNS;
+  const visible = useMemo(() => visibleColumns(columns, forced), [columns, forced]);
   const last = visible.length - 1;
   const order = useMemo(() => rowOrder(rows.map((r) => r.id)), [rows]);
   const cursorIndex = order.indexOf(cursorId);
@@ -218,6 +224,17 @@ export function LibraryTable(props: LibraryTableProps) {
   useLayoutEffect(() => {
     latest.current = { props, order, visible, widths, titleWidth, rowHeight, stop };
   });
+  // Another view starts at the top (spec 3.5); a view entered for one item (a collection path in the item panel) shows that row.
+  const scopeEpoch = useLibrary((s) => s.scopeEpoch);
+  const seenEpoch = useRef(scopeEpoch);
+  useLayoutEffect(() => {
+    if (seenEpoch.current === scopeEpoch) return;
+    seenEpoch.current = scopeEpoch;
+    const reveal = useLibrary.getState().revealOnScope;
+    const at = reveal === null ? -1 : latest.current.order.indexOf(reveal);
+    if (at >= 0) virtualizer.scrollToIndex(at);
+    else virtualizer.scrollToOffset(0);
+  }, [scopeEpoch, virtualizer]);
 
   // ---- selection --------------------------------------------------------------------------------------------------
   const follow = useRef(false);
@@ -343,7 +360,8 @@ export function LibraryTable(props: LibraryTableProps) {
     const at = { x: e.clientX, y: e.clientY };
     void (async () => {
       try {
-        const picked = await unwrap(api().ui.showColumnMenu({ visible: latest.current.props.columns.visible, ...at }));
+        const { columns: current, forced: locked } = latest.current.props;
+        const picked = await unwrap(api().ui.showColumnMenu({ visible: current.visible, ...(locked && locked.length > 0 ? { locked: [...locked] } : {}), ...at }));
         if (!picked) return;
         const { columns: cfg, onColumnsChange } = latest.current.props;
         onColumnsChange('reset' in picked ? defaultColumns() : toggleColumn(cfg, picked.toggle));

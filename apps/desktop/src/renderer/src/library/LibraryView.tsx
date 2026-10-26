@@ -8,11 +8,12 @@ import { useLibraryRows } from './useLibraryRows';
 import { useLibrarySettings } from './useLibrarySettings';
 import { usePaintMark } from './usePaintMark';
 
-/** The library view's content area: the table in the stored columns and sort, filtered by the quick search. */
+/** The library view's content area: the table in the stored columns and sort, in the scope shown, filtered by the tags and the quick search. */
 export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly LibraryItem[]; onOpen(itemId: string): void; onItemMenu(itemIds: readonly string[], x: number, y: number): void }) {
   // Where a long frame's script time goes (the drop stall profile): this view's render began here.
   perfMarkLatest('table:render');
   const settings = useLibrarySettings();
+  const scopeReady = useLibrary((s) => s.scopeReady);
   const { rows, titleMatches } = useLibraryRows(items);
   // The frame that paints these rows (spec 9: input → paint, sort → paint, list → first rows). Before the stored columns
   // and sort are read the view draws nothing, so nothing is marked.
@@ -25,11 +26,12 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   const query = useLibrary((s) => s.query).trim();
   const noResults = titleMatches !== null && rows.length === 0 && query !== '';
   const revealId = useLibrary((s) => s.lastOpenedId);
-  if (!settings.ready) return null; // one IPC round trip, already in flight while the list loaded (LibraryLoading)
+  if (!settings.ready || !scopeReady) return null; // the stored columns, sort and view: one IPC round trip each, already in flight while the list loaded (LibraryLoading)
   return (
     <LibraryTable
       rows={rows}
       columns={settings.columns}
+      forced={settings.forced}
       sort={settings.sort}
       onSortChange={settings.setSort}
       onColumnsChange={settings.setColumns}

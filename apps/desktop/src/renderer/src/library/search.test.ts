@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { matchKorean } from '../palette/hangul';
-import { buildSearchIndex, foldText, parseQuery, search, searchCached, searchIndexFor } from './search';
+import { buildSearchIndex, carrySearchIndex, foldText, parseQuery, search, searchCached, searchIndexFor } from './search';
 
 let seq = 0;
 const item = (over: Partial<LibraryItem> & { title: string }): LibraryItem => {
@@ -165,6 +165,39 @@ function library(n: number): { items: LibraryItem[]; texts: SearchText[] } {
   }
   return { items, texts };
 }
+
+describe('carrying the index over a patched list (an opened notice, spec 10.3)', () => {
+  const patchedList = (change: Partial<LibraryItem>) => ITEMS.map((i) => (i.id === FOLD.id ? { ...i, ...change } : i));
+
+  it('a patched list whose searched fields are the same takes the old list\'s index', () => {
+    const before = searchIndexFor(ITEMS, TEXTS);
+    const next = patchedList({ openedAt: '2026-10-25T00:00:00.000Z', availability: 'missing' });
+    carrySearchIndex(ITEMS, next);
+    expect(searchIndexFor(next, TEXTS)).toBe(before);
+    expect(found('단백질', searchIndexFor(next, TEXTS), next)).toEqual(['단백질 접힘 강의 노트']);
+  });
+
+  it('a changed title, creator, publisher, file name or year builds a new index', () => {
+    for (const change of [{ title: '새 제목' }, { creators: ['박지훈'] }, { publisher: 'X' }, { originalName: 'x.pdf' }, { year: 1999 }]) {
+      const before = searchIndexFor(ITEMS, TEXTS);
+      const next = patchedList(change);
+      carrySearchIndex(ITEMS, next);
+      expect(searchIndexFor(next, TEXTS), JSON.stringify(change)).not.toBe(before);
+    }
+    const next = patchedList({ title: '완전히 새로운 제목' });
+    expect(found('완전히', searchIndexFor(next, TEXTS), next)).toEqual(['완전히 새로운 제목']);
+  });
+
+  it('carries nothing when the lists differ in length or in an id, or the old list has no index', () => {
+    const next = ITEMS.slice(1);
+    carrySearchIndex(ITEMS, next);
+    expect(searchIndexFor(next, TEXTS)).not.toBe(searchIndexFor(ITEMS, TEXTS));
+    const lone = [item({ title: '혼자' })];
+    const other = [{ ...lone[0]!, id: 'other' }];
+    carrySearchIndex(lone, other); // never indexed: nothing to carry, and no throw
+    expect(searchIndexFor(other).items).toBe(other);
+  });
+});
 
 describe('quick search at 10,000 items (spec 9: input → paint p95 ≤ 50 ms; this is the search part of it)', () => {
   it('builds its index in well under a second and answers typing-like queries far inside the budget', () => {

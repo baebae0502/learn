@@ -48,6 +48,8 @@ export function installTestHooks(deps: {
   repo(): SeedRepo;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
+  // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
+  (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);

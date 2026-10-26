@@ -34,6 +34,22 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('createHandle (the single IPC entry point)', () => {
+  it('counts the calls it runs for the E2E hook, and only the ones it ran', async () => {
+    const g = globalThis as { __learnIpcCalls?: Record<string, number> };
+    g.__learnIpcCalls = {};
+    try {
+      createHandle(null)(Channels.app.info, z.object({}).optional(), () => ({ version: 'x' }) as never);
+      await call(Channels.app.info, undefined);
+      await call(Channels.app.info, undefined);
+      await call(Channels.app.info, undefined, 'https://evil.example/'); // refused before the handler: not counted
+      await call(Channels.app.info, 'x'); // refused by the schema: not counted
+      expect(g.__learnIpcCalls).toEqual({ [Channels.app.info]: 2 });
+    } finally {
+      delete g.__learnIpcCalls;
+    }
+    createHandle(null)(Channels.app.info, z.object({}).optional(), () => ({ version: 'x' }) as never);
+    expect(await call(Channels.app.info, undefined)).toMatchObject({ ok: true }); // without the hook nothing is kept and nothing throws
+  });
   it('rejects a sender from a foreign URL (and asset documents) without running the handler, whatever its window', async () => {
     const fn = vi.fn(() => ({ version: 'x' }) as never);
     createHandle(null)(Channels.app.info, z.object({}).optional(), fn);

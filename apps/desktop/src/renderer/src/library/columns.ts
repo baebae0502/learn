@@ -42,8 +42,15 @@ export function toggleColumn(cfg: ColumnConfig, id: LibraryColumnId): ColumnConf
   return { ...cfg, visible: LIBRARY_COLUMN_IDS.filter((c) => (c === id ? !on : cfg.visible.includes(c))) };
 }
 
-/** The shown columns, in catalogue order (`order` is not used before M5). */
-export const visibleColumns = (cfg: ColumnConfig): LibraryColumnSpec[] => LIBRARY_COLUMNS.filter((c) => cfg.visible.includes(c.id));
+/**
+ * The shown columns, in catalogue order (`order` is not used yet). `forced` columns are shown whatever the config says and
+ * sit right after the title: the recent view's 마지막으로 연 날 (spec 3.2).
+ */
+export function visibleColumns(cfg: ColumnConfig, forced: readonly LibraryColumnId[] = []): LibraryColumnSpec[] {
+  const shown = LIBRARY_COLUMNS.filter((c) => cfg.visible.includes(c.id) || forced.includes(c.id));
+  if (forced.length === 0) return shown;
+  return [...shown.filter((c) => c.id === 'title'), ...shown.filter((c) => c.id !== 'title' && forced.includes(c.id)), ...shown.filter((c) => c.id !== 'title' && !forced.includes(c.id))];
+}
 
 /** A column's width in pixels: the stored one, else its default; null for the title (the rest of the table). */
 export const widthOf = (cfg: ColumnConfig, spec: LibraryColumnSpec): number | null => (spec.defaultWidth === null ? null : (cfg.widths[spec.id] ?? spec.defaultWidth));

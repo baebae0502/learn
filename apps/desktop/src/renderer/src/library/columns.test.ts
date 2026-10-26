@@ -14,7 +14,7 @@ describe('column configuration (M4 spec 3.2)', () => {
   it('drops ids it does not know, keeps the title visible, lists the shown columns in catalogue order', () => {
     const cfg = parseColumnConfig({ visible: ['size', 'tags', 'year', 'year'], order: ['tags', 'size'], widths: {} });
     expect(cfg.visible).toEqual(['title', 'year', 'size']);
-    expect(cfg.order).toEqual(['size', 'title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'storageMode', 'originalName']);
+    expect(cfg.order).toEqual(['size', 'title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'originalName']);
   });
   it('clamps widths to [the column minimum, 1200], rounds them, and never keeps one for the title (it takes the rest)', () => {
     const cfg = parseColumnConfig({ visible: ['title'], order: [], widths: { creators: 20, year: 2000, size: 81.6, title: 400, tags: 50, type: 'wide' } });
@@ -34,6 +34,13 @@ describe('column configuration (M4 spec 3.2)', () => {
     expect(widthOf(cfg, spec('creators'))).toBe(150);
     expect(widthOf(cfg, spec('year'))).toBe(64);
     expect(widthOf(cfg, spec('title'))).toBeNull();
+  });
+  it('a forced column is shown whatever the config says, right after the title', () => {
+    const cfg = defaultColumns();
+    expect(visibleColumns(cfg, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt']);
+    expect(visibleColumns(cfg).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
+    const shown = toggleColumn(cfg, 'openedAt');
+    expect(visibleColumns(shown, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt']); // not twice
   });
 });
 

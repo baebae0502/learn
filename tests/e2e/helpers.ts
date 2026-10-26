@@ -4,6 +4,8 @@ import { _electron as electron, expect, type ElectronApplication, type Locator, 
 import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
+import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
+import type { TagColorId } from '../../packages/domain/src/tag-colors';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
@@ -942,4 +944,70 @@ export async function nativeKeyCode(
   const script = `tell application "System Events" to key code ${code}${usingClause(modifiers)}`;
   const sentAt = Date.now();
   return { frontmost, script, output: osascript(script), focusedWindow, sentAt };
+}
+
+/**
+ * Organize setup through the page's preload API (`window.learn.collections.*`, `tags.*`), as the sidebar will call it. The
+ * screen's own flows are checked through the screen by the specs that own them; these make the data those specs need.
+ */
+export async function createCollection(page: Page, name: string, parentId: string | null = null): Promise<string> {
+  const r = await page.evaluate((input) => window.learn.collections.create(input), { name, parentId });
+  if (!r.ok) throw new Error(`collections.create failed: ${r.code}`);
+  return r.data.id;
+}
+
+/** Files the items in the collection; the number of memberships that are new. */
+export async function addToCollection(page: Page, collectionId: string, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.collections.addItems(input), { collectionId, itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`collections.addItems failed: ${r.code}`);
+  return r.data;
+}
+
+export async function createTag(page: Page, name: string): Promise<string> {
+  const r = await page.evaluate((input) => window.learn.tags.create(input), { name });
+  if (!r.ok) throw new Error(`tags.create failed: ${r.code}`);
+  return r.data.id;
+}
+
+/** Puts the tag on the items; the number of assignments that are new. */
+export async function assignTag(page: Page, tagId: string, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.tags.assign(input), { tagId, itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`tags.assign failed: ${r.code}`);
+  return r.data;
+}
+
+/** Colour and position together, as the screen always sets them (a position holds one tag). */
+export async function setTagColor(page: Page, tagId: string, color: TagColorId | null, position: number | null): Promise<void> {
+  const r = await page.evaluate((input) => window.learn.tags.setColor(input), { tagId, color, position });
+  if (!r.ok) throw new Error(`tags.setColor failed: ${r.code}`);
+}
+
+/** The organize snapshot as main sends it. Counts as a `library:organize` call. */
+export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
+  const r = await page.evaluate(() => window.learn.library.organize());
+  if (!r.ok) throw new Error(`library.organize failed: ${r.code}`);
+  return r.data;
+}
+
+/** How often main ran each IPC channel since launch (E2E only: ipc/register.ts counts, test-hooks.ts installs the counter). */
+export const ipcCalls = (app: ElectronApplication): Promise<Record<string, number>> =>
+  app.evaluate(() => ({ ...((globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls ?? {}) }));
+
+/**
+ * The `library:*` call counts once none has changed for `quietMs`: what a change read is then final, and a count taken
+ * next cannot be missing a read that is still on its way.
+ */
+export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500): Promise<Record<string, number>> {
+  const read = async () => Object.fromEntries(Object.entries(await ipcCalls(app)).filter(([k]) => k.startsWith('library:')));
+  let last = JSON.stringify(await read());
+  let since = Date.now();
+  while (Date.now() - since < quietMs) {
+    await new Promise((r) => setTimeout(r, 100));
+    const now = JSON.stringify(await read());
+    if (now !== last) {
+      last = now;
+      since = Date.now();
+    }
+  }
+  return JSON.parse(last) as Record<string, number>;
 }

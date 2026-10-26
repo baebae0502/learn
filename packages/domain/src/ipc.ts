@@ -107,9 +107,13 @@ export const showContextMenuInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
 ]);
-/** The table header's native menu: which columns show now, and where the pointer is. */
+/** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z
-  .object({ visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length), ...point })
+  .object({
+    visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length),
+    locked: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length).optional(),
+    ...point,
+  })
   .strict();
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;

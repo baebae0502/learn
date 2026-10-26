@@ -44,4 +44,11 @@ describe('E2E seeding hook (P-22)', () => {
     expect(broadcast.mock.calls).toEqual([['libraryChanged', { reason: 'import' }]]);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
+  it('also installs the IPC call counter createHandle fills', () => {
+    const g = globalThis as { __learnIpcCalls?: Record<string, number> };
+    delete g.__learnIpcCalls;
+    installTestHooks({ repo: () => ({}) as never, broadcast: vi.fn() });
+    expect(g.__learnIpcCalls).toEqual({});
+    delete g.__learnIpcCalls;
+  });
 });

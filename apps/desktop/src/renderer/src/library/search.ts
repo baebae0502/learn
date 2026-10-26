@@ -213,6 +213,32 @@ export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly S
   return index;
 }
 
+/** The fields the short index holds: a change to any of them changes what a query can find. */
+function sameSearchedFields(a: LibraryItem, b: LibraryItem): boolean {
+  return (
+    a.title === b.title && a.publisher === b.publisher && a.originalName === b.originalName && a.year === b.year &&
+    a.creators.length === b.creators.length && a.creators.every((c, k) => c === b.creators[k])
+  );
+}
+
+/**
+ * A list patched in place (same length and ids; a few rows replaced) keeps the old list's index when none of the replaced
+ * rows changed a searched field: opening an item, a re-checked file or a relink must not make the next keystroke pay for a
+ * new index. The index reads `items` for titles and ids only, which are the same. Anything else is left to build a new one.
+ */
+export function carrySearchIndex(prev: readonly LibraryItem[], next: readonly LibraryItem[]): void {
+  if (prev.length !== next.length) return;
+  for (let k = 0; k < prev.length; k++) {
+    const a = prev[k]!;
+    const b = next[k]!;
+    if (a !== b && (a.id !== b.id || !sameSearchedFields(a, b))) return;
+  }
+  const short = shortParts.get(prev);
+  if (short) shortParts.set(next, short);
+  const full = indexes.get(prev);
+  if (full) indexes.set(next, full);
+}
+
 export interface SearchResult {
   /** The items every query word is in. */
   ids: ReadonlySet<string>;

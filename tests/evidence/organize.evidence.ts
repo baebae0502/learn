@@ -8,7 +8,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, NativeInputNotPermitted, addToCollection, createCollection, importPaths, launch, makeTags, organizeSnapshot, rowAt, runMenuCommand, tagChip, treeRow, type Session } from '../e2e/helpers';
+import { FIXTURES, NativeInputNotPermitted, addToCollection, createCollection, importPaths, launch, makeTags, organizeSnapshot, rowAt, runMenuCommand, tagChip, tokenColor, treeRow, type Session } from '../e2e/helpers';
+import { COMMANDS, SUBMENUS } from '../../packages/domain/src/commands';
 import { IS_MAC, allShots, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
 
 const TAG = { tag: '@organize' };
@@ -34,16 +35,6 @@ async function guard(name: string, run: () => Promise<void>): Promise<void> {
   }
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** The colour a token resolves to here (light-dark() resolved by the page's scheme), as getComputedStyle writes it. */
-const tokenColor = (page: Page, token: string) =>
-  page.evaluate((t) => {
-    const probe = document.createElement('div');
-    probe.style.background = `var(${t})`;
-    document.body.append(probe);
-    const c = getComputedStyle(probe).backgroundColor;
-    probe.remove();
-    return c;
-  }, token);
 const setTheme = async (page: Page, theme: 'light' | 'dark') => {
   await page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -263,6 +254,20 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
   results['tagDigits'] = { typedInField: typedInField.ok, fieldText, before, afterField, rowId, typedOnRow: typedOnRow.ok, afterRow };
 });
 
+/**
+ * The place of a menu row among the enabled rows of a pop-up, read from the registry: the first ↓ on a macOS pop-up selects the
+ * first enabled row, so this is also the number of ↓ that reaches it (a single available managed item; a tag with a colour).
+ */
+function popupRowNumber(kind: 'item' | 'tag', rowId: string): number {
+  const placed = [
+    ...COMMANDS.filter((c) => c.contextMenu?.kinds.includes(kind) && !c.contextMenu.onlyWhenAvailable).map((c) => ({ id: c.id as string, at: c.contextMenu! })),
+    ...SUBMENUS.filter((g) => g.contextMenu?.kinds.includes(kind)).map((g) => ({ id: g.id, at: g.contextMenu! })),
+  ].sort((a, b) => a.at.group - b.at.group || a.at.order - b.at.order);
+  const n = placed.findIndex((r) => r.id === rowId) + 1;
+  if (n === 0) throw new Error(`no pop-up row ${rowId} for ${kind}`);
+  return n;
+}
+
 test('M5 tags: the chip menu with 색 지정 ▸ open and the item menu with 색 태그 ▸ open (macOS only)', TAG, async () => {
   if (!IS_MAC) {
     results['tagMenus'] = { skipped: 'native menus are macOS only' };
@@ -272,11 +277,11 @@ test('M5 tags: the chip menu with 색 지정 ▸ open and the item menu with 색
   await focusApp(s.app);
   await tagChip(s.page, tagIds[0]!).click({ button: 'right' });
   await sleep(1200);
-  const chip = await captureOpenPopupSubmenu(s.app, pid, '색 지정', 1, 'm5-06-menu-tag-colors', 'the tag chip menu with 색 지정 ▸ open: eight colours with dots, the slot another tag holds named');
+  const chip = await captureOpenPopupSubmenu(s.app, pid, '색 지정', popupRowNumber('tag', 'tag.setColor'), 'm5-06-menu-tag-colors', 'the tag chip menu with 색 지정 ▸ open: eight colours with dots, the slot another tag holds named');
   await sleep(500);
   await rowAt(s.page, 0).click({ button: 'right' });
   await sleep(1200);
-  const item = await captureOpenPopupSubmenu(s.app, pid, '색 태그', 4, 'm5-06-menu-item-color-tags', 'the item menu with 색 태그 ▸ open: the tags by slot, the digits at the right, a check for what every selected item has');
+  const item = await captureOpenPopupSubmenu(s.app, pid, '색 태그', popupRowNumber('item', 'colorTags'), 'm5-06-menu-item-color-tags', 'the item menu with 색 태그 ▸ open: the tags by slot, the digits at the right, a check for what every selected item has');
   results['tagMenus'] = { chip, item };
   // `opened` is null when System Events cannot address a pop-up: the controller then reads the PNGs.
   check('tag menus: ran and, where System Events can tell, the submenus opened', (chip.opened ?? true) && (item.opened ?? true), { chip: chip.opened, item: item.opened });

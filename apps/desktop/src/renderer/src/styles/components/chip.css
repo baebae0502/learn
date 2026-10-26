@@ -75,14 +75,25 @@
     color: var(--text-secondary);
     box-shadow: inset 0 0 0 1px var(--border);
   }
-  /* The × of an assigned chip: there while the chip is hovered or has the focus (design-spec 6). */
+  /* Chosen but not in the view shown: the filter can only empty the table (spec 3.6), so the dim chip's hollow stays, in accent. */
+  .chip.is-on.is-dim {
+    background: transparent;
+    color: var(--accent-text);
+    box-shadow: inset 0 0 0 1px var(--accent-text);
+  }
+  .chip.is-on.is-dim:is(:hover, [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  /* The × of an assigned chip always has its place (the chip's width does not move) and shows on hover or focus (design-spec 6). */
   .chip .x {
-    display: none;
+    display: grid;
+    visibility: hidden;
     place-items: center;
     flex: none;
     width: 14px; /* local: the × target */
     height: 14px; /* local: the × target */
-    margin-right: -4px; /* local: the × sits 4 px from the pill's edge */
+    margin-left: calc(-1 * var(--space-2)); /* label to × 6: the chip-main's 8 less 2 */
+    margin-right: var(--space-4); /* the × box ends 4 inside the pill */
     padding: 0;
     border: 0;
     border-radius: 50%;
@@ -91,7 +102,7 @@
     cursor: default;
   }
   .chip:is(:hover, :focus-within, [data-force~='hover'], [data-force~='focus']) .x {
-    display: grid;
+    visibility: visible;
   }
   .chip .x:is(:hover) {
     background: var(--fill-pressed);
@@ -104,7 +115,7 @@
     box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
   }
   .chip-input {
-    min-width: 6ch;
+    min-width: 2em;
     max-width: 100%;
     height: 100%;
     padding: 0;

@@ -245,10 +245,21 @@ describe('1–8 (spec 4.2)', () => {
     expect(deps.notice).toHaveBeenCalledTimes(1);
   });
   it('a refused call is told', async () => {
-    const { actions, deps } = setup();
+    const { actions, deps, snapshot } = setup();
     deps.tags.togglePosition = vi.fn(async () => Promise.reject(new Error('x')));
     await actions.togglePosition(3, ['i1']);
     expect(deps.failed).toHaveBeenCalledTimes(1);
+    expect(snapshot()).toBe(BASE);
+  });
+  it('a chunk that fails after another went through is told once and patches nothing (the database may be half done: main\'s tags notice reads it again)', async () => {
+    const many = Array.from({ length: 5001 }, (_, i) => item(`b${i}`));
+    const { actions, deps, snapshot } = setup({}, many, { ...BASE, tagged: {} });
+    const start = snapshot();
+    deps.tags.assign = vi.fn().mockResolvedValueOnce(5000).mockRejectedValueOnce(new Error('x'));
+    await expect(actions.togglePosition(1, many.map((m) => m.id))).resolves.toBeUndefined();
+    expect(deps.tags.assign).toHaveBeenCalledTimes(2);
+    expect(deps.failed).toHaveBeenCalledTimes(1);
+    expect(snapshot()).toBe(start);
   });
   it('more than the channel takes at once: the model decides, and the items go in chunks of the limit', async () => {
     expect(TOGGLE_CHUNK).toBe(5000);

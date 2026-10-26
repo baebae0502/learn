@@ -3,8 +3,9 @@ export const MAX_TAG_NAME = 200;
 /** NFC and trimmed, as the database stores a tag name. */
 export const cleanTagName = (raw: string): string => raw.normalize('NFC').trim();
 
-const fold = (raw: string): string => cleanTagName(raw).toLowerCase();
-/** The same name by the database's rule (case-insensitive, SQLite folds ASCII only) or a wider one: the sheet is asked at least when the database would merge. */
+/** The database's fold: SQLite's NOCASE lowercases ASCII letters only. */
+const fold = (raw: string): string => cleanTagName(raw).replace(/[A-Z]/g, (c) => c.toLowerCase());
+/** The same name as the database counts it (NFC, trimmed, ASCII case folded): the merge sheet is asked exactly when the database would merge. */
 export const sameTagName = (a: string, b: string): boolean => fold(a) === fold(b);
 
 /** Over the limit as the database counts it: UTF-16 units of the cleaned name. */

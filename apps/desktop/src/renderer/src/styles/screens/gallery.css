@@ -67,7 +67,15 @@
   }
   .gallery .tag-board .tag-cloud {
     flex: none;
-    overflow: visible;
+  }
+  /* The chip rows: room between them for a focus ring (3 px) and the name field's halo. */
+  .gallery .g-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+  .gallery .g-box {
+    width: 160px; /* local: a narrow box for a long name */
   }
   .gallery .g-swatches {
     display: grid;

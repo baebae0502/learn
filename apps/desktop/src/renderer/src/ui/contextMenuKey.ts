@@ -27,3 +27,11 @@ export function menuPointFor(
   const r = el.getBoundingClientRect();
   return { x: Math.round(r.left + Math.min(r.width / 2, 48)), y: Math.round(Math.max(0, Math.min(r.bottom, viewport.height - 1))) };
 }
+
+/** A `contextmenu` this soon after the menu our own key opened is the system's echo of the same key (Windows sends it on key-up). */
+export const KEY_MENU_ECHO_MS = 500;
+
+/** Whether a `contextmenu` at `now` echoes the menu our key opened at `openedAt` (null: our key opened none). Times from performance.now(). */
+export function isKeyMenuEcho(now: number, openedAt: number | null): boolean {
+  return openedAt !== null && now - openedAt < KEY_MENU_ECHO_MS;
+}

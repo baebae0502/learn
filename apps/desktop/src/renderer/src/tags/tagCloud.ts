@@ -7,7 +7,7 @@ export interface CloudChip {
   tag: OrganizeTag;
   /** In the filter. */
   on: boolean;
-  /** The view shown has no item with it (only drawn in 모든 태그; a chip that is on is never dim). */
+  /** The view shown has no item with it (a chip that is on stays in the cloud whatever the view is, and is then hollow in accent). */
   dim: boolean;
 }
 
@@ -54,6 +54,6 @@ export function cloudChips(input: CloudInput): CloudChip[] {
   const rest = shown.filter((tag) => tag.position === null).sort(selector.sort === 'count' ? byCount : byName);
   return [...coloured, ...rest].map((tag) => {
     const on = filter.has(tag.id);
-    return { tag, on, dim: !on && !inView(tag) };
+    return { tag, on, dim: !inView(tag) };
   });
 }

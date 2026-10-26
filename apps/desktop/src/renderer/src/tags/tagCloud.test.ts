@@ -26,10 +26,10 @@ describe('the chips of the selector (spec 4.3)', () => {
     expect(ids(all)).toEqual(['rng', 'imp', 't2', 't10', 'rec', 'hah', 'reg', 'en']); // the dim chip stays in its place by name
     expect(view.every((x) => !x.dim)).toBe(true);
   });
-  it('keeps a tag that is in the filter however the view is, marked on and not dim, so it can be taken out again', () => {
+  it('keeps a tag that is in the filter however the view is, marked on — and dim when the view lacks it, so the empty table is explained — so it can be taken out again', () => {
     const c = counts({ imp: 1, rng: 1, rec: 1, hah: 1, reg: 0, t10: 1, t2: 1, en: 1 });
     const chips = cloudChips({ tags: TAGS, counts: c, filter: new Set(['reg', 'rec']), selector: NAME, query: '' });
-    expect(chips.find((x) => x.tag.id === 'reg')).toMatchObject({ on: true, dim: false });
+    expect(chips.find((x) => x.tag.id === 'reg')).toMatchObject({ on: true, dim: true });
     expect(chips.find((x) => x.tag.id === 'rec')).toMatchObject({ on: true, dim: false });
     expect(chips.find((x) => x.tag.id === 'hah')).toMatchObject({ on: false, dim: false });
   });

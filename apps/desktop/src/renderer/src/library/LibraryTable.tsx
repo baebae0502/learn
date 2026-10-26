@@ -16,7 +16,7 @@ import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
-import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
+import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
@@ -63,8 +63,6 @@ const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 
 const ROW = '[data-testid="item-row"]';
 const NO_TAGS: readonly OrganizeTag[] = [];
 const tagsDescriptionId = (itemId: string) => `row-tags-${itemId}`;
-/** A `contextmenu` this soon after the menu our own key opened is the browser's echo of the same key (Windows sends it on key-up). */
-const KEY_MENU_ECHO_MS = 500;
 const rowIdOf = (target: EventTarget): string | null =>
   target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['itemId'] ?? null) : null;
 const isMac = () => currentPlatform() === 'darwin';
@@ -282,7 +280,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // The ring shows for keyboard use only (design-spec 6: 마우스 클릭으로는 링을 띄우지 않는다): a key turns it on, a
   // press turns it off, and focus that enters the table brings it when the last input was a key (F6, Tab).
   const [ring, setRing] = useState(false);
-  const keyMenuAt = useRef(Number.NEGATIVE_INFINITY);
+  const keyMenuAt = useRef<number | null>(null);
   const focusStop = useCallback(() => {
     grid.current?.querySelector<HTMLElement>(`${ROW}[data-index="${latest.current.stop}"]`)?.focus({ preventScroll: true });
   }, []);
@@ -378,7 +376,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // Right-click selects first (design-spec 7.1, Finder): a row outside the selection becomes the selection; inside it,
   // the menu acts on every selected item, in table order.
   const onBodyContextMenu = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    if (performance.now() - keyMenuAt.current < KEY_MENU_ECHO_MS) {
+    if (isKeyMenuEcho(performance.now(), keyMenuAt.current)) {
       e.preventDefault();
       return;
     }

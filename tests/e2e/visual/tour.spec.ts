@@ -805,3 +805,25 @@ test('component state board: tag chips and colour dots (gallery part 4)', async 
     await s.app.close();
   }
 });
+
+test('organize: the first tag chip focused from the keyboard — the ring is whole at the cloud\'s edge', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const ids = items.map((i) => i.id);
+    await makeTags(s.page, [
+      { name: '중요', slot: 1, items: ids.slice(0, 2) },
+      { name: '시험 범위', slot: 2, items: ids.slice(0, 1) },
+      { name: '수용체', items: ids.slice(0, 2) },
+    ]);
+    await s.page.getByTestId('tag-selector-more').focus();
+    await s.page.keyboard.press('Tab'); // the cloud's one stop: its first chip
+    await expect(s.page.locator('[data-testid="tag-selector"] [data-chip-id]:focus-visible')).toHaveCount(1);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-focus-${theme}`, { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+    }
+  } finally {
+    await s.app.close();
+  }
+});

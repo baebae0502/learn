@@ -76,5 +76,7 @@ export const organize = {
     deleteConfirm: '삭제',
     /** The table body when the chosen tags leave no item and nothing is typed in the search (spec 3.6). */
     filterEmpty: '고른 태그를 모두 가진 자료가 없습니다',
+    /** Under it: how many tags were chosen, and which when there are few ("태그 N개" never breaks across lines). */
+    filterEmptyBody: (count: number, names: string) => `고른 태그\u00a0${count}개${names === '' ? '' : `(${names})`}로 거른 결과입니다.`,
   },
 } as const;

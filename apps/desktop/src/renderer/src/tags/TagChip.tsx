@@ -5,7 +5,7 @@ import { t } from '../strings';
 import type { ForcedState } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
-import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
+import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { useChipStop } from './ChipGroup';
 import { chipKeyAction, type ChipRole } from './chipKeys';
 import { TagNameField } from './TagNameField';
@@ -35,9 +35,6 @@ export interface TagChipProps {
 
 type DragSlot = Pick<HTMLAttributes<HTMLElement>, 'onKeyDown' | 'onFocus'> & Record<string, unknown>;
 
-/** A `contextmenu` this soon after the menu our own key opened is the browser's echo of the same key (Windows sends it on key-up). */
-const KEY_MENU_ECHO_MS = 500;
-
 /** The chip while its name is typed: the pill is the field, the "too long" note under it (it takes a line of the cloud). */
 function EditingChip({ tag, role }: { tag: OrganizeTag; role: ChipRole }) {
   const over = useTagEdit((s) => tooLongTagName(s.text));
@@ -63,7 +60,7 @@ function EditingChip({ tag, role }: { tag: OrganizeTag; role: ChipRole }) {
 export function TagChip(props: TagChipProps) {
   const { tag, role, on, dim, onToggle, onRemove, onRename, onMenu, editing, force, dragProps } = props;
   const stop = useChipStop(tag.id);
-  const keyMenuAt = useRef(Number.NEGATIVE_INFINITY);
+  const keyMenuAt = useRef<number | null>(null);
   if (editing) return <EditingChip tag={tag} role={role} />;
 
   const drag = (dragProps ?? {}) as DragSlot;
@@ -100,8 +97,11 @@ export function TagChip(props: TagChipProps) {
   const inner = (
     <>
       {tag.position !== null && <i className="dot" style={{ background: tagColorVar(tag.position) }} aria-hidden="true" />}
-      <span className="chip-label ellipsis">{tag.name}</span>
-      {dim && <span className="visually-hidden">{t.organize.tags.notInView}</span>}
+      <span className="chip-label ellipsis" title={tag.name}>
+        {tag.name}
+      </span>
+      {/* The leading space keeps the name and the note from running together in the accessible name. */}
+      {dim && <span className="visually-hidden">{` ${t.organize.tags.notInView}`}</span>}
     </>
   );
   return (
@@ -116,7 +116,7 @@ export function TagChip(props: TagChipProps) {
           onClick={onToggle}
           onContextMenu={(e: MouseEvent<HTMLButtonElement>) => {
             e.preventDefault();
-            if (performance.now() - keyMenuAt.current < KEY_MENU_ECHO_MS) return;
+            if (isKeyMenuEcho(performance.now(), keyMenuAt.current)) return;
             onMenu?.({ x: e.clientX, y: e.clientY });
           }}
         >

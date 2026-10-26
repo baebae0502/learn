@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isContextMenuKey, menuPointFor } from './contextMenuKey';
+import { KEY_MENU_ECHO_MS, isContextMenuKey, isKeyMenuEcho, menuPointFor } from './contextMenuKey';
 
 const key = (over: Partial<Parameters<typeof isContextMenuKey>[0]>): Parameters<typeof isContextMenuKey>[0] => ({
   key: '', code: '', shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, isComposing: false, keyCode: 0, ...over,
@@ -39,5 +39,18 @@ describe('where the menu opens for a focused element', () => {
   it('stays inside the window: a row scrolled below or above it is pulled to the edge', () => {
     expect(menuPointFor(at(0, 2000, 400), { height: 800 })).toEqual({ x: 48, y: 799 });
     expect(menuPointFor(at(0, -20, 400), { height: 800 })).toEqual({ x: 48, y: 0 });
+  });
+});
+
+describe('the echo of a menu key (Windows sends contextmenu on key-up)', () => {
+  it('is a contextmenu inside the window after our own menu opened, and only there', () => {
+    expect(KEY_MENU_ECHO_MS).toBe(500);
+    expect(isKeyMenuEcho(1000 + KEY_MENU_ECHO_MS - 1, 1000)).toBe(true);
+    expect(isKeyMenuEcho(1000, 1000)).toBe(true);
+    expect(isKeyMenuEcho(1000 + KEY_MENU_ECHO_MS, 1000)).toBe(false);
+    expect(isKeyMenuEcho(1000 + KEY_MENU_ECHO_MS + 1, 1000)).toBe(false);
+  });
+  it('is never one when our key opened no menu', () => {
+    expect(isKeyMenuEcho(5, null)).toBe(false);
   });
 });

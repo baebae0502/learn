@@ -1053,13 +1053,15 @@ export async function stubConfirm(app: ElectronApplication, answer: 'confirm' | 
     g.__learnConfirms = [];
     g.__learnRealMessageBox ??= dialog.showMessageBox;
     dialog.showMessageBox = (async (...args: unknown[]) => {
-      const o = (args.length > 1 ? args[1] : args[0]) as { message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number };
-      g.__learnConfirms!.push({ message: o.message, detail: o.detail ?? '', buttons: o.buttons ?? [], defaultId: o.defaultId ?? null, cancelId: o.cancelId ?? null });
+      const o = (args.length > 1 ? args[1] : args[0]) as { type?: string; message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number };
+      g.__learnConfirms!.push({ type: o.type ?? null, message: o.message, detail: o.detail ?? '', buttons: o.buttons ?? [], defaultId: o.defaultId ?? null, cancelId: o.cancelId ?? null });
       return { response: answer === 'confirm' ? 0 : 1, checkboxChecked: false };
     }) as typeof dialog.showMessageBox;
   }, answer);
 }
 export interface ConfirmCall {
+  /** The dialog's type: 'warning' carries the caution symbol, 'none' the app icon. */
+  type: string | null;
   message: string;
   detail: string;
   buttons: string[];

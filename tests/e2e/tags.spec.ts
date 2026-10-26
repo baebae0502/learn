@@ -112,6 +112,7 @@ test('chips: colour tags first by slot with an 8 px dot, the rest by name; 현�
     await expect.poll(() => chipIds(page)).toEqual([imp, rng, rec, hah, reg]);
     await expect(tagChip(page, reg)).toHaveAttribute('data-dim', '');
     await expect(tagChip(page, reg)).toHaveAttribute('aria-pressed', 'false');
+    await expect(tagChip(page, reg)).toHaveAccessibleName(/^회귀분석\s이\s보기에\s없음$/); // the name and the note do not run together
     await expect(tagChip(page, rec)).not.toHaveAttribute('data-dim', '');
     // 많이 쓴 순: by the items of the view — 하하 (2) before 수용체 (1) before 회귀분석 (0), the colour tags still first.
     await chooseMenu(page, 'count');
@@ -273,8 +274,16 @@ test('keyboard: the chips are one Tab stop, ←→ Home End move it, Space toggl
     expect(at!.x).toBeGreaterThanOrEqual(box.x);
     expect(at!.x).toBeLessThanOrEqual(box.x + box.width);
     expect(Math.abs(at!.y - (box.y + box.height))).toBeLessThanOrEqual(3);
-    await page.waitForTimeout(700); // the browser's own contextmenu for the key does not open it a second time
+    // The system's echo of the key (Windows sends contextmenu on key-up) must not open it again: a synthetic one inside the window
+    // is swallowed, one after it is a real right click (the positive control: the guard is time-limited, not a blanket block).
+    const echo = () => tagChip(page, c).evaluate((el) => el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 })));
+    await echo();
+    await page.waitForTimeout(100);
     expect((await recordedPopups(app)).length).toBe(1);
+    await page.waitForTimeout(700);
+    await echo();
+    await expect.poll(async () => (await recordedPopups(app)).length).toBe(2);
+    await expect.poll(async () => (await recordedPopupPoints(app)).length).toBe(2);
     const labels = (await recordedPopups(app))[0]!.map((e) => (e.type === 'separator' ? '-' : e.label));
     expect(labels).toEqual(['이름 바꾸기', '색 지정', '색 해제', '-', '태그 삭제…']);
   } finally {
@@ -426,7 +435,7 @@ test('delete: the sheet says how many items the tag comes off, cancel keeps it, 
     await stubContextMenu(app, '태그 삭제…');
     await tagChip(page, important).click({ button: 'right' });
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]).toMatchObject({ message: '‘중요’ 태그를 삭제하겠습니까?', detail: '자료 2개에서 떼어집니다.', buttons: ['삭제', '취소'], defaultId: 0 });
+    expect((await confirmCalls(app))[0]).toMatchObject({ message: '‘중요’ 태그를 삭제하겠습니까?', detail: '자료 2개에서 떼어집니다.', buttons: ['삭제', '취소'], defaultId: 0, type: 'warning' }); // no undo: the caution symbol
     await expect(tagChip(page, important)).toBeVisible();
     await stubConfirm(app, 'confirm');
     await tagChip(page, important).click({ button: 'right' });
@@ -477,12 +486,12 @@ test('1–8 keys put the tag at that slot on the selection or take it off, tell 
     await setTagColor(page, tags[0]!, null, null);
     await expect(tagChip(page, tags[0]!).locator('.dot')).toHaveCount(0);
     await page.keyboard.press('1');
-    await expect(page.getByTestId('tag-notice').last()).toHaveText('색 태그 1이 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
+    await expect(page.getByTestId('tag-notice').first()).toHaveText('색 태그 1이 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
     expect(await heldBy(page, tags[0]!)).toEqual([id('sample')]);
     await setTagColor(page, tags[4]!, null, null);
     await expect(tagChip(page, tags[4]!).locator('.dot')).toHaveCount(0);
     await page.keyboard.press('5');
-    await expect(page.getByTestId('tag-notice').last()).toHaveText('색 태그 5가 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
+    await expect(page.getByTestId('tag-notice').first()).toHaveText('색 태그 5가 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
 
     // Never in a text field, and never while a composition owns the key (keyCode 229 included).
     const before = await heldBy(page, tags[1]!);

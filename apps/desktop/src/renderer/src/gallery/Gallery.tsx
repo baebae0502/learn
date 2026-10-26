@@ -7,7 +7,7 @@ import { ChipGroup } from '../tags/ChipGroup';
 import { tagColorVar } from '../tags/tagColor';
 import { TagChip } from '../tags/TagChip';
 import { TagDots } from '../tags/TagDots';
-import { selectorMenu } from '../tags/TagSelector';
+import { selectorMenu } from '../tags/selectorMenu';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
@@ -496,7 +496,7 @@ const sample = (name: string, position: number | null = null): OrganizeTag => ({
   color: position === null ? null : TAG_COLORS[position - 1]!.id,
   position,
 });
-const G_TAGS = [sample('시험 범위', 1), sample('중요', 3)];
+const G_TAGS = [sample('중요', 1), sample('시험 범위', 2)];
 
 /**
  * Tag chips and colour dots (design-spec 4, 6 태그 칩·색 점; mockup components part 1 and 3): every state of the chip, the eight
@@ -514,13 +514,20 @@ function Part4() {
     <>
       <section>
         <h2 className="g-title">태그 칩</h2>
-        <div data-testid="g-chips">
+        <div className="g-stack" data-testid="g-chips">
           {row('기본', <TagChip key="a" tag={plain} role="filter" />)}
           {row('호버', <TagChip key="a" tag={plain} role="filter" force={['hover']} />)}
           {row('포커스', <TagChip key="a" tag={plain} role="filter" force={['focus']} />)}
           {row('선택(필터)', <TagChip key="a" tag={sample('시험 범위')} role="filter" on />)}
           {row('흐린(현재 보기에 없음)', <TagChip key="a" tag={sample('회귀분석')} role="filter" dim />)}
-          {row('붙은 칩 · 호버', <TagChip key="a" tag={plain} role="assigned" force={['hover']} />, <TagChip key="b" tag={sample('중요', 3)} role="assigned" force={['focus']} />)}
+          {row('선택 + 흐림', <TagChip key="a" tag={sample('회귀분석')} role="filter" on dim />, <TagChip key="b" tag={sample('회귀분석')} role="filter" on dim force={['hover']} />)}
+          {row('붙은 칩 · 호버', <TagChip key="a" tag={plain} role="assigned" force={['hover']} />, <TagChip key="b" tag={sample('중요', 1)} role="assigned" force={['focus']} />)}
+          {row(
+            '긴 이름(160 박스)',
+            <div key="a" className="g-box">
+              <TagChip tag={sample('아주 긴 태그 이름이 칩 한 개의 폭을 넘어가는 경우')} role="filter" />
+            </div>,
+          )}
           {row(
             '이름 칸',
             <span key="a" className="chip is-editing">
@@ -582,7 +589,7 @@ function Part4() {
               <IconButton icon={Ellipsis} label="태그 표시" size="small" />
             </div>
             <ChipGroup label="태그 목록" className="tag-cloud">
-              {[sample('시험 범위', 1), sample('중요', 3), sample('수용체'), sample('G 단백질')].map((tag) => (
+              {[sample('중요', 1), sample('시험 범위', 2), sample('수용체'), sample('G 단백질')].map((tag) => (
                 <TagChip key={tag.id} tag={tag} role="filter" on={tag.name === '수용체'} />
               ))}
               <TagChip tag={sample('회귀분석')} role="filter" dim />

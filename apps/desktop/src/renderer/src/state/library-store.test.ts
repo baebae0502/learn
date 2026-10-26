@@ -118,7 +118,6 @@ describe('the tag filter (spec 4.3)', () => {
   });
 });
 
-
 describe('the tag filter loses a tag that is gone (spec 4.1)', () => {
   beforeEach(() => useLibrary.setState({ tagFilter: new Set(['t1', 't2']) }));
   it('drops a deleted tag from the filter', () => {

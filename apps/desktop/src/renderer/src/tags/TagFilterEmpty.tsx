@@ -1,10 +1,13 @@
 import { Tag } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
+import { useOrganize } from '../organize/useOrganize';
+import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { PaneEmpty } from '../ui/PaneEmpty';
 import { currentPlatform } from '../ui/platform';
+import { filterEmptyBody } from './filterEmptyBody';
 import { focusTagStop } from './TagSelector';
 
 /**
@@ -13,6 +16,9 @@ import { focusTagStop } from './TagSelector';
  */
 export function TagFilterEmpty() {
   const { run, isEnabled } = useCommands();
+  const { model } = useOrganize();
+  const filter = useLibrary((s) => s.tagFilter);
+  const names = (model?.tags ?? []).filter((tag) => filter.has(tag.id)).map((tag) => tag.name);
   return (
     <PaneEmpty
       icon={Tag}
@@ -31,6 +37,8 @@ export function TagFilterEmpty() {
           {commandLabel(commandById('tags.clearFilter'), currentPlatform())}
         </Button>
       }
-    />
+    >
+      {filterEmptyBody(names)}
+    </PaneEmpty>
   );
 }

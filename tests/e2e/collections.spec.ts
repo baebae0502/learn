@@ -229,7 +229,7 @@ test('delete asks in the sheet words, the view moves to the parent, and 실행 �
     // 6장 goes first (it is deleted before its parent).
     await treeRow(page, c6).click({ button: 'right' });
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]).toEqual({ message: '‘6장’을 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1 });
+    expect((await confirmCalls(app))[0]).toEqual({ type: 'none', message: '‘6장’을 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1 });
     await expect(treeRow(page, c6)).toHaveCount(0);
     await expect(title(page)).toHaveText('분자생물학'); // the view that was inside it moved to the parent
     await expect(page.getByTestId('undo-toast').first()).toContainText('‘6장’을 삭제했습니다');

@@ -11,6 +11,11 @@ describe('a tag name (spec 4.1)', () => {
     expect(sameTagName('\u1112\u1161\u11ab', '한')).toBe(true);
     expect(sameTagName('중요', '중요 표시')).toBe(false);
   });
+  it('folds ASCII case only, as the database\'s uniqueness does: É and é are two names, Abc and aBC one', () => {
+    expect(sameTagName('Abc', 'aBC')).toBe(true);
+    expect(sameTagName('É', 'é')).toBe(false);
+    expect(sameTagName('Ünï', 'ünï')).toBe(false);
+  });
   it('is too long past 200 UTF-16 units of the cleaned name, the database\'s count', () => {
     expect(MAX_TAG_NAME).toBe(200);
     expect(tooLongTagName('가'.repeat(200))).toBe(false);

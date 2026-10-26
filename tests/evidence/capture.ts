@@ -560,7 +560,7 @@ async function findPopup(target: string | number): Promise<{ candidate: string; 
  * An open pop-up (context) menu: ↓ one row at a time — AppKit skips separators and disabled rows, and → on a row without a
  * submenu goes elsewhere — until System Events says the row `label` is the selected one, then → opens its submenu. `opened`
  * is true when the row was selected and its submenu then lists rows; null when System Events cannot address the pop-up (the
- * PNG is then taken after `fallbackDowns` presses and judged by eye); false when it could and the submenu did not open.
+ * PNG is then taken after `fallbackDowns` presses — the row's place among the enabled rows, the first ↓ selecting the first — and judged by eye); false when it could and the submenu did not open.
  * Escape clears whatever is still open, in a finally.
  */
 export async function captureOpenPopupSubmenu(app: ElectronApplication, target: string | number, label: string, fallbackDowns: number, prefix: string, what: string) {
@@ -605,7 +605,8 @@ export async function captureOpenPopupSubmenu(app: ElectronApplication, target: 
       opened = selected && rows !== null && rows.length > 0;
     }
     const shot = await fullScreenShot(`${prefix}`, `${what}: ↓ ×${downs} then → via System Events${found === null ? ' (the pop-up could not be addressed: opened unknown)' : ''}`);
-    return { shot: shot.file, downs, opened, rows, addressable: found !== null };
+    // fallback: the row was not confirmed by System Events; `downs` presses were made on a count worked out from the registry.
+    return { shot: shot.file, downs, opened, rows, addressable: found !== null, fallback: found === null, fallbackDowns: found === null ? fallbackDowns : null };
   } finally {
     await pressEscape();
     await pressEscape();

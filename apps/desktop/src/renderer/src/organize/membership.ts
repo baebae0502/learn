@@ -1,7 +1,7 @@
 import { api, unwrap } from '../api';
 import { descendantIds } from '../sidebar/rows';
 import type { OrganizeModel } from './model';
-import { cachedSnapshot, patchSnapshot } from './snapshotCache'; 
+import { cachedSnapshot, patchSnapshot } from './snapshotCache';
 import { withMembers, withoutMembers } from './snapshotPatch';
 
 /**
@@ -65,6 +65,7 @@ export async function removeFromScope(model: OrganizeModel, scopeCollectionId: s
 export async function undoRemovals(removals: readonly Removal[]): Promise<void> {
   for (const { collectionId, itemIds } of removals) {
     const snapshot = cachedSnapshot();
+    // A collection deleted since was deleted on purpose: nothing the user still has is lost by leaving it out.
     if (snapshot && !snapshot.collections.some((c) => c.id === collectionId)) continue;
     for (const chunk of inChunks(itemIds)) await unwrap(api().collections.addItems({ collectionId, itemIds: chunk }));
     patchSnapshot((s) => withMembers(s, collectionId, itemIds));

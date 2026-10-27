@@ -1,7 +1,7 @@
 import type { BaseWindow, MenuItemConstructorOptions, PopupOptions } from 'electron';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, type CommandContextState, type CommandTargetInfo } from '@learn/domain';
-import { FUTURE_COMMANDS, FUTURE_SUBMENUS, LIBRARY } from './testing';
+import { ALL_COMMANDS, ALL_SUBMENUS, LIBRARY } from './testing';
 
 const popups: Array<{ template: MenuItemConstructorOptions[]; options: PopupOptions }> = [];
 
@@ -54,8 +54,8 @@ describe('context menu entries (registry + isCommandAvailable)', () => {
     expect(contextMenuEntries('tag', COMMANDS, LIB, [], 'darwin').every((e) => e === 'separator' || e.enabled === false)).toBe(true);
     expect(kindHasMenu('item', COMMANDS)).toBe(true);
     expect(kindHasMenu('collection', COMMANDS)).toBe(true);
-    expect(kindHasMenu('collection', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(true); // a kind a command or a group lists is a menu
-    expect(kindHasMenu('tag', FUTURE_COMMANDS, FUTURE_SUBMENUS)).toBe(true);
+    expect(kindHasMenu('collection', ALL_COMMANDS, ALL_SUBMENUS)).toBe(true); // a kind a command or a group lists is a menu
+    expect(kindHasMenu('tag', ALL_COMMANDS, ALL_SUBMENUS)).toBe(true);
   });
 });
 
@@ -112,7 +112,7 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
   const ONE: CommandContextState = { ...LIB, libraryCount: 9, selectionCount: 1, selectionAvailable: 1 };
   const available = [target('managed', 'available')];
   const item = (itemIds: readonly string[], over: Partial<CommandContextState> = {}, targets: CommandTargetInfo[] = available, organize: typeof LIBRARY | null = LIBRARY) =>
-    contextMenuEntries('item', FUTURE_COMMANDS, { ...ONE, ...over }, targets, 'darwin', { organize, itemIds, submenus: FUTURE_SUBMENUS });
+    contextMenuEntries('item', ALL_COMMANDS, { ...ONE, ...over }, targets, 'darwin', { organize, itemIds, submenus: ALL_SUBMENUS });
   /** A menu as readable lines: "라벨 [단축키] ✓(체크) ✗(꺼짐)", a submenu as { 라벨: [...] }. */
   type Line = string | { [label: string]: Line[] };
   const lines = (entries: ReturnType<typeof item>): Line[] =>
@@ -149,7 +149,7 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
     expect(lines(item(['i1'], {}, available, null))).toEqual(['열기', '-', 'Finder에서 보기', '사본 내보내기…']);
   });
   it('a tag menu: 색 지정 ▸ for the one tag, the colours as radios with a dot', () => {
-    const entries = contextMenuEntries('tag', FUTURE_COMMANDS, LIB, [{ kind: 'tag', id: 't-key', hasColor: true }], 'darwin', { organize: LIBRARY, tagId: 't-key' });
+    const entries = contextMenuEntries('tag', ALL_COMMANDS, LIB, [{ kind: 'tag', id: 't-key', hasColor: true }], 'darwin', { organize: LIBRARY, tagId: 't-key' });
     const head = (entries as unknown as Array<{ label: string; enabled: boolean; submenu: Array<{ label: string; type: string; checked: boolean; dot: string }> }>).find((e) => e.label === '색 지정')!;
     expect(head).toMatchObject({ label: '색 지정', enabled: true });
     expect(head.submenu.map((r) => [r.label, r.checked])).toEqual([
@@ -157,7 +157,7 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
     ]);
     expect(head.submenu.every((r) => r.type === 'radio' && /^#[0-9a-f]{6}$/.test(r.dot))).toBe(true);
     // No tag target: the tag context is off, and the head is greyed with it.
-    expect(contextMenuEntries('tag', FUTURE_COMMANDS, LIB, [], 'darwin', { organize: LIBRARY, tagId: 't-key' })[0]).toMatchObject({ enabled: false });
+    expect(contextMenuEntries('tag', ALL_COMMANDS, LIB, [], 'darwin', { organize: LIBRARY, tagId: 't-key' })[0]).toMatchObject({ enabled: false });
   });
 });
 

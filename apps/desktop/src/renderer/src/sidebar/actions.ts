@@ -9,7 +9,7 @@ import { sidebarHidden, toggledSidebar } from '../shell/layout';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { showToast, showUndoToast } from '../ui/toasts';
+import { showActionFailed, showUndoToast } from '../ui/toasts';
 import { createCollectionActions } from './collectionActions';
 import { saveExpanded } from './useExpanded';
 
@@ -62,6 +62,6 @@ export const collectionActions = createCollectionActions({
   forget: forgetExpanded,
   showSidebar,
   opener: () => document.activeElement,
-  failed: (e) => showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' }),
+  failed: showActionFailed,
   undoToast: showUndoToast,
 });

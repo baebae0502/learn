@@ -2,7 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, acceleratorLabel, availableMenuCommands, commandById, columnsMask, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged, submenuShapeKey } from './app-menu';
-import { FUTURE_COMMANDS, FUTURE_SUBMENUS, LIBRARY } from './testing';
+import { ALL_COMMANDS, ALL_SUBMENUS, LIBRARY } from './testing';
 
 interface Shape {
   label?: string;
@@ -192,7 +192,7 @@ describe('buildAppMenu', () => {
     const items = walk(build('darwin'));
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
-      expect(found, c.id).toHaveLength(c.menu && c.submenu !== 'collections' ? 1 : 0); // the head of 컬렉션에 추가 ▸ is a label over its rows, with no id
+      expect(found, c.id).toHaveLength(c.menu && c.submenu !== 'collections' ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
       if (found[0]) {
         expect(found[0].label).toBe(c.label);
         expect(found[0].accelerator).toBe(c.accelerator);
@@ -520,10 +520,10 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     expect(byId.get('library.sortBy?column=year')?.enabled).toBe(true);
   });
 
-  describe('a group and a collections submenu (stand-ins for the commands later tasks add)', () => {
+  describe('a group and a collections submenu', () => {
     const build2 = (enabled: ReadonlySet<CommandId>, organize: typeof LIBRARY | null = LIBRARY, onCommand = vi.fn()) =>
-      buildAppMenu({ isDev: false, platform: 'darwin', commands: FUTURE_COMMANDS, submenus: FUTURE_SUBMENUS, enabled, onCommand, context: context(), organize });
-    const ONE = new Set<CommandId>(availableMenuCommands({ ...context(), selectionCount: 1, selectionAvailable: 1 }, FUTURE_COMMANDS, FUTURE_SUBMENUS));
+      buildAppMenu({ isDev: false, platform: 'darwin', commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled, onCommand, context: context(), organize });
+    const ONE = new Set<CommandId>(availableMenuCommands({ ...context(), selectionCount: 1, selectionAvailable: 1 }, ALL_COMMANDS, ALL_SUBMENUS));
     const labels = (items: Shape[]): unknown[] => items.map((i) => (i.submenu ? { [i.label ?? '']: labels(i.submenu) } : (i.label ?? i.type)));
     const file = (t: MenuItemConstructorOptions[]) => shape(t).find((m) => m.id === 'menu.file')!.submenu!;
 
@@ -538,7 +538,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
       ]);
     });
     const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
-      walk(buildAppMenu({ isDev: false, platform, commands: FUTURE_COMMANDS, submenus: FUTURE_SUBMENUS, enabled: ONE, onCommand, context: context(), organize: LIBRARY }))
+      walk(buildAppMenu({ isDev: false, platform, commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled: ONE, onCommand, context: context(), organize: LIBRARY }))
         .find((i) => i.id === 'submenu.colorTags')!.submenu as MenuItemConstructorOptions[];
     it('on macOS the rows carry no key at all (a key equivalent without Cmd would reach the menu before the page), and a row runs its own command', () => {
       const onCommand = vi.fn();
@@ -574,9 +574,9 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
       const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
       const state = () => [byId.get('submenu.colorTags')?.enabled, byId.get('tag.color1')?.enabled, byId.get('tag.color3')?.enabled];
       expect(state()).toEqual([false, false, false]);
-      applyMenuEnabled(lookup, new Set<CommandId>(['tag.color3' as CommandId]), FUTURE_COMMANDS, FUTURE_SUBMENUS);
+      applyMenuEnabled(lookup, new Set<CommandId>(['tag.color3' as CommandId]), ALL_COMMANDS, ALL_SUBMENUS);
       expect(state()).toEqual([true, false, true]);
-      applyMenuEnabled(lookup, new Set<CommandId>(), FUTURE_COMMANDS, FUTURE_SUBMENUS);
+      applyMenuEnabled(lookup, new Set<CommandId>(), ALL_COMMANDS, ALL_SUBMENUS);
       expect(state()).toEqual([false, false, false]);
     });
     it('a group on the menu bar is judged like a menu command; without one the judgement is the registry\'s', () => {

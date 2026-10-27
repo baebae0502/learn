@@ -125,7 +125,7 @@ export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[
     let has = 0;
     for (const item of organize.tagged[tag.id] ?? []) if (selected.has(item)) has++;
     const all = selected.size > 0 && has === selected.size;
-    rows.push({ id, label: menuText(tag.name), enabled: input.enabledOf(command), hint: String(slot), ...(all ? { type: 'checkbox' as const, checked: true } : {}) });
+    rows.push({ id, label: menuText(tag.name), enabled: input.enabledOf(command), hint: String(slot), dot: TAG_COLORS[slot! - 1]!.hex, ...(all ? { type: 'checkbox' as const, checked: true } : {}) });
   }
   if (rows.length === 0) return null;
   return { id: `submenu.${spec.id}`, label: spec.label, enabled: rows.some((r) => r.enabled), submenu: rows };

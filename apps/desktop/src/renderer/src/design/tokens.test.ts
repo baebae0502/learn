@@ -282,6 +282,18 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
     }
   }
 
+  it('the tag selector\'s top rule uses the translucent separator over the material (the opaque one is the material\'s own grey)', () => {
+    for (const theme of THEMES) {
+      for (const hex of MATERIALS[theme]) {
+        const material = parseColor(hex);
+        const line = composite(parseColor(colors.separatorOnSurface[theme]), material);
+        expect(contrast(line, material), `${theme} on ${hex}`).toBeGreaterThanOrEqual(1.25);
+      }
+    }
+    expect(contrast(parseColor(colors.separator.dark), parseColor(MATERIALS.dark[0]!))).toBeLessThan(1.25);
+    const css = fs.readFileSync(new URL('../styles/screens/tags.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/:root\[data-vibrancy='1'\] \.tag-selector\s*\{[^}]*border-top-color:\s*var\(--separator-on-surface\)/);
+  });
   it('the base tokens alone would fail on the dark material (why the sidebar has its own)', () => {
     const material = parseColor(MATERIALS.dark[0]!);
     expect(contrast(parseColor(colors.textTertiary.dark), material)).toBeLessThan(3);

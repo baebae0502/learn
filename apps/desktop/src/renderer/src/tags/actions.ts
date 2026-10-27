@@ -2,7 +2,7 @@ import { api, unwrap } from '../api';
 import { currentModel, patchOrganize } from '../sidebar/actions';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
-import { showToast } from '../ui/toasts';
+import { showActionFailed, showToast } from '../ui/toasts';
 import { createTagActions } from './tagActions';
 
 /** The window's tag actions: the selector, the registry's handlers and the 1–8 keys share them. */
@@ -20,6 +20,6 @@ export const tagActions = createTagActions({
   patch: patchOrganize,
   leaveFilter: (tagId, into) => useLibrary.getState().dropFromTagFilter(tagId, into),
   opener: () => document.activeElement,
-  failed: (e) => showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' }),
+  failed: showActionFailed,
   notice: (title) => showToast({ kind: 'info', title, testId: 'tag-notice' }),
 });

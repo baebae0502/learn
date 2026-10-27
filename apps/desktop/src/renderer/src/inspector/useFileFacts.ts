@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { LibraryItem } from '@learn/domain';
 import { knownFacts, rememberFacts, startProbe, type FileFacts } from './fileFacts';
-import { PROBE_DELAY_MS, scheduleProbe } from './probeSchedule';
+import { PROBE_DELAY_MS, scheduleProbeWhen } from './probeSchedule';
 
 const NONE: FileFacts = {};
 
@@ -17,8 +17,9 @@ export function useFileFacts(item: LibraryItem, enabled = true): FileFacts {
   useEffect(() => {
     const hit = knownFacts(item.revisionId);
     setFacts(hit ?? NONE);
-    if (hit || !enabled || item.availability === 'missing') return;
-    return scheduleProbe(
+    if (hit || item.availability === 'missing') return;
+    return scheduleProbeWhen(
+      enabled,
       PROBE_DELAY_MS,
       () => startProbe({ type: item.type, assetId: item.assetId }),
       (found) => {

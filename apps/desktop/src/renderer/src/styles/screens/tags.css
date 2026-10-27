@@ -11,6 +11,11 @@
     padding: var(--space-8) var(--space-16) var(--space-12) var(--space-24);
     border-top: 1px solid var(--separator);
   }
+  /* Over the macOS vibrancy material the opaque --separator is the material's own grey (1.04:1 measured in dark); the
+     translucent one keeps its ratio on any surface (design-spec 3.1). */
+  :root[data-vibrancy='1'] .tag-selector {
+    border-top-color: var(--separator-on-surface);
+  }
   .tag-selector .head {
     display: flex;
     align-items: center;

@@ -25,3 +25,8 @@ export function scheduleProbe(delayMs: number, start: () => Probe, onFacts: (fac
     probe?.cancel();
   };
 }
+
+/** `scheduleProbe` for a panel that may not need the fact now (several items selected): a disabled one starts nothing. */
+export function scheduleProbeWhen(enabled: boolean, delayMs: number, start: () => Probe, onFacts: (facts: FileFacts) => void): () => void {
+  return enabled ? scheduleProbe(delayMs, start, onFacts) : () => {};
+}

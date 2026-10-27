@@ -50,6 +50,13 @@ describe('a menu colour dot', () => {
     expect(soft).toBeGreaterThan(0); // anti-aliased
     expect(Math.abs(area - Math.PI * 8 * 8)).toBeLessThan(6); // radius 8 px
   });
+  it('has the 0.5 pt inner border (design-spec 4): the outer pixel is darker than the middle, a light colour keeps its outline', () => {
+    const edge = px.at(23, 16);
+    const middle = px.at(16, 16);
+    for (let i = 0; i < 3; i++) expect(edge[i]!, `channel ${i}`).toBeLessThan(middle[i]!);
+    expect(edge[3]!).toBeGreaterThan(240); // darkened, not thinned
+    expect(px.at(20, 16)).toEqual(middle); // inside the 1 px rim nothing changes
+  });
   it('refuses anything but #rrggbb', () => {
     for (const bad of ['red', '#fff', '5fb236', '#5fb23g']) expect(() => dotPng(bad), bad).toThrow();
   });

@@ -35,9 +35,12 @@ export function dotPng(hex: string): Buffer {
       const distance = Math.hypot(x + 0.5 - middle, y + 0.5 - middle);
       const coverage = Math.min(1, Math.max(0, radius - distance + 0.5));
       const at = y * stride + 1 + x * 4;
-      raw[at] = r;
-      raw[at + 1] = g;
-      raw[at + 2] = b;
+      // The 0.5 pt inner border (design-spec 4): the outer pixel of the disc is darkened by 16 % black, as the chips' dots are.
+      const ring = Math.min(1, Math.max(0, distance - (radius - 1) + 0.5));
+      const k = 1 - 0.16 * ring;
+      raw[at] = Math.round(r * k);
+      raw[at + 1] = Math.round(g * k);
+      raw[at + 2] = Math.round(b * k);
       raw[at + 3] = Math.round(coverage * 255);
     }
   }

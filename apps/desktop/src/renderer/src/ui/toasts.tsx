@@ -115,6 +115,11 @@ export function showToast(data: ToastData): string {
   return toastQueue.add(data);
 }
 
+/** The error toast of an action that was refused: the cause main gave, when there is one. */
+export function showActionFailed(e: unknown): void {
+  showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' });
+}
+
 /** Closes a toast by the key showToast returned: the only way a busy toast goes. */
 export function closeToast(key: string): void {
   toastQueue.close(key);

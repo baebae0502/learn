@@ -5,8 +5,8 @@ export const COLOR_GROUP: SubmenuSpec = SUBMENUS.find((s) => s.id === 'colorTags
 export const SET_TAG_COLOR: CommandSpec = commandById('tag.setColor');
 export const ADD_TO_COLLECTION: CommandSpec = commandById('collection.addItems');
 /** The whole registry (its commands and groups), under the names the menu builders' tests use. */
-export const FUTURE_COMMANDS: CommandSpec[] = [...COMMANDS];
-export const FUTURE_SUBMENUS: SubmenuSpec[] = [...SUBMENUS];
+export const ALL_COMMANDS: CommandSpec[] = [...COMMANDS];
+export const ALL_SUBMENUS: SubmenuSpec[] = [...SUBMENUS];
 
 export function organize(over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot {
   return { collections: [], tags: [], members: {}, tagged: {}, duplicates: [], ...over };

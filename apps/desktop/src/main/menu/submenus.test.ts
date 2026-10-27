@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, TAG_COLORS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { isSubmenu, type CommandEntry, type MenuEntries } from './entries';
 import { colorTagGroup, collectionRows, menuNeedsOrganize, menuText, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
-import { ADD_TO_COLLECTION, COLOR_GROUP, FUTURE_COMMANDS, FUTURE_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
+import { ADD_TO_COLLECTION, COLOR_GROUP, ALL_COMMANDS, ALL_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
 
 const CTX: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
 const input = (over: Partial<SubmenuInput> = {}): SubmenuInput => ({ organize: LIBRARY, itemIds: [], context: CTX, enabledOf: () => true, ...over });
@@ -112,11 +112,14 @@ describe('색 지정 ▸ (tagColors)', () => {
 });
 
 describe('색 태그 ▸ (a group of commands)', () => {
-  const group = (over: Partial<SubmenuInput> = {}) => colorTagGroup(COLOR_GROUP, FUTURE_COMMANDS, input(over));
+  const group = (over: Partial<SubmenuInput> = {}) => colorTagGroup(COLOR_GROUP, ALL_COMMANDS, input(over));
   it('lists the colour tags in slot order by name, with the slot shown at the right and never registered; the rest of the slots are left out', () => {
     expect(lines([group()!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3]'] }]);
     expect(rows(group()!.submenu).map((r) => r.id)).toEqual(['tag.color1', 'tag.color3']);
     expect(group()!.id).toBe('submenu.colorTags');
+  });
+  it('puts the tag\'s colour dot before the name, as 색 지정 ▸ does (the same 16 px image)', () => {
+    expect(rows(group()!.submenu).map((r) => r.dot)).toEqual([TAG_COLORS[0]!.hex, TAG_COLORS[2]!.hex]);
   });
   it('marks a tag that every selected item has', () => {
     expect(lines([group({ itemIds: ['i1', 'i2'] })!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3] ✓'] }]);
@@ -146,11 +149,11 @@ describe('which menus read the library', () => {
     expect(menuNeedsOrganize(COMMANDS, SUBMENUS, 'collection')).toBe(false);
   });
   it('a collections or colour source, or a group, makes the menu that holds it read the library', () => {
-    expect(menuNeedsOrganize(FUTURE_COMMANDS, FUTURE_SUBMENUS, 'menu')).toBe(true);
-    expect(menuNeedsOrganize(FUTURE_COMMANDS, FUTURE_SUBMENUS, 'item')).toBe(true);
-    expect(menuNeedsOrganize(FUTURE_COMMANDS, FUTURE_SUBMENUS, 'tag')).toBe(true);
-    expect(menuNeedsOrganize(FUTURE_COMMANDS, FUTURE_SUBMENUS, 'collection')).toBe(false);
-    expect(menuNeedsOrganize(FUTURE_COMMANDS, [], 'menu')).toBe(true); // 컬렉션에 추가 ▸ is in 파일
+    expect(menuNeedsOrganize(ALL_COMMANDS, ALL_SUBMENUS, 'menu')).toBe(true);
+    expect(menuNeedsOrganize(ALL_COMMANDS, ALL_SUBMENUS, 'item')).toBe(true);
+    expect(menuNeedsOrganize(ALL_COMMANDS, ALL_SUBMENUS, 'tag')).toBe(true);
+    expect(menuNeedsOrganize(ALL_COMMANDS, ALL_SUBMENUS, 'collection')).toBe(false);
+    expect(menuNeedsOrganize(ALL_COMMANDS, [], 'menu')).toBe(true); // 컬렉션에 추가 ▸ is in 파일
     expect(menuNeedsOrganize(COMMANDS.filter((c) => c.submenu !== 'collections'), [], 'menu')).toBe(false); // the colours are the tag menu's only
   });
 });

@@ -160,6 +160,15 @@ test('chips: coloured slots first by slot, then by name; × and ⌫ take a tag o
     await rowByTitle(page, 'sample').click();
     await expect.poll(() => chipIds(page)).toEqual([yellow, red, plainA, plainB]);
 
+    // The × slot is reserved: a chip, and so the line of chips, keeps its size when the pointer comes.
+    const box = async (id: string) => (await chipOf(page, id).locator('xpath=..').boundingBox())!;
+    const lineBox = async () => (await tagsSection(page).locator('.tag-line').boundingBox())!;
+    const [resting, restingLine] = [await box(plainA), await lineBox()];
+    await chipOf(page, plainA).hover();
+    await expect(chipOf(page, plainA).locator('xpath=..').getByTestId('tag-chip-remove')).toBeVisible();
+    expect((await box(plainA)).width).toBe(resting.width);
+    expect(await lineBox()).toEqual(restingLine);
+
     const focusedChip = () => page.evaluate(() => document.activeElement?.closest('[data-testid^="tag-chip-"]')?.getAttribute('data-testid') ?? null);
     await removeChip(chipOf(page, plainA));
     await expect.poll(() => chipIds(page)).toEqual([yellow, red, plainB]);
@@ -536,7 +545,7 @@ test('the page-count probe waits 150 ms for a selection to stay, opens one file 
       await expect.poll(probes).toBe(n);
     }
 
-    // Several items: no panel head, no probe.
+    // Several items: no panel head, so no probe (the disabled path itself is unit-tested in probeSchedule.test.ts).
     await page.keyboard.press('ControlOrMeta+a');
     await expect(page.getByTestId('inspector-multi')).toBeVisible();
     await page.waitForTimeout(600);

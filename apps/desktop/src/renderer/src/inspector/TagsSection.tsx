@@ -11,11 +11,10 @@ import { TagAddField } from '../tags/TagAddField';
 import { TagChip } from '../tags/TagChip';
 import { IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
-import { showToast } from '../ui/toasts';
+import { showActionFailed } from '../ui/toasts';
 import { Section } from './Section';
 import { useSections } from './sections';
 
-const failed = (e: unknown) => showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' });
 
 /** Gives the keyboard to the chip of `tagId`, or to the add chip when there is none: a removed chip must not leave the focus on <body>. */
 function focusAfterRemoval(root: HTMLElement | null, tagId: string | null): void {
@@ -48,14 +47,14 @@ export function TagsSection({ ids }: { ids: readonly string[] }) {
       await attachTag(ids, pick);
       return true;
     } catch (e) {
-      failed(e);
+      showActionFailed(e);
       return false;
     }
   };
   const remove = (tag: OrganizeTag) => {
     const i = tags.findIndex((x) => x.id === tag.id);
     const neighbour = (tags[i + 1] ?? tags[i - 1])?.id ?? null;
-    detachTag(ids, tag.id).then(() => requestAnimationFrame(() => focusAfterRemoval(root.current, neighbour)), failed);
+    detachTag(ids, tag.id).then(() => requestAnimationFrame(() => focusAfterRemoval(root.current, neighbour)), showActionFailed);
   };
   const close = (by: 'key' | 'blur') => {
     setAdding(false);

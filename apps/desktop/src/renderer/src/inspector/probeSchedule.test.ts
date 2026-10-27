@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileFacts, Probe } from './fileFacts';
-import { PROBE_DELAY_MS, scheduleProbe } from './probeSchedule';
+import { PROBE_DELAY_MS, scheduleProbe, scheduleProbeWhen } from './probeSchedule';
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
@@ -62,5 +62,21 @@ describe('the page-count probe waits for a selection to stay (spec 6.4)', () => 
     f.answer({ pages: 3 });
     await vi.advanceTimersByTimeAsync(0);
     expect(onFacts).not.toHaveBeenCalled();
+  });
+});
+
+describe('the probe of a panel that does not need the fact (several items selected)', () => {
+  it('starts nothing, however long it waits, and ending it is harmless', () => {
+    const f = fake();
+    const end = scheduleProbeWhen(false, PROBE_DELAY_MS, f.start, vi.fn());
+    vi.advanceTimersByTime(5_000);
+    end();
+    expect(f.start).not.toHaveBeenCalled();
+  });
+  it('an enabled one is the plain schedule', () => {
+    const f = fake();
+    scheduleProbeWhen(true, PROBE_DELAY_MS, f.start, vi.fn());
+    vi.advanceTimersByTime(PROBE_DELAY_MS);
+    expect(f.start).toHaveBeenCalledTimes(1);
   });
 });

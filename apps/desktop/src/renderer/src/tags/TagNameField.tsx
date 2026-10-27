@@ -1,12 +1,10 @@
 import { useLayoutEffect, useRef, type KeyboardEvent } from 'react';
 import type { OrganizeTag } from '@learn/domain';
 import { t } from '../strings';
+import { isComposingKey } from '../ui/ime';
 import { tagActions } from './actions';
 import { tagColorVar } from './tagColor';
 import { useTagEdit } from './tagEdit';
-
-/** A key that belongs to a Korean composition: isComposing, or the keyCode 229 macOS IMEs send without it. */
-const composing = (e: KeyboardEvent<HTMLInputElement>): boolean => e.nativeEvent.isComposing || e.keyCode === 229;
 
 /**
  * The name being typed inside a tag chip (spec 4.1, 4.3): the whole name selected when it appears. ↩ saves, esc cancels, a
@@ -37,7 +35,7 @@ export function TagNameField({ tag, invalid }: { tag: OrganizeTag; invalid?: boo
         autoComplete="off"
         onChange={(e) => useTagEdit.getState().setText(e.currentTarget.value)}
         onKeyDown={(e) => {
-          if (composing(e)) return;
+          if (isComposingKey(e)) return;
           if (e.key === 'Enter') {
             e.preventDefault();
             void tagActions.finishRename(e.currentTarget.value, 'enter');

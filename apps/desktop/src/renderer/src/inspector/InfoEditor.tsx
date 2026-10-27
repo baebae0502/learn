@@ -10,6 +10,7 @@ import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button, IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { isComposingKey } from '../ui/ime';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { leaveEditing, openEditSession } from './editGuard';
@@ -18,8 +19,6 @@ import { takeFocusRequest } from './startEditing';
 
 let rowSeq = 0;
 const newRowKey = () => `row-${++rowSeq}`;
-/** A key that only finishes a Korean composition (design-spec 7.4): it neither saves nor cancels. */
-const composing = (e: KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
 const fieldInput = (root: HTMLElement | null, field: InfoTextField) =>
   root?.querySelector<HTMLElement>(`[data-testid="editor-field"][data-field="${field}"] :is(input, textarea)`) ?? null;
 
@@ -203,8 +202,9 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     if (takeFocusRequest(item.id)) fieldInput(rootRef.current, 'title')?.focus();
   }, [item.id]);
 
+  // A key that only finishes a Korean composition (design-spec 7.4) neither saves nor cancels.
   const onKeyDown = (ev: KeyboardEvent<HTMLDivElement>) => {
-    if (composing(ev) || ev.key === 'Process') return;
+    if (isComposingKey(ev) || ev.key === 'Process') return;
     const command = currentPlatform() === 'darwin' ? ev.metaKey : ev.ctrlKey;
     const plain = !ev.metaKey && !ev.ctrlKey && !ev.altKey && !ev.shiftKey;
     if (ev.key === 'Enter' && (command || (plain && ev.target instanceof HTMLInputElement))) {

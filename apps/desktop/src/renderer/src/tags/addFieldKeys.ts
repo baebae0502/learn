@@ -1,3 +1,5 @@
+import { isComposingKey } from '../ui/ime';
+
 /** What the add field reads of a key press (the React event's fields, `isComposing` taken from the native event). */
 export interface FieldKeyEvent {
   key: string;
@@ -23,7 +25,7 @@ const IGNORE: FieldKeyAction = { do: 'ignore' };
  * macOS IMEs send without it, the Process key — does nothing here: it only finishes the composition.
  */
 export function addFieldKey(e: FieldKeyEvent, s: { text: string; active: number; count: number }): FieldKeyAction {
-  if (e.isComposing || e.keyCode === 229 || e.key === 'Process') return IGNORE;
+  if (isComposingKey(e) || e.key === 'Process') return IGNORE;
   if (e.altKey || e.ctrlKey || e.metaKey) return NONE;
   switch (e.key) {
     case 'ArrowDown':

@@ -14,6 +14,7 @@ import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { tagPaletteCommands } from '../tags/paletteTags';
 import { Icon } from '../ui/Icon';
+import { isComposingKey } from '../ui/ime';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { setTooltipBlock } from '../ui/tooltipGate';
@@ -55,13 +56,13 @@ export function closePalette(then?: () => void): void {
 }
 
 /**
- * A key that belongs to a Korean composition (isComposing, or keyCode 229) must not act: the cursor does not move, no
+ * A key that belongs to a Korean composition (ui/ime.ts) must not act: the cursor does not move, no
  * command runs and the palette does not close (ADR-0005 §3). Stopped in the capture phase, so neither the field's own
  * keys nor RAC's esc on the modal see it — including the keyCode 229 keys macOS IMEs send without isComposing (the
  * confirming ↩).
  */
 export function stopWhileComposing(e: KeyboardEvent): void {
-  if (e.nativeEvent.isComposing || e.keyCode === 229) e.stopPropagation();
+  if (isComposingKey(e)) e.stopPropagation();
 }
 
 /** ⌘K palette (palette.html, design-spec 10.5): items and the commands that can run now, 초성 search, ↩ runs once. */

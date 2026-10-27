@@ -1,3 +1,5 @@
+import { isComposingKey } from './ime';
+
 /** A DOM keyboard event, or a React one (whose `isComposing` lives on its native event). */
 type KeyLike = Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'altKey' | 'ctrlKey' | 'metaKey' | 'keyCode'> & {
   isComposing?: boolean;
@@ -10,7 +12,7 @@ type KeyLike = Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'altKey' | 'ctr
  * `contextmenu` event of its own.
  */
 export function isContextMenuKey(e: KeyLike): boolean {
-  if ((e.isComposing ?? e.nativeEvent?.isComposing ?? false) || e.keyCode === 229) return false;
+  if (isComposingKey(e)) return false;
   if (e.altKey || e.ctrlKey || e.metaKey) return false;
   if (e.key === 'ContextMenu' || e.code === 'ContextMenu') return true;
   return e.key === 'F10' && e.shiftKey;

@@ -12,6 +12,7 @@ import type { CollectionNode, OrganizeModel } from '../organize/model';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
+import { isComposingKey } from '../ui/ime';
 import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
 import { showToast } from '../ui/toasts';
 import { dragState } from '../dnd/dragState';
@@ -235,7 +236,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       altKey: e.altKey,
       ctrlKey: e.ctrlKey,
       metaKey: e.metaKey,
-      composing: e.nativeEvent.isComposing || e.keyCode === 229,
+      composing: isComposingKey(e),
       target: field ? 'rename' : rowEl ? 'row' : 'other',
       contextMenuKey: isContextMenuKey(e),
       reader,

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { setInteractionModality } from 'react-aria-components';
 import { COMMANDS, type CommandId, type CommandSpec } from '@learn/domain';
+import { isComposingKey } from '../ui/ime';
 import { noteKey } from '../ui/inputModality';
 import { menuTarget, runCommand, type CommandEnv } from './registry';
 
@@ -12,7 +13,7 @@ export type KeyLike = Pick<KeyboardEvent, 'code' | 'key' | 'shiftKey' | 'altKey'
  * and letters never while a text field has focus (only keys marked `inText`, such as F6).
  */
 export function keyCommand(e: KeyLike, editing: boolean, commands: readonly CommandSpec[] = COMMANDS): CommandId | null {
-  if (e.isComposing || e.keyCode === 229) return null;
+  if (isComposingKey(e)) return null;
   if (e.altKey || e.ctrlKey || e.metaKey) return null;
   // The numeric keypad is the same key as the digit row ("Numpad1" is "Digit1"), so an external keyboard tags too.
   const code = e.code.replace(/^Numpad(\d)$/, 'Digit$1');

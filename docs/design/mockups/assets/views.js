@@ -1131,8 +1131,8 @@
 
   // ── Tutor (T1 mockup) — tutor.html ────────────────────────────────────────
   // The tutor is the right slot's second mode [정보 | 튜터] (design-spec 2.5, ADR-0010 §7). The
-  // query parameters are listed at the top of tutor.html. Defaults are the designer's recommended
-  // variants (tutor-decisions.md); every alternative is one query parameter away.
+  // query parameters are listed at the top of tutor.html. Defaults are the owner's decisions of
+  // 2026-10-27 (`cite` is provisional); every alternative is one query parameter away.
   const T = D.tutor;
   const pick = (name, allowed, fallback) => {
     const v = params.get(name);
@@ -1140,7 +1140,7 @@
   };
   const tu = {
     state: Number(pick('state', ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], '5')),
-    width: Number(pick('width', ['340', '380', '440'], '380')),
+    width: Number(pick('width', ['320', '340', '380', '440'], '380')),
     msg: pick('msg', ['doc', 'bubble'], 'bubble'),
     cite: pick('cite', ['page', 'p', 'icon'], 'page'),
     consent: pick('consent', ['card', 'sheet'], 'card'),
@@ -1203,8 +1203,8 @@
       <div class="bubble">${quote ? `<div class="tu-quote"><span class="q">${esc(T.selection.text)}</span>${cite(T.selection.page, { title: '42쪽으로 이동 · 질문에 붙인 구간이 있는 쪽', tag })}</div>` : ''}<p>${esc(text)}</p></div>
       ${scope ? `<div class="tu-scope-row" ${tag ? ms('T1', '보낸 범위 줄(자료·발췌·기억)') : ''}>${scopeLine(scope, { open, list: SCOPE1_LIST })}</div>` : ''}
     </div>`;
-  const tutorMsg = ({ tools = [], body, foot = '', tagTools = false }) => `
-    <div class="tu-msg tutor">
+  const tutorMsg = ({ tools = [], body, foot = '', tagTools = false, cls = '' }) => `
+    <div class="tu-msg tutor ${cls}">
       ${tools.length ? `<div class="tu-tools" ${tagTools ? ms('T1', '도구 칩(튜터가 읽은 것)') : ''}>${tools.join('')}</div>` : ''}
       <div class="body">${body}</div>
       ${foot}
@@ -1232,6 +1232,7 @@
   function answer2({ done = false, tag = false } = {}) {
     if (!done) {
       return tutorMsg({
+        cls: 'is-streaming',
         tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })],
         body: `<p>${a2lead()} 가수분해가 느릴수록 한 번의 자극이<span class="stream-caret"></span></p>`,
       });
@@ -1242,7 +1243,7 @@
     return tutorMsg({
       tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })],
       body: `<p>${a2lead()} 가수분해가 느릴수록 한 번의 자극이 더 오래 이어져 배율이 커지지만, 끝없이 커지지는 ${tail('않습니다.', cite(42))} 여러 경로가 같은 표적을 두고 겨루는 교차 대화도 배율을 ${tail('줄입니다.', unverified(57, { tag }))}</p>`,
-      foot: notice + answerFoot(),
+      foot: answerFoot() + notice,
     });
   }
   /** Session head: the date (and, in the library, the item). The name is drawn only once the user renames the session — until then it is the first question, right below. */
@@ -1544,8 +1545,8 @@
           tutorMsg({
             tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })],
             body: `<p>${A2_LEAD.split(',')[0]},<span class="tu-cut"> …</span></p>`,
-          }) +
-          failNotice('circle-alert', 'c-danger', 'Codex가 답하는 도중 멈췄습니다', '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.', `<span class="btn small" title="같은 질문을 처음부터 다시 묻습니다" ${ms('T1', '다시 보내기(답 도중 실패)')}>다시 보내기</span>`),
+            foot: failNotice('circle-alert', 'c-danger', 'Codex가 답하는 도중 멈췄습니다', '에이전트 프로그램이 예기치 않게 종료되어 답이 중간에 끊겼습니다. 다시 보내면 에이전트를 다시 시작하고 같은 질문을 처음부터 묻습니다.', `<span class="btn small" title="같은 질문을 처음부터 다시 묻습니다" ${ms('T1', '다시 보내기(답 도중 실패)')}>다시 보내기</span>`),
+          }),
         composer: composer({}),
       };
     }
@@ -1631,9 +1632,9 @@
           panel: convo(
             answer1({}) +
               userMsg({ text: Q3, scope: [1, 1, 0] }) +
-              tutorMsg({ tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })], body: '<p>아래처럼 정리해 보았습니다.</p>' }) +
-              learnNote('제안은 저장하기 전까지 노트·문제·기억에 더해지지 않습니다.') +
-              noteCard() + checkCard() + memoryCard(),
+              tutorMsg({ tools: [tool('book-open-text', '42쪽 읽음', { title: '42쪽 본문을 읽었습니다' })], body: '<p>아래처럼 정리해 보았습니다.</p>',
+                foot: learnNote('제안은 저장하기 전까지 노트·문제·기억에 더해지지 않습니다.') + noteCard() + checkCard() + memoryCard(),
+              }),
           ),
         });
       case 8: {
@@ -1683,7 +1684,7 @@
     const row = (label, html, cls = '') => `<div class="state-row ${cls}"><span class="lbl">${label}</span>${html}</div>`;
     const fmts = (st) => ['page', 'p', 'icon'].map((f) => cite(42, { fmt: f, st })).join('');
     return `<div class="board">
-      <header><h1>컴포넌트 상태 3 — 튜터</h1><p>인용 칩 · 도구 칩 · 보낸 범위 줄 · 제안 카드 · 입력창의 기본 · 호버 · 누름 · 포커스 · 비활성 · 검증 안 됨. 튜터 패널의 면(--bg-content) 위.</p></header>
+      <header><h1>컴포넌트 상태 3 — 튜터</h1><p>인용 칩 · 도구 칩 · 보낸 범위 줄 · 제안 카드 · 입력창의 기본 · 호버 · 누름 · 포커스 · 비활성 · 검증 안 됨. 튜터 패널의 면(--bg-content) 위와 말풍선 안.</p></header>
       <div class="board-grid">
         <div class="tu-col">
           <section class="panel">
@@ -1695,6 +1696,20 @@
             ${row('포커스', fmts('is-focus'))}
             ${row('비활성', `${fmts('is-disabled')}<span class="note">자료 원본이 없음 · 이유는 툴팁</span>`)}
             ${row('검증 안 됨', `${unverified(57)}${unverified(57, { st: 'is-hover' })}${unverified(57, { st: 'is-focus' })}<span class="note">기본 · 호버 · 포커스 — 누를 수 없음, 툴팁만</span>`)}
+          </section>
+          <section class="panel" data-msg="bubble">
+            <h3>말풍선 안 — 칩의 기본 · 호버 · 누름 · 지금 위치 · 포커스 · 검증 안 됨</h3>
+            ${[
+              ['사용자', (st) => `<div class="tu-msg user"><div class="bubble"><p>${cite(42, { st })}${st === '' ? unverified(57) : ''}</p></div></div>`],
+              ['튜터', (st) => `<div class="tu-msg tutor"><div class="body"><p>${cite(42, { st })}${st === '' ? unverified(57) : ''}</p></div></div>`],
+            ]
+              .map(([who, make]) =>
+                [['기본', ''], ['호버', 'is-hover'], ['누름', 'is-pressed'], ['지금 위치', 'is-current'], ['포커스', 'is-focus']]
+                  .map(([l, st]) => row(`${who} · ${l}`, make(st)))
+                  .join(''),
+              )
+              .join('')}
+            ${row('검증 안 됨 · 호버', `<div class="tu-msg tutor"><div class="body"><p>${unverified(57, { st: 'is-hover' })}</p></div></div>`)}
           </section>
           <section class="panel">
             <h3>제안 카드(M9 · M10) — 기본 · 검증 안 됨</h3>

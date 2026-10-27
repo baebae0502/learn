@@ -2887,7 +2887,7 @@ h2,
 .tu-msg .body li + li {
   margin-top: 2px;
 }
-/* Document style (default): every turn starts on the same left edge; only the user's turn sits on a faint surface. */
+/* Document style (?msg=doc): every turn starts on the same left edge; only the user's turn sits on a faint surface. */
 .tu-msg.user .bubble {
   display: flex;
   flex-direction: column;
@@ -2900,7 +2900,7 @@ h2,
 .tu-msg.user .bubble p {
   margin: 0;
 }
-/* Bubble style (?msg=bubble): the user's turn on the right in the accent wash, the tutor's on the left. */
+/* Bubble style (default, the owner's decision): the user's turn on the right in the accent wash, the tutor's on the left. */
 [data-msg='bubble'] .tu-msg.user {
   align-items: flex-end;
 }
@@ -2913,14 +2913,16 @@ h2,
   align-items: flex-start;
 }
 [data-msg='bubble'] .tu-msg.tutor .body {
-  max-width: 92%;
+  max-width: 100%; /* the tutor's lane is the left edge, the surface and the tail corner; its right edge lines up with the column */
   padding: var(--space-8) var(--space-12);
   background: var(--fill-hover);
   border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
 }
-[data-msg='bubble'] .tu-msg.tutor .tu-tools,
-[data-msg='bubble'] .tu-msg.tutor .tu-foot-row {
-  padding-left: var(--space-4);
+[data-msg='bubble'] .tu-msg.tutor.is-streaming .body {
+  width: 100%; /* the surface opens at full width while the answer streams */
+}
+[data-msg='bubble'] .tu-msg.tutor > :not(.body) {
+  align-self: stretch; /* tools, copy row, notices, cards span the column; only the bubble hugs its text */
 }
 .tu-quote {
   display: flex;
@@ -2989,9 +2991,16 @@ h2,
   outline: var(--focus-ring-width) solid var(--focus);
   outline-offset: calc(var(--focus-ring-width) * -1);
 }
-[data-msg='bubble'] .tu-msg.user .cite,
+[data-msg='bubble'] .tu-msg.user .cite:not(.is-unverified),
 [data-msg='bubble'] .tu-msg.tutor .body .cite:not(.is-unverified) {
-  background: var(--bg-content);
+  background-color: var(--bg-content); /* longhand: keeps the hover/pressed layer */
+}
+/* The bubble already is --fill-hover: a chip's state layers step up one. */
+[data-msg='bubble'] .tu-msg .cite.is-hover:not(.is-unverified) {
+  background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+}
+[data-msg='bubble'] .tu-msg .cite.is-pressed:not(.is-unverified) {
+  background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
 }
 .cite.is-disabled {
   opacity: 0.45;
@@ -3125,7 +3134,7 @@ h2,
   row-gap: 2px;
   padding: var(--space-12);
   border-radius: var(--radius-lg);
-  background: var(--fill-hover);
+  background: var(--bg-content); /* a framed card, not a bubble: the verification is Learn's voice, not the tutor's */
   box-shadow: inset 0 0 0 1px var(--separator-on-surface);
 }
 .tu-notice > .icon {

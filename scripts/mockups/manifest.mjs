@@ -114,6 +114,7 @@ export const TUTOR = [
     [{ state: '5', backend: 'fake' }, '5-backend-fake', '가짜 백엔드 표시'],
   ].flatMap(([q, suffix, label]) => THEMES.map((t) => tutor(t, q, suffix, label))),
   // §4 decisions: each alternative once (the defaults are the base state renders above).
+  tutor('light', { state: '5', width: '320' }, '5-width-320', '결정 · 폭 320(최소)'),
   tutor('light', { state: '5', width: '340' }, '5-width-340', '결정 · 폭 340'),
   tutor('light', { state: '5', width: '440' }, '5-width-440', '결정 · 폭 440'),
   tutor('light', { state: '5', msg: 'doc' }, '5-msg-doc', '결정 · 문서식(대안)'),

@@ -39,7 +39,7 @@
 
   | 종류 | 도구 | 시점 |
   |---|---|---|
-  | 읽기 | `search_library`, `read_pdf_pages`, `read_transcript`, `get_notes`, `get_context`(선택과 현재 위치), `get_memories`(P4) | T1: PDF 쪽·현재 선택. M8: 대본. M10: 기억. `search_library`·`get_notes`의 시점은 다음 마일스톤에서 정한다 |
+  | 읽기 | `search_library`, `read_pdf_pages`, `read_transcript`, `get_notes`, `get_context`(선택과 현재 위치), `get_memories`(P4) | T1: PDF 쪽·현재 선택(선택 바구니 — 여러 구간과 각각의 질문), 캡처한 그림(이미지), `@`로 범위에 더한 자료(2026-10-27). M8: 대본. M10: 기억. `search_library`·`get_notes`의 시점은 다음 마일스톤에서 정한다 |
   | 읽기(저장소) | `list_tree`, `read_file(path, lines)`, `search_code` | M11 |
   | 제안 | `propose_note`(앵커가 있는 초안, "노트로 저장"), `propose_check`(확인 문제), `propose_memory`(근거 메시지가 있는 claim 초안, 사용자가 승인·수정) | M9(노트·확인 문제), M10(기억) |
   | 제안(저장소) | 코드 투어(설명이 붙은 여러 앵커의 순서 있는 노트, 한 단계씩 넘긴다), 구조 안내(노트) | M11 |
@@ -48,6 +48,7 @@
   - **튜터는 화면을 움직이지 않는다.** 위치 이동은 사용자가 인용 칩을 누를 때뿐이다.
   - 에이전트의 웹 검색은 기본으로 끈다. 나중에 세션마다 켜는 선택지가 될 수 있고, 그때 웹 인용은 link 앵커로 저장한다(ADR-0009).
   - MCP 서버의 전송(localhost HTTP + bearer 헤더 / 앱이 싣는 stdio 실행 파일 / 초안 RFD "MCP-over-ACP")은 T1에서 정한다.
+  - 무엇을 보내고 무엇을 읽어 가게 하는지, 도구 결과의 모양, 계열마다 읽는 단위, 그림 전달은 [ADR-0013](0013-presenting-material-to-agents.md)이 정한다.
 
 ### 3. 튜터의 두뇌는 Learn에 있다
 백엔드와 무관하게 Learn이 한다.

@@ -46,9 +46,15 @@ describe('the colour keys 1–8 of the registry (spec 4.2)', () => {
     expect(keyCommand(digit(1, { keyCode: 229 }), false)).toBeNull();
     for (const mod of ['metaKey', 'ctrlKey', 'altKey', 'shiftKey'] as const) expect(keyCommand(digit(1, { [mod]: true }), false), mod).toBeNull();
   });
-  it('are 1–8 only: 9, 0 and the numpad are not colour keys', () => {
+  it('are 1–8 only: 9 and 0 are not colour keys', () => {
     expect(keyCommand(digit(9), false)).toBeNull();
     expect(keyCommand(k({ code: 'Digit0', key: '0', keyCode: 48 }), false)).toBeNull();
-    expect(keyCommand(k({ code: 'Numpad1', key: '1', keyCode: 97 }), false)).toBeNull();
+    expect(keyCommand(k({ code: 'Numpad9', key: '9', keyCode: 105 }), false)).toBeNull();
+  });
+  it('the numeric keypad is the same key: Numpad1–8 run the colour, and do nothing in a text field', () => {
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) expect(keyCommand(k({ code: `Numpad${n}`, key: String(n), keyCode: 96 + n }), false), `${n}`).toBe(`tag.color${n}`);
+    expect(keyCommand(k({ code: 'Numpad1', key: '1', keyCode: 97 }), true)).toBeNull();
+    expect(keyCommand(k({ code: 'Numpad1', key: '1', keyCode: 97, shiftKey: true }), false)).toBeNull();
+    expect(keyCommand(digit(1), false)).toBe('tag.color1');
   });
 });

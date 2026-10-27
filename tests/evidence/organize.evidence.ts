@@ -225,7 +225,19 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
     return;
   }
   const held = async () => ((await organizeSnapshot(s.page)).tagged[tagIds[0]!] ?? []).slice().sort();
-  const typeDigit = (digit: string) => tryExec('osascript', ['-e', `tell application "System Events" to keystroke "${digit}"`], 10_000);
+  // key code 18 is the main-row 1 (Digit1) on ANSI and JIS layouts; `keystroke "1"` may send the keypad's 1 (Numpad1) instead.
+  const typeDigit = () => tryExec('osascript', ['-e', 'tell application "System Events" to key code 18'], 10_000);
+  type Down = { key: string; code: string; target: string };
+  const recordKeys = () => s.page.evaluate(() => {
+    const w = window as unknown as { __digitKeys?: Down[] };
+    w.__digitKeys = [];
+    window.addEventListener('keydown', (e) => {
+      const t = e.target as HTMLElement | null;
+      w.__digitKeys!.push({ key: e.key, code: e.code, target: t?.getAttribute?.('data-testid') ?? t?.tagName ?? '' });
+    }, true);
+  });
+  const readKeys = () => s.page.evaluate(() => (window as unknown as { __digitKeys?: Down[] }).__digitKeys ?? []);
+  const clearKeys = () => s.page.evaluate(() => { (window as unknown as { __digitKeys?: Down[] }).__digitKeys = []; });
   const same = (a: string[], b: string[]) => JSON.stringify(a) === JSON.stringify(b);
   await focusApp(s.app);
   await s.page.getByTestId('tag-chip-' + tagIds[2]!).first().click(); // the filter off again: every row shows
@@ -234,55 +246,57 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
   await rowAt(s.page, 0).click();
   const rowId = (await rowAt(s.page, 0).getAttribute('data-item-id'))!;
   const menuRowEnabled = await menuItemEnabled(s.app, 'tag.color1');
+  await recordKeys();
   // In the table's search field: the digit is text, and no item gains or loses a tag.
   await runMenuCommand(s.app, 'library.find');
   const field = s.page.getByTestId('search-field').locator('input');
   await expect(field).toBeFocused();
-  const typedInField = await typeDigit('1');
+  const typedInField = await typeDigit();
   await sleep(600);
+  const fieldKeys = await readKeys();
+  await clearKeys();
   const afterField = await held();
   const fieldText = await field.inputValue();
   await field.fill('');
   await s.page.keyboard.press('Escape');
   await guard('digits: a digit typed in the search field changes no tag', async () => {
-    check('digits: a digit typed in the search field changes no tag', typedInField.ok && fieldText === '1' && same(afterField, before), { typedInField: typedInField.ok, fieldText, menuRowEnabled, before, afterField });
+    check('digits: a digit typed in the search field changes no tag', typedInField.ok && fieldText === '1' && same(afterField, before), { typedInField: typedInField.ok, fieldText, fieldKeys, menuRowEnabled, before, afterField });
   });
-  // In the item panel's year field (the metadata editor), then cancelled so the item is not saved.
+  // In the item panel's date field (the metadata editor), then cancelled so the item is not saved.
   let yearText: string | null = null;
+  let yearKeys: Down[] = [];
+  let editorGone: boolean | null = null;
   let afterYear: string[] = before;
   let typedInYear: boolean | null = null;
-  await guard('digits: a digit typed in the item panel\'s year field changes no tag', async () => {
+  await guard('digits: a digit typed in the item panel\'s date field changes no tag', async () => {
     await rowAt(s.page, 0).click();
     await showItemPanel(s.app, s.page);
     await s.page.getByTestId('info-edit').click();
-    const year = s.page.locator('[data-testid="editor-field"][data-field="year"] :is(input, textarea)');
+    const year = s.page.locator('[data-testid="editor-field"][data-field="date"] :is(input, textarea)');
     await year.fill('');
     await year.click();
+    await clearKeys();
     await focusApp(s.app);
-    typedInYear = (await typeDigit('1')).ok;
+    typedInYear = (await typeDigit()).ok;
     await sleep(600);
     yearText = await year.inputValue();
+    yearKeys = await readKeys();
     afterYear = await held();
     await s.page.keyboard.press('Escape'); // cancel: nothing is saved
-    check('digits: a digit typed in the item panel\'s year field changes no tag', typedInYear === true && yearText === '1' && same(afterYear, before), { typedInYear, yearText, menuRowEnabled, before, afterYear });
+    await expect(s.page.getByTestId('info-edit')).toBeVisible();
+    editorGone = (await s.page.getByTestId('info-editor').count()) === 0;
+    check('digits: a digit typed in the item panel\'s date field changes no tag', typedInYear === true && yearText === '1' && same(afterYear, before) && editorGone === true, { typedInYear, yearText, yearKeys, editorGone, menuRowEnabled, before, afterYear });
   });
   // On the focused row: the tag goes on or off exactly once (twice would leave the snapshot as it was).
   await rowAt(s.page, 0).click();
-  await s.page.evaluate(() => {
-    const w = window as unknown as { __digitKeys?: Array<{ key: string; code: string; target: string }> };
-    w.__digitKeys = [];
-    window.addEventListener('keydown', (e) => {
-      const t = e.target as HTMLElement | null;
-      w.__digitKeys!.push({ key: e.key, code: e.code, target: t?.getAttribute?.('data-testid') ?? t?.tagName ?? '' });
-    }, true);
-  });
+  await clearKeys();
   const toggles = async () => (await ipcCalls(s.app))[Channels.tags.togglePosition] ?? 0;
   const togglesBefore = await toggles();
   await focusApp(s.app);
-  const typedOnRow = await typeDigit('1');
+  const typedOnRow = await typeDigit();
   await sleep(1200);
   const afterRow = await held();
-  const keys = await s.page.evaluate(() => (window as unknown as { __digitKeys?: Array<{ key: string; code: string; target: string }> }).__digitKeys ?? []);
+  const keys = await readKeys();
   const togglesAfter = await toggles();
   const digit1Keydowns = keys.filter((k) => k.code === 'Digit1').length;
   const toggleCalls = togglesAfter - togglesBefore;
@@ -297,7 +311,7 @@ test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a
   // The menu bar's 파일 › 색 태그 ▸ with a row selected: the tag rows with no digits at the right (the PNG is read by eye).
   await focusApp(s.app);
   const menubar = await captureOpenSubmenu(s.app, s.app.process().pid!, 3, '색 태그', 'm5-06-menubar-color-tags', '파일 › 색 태그 ▸ open with a row selected: the tag rows, no digit at the right edge');
-  results['tagDigits'] = { typedInField: typedInField.ok, fieldText, menuRowEnabled, before, afterField, typedInYear, yearText, afterYear, rowId, typedOnRow: typedOnRow.ok, afterRow, digit1Keydowns, toggleCalls, keys, menubarOpened: menubar.opened };
+  results['tagDigits'] = { typedInField: typedInField.ok, fieldText, menuRowEnabled, before, afterField, fieldKeys, typedInYear, yearText, yearKeys, editorGone, afterYear, rowId, typedOnRow: typedOnRow.ok, afterRow, digit1Keydowns, toggleCalls, keys, menubarOpened: menubar.opened };
 });
 
 /**

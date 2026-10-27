@@ -14,7 +14,9 @@ export type KeyLike = Pick<KeyboardEvent, 'code' | 'key' | 'shiftKey' | 'altKey'
 export function keyCommand(e: KeyLike, editing: boolean, commands: readonly CommandSpec[] = COMMANDS): CommandId | null {
   if (e.isComposing || e.keyCode === 229) return null;
   if (e.altKey || e.ctrlKey || e.metaKey) return null;
-  const hit = commands.find((c) => c.key !== undefined && c.key.code === e.code && Boolean(c.key.shift) === e.shiftKey);
+  // The numeric keypad is the same key as the digit row ("Numpad1" is "Digit1"), so an external keyboard tags too.
+  const code = e.code.replace(/^Numpad(\d)$/, 'Digit$1');
+  const hit = commands.find((c) => c.key !== undefined && c.key.code === code && Boolean(c.key.shift) === e.shiftKey);
   if (!hit) return null;
   if (editing && !hit.key!.inText) return null;
   return hit.id;

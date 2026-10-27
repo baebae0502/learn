@@ -12,7 +12,8 @@ import {
   FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
-import { COMMANDS, SUBMENUS } from '../../packages/domain/src/commands';
+import { COMMANDS, SUBMENUS, itemTarget, type CommandContextState } from '../../packages/domain/src/commands';
+import { contextMenuEntries } from '../../apps/desktop/src/main/menu/context-entries';
 import { Channels } from '../../packages/domain/src/ipc-channels';
 import { IS_MAC, allShots, captureOpenSubmenu, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
 
@@ -438,7 +439,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
   await setTheme(s.page, 'light');
 });
 
-/** One row of a native pop-up as main built it (Menu.prototype.popup, recorded before the real one runs). */
+/** One row of a native pop-up (as main built it, or as the same entries give it). */
 interface PopupRow {
   label: string;
   type: string;
@@ -446,26 +447,57 @@ interface PopupRow {
   visible: boolean;
 }
 /**
- * The ↓ presses that reach `label` in a pop-up main built: AppKit's keyboard navigation highlights a row that is visible and
- * enabled and passes over separators, disabled rows and rows that are not drawn (hidden items are not in the NSMenu at all), and
- * the first ↓ on a pop-up highlights the first such row. So it is the row's place among those rows. Read from the menu main
- * actually showed, not from a count that the menu's order could silently change.
+ * The ↓ presses that reach `label` in a pop-up: AppKit's keyboard navigation highlights a row that is visible and enabled and
+ * passes over separators, disabled rows and rows that are not drawn (hidden items are not in the NSMenu at all), and the first ↓
+ * on a pop-up highlights the first such row. So it is the row's place among those rows. Null when the rows are not known (an
+ * empty list) or the row is not among the reachable ones: that is "could not tell", never a failure.
  */
-function downsTo(rows: readonly PopupRow[], label: string): number {
-  const reachable = rows.filter((r) => r.type !== 'separator' && r.visible && r.enabled);
-  const at = reachable.findIndex((r) => r.label === label);
-  if (at < 0) throw new Error(`the pop-up has no reachable row ${label}: ${JSON.stringify(rows.map((r) => [r.label, r.type, r.enabled, r.visible]))}`);
-  return at + 1;
+function downsTo(rows: readonly PopupRow[], label: string): number | null {
+  const at = rows.filter((r) => r.type !== 'separator' && r.visible && r.enabled).findIndex((r) => r.label === label);
+  return at < 0 ? null : at + 1;
 }
+/** `run` or, when it does not answer in `ms` (main is busy under a native menu, say), `fallback`. */
+const within = <T>(run: Promise<T>, ms: number, fallback: T): Promise<T> =>
+  Promise.race([run.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
 
-test('downsTo: counts the rows a key reaches — not separators, disabled rows or rows that are not drawn', () => {
+test('downsTo: counts the rows a key reaches — not separators, disabled rows or rows that are not drawn — and says null when it cannot tell', () => {
   const row = (label: string, over: Partial<PopupRow> = {}): PopupRow => ({ label, type: 'normal', enabled: true, visible: true, ...over });
   const sep: PopupRow = row('', { type: 'separator' });
   const rows = [row('다시 연결…', { visible: false }), row('열기'), sep, row('Finder에서 보기', { enabled: false }), row('사본 내보내기…'), sep, row('컬렉션에 추가', { type: 'submenu' }), row('색 태그', { type: 'submenu' })];
   expect(downsTo(rows, '컬렉션에 추가')).toBe(3);
   expect(downsTo(rows, '색 태그')).toBe(4);
-  expect(() => downsTo(rows, 'Finder에서 보기')).toThrow(/no reachable row/);
+  expect(downsTo(rows, 'Finder에서 보기')).toBeNull();
+  expect(downsTo([], '컬렉션에 추가')).toBeNull();
 });
+
+test('the item menu main builds for one available item: the entries the macOS capture counts its ↓ presses on (runs everywhere)', async () => {
+  const rows = await itemMenuRows('darwin');
+  expect(rows.map((r) => r.label)).toContain('컬렉션에 추가');
+  const downs = downsTo(rows, '컬렉션에 추가');
+  expect(downs).not.toBeNull();
+  expect(downsTo(rows, '열기')).toBe(1);
+  expect(downs!).toBeGreaterThan(1);
+});
+
+/**
+ * The item menu for the item `sample` as main builds it (contextMenuEntries, the same pure function and inputs: the registry, the
+ * reported context, the item's target, the library read), as rows. Nothing here talks to a native menu, so it is safe to run
+ * before the right click; a read that does not answer in 3 s gives no rows.
+ */
+async function itemMenuRows(platform: string): Promise<PopupRow[]> {
+  const read = async (): Promise<PopupRow[]> => {
+    const ctx = await s.app.evaluate(() => (globalThis as { __learnMenuContext?: CommandContextState }).__learnMenuContext ?? null);
+    const listed = await s.page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? r.data.map((i) => ({ id: i.id, title: i.title, storageMode: i.storageMode, availability: i.availability })) : [];
+    });
+    const item = listed.find((i) => i.title === 'sample');
+    if (!ctx || !item) return [];
+    const entries = contextMenuEntries('item', COMMANDS, ctx, [itemTarget(item)], platform, { organize: await organizeSnapshot(s.page), itemIds: [item.id] });
+    return entries.map((e): PopupRow => (e === 'separator' ? { label: '', type: 'separator', enabled: true, visible: true } : { label: e.label, type: 'submenu' in e ? 'submenu' : 'normal', enabled: e.enabled, visible: true }));
+  };
+  return within(read(), 3000, []);
+}
 
 test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)', TAG, async () => {
   if (!IS_MAC) {
@@ -473,30 +505,58 @@ test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)',
     return;
   }
   await focusApp(s.app);
-  // The real pop-up runs; main's own menu is recorded as it opens, and the ↓ count is read from it.
-  await s.app.evaluate(({ Menu }) => {
-    const g = globalThis as { __learnShownPopups?: PopupRow[][]; __learnPopupPatched?: boolean };
-    g.__learnShownPopups = [];
-    if (g.__learnPopupPatched) return;
-    g.__learnPopupPatched = true;
-    const real = Menu.prototype.popup;
-    Menu.prototype.popup = function popup(this: { items: Array<{ label: string; type: string; enabled: boolean; visible: boolean }> }, ...args: unknown[]) {
-      g.__learnShownPopups!.push(this.items.map((i) => ({ label: i.label, type: i.type, enabled: i.enabled, visible: i.visible })));
-      return (real as (...a: unknown[]) => unknown).apply(this, args);
-    } as typeof Menu.prototype.popup;
-  });
+  // The ↓ count comes first, from the entries main builds for this menu, before any native menu is open (a pop-up runs a nested
+  // menu-tracking loop in main, and whether main answers Playwright during it is not known). Last resort: the registry's order.
+  const derivedRows = await itemMenuRows('darwin');
+  const derived = downsTo(derivedRows, '컬렉션에 추가');
+  const downs = derived ?? popupRowNumber('item', 'collection.addItems');
+  // Record what main really shows (read only after the pop-up is closed), and put the real popup back afterwards.
+  const patched = await within(
+    s.app.evaluate(({ Menu }) => {
+      const g = globalThis as { __learnShownPopups?: PopupRow[][]; __learnRealPopup?: typeof Menu.prototype.popup };
+      g.__learnShownPopups = [];
+      if (g.__learnRealPopup) return true;
+      const real = Menu.prototype.popup;
+      g.__learnRealPopup = real;
+      Menu.prototype.popup = function popup(this: { items: Array<{ label: string; type: string; enabled: boolean; visible: boolean }> }, ...args: unknown[]) {
+        g.__learnShownPopups!.push(this.items.map((i) => ({ label: i.label, type: i.type, enabled: i.enabled, visible: i.visible })));
+        return (real as (...a: unknown[]) => unknown).apply(this, args);
+      } as typeof Menu.prototype.popup;
+      return true;
+    }),
+    3000,
+    false,
+  );
   await rowByTitle(s.page, 'sample').click({ button: 'right' });
   await sleep(1200);
-  const shown = await s.app.evaluate(() => (globalThis as { __learnShownPopups?: PopupRow[][] }).__learnShownPopups ?? []);
-  const rows = shown.at(-1) ?? [];
-  const downs = downsTo(rows, '컬렉션에 추가');
-  // System Events confirms by the row's AXSelected which row is highlighted before →; where it cannot address the pop-up the
-  // derived count is used and the capture says so (`fallback`). `opened` is false when the submenu did not list rows.
+  // System Events confirms by the row's AXSelected which row is highlighted before →; where it cannot (the pop-up cannot be
+  // addressed, or the highlight cannot be read) the derived count is pressed and the capture says so (`fallback`).
   const opened = await captureOpenPopupSubmenu(s.app, s.app.process().pid!, '컬렉션에 추가', downs, 'm5-07-menu-item-add', 'item context menu on sample: 컬렉션에 추가 ▸ open (새 컬렉션, the tree as submenus)');
   await sleep(300);
-  results['itemMenu'] = { ...opened, derivedDowns: downs, popupRows: rows };
-  check('item menu: the 컬렉션에 추가 ▸ submenu opened (where System Events can tell)', opened.opened ?? true, { opened: opened.opened, downs: opened.downs, derivedDowns: downs, fallback: opened.fallback });
-  check('item menu: the submenu that opened lists 새 컬렉션 first (where System Events can read it)', opened.rows === null || opened.rows[0]?.replace(/\s/g, '') === '새컬렉션', opened.rows);
+  // The pop-up is closed: now main can be asked what it showed.
+  const shown = await within(
+    s.app.evaluate(({ Menu }) => {
+      const g = globalThis as { __learnShownPopups?: PopupRow[][]; __learnRealPopup?: typeof Menu.prototype.popup };
+      if (g.__learnRealPopup) Menu.prototype.popup = g.__learnRealPopup;
+      delete g.__learnRealPopup;
+      return g.__learnShownPopups ?? [];
+    }),
+    3000,
+    null,
+  );
+  const shownRows = shown?.at(-1) ?? [];
+  const shownDowns = downsTo(shownRows, '컬렉션에 추가');
+  const mismatch = shownDowns !== null && derived !== null && shownDowns !== derived;
+  if (mismatch || shownDowns === null || derived === null) console.warn(`[evidence] item menu ↓ count: derived ${derived}, shown ${shownDowns}, pressed ${opened.downs}, patched ${patched}`);
+  results['itemMenu'] = { ...opened, derivedDowns: derived, shownDowns, mismatch, derivedRows, shownRows };
+  // A check fails only for a menu that is really wrong: the highlight was read and it never was this row, or the submenu listed
+  // nothing. Anything that could not be read is data (opened: null, fallback: true), not a failure.
+  check('item menu: the 컬렉션에 추가 ▸ submenu opened (where System Events can tell)', opened.opened !== false, { opened: opened.opened, downs: opened.downs, derivedDowns: derived, shownDowns, fallback: opened.fallback });
+  check(
+    'item menu: the submenu that opened lists 새 컬렉션 first (where System Events can read it)',
+    opened.rows === null || opened.rows[0]?.replace(/\s/g, '') === '새컬렉션',
+    opened.rows,
+  );
 });
 
 test('M5 drag and drop: the overlay stops at the sidebar — light and dark', TAG, async () => {

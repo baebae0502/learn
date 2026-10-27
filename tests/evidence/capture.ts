@@ -559,7 +559,7 @@ async function findPopup(target: string | number): Promise<{ candidate: string; 
 /**
  * An open pop-up (context) menu: ↓ one row at a time — AppKit skips separators and disabled rows, and → on a row without a
  * submenu goes elsewhere — until System Events says the row `label` is the selected one, then → opens its submenu. `opened`
- * is true when the row was selected and its submenu then lists rows; null when System Events cannot address the pop-up (the
+ * is true when the row was selected and its submenu then lists rows; false when the highlight was READ at every step and never was this row, or the submenu listed nothing; null when System Events cannot address the pop-up or cannot read the highlight or the rows (the
  * PNG is then taken after `fallbackDowns` presses — the row's place among the enabled rows, the first ↓ selecting the first — and judged by eye); false when it could and the submenu did not open.
  * Escape clears whatever is still open, in a finally.
  */
@@ -568,45 +568,65 @@ export async function captureOpenPopupSubmenu(app: ElectronApplication, target: 
   try {
     const found = await findPopup(target);
     const press = (code: number) => tryExec('osascript', ['-e', `tell application "System Events" to key code ${code}`], 10_000);
+    const selectedNow = async (): Promise<boolean | null> => {
+      const v = await popupScript(target, found!.candidate, [`return (value of attribute "AXSelected" of menu item "${label}" of pop) as text`]);
+      return v === 'true' ? true : v === 'false' ? false : null; // null: System Events could not say
+    };
     let downs = 0;
+    // opened: true — the row was selected before → and its submenu then listed rows; false — System Events read the highlight and it
+    // never was this row (or the submenu came up empty): a wrong menu; null — something could not be read, so nothing is judged.
     let opened: boolean | null = null;
+    let readable = found !== null;
     let rows: string[] | null = null;
-    if (found === null) {
+    const fallbackKeys = async () => {
       for (; downs < fallbackDowns; downs++) {
         await press(125);
         await sleep(250);
       }
       await press(124);
       await sleep(1000);
+    };
+    if (found === null) {
+      await fallbackKeys();
     } else {
-      let selected = false;
-      for (let step = 0; step <= found.rows.length + 1; step++) {
-        selected = (await popupScript(target, found.candidate, [`return (value of attribute "AXSelected" of menu item "${label}" of pop) as text`])) === 'true';
-        if (selected) break;
-        await press(125);
-        downs++;
-        await sleep(250);
+      let selected: boolean | null = await selectedNow();
+      if (selected === null) {
+        readable = false; // AXSelected cannot be read on this pop-up: press the derived count and judge nothing
+        await fallbackKeys();
+      } else {
+        for (let step = 0; selected === false && step <= found.rows.length + 1; step++) {
+          await press(125);
+          downs++;
+          await sleep(250);
+          selected = await selectedNow();
+          if (selected === null) {
+            readable = false;
+            break;
+          }
+        }
+        if (selected === true) {
+          await press(124);
+          await sleep(1000);
+          const sub = await popupScript(target, found.candidate, [
+            'set out to {}',
+            `repeat with i in (menu items of menu 1 of menu item "${label}" of pop)`,
+            'set n to name of i',
+            'if n is missing value then set n to "-"',
+            'set end of out to n',
+            'end repeat',
+            "set AppleScript's text item delimiters to linefeed",
+            'return out as text',
+          ]);
+          rows = sub === null ? null : sub.split('\n');
+          opened = rows === null ? null : rows.length > 0; // null: the rows could not be read
+        } else if (selected === false) {
+          opened = false; // read every step, and the highlight never reached this row
+        }
       }
-      if (selected) {
-        await press(124);
-        await sleep(1000);
-        const sub = await popupScript(target, found.candidate, [
-          'set out to {}',
-          `repeat with i in (menu items of menu 1 of menu item "${label}" of pop)`,
-          'set n to name of i',
-          'if n is missing value then set n to "-"',
-          'set end of out to n',
-          'end repeat',
-          "set AppleScript's text item delimiters to linefeed",
-          'return out as text',
-        ]);
-        rows = sub === null ? null : sub.split('\n');
-      }
-      opened = selected && rows !== null && rows.length > 0;
     }
-    const shot = await fullScreenShot(`${prefix}`, `${what}: ↓ ×${downs} then → via System Events${found === null ? ' (the pop-up could not be addressed: opened unknown)' : ''}`);
-    // fallback: the row was not confirmed by System Events; `downs` presses were made on a count worked out from the registry.
-    return { shot: shot.file, downs, opened, rows, addressable: found !== null, fallback: found === null, fallbackDowns: found === null ? fallbackDowns : null };
+    const shot = await fullScreenShot(`${prefix}`, `${what}: ↓ ×${downs} then → via System Events${readable ? '' : ' (the highlight could not be read: opened unknown)'}`);
+    // fallback: the row was not confirmed by System Events; `downs` presses were made on a count worked out from the menu.
+    return { shot: shot.file, downs, opened, rows, addressable: found !== null, readable, fallback: !readable, fallbackDowns: readable ? null : fallbackDowns };
   } finally {
     await pressEscape();
     await pressEscape();

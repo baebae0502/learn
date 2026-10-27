@@ -132,6 +132,7 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
 - Anthropic의 입장이 모호하다. 넓은 공개 전 서면 확인이 출시 조건이다(M14). 그 전에도 문서는 "without prior notice" 집행을 말한다. `claude-agent-acp`에는 구독 로그인을 숨기는 `--hide-claude-auth` 옵션이 있다(https://github.com/agentclientprotocol/claude-agent-acp/pull/1079, 2026-09-04 병합).
 - 사용자가 에이전트 CLI를 직접 설치하고 로그인해야 한다. `claude-agent-acp`는 Node ≥ 22가 필요하고, `CLAUDE_CODE_EXECUTABLE`로 사용자의 `claude`를 가리키지 않으면 SDK의 네이티브 바이너리를 받는다. Electron의 Node(`ELECTRON_RUN_AS_NODE`)로 어댑터를 돌릴 수 있는지는 확인하지 않았다.
 - 답의 품질과 동작이 에이전트·버전마다 다르다. 잠금과 범위는 에이전트마다 T1 테스트로 확인한다.
+- T1에서 채울 빈칸: 대화마다 고정된 MCP 범위 토큰, claude.ai 커넥터 끄기, 에이전트별 최소 버전(격리 손잡이가 없으면 튜터를 막는다), 로그인 상태 카드, 대화마다 빈 작업 폴더, 프로세스 감독·취소 시한, 프록시의 루프백 가로채기, 에이전트 자신의 대화 기록 고지 — 근거는 [`docs/research/llm-for-zotero.md`](../research/llm-for-zotero.md) 3절(2026-10-27 조사).
 - 재검토 조건: Anthropic이 서면으로 거절할 때, ACP v2가 안정판이 되어 v1과 호환되지 않을 때, 공급사가 이 사용 방식을 막을 때.
 
 ## 검증 (T1)

@@ -1141,7 +1141,7 @@
   const tu = {
     state: Number(pick('state', ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'], '5')),
     width: Number(pick('width', ['340', '380', '440'], '380')),
-    msg: pick('msg', ['doc', 'bubble'], 'doc'),
+    msg: pick('msg', ['doc', 'bubble'], 'bubble'),
     cite: pick('cite', ['page', 'p', 'icon'], 'page'),
     consent: pick('consent', ['card', 'sheet'], 'card'),
     sessions: pick('sessions', ['sidebar', 'panel'], 'sidebar'),

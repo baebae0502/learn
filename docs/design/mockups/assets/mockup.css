@@ -2989,7 +2989,8 @@ h2,
   outline: var(--focus-ring-width) solid var(--focus);
   outline-offset: calc(var(--focus-ring-width) * -1);
 }
-[data-msg='bubble'] .tu-msg.user .cite {
+[data-msg='bubble'] .tu-msg.user .cite,
+[data-msg='bubble'] .tu-msg.tutor .body .cite:not(.is-unverified) {
   background: var(--bg-content);
 }
 .cite.is-disabled {

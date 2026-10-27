@@ -116,9 +116,8 @@ export const TUTOR = [
   // §4 decisions: each alternative once (the defaults are the base state renders above).
   tutor('light', { state: '5', width: '340' }, '5-width-340', '결정 · 폭 340'),
   tutor('light', { state: '5', width: '440' }, '5-width-440', '결정 · 폭 440'),
-  tutor('light', { state: '5', msg: 'bubble' }, '5-msg-bubble', '결정 · 메시지 말풍선'),
-  tutor('light', { state: '5', scroll: 'top' }, '5-msg-doc-top', '결정 · 문서식(처음부터)'),
-  tutor('light', { state: '5', msg: 'bubble', scroll: 'top' }, '5-msg-bubble-top', '결정 · 말풍선(처음부터)'),
+  tutor('light', { state: '5', msg: 'doc' }, '5-msg-doc', '결정 · 문서식(대안)'),
+  tutor('light', { state: '5', msg: 'doc', scroll: 'top' }, '5-msg-doc-top', '결정 · 문서식(처음부터)'),
   tutor('light', { state: '6', cite: 'p' }, '6-cite-p', '결정 · 인용 p. 42'),
   tutor('light', { state: '6', cite: 'icon' }, '6-cite-icon', '결정 · 인용 아이콘 + 숫자'),
   tutor('light', { state: '2', consent: 'sheet' }, '2-consent-sheet', '결정 · 동의 시트'),

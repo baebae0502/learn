@@ -69,14 +69,15 @@
     display: grid;
     grid-template-columns: var(--row-cols);
   }
-  /* The insertion line of a header drag (M5 spec 5.1): 2 px of the accent on the boundary where the column would land. */
+  /* The insertion line of a header drag: 2 px on the boundary where the column would land, in the drop markers' teal
+     (--accent-ring keeps 3:1 in dark too; --accent is a fill for white text). */
   .library-table .col-drop-line {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 2px; /* local: spec 5.1 */
+    width: 2px; /* local: the line's own width */
     margin-left: -1px; /* local: centred on the boundary */
-    background: var(--accent);
+    background: var(--accent-ring);
     pointer-events: none;
     z-index: 2; /* local: over the cells' dividers */
   }

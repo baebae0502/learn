@@ -600,7 +600,7 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
       await t.page.goto(`learn://app/index.html?window=gallery&part=5&platform=${process.platform}`);
       await t.page.getByTestId('gallery').waitFor();
       await guard('board: the three drop targets are the --accent-ring ring over the soft accent fill; the badge is white on the accent', async () => {
-        const accent = await tokenColor(t.page, '--accent');
+        const accent = await tokenColor(t.page, '--accent-ring');
         const ringColor = await tokenColor(t.page, '--accent-ring');
         const soft = await tokenColor(t.page, '--accent-soft');
         const on = await tokenColor(t.page, '--text-on-accent');
@@ -680,7 +680,7 @@ test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 �
       await expect(t.page.getByTestId('column-drop-line')).toBeVisible();
       const line = (await t.page.getByTestId('column-drop-line').boundingBox())!;
       const colour = await t.page.getByTestId('column-drop-line').evaluate((e) => getComputedStyle(e).backgroundColor);
-      const accent = await tokenColor(t.page, '--accent');
+      const accent = await tokenColor(t.page, '--accent-ring');
       const pressedFill = await cell('createdAt').evaluate((e) => getComputedStyle(e).backgroundColor);
       const fill = await tokenColor(t.page, '--fill-pressed');
       header['drag'] = { line, colour, accent, pressed: pressedFill, fill, boundary: to.x };

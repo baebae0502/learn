@@ -540,7 +540,7 @@ export function LibraryTable(props: LibraryTableProps) {
     >
       <div className="table-head-wrap">
         <div ref={headClip} className="table-head-clip" data-testid="table-head-clip" onWheel={onHeadWheel}>
-          <div ref={head} role="row" aria-rowindex={1} className="table-head" onContextMenu={onHeaderMenu} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
+          <div ref={head} role="row" aria-rowindex={1} className="table-head" data-reordering={reorder.drag ? '' : undefined} onContextMenu={onHeaderMenu} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
             {visible.map((c, i) => {
               const direction = sort.column === c.id ? sort.direction : null;
               const width = c.id === 'title' ? titleWidth : widths.get(c.id)!;

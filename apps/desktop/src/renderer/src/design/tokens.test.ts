@@ -172,7 +172,7 @@ describe('colour tokens', () => {
     }
   }
 
-  it('the drop ring (tree row, 컬렉션 heading, table row) is --accent-ring, which keeps 3:1 on the surface and on its own soft fill in both themes', () => {
+  it('the drop ring (tree row, 컬렉션 heading, table row) and the header drop line are --accent-ring, which keeps 3:1 on the surface and on its own soft fill in both themes', () => {
     for (const theme of THEMES) {
       const c = palette(theme);
       for (const s of ['bgSidebar', 'bgContent', 'bgContentAlt'] as const) {
@@ -186,6 +186,7 @@ describe('colour tokens', () => {
     const rules = [
       ['screens/dnd.css', /(?:\.nav-row, )?\.heading-drop[^{]*\{[^}]*box-shadow:[^;]*;/g],
       ['components/list.css', /\.table-row:is\(\[data-drop-target\][^{]*\{[^}]*box-shadow:[^;]*;/g],
+      ['screens/library.css', /\.col-drop-line\s*\{[^}]*background:[^;]*;/g],
     ] as const;
     for (const [file, pattern] of rules) {
       const found = fs.readFileSync(path.join(styles, file), 'utf8').match(pattern) ?? [];

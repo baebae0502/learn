@@ -232,6 +232,11 @@
     background: var(--fill-pressed);
     color: var(--text-primary);
   }
+  /* The dragged cell is one pressed surface: no divider inside or against its edges. */
+  .table-head .th[data-dragging]::before,
+  .table-head .th[data-dragging] + .th::before {
+    display: none;
+  }
   /* A column edge (design-spec 2.1, the pane boundary's grammar): only the cursor changes, never the line. The 8 px
      left of the edge: a column clips what lies past its own box. */
   .table-head .col-resizer {
@@ -242,6 +247,10 @@
     width: 8px; /* local: hit area */
     cursor: col-resize;
     touch-action: none;
+  }
+  /* A header drag in progress keeps the arrow: the column edges do not offer to resize under it. */
+  .table-head[data-reordering] .col-resizer {
+    pointer-events: none;
   }
   .table-row {
     height: var(--row-height);

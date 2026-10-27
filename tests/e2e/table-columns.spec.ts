@@ -194,16 +194,21 @@ test('a cursor row revealed from the middle of the list lands 4 px under the scr
         return row === undefined ? null : { top: row.top - box.top, bottom: box.top + view.clientHeight - row.bottom };
       }, index);
     const rowHeight = 28;
-    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 80 * rowHeight);
+    // The virtualizer learns the offset from the scroll event: let it arrive before a key asks it to reveal a row.
+    const scrolledTo = async (rows: number) => {
+      await scroller(page).evaluate((e, top) => void (e.scrollTop = top), rows * rowHeight);
+      await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    };
+    await scrolledTo(80);
     await expect(rowAt(page, 80)).toBeVisible();
     await rowAt(page, 80).click(); // the cursor is row 80, in the middle of the list and of the view
     // Scrolled away so that the cursor is above the view: ↑ brings row 79 in from above (its top edge meets the 4 px inset).
-    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 110 * rowHeight);
+    await scrolledTo(110);
     await page.keyboard.press('ArrowUp');
     await expect(rowAt(page, 79)).toBeFocused();
     await expect.poll(async () => (await gaps(79))?.top).toBeCloseTo(4, 0);
     // And below the view: ↓ brings row 80 in from below (its bottom edge meets the 8 px inset).
-    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 20 * rowHeight);
+    await scrolledTo(20);
     await page.keyboard.press('ArrowDown');
     await expect(rowAt(page, 80)).toBeFocused();
     await expect.poll(async () => (await gaps(80))?.bottom).toBeCloseTo(8, 0);
@@ -285,7 +290,7 @@ const dropLine = (page: Page) => page.getByTestId('column-drop-line');
 const accent = (page: Page) =>
   page.evaluate(() => {
     const probe = document.createElement('div');
-    probe.style.background = 'var(--accent)';
+    probe.style.background = 'var(--accent-ring)';
     document.body.append(probe);
     const c = getComputedStyle(probe).backgroundColor;
     probe.remove();
@@ -309,10 +314,13 @@ test('a dragged header cell lands where the 2 px accent line showed, saved on re
     expect(line.x + 1).toBeCloseTo(target.x, 0); // centred on the boundary before 저자
     expect(await dropLine(s.page).evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await accent(s.page));
     expect(await setting(s.page, 'library.columns')).toBeNull(); // nothing saved while dragging
+    const resizerEvents = () => s.page.locator('[data-testid="column-resizer"][data-col="creators"]').evaluate((e) => getComputedStyle(e).pointerEvents);
+    expect(await resizerEvents(), 'the column edges do not offer to resize under a header drag').toBe('none');
     await s.page.mouse.up();
     await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '추가일', '저자', '연도', '종류']);
     await expect(dropLine(s.page)).toHaveCount(0);
     await expect(header(s.page, 'createdAt')).not.toHaveAttribute('data-dragging', 'true');
+    expect(await s.page.locator('[data-testid="column-resizer"][data-col="creators"]').evaluate((e) => getComputedStyle(e).pointerEvents)).not.toBe('none'); // and offer it again after the drop
     // The cells of a row follow the header, and nothing was sorted by the release.
     expect(await rowAt(s.page, 0).locator('[data-col]').evaluateAll((cells) => cells.map((c) => c.getAttribute('data-col')))).toEqual(['title', 'createdAt', 'creators', 'year', 'type']);
     await expect(header(s.page, 'createdAt')).toHaveAttribute('aria-sort', 'descending'); // still the default sort

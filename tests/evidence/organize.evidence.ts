@@ -438,24 +438,65 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
   await setTheme(s.page, 'light');
 });
 
+/** One row of a native pop-up as main built it (Menu.prototype.popup, recorded before the real one runs). */
+interface PopupRow {
+  label: string;
+  type: string;
+  enabled: boolean;
+  visible: boolean;
+}
+/**
+ * The ↓ presses that reach `label` in a pop-up main built: AppKit's keyboard navigation highlights a row that is visible and
+ * enabled and passes over separators, disabled rows and rows that are not drawn (hidden items are not in the NSMenu at all), and
+ * the first ↓ on a pop-up highlights the first such row. So it is the row's place among those rows. Read from the menu main
+ * actually showed, not from a count that the menu's order could silently change.
+ */
+function downsTo(rows: readonly PopupRow[], label: string): number {
+  const reachable = rows.filter((r) => r.type !== 'separator' && r.visible && r.enabled);
+  const at = reachable.findIndex((r) => r.label === label);
+  if (at < 0) throw new Error(`the pop-up has no reachable row ${label}: ${JSON.stringify(rows.map((r) => [r.label, r.type, r.enabled, r.visible]))}`);
+  return at + 1;
+}
+
+test('downsTo: counts the rows a key reaches — not separators, disabled rows or rows that are not drawn', () => {
+  const row = (label: string, over: Partial<PopupRow> = {}): PopupRow => ({ label, type: 'normal', enabled: true, visible: true, ...over });
+  const sep: PopupRow = row('', { type: 'separator' });
+  const rows = [row('다시 연결…', { visible: false }), row('열기'), sep, row('Finder에서 보기', { enabled: false }), row('사본 내보내기…'), sep, row('컬렉션에 추가', { type: 'submenu' }), row('색 태그', { type: 'submenu' })];
+  expect(downsTo(rows, '컬렉션에 추가')).toBe(3);
+  expect(downsTo(rows, '색 태그')).toBe(4);
+  expect(() => downsTo(rows, 'Finder에서 보기')).toThrow(/no reachable row/);
+});
+
 test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)', TAG, async () => {
   if (!IS_MAC) {
     results['itemMenu'] = { skipped: 'native menus are macOS only' };
     return;
   }
   await focusApp(s.app);
+  // The real pop-up runs; main's own menu is recorded as it opens, and the ↓ count is read from it.
+  await s.app.evaluate(({ Menu }) => {
+    const g = globalThis as { __learnShownPopups?: PopupRow[][]; __learnPopupPatched?: boolean };
+    g.__learnShownPopups = [];
+    if (g.__learnPopupPatched) return;
+    g.__learnPopupPatched = true;
+    const real = Menu.prototype.popup;
+    Menu.prototype.popup = function popup(this: { items: Array<{ label: string; type: string; enabled: boolean; visible: boolean }> }, ...args: unknown[]) {
+      g.__learnShownPopups!.push(this.items.map((i) => ({ label: i.label, type: i.type, enabled: i.enabled, visible: i.visible })));
+      return (real as (...a: unknown[]) => unknown).apply(this, args);
+    } as typeof Menu.prototype.popup;
+  });
   await rowByTitle(s.page, 'sample').click({ button: 'right' });
   await sleep(1200);
-  // 열기 · Finder에서 보기 · 사본 내보내기… | 컬렉션에 추가 ▸: four rows a key reaches (a separator is skipped), then → opens the submenu.
-  const keys = ['tell application "System Events"', 'delay 0.3', ...Array.from({ length: 4 }, () => ['key code 125', 'delay 0.15']).flat(), 'delay 0.3', 'key code 124', 'end tell'];
-  const typed = await tryExec('osascript', keys.flatMap((line) => ['-e', line]), 20_000);
-  await sleep(1000);
-  const shot = await fullScreenShot('m5-07-menu-item-add', 'item context menu on sample: 컬렉션에 추가 ▸ open (새 컬렉션, the tree as submenus)');
-  await pressEscape();
-  await pressEscape();
+  const shown = await s.app.evaluate(() => (globalThis as { __learnShownPopups?: PopupRow[][] }).__learnShownPopups ?? []);
+  const rows = shown.at(-1) ?? [];
+  const downs = downsTo(rows, '컬렉션에 추가');
+  // System Events confirms by the row's AXSelected which row is highlighted before →; where it cannot address the pop-up the
+  // derived count is used and the capture says so (`fallback`). `opened` is false when the submenu did not list rows.
+  const opened = await captureOpenPopupSubmenu(s.app, s.app.process().pid!, '컬렉션에 추가', downs, 'm5-07-menu-item-add', 'item context menu on sample: 컬렉션에 추가 ▸ open (새 컬렉션, the tree as submenus)');
   await sleep(300);
-  results['itemMenu'] = { shot: shot.file, keysOk: typed.ok };
-  check('item menu: the keys reached the submenu (System Events accepted them)', typed.ok, typed.stderr);
+  results['itemMenu'] = { ...opened, derivedDowns: downs, popupRows: rows };
+  check('item menu: the 컬렉션에 추가 ▸ submenu opened (where System Events can tell)', opened.opened ?? true, { opened: opened.opened, downs: opened.downs, derivedDowns: downs, fallback: opened.fallback });
+  check('item menu: the submenu that opened lists 새 컬렉션 first (where System Events can read it)', opened.rows === null || opened.rows[0]?.replace(/\s/g, '') === '새컬렉션', opened.rows);
 });
 
 test('M5 drag and drop: the overlay stops at the sidebar — light and dark', TAG, async () => {

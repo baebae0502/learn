@@ -160,8 +160,10 @@
      (the header text over the icon) and the last column's ends 24 px in. */
   .table-head {
     height: var(--table-header-height);
+    /* The header's bottom line. The library table draws it on its header band instead (screens/library.css), under a
+       scroll bar's column too; the state board's header keeps this one. */
     box-shadow: inset 0 -1px 0 var(--separator);
-    background: var(--bg-content); /* the rows scroll under the sticky header */
+    background: var(--bg-content);
     color: var(--text-secondary);
     font: var(--type-footnote);
   }

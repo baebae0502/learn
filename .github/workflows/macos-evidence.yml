@@ -101,7 +101,7 @@ jobs:
           defaults write com.github.Electron ApplePersistenceIgnoreState YES
           defaults write app.learn.desktop ApplePersistenceIgnoreState YES
 
-      # 스크롤 막대 항상 보기 (M5 Task 9): the table's header sits outside its vertical scroller so a classic scroll bar
+      # 스크롤 막대 항상 보기: the table's header sits outside its vertical scroller so a classic scroll bar
       # starts under it. The runner already draws classic bars (a virtual display with a mouse); this makes it explicit
       # for the two suites that look at it. App domains only, not -g: nothing else on the machine changes, and the VM is
       # gone after the run. AppKit reads it when the app starts, so it comes before the suite. The evidence test measures

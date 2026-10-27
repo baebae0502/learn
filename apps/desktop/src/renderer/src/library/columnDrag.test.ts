@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRAG_THRESHOLD, EDGE_BAND, EDGE_SPEED, dropSlot, edgeScroll, type HeaderCell } from './columnDrag';
+import { DRAG_THRESHOLD, EDGE_BAND, EDGE_SPEED, dropSlot, edgeScroll, wheelSteps, type HeaderCell } from './columnDrag';
 
 // 제목 200 · 저자 180 · 연도 64 · 종류 88 · 추가일 132, side by side from x = 0.
 const cells: HeaderCell[] = [
@@ -45,5 +45,19 @@ describe('scrolling the table sideways while a header is dragged near an edge of
   it('is measured from the header\'s own edges, wherever it is on the page', () => {
     expect(edgeScroll(240 + 5, 240, 640)).toBeLessThan(0);
     expect(edgeScroll(440, 240, 640)).toBe(0);
+  });
+});
+
+describe('a wheel over the header', () => {
+  const view = { width: 400, height: 300 };
+  const wheel = (deltaX: number, deltaY: number, deltaMode = 0, shiftKey = false) => ({ deltaX, deltaY, deltaMode, shiftKey });
+  it('moves the table by pixels, lines of 16 px or pages of the view', () => {
+    expect(wheelSteps(wheel(60, 30), view)).toEqual({ x: 60, y: 30 });
+    expect(wheelSteps(wheel(0, 3, 1), view)).toEqual({ x: 0, y: 48 });
+    expect(wheelSteps(wheel(1, 1, 2), view)).toEqual({ x: 400, y: 300 });
+  });
+  it('turns ⇧ + wheel into a sideways step', () => {
+    expect(wheelSteps(wheel(0, 40, 0, true), view)).toEqual({ x: 40, y: 0 });
+    expect(wheelSteps(wheel(10, 40, 0, true), view)).toEqual({ x: 10, y: 40 }); // a real sideways delta is kept
   });
 });

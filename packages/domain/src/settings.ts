@@ -13,10 +13,7 @@ const storedColumnId = z.string().min(1).max(64);
 export const columnConfigSchema = z.object({
   visible: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
   order: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
-  // A record has no length of its own: ids stay open (a later build's columns must read back), the count does not.
-  widths: z
-    .record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX))
-    .refine((w) => Object.keys(w).length <= STORED_COLUMN_IDS_MAX, { message: 'too many widths' }),
+  widths: z.record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX)),
 });
 
 const sortSchema = z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) });
@@ -44,9 +41,19 @@ export const SETTINGS = {
 export type SettingKey = keyof typeof SETTINGS;
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(SETTINGS, key);
 
+/**
+ * What a write may carry beyond what a read accepts. A record has no length of its own: column ids stay open (a later
+ * build's columns must read back), so the count of widths is bounded on the way in only — a stored value that has more is
+ * still read, and the renderer cleans it.
+ */
+const WRITE_SCHEMAS: Partial<Record<SettingKey, z.ZodType>> = {
+  'library.columns': columnConfigSchema.refine((c) => Object.keys(c.widths).length <= STORED_COLUMN_IDS_MAX, { message: 'too many widths' }),
+};
+
+/** Validates a value about to be stored (the write path). */
 export function parseSetting(key: string, value: unknown): unknown {
   if (!isSettingKey(key)) throw new LearnError('VALIDATION_FAILED', '알 수 없는 설정 항목입니다.');
-  const r = SETTINGS[key].safeParse(value);
+  const r = (WRITE_SCHEMAS[key] ?? SETTINGS[key]).safeParse(value);
   if (!r.success) throw new LearnError('VALIDATION_FAILED', '설정 값이 올바르지 않습니다.');
   return r.data;
 }

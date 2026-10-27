@@ -23,6 +23,7 @@ import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
+import { wheelSteps } from './columnDrag';
 import { useColumnReorder } from './useColumnReorder';
 import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
@@ -265,9 +266,10 @@ export function LibraryTable(props: LibraryTableProps) {
   }, []);
   // A wheel or sweep over the header, which no longer scrolls, goes to the body.
   const onHeadWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
-    const swapped = e.shiftKey && e.deltaX === 0; // ⇧ + wheel is a sideways step
-    const unit = e.deltaMode === 1 ? 16 : 1; // lines to pixels
-    scroller.current?.scrollBy((swapped ? e.deltaY : e.deltaX) * unit, (swapped ? 0 : e.deltaY) * unit);
+    const view = scroller.current;
+    if (!view) return;
+    const step = wheelSteps(e, { width: view.clientWidth, height: view.clientHeight });
+    view.scrollBy(step.x, step.y);
   }, []);
   const reorder = useColumnReorder({ head, clip: headClip, scroller, visible, forced, columns, onColumnsChange: props.onColumnsChange });
 
@@ -587,7 +589,7 @@ export function LibraryTable(props: LibraryTableProps) {
           </div>
         </div>
       </div>
-      <div ref={scroller} className="table-scroller" data-testid="library-scroller" onScroll={onScrollerScroll}>
+      <div ref={scroller} className="table-scroller" data-testid="library-scroller" data-empty={showEmpty || undefined} onScroll={onScrollerScroll}>
         {showEmpty ? (
           <div role="row" aria-rowindex={2} className="table-empty">
             <div role="gridcell" className="table-empty-cell">

@@ -51,6 +51,11 @@
        inset instead of putting the row's edge flush with the scroller's. */
     scroll-padding-inline: var(--space-8);
   }
+  /* An empty state has nothing to scroll to, and a scroller that overflows with nothing focusable in it would become a
+     keyboard stop of its own (Chromium): it does not scroll while the table has no rows. */
+  .library-table .table-scroller[data-empty] {
+    overflow: hidden;
+  }
   .library-table .table-body {
     position: relative;
     flex: none;

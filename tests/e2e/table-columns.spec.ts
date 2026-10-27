@@ -212,6 +212,64 @@ test('a cursor row revealed from the middle of the list lands 4 px under the scr
   }
 });
 
+test('an overflowing table body with nothing focusable in it is not a Tab stop, and a click on it still gives the grid the focus', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await showItemPanel(app, page);
+    const field = page.getByTestId('search-field').locator('input');
+    await field.fill('zzzzqq'); // no results: the table keeps its header and shows the empty state in the scroller
+    await expect(page.getByTestId('search-empty-clear')).toBeVisible();
+    // Chromium makes a scroller that overflows and holds nothing focusable a keyboard stop: make this one overflow, without the clear button.
+    await page.addStyleTag({ content: '.table-empty-cell { min-width: 1500px; } [data-testid="search-empty-clear"] { display: none; }' });
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollWidth - e.clientWidth)).toBeGreaterThan(0);
+    await field.click();
+    const stops: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      await page.keyboard.press('Tab');
+      stops.push(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? ''));
+    }
+    expect(stops).not.toContain('library-scroller');
+    await page.mouse.click(400, 400); // the empty body
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe('library-table');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a header held in the 32 px at the right edge of a table narrower than its columns scrolls it sideways, the header with the body, and the line stays on a boundary', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await showItemPanel(app, page);
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollWidth - e.clientWidth)).toBeGreaterThan(0);
+    const clip = (await page.getByTestId('table-head-clip').boundingBox())!;
+    const cell = (await header(page, 'year').boundingBox())!;
+    const y = cell.y + cell.height / 2;
+    await page.mouse.move(cell.x + cell.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(clip.x + clip.width - 10, y, { steps: 6 }); // 10 px inside the edge, and held there
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft)).toBeGreaterThan(20);
+    const state = await page.evaluate(() => {
+      const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
+      const strip = document.querySelector<HTMLElement>('[data-testid="table-head-clip"]')!;
+      const line = document.querySelector('[data-testid="column-drop-line"]')?.getBoundingClientRect();
+      const edges = [...document.querySelectorAll('[data-testid="column-header"]')].flatMap((h) => [h.getBoundingClientRect().left, h.getBoundingClientRect().right]);
+      return { body: view.scrollLeft, head: strip.scrollLeft, line: line ? line.left + line.width / 2 : null, edges };
+    });
+    expect(state.head).toBe(state.body); // the header follows the body
+    expect(state.line, 'a line is shown').not.toBeNull();
+    expect(state.edges.some((x) => Math.abs(x - state.line!) < 1.5), 'and it stands on a column boundary of the scrolled header').toBe(true);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(dropLine(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '추가일'];
 const setting = (page: Page, key: string) => page.evaluate((k) => window.learn.settings.get({ key: k }).then((r) => (r.ok ? r.data : 'failed')), key);
 const storedOrder = async (page: Page) => ((await setting(page, 'library.columns')) as { order: string[] } | null)?.order ?? null;

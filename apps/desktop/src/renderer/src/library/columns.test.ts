@@ -20,10 +20,14 @@ describe('column configuration (M4 spec 3.2)', () => {
     const cfg = parseColumnConfig({ visible: ['title'], order: [], widths: { creators: 20, year: 2000, size: 81.6, title: 400, tags: 50, type: 'wide' } });
     expect(cfg.widths).toEqual({ creators: 96, year: 1200, size: 82 });
   });
-  it('drops a width whose id is not a known column or whose value is not a number, so the stored record stays small (Q-95)', () => {
+  it('drops a width whose id is not a known column or whose value is not a number, so the stored record stays small', () => {
     const junk = Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`gone-${i}`, 100]));
     const cfg = parseColumnConfig({ visible: ['title'], order: [], widths: { ...junk, year: 70, size: Number.NaN, type: '88' } });
     expect(cfg.widths).toEqual({ year: 70 });
+  });
+  it('keeps the known widths of a stored record that has more keys than a write may carry', () => {
+    const many = Object.fromEntries(Array.from({ length: 70 }, (_, i) => [`gone-${i}`, 100]));
+    expect(parseColumnConfig({ visible: ['title'], order: [], widths: { ...many, year: 70 } }).widths).toEqual({ year: 70 });
   });
   it('toggles a column in and out in catalogue order without changing its input; the title stays', () => {
     const base = defaultColumns();

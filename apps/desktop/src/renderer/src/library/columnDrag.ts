@@ -30,3 +30,12 @@ export function edgeScroll(x: number, left: number, right: number): number {
   if (x > right - EDGE_BAND) return Math.ceil(EDGE_SPEED * Math.min(1, (x - (right - EDGE_BAND)) / EDGE_BAND));
   return 0;
 }
+
+/** The pixels a wheel over the header moves the table by: ⇧ + wheel is a sideways step; lines (mode 1) are 16 px, pages (mode 2) the view's. */
+export function wheelSteps(e: { deltaX: number; deltaY: number; deltaMode: number; shiftKey: boolean }, view: { width: number; height: number }): { x: number; y: number } {
+  const swapped = e.shiftKey && e.deltaX === 0;
+  const unit = (page: number) => (e.deltaMode === 2 ? page : e.deltaMode === 1 ? 16 : 1);
+  const x = swapped ? e.deltaY : e.deltaX;
+  const y = swapped ? 0 : e.deltaY;
+  return { x: x * unit(view.width), y: y * unit(view.height) };
+}

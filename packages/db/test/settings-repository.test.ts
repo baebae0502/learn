@@ -30,6 +30,14 @@ describe('SettingsRepository', () => {
       .toBe('{"column":"year","direction":"desc"}');
   });
 
+  it('reads library.columns with more widths than a write may carry, so the renderer can clean it instead of losing it', () => {
+    const widths = Object.fromEntries(Array.from({ length: 70 }, (_, i) => [i === 0 ? 'year' : `later-${i}`, 70]));
+    const stored = { visible: ['title'], order: [], widths };
+    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('library.columns', JSON.stringify(stored));
+    expect(repo.get('library.columns')).toEqual(stored);
+    expect(() => repo.set('library.columns', stored)).toThrow();
+  });
+
   it('overwrites a value and keeps an explicit null distinct from missing', () => {
     repo.set('ui.lastOpenItemId', newId());
     repo.set('ui.lastOpenItemId', null);

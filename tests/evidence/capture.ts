@@ -100,10 +100,23 @@ export async function focusApp(app: ElectronApplication): Promise<void> {
 
 /** CGWindowID of the main window (or another of ours): getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
 export async function cgWindowId(app: ElectronApplication, kind: 'main' | 'settings' = 'main'): Promise<string> {
-  const sourceId = await app.evaluate(
-    ({ BrowserWindow }, k) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(`window=${k}`))?.getMediaSourceId() ?? '',
-    kind,
-  );
+  const ask = () =>
+    app.evaluate(
+      ({ BrowserWindow }, k) => {
+        const open = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+        // A window that went to another page (the state board is the main window on `?window=gallery`) no longer names its kind: the
+        // only window there is, is the main one.
+        const win = open.find((w) => w.webContents.getURL().includes(`window=${k}`)) ?? (k === 'main' && open.length === 1 ? open[0] : undefined);
+        return win?.getMediaSourceId() ?? '';
+      },
+      kind,
+    );
+  let sourceId = await ask();
+  // The id can be empty for a moment after a window changed; ask once more before giving up.
+  if (!/^window:\d+:/.test(sourceId)) {
+    await sleep(300);
+    sourceId = await ask();
+  }
   const m = /^window:(\d+):/.exec(sourceId);
   if (!m) throw new Error(`unexpected media source id: ${JSON.stringify(sourceId)}`);
   return m[1]!;

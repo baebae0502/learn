@@ -9,19 +9,31 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows,
+  FIXTURES, NativeInputNotPermitted, addToCollection, bringFinderToFront, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS, itemTarget, type CommandContextState } from '../../packages/domain/src/commands';
 import { contextMenuEntries } from '../../apps/desktop/src/main/menu/context-entries';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { IS_MAC, allShots, captureOpenSubmenu, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, pressEscape, tryExec, writeJson } from './capture';
+import { contrast, type Rgba } from '../../apps/desktop/src/renderer/src/design/color';
+import { finderDrag } from '../e2e/dnd-helpers';
+import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenSubmenu, captureOpenPopupSubmenu, focusApp, fullScreenShot, movePointer, nativeWindowShot, pngPixels, pressEscape, tryExec, writeJson, type ManifestEntry } from './capture';
+import { decodePng } from './png';
 
 const TAG = { tag: '@organize' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4');
 const results: Record<string, unknown> = {};
+/** Captures that could not be taken (macOS only): data for the reader of the results, never a failed check. */
+const shotFailures: Array<{ name: string; kind: string; description: string; error: string }> = [];
+results['shotFailures'] = shotFailures;
+const noted = (name: string, entries: ManifestEntry[]): ManifestEntry[] => {
+  for (const e of entries) if (e.file === null && e.error) shotFailures.push({ name, kind: e.kind, description: e.description, error: e.error });
+  return entries;
+};
+/** page + window + screen shots, the failed ones listed in `shotFailures`. */
+const shots = async (app: Parameters<typeof allShots>[0], page: Page, name: string, description: string): Promise<ManifestEntry[]> => noted(name, await allShots(app, page, name, description));
 /** Every check's verdict and the value it was judged on, in the order measured (asserted by the last test). */
 const checks: Record<string, { ok: boolean; value: unknown }> = {};
 const save = () => writeJson('m5-organize.json', { ...results, checks, platform: `${process.platform}-${process.arch}`, at: new Date().toISOString() }, 'M5 organize measurements');
@@ -102,7 +114,7 @@ test('M5 sidebar: rows, gutter and chevron, selection neutral and accent — lig
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(s.page, theme);
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-05-sidebar-tree-${theme}`, `sidebar: tree open with 6장 selected, table focused (${theme})`);
+    await shots(s.app, s.page, `m5-05-sidebar-tree-${theme}`, `sidebar: tree open with 6장 selected, table focused (${theme})`);
   }
   await setTheme(s.page, 'light');
 });
@@ -121,7 +133,7 @@ test('M5 sidebar: the row being named — the field and the whole default name s
     await setTheme(s.page, theme);
     await expect(input).toBeFocused();
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-05-sidebar-edit-${theme}`, `sidebar: a new collection being named, the default name selected (${theme})`);
+    await shots(s.app, s.page, `m5-05-sidebar-edit-${theme}`, `sidebar: a new collection being named, the default name selected (${theme})`);
   }
   await s.page.keyboard.press('Escape');
   await expect(input).toHaveCount(0);
@@ -150,7 +162,7 @@ test('M5 sidebar: the hint under 컬렉션 when there are none, and the special 
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(t.page, theme);
       if (IS_MAC) await focusApp(t.app);
-      await allShots(t.app, t.page, `m5-05-sidebar-hint-${theme}`, `sidebar: no collections, the hint (${theme})`);
+      await shots(t.app, t.page, `m5-05-sidebar-hint-${theme}`, `sidebar: no collections, the hint (${theme})`);
     }
   } finally {
     await t.app.close().catch(() => {});
@@ -215,7 +227,7 @@ test('M5 tags: the selector, its chips and the table dots — light and dark', T
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(s.page, theme);
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-06-tags-selector-${theme}`, `tags: the selector with 수용체 chosen and the table dots, the first row selected (${theme})`);
+    await shots(s.app, s.page, `m5-06-tags-selector-${theme}`, `tags: the selector with 수용체 chosen and the table dots, the first row selected (${theme})`);
   }
   await setTheme(s.page, 'light');
 });
@@ -386,7 +398,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(s.page, theme);
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-07-panel-item-${theme}`, `item panel: tags and collections of one item (${theme})`);
+    await shots(s.app, s.page, `m5-07-panel-item-${theme}`, `item panel: tags and collections of one item (${theme})`);
   }
 
   await setTheme(s.page, 'light');
@@ -409,7 +421,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
     await setTheme(s.page, theme);
     await expect(s.page.getByTestId('tag-input')).toBeFocused();
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-07-panel-tag-add-${theme}`, `item panel: the add field with suggestions, the first chosen (${theme})`);
+    await shots(s.app, s.page, `m5-07-panel-tag-add-${theme}`, `item panel: the add field with suggestions, the first chosen (${theme})`);
   }
   await s.page.keyboard.press('Escape');
 
@@ -432,7 +444,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
       check('컬렉션에 추가 ▾: a level indents 16 px, the collection holding all three is marked and off', v.step === 16 && v.checked === 'true' && v.disabled === 'true', v);
     });
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-07-panel-multi-menu-${theme}`, `item panel: three items with 컬렉션에 추가 ▾ open (${theme})`);
+    await shots(s.app, s.page, `m5-07-panel-multi-menu-${theme}`, `item panel: three items with 컬렉션에 추가 ▾ open (${theme})`);
     await s.page.keyboard.press('Escape');
     await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toHaveCount(0);
   }
@@ -505,6 +517,29 @@ test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)',
     return;
   }
   await focusApp(s.app);
+  // The menu is for `sample` alone: an earlier test leaves several rows selected, and a right click inside a selection keeps it, which
+  // disables 열기, Finder에서 보기 and 사본 내보내기 — macOS skips disabled rows, so the ↓ count would land elsewhere. A plain
+  // click first makes it the only selection; main's reported context must say so before the rows are derived from it.
+  await rowByTitle(s.page, 'sample').click();
+  let selectedRows = -1;
+  for (let i = 0; i < 20 && selectedRows !== 1; i++) {
+    selectedRows = await s.page.locator('[data-testid="item-row"][aria-selected="true"]').count();
+    if (selectedRows !== 1) await sleep(150);
+  }
+  check('item menu: a plain click leaves `sample` as the only selected row', selectedRows === 1, { selectedRows });
+  const reportedSelection = await within(
+    (async () => {
+      for (let i = 0; i < 20; i++) {
+        const ctx = await s.app.evaluate(() => (globalThis as { __learnMenuContext?: CommandContextState }).__learnMenuContext ?? null);
+        if (ctx?.selectionCount === 1) return 1;
+        await sleep(150);
+      }
+      return null;
+    })(),
+    5000,
+    null,
+  );
+  results['itemMenuSelection'] = { selectedRows, reportedSelection };
   // The ↓ count comes first, from the entries main builds for this menu, before any native menu is open (a pop-up runs a nested
   // menu-tracking loop in main, and whether main answers Playwright during it is not known). Last resort: the registry's order.
   const derivedRows = await itemMenuRows('darwin');
@@ -582,12 +617,85 @@ test('M5 drag and drop: the overlay stops at the sidebar — light and dark', TA
       });
     }
     if (IS_MAC) await focusApp(s.app);
-    await allShots(s.app, s.page, `m5-08-drop-overlay-${theme}`, `drop overlay beside the sidebar (${theme})`);
+    await shots(s.app, s.page, `m5-08-drop-overlay-${theme}`, `drop overlay beside the sidebar (${theme})`);
     await drag(s.page, 'dragleave', files);
     await expect(overlay).toHaveCount(0);
+    // A probe that cannot run (a tree row that is not there, a drag the helper cannot hold) is data; only what it measures can fail.
+    await rowDropShots(theme).catch((e: unknown) => {
+      results[`rowDrop-${theme}-error`] = errorText(e);
+    });
   }
   await setTheme(s.page, 'light');
 });
+
+const toRgba = ([r, g, b]: readonly number[]): Rgba => ({ r: r! / 255, g: g! / 255, b: b! / 255, a: 1, clamped: false });
+const ratioOf = (fg: readonly number[], bg: readonly number[]) => Math.round(contrast(toRgba(fg), toRgba(bg)) * 100) / 100;
+
+/**
+ * A Finder file held over a collection row, on the sidebar's real material: first in the key window, then with Finder in front
+ * (the state a Finder drop is always seen in: the window is neither key nor main). The pixels are judged only where the capture
+ * exists — a shot that could not be taken is in `shotFailures`, not a failed check.
+ */
+async function rowDropShots(theme: 'light' | 'dark'): Promise<void> {
+  const row = treeRow(s.page, c6);
+  const onRow = await finderDrag(s.page, PDF);
+  const measure = async (label: string, shot: ManifestEntry | undefined): Promise<void> => {
+    if (!shot?.file) {
+      results[`rowDrop-${theme}-${label}`] = null;
+      return;
+    }
+    const geo = await row.evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      const count = e.querySelector('.count');
+      const probe = document.createElement('canvas').getContext('2d')!;
+      probe.canvas.width = probe.canvas.height = 1;
+      let colour: number[] | null = null;
+      if (count) {
+        probe.fillStyle = getComputedStyle(count).color;
+        probe.fillRect(0, 0, 1, 1);
+        colour = [...probe.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+      }
+      return { x: r.left, y: r.top, w: r.width, h: r.height, width: innerWidth, count: colour };
+    });
+    const scale = decodePng(fs.readFileSync(path.join(EVIDENCE_ROOT, shot.file))).width / geo.width;
+    const at = (x: number, y: number) => [Math.round(x * scale), Math.round(y * scale)] as const;
+    const [ring, material, fill] = await pngPixels(s.page, shot.file, [at(geo.x + 1, geo.y + geo.h / 2), at(geo.x - 4, geo.y + geo.h / 2), at(geo.x + geo.w / 2, geo.y + 4)]);
+    const v = { ring, material, fill, count: geo.count, ringOnMaterial: ratioOf(ring!, material!), countOnFill: geo.count ? ratioOf(geo.count, fill!) : null, scale };
+    results[`rowDrop-${theme}-${label}`] = v;
+    check(`row drop ${theme}, ${label}: the ring reads 3:1 on the sidebar material`, v.ringOnMaterial >= 3, v);
+    if (v.countOnFill !== null) check(`row drop ${theme}, ${label}: the count reads 4.5:1 on the drop fill`, v.countOnFill >= 4.5, v);
+  };
+  try {
+    await onRow.send('dragEnter', s.page.getByTestId('content'));
+    await onRow.send('dragOver', row);
+    // No marker on a row a file is held over is the defect this part looks for.
+    check(`row drop ${theme}: a Finder file held over a collection row marks it`, await row.getAttribute('data-drop-target').then((v) => v !== null), null);
+    if (IS_MAC) await focusApp(s.app);
+    const key = await shots(s.app, s.page, `m5-08-row-drop-${theme}`, `a Finder file over a collection row on the material, key window (${theme})`);
+    await measure('key window', key[1]);
+    if (IS_MAC) {
+      await bringFinderToFront();
+      // Whether the window really went inactive is observed, not assumed: when it did not, the shot is still taken and says so.
+      const inactive = await within(
+        expect(s.page.locator('html')).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).then(() => true),
+        6000,
+        false,
+      );
+      await onRow.send('dragOver', row); // the marker held after the switch
+      await sleep(500); // the inactive repaint
+      const entries = noted(
+        `m5-08-row-drop-notmain-${theme}`,
+        [await nativeWindowShot(s.app, `m5-08-row-drop-notmain-${theme}`, `the same with Finder in front (${theme})`, { focus: false }), await fullScreenShot(`m5-08-row-drop-notmain-${theme}`, `the same, full screen (${theme})`)],
+      );
+      results[`rowDrop-${theme}-notMain`] = { windowNotMain: inactive };
+      await measure('Finder in front', entries[0]);
+      await focusApp(s.app);
+    }
+  } finally {
+    await onRow.cancel().catch(() => {});
+    await onRow.close().catch(() => {});
+  }
+}
 
 test('M5 drag and drop: the drop rows and the drag image on the state board (part 5) — light and dark', TAG, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m5-board-'));
@@ -600,7 +708,7 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
       await t.page.goto(`learn://app/index.html?window=gallery&part=5&platform=${process.platform}`);
       await t.page.getByTestId('gallery').waitFor();
       await guard('board: the three drop targets are the --accent-ring ring over the soft accent fill; the badge is white on the accent', async () => {
-        const accent = await tokenColor(t.page, '--accent-ring');
+        const accent = await tokenColor(t.page, '--accent');
         const ringColor = await tokenColor(t.page, '--accent-ring');
         const soft = await tokenColor(t.page, '--accent-soft');
         const on = await tokenColor(t.page, '--text-on-accent');
@@ -621,7 +729,7 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
         check(`board ${theme}: the drop rows and the badge`, ring(v.row) && ring(v.heading) && ring(v.table) && v.badge.fill === accent && v.badge.color === on && v.titleWidth <= 240, { ...v, accent, soft, on });
       });
       if (IS_MAC) await focusApp(t.app);
-      await allShots(t.app, t.page, `m5-08-board-${theme}`, `state board part 5: drag image and drop targets (${theme})`);
+      await shots(t.app, t.page, `m5-08-board-${theme}`, `state board part 5: drag image and drop targets (${theme})`);
     }
   } finally {
     await t.app.close().catch(() => {});
@@ -663,7 +771,7 @@ test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 �
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(t.page, theme);
       if (IS_MAC) await focusApp(t.app);
-      await allShots(t.app, t.page, `m5-09-table-legacy-scrollbar-${theme}`, `table of 150 rows with a legacy scroll bar, header above it (${theme})`);
+      await shots(t.app, t.page, `m5-09-table-legacy-scrollbar-${theme}`, `table of 150 rows with a legacy scroll bar, header above it (${theme})`);
     }
     await setTheme(t.page, 'light');
 
@@ -688,7 +796,7 @@ test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 �
     });
     for (const theme of ['light', 'dark'] as const) {
       await setTheme(t.page, theme);
-      await allShots(t.app, t.page, `m5-09-column-drag-${theme}`, `header cell 추가일 dragged before 저자 with its insertion line (${theme})`);
+      await shots(t.app, t.page, `m5-09-column-drag-${theme}`, `header cell 추가일 dragged before 저자 with its insertion line (${theme})`);
     }
     await t.page.keyboard.press('Escape');
     await t.page.mouse.up();

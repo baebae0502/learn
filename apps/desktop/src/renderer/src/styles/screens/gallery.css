@@ -9,6 +9,10 @@
     gap: var(--space-24) var(--space-32);
     align-content: start;
   }
+  /* The board rides in the main window kind: its hidden title bar keeps the traffic lights over the first 52 px (design-spec 2.1). */
+  :root[data-platform='darwin'] .gallery {
+    padding-top: var(--toolbar-height);
+  }
   /* Board sections only: RAC's MenuSection is a <section> too. */
   .gallery > section {
     display: flex;

@@ -383,6 +383,14 @@ test('the window overlay covers only the area right of the sidebar, and all of t
     // The sidebar keeps its own part of the window: over its top (traffic lights, toggle) there is no overlay.
     await finder.send('dragOver', page.getByTestId('sidebar-top'));
     await expect(overlay).toHaveCount(0);
+    await finder.cancel();
+    // A drag that comes into the window over the sidebar gets no overlay at all.
+    const sidebarBody = page.locator('[data-pane="sidebar"]');
+    await finder.send('dragEnter', sidebarBody);
+    await finder.send('dragOver', sidebarBody);
+    await expect(overlay).toHaveCount(0);
+    await finder.cancel();
+    await finder.send('dragEnter', content);
     await finder.send('dragOver', content);
     await expect(overlay).toBeVisible();
     await finder.cancel();

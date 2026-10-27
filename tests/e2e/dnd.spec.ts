@@ -250,6 +250,49 @@ test.describe('rows, collections and tag chips', () => {
   });
 });
 
+test('the viewed collection takes the drop marker like any target — the ring over the soft accent fill — while the tree holds the focus', async ({}, testInfo) => {
+  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { page } = t;
+    await importPaths(page, [PDF]);
+    const viewed = await createCollection(page, '표시 보는 곳');
+    await treeRow(page, viewed).click();
+    await expect(treeRow(page, viewed)).toHaveAttribute('aria-selected', 'true');
+    await expect(treeRow(page, viewed)).toBeFocused();
+    // Finder's files over the row being viewed (a drag of ours cannot get there: pressing a row to drag it makes it the view).
+    const files = await finderDrag(page, MP4);
+    await files.send('dragEnter', page.getByTestId('content'));
+    await files.send('dragOver', treeRow(page, viewed));
+    expect(await marked(page)).toEqual([`nav-collection-${viewed}`]);
+    const look = await treeRow(page, viewed).evaluate((row) => {
+      const probe = (css: string) => {
+        const el = document.createElement('div');
+        el.style.cssText = css;
+        row.parentElement!.append(el);
+        const style = getComputedStyle(el);
+        const out = { background: style.backgroundColor, shadow: style.boxShadow };
+        el.remove();
+        return out;
+      };
+      const style = getComputedStyle(row);
+      return {
+        background: style.backgroundColor,
+        shadow: style.boxShadow,
+        soft: probe('background: var(--accent-soft)').background,
+        accent: probe('background: var(--accent)').background,
+        ring: probe('box-shadow: inset 0 0 0 2px var(--accent-ring)').shadow,
+      };
+    });
+    expect(look.background, 'the soft fill, not the accent selection').toBe(look.soft);
+    expect(look.background).not.toBe(look.accent);
+    expect(look.shadow, 'the --accent-ring ring').toBe(look.ring);
+    await files.cancel();
+    await files.close();
+  } finally {
+    await t.app.close();
+  }
+});
+
 test('a refused drop is an error toast and changes nothing; a move whose second half is refused puts the first half back', async ({}, testInfo) => {
   const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -389,6 +432,17 @@ test('the window overlay covers only the area right of the sidebar, and all of t
     await finder.send('dragEnter', sidebarBody);
     await finder.send('dragOver', sidebarBody);
     await expect(overlay).toHaveCount(0);
+    await finder.cancel();
+    // The sidebar's foot (the tag selector) is inside the sidebar column and is no drop target: no overlay there either, and a drop does nothing.
+    await createTag(page, '오버레이 태그');
+    const foot = page.getByTestId('tag-selector');
+    const before = await libraryCount(page);
+    await finder.send('dragEnter', foot);
+    await finder.send('dragOver', foot);
+    await expect(overlay).toHaveCount(0);
+    await finder.send('drop', foot);
+    await page.waitForTimeout(2000);
+    expect(await libraryCount(page)).toBe(before);
     await finder.cancel();
     await finder.send('dragEnter', content);
     await finder.send('dragOver', content);
@@ -641,5 +695,52 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await release(page);
     await expect.poll(() => members(page, to)).toContain(id);
     await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
+  });
+  test('(g) after a mouse drop on a row far from the viewed one the tree has not scrolled, no row shows a keyboard ring, and the next key acts at once', async () => {
+    const { page } = s;
+    await specialRow(page, 'all').click();
+    await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
+    await treeBox().evaluate((e) => void (e.scrollTop = 1500));
+    await frames(page, 4);
+    const view = (await treeBox().boundingBox())!;
+    const ids: string[] = [];
+    for (const row of await page.locator('[data-testid^="nav-collection-"]').all()) {
+      const box = await row.boundingBox();
+      if (box && box.y >= view.y + 10 && box.y + box.height <= view.y + view.height - 10) ids.push((await row.getAttribute('data-testid'))!.replace('nav-collection-', ''));
+    }
+    const to = ids[Math.floor(ids.length / 2)]!;
+    const before = await treeBox().evaluate((e) => e.scrollTop);
+    expect(before, 'the viewed row is out of sight').toBeGreaterThan(1000);
+    const row = page.locator('[data-testid="item-row"]').nth(3);
+    const id = (await row.getAttribute('data-item-id'))!;
+    await dragTo(page, row, 'items', treeRow(page, to));
+    await expect.poll(() => members(page, to)).toContain(id);
+    await page.waitForTimeout(300); // React Aria moves its focus about 50 ms after the drop
+    expect(await treeBox().evaluate((e) => e.scrollTop), 'the tree did not scroll back to the viewed row').toBe(before);
+    expect(await page.locator('[data-focus-visible]').count(), 'no row shows a keyboard ring after a mouse drop').toBe(0);
+    await expect(specialRow(page, 'all'), 'the view stays').toHaveAttribute('aria-selected', 'true');
+    // The key is the user's own, however soon: the cursor is on the viewed row, so ↓ goes to the next special view and the view follows.
+    await page.keyboard.press('ArrowDown');
+    await expect(specialRow(page, 'unfiled')).toHaveAttribute('aria-selected', 'true');
+  });
+  test('(h) the tree is as tall as its rows: scrolled to its end it draws the last rows', async () => {
+    const { page } = s;
+    await specialRow(page, 'all').click();
+    await treeBox().evaluate((e) => void (e.scrollTop = 0));
+    await frames(page, 3);
+    const specials = await page.locator('[data-testid^="nav-scope-"]').count();
+    const rowHeight = (await specialRow(page, 'all').boundingBox())!.height;
+    // The collection rows (all 120 open), the special views and the 컬렉션 heading (36 px, sidebar/layout.ts).
+    const expected = (specials + tree.ids.length) * rowHeight + 36;
+    const total = await treeBox().evaluate((e) => e.scrollHeight);
+    expect(Math.abs(total - expected), `scrollHeight ${total} for about ${expected}`).toBeLessThanOrEqual(rowHeight);
+
+    await treeBox().evaluate((e) => void (e.scrollTop = e.scrollHeight));
+    await frames(page, 4);
+    const end = await treeBox().evaluate((e) => ({ top: e.scrollTop, height: e.clientHeight, size: e.scrollHeight }));
+    const drawn = await page.locator('[data-testid^="nav-collection-"]').evaluateAll((rows) => rows.map((r) => r.getBoundingClientRect().bottom));
+    const box = (await treeBox().boundingBox())!;
+    expect(drawn.length, 'rows are drawn at the end').toBeGreaterThanOrEqual(Math.floor(end.height / rowHeight) - 2);
+    expect(box.y + box.height - Math.max(...drawn), 'the last row ends at the tree\'s bottom').toBeLessThanOrEqual(rowHeight);
   });
 });

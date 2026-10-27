@@ -52,16 +52,42 @@ describe('dragState', () => {
     expect(dragState.get().kind).toBeNull();
   });
 
-  it('remembers that a drop was just handled, for half a second', () => {
+  it('a drag of our own starts clean: Finder files that left the window, ⌥ and a native drag whose source went away are not carried over', () => {
+    for (const begin of [() => dragState.beginItems(['a']), () => dragState.beginCollection('c1'), () => dragState.beginTag('t1')]) {
+      dragState.setFilesOver(true);
+      dragState.setAlt(true);
+      dragState.setNative(true);
+      begin();
+      expect(dragState.filesOver()).toBe(false);
+      expect(dragState.alt()).toBe(false);
+      expect(dragState.native()).toBe(false);
+      dragState.end();
+    }
+  });
+
+  it('a drop arms one focus move: only the dropped-on key takes it, once', () => {
+    dragState.armDropFocus('stat');
+    expect(dragState.takeDropFocus('bio')).toBeNull(); // another row's focus is the user's
+    expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
+    expect(dragState.takeDropFocus('stat')).toBeNull(); // consumed
+  });
+
+  it('it tells a drop by mouse from one by keyboard, and the next pointer or key forgets the guard', () => {
+    dragState.setPointerDrop(true);
+    dragState.armDropFocus('stat');
+    expect(dragState.takeDropFocus('stat')).toEqual({ pointer: true });
+    dragState.armDropFocus('stat');
+    dragState.clearDropFocus(); // the next pointerdown or keydown
+    expect(dragState.takeDropFocus('stat')).toBeNull();
+    dragState.setPointerDrop(false);
+  });
+
+  it('does not run on a timer: the guard is still there long after a drop', () => {
     vi.useFakeTimers();
     try {
-      expect(dragState.justDropped()).toBe(false);
-      dragState.markDrop();
-      expect(dragState.justDropped()).toBe(true);
-      vi.advanceTimersByTime(499);
-      expect(dragState.justDropped()).toBe(true);
-      vi.advanceTimersByTime(2);
-      expect(dragState.justDropped()).toBe(false);
+      dragState.armDropFocus('stat');
+      vi.advanceTimersByTime(60_000);
+      expect(dragState.takeDropFocus('stat')).not.toBeNull();
     } finally {
       vi.useRealTimers();
     }

@@ -75,8 +75,15 @@ export function createDropActions(deps: DropDeps): DropActions {
         const moved = new Set([...removals.flatMap((r) => r.itemIds), ...added]);
         if (moved.size === 0) return;
         deps.undoToast(t.organize.dnd.moved(moved.size, target.name), async () => {
-          await deps.undoAdds(targetId, added);
+          // The target may be gone by now: the rows still go back to where they were, and the failure is told after.
+          let failure: { error: unknown } | null = null;
+          try {
+            await deps.undoAdds(targetId, added);
+          } catch (e) {
+            failure = { error: e };
+          }
           await deps.undoRemovals(removals);
+          if (failure) deps.failed(failure.error);
         });
       } catch (e) {
         deps.failed(e);

@@ -26,7 +26,7 @@ function renamingKey(): string | null {
  * is no drop target). Rows are the only targets, each over its whole height; anything else is the root, which refuses.
  */
 type TargetDelegate = NonNullable<Parameters<typeof useDragAndDrop>[0]['dropTargetDelegate']>;
-const rowTargets: TargetDelegate = {
+export const rowTargets: TargetDelegate = {
   getDropTargetFromPoint(_x, y) {
     const tree = document.querySelector<HTMLElement>('.sidebar-tree');
     if (!tree) return { type: 'root' };
@@ -40,7 +40,7 @@ const rowTargets: TargetDelegate = {
 };
 
 /** What the tree answers while a drag is over a row (rules.ts has the reasons). */
-function treeDropOperation(target: DropTarget, types: DragTypes, allowed: DropOperation[]): DropOperation {
+export function treeDropOperation(target: DropTarget, types: DragTypes, allowed: DropOperation[]): DropOperation {
   // Only "on" a row: the tree also offers "between" targets, which it never takes — a collection's place is its name's.
   if (target.type !== 'item' || target.dropPosition !== 'on') return 'cancel';
   const key = String(target.key);
@@ -56,8 +56,8 @@ function treeDropOperation(target: DropTarget, types: DragTypes, allowed: DropOp
 }
 
 async function onItemDrop(e: DroppableCollectionOnItemDropEvent, onFiles: FilesDropHandler): Promise<void> {
-  dragState.markDrop();
   const key = String(e.target.key);
+  dragState.armDropFocus(key);
   const alt = dragState.alt(); // read before any wait: the next event may change it
   const first = e.items[0];
   if (first?.kind === 'text') {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
 import {
-  Button, ListLayout, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
+  Button, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
 } from 'react-aria-components';
 import type { LibraryScope } from '@learn/domain';
 import { api, unwrap } from '../api';
@@ -22,6 +22,7 @@ import { NameField } from './NameField';
 import { DRAFT_KEY, SCOPE_KEYS, ancestorIds, keyOfScope, scopeOfKey, visibleCollectionKeys, type SpecialKind, type SpecialRow } from './rows';
 import { NEW_COLLECTION_NAME } from './nameEdit';
 import { useSidebarEdit } from './sidebarEdit';
+import { TreeSectionsLayout } from './treeLayout';
 import { treeKeyAction } from './treeKeys';
 import { saveExpanded } from './useExpanded';
 
@@ -318,8 +319,12 @@ export function SidebarTree(props: SidebarTreeProps) {
     const el = e.target as HTMLElement;
     if (!el.matches('[role="row"][data-key]')) return;
     const key = el.dataset['key']!;
-    if (dragState.justDropped()) {
-      // React Aria moves the focus to the row that was dropped on: the view stays where it was, and so does the cursor.
+    const dropFocus = dragState.takeDropFocus(key);
+    if (dropFocus) {
+      // React Aria moved the focus to the row that was dropped on: the view stays where it was, and so does the cursor. After
+      // a mouse drop the cursor goes back quietly — React Aria set the keyboard modality for its own move, which would scroll
+      // the tree to the cursor and draw a keyboard ring on it.
+      if (dropFocus.pointer) document.dispatchEvent(new PointerEvent('pointermove'));
       if (key !== selectedKey) tap.current?.selectionManager.setFocusedKey(selectedKey);
       return;
     }
@@ -447,7 +452,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       <div className="section-label" aria-hidden="true">
         {t.shell.libraryHeading}
       </div>
-      <Virtualizer layout={ListLayout} layoutOptions={layoutOptions}>
+      <Virtualizer layout={TreeSectionsLayout} layoutOptions={layoutOptions}>
         <Tree
           ref={treeRef}
           aria-label={t.organize.sidebar.tree}

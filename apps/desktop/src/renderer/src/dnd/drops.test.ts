@@ -144,6 +144,20 @@ describe('rows dropped on a collection row (spec 8.2)', () => {
     expect(deps.undoToast).not.toHaveBeenCalled();
   });
 
+  it('an undo whose target was deleted since still puts the removed rows back, then says the undo failed', async () => {
+    const gone = new Error('collection gone');
+    const { deps, calls, actions } = setup({
+      scope: () => IN_BIO,
+      undoAdds: vi.fn<DropDeps['undoAdds']>(async () => Promise.reject(gone)),
+    });
+    await actions.itemsOn('c6', ['a', 'b'], 'move');
+    const [, undo] = toast(deps);
+    await (undo as () => Promise<void>)();
+    expect(calls).toEqual(['remove', 'add', 'undoRemovals']);
+    expect(deps.undoRemovals).toHaveBeenCalledWith([{ collectionId: 'bio', itemIds: ['a', 'b'] }]);
+    expect(deps.failed).toHaveBeenCalledExactlyOnceWith(gone);
+  });
+
   it('a refusal half way through the first half puts back what was taken out so far — and the second half never starts', async () => {
     const boom = new Error('x');
     const { deps, actions } = setup({

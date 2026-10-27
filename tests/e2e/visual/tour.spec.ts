@@ -145,6 +145,32 @@ test('quick search: 초성 results with the count and the title mark, and no res
   }
 });
 
+test('quick search in a collection: no results names the view and offers the whole library (library.html ?state=noresults)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-col="createdAt"]')];
+  const field = s.page.getByTestId('search-field').locator('input');
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    await seedMetadata(s.page, items[0]!.id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [items[0]!.id]);
+    await s.page.getByTestId(`nav-collection-${bio}`).click();
+    await expect(s.page.getByTestId('toolbar-title')).toHaveText('분자생물학');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await runMenuCommand(s.app, 'library.find');
+      await expect(field).toBeFocused();
+      await field.fill('효소 억제제');
+      await expect(s.page.getByTestId('search-empty-everywhere')).toBeVisible();
+      await shoot(s.page, `search-none-collection-${theme}`, { mask: dates() });
+      await field.fill('');
+      await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('keyboard focus: sidebar row and table row cursor', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {
@@ -414,6 +440,31 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
     await expect(longSub).toContainText('김하늘');
     await expect.poll(() => longSub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     await shoot(s.page, 'palette-long-light', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const ids = await paletteLibrary(s, testInfo.outputPath('media'));
+    const bio = await createCollection(s.page, '분자생물학');
+    const ch6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    await createCollection(s.page, '7장 · 세포 주기', bio);
+    await addToCollection(s.page, ch6, [ids[1]!]);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await runMenuCommand(s.app, 'app.palette');
+      await s.page.getByTestId('palette-input').fill('신호');
+      await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
+      await expect(s.page.getByTestId('palette-collection')).toHaveCount(1);
+      await expect(s.page.locator('.palette .p-group')).toHaveText(['자료', '컬렉션', '명령']);
+      await shoot(s.page, `palette-collections-${theme}`, { mask: dates() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('palette')).toBeHidden();
+    }
   } finally {
     await s.app.close();
   }

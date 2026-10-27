@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, bringFinderToFront, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows,
+  FIXTURES, NativeInputNotPermitted, addToCollection, bringAppToFront, bringFinderToFront, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, nativeKeystroke, runMenuCommand, seedLibrary, seedMetadata, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS, itemTarget, type CommandContextState } from '../../packages/domain/src/commands';
@@ -808,6 +808,103 @@ test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 �
     fs.rmSync(dir, { recursive: true, force: true });
   }
   save();
+});
+
+// ⌘K lists 컬렉션 between 자료 and 명령, and the quick search of a collection names its view (M5, spec 7.1, 7.2), in
+// the shared session: 형광 is a word of its own in three titles and one collection, so the palette finds all three groups.
+// A capture or a keystroke that cannot be made is data (`via`, shotFailures), never a failed check.
+test("M5 organize: ⌘K lists 컬렉션 between 자료 and 명령; a collection view's no-results names the view and offers 내 라이브러리 전체에서 찾기", TAG, async () => {
+  const value: Record<string, unknown> = {};
+  results['searchAndPalette'] = value;
+  const palette = s.page.getByTestId('palette');
+  const field = s.page.getByTestId('search-field').locator('input');
+  const theme = await s.page.locator('html').getAttribute('data-theme');
+  await setTheme(s.page, 'light');
+  try {
+    const listed = await s.page.evaluate(() => window.learn.library.list());
+    if (!listed.ok) throw new Error(`library.list failed: ${listed.code}`);
+    const titles = ['현미경 6장 · 형광 영상', '세포 형광 그림 모음', '형광 증폭의 정량 모델'];
+    for (const [i, title] of titles.entries()) await seedMetadata(s.page, listed.data[i]!.id, { creators: [] }, title);
+    const lab = await createCollection(s.page, '형광 현미경', bio);
+    await addToCollection(s.page, lab, [listed.data[0]!.id]);
+    await s.page.getByTestId('nav-scope-all').click();
+    await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+
+    await guard('search: the placeholder names the tags', async () => {
+      const placeholder = await field.getAttribute('placeholder');
+      value['placeholder'] = placeholder;
+      check('search: the placeholder names the tags', placeholder === '제목, 저자, 태그 검색', { placeholder });
+    });
+    let via = 'menu';
+    if (IS_MAC) {
+      try {
+        await bringAppToFront(s.app);
+        await nativeKeystroke(s.app, 'k', ['command']);
+        via = 'keystroke';
+      } catch {
+        await runMenuCommand(s.app, 'app.palette');
+      }
+    } else await runMenuCommand(s.app, 'app.palette');
+    await expect(palette).toBeVisible({ timeout: 5_000 });
+    await expect(s.page.getByTestId('palette-input')).toBeFocused({ timeout: 5_000 });
+    await s.page.keyboard.insertText('형광');
+    await guard('palette: 자료 → 컬렉션 → 명령, the folder row with its path', async () => {
+      await expect(s.page.getByTestId('palette-collection')).toHaveCount(1, { timeout: 5_000 });
+      const row = s.page.getByTestId('palette-collection');
+      const v = {
+        via,
+        groups: await s.page.locator('.palette .p-group').allTextContents(),
+        path: await row.locator('.p-sub').textContent(),
+        marked: await row.locator('.p-title mark').textContent(),
+        icon: await row.locator('svg').first().getAttribute('class'),
+        font: await row.locator('.p-title').evaluate((el) => getComputedStyle(el).fontFamily),
+      };
+      value['group'] = v;
+      check('palette: 자료 → 컬렉션 → 명령, the folder row with its path', v.groups.join('|') === '자료|컬렉션|명령' && v.path === '분자생물학 안 · 1개' && v.marked === '형광' && /lucide-folder\b/.test(v.icon ?? ''), v);
+    });
+    await shots(s.app, s.page, 'm5-10-palette-collections', '⌘K 형광: 자료 → 컬렉션 → 명령 (light)');
+    if (IS_MAC) {
+      await setTheme(s.page, 'dark');
+      noted('m5-10-palette-collections-dark', [await nativeWindowShot(s.app, 'm5-10-palette-collections-dark', '⌘K 형광: 자료 → 컬렉션 → 명령 (dark)')]);
+      await setTheme(s.page, 'light');
+    }
+    // The cursor starts on the first 자료 row; the collection row is the one right after the last of them.
+    const itemRows = await s.page.getByTestId('palette-result').count();
+    for (let i = 0; i < itemRows; i++) await s.page.keyboard.press('ArrowDown');
+    await s.page.keyboard.press('Enter');
+    await guard('palette: ↩ on the collection row shows it', async () => {
+      await expect(palette).toBeHidden({ timeout: 5_000 });
+      const title = await s.page.getByTestId('toolbar-title').textContent();
+      value['shown'] = title;
+      check('palette: ↩ on the collection row shows it', title === '형광 현미경', { title, itemRows });
+    });
+    await guard("search: the collection view's no-results names the view and has both actions", async () => {
+      await runMenuCommand(s.app, 'library.find');
+      await field.fill('쥐똥나무 열매');
+      const empty = s.page.getByTestId('search-empty');
+      await expect(empty).toBeVisible({ timeout: 5_000 });
+      const v = {
+        body: await empty.locator('.pe-text').textContent(),
+        buttons: await empty.locator('.btn').allTextContents(),
+      };
+      value['noResults'] = v;
+      check("search: the collection view's no-results names the view and has both actions", v.body?.startsWith('‘형광 현미경’의 제목·저자·태그') === true && v.buttons.join('|') === '검색어 지우기|내 라이브러리 전체에서 찾기', v);
+    });
+    await shots(s.app, s.page, 'm5-10-search-none-collection', '‘쥐똥나무 열매’: no results in a collection, two actions (light)');
+    await s.page.getByTestId('search-empty-everywhere').click();
+    await guard('search: 내 라이브러리 전체에서 찾기 returns the view and keeps the query', async () => {
+      const v = {
+        title: await s.page.getByTestId('toolbar-title').textContent(),
+        query: await field.inputValue(),
+      };
+      value['everywhere'] = v;
+      check('search: 내 라이브러리 전체에서 찾기 returns the view and keeps the query', v.title === '내 라이브러리' && v.query === '쥐똥나무 열매', v);
+    });
+    await s.page.getByTestId('search-empty-clear').click();
+  } finally {
+    save();
+    if (theme === 'dark') await setTheme(s.page, 'dark');
+  }
 });
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {

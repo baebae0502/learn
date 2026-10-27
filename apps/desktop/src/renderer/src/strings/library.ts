@@ -1,6 +1,12 @@
 import { VIDEO_FORMATS } from '@learn/domain';
 import { waGwa } from './josa';
 
+/**
+ * The fields the quick search reads (spec 7.1). U+2060 before each "·": a line may end with the dot, never start with it
+ * (U+00B7 is no non-starter under line-break: strict, and keep-all only joins letters).
+ */
+const SEARCHED_FIELDS = ['제목', '저자', '태그', '출판사', '원래\u00a0이름', '초록', '메모'].join('\u2060·');
+
 export const library = {
   table: '자료 목록',
   listFailed: '자료 목록을 불러오지 못했습니다',
@@ -33,6 +39,6 @@ export const library = {
    * With a tag filter on, how many tags narrowed the result (spec 3.6).
    */
   searchEmptyBody: (view: string | null, tagCount: number) =>
-    `${view === null ? '' : `‘${view}’의 `}제목·저자·태그·출판사·원래 이름·초록·메모에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
+    `${view === null ? '' : `‘${view}’의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
   searchClear: '검색어 지우기',
 } as const;

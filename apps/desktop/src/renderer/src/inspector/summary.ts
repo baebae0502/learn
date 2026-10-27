@@ -23,7 +23,7 @@ export function libraryStats(scope: string, items: readonly LibraryItem[]): stri
   if (items.length === 0) return t.inspector.statsNone(scope);
   const k = tally(items);
   const kinds = [k.pdf ? t.inspector.kindCount(t.library.type.pdf, k.pdf) : '', k.video ? t.inspector.kindCount(t.library.type.video, k.video) : ''].filter(Boolean);
-  return t.inspector.stats(scope, items.length, kinds.join(' · '), bound(formatSize(k.bytes)));
+  return t.inspector.stats(scope, items.length, kinds.join('\u00a0· '), bound(formatSize(k.bytes)));
 }
 
 /** Several selected: "PDF 2개 · 동영상 1개 · 합계 9.8 MB". */
@@ -35,5 +35,5 @@ export function multiSummary(items: readonly LibraryItem[]): string {
     t.inspector.total(bound(formatSize(k.bytes))),
   ]
     .filter(Boolean)
-    .join(' · ');
+    .join('\u00a0· ');
 }

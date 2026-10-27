@@ -148,7 +148,7 @@ test('the search is limited to the view and the tag filter; its empty state name
     await expect(input(page)).toBeFocused();
     const empty = page.getByTestId('search-empty');
     const body = empty.locator('.pe-text');
-    const FIELDS = '제목·저자·태그·출판사·원래 이름·초록·메모에서 찾았습니다.';
+    const FIELDS = '제목\u2060·저자\u2060·태그\u2060·출판사\u2060·원래 이름\u2060·초록\u2060·메모에서 찾았습니다.';
 
     // 내 라이브러리: the plain sentence and one action.
     await input(page).fill('효소 억제제');

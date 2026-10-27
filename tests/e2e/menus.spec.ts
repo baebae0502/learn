@@ -117,7 +117,7 @@ test('⇧F10 and the menu key open the focused row\'s menu under it, once, for t
     await page.keyboard.press('Shift+F10');
     await opened(1);
     const labels = (items: Awaited<ReturnType<typeof recordedPopups>>[number]) => items.filter((i) => i.type !== 'separator').map((i) => [i.label, i.enabled]);
-    expect(labels((await recordedPopups(app))[0]!)).toEqual([['열기', true], [process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', true], ['사본 내보내기…', true]]);
+    expect(labels((await recordedPopups(app))[0]!)).toEqual([['열기', true], [process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', true], ['사본 내보내기…', true], ['컬렉션에 추가', true]]);
     // Under the row, a little in from its left edge.
     const box = (await rowByTitle(page, 'beta').boundingBox())!;
     const [at] = await recordedPopupPoints(app);

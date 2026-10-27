@@ -285,6 +285,8 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
           expectContrast(`textTertiary/${name}`, pick('textTertiary'), bg, 3); // section labels, counts
         }
         expectContrast('sidebarCountSelected/selected row', pick('sidebarCountSelected'), selected, 4.5);
+        // A drop target's count and the heading's label (dnd.css) sit on the soft fill over the material and take the selected row's count colour.
+        expectContrast('sidebarCountSelected/accentSoft over the material', pick('sidebarCountSelected'), composite(pick('accentSoft'), material), 4.5);
         expectContrast('focus/material', pick('focus'), material, 3);
         // The drop target's ring (--accent-ring) against the material it is drawn next to.
         expectContrast('accentRing/material', pick('accentRing'), material, 3);
@@ -322,6 +324,9 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
     const material = parseColor(MATERIALS.dark[0]!);
     expect(contrast(parseColor(colors.textTertiary.dark), material)).toBeLessThan(3);
     expect(contrast(parseColor(colors.textSecondary.dark), composite(parseColor(colors.fillSelected.dark), material))).toBeLessThan(4.5);
+    // A drop target's count on the soft fill: secondary text would be 4.06:1 at #404040, hence the selected row's count colour (dnd.css).
+    const soft = composite(parseColor(colors.accentSoft.dark), material);
+    expect(contrast(parseColor(colors.textSecondary.dark), soft)).toBeLessThan(4.5);
     // The launcher: the sidebar's own tertiary on the hovered field, and the keycap's secondary label on it.
     const hovered = composite(parseColor(colors.fillHover.dark), composite(parseColor(colors.bgField.dark), material));
     expect(contrast(parseColor(colorsVibrancySidebar.textTertiary.dark), hovered)).toBeLessThan(3);

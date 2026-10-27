@@ -324,7 +324,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       // React Aria moved the focus to the row that was dropped on: the view stays where it was, and so does the cursor. After
       // a mouse drop the cursor goes back quietly — React Aria set the keyboard modality for its own move, which would scroll
       // the tree to the cursor and draw a keyboard ring on it.
-      if (dropFocus.pointer) document.dispatchEvent(new PointerEvent('pointermove'));
+      if (dropFocus.pointer) document.dispatchEvent(new window.PointerEvent('pointermove'));
       if (key !== selectedKey) tap.current?.selectionManager.setFocusedKey(selectedKey);
       return;
     }

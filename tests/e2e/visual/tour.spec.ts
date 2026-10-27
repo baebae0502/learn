@@ -938,6 +938,7 @@ test('drag and drop: a tree row and a table row as drop targets, then the board 
 
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
+      await rowAt(s.page, 0).click(); // the table holds the focus, as it does while a table row is dragged (the loop's end blurs it)
       // A collection row: the neighbour of the viewed one, as a row dragged out of 분자생물학 would find it.
       await force(`nav-collection-${stat}`, true);
       await shoot(s.page, `dnd-tree-drop-${theme}`, { mask: dates() });

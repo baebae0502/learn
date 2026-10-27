@@ -39,9 +39,12 @@ export const rowTargets: TargetDelegate = {
   },
 };
 
-/** The row a drag is over is the one a drop will be on: its focus move is guarded from then on (dragState.armDropFocus). */
+/** The row a drag is over is the one a drop will be on: its focus move is guarded from then on (dragState.hoverDropFocus), until the drag leaves it. */
 function armOver(target: DropTarget): void {
-  if (target.type === 'item' && target.dropPosition === 'on') dragState.armDropFocus(String(target.key));
+  if (target.type === 'item' && target.dropPosition === 'on') dragState.hoverDropFocus(String(target.key));
+}
+function leaveOver(target: DropTarget): void {
+  if (target.type === 'item') dragState.leaveDropFocus(String(target.key));
 }
 
 /** What the tree answers while a drag is over a row (rules.ts has the reasons). */
@@ -104,5 +107,6 @@ export function useSidebarDnd(onFiles: FilesDropHandler) {
     getDropOperation: treeDropOperation,
     onItemDrop: (e) => void onItemDrop(e, onFiles),
     onDropEnter: (e) => armOver(e.target),
+    onDropExit: (e) => leaveOver(e.target),
   });
 }

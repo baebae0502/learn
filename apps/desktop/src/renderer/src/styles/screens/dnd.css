@@ -60,13 +60,16 @@
   .nav-row:is([data-drop-target], [data-force~='drop']) .icon:not(.disclosure .icon) {
     color: var(--accent-text);
   }
-  .nav-row:is([data-drop-target], [data-force~='drop']) .disclosure {
-    color: var(--text-tertiary);
+  /* The chevron's svg has its colour from list.css directly, so the button's alone would not reach it. Secondary, not tertiary:
+     tertiary sits at the 3:1 edge on the soft fill. */
+  .nav-row:is([data-drop-target], [data-force~='drop']) :is(.disclosure, .disclosure .icon) {
+    color: var(--text-secondary);
   }
-  /* A filled row's count and the heading's label are the secondary text (design-spec 6 트리). */
+  /* A filled row's count and the heading's label are the secondary text (design-spec 6 트리); on the dark vibrancy material the
+     selected row's count colour, which keeps 4.5:1 on the soft fill there (the fallback is the secondary text). */
   .nav-row:is([data-drop-target], [data-force~='drop']) .count,
   .heading-drop:is([data-drop-target], [data-force~='drop']) .heading-label {
-    color: var(--text-secondary);
+    color: var(--sidebar-count-selected, var(--text-secondary));
   }
 
   /* A collection row's drag button (spec 8.5): the keyboard's way to start a drag. Not drawn until it has the focus; never hit by the pointer, so a press on the row drags the row. */

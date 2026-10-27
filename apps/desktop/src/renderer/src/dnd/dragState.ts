@@ -18,6 +18,8 @@ let alt = false;
 let native = false;
 let pointerDrop = false;
 let dropFocus: string | null = null;
+/** Whether the guard is for a drop (kept until the user's next input) or only for a drag that is over the row (gone with the drag). */
+let dropped = false;
 const listeners = new Set<() => void>();
 const emit = () => {
   for (const fn of listeners) fn();
@@ -62,6 +64,7 @@ export const dragState = {
   beginCollection: (collectionId: string) => begin({ ...IDLE, kind: 'collection', collectionId }),
   beginTag: (tagId: string) => begin({ ...IDLE, kind: 'tag', tagId }),
   end: () => {
+    if (!dropped) dropFocus = null; // a drag that ended without a drop on the row it hovered
     if (snapshot.kind !== null) replace(IDLE);
   },
   /**
@@ -79,10 +82,25 @@ export const dragState = {
    * user's choice. The guard stays until the user's next pointer or key outside a drag (`clearDropFocus`): no timer, and no input of
    * the user's is ever taken for the drop's.
    */
-  armDropFocus: (key: string) => void (dropFocus = key),
+  armDropFocus: (key: string) => {
+    dropFocus = key;
+    dropped = true;
+  },
+  /** The drag is over the row `key`: guarded as a drop will be, but only until the drag leaves the row or ends without dropping. */
+  hoverDropFocus: (key: string) => {
+    dropFocus = key;
+    dropped = false;
+  },
+  /** The drag left the row `key` (drop-exit): a drop's guard stays, a hover's goes. */
+  leaveDropFocus: (key: string) => {
+    if (!dropped && dropFocus === key) dropFocus = null;
+  },
   /** The guard if `key` is the row dropped on; `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
   takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key ? { pointer: pointerDrop } : null),
-  clearDropFocus: () => void (dropFocus = null),
+  clearDropFocus: () => {
+    dropFocus = null;
+    dropped = false;
+  },
   /** The drop now handled came from a native drop event (a mouse drag or Finder's files), not from React Aria's keyboard drag. */
   setPointerDrop: (v: boolean) => void (pointerDrop = v),
   native: () => native,

@@ -293,6 +293,43 @@ test('the viewed collection takes the drop marker like any target — the ring o
   }
 });
 
+test('a drop target in a window that is not main keeps full strength — the name, the count and the icon read as in the active window', async ({}, testInfo) => {
+  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { page } = t;
+    const [doc] = await importPaths(page, [PDF]);
+    const target = await createCollection(page, '창 비활성 대상');
+    await addToCollection(page, target, [doc!.id]); // a count to read
+    const other = await createCollection(page, '보는 곳');
+    await treeRow(page, other).click(); // the target is a row the user is not viewing: the not-main rule dims those
+    const files = await finderDrag(page, MP4);
+    await files.send('dragEnter', page.getByTestId('content'));
+    await files.send('dragOver', treeRow(page, target));
+    expect(await marked(page)).toEqual([`nav-collection-${target}`]);
+    const colours = () => treeRow(page, target).evaluate((row) => {
+      const colour = (el: Element | null) => (el ? getComputedStyle(el).color : null);
+      const icon = row.querySelector('.icon:not(.disclosure .icon)');
+      return { name: colour(row), count: colour(row.querySelector('.count')), icon: colour(icon), iconOpacity: icon ? getComputedStyle(icon).opacity : null };
+    });
+    const active = await colours();
+    expect(active.count, 'the row has a count to compare').not.toBeNull();
+    const notMain = (on: boolean) => page.evaluate((on) => {
+      if (on) document.documentElement.setAttribute('data-window-not-main', '');
+      else document.documentElement.removeAttribute('data-window-not-main');
+    }, on);
+    await notMain(true);
+    try {
+      expect(await colours(), 'a drop target is not dimmed in a window that is not main').toEqual(active);
+    } finally {
+      await notMain(false);
+    }
+    await files.cancel();
+    await files.close();
+  } finally {
+    await t.app.close();
+  }
+});
+
 test('a refused drop is an error toast and changes nothing; a move whose second half is refused puts the first half back', async ({}, testInfo) => {
   const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

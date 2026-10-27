@@ -71,7 +71,7 @@
     }
     :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] .count,
     :root[data-window-not-main] .sidebar .heading-drop[data-drop-target] .heading-label {
-      color: var(--text-secondary);
+      color: var(--sidebar-count-selected, var(--text-secondary));
     }
     :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] .icon {
       opacity: 1;

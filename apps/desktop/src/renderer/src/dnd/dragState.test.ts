@@ -83,6 +83,30 @@ describe('dragState', () => {
     dragState.setPointerDrop(false);
   });
 
+  it('a drag that hovers a row and ends without a drop on it leaves no guard: exit from the row, a cancel and the drag\'s end', () => {
+    dragState.beginItems(['a']);
+    dragState.hoverDropFocus('stat');
+    expect(dragState.takeDropFocus('stat')).not.toBeNull(); // while the drag is over the row
+    dragState.leaveDropFocus('stat'); // drop-exit from the armed row
+    expect(dragState.takeDropFocus('stat')).toBeNull();
+    dragState.hoverDropFocus('stat');
+    dragState.leaveDropFocus('bio'); // another row's exit is not this one's
+    expect(dragState.takeDropFocus('stat')).not.toBeNull();
+    dragState.end(); // cancelled: no drop on the row
+    expect(dragState.takeDropFocus('stat')).toBeNull();
+  });
+
+  it('a drop on the row keeps the guard through the drop-exit and the drag\'s end, until the next input', () => {
+    dragState.beginItems(['a']);
+    dragState.hoverDropFocus('stat');
+    dragState.armDropFocus('stat'); // the drop
+    dragState.leaveDropFocus('stat');
+    dragState.end();
+    expect(dragState.takeDropFocus('stat')).not.toBeNull();
+    dragState.clearDropFocus();
+    expect(dragState.takeDropFocus('stat')).toBeNull();
+  });
+
   it('does not run on a timer: the guard is still there long after a drop', () => {
     vi.useFakeTimers();
     try {

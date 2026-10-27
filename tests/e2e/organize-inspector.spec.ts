@@ -70,7 +70,12 @@ test('tag add: the field offers up to eight existing tags the item lacks, ↑↓
     const input = page.getByTestId('tag-input');
     await expect(input).toBeFocused();
     await expect(page.getByTestId('tag-suggestions')).toHaveCount(0); // nothing typed, nothing offered
+    // The list floats: the sections below the field stay where they are while suggestions come and go.
+    const belowTop = async () => (await page.getByTestId('collections-section').boundingBox())!.y;
+    const fieldAt = await belowTop();
     await input.fill('효소');
+    await expect(page.getByTestId('tag-suggestions')).toBeVisible();
+    expect(await belowTop()).toBe(fieldAt);
     const options = page.getByTestId('tag-suggestion');
     await expect(options).toHaveCount(8);
     // Numbers by value, 효소 2 (on the item) left out, never more than eight of the nine that fit.
@@ -90,6 +95,7 @@ test('tag add: the field offers up to eight existing tags the item lacks, ↑↓
     // A typed name that is no tag yet is created and attached; the hint says so before ↩.
     await input.fill('새 개념');
     await expect(page.getByTestId('tag-hint')).toHaveText('↩ 새 태그 ‘새 개념’ 만들기');
+    expect(await belowTop()).toBe(fieldAt); // the hint is in the floating list too
     await page.keyboard.press('Enter');
     const made = await tagIdByName(page, '새 개념');
     await expect(chipOf(page, made)).toBeVisible();
@@ -232,7 +238,7 @@ test('collection section: a row per direct collection in tree order, a press mov
     await addToCollection(page, stat, [sample!.id]);
     await showItemPanel(app, page);
     await rowByTitle(page, 'sample').click();
-    await expect(pathRowsOf(page)).toHaveText(['분자생물학', '분자생물학 › 6장 · 신호 전달', '통계']);
+    await expect(pathRowsOf(page)).toHaveText(['분자생물학', '분자생물학›6장 · 신호 전달', '통계']);
     await expect(pathRowsOf(page).nth(1)).toHaveAttribute('data-collection-id', c6);
     await rowByTitle(page, KO).click();
     await expect(pathRowsOf(page)).toHaveText(['분자생물학']);
@@ -309,7 +315,7 @@ test('several selected: 공통 태그 and 컬렉션 hold what all share; removin
 
     // A common collection: the view moves there and the selection is cleared (several items, so no exception).
     await selectRows(page, ['sample', KO]);
-    await expect(pathRowsOf(page)).toHaveText(['분자생물학', '분자생물학 › 6장']);
+    await expect(pathRowsOf(page)).toHaveText(['분자생물학', '분자생물학›6장']);
     await pathRowsOf(page).nth(0).click();
     await expect(page.getByTestId('toolbar-title')).toHaveText('분자생물학');
     await expect(page.getByTestId('inspector-none')).toBeVisible();

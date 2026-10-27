@@ -33,13 +33,13 @@ export function CollectionsSection({ ids }: { ids: readonly string[] }) {
           const whole = row.names.join(t.organize.pathSeparator);
           return (
             <AriaButton key={row.id} className="collection-path" data-testid="collection-path" data-collection-id={row.id} aria-label={whole} onPress={() => go(row.id)}>
-              <Icon icon={Folder} size="md" />
+              <Icon icon={Folder} size="sm" />
               <span className="path-text" title={whole}>
                 {row.names.map((name, i) => (
                   <Fragment key={i}>
                     {i > 0 && (
                       <span className="sep" aria-hidden="true">
-                        {' › '}
+                        ›
                       </span>
                     )}
                     {name}

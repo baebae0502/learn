@@ -847,7 +847,11 @@ test('organize: the item panel with tags and collections, the add field, several
     for (const name of ['수용체', 'G 단백질', '2차 전령']) await assignTag(s.page, await createTag(s.page, name), [sample!.id]);
     await assignTag(s.page, important, [sample!.id, ko!.id]);
     await assignTag(s.page, exam, [sample!.id]);
-    for (const name of ['수용체 억제제', '수용체 작용제', '수용기', '신경 수용 경로']) await createTag(s.page, name); // what the field will offer
+    // What the field will offer: one coloured suggestion among plain ones, so the mark column and the names' column are judged together.
+    for (const name of ['수용체 억제제', '수용체 작용제', '수용기', '신경 수용 경로']) {
+      const id = await createTag(s.page, name);
+      if (name === '수용체 작용제') await setTagColor(s.page, id, 'green', 3);
+    }
 
     // One item with four colours' worth of chips (two coloured, three plain) in two collections (library.html inspectorItem).
     await selectRows(s.page, ['sample']);
@@ -867,6 +871,16 @@ test('organize: the item panel with tags and collections, the add field, several
       await s.page.keyboard.press('ArrowDown');
       await s.page.keyboard.press('ArrowDown');
       await shoot(s.page, `organize-tag-add-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('tag-field')).toHaveCount(0);
+    }
+    // A name that is no tag yet: the hint is the last row of the floating list (no suggestion chosen).
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('tag-add-chip').click();
+      await s.page.getByTestId('tag-input').fill('수용 후보');
+      await expect(s.page.getByTestId('tag-hint')).toBeVisible();
+      await shoot(s.page, `organize-tag-hint-${theme}`, { mask: masks() });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('tag-field')).toHaveCount(0);
     }

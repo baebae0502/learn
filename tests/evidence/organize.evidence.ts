@@ -365,7 +365,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
   const section = s.page.getByTestId('tags-section');
   await expect(section.getByTestId(`tag-chip-${important}`)).toBeVisible();
   if (IS_MAC) await movePointer(512, 620);
-  await guard('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 16 px folder', async () => {
+  await guard('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 14 px folder', async () => {
     const v = await s.page.evaluate((id) => {
       const chip = document.querySelector(`[data-testid="tags-section"] [data-testid="tag-chip-${id}"]`)!;
       const add = document.querySelector('[data-testid="tag-add-chip"]')!;
@@ -380,7 +380,7 @@ test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestio
       };
     }, important);
     results['panel'] = v;
-    check('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 16 px folder', v.chip === 22 && v.dot === 8 && v.add === 22 && v.addRing !== 'none' && v.path === 24 && v.folder === 16, v);
+    check('panel: chips are 22 px pills with an 8 px dot, the add chip is a 22 px outline, a path row is 24 px with a 14 px folder', v.chip === 22 && v.dot === 8 && v.add === 22 && v.addRing !== 'none' && v.path === 24 && v.folder === 14, v);
   });
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(s.page, theme);

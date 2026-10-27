@@ -80,7 +80,7 @@ export function TagsSection({ ids }: { ids: readonly string[] }) {
           )}
           {!adding && (
             <AriaButton className="tag-add" data-testid="tag-add-chip" onPress={open}>
-              <Icon icon={Plus} size="xs" />
+              <Icon icon={Plus} size="sm" />
               {multi ? t.organize.panel.tags.addAll : t.organize.panel.tags.add}
             </AriaButton>
           )}

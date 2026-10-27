@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Plus } from 'lucide-react';
+import { Popover } from 'react-aria-components';
 import type { OrganizeTag } from '@learn/domain';
 import type { TagPick } from '../organize/itemTags';
 import { tooLong } from '../sidebar/nameEdit';
@@ -34,12 +35,14 @@ export function TagAddField({ tags, exclude, label, onAttach, onClose }: TagAddF
   const [active, setActive] = useState(-1);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const anchor = useRef<HTMLDivElement>(null);
   const listId = useId();
   const shown = useMemo(() => suggestTags(tags, exclude, text), [tags, exclude, text]);
   const at = active < shown.length ? active : -1;
   const typed = text.trim();
   const long = tooLong(text);
   const known = typed !== '' && tags.some((tag) => fold(tag.name) === fold(typed));
+  const hint = at < 0 && typed !== '' && !known && !long;
   useEffect(() => {
     input.current?.focus();
   }, []);
@@ -100,8 +103,8 @@ export function TagAddField({ tags, exclude, label, onAttach, onClose }: TagAddF
         if (!e.currentTarget.contains(e.relatedTarget as Node | null) && document.hasFocus()) onClose('blur');
       }}
     >
-      <div className="tag-input-wrap">
-        <Icon icon={Plus} size="xs" />
+      <div ref={anchor} className="tag-input-wrap">
+        <Icon icon={Plus} size="sm" />
         <input
           ref={input}
           className="tag-input"
@@ -131,32 +134,39 @@ export function TagAddField({ tags, exclude, label, onAttach, onClose }: TagAddF
           {t.organize.panel.tags.tooLong}
         </p>
       )}
-      {shown.length > 0 && (
-        // Not focusable: the focus stays in the field (a press on the list must not blur it), and the rows are reached by ↑↓.
-        <ul id={listId} className="tag-suggest" role="listbox" aria-label={t.organize.panel.tags.suggestions} data-testid="tag-suggestions" onMouseDown={(e) => e.preventDefault()}>
-          {shown.map((tag, i) => (
-            <li
-              key={tag.id}
-              id={`${listId}-${i}`}
-              className="tag-suggest-row"
-              role="option"
-              aria-selected={i === at}
-              data-testid="tag-suggestion"
-              data-tag-id={tag.id}
-              data-active={i === at ? '' : undefined}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => void attach({ tag })}
-            >
-              {tag.position !== null && <i className="dot" aria-hidden="true" style={{ background: tagColorVar(tag.position) }} />}
-              <span className="ellipsis">{tag.name}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {at < 0 && typed !== '' && !known && !long && (
-        <p className="tag-hint" data-testid="tag-hint">
-          {t.organize.panel.tags.create(typed)}
-        </p>
+      {(shown.length > 0 || hint) && (
+        // Floats under the field, so the sections below stay where they are while the list changes with every letter. Not modal and
+        // never focused: the focus stays in the field (a press on the list must not blur it), the rows are reached by ↑↓.
+        <Popover className="tag-suggest-popover" triggerRef={anchor} isOpen isNonModal placement="bottom start" offset={4}>
+          {shown.length > 0 && (
+            <ul id={listId} className="tag-suggest" role="listbox" aria-label={t.organize.panel.tags.suggestions} data-testid="tag-suggestions" onMouseDown={(e) => e.preventDefault()}>
+              {shown.map((tag, i) => (
+                <li
+                  key={tag.id}
+                  id={`${listId}-${i}`}
+                  className="tag-suggest-row"
+                  role="option"
+                  aria-selected={i === at}
+                  data-testid="tag-suggestion"
+                  data-tag-id={tag.id}
+                  data-active={i === at ? '' : undefined}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => void attach({ tag })}
+                >
+                  <span className="tag-suggest-mark" aria-hidden="true">
+                    {tag.position !== null && <i className="dot" style={{ background: tagColorVar(tag.position) }} />}
+                  </span>
+                  <span className="ellipsis">{tag.name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hint && (
+            <p className="tag-hint" data-testid="tag-hint" onMouseDown={(e) => e.preventDefault()}>
+              {t.organize.panel.tags.create(typed)}
+            </p>
+          )}
+        </Popover>
       )}
     </div>
   );

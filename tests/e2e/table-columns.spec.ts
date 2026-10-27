@@ -20,10 +20,16 @@ const edges = (page: Page) =>
     const box = view.getBoundingClientRect();
     return { clipBottom: clip.bottom, clipRight: clip.right, top: box.top, clientRight: box.left + view.clientWidth, right: box.right, gutter: view.offsetWidth - view.clientWidth };
   });
+/** The header strip follows the body only in the scroller's scroll event, which a programmatic scrollLeft fires on the next frame:
+ * wait for it before any read that compares header and body positions. */
+const headerFollows = (page: Page) =>
+  expect
+    .poll(() => page.evaluate(() => document.querySelector<HTMLElement>('[data-testid="table-head-clip"]')!.scrollLeft - document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!.scrollLeft), { message: 'the header follows the body sideways' })
+    .toBe(0);
 /** Each shown column's header cell against the same column's cell in the first row: any difference in the left or right edge. */
 const misaligned = (page: Page) =>
   page.evaluate(() => {
-    const row = document.querySelector('[data-testid="item-row"][data-index="0"]')!;
+    const row = document.querySelector('[data-testid="item-row"]')!; // the first one rendered: row 0 may be virtualized away after a scroll down
     return [...document.querySelectorAll<HTMLElement>('[data-testid="column-header"]')]
       .map((h) => {
         const cell = row.querySelector<HTMLElement>(`[data-col="${h.dataset['col']}"]`)!.getBoundingClientRect();
@@ -61,6 +67,7 @@ test('the header sits above the scroller: the scroll bar starts under it, the he
     await scroller(page).evaluate((e) => e.scrollTo(0, 0));
     await scroller(page).evaluate((e) => (e.scrollLeft = 120));
     await expect.poll(() => page.getByTestId('table-head-clip').evaluate((e) => e.scrollLeft)).toBe(120);
+    await headerFollows(page);
     expect(await misaligned(page)).toEqual([]);
     const over = (await header(page, 'creators').boundingBox())!; // the table is scrolled: a cell that is in view now
     await page.mouse.move(over.x + 20, over.y + over.height / 2);
@@ -69,6 +76,7 @@ test('the header sits above the scroller: the scroll bar starts under it, the he
     await expect.poll(async () => (await scroller(page).evaluate((e) => e.scrollLeft)) - (await page.getByTestId('table-head-clip').evaluate((e) => e.scrollLeft))).toBe(0);
     expect(await misaligned(page)).toEqual([]);
     await scroller(page).evaluate((e) => (e.scrollLeft = e.scrollWidth));
+    await headerFollows(page);
     const last = (await header(page, 'createdAt').boundingBox())!;
     const clip = (await page.getByTestId('table-head-clip').boundingBox())!;
     expect(last.x + last.width).toBeCloseTo(clip.x + clip.width, 0); // scrolled to the end: the last cell meets the header's edge
@@ -115,6 +123,7 @@ test('at 1024 px the columns overflow the table and the rows keep their 8 px ins
 
     await scroller(page).evaluate((e) => (e.scrollLeft = e.scrollWidth));
     await expect.poll(async () => (await rowBox()).scrollLeft).toBe((await rowBox()).max);
+    await headerFollows(page);
     const end = await rowBox();
     expect(end.right).toBeCloseTo(8, 0);
     expect(end.width).toBeCloseTo(end.content, 0);
@@ -133,6 +142,7 @@ test('at 1024 px the columns overflow the table and the rows keep their 8 px ins
     expect(moved.scrollLeft).toBe(end.scrollLeft);
     expect(moved.right).toBeCloseTo(8, 0);
     await scroller(page).evaluate((e) => (e.scrollLeft = 0));
+    await headerFollows(page);
     start = await rowBox();
     expect(start.left).toBeCloseTo(8, 0);
     expect(await misaligned(page)).toEqual([]);
@@ -257,6 +267,7 @@ test('a header held in the 32 px at the right edge of a table narrower than its 
     await page.mouse.down();
     await page.mouse.move(clip.x + clip.width - 10, y, { steps: 6 }); // 10 px inside the edge, and held there
     await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft)).toBeGreaterThan(20);
+    await headerFollows(page);
     const state = await page.evaluate(() => {
       const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       const strip = document.querySelector<HTMLElement>('[data-testid="table-head-clip"]')!;

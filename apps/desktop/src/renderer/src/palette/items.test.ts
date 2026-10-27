@@ -29,6 +29,13 @@ describe('palette 자료 results (spec §4.4)', () => {
     expect(rankItems(items, result)[4]!.match).toBeNull(); // no <mark> for a match outside the title
   });
 
+  it('a letter match ranks above a 초성 match even when the 초성 match is earlier in the title (spec 7.2)', () => {
+    const items = [item('a', '신호 증폭'), item('b', '노트 ㅅㅎ'), item('c', '열역학')];
+    const ranked = rankItems(items, search(searchIndexFor(items), 'ㅅㅎ')!);
+    // 노트 ㅅㅎ holds the jamo themselves (a letter match at 3); 신호 증폭 only reads as ㅅㅎ (a 초성 match at 0).
+    expect(ranked.map((r) => [r.item.id, r.match?.kind])).toEqual([['b', 'word'], ['a', 'initials']]);
+  });
+
   it('equal in everything else: the id decides, so the rows never swap between renders', () => {
     const items = [item('z', '신호'), item('y', '신호')];
     const result = { ids: new Set(['y', 'z']), titleMatches: new Map([['y', at(0)], ['z', at(0)]]) };

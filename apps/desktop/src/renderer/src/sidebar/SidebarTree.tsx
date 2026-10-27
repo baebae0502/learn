@@ -341,16 +341,21 @@ export function SidebarTree(props: SidebarTreeProps) {
    * records it, when a row is the target (React Aria marks the row it will record; for Finder's files the drag's hover bookkeeping
    * is reset by every dragover, so the mark is what tells).
    */
-  const onDropCapture = () => {
-    if (treeRef.current?.querySelector('[role="row"][data-key][data-drop-target]')) park(true);
+  const onDropCapture = (e: DragEvent<HTMLDivElement>) => {
+    // Only where the drop lands: a stale mark on another row, with the drop on the heading, records no drop. And the selection is
+    // parked only for Finder's files — the one drag that can make a special view appear — since parking it is a selection change
+    // a screen reader announces ("not selected", "selected") on every drop.
+    const row = (e.target as Element).closest('[role="row"][data-key]');
+    if (row?.hasAttribute('data-drop-target')) park(dragState.filesOver());
   };
   // A drop by keyboard has no drop event: React Aria's DragManager drops when ↩ is released, or on a screen reader's click (a click
   // with no pointer), in the document's capture phase — the window's comes first, and says a drop may come (the cursor is parked
   // when React Aria asks the tree for its operation, dragState.expectKeyboardDrop). ⌥↩ and the row's hidden expand button (a role
-  // button that is not a drop indicator) open the row instead. The selection stays: a keyboard drop moves collections or adds
-  // items to one, so no special view can appear.
+  // button that is not a drop indicator) open the row instead. The selection stays: a keyboard drop on the tree only moves
+  // collections (table rows have no keyboard drag), so no special view can appear.
+  const virtualDragging = props.dragAndDropHooks?.isVirtualDragging; // React Aria's own function: the same on every render
   useEffect(() => {
-    const virtualDrag = props.dragAndDropHooks?.isVirtualDragging;
+    const virtualDrag = virtualDragging;
     if (!virtualDrag) return;
     const expandButton = (target: EventTarget | null) => target instanceof Element && target.closest('[role="button"]:not([aria-roledescription])') !== null;
     const parkNow = () => park(false);
@@ -373,7 +378,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('click', onClick, true);
     };
-  }, [props.dragAndDropHooks, park]);
+  }, [virtualDragging, park]);
 
   /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {

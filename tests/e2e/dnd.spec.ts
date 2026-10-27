@@ -861,10 +861,14 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
       expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
       await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
+      await expect(treeRow(page, leaf), `${how}: the focus is on the viewed row`).toBeFocused();
       await expect(treeRow(page, target), `${how}: the dropped-on row is not the view`).not.toHaveAttribute('aria-selected', 'true');
       await page.keyboard.press('Tab');
       await page.keyboard.press('Shift+Tab');
       await expect(treeRow(page, leaf), `${how}: out of the tree and back, the view stays`).toHaveAttribute('aria-selected', 'true');
+      // The next key acts at once, on the viewed row: ↓ moves the view down by one and the viewed row lets go of the selection.
+      await page.keyboard.press('ArrowDown');
+      await expect(treeRow(page, leaf), `${how}: the next key acts at once`).not.toHaveAttribute('aria-selected', 'true');
     }
   });
 
@@ -909,6 +913,40 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await expect(specialRow(page, 'all'), 'the viewed row: the view stays').toHaveAttribute('aria-selected', 'true');
     await mp4b.close();
   });
+});
+
+test('an app drag onto a collection row (a table row, with the tree focused) never takes aria-selected off the viewed row: only Finder\'s files park the selection', async ({}, testInfo) => {
+  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { page } = t;
+    const [doc] = await importPaths(page, [PDF]);
+    const bio = await createCollection(page, '선택 유지 보는 곳');
+    const other = await createCollection(page, '선택 유지 받는 곳');
+    await addToCollection(page, bio, [doc!.id]);
+    await treeRow(page, bio).click();
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await treeRow(page, bio).focus();
+    await beginDrag(page, page.getByTestId('item-row').first(), 'items');
+    await hover(page, treeRow(page, other));
+    expect(await marked(page)).toEqual([`nav-collection-${other}`]);
+    // From here to the drop's end: every change of the viewed row's aria-selected is recorded (a change is a parked selection).
+    await page.evaluate((id) => {
+      const w = window as unknown as { __selChanges: string[] };
+      w.__selChanges = [];
+      const row = document.querySelector(`[data-testid="nav-collection-${id}"]`)!;
+      new MutationObserver((records) => {
+        for (const r of records) w.__selChanges.push(`${r.attributeName}=${(r.target as Element).getAttribute('aria-selected')}`);
+      }).observe(row, { attributes: true, attributeFilter: ['aria-selected'] });
+    }, bio);
+    await release(page);
+    await expect.poll(() => members(page, other)).toEqual([doc!.id]);
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => (window as unknown as { __selChanges: string[] }).__selChanges), 'the viewed row\'s aria-selected never changed').toEqual([]);
+    await expect(treeRow(page, bio)).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    await t.app.close();
+  }
 });
 
 test('a special view that appears while React Aria still waits after a drop (미분류, after Finder\'s file onto 내 라이브러리) does not take the view', async ({}, testInfo) => {

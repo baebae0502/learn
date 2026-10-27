@@ -160,6 +160,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     selectionCount: env.selectionCount,
     selectionAvailable: env.selectionAvailable,
     selectionRelinkable: env.selectionRelinkable,
+    selectionTagPositions: env.selectionTagPositions,
     scope: env.scope,
     collectionCount: env.collectionCount,
     tagPositions: env.tagPositions,

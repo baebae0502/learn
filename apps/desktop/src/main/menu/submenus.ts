@@ -1,5 +1,5 @@
 import {
-  LIBRARY_COLUMNS, TAG_COLORS, columnsOfMask,
+  LIBRARY_COLUMNS, TAG_COLORS, columnsOfMask, hasTagPosition,
   type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type ContextMenuKind, type OrganizeSnapshot, type SubmenuSource, type SubmenuSpec,
 } from '@learn/domain';
 import { mainStrings } from '../strings';
@@ -12,7 +12,7 @@ export const menuText = (name: string): string => name.replaceAll('&', '&&');
 export interface SubmenuInput {
   /** Collections, tags and who has what; null when the caller did not read them (the rows that need them are left out). */
   organize: OrganizeSnapshot | null;
-  /** The items the menu acts on, for marks (empty in the menu bar: it marks nothing, spec 9.3). */
+  /** The items the menu acts on, for marks (empty in the menu bar: it marks by the reported `selectionTagPositions` instead). */
   itemIds: readonly string[];
   /** The tag a tag menu is for. */
   tagId?: string;
@@ -124,7 +124,8 @@ export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[
     if (!command || !tag) continue;
     let has = 0;
     for (const item of organize.tagged[tag.id] ?? []) if (selected.has(item)) has++;
-    const all = selected.size > 0 && has === selected.size;
+    // The popup knows the selection; the menu bar is told the slots every selected item has (selectionTagPositions).
+    const all = (selected.size > 0 && has === selected.size) || (selected.size === 0 && hasTagPosition(input.context.selectionTagPositions, slot!));
     rows.push({ id, label: menuText(tag.name), enabled: input.enabledOf(command), hint: String(slot), dot: TAG_COLORS[slot! - 1]!.hex, ...(all ? { type: 'checkbox' as const, checked: true } : {}) });
   }
   if (rows.length === 0) return null;

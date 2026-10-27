@@ -435,6 +435,11 @@ export interface CommandContextState {
   selectionAvailable: number;
   /** Of the selection: linked items whose file is missing (what 다시 연결… needs). */
   selectionRelinkable: number;
+  /**
+   * The colour slots 1–8 whose tag every selected item has, bit n−1 for slot n (0–255; 0 with nothing selected): the menu bar's
+   * 색 태그 ▸ checks those rows (spec 9.2). A mask, not the tags' ids, so the context stays flat and primitive (sameCommandContext).
+   */
+  selectionTagPositions: number;
   /** The kind of view the table shows (spec 3.1). */
   scope: LibraryScope['kind'];
   /** Live collections (0: nothing to file into). */
@@ -454,6 +459,7 @@ export interface CommandContextState {
 
 /** The view fields of a context with no library view yet: the first report, the fatal screen, a test's fixture. */
 export const NO_LIBRARY_VIEW = Object.freeze({
+  selectionTagPositions: 0,
   scope: 'all',
   collectionCount: 0,
   tagPositions: 0,
@@ -462,7 +468,7 @@ export const NO_LIBRARY_VIEW = Object.freeze({
   sortColumn: 'createdAt',
   sortDirection: 'desc',
   columnsShown: columnsMask(DEFAULT_COLUMN_CONFIG.visible),
-} as const satisfies Pick<CommandContextState, 'scope' | 'collectionCount' | 'tagPositions' | 'tagFilterCount' | 'searchActive' | 'sortColumn' | 'sortDirection' | 'columnsShown'>);
+} as const satisfies Pick<CommandContextState, 'selectionTagPositions' | 'scope' | 'collectionCount' | 'tagPositions' | 'tagFilterCount' | 'searchActive' | 'sortColumn' | 'sortDirection' | 'columnsShown'>);
 
 /** The colour slots with a tag as a bitmask (bit n−1 = slot n); `null` and slots outside 1–8 count for nothing. */
 export function tagPositionsMask(positions: Iterable<number | null>): number {

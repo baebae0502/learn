@@ -108,7 +108,7 @@ const picker = (opts: AppMenuOptions) => (picked: PickedCommand | null): void =>
 /** The menu bar's rows: key equivalents are live there (see entriesToTemplate), and a row with a colour draws its dot (M-2), as the popups do. */
 const barOptions = (opts: AppMenuOptions): TemplateOptions => ({ surface: 'menubar', platform: opts.platform, dotIcon });
 
-/** What the submenus are built from: the reported context and the library read for the menu bar (no selection, so no marks). */
+/** What the submenus are built from: the reported context and the library read for the menu bar (the selection is not listed: 색 태그 ▸ is marked by the reported slots, collections by none). */
 function submenuInput(opts: AppMenuOptions): SubmenuInput {
   return { organize: opts.organize ?? null, itemIds: [], context: opts.context ?? DEFAULT_CONTEXT, enabledOf: (c) => isEnabled(c.id, opts.enabled) };
 }
@@ -252,10 +252,11 @@ export function applyMenuEnabled(
 
 /**
  * What the menu bar's value submenus are drawn from in a reported context. A change is a different menu (the rows are
- * the columns drawn, the radios the sort in force), so main rebuilds it; every other part of a report flips `enabled`.
+ * the columns drawn, the radios the sort in force, the ✓ on the colour tags every selected item has), so main rebuilds it;
+ * every other part of a report flips `enabled`.
  */
-export const submenuShapeKey = (ctx: Pick<CommandContextState, 'sortColumn' | 'sortDirection' | 'columnsShown'>): string =>
-  `${ctx.sortColumn}|${ctx.sortDirection}|${ctx.columnsShown}`;
+export const submenuShapeKey = (ctx: Pick<CommandContextState, 'sortColumn' | 'sortDirection' | 'columnsShown' | 'selectionTagPositions'>): string =>
+  `${ctx.sortColumn}|${ctx.sortDirection}|${ctx.columnsShown}|${ctx.selectionTagPositions}`;
 
 /**
  * Relabels the items of commands with state labels in place (MenuItem.label is dynamic in Electron 44; macOS picks it

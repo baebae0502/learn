@@ -352,7 +352,7 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     const e = env({ scope: 'collection', collectionCount: 2, tagPositions: 0b101, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b111 });
     expect(contextOf(e)).toMatchObject({ scope: 'collection', collectionCount: 2, tagPositions: 5, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 7 });
     expect(Object.keys(contextOf(e)).sort()).toEqual(
-      ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'view'].sort(),
+      ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'selectionTagPositions', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'view'].sort(),
     );
   });
   it('컬렉션에 추가 passes the target items and the row\'s value to the env, in the library, for any file state', () => {

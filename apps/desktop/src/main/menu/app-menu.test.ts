@@ -509,10 +509,10 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     expect(radios(context())).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○']);
     expect(radios(context({ sortColumn: 'size', sortDirection: 'asc', columnsShown: columnsMask(['title', 'size']) }))).toEqual(['제목', '크기 ○', '-', '오름차순 ○', '내림차순']);
   });
-  it('the radios are a function of the sort and the columns only: those are what rebuild the menu bar, the counts flip enabled in place', () => {
+  it('the submenus are a function of the sort, the columns and the shared colour slots only: those are what rebuild the menu bar, the counts flip enabled in place', () => {
     const a = context();
     expect(submenuShapeKey(a)).toBe(submenuShapeKey(context({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, blocked: true, textSize: 15, scope: 'recent', searchActive: true })));
-    for (const over of [{ sortColumn: 'title' }, { sortDirection: 'asc' }, { columnsShown: 1 }] as const) expect(submenuShapeKey(context(over)), JSON.stringify(over)).not.toBe(submenuShapeKey(a));
+    for (const over of [{ sortColumn: 'title' }, { sortDirection: 'asc' }, { columnsShown: 1 }, { selectionTagPositions: 0b1 }] as const) expect(submenuShapeKey(context(over)), JSON.stringify(over)).not.toBe(submenuShapeKey(a));
   });
   it('the head is switched in place with its command; its rows are on whenever the head is reachable', () => {
     const template = buildAppMenu({ isDev: false, platform: 'linux', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), context: context() });

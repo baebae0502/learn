@@ -126,6 +126,15 @@ describe('색 태그 ▸ (a group of commands)', () => {
     expect(lines([group({ itemIds: ['i1'] })!])).toEqual([{ '색 태그': ['시험 범위 [1] ✓', '중요 [3] ✓'] }]);
     expect(lines([group({ itemIds: ['i2', 'i9', 'i-new'] })!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3]'] }]); // i-new has no tag
   });
+  it('the menu bar knows no items: it marks exactly the slots the renderer reported that every selected item has (spec 9.2)', () => {
+    const reported = (mask: number) => group({ context: { ...CTX, selectionTagPositions: mask } });
+    expect(lines([reported(0)!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3]'] }]);
+    expect(lines([reported(0b100)!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3] ✓'] }]);
+    expect(lines([reported(0b101)!])).toEqual([{ '색 태그': ['시험 범위 [1] ✓', '중요 [3] ✓'] }]);
+    expect(lines([reported(0b10)!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3]'] }]); // slot 2 has no tag: nothing to mark
+    // The popup lists its items and keeps its own rule: the reported slots do not add to it.
+    expect(lines([group({ itemIds: ['i2'], context: { ...CTX, selectionTagPositions: 0b1 } })!])).toEqual([{ '색 태그': ['시험 범위 [1]', '중요 [3] ✓'] }]);
+  });
   it('each member is judged on its own, and the group is off when none can run', () => {
     const only3 = (c: CommandSpec) => c.id === ('tag.color3' as CommandId);
     expect(lines([group({ enabledOf: only3 })!])).toEqual([{ '색 태그': ['시험 범위 [1] ✗', '중요 [3]'] }]);

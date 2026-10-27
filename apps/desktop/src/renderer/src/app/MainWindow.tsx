@@ -25,7 +25,7 @@ import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
-import { inTableOrder, selectionCounts } from '../library/selection';
+import { inTableOrder, selectionCounts, selectionTagPositions } from '../library/selection';
 import { useImport } from '../library/useImport';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { useScopeView } from '../library/useScopeView';
@@ -275,6 +275,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   sortRef.current = sort;
   // What the menu bar's 정렬 기준 and the 1–8 keys need to know, as flat values (the reported context has no arrays).
   const columnsShown = useMemo(() => columnsMask(visibleColumns(columns, forced).map((c) => c.id)), [columns, forced]);
+  // The colour tags every selected item has: the menu bar's 색 태그 ▸ draws the ✓ (a mask, so the report stays flat).
+  const sharedTagPositions = useMemo(() => selectionTagPositions(scopeView.model, list, selected), [scopeView.model, list, selected]);
   const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
   const scopeKind = scopeView.scope.kind;
   const collectionCount = scopeView.model?.collectionCount ?? 0;
@@ -310,6 +312,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionCount: selection.count,
     selectionAvailable: selection.available,
     selectionRelinkable: selection.relinkable,
+    selectionTagPositions: sharedTagPositions,
     scope: scopeKind,
     collectionCount,
     tagPositions,
@@ -359,7 +362,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, scopeKind, collectionCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, setSort]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

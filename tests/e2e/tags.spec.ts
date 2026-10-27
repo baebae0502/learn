@@ -7,7 +7,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createTag, expectWindow, importPaths, launch, makeTags, menuSnapshot, openItem, organizeSnapshot,
-  recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, runPalette, setTagColor, stubConfirm, stubContextMenu, tagChip, tokenColor, type MenuNode,
+  recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, runPalette, selectRows, setTagColor, stubConfirm, stubContextMenu, tagChip, tokenColor, type MenuNode,
 } from './helpers';
 import { expectNoSeriousA11y } from './a11y';
 
@@ -614,6 +614,28 @@ test('the item menu lists 색 태그 ▸ by slot, checks the tags every selected
     await expect.poll(() => heldBy(page, important)).toEqual([]);
     const again = (await recordedPopups(app)).at(-1)!.find((e) => e.label === '색 태그')!;
     expect(again.submenu!.map((e) => [e.label, e.checked])).toEqual([['중요', true], ['질문', true]]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the menu bar\'s 색 태그 ▸ checks the tags every selected item has (spec 9.2) and drops the check when the selection no longer shares it', async ({}, testInfo) => {
+  const { app, page, id } = await start(testInfo);
+  try {
+    await makeTags(page, [
+      { name: '공통', slot: 1, items: [id('sample'), id(KO)] },
+      { name: '하나만', slot: 2, items: [id('sample')] },
+      { name: '다른', slot: 3, items: [id(VIDEO)] },
+    ]);
+    const bar = async () =>
+      flat(await menuSnapshot(app)).find((n) => n.id === 'submenu.colorTags')?.submenu?.map((n) => `${n.label}${n.checked ? ' ✓' : ''}`);
+    await expect.poll(bar).toEqual(['공통', '하나만', '다른']); // nothing selected: nothing checked
+    await selectRows(page, ['sample', KO]);
+    await expect.poll(bar).toEqual(['공통 ✓', '하나만', '다른']);
+    await selectRows(page, ['sample']);
+    await expect.poll(bar).toEqual(['공통 ✓', '하나만 ✓', '다른']);
+    await selectRows(page, ['sample', VIDEO]); // 공통 is not on the video
+    await expect.poll(bar).toEqual(['공통', '하나만', '다른']);
   } finally {
     await app.close();
   }

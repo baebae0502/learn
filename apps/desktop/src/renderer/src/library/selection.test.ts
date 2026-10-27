@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Availability, LibraryItem, StorageMode } from '@learn/domain';
 import { DEFAULT_SORT } from './sort';
-import { inTableOrder, selectionCounts } from './selection';
+import { inTableOrder, selectionCounts, selectionTagPositions } from './selection';
+import { buildOrganizeModel } from '../organize/model';
 
 const item = (id: string, createdAt: string, availability: Availability = 'available', storageMode: StorageMode = 'managed'): LibraryItem => ({
   id, title: id, type: 'pdf', mime: 'application/pdf', size: 1, storageMode, availability, assetId: `a-${id}`, revisionId: `r-${id}`,
@@ -24,5 +25,34 @@ describe('the table selection as the command context carries it (spec 3.3)', () 
     expect(inTableOrder(LIST, new Set(['a', 'c', 'gone', 'd']), DEFAULT_SORT)).toEqual(['d', 'c', 'a']); // added, newest first
     expect(inTableOrder(LIST, new Set(['d', 'b']), { column: 'title', direction: 'asc' })).toEqual(['b', 'd']);
     expect(inTableOrder(LIST, new Set(), DEFAULT_SORT)).toEqual([]);
+  });
+});
+
+describe('the colour tags every selected item has, as the command context carries them (spec 9.2)', () => {
+  const tag = (id: string, position: number | null) => ({ id, name: id, color: null, position });
+  const model = buildOrganizeModel(
+    {
+      collections: [], members: {}, duplicates: [],
+      tags: [tag('red', 1), tag('blue', 3), tag('plain', null)],
+      tagged: { red: ['a', 'b', 'c', 'gone'], blue: ['b', 'c'], plain: ['a', 'b', 'c', 'd'] },
+    },
+    LIST,
+  );
+  it('is the intersection across the selected items, as a mask over the slots', () => {
+    expect(selectionTagPositions(model, LIST, new Set(['a']))).toBe(0b001);
+    expect(selectionTagPositions(model, LIST, new Set(['b']))).toBe(0b101);
+    expect(selectionTagPositions(model, LIST, new Set(['a', 'b']))).toBe(0b001);
+    expect(selectionTagPositions(model, LIST, new Set(['b', 'c']))).toBe(0b101);
+    expect(selectionTagPositions(model, LIST, new Set(['a', 'b', 'd']))).toBe(0); // d has no colour tag
+  });
+  it('counts only tags with a slot, and only the selected rows still in the list', () => {
+    expect(selectionTagPositions(model, LIST, new Set(['d']))).toBe(0); // "plain" has no slot
+    expect(selectionTagPositions(model, LIST, new Set(['a', 'lost']))).toBe(0b001); // an id the list lost is not an item without the tag
+    expect(selectionTagPositions(model, LIST, new Set(['lost']))).toBe(0);
+  });
+  it('is empty when nothing is selected or the library was not read', () => {
+    expect(selectionTagPositions(model, LIST, new Set())).toBe(0);
+    expect(selectionTagPositions(undefined, LIST, new Set(['a']))).toBe(0);
+    expect(selectionTagPositions(null, LIST, new Set(['a']))).toBe(0);
   });
 });

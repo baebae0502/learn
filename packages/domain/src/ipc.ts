@@ -87,6 +87,8 @@ export const commandContextInput = z
     selectionCount: contextCount,
     selectionAvailable: contextCount,
     selectionRelinkable: contextCount,
+    /** The colour slots 1–8 whose tag every selected item has, as a bitmask (bit n−1 = slot n). */
+    selectionTagPositions: z.number().int().min(0).max(255),
     scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
     collectionCount: contextCount,
     /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */

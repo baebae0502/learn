@@ -501,8 +501,9 @@ M4의 macOS 실행. 마지막 `all` 실행(**run 40162034858, a2f5add**)에서 �
 | 64 | [40421156644](https://github.com/baebae0502/learn/actions/runs/40421156644) | 10-26 23:38 | organize / 아니오 / c949cd5 (빌드 고침) | 97초 → 2분(무료) | **실패**: 7 통과 · 판정 1 — 행에서 친 숫자가 태그를 바꾸지 않음(0번과 2번을 가르지 못하는 검사). 팝업 메뉴 둘은 System Events가 주소를 못 잡아 정해진 ↓ 수로 열렸고 그림은 맞다. 고침: a8dc575(macOS 메뉴 막대의 숫자 줄은 가속기 없음 — Chromium은 ⌘ 없는 키를 페이지보다 먼저 메인 메뉴에 준다; 팝업은 숫자 표시 유지) |
 | 65 | [40422803394](https://github.com/baebae0502/learn/actions/runs/40422803394) | 10-26 23:53 | organize / 아니오 / 072497c (메뉴 막대 고침 + 키·IPC 계수) | 146초 → 3분(무료) | **실패**: 행의 키는 페이지에 닿았지만 `code` = `Numpad1`(러너의 `keystroke "1"`이 키패드 1을 보냄) → 키맵이 `Digit1`만 맞춰 0번; 항목 패널 단계는 없는 `year` 칸을 찾음(칸은 `date`). 선택이 있고 메뉴 줄이 켜진 채 검색 칸에 "1"이 들어감. 고침: c1c2fab(키맵이 키패드 숫자를 같은 숫자로, 증거는 `key code 18`) |
 | 66 | [40423691145](https://github.com/baebae0502/learn/actions/runs/40423691145) | 10-27 00:01 | organize / 아니오 / cdd8fa1 (키패드 + `date` 칸) | 152초 → 3분(무료) | **성공**: 증거 테스트 8개, 확인 11개 모두 ok — 검색 칸·날짜 칸에 "1"(메뉴 줄 켜짐, 태그 그대로), 행에서 `Digit1` 1번 · `tags:togglePosition` 1번 · 그 행만 태그가 빠짐, 파일 › 색 태그 ▸에 숫자 없음. Mac 비평: 다크 비브런시에서 선택기 위 구분선 1.04:1(major) · 색 태그 ▸ 줄의 색 점 · 메뉴 점의 안쪽 테두리 → Task 7 수정에서 |
+| 67 | [40441148476](https://github.com/baebae0502/learn/actions/runs/40441148476) | 10-27 02:54 | organize / 아니오 / b7e967b (Task 7 항목 메뉴·컬렉션에 추가 + Task 6 Mac M-1–M-3) | 144초 → 3분(무료) | **성공**: 증거 테스트 10개, 확인 16개 모두 ok, PNG 48장. Mac 비평(opus): blocker·major 0 — M-1(다크 선택기 위 구분선 (75,76,76) 대 (56,56,56)), M-2(팝업과 메뉴 막대의 색 태그 ▸ 줄에 색 점, darwin 메뉴 막대에 숫자 없음), M-3(점 테두리 1px 더 어둡게) 고쳐짐, 패널은 Linux와 같음. 남은 것: 메뉴 막대의 색 태그 ▸이 모든 선택 항목에 있는 태그에 ✓를 그리지 않음(Mac-1, 팝업은 그림 — Task 8 뒤 작은 수정), `m5-07-menu-item-add` PNG가 컬렉션에 추가 ▸ 대신 색 태그 ▸을 보임(캡처 결함, 같은 수정), 1024px 폭에서 표가 가로로 넘침(Task 9) |
 
-**합계: macOS 66회, 385분.** Task 5 Mac 비평(opus, 61의 PNG): blocker·major 0, 부차 하나(모든 `ui.confirm`이 `warning` 종류라 되돌릴 수 있는 컬렉션 삭제에도 주의 삼각형 — Task 6에서 `caution` 선택 항목으로 고침).
+**합계: macOS 67회, 388분.** Task 5 Mac 비평(opus, 61의 PNG): blocker·major 0, 부차 하나(모든 `ui.confirm`이 `warning` 종류라 되돌릴 수 있는 컬렉션 삭제에도 주의 삼각형 — Task 6에서 `caution` 선택 항목으로 고침).
 
 ## 알려진 한계
 

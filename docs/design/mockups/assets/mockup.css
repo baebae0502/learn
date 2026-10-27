@@ -2996,11 +2996,17 @@ h2,
   background-color: var(--bg-content); /* longhand: keeps the hover/pressed layer */
 }
 /* The bubble already is --fill-hover: a chip's state layers step up one. */
-[data-msg='bubble'] .tu-msg .cite.is-hover:not(.is-unverified) {
+[data-msg='bubble'] .tu-msg.user .bubble .cite.is-hover:not(.is-unverified),
+[data-msg='bubble'] .tu-msg.tutor .body .cite.is-hover:not(.is-unverified) {
   background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
 }
-[data-msg='bubble'] .tu-msg .cite.is-pressed:not(.is-unverified) {
+[data-msg='bubble'] .tu-msg.user .bubble .cite.is-pressed:not(.is-unverified),
+[data-msg='bubble'] .tu-msg.tutor .body .cite.is-pressed:not(.is-unverified) {
   background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
+}
+/* the chips sit side by side in one bubble on the board */
+[data-msg='bubble'] .state-row .cite + .cite {
+  margin-left: var(--space-4);
 }
 .cite.is-disabled {
   opacity: 0.45;

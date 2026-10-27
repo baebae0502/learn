@@ -1698,18 +1698,9 @@
             ${row('검증 안 됨', `${unverified(57)}${unverified(57, { st: 'is-hover' })}${unverified(57, { st: 'is-focus' })}<span class="note">기본 · 호버 · 포커스 — 누를 수 없음, 툴팁만</span>`)}
           </section>
           <section class="panel" data-msg="bubble">
-            <h3>말풍선 안 — 칩의 기본 · 호버 · 누름 · 지금 위치 · 포커스 · 검증 안 됨</h3>
-            ${[
-              ['사용자', (st) => `<div class="tu-msg user"><div class="bubble"><p>${cite(42, { st })}${st === '' ? unverified(57) : ''}</p></div></div>`],
-              ['튜터', (st) => `<div class="tu-msg tutor"><div class="body"><p>${cite(42, { st })}${st === '' ? unverified(57) : ''}</p></div></div>`],
-            ]
-              .map(([who, make]) =>
-                [['기본', ''], ['호버', 'is-hover'], ['누름', 'is-pressed'], ['지금 위치', 'is-current'], ['포커스', 'is-focus']]
-                  .map(([l, st]) => row(`${who} · ${l}`, make(st)))
-                  .join(''),
-              )
-              .join('')}
-            ${row('검증 안 됨 · 호버', `<div class="tu-msg tutor"><div class="body"><p>${unverified(57, { st: 'is-hover' })}</p></div></div>`)}
+            <h3>말풍선 안 — 기본 · 호버 · 누름 · 지금 위치 · 포커스 · 검증 안 됨(기본·호버)</h3>
+            ${row('사용자', `<div class="tu-msg user"><div class="bubble"><p>${['', 'is-hover', 'is-pressed', 'is-current', 'is-focus'].map((st) => cite(42, { st })).join('')}</p></div></div>`)}
+            ${row('튜터', `<div class="tu-msg tutor"><div class="body"><p>${['', 'is-hover', 'is-pressed', 'is-current', 'is-focus'].map((st) => cite(42, { st })).join('')}${unverified(57)}${unverified(57, { st: 'is-hover' })}</p></div></div>`)}
           </section>
           <section class="panel">
             <h3>제안 카드(M9 · M10) — 기본 · 검증 안 됨</h3>

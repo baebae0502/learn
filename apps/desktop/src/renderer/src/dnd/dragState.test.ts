@@ -3,6 +3,7 @@ import { dragState, setDndGate } from './dragState';
 
 afterEach(() => {
   dragState.end();
+  dragState.clearDropFocus();
   dragState.setFilesOver(false);
   dragState.setAlt(false);
   dragState.setNative(false);
@@ -105,6 +106,39 @@ describe('dragState', () => {
     expect(dragState.takeDropFocus('stat')).not.toBeNull();
     dragState.clearDropFocus();
     expect(dragState.takeDropFocus('stat')).toBeNull();
+  });
+
+  it('the tree\'s cursor is off its row while React Aria records a drop on a row, and back as the drop is handed over — so React Aria finds it moved and leaves it', () => {
+    // React Aria's rule (useDroppableCollection, updateFocusAfterDrop): after a drop "on" a row it moves the cursor there, with the
+    // keyboard modality, whenever it finds the cursor where it was when it recorded the drop — on each render, then on its timer.
+    let cursor: string | null = 'all';
+    dragState.beginItems(['a']);
+    expect(dragState.dropRow()).toBeNull();
+    dragState.hoverDropFocus('stat');
+    expect(dragState.dropRow(), 'the row a drop goes to').toBe('stat');
+    cursor = null; // the sidebar, at the drop's capture
+    dragState.parkCursor(() => void (cursor = 'all'));
+    const recorded = cursor; // React Aria records the drop
+    dragState.armDropFocus('stat'); // and hands it over (onItemDrop)
+    expect(cursor).toBe('all');
+    expect(cursor, 'React Aria leaves a cursor that moved since the drop').not.toBe(recorded);
+    expect(dragState.dropRow(), 'a drop is no longer a hover').toBeNull();
+    cursor = 'unfiled'; // the user's own move
+    dragState.leaveDropFocus('stat');
+    dragState.end();
+    expect(cursor, 'put back once only').toBe('unfiled');
+  });
+
+  it('a parked cursor goes back even when no drop is handed over: on the drop-exit, or at the drag\'s end', () => {
+    for (const finish of [() => dragState.leaveDropFocus('stat'), () => dragState.end()]) {
+      let back = 0;
+      dragState.beginItems(['a']);
+      dragState.hoverDropFocus('stat');
+      dragState.parkCursor(() => void back++);
+      finish();
+      dragState.end();
+      expect(back).toBe(1);
+    }
   });
 
   it('does not run on a timer: the guard is still there long after a drop', () => {

@@ -313,6 +313,21 @@ export function SidebarTree(props: SidebarTreeProps) {
     window.addEventListener('pointercancel', up, true);
   };
 
+  /**
+   * A drop on a row by the native drop event (a mouse drag, Finder's files), in its capture phase, before the tree's own handler
+   * records it: the cursor is taken off the rows, and is back on the viewed row as soon as the drop is handed over
+   * (dragState.parkCursor). React Aria moves the cursor to the dropped-on row, with the keyboard modality, only while it finds it
+   * where it was at the drop; now it leaves it, however late its moves come — no ring, no scroll, no change of view — and only
+   * gives the tree the focus, on the viewed row. (React may draw once in between, with no cursor.) A drop by keyboard has no drop
+   * event: the focus guard below handles it.
+   */
+  const onDropCapture = () => {
+    const manager = tap.current?.selectionManager;
+    if (!manager || dragState.dropRow() === null) return;
+    manager.setFocusedKey(null);
+    dragState.parkCursor(() => manager.setFocusedKey(latest.current.selectedKey));
+  };
+
   /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     if (reader || chevronDown.current) return;
@@ -448,7 +463,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [restoreTo, focusRow]);
 
   return (
-    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onDragStartCapture={onDragStartCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
+    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onDragStartCapture={onDragStartCapture} onDropCapture={onDropCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
       <div className="section-label" aria-hidden="true">
         {t.shell.libraryHeading}
       </div>

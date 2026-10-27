@@ -20,6 +20,13 @@ let pointerDrop = false;
 let dropFocus: string | null = null;
 /** Whether the guard is for a drop (kept until the user's next input) or only for a drag that is over the row (gone with the drag). */
 let dropped = false;
+/** Puts the tree's cursor back where the drop's capture took it from (`parkCursor`). */
+let parked: (() => void) | null = null;
+function unpark(): void {
+  const restore = parked;
+  parked = null;
+  restore?.();
+}
 const listeners = new Set<() => void>();
 const emit = () => {
   for (const fn of listeners) fn();
@@ -64,6 +71,7 @@ export const dragState = {
   beginCollection: (collectionId: string) => begin({ ...IDLE, kind: 'collection', collectionId }),
   beginTag: (tagId: string) => begin({ ...IDLE, kind: 'tag', tagId }),
   end: () => {
+    unpark();
     if (!dropped) dropFocus = null; // a drag that ended without a drop on the row it hovered
     if (snapshot.kind !== null) replace(IDLE);
   },
@@ -75,25 +83,38 @@ export const dragState = {
     if (!native) dragState.end();
   },
   /**
-   * The tree row a drag is over, which a drop there will be on. React Aria's drop handler runs after it has read the dropped items,
-   * so a drop is handled — and `armDropFocus` called again — after its focus move may have happened already; the row is therefore
-   * named while the drag is over it. React Aria moves the tree's focus to the dropped-on row, sometimes twice (a layout effect,
-   * then its own 50 ms timer), and the sidebar takes focus for the view (selection follows the cursor): those moves are not the
-   * user's choice. The guard stays until the user's next pointer or key outside a drag (`clearDropFocus`): no timer, and no input of
-   * the user's is ever taken for the drop's.
+   * The drop on the tree row `key` is handed over (onItemDrop, which React Aria calls in the drop's own event, right after it has
+   * recorded the drop). React Aria then moves the tree's cursor to that row with the keyboard modality — on each render once the
+   * rows have changed, and again on its own 50 ms timer — and the sidebar takes the focus for the view (selection follows the
+   * cursor): those moves are not the user's choice. The guard stays until the user's next pointer or key outside a drag
+   * (`clearDropFocus`): no timer, and no input of the user's is ever taken for the drop's. A cursor parked for the drop goes back.
    */
   armDropFocus: (key: string) => {
     dropFocus = key;
     dropped = true;
+    unpark();
   },
   /** The drag is over the row `key`: guarded as a drop will be, but only until the drag leaves the row or ends without dropping. */
   hoverDropFocus: (key: string) => {
     dropFocus = key;
     dropped = false;
   },
-  /** The drag left the row `key` (drop-exit): a drop's guard stays, a hover's goes. */
+  /** The drag left the row `key` (drop-exit, which also follows each drop): a drop's guard stays, a hover's goes. */
   leaveDropFocus: (key: string) => {
+    unpark();
     if (!dropped && dropFocus === key) dropFocus = null;
+  },
+  /** The tree row the drag is over, which a drop goes to; null when there is none, and once a drop has been handed over. */
+  dropRow: (): string | null => (dropped ? null : dropFocus),
+  /**
+   * A drop on the tree row `dropRow()` is coming by a native drop event (a mouse drag, Finder's files), and the sidebar has taken
+   * its cursor off the rows while React Aria records it; `restore` puts it on the viewed row again. React Aria moves the cursor to
+   * the dropped-on row, and turns the keyboard modality on, only while it finds the cursor where it was when it recorded the drop
+   * (useDroppableCollection's updateFocusAfterDrop): a cursor that has moved since is left alone. It goes back once: when the drop
+   * is handed over (`armDropFocus`, in the drop's own event), else on the drop-exit that follows a drop, or at the drag's end.
+   */
+  parkCursor: (restore: () => void) => {
+    parked = restore;
   },
   /** The guard if `key` is the row dropped on; `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
   takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key ? { pointer: pointerDrop } : null),

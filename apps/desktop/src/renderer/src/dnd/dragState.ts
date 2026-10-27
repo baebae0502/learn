@@ -17,7 +17,7 @@ let files = false;
 let alt = false;
 let native = false;
 let pointerDrop = false;
-let dropFocus: { key: string; pointer: boolean } | null = null;
+let dropFocus: string | null = null;
 const listeners = new Set<() => void>();
 const emit = () => {
   for (const fn of listeners) fn();
@@ -72,18 +72,16 @@ export const dragState = {
     if (!native) dragState.end();
   },
   /**
-   * A drop on the sidebar's tree was handled on row `key`. React Aria then moves the tree's focus to that row, and the sidebar
-   * takes focus for the view (selection follows the cursor): that one focus move is not the user's choice. It is taken once, by
-   * the focus on `key` (`takeDropFocus`), and forgotten at the user's next pointer or key (`clearDropFocus`) — no timer.
+   * The tree row a drag is over, which a drop there will be on. React Aria's drop handler runs after it has read the dropped items,
+   * so a drop is handled — and `armDropFocus` called again — after its focus move may have happened already; the row is therefore
+   * named while the drag is over it. React Aria moves the tree's focus to the dropped-on row, sometimes twice (a layout effect,
+   * then its own 50 ms timer), and the sidebar takes focus for the view (selection follows the cursor): those moves are not the
+   * user's choice. The guard stays until the user's next pointer or key outside a drag (`clearDropFocus`): no timer, and no input of
+   * the user's is ever taken for the drop's.
    */
-  armDropFocus: (key: string) => void (dropFocus = { key, pointer: pointerDrop }),
-  /** The guard if `key` is the row dropped on (and then it is spent); `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
-  takeDropFocus: (key: string): { pointer: boolean } | null => {
-    if (dropFocus?.key !== key) return null;
-    const { pointer } = dropFocus;
-    dropFocus = null;
-    return { pointer };
-  },
+  armDropFocus: (key: string) => void (dropFocus = key),
+  /** The guard if `key` is the row dropped on; `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
+  takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key ? { pointer: pointerDrop } : null),
   clearDropFocus: () => void (dropFocus = null),
   /** The drop now handled came from a native drop event (a mouse drag or Finder's files), not from React Aria's keyboard drag. */
   setPointerDrop: (v: boolean) => void (pointerDrop = v),

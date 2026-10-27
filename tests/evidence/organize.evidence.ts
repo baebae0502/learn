@@ -498,8 +498,9 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
       await expect.poll(() => t.page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
       await t.page.goto(`learn://app/index.html?window=gallery&part=5&platform=${process.platform}`);
       await t.page.getByTestId('gallery').waitFor();
-      await guard('board: the three drop targets are the accent ring over the soft accent fill; the badge is white on the accent', async () => {
+      await guard('board: the three drop targets are the --accent-ring ring over the soft accent fill; the badge is white on the accent', async () => {
         const accent = await tokenColor(t.page, '--accent');
+        const ringColor = await tokenColor(t.page, '--accent-ring');
         const soft = await tokenColor(t.page, '--accent-soft');
         const on = await tokenColor(t.page, '--text-on-accent');
         const v = await t.page.evaluate(() => {
@@ -515,7 +516,7 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
           };
         });
         results[`board-${theme}`] = { ...v, accent, soft, on };
-        const ring = (x: { shadow: string; fill: string }) => x.shadow.includes(accent) && x.fill === soft;
+        const ring = (x: { shadow: string; fill: string }) => x.shadow.includes(ringColor) && x.fill === soft;
         check(`board ${theme}: the drop rows and the badge`, ring(v.row) && ring(v.heading) && ring(v.table) && v.badge.fill === accent && v.badge.color === on && v.titleWidth <= 240, { ...v, accent, soft, on });
       });
       if (IS_MAC) await focusApp(t.app);

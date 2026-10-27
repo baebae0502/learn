@@ -39,6 +39,11 @@ export const rowTargets: TargetDelegate = {
   },
 };
 
+/** The row a drag is over is the one a drop will be on: its focus move is guarded from then on (dragState.armDropFocus). */
+function armOver(target: DropTarget): void {
+  if (target.type === 'item' && target.dropPosition === 'on') dragState.armDropFocus(String(target.key));
+}
+
 /** What the tree answers while a drag is over a row (rules.ts has the reasons). */
 export function treeDropOperation(target: DropTarget, types: DragTypes, allowed: DropOperation[]): DropOperation {
   // Only "on" a row: the tree also offers "between" targets, which it never takes — a collection's place is its name's.
@@ -98,5 +103,6 @@ export function useSidebarDnd(onFiles: FilesDropHandler) {
     acceptedDragTypes: 'all',
     getDropOperation: treeDropOperation,
     onItemDrop: (e) => void onItemDrop(e, onFiles),
+    onDropEnter: (e) => armOver(e.target),
   });
 }

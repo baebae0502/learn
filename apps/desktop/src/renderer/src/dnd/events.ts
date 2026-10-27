@@ -29,7 +29,7 @@ export function installDndEvents(win: Window = window): () => void {
   };
   // The guard of a drop's focus move (dragState.armDropFocus) never outlives the user's next input.
   const input = () => {
-    dragState.clearDropFocus();
+    if (dragState.get().kind === null) dragState.clearDropFocus(); // a key of a keyboard drag is the drag's
     dragState.setPointerDrop(false);
   };
   const dropped = (e: DragEvent) => {

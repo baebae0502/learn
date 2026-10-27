@@ -65,18 +65,19 @@ describe('dragState', () => {
     }
   });
 
-  it('a drop arms one focus move: only the dropped-on key takes it, once', () => {
+  it('a drop guards the focus on the dropped-on key only — React Aria moves it more than once — until the user\'s next input', () => {
     dragState.armDropFocus('stat');
     expect(dragState.takeDropFocus('bio')).toBeNull(); // another row's focus is the user's
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
-    expect(dragState.takeDropFocus('stat')).toBeNull(); // consumed
+    expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
+    dragState.clearDropFocus();
+    expect(dragState.takeDropFocus('stat')).toBeNull();
   });
 
   it('it tells a drop by mouse from one by keyboard, and the next pointer or key forgets the guard', () => {
-    dragState.setPointerDrop(true);
     dragState.armDropFocus('stat');
+    dragState.setPointerDrop(true); // the native drop event comes after the drag was over the row
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: true });
-    dragState.armDropFocus('stat');
     dragState.clearDropFocus(); // the next pointerdown or keydown
     expect(dragState.takeDropFocus('stat')).toBeNull();
     dragState.setPointerDrop(false);

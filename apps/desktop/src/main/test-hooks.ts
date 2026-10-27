@@ -7,6 +7,8 @@ export interface SeedRow {
   creators: string[];
   year: number | null;
   createdAt: string;
+  abstract?: string;
+  extra?: string;
 }
 export interface SeedItemsInput {
   fromItemId: string;
@@ -27,7 +29,12 @@ export function seedItems(repo: SeedRepo, input: SeedItemsInput, makeId: () => s
     type: from.type,
     title: r.title,
     createdAt: r.createdAt,
-    metadataJson: JSON.stringify({ creators: r.creators.map((name) => ({ name, role: 'author' })), ...(r.year === null ? {} : { date: String(r.year) }) }),
+    metadataJson: JSON.stringify({
+      creators: r.creators.map((name) => ({ name, role: 'author' })),
+      ...(r.year === null ? {} : { date: String(r.year) }),
+      ...(r.abstract ? { abstract: r.abstract } : {}),
+      ...(r.extra ? { extra: r.extra } : {}),
+    }),
     assetId: from.assetId,
     revisionId: from.revisionId,
   }));

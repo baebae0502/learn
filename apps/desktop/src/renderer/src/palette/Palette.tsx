@@ -1,13 +1,15 @@
 import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { Clapperboard, FileText, ListFilter, Search } from 'lucide-react';
+import { Clapperboard, FileText, Folder, ListFilter, Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
 import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, paletteListed, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import type { CommandTarget } from '../commands/registry';
 import { COMMAND_ICONS } from '../commands/icons';
-import { useItems, useSearchTexts } from '../data/queries';
+import { useItems } from '../data/queries';
 import { search, searchIndexFor } from '../library/search';
+import { usePaintMark } from '../library/usePaintMark';
+import { useSearchSources } from '../library/useSearch';
 import { useOrganize } from '../organize/useOrganize';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
@@ -18,11 +20,12 @@ import { isComposingKey } from '../ui/ime';
 import { Kbd } from '../ui/Kbd';
 import { currentPlatform } from '../ui/platform';
 import { setTooltipBlock } from '../ui/tooltipGate';
+import { rankCollections, type RankedCollection } from './collections';
 import { highlight } from './highlight';
 import { initialsExample, itemMeta, itemMetaMatch, rankItems, type RankedItem } from './items';
 import { rankCommands, type RankedCommand } from './rank';
 import { usePaletteRecent } from './recent';
-import { searchLibrary } from './searchRow';
+import { searchLibrary, showCollection } from './searchRow';
 
 const NO_ITEMS: readonly LibraryItem[] = [];
 
@@ -89,9 +92,10 @@ export function Palette() {
   );
 }
 
-/** A row under the one cursor: an item (↩ opens it), a command (↩ runs it), or the hand-off to the quick search. */
+/** A row under the one cursor: an item (↩ opens it), a collection (↩ shows it), a command (↩ runs it), or the hand-off to the quick search. */
 type Row =
   | { kind: 'item'; key: string; ranked: RankedItem }
+  | { kind: 'collection'; key: string; ranked: RankedCollection }
   | { kind: 'command'; key: string; ranked: RankedCommand }
   | { kind: 'search'; key: 'search' };
 
@@ -110,6 +114,8 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   const ids = useId();
   const platform = currentPlatform();
   const q = query.trim();
+  // The frame that paints the rows for a changed query (spec 12: palette input → paint).
+  usePaintMark('palette:painted', query);
   /** 설정 as the hints name it: ㅅㅈ → 설정, when no title gives an example. */
   const settingsName = commandMention(commandById('app.settings'), platform);
   // The pane states the toggles' names follow (사이드바 가리기 / 사이드바 보기), as the menu bar has them.
@@ -146,26 +152,38 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   );
 
   const list = useItems().data ?? NO_ITEMS;
-  // The quick search's long fields, read once a query is typed: the same read as the toolbar's.
-  const texts = useSearchTexts(q !== '').data;
-  // The toolbar's own index of this list (one per list array and long-field read). search, not searchCached: that keeps
-  // one answer per index, the toolbar's, which the palette's query must not push out.
+  // The quick search's long fields and the tag names, the toolbar's own sources: one index per list array.
+  const { texts, tags } = useSearchSources(q !== '');
+  // search, not searchCached: that keeps one answer per index, the toolbar's, which the palette's query must not push out.
   const found = useMemo(() => {
     if (q === '') return [];
-    const result = search(searchIndexFor(list, texts), q);
+    const result = search(searchIndexFor(list, texts, tags), q);
     return result ? rankItems(list, result) : [];
-  }, [q, list, texts]);
+  }, [q, list, texts, tags]);
+  // 컬렉션 (spec 7.2): by name, five at most; listed only while nothing holds the window, as a row switches the view.
+  const collections = useMemo(() => (q !== '' && !env.blocked && model !== undefined ? rankCollections(model, q) : []), [q, env.blocked, model]);
   // An item row runs 열기 on that item: listed only while it can run (never while the window is held).
   const items = found.filter((r) => isEnabled('item.open', { itemIds: [r.item.id] }));
   // 라이브러리에서 ‘…’ 검색: only where the quick search is (a library with items) and nothing holds the window.
   const searchRow = q !== '' && !env.blocked && env.libraryCount > 0;
   const rows: Row[] = [
     ...items.map((ranked): Row => ({ kind: 'item', key: `item:${ranked.item.id}`, ranked })),
+    ...collections.map((ranked): Row => ({ kind: 'collection', key: `collection:${ranked.node.id}`, ranked })),
     ...commands.map((ranked): Row => ({ kind: 'command', key: `command:${ranked.command.id}`, ranked })),
     ...(searchRow ? [{ kind: 'search', key: 'search' } as const] : []),
   ];
   /** Nothing matched (the search row may still be there: palette.html ?state=none). */
-  const none = items.length === 0 && commands.length === 0;
+  const none = items.length === 0 && collections.length === 0 && commands.length === 0;
+  /** The groups in the order the list shows them, each with where its rows start: 자료 → 컬렉션 → 명령 (spec 7.2). */
+  const sections = [
+    { id: 'items', label: t.palette.groups.items, count: items.length },
+    { id: 'collections', label: t.palette.groups.collections, count: collections.length },
+    { id: 'commands', label: t.palette.groups.commands, count: rows.length - items.length - collections.length },
+  ].reduce<Array<{ id: string; label: string; count: number; from: number }>>((out, section) => {
+    if (section.count === 0) return out;
+    const last = out.at(-1);
+    return [...out, { ...section, from: last ? last.from + last.count : 0 }];
+  }, []);
   const cursor = rows.length === 0 ? -1 : Math.max(0, rows.findIndex((r) => r.key === cursorKey));
   const listId = `${ids}-list`;
   const optionId = (index: number) => `${ids}-option-${index}`;
@@ -184,7 +202,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       : t.palette.busyTitle
     : none
       ? t.palette.emptyTitle(q)
-      : t.palette.resultCount(items.length, commands.length);
+      : t.palette.resultCount(items.length, collections.length, commands.length);
   // An import or a sheet holds the window (not "no match"). Alone when nothing is listed: nothing can run until it ends.
   // Above the commands that still run (설정…): a header — not an option, never under the cursor — that says the others
   // come back when the work ends.
@@ -211,6 +229,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
 
   const execute = (row: Row) => {
     if (row.kind === 'item') closePalette(() => run('item.open', { itemIds: [row.ranked.item.id] }));
+    else if (row.kind === 'collection') closePalette(() => showCollection(row.ranked.node.id, run, env.view));
     else if (row.kind === 'search') closePalette(() => searchLibrary(q, run, env.view));
     else {
       const { command } = row.ranked;
@@ -260,6 +279,20 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
             {/* Only on a row whose title did not match: the author or the year that brought it in is marked instead. */}
             <span className="p-sub ellipsis">{highlight(itemMeta(item), match ? null : itemMetaMatch(item, q))}</span>
             {/* palette.html: ↩ on the row under the cursor only. */}
+            {index === cursor && <Kbd accelerator="Enter" />}
+          </span>
+        </>
+      ));
+    }
+    if (row.kind === 'collection') {
+      const { node, match, secondary } = row.ranked;
+      return option(row, index, { 'data-testid': 'palette-collection', 'data-collection-id': node.id }, (
+        <>
+          <Icon icon={Folder} />
+          <span className="p-title ellipsis">{highlight(node.name, match)}</span>
+          <span className="p-meta">
+            {/* Where it sits and how many it holds, "분자생물학 안 · 14개" (palette.html). */}
+            <span className="p-sub ellipsis">{secondary}</span>
             {index === cursor && <Kbd accelerator="Enter" />}
           </span>
         </>
@@ -336,22 +369,14 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
             <div role="listbox" id={listId} aria-label={t.palette.listLabel} className="p-options">
               {/* A listbox holds options and groups only: a heading names its group and is no element of its own (role
                   presentation, as RAC's ListBoxSection draws it; axe aria-required-children). */}
-              {items.length > 0 && (
-                <section role="group" aria-labelledby={`${ids}-items`}>
-                  <header className="p-group" id={`${ids}-items`} role="presentation">
-                    {t.palette.groups.items}
+              {sections.map((section) => (
+                <section key={section.id} role="group" aria-labelledby={`${ids}-${section.id}`}>
+                  <header className="p-group" id={`${ids}-${section.id}`} role="presentation">
+                    {section.label}
                   </header>
-                  {rows.slice(0, items.length).map((row, i) => renderRow(row, i))}
+                  {rows.slice(section.from, section.from + section.count).map((row, i) => renderRow(row, section.from + i))}
                 </section>
-              )}
-              {rows.length > items.length && (
-                <section role="group" aria-labelledby={`${ids}-commands`}>
-                  <header className="p-group" id={`${ids}-commands`} role="presentation">
-                    {t.palette.groups.commands}
-                  </header>
-                  {rows.slice(items.length).map((row, i) => renderRow(row, items.length + i))}
-                </section>
-              )}
+              ))}
             </div>
           ) : (
             busy || empty
@@ -373,7 +398,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
         {cursor >= 0 && (
           <span className="row">
             <Kbd accelerator="Enter" />
-            {rows[cursor]!.kind === 'item' ? t.palette.footOpen : t.palette.footRun}
+            {rows[cursor]!.kind === 'item' || rows[cursor]!.kind === 'collection' ? t.palette.footOpen : t.palette.footRun}
           </span>
         )}
         <span className="row">

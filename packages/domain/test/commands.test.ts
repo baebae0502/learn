@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.sortBy', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -161,6 +161,22 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 1 })).toBe(true);
     expect(isCommandAvailable('library.find', { ...VIEWER, libraryCount: 1 })).toBe(false);
     expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 1, blocked: true })).toBe(false);
+  });
+  it('내 라이브러리 전체에서 찾기 needs a search and a view other than 내 라이브러리 (spec 7.1, 9.3)', () => {
+    const searching = { ...LIB, libraryCount: 3, searchActive: true, scope: 'collection' as const };
+    expect(isCommandAvailable('library.findEverywhere', searching)).toBe(true);
+    for (const scope of ['recent', 'unfiled', 'duplicates'] as const) expect(isCommandAvailable('library.findEverywhere', { ...searching, scope }), scope).toBe(true);
+    expect(isCommandAvailable('library.findEverywhere', { ...searching, scope: 'all' })).toBe(false); // already everywhere
+    expect(isCommandAvailable('library.findEverywhere', { ...searching, searchActive: false })).toBe(false); // nothing to keep
+    expect(isCommandAvailable('library.findEverywhere', { ...VIEWER, libraryCount: 3, searchActive: true, scope: 'collection' as const })).toBe(false);
+    expect(isCommandAvailable('library.findEverywhere', { ...searching, blocked: true })).toBe(false);
+  });
+  it('내 라이브러리 전체에서 찾기 is a palette command only: no menu, key, accelerator or context menu', () => {
+    const c = commandById('library.findEverywhere');
+    expect(c).toMatchObject({ label: '내 라이브러리 전체에서 찾기', contexts: ['library'] });
+    expect(c.menu ?? c.key ?? c.accelerator ?? c.contextMenu).toBeUndefined();
+    expect(inPalette(c)).toBe(true);
+    expect(c.keywords!.some((k) => /[가-힣]/.test(k))).toBe(true);
   });
   it('item commands need targets: 열기 one item, 다시 연결… one linked item whose file is missing', () => {
     expect(isCommandAvailable('item.open', LIB)).toBe(false);

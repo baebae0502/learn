@@ -6,6 +6,7 @@ import { ScopeEmpty } from '../sidebar/ScopeEmpty';
 import { useLibrary } from '../state/library-store';
 import { TagFilterEmpty } from '../tags/TagFilterEmpty';
 import { perfMarkLatest } from '../ui/perfMarks';
+import { countRender } from '../ui/renderCount';
 import { LibraryTable } from './LibraryTable';
 import { SearchEmpty } from './SearchEmpty';
 import { useLibraryRows } from './useLibraryRows';
@@ -16,9 +17,10 @@ import { usePaintMark } from './usePaintMark';
 export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly LibraryItem[]; onOpen(itemId: string): void; onItemMenu(itemIds: readonly string[], x: number, y: number): void }) {
   // Where a long frame's script time goes (the drop stall profile): this view's render began here.
   perfMarkLatest('table:render');
+  countRender('LibraryView');
   const settings = useLibrarySettings();
   const scopeReady = useLibrary((s) => s.scopeReady);
-  const { rows, titleMatches } = useLibraryRows(items);
+  const { rows, titleMatches, view } = useLibraryRows(items);
   // The frame that paints these rows (spec 9: input → paint, sort → paint, list → first rows). Before the stored columns
   // and sort are read the view draws nothing, so nothing is marked.
   usePaintMark('table:painted', settings.ready ? rows : null, 'table:first-paint');
@@ -53,7 +55,7 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
       revealId={revealId}
       titleMatches={titleMatches}
       tagsOf={model?.tagsOfItem}
-      empty={noResults ? <SearchEmpty query={query} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
+      empty={noResults ? <SearchEmpty query={query} view={view.scope.kind === 'all' ? null : view.label} tagCount={tagFilterSize} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
     />
   );
 }

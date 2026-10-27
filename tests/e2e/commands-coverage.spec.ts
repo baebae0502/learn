@@ -71,6 +71,7 @@ const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'collection.newChild': 'collections.spec.ts › new sub-collection from the menu and the palette: the parent opens and the child is named under it',
   'collection.rename': 'collections.spec.ts › rename by the ↩ key, the menu and the palette keeps the tree in name order and allows equal names',
   'collection.importInto': 'collections.spec.ts › an empty collection says so in the table and the item panel, and its button brings files into it',
+  'library.findEverywhere': 'organize-search.spec.ts › the palette lists 내 라이브러리 전체에서 찾기 only for a search outside 내 라이브러리, and running it keeps the query',
   'collection.delete': 'collections.spec.ts › delete asks in the sheet words, the view moves to the parent, and 실행 취소 brings it back without what was deleted before it',
   'tag.color2': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
   'tag.color3': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',

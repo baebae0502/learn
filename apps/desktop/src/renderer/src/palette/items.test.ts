@@ -76,14 +76,27 @@ describe('palette 자료 results (spec §4.4)', () => {
   });
 
   it('chooses 와 or 과 after the quoted query by its last syllable (josa.ts waGwa, as the quick search does)', () => {
-    expect(t.palette.emptyTitle('효소 억제제')).toBe('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
-    expect(t.palette.emptyTitle('신호 전달')).toBe('‘신호 전달’과 일치하는 자료·명령이 없습니다');
-    expect(t.palette.emptyTitle('Bayesian')).toBe('‘Bayesian’와 일치하는 자료·명령이 없습니다');
-    expect(t.palette.emptyTitle('2023')).toBe('‘2023’과 일치하는 자료·명령이 없습니다'); // 삼: digits read as Korean numbers
+    expect(t.palette.emptyTitle('효소 억제제')).toBe('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('신호 전달')).toBe('‘신호 전달’과 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('Bayesian')).toBe('‘Bayesian’와 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('2023')).toBe('‘2023’과 일치하는 자료·컬렉션·명령이 없습니다'); // 삼: digits read as Korean numbers
     expect(t.palette.searchLibrary('신호')).toBe('라이브러리에서 ‘신호’ 검색');
     expect(t.palette.searchLibraryParts('신호').join('')).toBe(t.palette.searchLibrary('신호'));
-    expect(t.palette.resultCount(4, 1)).toBe('자료 4개, 명령 1개');
-    expect(t.palette.resultCount(0, 7)).toBe('명령 7개');
-    expect(t.palette.resultCount(5, 0)).toBe('자료 5개'); // the search row is not a command
+    expect(t.palette.resultCount(4, 0, 1)).toBe('자료 4개, 명령 1개');
+    expect(t.palette.resultCount(0, 0, 7)).toBe('명령 7개');
+    expect(t.palette.resultCount(5, 0, 0)).toBe('자료 5개'); // the search row is not a command
+    expect(t.palette.resultCount(2, 1, 3)).toBe('자료 2개, 컬렉션 1개, 명령 3개');
+    expect(t.palette.resultCount(0, 2, 0)).toBe('컬렉션 2개');
+    expect(t.palette.collectionMeta('분자생물학', 14)).toBe('분자생물학 안 · 14개');
+    expect(t.palette.collectionMeta(null, 14)).toBe('14개');
+  });
+
+  it("says where the search looked: the fields in 내 라이브러리, the view's name first elsewhere, and the tag filter's count (spec 7.1, 3.6)", () => {
+    const fields = '제목·저자·태그·출판사·원래 이름·초록·메모에서 찾았습니다.';
+    expect(t.library.searchEmptyBody(null, 0)).toBe(fields);
+    expect(t.library.searchEmptyBody('분자생물학', 0)).toBe(`‘분자생물학’의 ${fields}`);
+    expect(t.library.searchEmptyBody('미분류', 2)).toBe(`‘미분류’의 ${fields} 고른 태그 2개로 거른 결과입니다.`);
+    expect(t.library.searchEmptyBody(null, 1)).toMatch(/ 고른 태그 1개로 거른 결과입니다\.$/);
+    expect(t.library.searchPlaceholder).toBe('제목, 저자, 태그 검색');
   });
 });

@@ -492,17 +492,34 @@ export interface SeedRow {
   creators: string[];
   year: number | null;
   createdAt: string;
+  /** Long search fields, only for the 1만 항목 @perf (seedRows' `longTexts`). */
+  abstract?: string;
+  extra?: string;
 }
 
 const SEED_KO = ['세포', '신호', '전달', '단백질', '효소', '반응', '유전자', '발현', '대사', '경로', '면역', '수용체', '광합성', '열역학', '확률', '통계', '강의', '노트'];
 const SEED_EN = ['Signal', 'Protein', 'Enzyme', 'Kinetics', 'Bayesian', 'Inference', 'Linear', 'Algebra', 'Membrane', 'Transport', 'Genome', 'Lecture', 'Notes', 'Review'];
 const SEED_NAMES = ['김민지', '이서준', '박지훈', '최유나', '정하늘', 'Alice Kim', 'Brian Lee', 'Chen Wei', 'Dana Park', 'Erik Lund'];
 
+/** Words from the Korean list up to `length` characters; from the row's number, so rows differ and every run is the same. */
+function longText(from: number, length: number): string {
+  const words: string[] = [];
+  for (let k = from, size = 0; size < length; k++) {
+    const word = SEED_KO[k % SEED_KO.length]!;
+    words.push(word);
+    size += word.length + 1;
+  }
+  return words.join(' ').slice(0, length);
+}
+/** One row in ten has a 600-character abstract; one in a hundred a 6,000-character abstract and a 5,000-character memo (past the 4,000 cut). */
+const longTextsOf = (i: number): Pick<SeedRow, 'abstract' | 'extra'> =>
+  i % 100 === 7 ? { abstract: longText(i, 6_000), extra: longText(i + 1, 5_000) } : i % 10 === 3 ? { abstract: longText(i, 600) } : {};
+
 /**
  * `count` seeded rows from a fixed generator (mulberry32): Korean and English titles, each ending in its running number
  * (so every title is unique), 0–4 creators, a year or none, and 추가일 one minute apart going back from `base`.
  */
-export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z')): SeedRow[] {
+export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z'), opts: { longTexts?: boolean } = {}): SeedRow[] {
   let a = seed | 0;
   const rand = () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -513,12 +530,13 @@ export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
   return Array.from({ length: count }, (_, i) => {
     const words = rand() < 0.6 ? SEED_KO : SEED_EN;
-    return {
+    const row: SeedRow = {
       title: `${pick(words)} ${pick(words)} ${i + 1}`,
       creators: Array.from({ length: Math.floor(rand() * 5) }, () => pick(SEED_NAMES)),
       year: rand() < 0.1 ? null : 1985 + Math.floor(rand() * 41),
       createdAt: new Date(base - i * 60_000).toISOString(),
     };
+    return opts.longTexts ? { ...row, ...longTextsOf(i) } : row;
   });
 }
 
@@ -531,6 +549,16 @@ export async function seedLibrary(app: ElectronApplication, opts: { count: numbe
   const added = await app.evaluate((_electron, arg) => (globalThis as unknown as { __learnTest: { seedItems(i: typeof arg): number } }).__learnTest.seedItems(arg), input);
   if (added !== opts.count) throw new Error(`seedLibrary: ${added} of ${opts.count} items added`);
 }
+
+/** E2E only: starts the render counts of R/ui/renderCount.ts in this page, from zero. */
+export const watchRenders = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    (window as unknown as { __learnRenders?: Record<string, number> }).__learnRenders = {};
+  });
+
+/** How often each counted component rendered since watchRenders. */
+export const renderCounts = (page: Page): Promise<Record<string, number>> =>
+  page.evaluate(() => ({ ...((window as unknown as { __learnRenders?: Record<string, number> }).__learnRenders ?? {}) }));
 
 /** One application-menu entry as JSON. Runtime roles are lower-case (`selectall`, `togglefullscreen`). */
 export interface MenuNode {

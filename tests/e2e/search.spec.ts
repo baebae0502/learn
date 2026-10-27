@@ -63,7 +63,7 @@ test('the field: after 가져오기, 240 wide, clickable in the drag strip, name
     expect(await page.locator('.tb-actions').evaluate((el) => [...el.querySelectorAll('[data-testid="import-menu"], [data-testid="search-field"]')].map((e) => e.getAttribute('data-testid')))).toEqual(['import-menu', 'search-field']);
     // The toolbar is a drag strip: the field must take the click.
     expect(await field.evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region'))).toBe('no-drag');
-    await expect(input(page)).toHaveAttribute('placeholder', '제목, 저자 검색');
+    await expect(input(page)).toHaveAttribute('placeholder', '제목, 저자, 태그 검색');
     await expect(page.getByRole('searchbox', { name: '빠른 검색' })).toHaveCount(1);
     await expect(input(page)).toHaveAttribute('aria-keyshortcuts', IS_MAC ? 'Meta+F' : 'Control+F');
     await expect(page.getByTestId('toolbar-count')).toHaveText('4개');
@@ -122,7 +122,7 @@ test('⌘F selects the field; 초성, two letters, AND over every field, the abs
     await expect(empty.locator('.pe-title')).toHaveText('‘효소 반응’과 일치하는 자료가 없습니다');
     await input(page).fill('신호 이영희');
     await expect(empty.locator('.pe-title')).toHaveText('‘신호 이영희’와 일치하는 자료가 없습니다');
-    await expect(empty.locator('.pe-text')).toHaveText('제목·저자·출판사·원래 이름·초록·메모에서 찾았습니다.');
+    await expect(empty.locator('.pe-text')).toHaveText('제목·저자·태그·출판사·원래 이름·초록·메모에서 찾았습니다.');
     await expect(page.getByTestId('toolbar-count')).toHaveText('0개 / 4개');
     await expect(page.getByTestId('item-row')).toHaveCount(0);
     await expectNoSeriousA11y(page, 'quick search, no results');

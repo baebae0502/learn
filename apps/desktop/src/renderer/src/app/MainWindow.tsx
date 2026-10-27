@@ -28,8 +28,8 @@ import { ListFailed } from '../library/ListFailed';
 import { inTableOrder, selectionCounts, selectionTagPositions } from '../library/selection';
 import { useImport } from '../library/useImport';
 import { useLibrarySettings } from '../library/useLibrarySettings';
+import { LibraryToolbar } from '../library/LibraryToolbar';
 import { useScopeView } from '../library/useScopeView';
-import { useSearch } from '../library/useSearch';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
@@ -40,12 +40,12 @@ import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
-import { Toolbar } from '../shell/Toolbar';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
 import { membershipCommands } from '../organize/actions';
 import type { OrganizeModel } from '../organize/model';
+import { SCOPE_ALL } from '../organize/scope';
 import { useRestoreView } from '../organize/useRestoreView';
 import { setDndGate } from '../dnd/dragState';
 import { installDndEvents } from '../dnd/events';
@@ -61,6 +61,7 @@ import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
+import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
@@ -81,6 +82,7 @@ const DROP_CLEAR_FALLBACK_MS = 250;
 const NO_ITEMS: readonly LibraryItem[] = [];
 
 export function MainWindow(_props: { info: AppInfo }) {
+  countRender('MainWindow');
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
@@ -253,14 +255,13 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const list = items.data ?? NO_ITEMS;
   const count = list.length;
-  const found = useSearch(list);
-  // The toolbar names the scope and counts its rows: "N개 / M개" with M the scope's items and N what the tags and the search leave.
+  // The toolbar (LibraryToolbar) names the view and counts its rows; it subscribes to the quick search itself, so a
+  // keystroke does not render this window.
   const scopeView = useScopeView(list);
   modelRef.current = scopeView.model;
   intoRef.current = importTarget(scopeView.model, scopeView.scope, undefined);
   const sidebarReady = useExpandedRead().isFetched;
   const tagCount = useLibrary((s) => s.tagFilter.size);
-  const shown = useMemo(() => (found ? scopeView.filtered.reduce((n, i) => n + (found.ids.has(i.id) ? 1 : 0), 0) : scopeView.filtered.length), [found, scopeView.filtered]);
   // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
   // one here when a command is judged.
   const listRef = useRef(list);
@@ -280,7 +281,9 @@ export function MainWindow(_props: { info: AppInfo }) {
   const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
   const scopeKind = scopeView.scope.kind;
   const collectionCount = scopeView.model?.collectionCount ?? 0;
-  const searching = found !== null;
+  // Whether a query is typed, not what it found: the answer follows every keystroke, this only turns over when the field
+  // empties or fills.
+  const searching = useLibrary((s) => s.query.trim() !== '');
   // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
@@ -357,6 +360,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     setTextSize,
     focusPane,
     focusSearch: focusQuickSearch,
+    findEverywhere: () => useLibrary.getState().setScope(SCOPE_ALL),
     sortBy: (args) => {
       const next = sortFromArgs(sortRef.current, args);
       if (next) setSort(next);
@@ -412,10 +416,12 @@ export function MainWindow(_props: { info: AppInfo }) {
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
     ) : (
-      <Toolbar
+      <LibraryToolbar
         title={scopeView.label}
         titleTip={scopeView.tooltip}
-        count={count > 0 ? (found || tagCount > 0 ? t.shell.countOf(shown, scopeView.scoped.length) : t.shell.count(scopeView.scoped.length)) : undefined}
+        items={list}
+        scoped={scopeView.scoped.length}
+        filtered={scopeView.filtered}
         actions={
           <>
             <ImportMenuButton />

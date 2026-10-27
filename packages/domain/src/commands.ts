@@ -12,6 +12,7 @@ export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
   | 'library.find'
+  | 'library.findEverywhere'
   | 'nav.back'
   | 'item.open'
   | 'item.showInFolder'
@@ -189,6 +190,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'],
     keywords: ['검색', '찾기', 'search', 'find'],
+  },
+  // 내 라이브러리 전체에서 찾기 (spec 7.1): the no-results state's second button and a palette command — the view returns to
+  // 내 라이브러리 and the query stays. No menu bar item, key or context menu: the design spec draws none for it.
+  {
+    id: 'library.findEverywhere', label: '내 라이브러리 전체에서 찾기', contexts: ['library'],
+    keywords: ['전체', '검색', '찾기', '라이브러리', '범위', 'search', 'everywhere', 'all'],
   },
   {
     id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
@@ -568,6 +575,8 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'library.find': (c) => c.libraryCount > 0,
+  // Only with a search to keep, and only from a view that narrows it (spec 7.1).
+  'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
   'view.toggleInspector': (c) => c.libraryCount > 0,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).

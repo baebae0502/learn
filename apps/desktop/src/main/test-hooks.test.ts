@@ -30,6 +30,13 @@ describe('E2E seeding hook (P-22)', () => {
     expect(itemMetadataSchema.parse(JSON.parse(a!.metadataJson))).toEqual({ creators: [{ name: '김민지', role: 'author' }, { name: 'Alice Kim', role: 'author' }], date: '2019' });
     expect(JSON.parse(b!.metadataJson)).toEqual({ creators: [] });
   });
+  it("puts a row's abstract and memo into its metadata, as schema v1", () => {
+    const { repo, inserted } = fakeRepo(FROM);
+    seedItems(repo, { fromItemId: 'from-id', rows: [{ ...ROWS[0]!, abstract: '긴 초록', extra: '긴 메모' }, ROWS[1]!] }, () => 'x');
+    const [a, b] = inserted[0]!;
+    expect(itemMetadataSchema.parse(JSON.parse(a!.metadataJson))).toMatchObject({ abstract: '긴 초록', extra: '긴 메모' });
+    expect(JSON.parse(b!.metadataJson)).toEqual({ creators: [] });
+  });
   it('refuses an unknown source item and a linked one (the seeded items share a managed copy)', () => {
     expect(() => seedItems(fakeRepo(undefined).repo, { fromItemId: 'from-id', rows: ROWS })).toThrow(/unknown/);
     expect(() => seedItems(fakeRepo({ ...FROM, storageMode: 'linked' }).repo, { fromItemId: 'from-id', rows: ROWS })).toThrow(/managed/);

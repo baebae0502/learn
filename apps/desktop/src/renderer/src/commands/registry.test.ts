@@ -40,6 +40,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   addToCollection: vi.fn(),
   removeFromCollection: vi.fn(),
   focusSearch: vi.fn(),
+  findEverywhere: vi.fn(),
   sortBy: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
@@ -284,6 +285,16 @@ describe('renderer command registry', () => {
     expect(lib.focusSearch).toHaveBeenCalledTimes(1);
     expect(runCommand('library.find', env({ libraryCount: 0 }))).toBe(false);
     expect(runCommand('library.find', env({ view: 'viewer', libraryCount: 2 }))).toBe(false);
+  });
+  it("내 라이브러리 전체에서 찾기 runs the env's switch only while a search is active outside 내 라이브러리", () => {
+    const outside = env({ libraryCount: 3, scope: 'collection', searchActive: true });
+    expect(runCommand('library.findEverywhere', outside)).toBe(true);
+    expect(outside.findEverywhere).toHaveBeenCalledTimes(1);
+    const everywhere = env({ libraryCount: 3, scope: 'all', searchActive: true });
+    expect(runCommand('library.findEverywhere', everywhere)).toBe(false);
+    expect(everywhere.findEverywhere).not.toHaveBeenCalled();
+    const noQuery = env({ libraryCount: 3, scope: 'unfiled', searchActive: false });
+    expect(runCommand('library.findEverywhere', noQuery)).toBe(false);
   });
   it('ignores unknown ids', () => {
     expect(runCommand('file.nope' as CommandId, env())).toBe(false);

@@ -22,12 +22,17 @@ export const library = {
   loading: '불러오는 중…',
   /** A column edge's accessible name (its separator, which VoiceOver reads with the width). */
   resizeColumn: (column: string) => `${column} 열 폭`,
-  /** The toolbar's quick search (spec 4.1); 태그 joins it with tags in M5 (no word for what is not there yet). */
-  searchPlaceholder: '제목, 저자 검색',
+  /** The toolbar's quick search (spec 7.1): the fields it reads that a person names. */
+  searchPlaceholder: '제목, 저자, 태그 검색',
   /** Read out politely as the results change; with none, the no-results state speaks instead. */
   searchStatus: (n: number) => `일치하는 자료 ${n}개`,
   /** In the table body's place when nothing matches (spec 4.3). */
   searchEmptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료가 없습니다`,
-  searchEmptyBody: '제목·저자·출판사·원래 이름·초록·메모에서 찾았습니다.',
+  /**
+   * Where the search looked (spec 7.1): in 내 라이브러리 the fields; in any other view that view's name first ("‘분자생물학’의 …").
+   * With a tag filter on, how many tags narrowed the result (spec 3.6).
+   */
+  searchEmptyBody: (view: string | null, tagCount: number) =>
+    `${view === null ? '' : `‘${view}’의 `}제목·저자·태그·출판사·원래 이름·초록·메모에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
   searchClear: '검색어 지우기',
 } as const;

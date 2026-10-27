@@ -12,6 +12,7 @@
  * - `learn:table:render`: the library view began a render; `learn:inspector:render`: the item panel did;
  * - `learn:table:painted`: the frame that paints rows that changed has begun (usePaintMark);
  * - `learn:table:first-paint`: the same, once per window — the first rows after the list arrived.
+ * - `learn:palette:painted`: the frame that paints the palette's rows for a changed query has begun (usePaintMark; spec 12 palette input → paint).
  * Drag and drop (spec 12 "100행 드롭 → 대상 개수"):
  * - `learn:dnd:drop`: the drop's handler began (rows onto a collection, a tag onto rows);
  * - `learn:dnd:filed`: the memberships or tags are in the cache — the sidebar's counts (`nav-collection-<id> .count`) draw next;
@@ -30,6 +31,7 @@ export type PerfMark =
   | 'table:painted'
   | 'table:first-paint'
   | 'inspector:render'
+  | 'palette:painted'
   | 'dnd:drop'
   | 'dnd:filed'
   | `toast:${string}`;

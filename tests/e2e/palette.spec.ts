@@ -172,7 +172,7 @@ test('ARIA: a combobox over a listbox, unique option ids, nothing to point at wi
     await expect(input).not.toHaveAttribute('aria-activedescendant', /.*/);
     await expect(input).not.toHaveAttribute('aria-controls', /.*/);
     await expect(page.getByRole('listbox', { name: '검색 결과' })).toHaveCount(0);
-    await expect(status).toHaveText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await expect(status).toHaveText('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
     // Tab and ⇧Tab keep the focus inside the palette (the options are not tab stops; RAC's FocusScope contains it).
     await input.fill('');
     for (const key of ['Tab', 'Tab', 'Shift+Tab']) {
@@ -255,7 +255,7 @@ test('keywords, no results, esc, and a menu command while open', async ({}, test
     await input.fill('ㅅㅇㄷㅂ');
     await expect(page.getByTestId('palette-item').first()).toHaveAttribute('data-command-id', 'view.toggleSidebar');
     await input.fill('효소 억제제');
-    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
     await expect(page.getByTestId('palette-item')).toHaveCount(0);
     await expect(page.getByTestId('palette-search-library')).toHaveCount(0); // an empty library has no quick search to hand the query to
     await expect(page.locator('.p-foot .row')).toHaveText([/닫기/]); // nothing to move to or run: only esc is hinted
@@ -598,12 +598,12 @@ test('라이브러리에서 ‘…’ 검색 ⌘F: none in an empty library; it 
     await expect(page.getByTestId('pdf-canvas')).toBeVisible();
     await runMenuCommand(app, 'app.palette');
     await input.fill('효소 억제제');
-    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
     await expect(row).toHaveText(/라이브러리에서 ‘효소 억제제’ 검색/);
     await expect(row).toHaveAttribute('data-focused', 'true');
     await expect(row.locator('.kbd')).toHaveText(IS_MAC ? ['⌘', 'F'] : ['Ctrl', 'F']);
     await expect(page.locator('.p-foot .row')).toHaveText([/실행/, /닫기/]); // palette.html ?state=none
-    await expect(page.getByTestId('palette-status')).toHaveText('‘효소 억제제’와 일치하는 자료·명령이 없습니다');
+    await expect(page.getByTestId('palette-status')).toHaveText('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect(page.getByTestId('search-empty')).toBeVisible(); // back in the library, the quick search's own no-results state

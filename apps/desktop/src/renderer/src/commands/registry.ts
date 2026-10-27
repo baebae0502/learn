@@ -60,6 +60,8 @@ export interface CommandEnv extends CommandContextState {
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
   focusSearch(): void;
+  /** 내 라이브러리 전체에서 찾기: the view becomes 내 라이브러리; the query, which the quick search holds, stays (spec 3.5, 7.1). */
+  findEverywhere(): void;
   /** 보기 › 정렬 기준: sets the sort of the view shown from a column and/or a direction (the other stays as it is). */
   sortBy(args: CommandArgs): void;
   /**
@@ -104,6 +106,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
   'library.find': (env) => env.focusSearch(),
+  'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
   'item.open': (env, t) => env.open(itemOf(t)),
   'item.showInFolder': (env, t) => env.showInFolder(itemOf(t)),

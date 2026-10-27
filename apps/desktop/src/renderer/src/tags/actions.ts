@@ -1,7 +1,6 @@
 import { api, unwrap } from '../api';
 import { currentModel, patchOrganize } from '../sidebar/actions';
 import { useLibrary } from '../state/library-store';
-import { t } from '../strings';
 import { showActionFailed, showToast } from '../ui/toasts';
 import { createTagActions } from './tagActions';
 

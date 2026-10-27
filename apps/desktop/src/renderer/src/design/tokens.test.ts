@@ -241,7 +241,7 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
    * 39618864364), inactive light #ececec and dark #141414 (run 39631541294). Active dark is tested at #404040, a margin
    * above the measurement (a mid-tone wallpaper lightens it on real hardware); #ececec is the light worst case.
    */
-  const MATERIALS: Record<Theme, readonly string[]> = { light: ['#f6f6f6', '#ececec'], dark: ['#404040', '#141414'] };
+  const MATERIALS: Record<Theme, readonly string[]> = { light: ['#f6f6f6', '#ececec'], dark: ['#404040', '#383838', '#141414'] };
   type SidebarToken = ColorToken | keyof typeof colorsVibrancySidebar;
 
   for (const theme of THEMES) {

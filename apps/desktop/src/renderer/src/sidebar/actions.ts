@@ -8,7 +8,6 @@ import { parseExpanded } from '../organize/viewSettings';
 import { sidebarHidden, toggledSidebar } from '../shell/layout';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
-import { t } from '../strings';
 import { showActionFailed, showUndoToast } from '../ui/toasts';
 import { createCollectionActions } from './collectionActions';
 import { saveExpanded } from './useExpanded';

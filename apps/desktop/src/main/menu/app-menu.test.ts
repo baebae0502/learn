@@ -4,6 +4,11 @@ import { COMMANDS, NO_LIBRARY_VIEW, acceleratorLabel, availableMenuCommands, com
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged, submenuShapeKey } from './app-menu';
 import { ALL_COMMANDS, ALL_SUBMENUS, LIBRARY } from './testing';
 
+// app-menu draws colour dots through dot-icon (Electron's nativeImage); the test observes the made icon's scale instead.
+vi.mock('electron', () => ({
+  nativeImage: { createFromBuffer: (_png: Buffer, opts: { scaleFactor: number }) => ({ scale: opts.scaleFactor }) },
+}));
+
 interface Shape {
   label?: string;
   role?: string;
@@ -549,6 +554,14 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
       ]);
       rows[1]!.click!({ enabled: true } as never, undefined, {} as never);
       expect(onCommand).toHaveBeenCalledWith('tag.color3', undefined);
+    });
+    it('the menu bar draws the colour dot on the 색 태그 rows (a row of another submenu has none)', () => {
+      const template = buildAppMenu({ isDev: false, platform: 'linux', commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled: ONE, onCommand: vi.fn(), context: context(), organize: LIBRARY });
+      const rows = colorRows('linux');
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) expect(r.icon, String(r.id)).toBeDefined();
+      const add = walk(template).find((i) => i.label === '컬렉션에 추가')!;
+      for (const r of walk(add.submenu as MenuItemConstructorOptions[])) expect(r.icon, String(r.label)).toBeUndefined();
     });
     it('on linux the slots show at the right edge without being registered, and a pick made with the key is dropped', () => {
       const onCommand = vi.fn();

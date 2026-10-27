@@ -4,6 +4,7 @@ import {
   type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type MenuName, type OrganizeSnapshot, type PickedCommand, type SubmenuSpec,
 } from '@learn/domain';
 import { mainStrings } from '../strings';
+import { dotIcon } from './dot-icon';
 import { entriesToTemplate, type TemplateOptions } from './entries';
 import { colorTagGroup, valueRows, type SubmenuInput } from './submenus';
 
@@ -104,8 +105,8 @@ const picker = (opts: AppMenuOptions) => (picked: PickedCommand | null): void =>
   if (picked) opts.onCommand(picked.commandId, picked.args);
 };
 
-/** The menu bar's rows: key equivalents are live there (see entriesToTemplate). */
-const barOptions = (opts: AppMenuOptions): TemplateOptions => ({ surface: 'menubar', platform: opts.platform });
+/** The menu bar's rows: key equivalents are live there (see entriesToTemplate), and a row with a colour draws its dot (M-2), as the popups do. */
+const barOptions = (opts: AppMenuOptions): TemplateOptions => ({ surface: 'menubar', platform: opts.platform, dotIcon });
 
 /** What the submenus are built from: the reported context and the library read for the menu bar (no selection, so no marks). */
 function submenuInput(opts: AppMenuOptions): SubmenuInput {

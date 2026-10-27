@@ -942,7 +942,18 @@ test('drag and drop: a tree row and a table row as drop targets, then the board 
       await force(`nav-collection-${stat}`, true);
       await shoot(s.page, `dnd-tree-drop-${theme}`, { mask: dates() });
       await force(`nav-collection-${stat}`, false);
-      // A table row beside the selected one: a tag chip over it.
+      // The viewed collection as a target (a collection dragged onto it, a Finder file): the tree holds the focus, so its selection is
+      // the accent fill, and the drop mark has to win over it.
+      await treeRow(s.page, bio).click();
+      await force(`nav-collection-${bio}`, true);
+      await shoot(s.page, `dnd-tree-drop-viewed-${theme}`, { mask: dates() });
+      await force(`nav-collection-${bio}`, false);
+      // A table row beside the selected one: a tag chip over it. Pressing a chip takes the focus out of the table, so the selected row
+      // is the neutral one, and the target is a striped row and a plain one in turn.
+      await s.page.evaluate(() => void (document.activeElement as HTMLElement | null)?.blur());
+      await force('row:1', true);
+      await shoot(s.page, `dnd-row-drop-striped-${theme}`, { mask: dates() });
+      await force('row:1', false);
       await force('row:2', true);
       await shoot(s.page, `dnd-row-drop-${theme}`, { mask: dates() });
       await force('row:2', false);

@@ -844,11 +844,12 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
       // Far down the tree: the focus follows the drop target, and the tree scrolls the viewed row out of sight.
       for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowDown');
+      // The tree follows the focus a frame or two behind the keys: on a loaded machine it is not there after three frames.
+      await expect.poll(async () => (await inSight(page)).map((r) => r.id), { message: `${how}: the viewed row is out of sight` }).not.toContain(leaf);
       await frames(page, 3);
       const [mark] = await marked(page);
       expect(mark, `${how}: a collection row is the drop target`).toMatch(/^nav-collection-/);
       const target = mark!.replace('nav-collection-', '');
-      expect((await inSight(page)).map((r) => r.id), `${how}: the viewed row is out of sight`).not.toContain(leaf);
       await stretchDropWait(page, 1500);
       await recordRowFocus(page);
       // VoiceOver's VO-Space on the drop target is a click with no pointer (detail 0): React Aria drops there as on ↩.

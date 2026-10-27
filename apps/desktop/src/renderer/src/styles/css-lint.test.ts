@@ -54,3 +54,25 @@ describe('renderer CSS architecture', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/** The declarations of the rule whose selector list holds `selector` (comments dropped, white space folded): a text pin for what no Linux render can show. */
+function declarationsOf(file: string, selector: string): string {
+  const css = withoutComments(fs.readFileSync(path.join(dir, file), 'utf8'));
+  const fold = (t: string) => t.replace(/\s+/g, ' ').trim();
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selectors: fold(m[1]!).split(/,(?![^(]*\))/).map((x) => fold(x)), body: fold(m[2]!) }));
+  const found = rules.find((r) => r.selectors.includes(selector));
+  if (!found) throw new Error(`${file}: no rule for ${selector}`);
+  return found.body;
+}
+
+describe('the drop row\'s count colour (dark vibrancy material: nothing fails on Linux when it is lost)', () => {
+  const COLOUR = 'color: var(--sidebar-count-selected, var(--text-secondary));';
+  it.each([
+    ['screens/dnd.css', ".nav-row:is([data-drop-target], [data-force~='drop']) .count"],
+    ['screens/dnd.css', ".heading-drop:is([data-drop-target], [data-force~='drop']) .heading-label"],
+    ['utilities.css', ':root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] .count'],
+    ['utilities.css', ':root[data-window-not-main] .sidebar .heading-drop[data-drop-target] .heading-label'],
+  ])('%s: %s takes the selected row\'s count colour, secondary text as the fallback', (file, selector) => {
+    expect(declarationsOf(file, selector)).toBe(COLOUR);
+  });
+});

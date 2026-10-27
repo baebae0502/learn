@@ -1,5 +1,5 @@
 import {
-  LearnError, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
+  LearnError, clipSearchText, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
   type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
 } from '@learn/domain';
 import type { Db } from './connection';
@@ -216,7 +216,8 @@ export class LibraryRepository {
   /**
    * Quick search's long fields (spec 4.2): abstract and memo of the live items that have either. SQLite drops the rest
    * first; `json_valid` comes first in a CASE because json_extract throws on malformed JSON. The schema still decides
-   * (a stored value that no longer parses reads as empty, as everywhere else).
+   * (a stored value that no longer parses reads as empty, as everywhere else). Each field is cut at SEARCH_TEXT_FIELD_MAX
+   * characters: 10,000 items of 10,000-character abstracts would not fit the first query's time.
    */
   searchTexts(): SearchText[] {
     const rows = this.db
@@ -230,8 +231,8 @@ export class LibraryRepository {
       .all() as Array<{ id: string; metadata_json: string }>;
     return rows.flatMap((r) => {
       const meta = parseItemMetadata(r.metadata_json);
-      const abstract = meta.abstract || null;
-      const extra = meta.extra || null;
+      const abstract = meta.abstract ? clipSearchText(meta.abstract) : null;
+      const extra = meta.extra ? clipSearchText(meta.extra) : null;
       return abstract || extra ? [{ id: r.id, abstract, extra }] : [];
     });
   }

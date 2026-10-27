@@ -235,6 +235,16 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     );
   });
 
+  it('searchTexts: the abstract and the memo are cut at 4,000 characters each, shorter ones are left alone (spec 7.1)', () => {
+    const long = seedItem(db);
+    const short = seedItem(db);
+    repo.updateMetadata(long.itemId, { metadata: { creators: [], abstract: `${'가'.repeat(4000)}첫째 이후`, extra: `${'나'.repeat(4500)}둘째 이후` } });
+    repo.updateMetadata(short.itemId, { metadata: { creators: [], abstract: '짧은 초록', extra: '짧은 메모' } });
+    const byId = new Map(repo.searchTexts().map((t) => [t.id, t]));
+    expect(byId.get(long.itemId)).toEqual({ id: long.itemId, abstract: '가'.repeat(4000), extra: '나'.repeat(4000) });
+    expect(byId.get(short.itemId)).toEqual({ id: short.itemId, abstract: '짧은 초록', extra: '짧은 메모' });
+  });
+
   it('degrades corrupt stored metadata to empty without failing the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { itemId } = seedItem(db);

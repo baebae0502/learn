@@ -54,6 +54,17 @@ export interface SearchText {
   extra: string | null;
 }
 
+/** Quick search reads at most this many characters of each long field (spec 7.1): what lies past it is not searched. */
+export const SEARCH_TEXT_FIELD_MAX = 4000;
+
+/** The first SEARCH_TEXT_FIELD_MAX UTF-16 units of a long field, never ending on half a surrogate pair. */
+export function clipSearchText(text: string): string {
+  if (text.length <= SEARCH_TEXT_FIELD_MAX) return text;
+  const cut = text.slice(0, SEARCH_TEXT_FIELD_MAX);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 export interface ItemDetail {
   item: LibraryItem;
   metadata: ItemMetadata;

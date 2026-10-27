@@ -21,6 +21,31 @@ const count = (page: Page, collectionId: string) => treeRow(page, collectionId).
 const open = (page: Page, collectionId: string) => treeRow(page, collectionId).locator('.disclosure').click();
 const members = async (page: Page, collectionId: string) => (await organizeSnapshot(page)).members[collectionId] ?? [];
 const libraryCount = (page: Page) => page.evaluate(async () => (await window.learn.library.list().then((r) => (r.ok ? r.data.length : -1))));
+/**
+ * React Aria lets a drop go 50 ms after it (useDroppableCollection): until then it moves its cursor after each render that changed
+ * the rows, and once more at the end. On a loaded machine what the drop changes lands inside that wait; stretched to `ms`, it does
+ * every time. `relaxDropWait` puts the timers back.
+ */
+const stretchDropWait = (page: Page, ms: number) =>
+  page.evaluate((ms) => {
+    const w = window as unknown as { __timeout?: typeof setTimeout };
+    w.__timeout ??= window.setTimeout;
+    window.setTimeout = ((fn: TimerHandler, delay?: number, ...rest: unknown[]) => w.__timeout!(fn, delay === 50 ? ms : delay, ...rest)) as typeof setTimeout;
+  }, ms);
+const relaxDropWait = (page: Page) => page.evaluate(() => void (window.setTimeout = (window as unknown as { __timeout: typeof setTimeout }).__timeout));
+/** From now on, the tree rows that take the focus, in order (`rowFocus` reads them). */
+const recordRowFocus = (page: Page) =>
+  page.evaluate(() => {
+    const w = window as unknown as { __rowFocus: string[]; __onRowFocus?: (e: FocusEvent) => void };
+    w.__rowFocus = [];
+    if (w.__onRowFocus) return;
+    w.__onRowFocus = (e) => {
+      const key = e.target instanceof Element ? e.target.closest('[role="row"][data-key]')?.getAttribute('data-key') : null;
+      if (key) w.__rowFocus.push(key);
+    };
+    window.addEventListener('focusin', w.__onRowFocus, true);
+  });
+const rowFocus = (page: Page) => page.evaluate(() => (window as unknown as { __rowFocus: string[] }).__rowFocus);
 
 test.describe('rows, collections and tag chips', () => {
   test.describe.configure({ mode: 'serial' });
@@ -591,9 +616,18 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       found = (await marked(page)).includes(`nav-collection-${target}`);
     }
     expect(found, 'the arrows reach 과목 009').toBe(true);
+    await stretchDropWait(page, 1500);
     await page.keyboard.press('Enter');
     await expect.poll(() => parentOf(leaf)).toBe(target);
     await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
+    // The cursor goes back to the viewed row, and the view stays: React Aria puts its cursor on the dropped-on row after a drop.
+    await page.waitForTimeout(2000); // past React Aria's (stretched) wait: its last move has come
+    await relaxDropWait(page);
+    await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), 'the cursor is back on the viewed row').toHaveAttribute('data-key', leaf);
+    await expect(treeRow(page, target), 'the dropped-on row is not the view').not.toHaveAttribute('aria-selected', 'true');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(treeRow(page, leaf), 'out of the tree and back: the view stays').toHaveAttribute('aria-selected', 'true');
 
     // A collection with children: → opens or enters it, ⌥→ is the way to its drag button. esc ends the drag.
     const parent = tree.ids[8]!;
@@ -782,4 +816,124 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     expect(drawn.length, 'rows are drawn at the end').toBeGreaterThanOrEqual(Math.floor(end.height / rowHeight) - 2);
     expect(box.y + box.height - Math.max(...drawn), 'the last row ends at the tree\'s bottom').toBeLessThanOrEqual(rowHeight);
   });
+
+  /** The collection rows wholly inside the tree's box now. */
+  const inSight = async (page: Page): Promise<Array<{ id: string; leaf: boolean }>> => {
+    const view = (await treeBox().boundingBox())!;
+    const out: Array<{ id: string; leaf: boolean }> = [];
+    for (const row of await page.locator('[data-testid^="nav-collection-"]').all()) {
+      const box = await row.boundingBox();
+      if (box && box.y >= view.y + 10 && box.y + box.height <= view.y + view.height - 10)
+        out.push({ id: (await row.getAttribute('data-testid'))!.replace('nav-collection-', ''), leaf: (await row.getAttribute('aria-expanded')) === null });
+    }
+    return out;
+  };
+
+  test('(i) a keyboard drop far from the viewed row — by ↩, and by a screen reader\'s click (a click with no pointer) — leaves the cursor on the viewed row, and the view stays', async () => {
+    const { page } = s;
+    for (const how of ['enter', 'click'] as const) {
+      await treeBox().evaluate((e) => void (e.scrollTop = 0));
+      await frames(page, 3);
+      // A leaf, and one from the start (a row whose children were all dragged away by the earlier runs stays open, and → goes nowhere).
+      const leaf = (await inSight(page)).find((r) => r.leaf && tree.children[r.id]!.length === 0)!.id;
+      await treeRow(page, leaf).click();
+      await expect(treeRow(page, leaf)).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('ArrowRight'); // a leaf: React Aria's own → goes into the row's buttons
+      await expect(page.getByTestId(`drag-handle-${leaf}`)).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
+      // Far down the tree: the focus follows the drop target, and the tree scrolls the viewed row out of sight.
+      for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowDown');
+      await frames(page, 3);
+      const [mark] = await marked(page);
+      expect(mark, `${how}: a collection row is the drop target`).toMatch(/^nav-collection-/);
+      const target = mark!.replace('nav-collection-', '');
+      expect((await inSight(page)).map((r) => r.id), `${how}: the viewed row is out of sight`).not.toContain(leaf);
+      await stretchDropWait(page, 1500);
+      await recordRowFocus(page);
+      // VoiceOver's VO-Space on the drop target is a click with no pointer (detail 0): React Aria drops there as on ↩.
+      if (how === 'enter') await page.keyboard.press('Enter');
+      else await page.evaluate(() => (document.activeElement as HTMLElement).click());
+      await expect.poll(() => parentOf(leaf), `${how}: the drop moved the viewed collection`).toBe(target);
+      await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
+      await page.waitForTimeout(2000); // past React Aria's (stretched) wait: its last move has come
+      await relaxDropWait(page);
+      // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
+      expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
+      await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
+      await expect(treeRow(page, target), `${how}: the dropped-on row is not the view`).not.toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(treeRow(page, leaf), `${how}: out of the tree and back, the view stays`).toHaveAttribute('aria-selected', 'true');
+    }
+  });
+
+  test('(j) Finder\'s files dropped on a row while the tree holds the focus: the view stays, no row shows a keyboard ring, the tree has not scrolled — on a row far from the view and on the viewed row', async () => {
+    const { page } = s;
+    const content = page.getByTestId('content');
+    const ring = () => page.locator('[data-focus-visible]').count();
+    await treeBox().evaluate((e) => void (e.scrollTop = 0));
+    await frames(page, 3);
+    await specialRow(page, 'all').click();
+    await expect(specialRow(page, 'all')).toBeFocused();
+    await treeBox().evaluate((e) => void (e.scrollTop = 1500));
+    await frames(page, 4);
+    const rows = await inSight(page);
+    const to = rows[Math.floor(rows.length / 2)]!.id;
+    const before = await treeBox().evaluate((e) => e.scrollTop);
+    const mp4 = await finderDrag(page, MP4);
+    await mp4.send('dragEnter', content);
+    await mp4.send('dragOver', treeRow(page, to));
+    expect(await marked(page)).toEqual([`nav-collection-${to}`]);
+    await mp4.send('drop', treeRow(page, to));
+    await expect.poll(() => members(page, to)).toHaveLength(1);
+    await page.waitForTimeout(300);
+    expect(await treeBox().evaluate((e) => e.scrollTop), 'a row far from the view: the tree did not scroll').toBe(before);
+    expect(await ring(), 'a row far from the view: no keyboard ring after a drop by mouse').toBe(0);
+    await expect(specialRow(page, 'all'), 'a row far from the view: the view stays').toHaveAttribute('aria-selected', 'true');
+    await mp4.close();
+
+    // The viewed row itself (Finder's files are the only drag that can get there): React Aria's move lands on the row that has the focus.
+    await treeBox().evaluate((e) => void (e.scrollTop = 0));
+    await frames(page, 4);
+    const count = await libraryCount(page);
+    const mp4b = await finderDrag(page, MP4_B);
+    await mp4b.send('dragEnter', content);
+    await mp4b.send('dragOver', specialRow(page, 'all'));
+    expect(await marked(page)).toEqual(['nav-scope-all']);
+    await mp4b.send('drop', specialRow(page, 'all'));
+    await expect.poll(() => libraryCount(page)).toBe(count + 1);
+    await page.waitForTimeout(300);
+    expect(await treeBox().evaluate((e) => e.scrollTop), 'the viewed row: the tree did not scroll').toBe(0);
+    expect(await ring(), 'the viewed row: no keyboard ring after a drop by mouse').toBe(0);
+    await expect(specialRow(page, 'all'), 'the viewed row: the view stays').toHaveAttribute('aria-selected', 'true');
+    await mp4b.close();
+  });
+});
+
+test('a special view that appears while React Aria still waits after a drop (미분류, after Finder\'s file onto 내 라이브러리) does not take the view', async ({}, testInfo) => {
+  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { page } = t;
+    const [doc] = await importPaths(page, [PDF]);
+    const bio = await createCollection(page, '나중 보는 곳');
+    await addToCollection(page, bio, [doc!.id]);
+    await treeRow(page, bio).click();
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await expect(specialRow(page, 'unfiled'), 'every item is in a collection').toHaveCount(0);
+    // On a loaded machine the import can land while React Aria still waits after the drop: stretched, it does every time.
+    await stretchDropWait(page, 3000);
+    const files = await finderDrag(page, MP4);
+    await files.send('dragEnter', page.getByTestId('content'));
+    await files.send('dragOver', specialRow(page, 'all'));
+    await files.send('drop', specialRow(page, 'all'));
+    await expect(specialRow(page, 'unfiled'), 'the new item is in no collection: 미분류 appears').toBeVisible();
+    await page.waitForTimeout(3500); // past React Aria's stretched wait
+    await relaxDropWait(page);
+    await expect(treeRow(page, bio), 'the view stays').toHaveAttribute('aria-selected', 'true');
+    await expect(specialRow(page, 'unfiled')).not.toHaveAttribute('aria-selected', 'true');
+    await files.close();
+  } finally {
+    await t.app.close();
+  }
 });

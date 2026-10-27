@@ -22,6 +22,8 @@ let dropFocus: string | null = null;
 let dropped = false;
 /** Puts the tree's cursor back where the drop's capture took it from (`parkCursor`). */
 let parked: (() => void) | null = null;
+/** Parks the tree's cursor when React Aria asks the tree for the operation of a keyboard drop expected in this event. */
+let keyboardPark: (() => void) | null = null;
 function unpark(): void {
   const restore = parked;
   parked = null;
@@ -71,6 +73,7 @@ export const dragState = {
   beginCollection: (collectionId: string) => begin({ ...IDLE, kind: 'collection', collectionId }),
   beginTag: (tagId: string) => begin({ ...IDLE, kind: 'tag', tagId }),
   end: () => {
+    keyboardPark = null;
     unpark();
     if (!dropped) dropFocus = null; // a drag that ended without a drop on the row it hovered
     if (snapshot.kind !== null) replace(IDLE);
@@ -104,17 +107,31 @@ export const dragState = {
     unpark();
     if (!dropped && dropFocus === key) dropFocus = null;
   },
-  /** The tree row the drag is over, which a drop goes to; null when there is none, and once a drop has been handed over. */
-  dropRow: (): string | null => (dropped ? null : dropFocus),
   /**
-   * A drop on the tree row `dropRow()` is coming by a native drop event (a mouse drag, Finder's files), and the sidebar has taken
-   * its cursor off the rows while React Aria records it; `restore` puts it on the viewed row again. React Aria moves the cursor to
-   * the dropped-on row, and turns the keyboard modality on, only while it finds the cursor where it was when it recorded the drop
-   * (useDroppableCollection's updateFocusAfterDrop): a cursor that has moved since is left alone. It goes back once: when the drop
-   * is handed over (`armDropFocus`, in the drop's own event), else on the drop-exit that follows a drop, or at the drag's end.
+   * A drop on a tree row is coming — the native drop event (a mouse drag, Finder's files), ↩ released or a screen reader's click
+   * in a keyboard drag — and the sidebar has taken its cursor off the rows while React Aria records it; `restore` puts it on the
+   * viewed row again. React Aria moves the cursor to the dropped-on row, and turns the keyboard modality on, only while it finds
+   * the cursor where it was when it recorded the drop (useDroppableCollection's updateFocusAfterDrop): a cursor that has moved
+   * since is left alone. It goes back once: when the drop is handed over (`armDropFocus`, in the drop's own event), else on the
+   * drop-exit that follows a drop, or at the drag's end (a keyboard drop ends its drag in the same event).
    */
   parkCursor: (restore: () => void) => {
     parked = restore;
+  },
+  /**
+   * ↩ released, or a screen reader's click, in a keyboard drag: React Aria's DragManager may drop in this same event. It asks the
+   * target for the drop's operation and records the cursor right after, in one go: `park` runs then (`dropOperationAsked`), not
+   * earlier — React would draw the parked cursor first, and the viewed row, the drag's source, which is kept on the page only as
+   * the cursor's row when it is out of sight, would leave it and end the drag. Null forgets it; so does the drag's end.
+   */
+  expectKeyboardDrop: (park: (() => void) | null) => {
+    keyboardPark = park;
+  },
+  /** React Aria asks the tree for the operation of a drop on a row (treeDnd's getDropOperation). */
+  dropOperationAsked: () => {
+    const park = keyboardPark;
+    keyboardPark = null;
+    park?.();
   },
   /** The guard if `key` is the row dropped on; `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
   takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key ? { pointer: pointerDrop } : null),

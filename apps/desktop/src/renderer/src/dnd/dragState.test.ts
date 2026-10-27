@@ -113,16 +113,13 @@ describe('dragState', () => {
     // keyboard modality, whenever it finds the cursor where it was when it recorded the drop — on each render, then on its timer.
     let cursor: string | null = 'all';
     dragState.beginItems(['a']);
-    expect(dragState.dropRow()).toBeNull();
     dragState.hoverDropFocus('stat');
-    expect(dragState.dropRow(), 'the row a drop goes to').toBe('stat');
     cursor = null; // the sidebar, at the drop's capture
     dragState.parkCursor(() => void (cursor = 'all'));
     const recorded = cursor; // React Aria records the drop
     dragState.armDropFocus('stat'); // and hands it over (onItemDrop)
     expect(cursor).toBe('all');
     expect(cursor, 'React Aria leaves a cursor that moved since the drop').not.toBe(recorded);
-    expect(dragState.dropRow(), 'a drop is no longer a hover').toBeNull();
     cursor = 'unfiled'; // the user's own move
     dragState.leaveDropFocus('stat');
     dragState.end();
@@ -139,6 +136,23 @@ describe('dragState', () => {
       dragState.end();
       expect(back).toBe(1);
     }
+  });
+
+  it('a keyboard drop expected in this event parks the cursor when React Aria asks the tree for its operation — once; the next key, a null or the drag\'s end forgets it', () => {
+    let parks = 0;
+    const park = () => void parks++;
+    dragState.beginCollection('c1');
+    dragState.expectKeyboardDrop(park); // ↩ released
+    dragState.dropOperationAsked(); // DragManager.drop asks, then records the cursor
+    dragState.dropOperationAsked(); // a later question (the next arrow's targets) is not a drop
+    expect(parks).toBe(1);
+    dragState.expectKeyboardDrop(park);
+    dragState.expectKeyboardDrop(null); // the next key up is not ↩
+    dragState.dropOperationAsked();
+    dragState.expectKeyboardDrop(park);
+    dragState.end(); // ↩ with no target: a cancel, the drag ends
+    dragState.dropOperationAsked();
+    expect(parks).toBe(1);
   });
 
   it('does not run on a timer: the guard is still there long after a drop', () => {

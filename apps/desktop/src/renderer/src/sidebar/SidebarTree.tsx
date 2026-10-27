@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
 import {
   Button, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
 } from 'react-aria-components';
+import { flushSync } from 'react-dom';
 import type { LibraryScope } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
@@ -67,6 +68,8 @@ function StateTap({ tap, state }: { tap: RowContext['tap']; state: TreeState<unk
 }
 
 const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as CSSProperties;
+/** The tree's selection while a drop is being recorded (SidebarTree's parkCursor). */
+const NO_KEYS: ReadonlySet<Key> = new Set();
 
 function SpecialItem({ row, tap, reader, onReaderPress }: { row: SpecialRow; tap: RowContext['tap']; reader: boolean; onReaderPress(key: string): void }) {
   const { icon, label } = SPECIAL[row.kind];
@@ -172,6 +175,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   const tap = useRef<TreeState<unknown> | null>(null);
   const selectedKey = keyOfScope(scope);
   const selectedKeys = useMemo(() => new Set<Key>([selectedKey]), [selectedKey]);
+  const [selectionParked, setSelectionParked] = useState(false);
   const hasCollections = settled && model !== undefined && (model.collectionCount > 0 || editParent !== undefined);
   const fit = !hasCollections;
   const layoutOptions = useMemo(() => ({ rowSize, headingSize: HEADING_HEIGHT }), [rowSize]);
@@ -314,19 +318,62 @@ export function SidebarTree(props: SidebarTreeProps) {
   };
 
   /**
-   * A drop on a row by the native drop event (a mouse drag, Finder's files), in its capture phase, before the tree's own handler
-   * records it: the cursor is taken off the rows, and is back on the viewed row as soon as the drop is handed over
-   * (dragState.parkCursor). React Aria moves the cursor to the dropped-on row, with the keyboard modality, only while it finds it
-   * where it was at the drop; now it leaves it, however late its moves come — no ring, no scroll, no change of view — and only
-   * gives the tree the focus, on the viewed row. (React may draw once in between, with no cursor.) A drop by keyboard has no drop
-   * event: the focus guard below handles it.
+   * A drop on a row is coming, and React Aria is about to record the tree's cursor and selection (useDroppableCollection). After the
+   * drop it moves the cursor to the dropped-on row, with the keyboard modality, while it finds the cursor where it was; and it selects
+   * the rows that appeared meanwhile (a special view such as 미분류 after Finder's file onto 내 라이브러리) while it finds the selection
+   * as it was — on each render that changed the rows, until its timer ends the wait. So the cursor, and with `selection` the
+   * selection (a prop, so drawn at once), are off for the moment it records them, and back on the viewed row as soon as the drop is
+   * handed over (dragState.parkCursor): React Aria finds them changed and leaves them, however late its moves come — no ring after a
+   * drop by mouse, no change of view — and only gives the tree the focus, on the viewed row.
+   */
+  const park = useCallback((selection: boolean) => {
+    const manager = tap.current?.selectionManager;
+    if (!manager) return;
+    manager.setFocusedKey(null);
+    if (selection) flushSync(() => setSelectionParked(true));
+    dragState.parkCursor(() => {
+      if (selection) setSelectionParked(false);
+      manager.setFocusedKey(latest.current.selectedKey);
+    });
+  }, []);
+  /**
+   * A drop by the native drop event — the app's own mouse drags and Finder's files — in its capture phase, before the tree's handler
+   * records it, when a row is the target (React Aria marks the row it will record; for Finder's files the drag's hover bookkeeping
+   * is reset by every dragover, so the mark is what tells).
    */
   const onDropCapture = () => {
-    const manager = tap.current?.selectionManager;
-    if (!manager || dragState.dropRow() === null) return;
-    manager.setFocusedKey(null);
-    dragState.parkCursor(() => manager.setFocusedKey(latest.current.selectedKey));
+    if (treeRef.current?.querySelector('[role="row"][data-key][data-drop-target]')) park(true);
   };
+  // A drop by keyboard has no drop event: React Aria's DragManager drops when ↩ is released, or on a screen reader's click (a click
+  // with no pointer), in the document's capture phase — the window's comes first, and says a drop may come (the cursor is parked
+  // when React Aria asks the tree for its operation, dragState.expectKeyboardDrop). ⌥↩ and the row's hidden expand button (a role
+  // button that is not a drop indicator) open the row instead. The selection stays: a keyboard drop moves collections or adds
+  // items to one, so no special view can appear.
+  useEffect(() => {
+    const virtualDrag = props.dragAndDropHooks?.isVirtualDragging;
+    if (!virtualDrag) return;
+    const expandButton = (target: EventTarget | null) => target instanceof Element && target.closest('[role="button"]:not([aria-roledescription])') !== null;
+    const parkNow = () => park(false);
+    let pointerless = false; // the last pointerdown had no size: a screen reader's (React Aria's isVirtualPointerEvent)
+    const onPointerDown = (e: globalThis.PointerEvent) => void (pointerless = e.width === 0 && e.height === 0);
+    const onKeyUp = (e: globalThis.KeyboardEvent) => {
+      dragState.expectKeyboardDrop(e.key === 'Enter' && !e.altKey && virtualDrag() && !expandButton(e.target) ? parkNow : null);
+    };
+    const onClick = (e: globalThis.MouseEvent) => {
+      const pointerType = (e as Partial<globalThis.PointerEvent>).pointerType;
+      const virtualClick = (pointerType === '' && e.isTrusted) || (e.detail === 0 && !pointerType) || pointerless; // React Aria's isVirtualClick
+      const inTree = treeRef.current?.contains(e.target as Node) ?? false;
+      dragState.expectKeyboardDrop(virtualClick && virtualDrag() && inTree && !expandButton(e.target) ? parkNow : null);
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    window.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+      window.removeEventListener('click', onClick, true);
+    };
+  }, [props.dragAndDropHooks, park]);
 
   /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
@@ -336,9 +383,9 @@ export function SidebarTree(props: SidebarTreeProps) {
     const key = el.dataset['key']!;
     const dropFocus = dragState.takeDropFocus(key);
     if (dropFocus) {
-      // React Aria moved the focus to the row that was dropped on: the view stays where it was, and so does the cursor. After
-      // a mouse drop the cursor goes back quietly — React Aria set the keyboard modality for its own move, which would scroll
-      // the tree to the cursor and draw a keyboard ring on it.
+      // React Aria moved the focus to the row that was dropped on (a drop whose cursor was not parked above): the view stays where
+      // it was, and so does the cursor. After a mouse drop the cursor goes back quietly — React Aria set the keyboard modality for
+      // its own move, which would scroll the tree to the cursor and draw a keyboard ring on it.
       if (dropFocus.pointer) document.dispatchEvent(new window.PointerEvent('pointermove'));
       if (key !== selectedKey) tap.current?.selectionManager.setFocusedKey(selectedKey);
       return;
@@ -478,7 +525,7 @@ export function SidebarTree(props: SidebarTreeProps) {
           selectionMode="single"
           selectionBehavior="replace"
           disallowEmptySelection
-          selectedKeys={selectedKeys}
+          selectedKeys={selectionParked ? NO_KEYS : selectedKeys}
           onSelectionChange={onSelectionChange}
           expandedKeys={expanded}
           onExpandedChange={onExpandedChange}

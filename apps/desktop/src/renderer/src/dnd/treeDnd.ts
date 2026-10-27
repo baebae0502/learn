@@ -104,7 +104,10 @@ export function useSidebarDnd(onFiles: FilesDropHandler) {
     onDragStart: (e) => dragState.beginCollection(String([...e.keys][0])),
     onDragEnd: () => dragState.endUnlessNative(),
     acceptedDragTypes: 'all',
-    getDropOperation: treeDropOperation,
+    getDropOperation: (target, types, allowed) => {
+      if (target.type === 'item') dragState.dropOperationAsked(); // a keyboard drop is recorded right after (SidebarTree)
+      return treeDropOperation(target, types, allowed);
+    },
     onItemDrop: (e) => void onItemDrop(e, onFiles),
     onDropEnter: (e) => armOver(e.target),
     onDropExit: (e) => leaveOver(e.target),

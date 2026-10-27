@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { Bookmark, ChevronDown, ChevronRight, Copy, Ellipsis, FileText, Folder, FolderOpen, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronRight, Copy, Ellipsis, FileText, Folder, FolderOpen, FolderPlus, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
 import { TAG_COLORS, commandById, commandLabel, type OrganizeTag } from '@learn/domain';
 import { DragPreview } from '../dnd/DragPreview';
 import { DEFAULT_TAGS_SELECTOR } from '../organize/viewSettings';
@@ -638,6 +638,8 @@ function Part5() {
           <div className="section-label">
             <div className="heading-drop" data-force="drop" data-testid="g-drop-heading">
               <span className="heading-label">컬렉션</span>
+              <span className="spacer" />
+              <IconButton icon={FolderPlus} size="small" label={t.organize.sidebar.newTip} />
             </div>
           </div>
         </div>

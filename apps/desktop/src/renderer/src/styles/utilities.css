@@ -64,6 +64,18 @@
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
       opacity: var(--opacity-inactive);
     }
+    /* A drop target is the window's action now, as the overlay is (screens/drop.css): full strength in a window that is not main
+       (a Finder drag always comes into one). */
+    :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] {
+      color: var(--text-primary);
+    }
+    :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] .count,
+    :root[data-window-not-main] .sidebar .heading-drop[data-drop-target] .heading-label {
+      color: var(--text-secondary);
+    }
+    :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] .icon {
+      opacity: 1;
+    }
     /* A glyph disabled with a reason keeps its own dimming on top (components/button.css, field.css: 0.4). */
     :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn[aria-disabled='true'] > .icon,
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher[aria-disabled='true'] > .icon {

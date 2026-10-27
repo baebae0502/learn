@@ -152,11 +152,6 @@
   .nav-row[data-force~='focused'][data-force~='cursor'] {
     box-shadow: none;
   }
-  /* A drop target (design-spec 6 트리): 2 px accent inside and the soft accent fill. the tree's drags set data-drop-target. */
-  .nav-row:is([data-drop-target], [data-force~='drop']) {
-    box-shadow: inset 0 0 0 2px var(--accent);
-    background: var(--accent-soft);
-  }
 
   /* Table (design-spec 6 표; M4 spec 3). These rules draw a header cell, a row and a cell; how they are laid out is the
      library table's (screens/library.css: one CSS grid of columns, rows placed by the virtualizer) or the state board's
@@ -303,11 +298,11 @@
   .table-row[data-force~='focused'][data-force~='cursor'] {
     box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
   }
-  /* A drop target (M5 spec 8.3): a tag chip over the row — the tree row's 2 px accent inside and the soft accent fill. A chip
+  /* A drop target (M5 spec 8.3): a tag chip over the row — the tree row's 2 px accent ring inside and the soft accent fill (screens/dnd.css). A chip
      takes the focus when pressed, so the table never has it (no accent selection) while this shows. */
   .table-row:is([data-drop-target], [data-force~='drop']) {
     background: var(--accent-soft);
-    box-shadow: inset 0 0 0 2px var(--accent);
+    box-shadow: inset 0 0 0 2px var(--accent-ring);
   }
 
   .inline-flag {

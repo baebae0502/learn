@@ -523,10 +523,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       .map((m) => tenth(m.ms));
     expect(searchMs.length, "quick search is timed (timed() in search.ts' searchCached)").toBeGreaterThan(0);
 
-    // Scroll: the grid is the table's own scroll view (a sticky header, the rows placed by the virtualizer), 40 px every
+    // Scroll: the scroller is the table's own scroll view (the rows placed by the virtualizer, the header above it), 40 px every
     // frame for 150 frames.
     const scroll = await page.evaluate(async () => {
-      const target = document.querySelector<HTMLElement>('[data-testid="library-table"]')!;
+      const target = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       if (target.scrollHeight <= target.clientHeight + 1) throw new Error('the table does not scroll');
       const deltas: number[] = [];
       await new Promise<void>((done) => {

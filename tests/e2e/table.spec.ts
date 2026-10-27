@@ -272,7 +272,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect(rowAt(page, 5999)).toBeInViewport();
     expect(await page.getByTestId('item-row').count()).toBeLessThan(120);
     // PageUp moves the cursor by the rows the view shows, and the row it lands on is drawn and in view.
-    const pageRows = await page.getByTestId('library-table').evaluate((g) => Math.floor((g.clientHeight - 28 - 4) / 28));
+    const pageRows = await page.getByTestId('library-scroller').evaluate((g) => Math.floor((g.clientHeight - 4) / 28));
     await page.keyboard.press('PageUp');
     await expect(rowAt(page, 5999 - pageRows)).toBeFocused();
     await expect(rowAt(page, 5999 - pageRows)).toBeInViewport({ ratio: 1 });
@@ -387,7 +387,7 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
     await showItemPanel(app, page);
-    const table = page.getByTestId('library-table');
+    const table = page.getByTestId('library-scroller');
     await expect.poll(() => table.evaluate((g) => g.scrollWidth - g.clientWidth), { message: 'the columns must overflow the table here' }).toBeGreaterThan(0);
     await rowAt(page, 0).click();
     await page.keyboard.press('End');
@@ -399,7 +399,7 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const g = document.querySelector('[data-testid="library-table"]')!.getBoundingClientRect();
+          const g = document.querySelector('[data-testid="library-scroller"]')!.getBoundingClientRect();
           const r = document.querySelector('[data-testid="item-row"][data-index="150"]')?.getBoundingClientRect();
           return r !== undefined && r.top >= g.top && r.bottom <= g.bottom;
         }),

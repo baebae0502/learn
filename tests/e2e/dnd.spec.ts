@@ -760,7 +760,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     const row = page.locator('[data-testid="item-row"]').nth(5);
     const id = (await row.getAttribute('data-item-id'))!;
     await beginDrag(page, row, 'items');
-    await page.getByTestId('library-table').evaluate((e) => void (e.scrollTop = 6000));
+    await page.getByTestId('library-scroller').evaluate((e) => void (e.scrollTop = 6000));
     await frames(page, 4);
     const to = (await page.locator('[data-testid^="nav-collection-"]').nth(2).getAttribute('data-testid'))!.replace('nav-collection-', '');
     await hover(page, treeRow(page, to));
@@ -772,7 +772,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     const { page } = s;
     await specialRow(page, 'all').click();
     await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
-    await page.getByTestId('library-table').evaluate((e) => void (e.scrollTop = 0));
+    await page.getByTestId('library-scroller').evaluate((e) => void (e.scrollTop = 0));
     await treeBox().evaluate((e) => void (e.scrollTop = 1500));
     await frames(page, 4);
     const view = (await treeBox().boundingBox())!;

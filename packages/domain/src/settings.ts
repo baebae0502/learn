@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
-import { COLUMN_WIDTH_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
+import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
 
 const storedColumnId = z.string().min(1).max(64);
@@ -11,9 +11,12 @@ const storedColumnId = z.string().min(1).max(64);
  * each column's minimum.
  */
 export const columnConfigSchema = z.object({
-  visible: z.array(storedColumnId).max(64),
-  order: z.array(storedColumnId).max(64),
-  widths: z.record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX)),
+  visible: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
+  order: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
+  // A record has no length of its own: ids stay open (a later build's columns must read back), the count does not.
+  widths: z
+    .record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX))
+    .refine((w) => Object.keys(w).length <= STORED_COLUMN_IDS_MAX, { message: 'too many widths' }),
 });
 
 const sortSchema = z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) });

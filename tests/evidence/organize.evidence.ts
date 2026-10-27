@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows,
+  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, seedLibrary, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS, itemTarget, type CommandContextState } from '../../packages/domain/src/commands';
@@ -627,6 +627,79 @@ test('M5 drag and drop: the drop rows and the drag image on the state board (par
     await t.app.close().catch(() => {});
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 항상 보기), and a header cell mid-drag with its line', TAG, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m5-table-'));
+  const t = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { colorScheme: null });
+  const header: Record<string, unknown> = {};
+  results['tableHeader'] = header;
+  let pressed = false;
+  try {
+    const [pdf] = await importPaths(t.page, [PDF]);
+    await seedLibrary(t.app, { count: 149, from: pdf! }); // 150 rows: the scroller overflows, so its bar is drawn
+    await expect(t.page.getByTestId('toolbar-count')).toHaveText('150개');
+    if (IS_MAC) await movePointer(512, 620);
+    const geometry = () =>
+      t.page.evaluate(() => {
+        const clip = document.querySelector('[data-testid="table-head-clip"]')!.getBoundingClientRect();
+        const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
+        const box = view.getBoundingClientRect();
+        const row = document.querySelector('[data-testid="item-row"][data-index="0"]')!;
+        const off = [...document.querySelectorAll<HTMLElement>('[data-testid="column-header"]')].map((h) => {
+          const a = h.getBoundingClientRect();
+          const b = row.querySelector<HTMLElement>(`[data-col="${h.dataset['col']}"]`)!.getBoundingClientRect();
+          return Math.max(Math.abs(a.left - b.left), Math.abs(a.right - b.right));
+        });
+        return { gutter: view.offsetWidth - view.clientWidth, clipBottom: clip.bottom, scrollerTop: box.top, clipRight: clip.right, clientRight: box.left + view.clientWidth, worstColumnOffset: Math.max(...off) };
+      });
+    const g = await geometry();
+    header['geometry'] = g;
+    // The measured bar, not the setting: a width of 0 means no classic bar was drawn and nothing below was looked at on one.
+    check('table scroll bar: the runner draws a classic bar (the defaults write for 스크롤 막대 항상 보기 took effect)', g.gutter > 0, { gutter: g.gutter });
+    check('table scroll bar: the bar starts under the header (the scroller begins at the header\'s bottom edge)', Math.abs(g.clipBottom - g.scrollerTop) < 0.5, { clipBottom: g.clipBottom, scrollerTop: g.scrollerTop });
+    check('table scroll bar: the header ends where the bar\'s column begins', Math.abs(g.clipRight - g.clientRight) < 0.5, { clipRight: g.clipRight, clientRight: g.clientRight });
+    check('table scroll bar: every header cell lines up with its column in the rows', g.worstColumnOffset < 0.5, { worst: g.worstColumnOffset });
+    for (const theme of ['light', 'dark'] as const) {
+      await setTheme(t.page, theme);
+      if (IS_MAC) await focusApp(t.app);
+      await allShots(t.app, t.page, `m5-09-table-legacy-scrollbar-${theme}`, `table of 150 rows with a legacy scroll bar, header above it (${theme})`);
+    }
+    await setTheme(t.page, 'light');
+
+    // A header cell mid-drag: the line, the pressed fill, and nothing saved until the release.
+    const cell = (col: string) => t.page.locator(`[data-testid="column-header"][data-col="${col}"]`);
+    const [from, to] = [(await cell('createdAt').boundingBox())!, (await cell('creators').boundingBox())!];
+    const y = from.y + from.height / 2;
+    await t.page.mouse.move(from.x + from.width / 2, y);
+    await t.page.mouse.down();
+    pressed = true;
+    await t.page.mouse.move(to.x + 6, y, { steps: 8 });
+    // A drag that shows no line is the defect; the page is left as it is for the shots below.
+    await guard('column drag: one 2 px accent line, 28 px tall, on the boundary before 저자', async () => {
+      await expect(t.page.getByTestId('column-drop-line')).toBeVisible();
+      const line = (await t.page.getByTestId('column-drop-line').boundingBox())!;
+      const colour = await t.page.getByTestId('column-drop-line').evaluate((e) => getComputedStyle(e).backgroundColor);
+      const accent = await tokenColor(t.page, '--accent');
+      const pressedFill = await cell('createdAt').evaluate((e) => getComputedStyle(e).backgroundColor);
+      const fill = await tokenColor(t.page, '--fill-pressed');
+      header['drag'] = { line, colour, accent, pressed: pressedFill, fill, boundary: to.x };
+      check('column drag: one 2 px accent line, 28 px tall, on the boundary before 저자', line.width === 2 && line.height === 28 && Math.abs(line.x + 1 - to.x) < 1 && colour === accent && pressedFill === fill, header['drag']);
+    });
+    for (const theme of ['light', 'dark'] as const) {
+      await setTheme(t.page, theme);
+      await allShots(t.app, t.page, `m5-09-column-drag-${theme}`, `header cell 추가일 dragged before 저자 with its insertion line (${theme})`);
+    }
+    await t.page.keyboard.press('Escape');
+    await t.page.mouse.up();
+    pressed = false;
+    check('column drag: esc cancelled it — the headers are as they were and no line is left', JSON.stringify(await t.page.getByTestId('column-header').allTextContents()) === JSON.stringify(['제목', '저자', '연도', '종류', '추가일']) && (await t.page.getByTestId('column-drop-line').count()) === 0, null);
+  } finally {
+    if (pressed) await t.page.mouse.up().catch(() => {});
+    await t.app.close().catch(() => {});
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  save();
 });
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {

@@ -225,6 +225,11 @@
     color: var(--text-primary);
     font-weight: var(--weight-medium);
   }
+  /* The header cell being dragged to a new place (M5 spec 5.1): the fill of a pressed control. */
+  .table-head .th[data-dragging] {
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+  }
   /* A column edge (design-spec 2.1, the pane boundary's grammar): only the cursor changes, never the line. The 8 px
      left of the edge: a column clips what lies past its own box. */
   .table-head .col-resizer {

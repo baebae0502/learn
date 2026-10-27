@@ -49,7 +49,10 @@ export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
 /** The widest a column may be dragged (spec §3.2). */
 export const COLUMN_WIDTH_MAX = 1200;
 
-/** library.columns (spec §3.2). `order` is stored only: M4 never reorders (header dragging comes with M5's DnD). */
+/** How many column ids library.columns stores in each of its lists and in its widths (a later build's ids included). */
+export const STORED_COLUMN_IDS_MAX = 64;
+
+/** library.columns (spec §3.2, M5 5.1): which columns show, in which order (the title first), and the widths the user dragged. */
 export interface ColumnConfig {
   visible: LibraryColumnId[];
   order: LibraryColumnId[];

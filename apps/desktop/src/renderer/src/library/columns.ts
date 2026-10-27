@@ -14,9 +14,22 @@ export const defaultColumns = (): ColumnConfig => ({
 });
 
 /**
+ * A stored order made whole: the title first (it never moves), the ids it lists in its own order, and every catalogue
+ * id it lacks (a column a later build added) right after the column before it in the catalogue — so a new column lands
+ * where the catalogue puts it, not at the end.
+ */
+export function completeOrder(stored: readonly LibraryColumnId[]): LibraryColumnId[] {
+  const order: LibraryColumnId[] = ['title', ...new Set(stored.filter((id) => id !== 'title'))];
+  LIBRARY_COLUMN_IDS.forEach((id, i) => {
+    if (!order.includes(id)) order.splice(order.indexOf(LIBRARY_COLUMN_IDS[i - 1]!) + 1, 0, id);
+  });
+  return order;
+}
+
+/**
  * library.columns as stored (spec §3.2) → a usable configuration: ids this build does not know are dropped (a later
  * milestone's value still reads), 제목 is always shown, widths are whole pixels in [the column's minimum, 1200], and the
- * title has none (it takes the remaining width). Anything unreadable is the default set.
+ * title has none (it takes the remaining width). The order starts with the title and lists every column (completeOrder). Anything unreadable is the default set.
  */
 export function parseColumnConfig(raw: unknown): ColumnConfig {
   if (typeof raw !== 'object' || raw === null) return defaultColumns();
@@ -25,8 +38,7 @@ export function parseColumnConfig(raw: unknown): ColumnConfig {
   const shown = ids(r['visible']);
   if (shown === null) return defaultColumns();
   const visible = LIBRARY_COLUMN_IDS.filter((id) => id === 'title' || shown.includes(id));
-  const ordered = ids(r['order']) ?? [];
-  const order = [...ordered, ...LIBRARY_COLUMN_IDS.filter((id) => !ordered.includes(id))];
+  const order = completeOrder(ids(r['order']) ?? []);
   const widths: Partial<Record<LibraryColumnId, number>> = {};
   const w = r['widths'];
   if (typeof w === 'object' && w !== null) {
@@ -43,13 +55,38 @@ export function toggleColumn(cfg: ColumnConfig, id: LibraryColumnId): ColumnConf
 }
 
 /**
- * The shown columns, in catalogue order (`order` is not used yet). `forced` columns are shown whatever the config says and
- * sit right after the title: the recent view's 마지막으로 연 날 (spec 3.2).
+ * The shown columns in the stored order. `forced` columns are shown whatever the config says and sit right after the
+ * title (the recent view's 마지막으로 연 날, spec 3.2); the rest keep their order.
  */
 export function visibleColumns(cfg: ColumnConfig, forced: readonly LibraryColumnId[] = []): LibraryColumnSpec[] {
-  const shown = LIBRARY_COLUMNS.filter((c) => cfg.visible.includes(c.id) || forced.includes(c.id));
-  if (forced.length === 0) return shown;
-  return [...shown.filter((c) => c.id === 'title'), ...shown.filter((c) => c.id !== 'title' && forced.includes(c.id)), ...shown.filter((c) => c.id !== 'title' && !forced.includes(c.id))];
+  const rank = (id: LibraryColumnId) => (id === 'title' ? 0 : forced.includes(id) ? 1 : 2);
+  return completeOrder(cfg.order)
+    .filter((id) => cfg.visible.includes(id) || forced.includes(id))
+    .sort((a, b) => rank(a) - rank(b)) // stable: a rank keeps the stored order inside it
+    .map(columnSpec);
+}
+
+/** How many leading columns are fixed: the title and the forced columns shown after it. They take no drag and nothing goes before them. */
+export const pinnedCount = (shown: readonly LibraryColumnId[], forced: readonly LibraryColumnId[]): number =>
+  shown.filter((id) => id === 'title' || forced.includes(id)).length;
+
+/**
+ * The configuration with column `id` moved to `slot`: a boundary between the shown columns (0 before the first, `n`
+ * after the last). It lands right before the column that follows the boundary, or right after the last shown column,
+ * in the whole order — hidden columns keep their place. The same object comes back when nothing moves: the column is
+ * the title, a forced one or not shown, the boundary is before the pinned columns or outside the table, or it is the
+ * column's own.
+ */
+export function moveColumn(cfg: ColumnConfig, forced: readonly LibraryColumnId[], id: LibraryColumnId, slot: number): ColumnConfig {
+  const shown = visibleColumns(cfg, forced).map((c) => c.id);
+  const pinned = pinnedCount(shown, forced);
+  const from = shown.indexOf(id);
+  if (from < pinned || slot < pinned || slot > shown.length || slot === from || slot === from + 1) return cfg;
+  const others = shown.filter((c) => c !== id);
+  const before = others[slot > from ? slot - 1 : slot];
+  const rest = completeOrder(cfg.order).filter((c) => c !== id);
+  const at = before === undefined ? rest.indexOf(others[others.length - 1]!) + 1 : rest.indexOf(before);
+  return { ...cfg, order: [...rest.slice(0, at), id, ...rest.slice(at)] };
 }
 
 /** A column's width in pixels: the stored one, else its default; null for the title (the rest of the table). */

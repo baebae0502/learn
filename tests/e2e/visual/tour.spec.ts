@@ -613,6 +613,38 @@ test('table: several rows selected with the keyboard cursor, sorted by title, an
   }
 });
 
+test('table: a long list with its scroll bar under the header, and a header cell mid-drag with its insertion line', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const header = (col: string) => s.page.locator(`[data-testid="column-header"][data-col="${col}"]`);
+  try {
+    const [pdf] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await seedLibrary(s.app, { count: 59, from: pdf! });
+    await expect(s.page.getByTestId('toolbar-count')).toHaveText('60개');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // Linux draws a classic scroll bar: it starts under the header, which ends where the bar's column begins (spec 5.2).
+      expect(await s.page.getByTestId('library-scroller').evaluate((e: HTMLElement) => e.offsetWidth - e.clientWidth)).toBeGreaterThan(0);
+      await shoot(s.page, `table-scrollbar-${theme}`, { mask: dates() });
+    }
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const [from, to] = [(await header('createdAt').boundingBox())!, (await header('creators').boundingBox())!];
+      const y = from.y + from.height / 2;
+      await s.page.mouse.move(from.x + from.width / 2, y);
+      await s.page.mouse.down();
+      await s.page.mouse.move(to.x + 6, y, { steps: 8 });
+      await expect(s.page.getByTestId('column-drop-line')).toBeVisible();
+      await shoot(s.page, `column-drag-${theme}`, { mask: dates(), keepPointer: true });
+      await s.page.keyboard.press('Escape'); // the drag ends without a save: the next theme starts from the same columns
+      await s.page.mouse.up();
+      await expect(s.page.getByTestId('column-drop-line')).toHaveCount(0);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('table: loading — the header, the search field and the item panel stay and 불러오는 중… comes after 300 ms', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {

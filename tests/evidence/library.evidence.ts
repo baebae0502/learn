@@ -431,7 +431,7 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
   await expect.poll(state).toBe('shown');
 
   // The new item is the newest row (index 0): the table (its own scroll view) back at the top, where the virtualizer draws it.
-  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await page.getByTestId('library-scroller').evaluate((grid) => grid.scrollTo(0, 0));
   await selectRows(page, [path.parse(src).name]);
   await expect(page.getByTestId('inspector-kind')).toHaveText('PDF · 3쪽');
   const vw = await page.evaluate(() => innerWidth);
@@ -490,7 +490,7 @@ test('M4 library: 정보 편집 — the form in place, ⌘↩ from a real keystr
       return r.ok ? (r.data.metadata.publisher ?? null) : null;
     }, item!.id);
   // The new item is the newest row (index 0): the table (its own scroll view) at the top, where the virtualizer draws it.
-  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await page.getByTestId('library-scroller').evaluate((grid) => grid.scrollTo(0, 0));
   await selectRows(page, [title]);
   const shownBefore = (await state()) === 'shown';
   if (!shownBefore) await runMenuCommand(s.app, 'view.toggleInspector'); // the 1024 px runner folds it

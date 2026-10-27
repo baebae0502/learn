@@ -266,18 +266,28 @@ test('a header held in the 32 px at the right edge of a table narrower than its 
     await page.mouse.move(cell.x + cell.width / 2, y);
     await page.mouse.down();
     await page.mouse.move(clip.x + clip.width - 10, y, { steps: 6 }); // 10 px inside the edge, and held there
-    await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft)).toBeGreaterThan(20);
+    // The autoscroll keeps running while the pointer is held: read only once it has reached the end, so the table no longer slides under the pointer
+    // (mid-slide the nearest boundary can be the dragged column's own edge, where no line is drawn, and the line's React state lags the header's scrollLeft).
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft - (e.scrollWidth - e.clientWidth)), { message: 'the autoscroll reaches the end' }).toBe(0);
     await headerFollows(page);
-    const state = await page.evaluate(() => {
-      const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
-      const strip = document.querySelector<HTMLElement>('[data-testid="table-head-clip"]')!;
-      const line = document.querySelector('[data-testid="column-drop-line"]')?.getBoundingClientRect();
-      const edges = [...document.querySelectorAll('[data-testid="column-header"]')].flatMap((h) => [h.getBoundingClientRect().left, h.getBoundingClientRect().right]);
-      return { body: view.scrollLeft, head: strip.scrollLeft, line: line ? line.left + line.width / 2 : null, edges };
-    });
-    expect(state.head).toBe(state.body); // the header follows the body
-    expect(state.line, 'a line is shown').not.toBeNull();
-    expect(state.edges.some((x) => Math.abs(x - state.line!) < 1.5), 'and it stands on a column boundary of the scrolled header').toBe(true);
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
+            const strip = document.querySelector<HTMLElement>('[data-testid="table-head-clip"]')!;
+            const line = document.querySelector('[data-testid="column-drop-line"]')?.getBoundingClientRect();
+            const edges = [...document.querySelectorAll('[data-testid="column-header"]')].flatMap((h) => [h.getBoundingClientRect().left, h.getBoundingClientRect().right]);
+            const at = line ? line.left + line.width / 2 : null;
+            return {
+              'a line is shown': at !== null,
+              'it stands on a column boundary of the scrolled header': at !== null && edges.some((x) => Math.abs(x - at) < 1.5),
+              'the header follows the body': strip.scrollLeft === view.scrollLeft,
+            };
+          }),
+        { message: 'a line on a column boundary of the scrolled header, the header with the body' },
+      )
+      .toEqual({ 'a line is shown': true, 'it stands on a column boundary of the scrolled header': true, 'the header follows the body': true });
     await page.keyboard.press('Escape');
     await page.mouse.up();
     await expect(dropLine(page)).toHaveCount(0);

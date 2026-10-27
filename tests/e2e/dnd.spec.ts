@@ -645,7 +645,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await cancelDrag(page);
   });
 
-  test('(f) the drag goes on when its source row leaves the page: the drop is delivered and nothing is left marked', async () => {
+  test('(f) the drag goes on when its source row leaves the tree, and a drop after the table scrolled is delivered: nothing is left marked', async () => {
     const { page } = s;
     const src = tree.ids[44]!; // under 과목 009, near the top
     await treeBox().evaluate((e) => void (e.scrollTop = 0));
@@ -682,7 +682,8 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
     await expect(page.locator('[data-drop-target]')).toHaveCount(0);
 
-    // The table's side: 300 rows, the source row far out of the window, the drop on a collection row.
+    // The table's side: 300 rows scrolled while the drag runs. The virtualizer keeps a dragged row mounted, so the source does not leave
+    // the page here; what is pinned is that a drop on a collection row after the scroll is delivered.
     await specialRow(page, 'all').click();
     await treeBox().evaluate((e) => void (e.scrollTop = 0));
     const row = page.locator('[data-testid="item-row"]').nth(5);
@@ -700,6 +701,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     const { page } = s;
     await specialRow(page, 'all').click();
     await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
+    await page.getByTestId('library-table').evaluate((e) => void (e.scrollTop = 0));
     await treeBox().evaluate((e) => void (e.scrollTop = 1500));
     await frames(page, 4);
     const view = (await treeBox().boundingBox())!;

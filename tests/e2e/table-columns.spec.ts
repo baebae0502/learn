@@ -180,6 +180,38 @@ test('the keyboard cursor still scrolls its row in under the 4 px top inset and 
   }
 });
 
+test('a cursor row revealed from the middle of the list lands 4 px under the scroller top coming from above and 8 px over its bottom coming from below', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    await seedLibrary(app, { count: 150, from: pdf! });
+    await expect(page.getByTestId('toolbar-count')).toHaveText('151개');
+    const gaps = (index: number) =>
+      page.evaluate((i) => {
+        const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
+        const box = view.getBoundingClientRect();
+        const row = document.querySelector(`[data-testid="item-row"][data-index="${i}"]`)?.getBoundingClientRect();
+        return row === undefined ? null : { top: row.top - box.top, bottom: box.top + view.clientHeight - row.bottom };
+      }, index);
+    const rowHeight = 28;
+    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 80 * rowHeight);
+    await expect(rowAt(page, 80)).toBeVisible();
+    await rowAt(page, 80).click(); // the cursor is row 80, in the middle of the list and of the view
+    // Scrolled away so that the cursor is above the view: ↑ brings row 79 in from above (its top edge meets the 4 px inset).
+    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 110 * rowHeight);
+    await page.keyboard.press('ArrowUp');
+    await expect(rowAt(page, 79)).toBeFocused();
+    await expect.poll(async () => (await gaps(79))?.top).toBeCloseTo(4, 0);
+    // And below the view: ↓ brings row 80 in from below (its bottom edge meets the 8 px inset).
+    await scroller(page).evaluate((e, top) => void (e.scrollTop = top), 20 * rowHeight);
+    await page.keyboard.press('ArrowDown');
+    await expect(rowAt(page, 80)).toBeFocused();
+    await expect.poll(async () => (await gaps(80))?.bottom).toBeCloseTo(8, 0);
+  } finally {
+    await app.close();
+  }
+});
+
 const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '추가일'];
 const setting = (page: Page, key: string) => page.evaluate((k) => window.learn.settings.get({ key: k }).then((r) => (r.ok ? r.data : 'failed')), key);
 const storedOrder = async (page: Page) => ((await setting(page, 'library.columns')) as { order: string[] } | null)?.order ?? null;

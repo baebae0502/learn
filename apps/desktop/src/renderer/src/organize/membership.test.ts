@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OrganizeSnapshot } from '@learn/domain';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
-import { IDS_PER_CALL, addItemsTo, inChunks, removeFromScope, undoAdds, undoRemovals } from './membership';
+import { IDS_PER_CALL, addItemsTo, inChunks, removeFromScope, undoAdds, undoRemovals, type Removal } from './membership';
 import { buildOrganizeModel } from './model';
 import { item } from './testing';
 
@@ -123,5 +123,36 @@ describe('undoing', () => {
   it('a refusal while undoing throws (the toast says so)', async () => {
     addItems.mockResolvedValueOnce({ ok: false, code: 'NOT_FOUND', message: '컬렉션을 찾을 수 없습니다.', retryable: false });
     await expect(undoRemovals([{ collectionId: 'bio', itemIds: ['a'] }])).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+});
+
+describe('removeFromScope reports its progress, for a caller that has to put things back (a move whose second half failed)', () => {
+  const refusal = { ok: false, code: 'INTERNAL', message: '막힘', retryable: false };
+
+  it('fills the list it was given as it goes, so a refusal further on still leaves what was taken out', async () => {
+    // Viewing 분자생물학: a is held by it and by 6장 (tree order: it first), c by 6장. The second call is refused.
+    removeItems.mockReset();
+    removeItems.mockResolvedValueOnce({ ok: true, data: ['a'] }).mockResolvedValueOnce(refusal);
+    const progress: Removal[] = [];
+    await expect(removeFromScope(model, 'bio', ['a', 'c'], progress)).rejects.toThrow();
+    expect(progress).toEqual([{ collectionId: 'bio', itemIds: ['a'] }]);
+  });
+
+  it('counts a collection\'s first 5,000 ids when its second call is refused', async () => {
+    const ids = Array.from({ length: IDS_PER_CALL + 1 }, (_, i) => `i${i}`);
+    const big = buildOrganizeModel({ ...SNAPSHOT, members: { bio: ids } }, ids.map((id) => item(id)));
+    removeItems.mockReset();
+    removeItems.mockImplementationOnce(async (input: { itemIds: string[] }) => ({ ok: true, data: input.itemIds })).mockResolvedValueOnce(refusal);
+    const progress: Removal[] = [];
+    await expect(removeFromScope(big, 'bio', ids, progress)).rejects.toThrow();
+    expect(progress).toHaveLength(1);
+    expect(progress[0]!.itemIds).toHaveLength(IDS_PER_CALL);
+  });
+
+  it('without a list it answers as before', async () => {
+    removeItems.mockReset();
+    removeItems.mockResolvedValue({ ok: true, data: ['a'] });
+    expect(await removeFromScope(model, 'stat', ['a'])).toEqual([]); // stat holds nothing of a: no call, nothing removed
+    expect(removeItems).not.toHaveBeenCalled();
   });
 });

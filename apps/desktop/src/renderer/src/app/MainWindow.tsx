@@ -47,6 +47,8 @@ import { useWindowState } from '../shell/useWindowState';
 import { membershipCommands } from '../organize/actions';
 import type { OrganizeModel } from '../organize/model';
 import { useRestoreView } from '../organize/useRestoreView';
+import { setDndGate } from '../dnd/dragState';
+import { installDndEvents } from '../dnd/events';
 import { collectionActions } from '../sidebar/actions';
 import { importTarget, type ImportTarget } from '../sidebar/importTarget';
 import { LibrarySidebar } from '../sidebar/LibrarySidebar';
@@ -199,10 +201,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   );
 
   const onDrop = useCallback(
-    (paths: string[], mode: StorageMode, unresolved: number) => {
+    (paths: string[], mode: StorageMode, unresolved: number, target?: ImportTarget | null) => {
       clearImportMarks(true);
       perfMark('drop');
-      const into = intoRef.current;
+      // The collection being viewed, unless the drop says where it goes: a sidebar row (a collection, or null for 내 라이브러리).
+      const into = target === undefined ? intoRef.current : target;
       // The overlay leaves in the frame after the drop, whatever the import does (Mac run 3, critique n6: it stayed
       // 0.55 s over a frozen screen). The import is held (the window too) from now, but its request goes to main only
       // once the frame without the overlay has been painted, so main's import work cannot keep that frame off screen.
@@ -397,6 +400,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     });
   }, [view.kind, count]);
 
+  // Every drag and drop of the window goes through one gate (spec 8.4: a held window ignores drops): the library shows and
+  // nothing holds the window. The overlay, the rows, the chips and the sidebar all follow it.
+  const dndOpen = view.kind === 'library' && !blocked && !held;
+  useEffect(() => setDndGate(dndOpen), [dndOpen]);
+  useEffect(() => installDndEvents(), []);
   const toolbar =
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
@@ -433,7 +441,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={<LibrarySidebar />}
+        sidebar={<LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
@@ -442,7 +450,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           <>
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
-            <DropOverlay enabled={view.kind === 'library' && !blocked && !held} onDrop={onDrop} intoName={intoRef.current?.name} />
+            <DropOverlay enabled={dndOpen} onDrop={onDrop} intoName={intoRef.current?.name} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}

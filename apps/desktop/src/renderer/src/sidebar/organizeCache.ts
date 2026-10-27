@@ -11,6 +11,13 @@ export function withRenamed(s: OrganizeSnapshot, id: string, name: string): Orga
   return { ...s, collections: s.collections.map((x) => (x.id === id ? { ...x, name } : x)) };
 }
 
+/** A collection dropped onto another: its new parent (null = the top level). */
+export function withMoved(s: OrganizeSnapshot, id: string, parentId: string | null): OrganizeSnapshot {
+  const at = s.collections.find((x) => x.id === id);
+  if (!at || at.parentId === parentId) return s;
+  return { ...s, collections: s.collections.map((x) => (x.id === id ? { ...x, parentId } : x)) };
+}
+
 /** Collections removed with their memberships (their items stay in the library). */
 export function withoutCollections(s: OrganizeSnapshot, ids: ReadonlySet<string>): OrganizeSnapshot {
   return {

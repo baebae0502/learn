@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Bookmark, ChevronDown, ChevronRight, Copy, Ellipsis, FileText, Folder, FolderOpen, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
 import { TAG_COLORS, commandById, commandLabel, type OrganizeTag } from '@learn/domain';
+import { DragPreview } from '../dnd/DragPreview';
 import { DEFAULT_TAGS_SELECTOR } from '../organize/viewSettings';
 import { t } from '../strings';
 import { ChipGroup } from '../tags/ChipGroup';
@@ -606,7 +607,77 @@ function Part4() {
   );
 }
 
-const PARTS = { 1: Part1, 2: Part2, 3: Part3, 4: Part4 } as const;
+/**
+ * Drag and drop at rest (M5 spec 8; part=5): the image of a row drag (one row; several; a long title cut at 240), and the
+ * drop target of a tree row, the 컬렉션 heading and a table row (design-spec 6 트리; mockup components part 1 "드롭 대상").
+ */
+function Part5() {
+  return (
+    <>
+      <section>
+        <h2 className="g-title">끌기 미리보기</h2>
+        <div className="g-row g-previews">
+          <DragPreview title="분자생물학 6장 · 신호 전달" type="pdf" count={1} />
+          <DragPreview title="분자생물학 6장 · 신호 전달" type="pdf" count={3} />
+          <DragPreview title="Signal Transduction in Eukaryotic Cells — lecture notes for the whole spring term" type="video" count={12} />
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">드롭 대상 · 트리</h2>
+        <div className="g-list nav-list">
+          <div className="nav-row">
+            <Icon icon={Folder} />
+            <span className="label ellipsis">기본</span>
+            <span className="count num">12</span>
+          </div>
+          <div className="nav-row" data-force="drop" data-testid="g-drop-row">
+            <Icon icon={Folder} />
+            <span className="label ellipsis">드롭 대상</span>
+            <span className="count num">12</span>
+          </div>
+          <div className="section-label">
+            <div className="heading-drop" data-force="drop" data-testid="g-drop-heading">
+              <span className="heading-label">컬렉션</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">드롭 대상 · 표 행</h2>
+        <div className="g-table">
+          <div className="table-head">
+            {G_COLUMNS.map((c, i) => (
+              <div key={c.id} className={cx('th', c.end && 'end', i === 0 && 'is-first', i === G_COLUMNS.length - 1 && 'is-last')} style={c.width ? { width: c.width } : undefined}>
+                <div className="th-sort">
+                  <span className="ellipsis">{c.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {([['기본', undefined], ['드롭 대상', 'drop']] as const).map(([name, force]) => (
+            <div key={name} className="table-row" data-force={force} data-testid={force ? 'g-drop-table-row' : undefined}>
+              <div className="td is-first" data-col="title">
+                <Icon icon={FileText} />
+                <span className="item-title ellipsis">{name} · 분자생물학 6장</span>
+              </div>
+              <div className="td" data-col="type" style={{ width: 88 }}>
+                <span className="ellipsis">PDF</span>
+              </div>
+              <div className="td end num" data-col="size" style={{ width: 80 }}>
+                <span className="ellipsis">4.2 MB</span>
+              </div>
+              <div className="td num is-last" data-col="createdAt" style={{ width: 132 }}>
+                <span className="ellipsis">2026. 10. 20.</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+const PARTS = { 1: Part1, 2: Part2, 3: Part3, 4: Part4, 5: Part5 } as const;
 
 /**
  * Component state board (design-spec 10.8): learn://app/index.html?window=gallery&part=1|2 for the visual tour,

@@ -1,0 +1,75 @@
+@layer screens {
+  /* The image a row drag shows (spec 8.2; dnd/DragPreview): made off screen, still laid out, and handed to the browser when the drag starts. */
+  .dnd-preview-host {
+    position: fixed;
+    top: 0;
+    left: -1000px; /* local: off screen, but laid out, so that the browser can take its picture */
+    width: max-content;
+    pointer-events: none;
+  }
+  .dnd-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-4) var(--space-8);
+    border: 1px solid var(--separator);
+    border-radius: var(--radius-md);
+    background: var(--bg-raised);
+    color: var(--text-primary);
+    font: var(--type-body);
+  }
+  .dnd-preview > .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
+  .dnd-preview-title {
+    max-width: 240px; /* local: spec 8.2, the title is cut here */
+  }
+  /* From two rows on (spec 8.2): the accent pill, caption, white on the accent. */
+  .dnd-preview-badge {
+    flex: none;
+    padding: 0 var(--space-8);
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    color: var(--text-on-accent);
+    font: var(--type-caption);
+  }
+
+  /* The 컬렉션 heading is where a collection becomes top-level (spec 8.3): the tree row's drop marker over the label's box. */
+  .heading-drop {
+    flex: 1 1 auto;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    border-radius: var(--radius-md);
+  }
+  .heading-drop:is([data-drop-target], [data-force~='drop']) {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: var(--accent-soft);
+  }
+
+  /* A collection row's drag button (spec 8.5): the keyboard's way to start a drag. Not drawn until it has the focus; never hit by the pointer, so a press on the row drags the row. */
+  .nav-row .drag-handle {
+    position: absolute;
+    right: var(--space-4);
+    top: 50%;
+    translate: 0 -50%;
+    display: grid;
+    place-items: center;
+    width: 20px; /* local: a small icon button in a 24–32 px row */
+    height: 20px; /* local: as above */
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    opacity: 0;
+    pointer-events: none;
+    outline: none;
+  }
+  .nav-row .drag-handle:is(:focus-visible, [data-focus-visible]) {
+    opacity: 1;
+    box-shadow: 0 0 0 2px var(--focus);
+  }
+}

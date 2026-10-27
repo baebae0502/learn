@@ -303,6 +303,13 @@
   .table-row[data-force~='focused'][data-force~='cursor'] {
     box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
   }
+  /* A drop target (M5 spec 8.3): a tag chip over the row — the tree row's 2 px accent inside and the soft accent fill. A chip
+     takes the focus when pressed, so the table never has it (no accent selection) while this shows. */
+  .table-row:is([data-drop-target], [data-force~='drop']) {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+  }
+
   .inline-flag {
     display: inline-flex;
     align-items: center;

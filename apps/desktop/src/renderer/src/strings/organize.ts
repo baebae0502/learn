@@ -106,4 +106,10 @@ export const organize = {
     /** The undo toast of 이 컬렉션에서 빼기 (spec 9.2): `n` items, however many memberships went. */
     removed: (collection: string, n: number) => `‘${collection}’에서 자료 ${n}개를 뺐습니다.`,
   },
+  /** Drag and drop (spec 8.2): the badge on the drag image, its plain-text form for other apps, and the move toast (sentence as the spec has it). */
+  dnd: {
+    badge: (n: number) => `자료 ${n}개`,
+    plain: (n: number) => `자료 ${n}개`,
+    moved: (n: number, target: string) => `자료 ${n}개를 ‘${target}’${euroRo(target)} 옮겼습니다.`,
+  },
 } as const;

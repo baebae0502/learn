@@ -21,6 +21,7 @@ import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
+import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
 import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
@@ -126,6 +127,8 @@ interface ItemRowProps {
   match: Match | null;
   /** The item's tags, for its dots and its description. */
   tags: readonly OrganizeTag[];
+  /** The rows a drag of this row takes (spec 8.2): the selection in table order when the row is in it, else the row alone. */
+  dragIdsOf: (rowId: string) => string[];
 }
 
 /**
@@ -133,12 +136,16 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf }: ItemRowProps) {
   const last = columns.length - 1;
+  const rowRef = useRef<HTMLDivElement>(null);
+  const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf);
   // The names of the coloured tags are the row's description; they sit beside the cells, not in the title, so the row's name stays the title.
   const description = tagsDescription(tags);
   return (
     <div
+      ref={rowRef}
+      {...rowProps}
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}
@@ -153,6 +160,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       data-selected={selected || undefined}
       data-focus-visible={ring || undefined}
       data-missing={item.availability === 'missing' || undefined}
+      data-drop-target={isDropTarget || undefined}
     >
       {columns.map((c, i) => (
         <div
@@ -244,6 +252,10 @@ export function LibraryTable(props: LibraryTableProps) {
   useLayoutEffect(() => {
     latest.current = { props, order, visible, widths, titleWidth, rowHeight, stop };
   });
+  const dragIdsOf = useCallback((rowId: string): string[] => {
+    const selection = useLibrary.getState().selected;
+    return selection.has(rowId) ? inOrder(selection, latest.current.order) : [rowId];
+  }, []);
   // Another view starts at the top (spec 3.5); a view entered for one item (a collection path in the item panel) shows that row.
   const scopeEpoch = useLibrary((s) => s.scopeEpoch);
   const seenEpoch = useRef(scopeEpoch);
@@ -360,12 +372,28 @@ export function LibraryTable(props: LibraryTableProps) {
   }, [apply]);
 
   // ---- rows: press, double-click, right-click (delegated: the rows keep no handlers of their own) ----------------
+  // A press on a row inside a multiple selection keeps the selection until the button goes up: a drag that starts from it
+  // takes all of it (spec 8.2). A release without a drag is a click, which then makes that row the selection.
+  const pendingCollapse = useRef<string | null>(null);
   const onBodyMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const mac = isMac();
     if (mac && e.ctrlKey) return; // ⌃-click is the context menu on macOS (onContextMenu)
+    pendingCollapse.current = null;
     const id = rowIdOf(e.target);
-    if (id !== null) apply({ kind: 'click', id, shift: e.shiftKey, toggle: mac ? e.metaKey : e.ctrlKey });
+    if (id === null) return;
+    const toggle = mac ? e.metaKey : e.ctrlKey;
+    const selection = useLibrary.getState().selected;
+    if (!e.shiftKey && !toggle && selection.size > 1 && selection.has(id)) {
+      pendingCollapse.current = id;
+      return;
+    }
+    apply({ kind: 'click', id, shift: e.shiftKey, toggle });
+  }, [apply]);
+  const onBodyClick = useCallback(() => {
+    const id = pendingCollapse.current;
+    pendingCollapse.current = null;
+    if (id !== null) apply({ kind: 'click', id, shift: false, toggle: false });
   }, [apply]);
   // A double-click opens its row, which the first press selected alone (spec §3.3; M3's single-click open is gone).
   const onBodyDoubleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -534,6 +562,7 @@ export function LibraryTable(props: LibraryTableProps) {
           className="table-body"
           style={{ height: virtualizer.getTotalSize() }}
           onMouseDown={onBodyMouseDown}
+          onClick={onBodyClick}
           onDoubleClick={onBodyDoubleClick}
           onContextMenu={onBodyContextMenu}
         >
@@ -552,6 +581,7 @@ export function LibraryTable(props: LibraryTableProps) {
                 now={now}
                 match={props.titleMatches?.get(item.id) ?? null}
                 tags={props.tagsOf?.(item.id) ?? NO_TAGS}
+                dragIdsOf={dragIdsOf}
               />
             );
           })}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
-import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
+import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
 import {
   Button, ListLayout, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
 } from 'react-aria-components';
@@ -13,6 +13,8 @@ import { t } from '../strings';
 import { Icon } from '../ui/Icon';
 import { isContextMenuKey, menuPointFor } from '../ui/contextMenuKey';
 import { showToast } from '../ui/toasts';
+import { dragState } from '../dnd/dragState';
+import { inertRow } from '../dnd/rules';
 import { addExpanded, collectionActions } from './actions';
 import { CollectionsHeading } from './CollectionsHeading';
 import { HEADING_HEIGHT } from './layout';
@@ -42,7 +44,7 @@ export interface SidebarTreeProps {
   reader: boolean;
   /** A row's height in px (the density). */
   rowSize: number;
-  /** Drag and drop is Task 8's: handed to the Tree as it is. */
+  /** The sidebar's drag and drop (dnd/treeDnd.ts): handed to the Tree as it is. */
   dragAndDropHooks?: TreeProps<object>['dragAndDropHooks'];
 }
 
@@ -51,6 +53,8 @@ interface RowContext {
   reader: boolean;
   tap: { current: TreeState<unknown> | null };
   onReaderPress(key: string): void;
+  /** Drag and drop is wired: each collection row has its drag button (the keyboard's way to start a drag). */
+  dnd: boolean;
 }
 
 /** Hands the tree's state (its selection manager) out of a row: the keys that move the cursor to a row that may be unmounted need it. */
@@ -121,6 +125,11 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
         {({ hasChildItems, isExpanded, state }) => (
           <>
             <StateTap tap={ctx.tap} state={state} />
+            {ctx.dnd && !renaming && (
+              <Button slot="drag" className="drag-handle" excludeFromTabOrder data-testid={`drag-handle-${node.id}`}>
+                <Icon icon={GripVertical} size="sm" />
+              </Button>
+            )}
             {hasChildItems && (
               <Button slot="chevron" className="disclosure">
                 <Icon icon={isExpanded ? ChevronDown : ChevronRight} size="xs" />
@@ -197,7 +206,8 @@ export function SidebarTree(props: SidebarTreeProps) {
     },
     [env],
   );
-  const ctx = useMemo<RowContext | null>(() => (model ? { model, reader, tap, onReaderPress } : null), [model, reader, onReaderPress]);
+  const dnd = props.dragAndDropHooks !== undefined;
+  const ctx = useMemo<RowContext | null>(() => (model ? { model, reader, tap, onReaderPress, dnd } : null), [model, reader, onReaderPress, dnd]);
 
   // ---- keys (capture phase, before the row's own) -------------------------------------------------------------------
   const onKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -206,6 +216,14 @@ export function SidebarTree(props: SidebarTreeProps) {
     const rowEl = !field && target.matches('[role="row"][data-key]') ? target : null;
     const key = rowEl?.dataset['key'] ?? null;
     const node = key !== null ? model?.node(key) : undefined;
+    // ⌥→ on a collection row: its drag button, where a keyboard drag starts. The plain → opens a row that has children or enters
+    // one that has none, so a collection with children would have no way to its button.
+    if (dnd && rowEl && key !== null && model?.node(key) && e.key === 'ArrowRight' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      rowEl.querySelector<HTMLElement>('button[slot="drag"]')?.focus();
+      return;
+    }
     const action = treeKeyAction({
       key: e.key,
       shiftKey: e.shiftKey,
@@ -248,6 +266,13 @@ export function SidebarTree(props: SidebarTreeProps) {
     }
   };
 
+  // Only a collection row is a drag source: a special view, the draft row and the row being named are not (a prevented
+  // dragstart is not started by React Aria).
+  const onDragStartCapture = (e: DragEvent<HTMLDivElement>) => {
+    const key = (e.target as HTMLElement).closest<HTMLElement>('[role="row"][data-key]')?.dataset['key'];
+    if (key !== undefined && (!model?.node(key) || inertRow(key, editKey))) e.preventDefault();
+  };
+
   const onContextMenu = (e: MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.closest('input')) return; // the field keeps the browser's own
@@ -266,19 +291,38 @@ export function SidebarTree(props: SidebarTreeProps) {
     if (key !== undefined && (model?.node(key)?.children.length ?? 0) > 0) toggle(key);
   };
 
-  /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
-  /** A pointer is down on a chevron: it folds or unfolds and nothing else — the row it takes the focus to is not the view. */
+  /**
+   * A pointer is down on a chevron: it folds or unfolds and nothing else — the row it takes the focus to is not the view. When
+   * the button goes up (a task later, after React Aria's own press handling) the tree's cursor goes back to the viewed row, so
+   * that Tab into the tree lands there and not on the row whose chevron was pressed.
+   */
   const chevronDown = useRef(false);
   const onPointerDownCapture = (e: PointerEvent<HTMLDivElement>) => {
-    chevronDown.current = (e.target as HTMLElement).closest('.disclosure') !== null;
-    if (chevronDown.current) window.setTimeout(() => void (chevronDown.current = false), 400);
+    if ((e.target as HTMLElement).closest('.disclosure') === null) return;
+    chevronDown.current = true;
+    const up = () => {
+      window.removeEventListener('pointerup', up, true);
+      window.removeEventListener('pointercancel', up, true);
+      window.setTimeout(() => {
+        chevronDown.current = false;
+        if (!reader) tap.current?.selectionManager.setFocusedKey(latest.current.selectedKey);
+      }, 0);
+    };
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
   };
 
+  /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
     if (reader || chevronDown.current) return;
     const el = e.target as HTMLElement;
     if (!el.matches('[role="row"][data-key]')) return;
     const key = el.dataset['key']!;
+    if (dragState.justDropped()) {
+      // React Aria moves the focus to the row that was dropped on: the view stays where it was, and so does the cursor.
+      if (key !== selectedKey) tap.current?.selectionManager.setFocusedKey(selectedKey);
+      return;
+    }
     if (key !== DRAFT_KEY && key !== selectedKey) selectScope(key);
   };
 
@@ -399,7 +443,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   }, [restoreTo, focusRow]);
 
   return (
-    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
+    <div className="sidebar-body" onPointerDownCapture={onPointerDownCapture} onKeyDownCapture={onKeyDownCapture} onDragStartCapture={onDragStartCapture} onContextMenu={onContextMenu} onDoubleClick={onDoubleClick} onFocus={onFocus}>
       <div className="section-label" aria-hidden="true">
         {t.shell.libraryHeading}
       </div>
@@ -428,7 +472,7 @@ export function SidebarTree(props: SidebarTreeProps) {
           {hasCollections && ctx && model && (
             <TreeSection aria-label={t.organize.sidebar.collections}>
               <TreeHeader className="section-label tree-heading">
-                <CollectionsHeading />
+                <CollectionsHeading dropRoot={dnd} />
               </TreeHeader>
               {editParent === null && <DraftItem />}
               {model.roots.map((node) => (

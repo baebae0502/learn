@@ -14,7 +14,7 @@ import { MenuIconButton } from '../ui/MenuButton';
 import { SearchField } from '../ui/SearchField';
 import { tagActions } from './actions';
 import { ChipGroup } from './ChipGroup';
-import { TagChip } from './TagChip';
+import { DraggableTagChip } from '../dnd/DraggableTagChip';
 import { cloudChips, viewCounts } from './tagCloud';
 import { useTagEdit } from './tagEdit';
 import { selectorMenu } from './selectorMenu';
@@ -95,7 +95,7 @@ export function TagSelector() {
       </div>
       <ChipGroup label={t.organize.tags.listLabel} className="tag-cloud" testId="tag-cloud">
         {chips.map(({ tag, on, dim }) => (
-          <TagChip
+          <DraggableTagChip
             key={tag.id}
             tag={tag}
             role="filter"

@@ -56,6 +56,12 @@
     border-radius: var(--radius-lg);
     background: var(--bg-sidebar);
   }
+  /* The drag images side by side: they are inline boxes of their own width. */
+  .gallery .g-previews {
+    flex-wrap: wrap;
+    gap: var(--space-16);
+    align-items: center;
+  }
   /* The tag board: the selector inside a sidebar-wide box, the swatches in two columns. */
   .gallery .g-list.tag-board {
     padding: 0;

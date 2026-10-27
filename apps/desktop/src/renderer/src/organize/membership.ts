@@ -37,9 +37,10 @@ export async function addItemsTo(collectionId: string, itemIds: readonly string[
  * Takes `itemIds` out of the collection and every live collection below it, wherever they are held directly (owner
  * decision: a parent shows its children's items, so taking an item out of the parent takes it out of the view). Resolves
  * to what to put back, collection by collection in tree order. A refusal stops at once: what was taken out before it
- * stays out, and the notice that follows refreshes the snapshot.
+ * stays out, and the notice that follows refreshes the snapshot. `progress` is the list that fills as the calls go —
+ * a caller that must undo a half-done removal (a move whose second half failed) keeps it and reads it after the throw.
  */
-export async function removeFromScope(model: OrganizeModel, scopeCollectionId: string, itemIds: readonly string[]): Promise<Removal[]> {
+export async function removeFromScope(model: OrganizeModel, scopeCollectionId: string, itemIds: readonly string[], progress: Removal[] = []): Promise<Removal[]> {
   const scope = new Set([scopeCollectionId, ...descendantIds(model, scopeCollectionId)]);
   const held = new Map<string, string[]>();
   for (const id of new Set(itemIds)) {
@@ -51,14 +52,18 @@ export async function removeFromScope(model: OrganizeModel, scopeCollectionId: s
     }
   }
   const order = new Map(model.flat.map((node, i) => [node.id, i]));
-  const done: Removal[] = [];
   for (const [collectionId, ids] of [...held].sort(([a], [b]) => (order.get(a) ?? 0) - (order.get(b) ?? 0))) {
-    const removed: string[] = [];
-    for (const chunk of inChunks(ids)) removed.push(...(await unwrap(api().collections.removeItems({ collectionId, itemIds: chunk }))));
-    patchSnapshot((s) => withoutMembers(s, collectionId, ids));
-    if (removed.length > 0) done.push({ collectionId, itemIds: removed });
+    const entry: Removal = { collectionId, itemIds: [] };
+    for (const chunk of inChunks(ids)) {
+      const removed = await unwrap(api().collections.removeItems({ collectionId, itemIds: chunk }));
+      if (removed.length > 0) {
+        if (entry.itemIds.length === 0) progress.push(entry);
+        entry.itemIds.push(...removed);
+      }
+      patchSnapshot((s) => withoutMembers(s, collectionId, chunk));
+    }
   }
-  return done;
+  return progress;
 }
 
 /** Puts the removed memberships back. A collection deleted since has nothing to go back into. */

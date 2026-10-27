@@ -29,4 +29,5 @@ import './screens/reader.css';
 import './screens/palette.css';
 import './screens/settings.css';
 import './screens/drop.css';
+import './screens/dnd.css';
 import './screens/demo.css';

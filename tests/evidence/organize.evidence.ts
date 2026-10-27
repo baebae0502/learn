@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows,
+  FIXTURES, NativeInputNotPermitted, addToCollection, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, runMenuCommand, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS } from '../../packages/domain/src/commands';
@@ -456,6 +456,75 @@ test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)',
   await sleep(300);
   results['itemMenu'] = { shot: shot.file, keysOk: typed.ok };
   check('item menu: the keys reached the submenu (System Events accepted them)', typed.ok, typed.stderr);
+});
+
+test('M5 drag and drop: the overlay stops at the sidebar — light and dark', TAG, async () => {
+  const files: Array<[string, string]> = [
+    ['a.pdf', 'application/pdf'],
+    ['b.pdf', 'application/pdf'],
+    ['c.mp4', 'video/mp4'],
+  ];
+  const overlay = s.page.getByTestId('drop-overlay');
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(s.page, theme);
+    await drag(s.page, 'dragenter', files); // the helper repeats the dragover, so the overlay stays for the captures
+    await expect(overlay).toBeVisible();
+    if (theme === 'light') {
+      await guard('overlay: from the sidebar\'s right edge, under the 52 px bar, to the right edge of the window', async () => {
+        const v = await s.page.evaluate(() => {
+          const o = document.querySelector('[data-testid="drop-overlay"]')!.getBoundingClientRect();
+          const side = document.querySelector('[data-sidebar-area]')!.getBoundingClientRect();
+          return { left: o.left, top: o.top, right: o.right, sideRight: side.right, width: innerWidth };
+        });
+        results['overlay'] = v;
+        check('overlay: from the sidebar\'s right edge, under the 52 px bar, to the right edge of the window', Math.abs(v.left - v.sideRight) <= 1 && v.top === 52 && Math.abs(v.right - v.width) <= 1, v);
+      });
+    }
+    if (IS_MAC) await focusApp(s.app);
+    await allShots(s.app, s.page, `m5-08-drop-overlay-${theme}`, `drop overlay beside the sidebar (${theme})`);
+    await drag(s.page, 'dragleave', files);
+    await expect(overlay).toHaveCount(0);
+  }
+  await setTheme(s.page, 'light');
+});
+
+test('M5 drag and drop: the drop rows and the drag image on the state board (part 5) — light and dark', TAG, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-m5-board-'));
+  const t = await launch(path.join(dir, 'library'), path.join(dir, 'userdata'), { colorScheme: null });
+  try {
+    for (const theme of ['light', 'dark'] as const) {
+      // The board window carries no data-theme (only the main window does): the theme is read where the page paints it.
+      await t.page.evaluate((th) => window.learn.prefs.set({ theme: th }), theme);
+      await expect.poll(() => t.page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+      await t.page.goto(`learn://app/index.html?window=gallery&part=5&platform=${process.platform}`);
+      await t.page.getByTestId('gallery').waitFor();
+      await guard('board: the three drop targets are the accent ring over the soft accent fill; the badge is white on the accent', async () => {
+        const accent = await tokenColor(t.page, '--accent');
+        const soft = await tokenColor(t.page, '--accent-soft');
+        const on = await tokenColor(t.page, '--text-on-accent');
+        const v = await t.page.evaluate(() => {
+          const style = (id: string) => getComputedStyle(document.querySelector(`[data-testid="${id}"]`)!);
+          const badge = getComputedStyle(document.querySelector('.dnd-preview-badge')!);
+          const title = document.querySelector('.dnd-preview-title')!.getBoundingClientRect();
+          return {
+            row: { shadow: style('g-drop-row').boxShadow, fill: style('g-drop-row').backgroundColor },
+            heading: { shadow: style('g-drop-heading').boxShadow, fill: style('g-drop-heading').backgroundColor },
+            table: { shadow: style('g-drop-table-row').boxShadow, fill: style('g-drop-table-row').backgroundColor },
+            badge: { fill: badge.backgroundColor, color: badge.color, size: badge.fontSize },
+            titleWidth: title.width,
+          };
+        });
+        results[`board-${theme}`] = { ...v, accent, soft, on };
+        const ring = (x: { shadow: string; fill: string }) => x.shadow.includes(accent) && x.fill === soft;
+        check(`board ${theme}: the drop rows and the badge`, ring(v.row) && ring(v.heading) && ring(v.table) && v.badge.fill === accent && v.badge.color === on && v.titleWidth <= 240, { ...v, accent, soft, on });
+      });
+      if (IS_MAC) await focusApp(t.app);
+      await allShots(t.app, t.page, `m5-08-board-${theme}`, `state board part 5: drag image and drop targets (${theme})`);
+    }
+  } finally {
+    await t.app.close().catch(() => {});
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {

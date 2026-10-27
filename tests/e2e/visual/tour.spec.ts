@@ -913,3 +913,60 @@ test('organize: the item panel with tags and collections, the add field, several
     await s.app.close();
   }
 });
+
+// M5: drag and drop at rest. A drag cannot be held for a screenshot (the tour parks the pointer), so the drop state is
+// forced on a real tree row and a real table row, in the window the drag would run in; the drag image and the heading are on the
+// state board (part 5). Pairs for the critic: components.html?part=1 ("드롭 대상 (⌘ 이동)") and library.html for the window.
+test('drag and drop: a tree row and a table row as drop targets, then the board with the drag image', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    await createCollection(s.page, '6장 · 신호 전달', bio);
+    const stat = await createCollection(s.page, '통계');
+    await addToCollection(s.page, bio, items.map((i) => i.id));
+    await treeRow(s.page, bio).locator('.disclosure').click();
+    await treeRow(s.page, bio).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    const force = (id: string, on: boolean) => s.page.evaluate(({ id, on }) => {
+      const el = document.querySelector(id.startsWith('row:') ? `[data-testid="item-row"][data-index="${id.slice(4)}"]` : `[data-testid="${id}"]`)!;
+      if (on) el.setAttribute('data-force', 'drop');
+      else el.removeAttribute('data-force');
+    }, { id, on });
+
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // A collection row: the neighbour of the viewed one, as a row dragged out of 분자생물학 would find it.
+      await force(`nav-collection-${stat}`, true);
+      await shoot(s.page, `dnd-tree-drop-${theme}`, { mask: dates() });
+      await force(`nav-collection-${stat}`, false);
+      // A table row beside the selected one: a tag chip over it.
+      await force('row:2', true);
+      await shoot(s.page, `dnd-row-drop-${theme}`, { mask: dates() });
+      await force('row:2', false);
+    }
+
+    // The overlay beside the sidebar (the pair of the existing drop-* shots, which change by design).
+    const two: Array<[string, string]> = [['a.pdf', 'application/pdf'], ['b.pdf', 'application/pdf']];
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await drag(s.page, 'dragenter', two);
+      await expect(s.page.getByTestId('drop-overlay')).toBeVisible();
+      await shoot(s.page, `dnd-overlay-beside-sidebar-${theme}`);
+      await drag(s.page, 'dragleave', two);
+      await expect(s.page.getByTestId('drop-overlay')).toHaveCount(0);
+    }
+
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.goto('learn://app/index.html?window=gallery&part=5&platform=linux&det=1');
+      await s.page.getByTestId('gallery').waitFor();
+      expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await shoot(s.page, `gallery5-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});

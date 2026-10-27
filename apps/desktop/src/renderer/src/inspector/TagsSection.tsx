@@ -8,7 +8,7 @@ import { useOrganize } from '../organize/useOrganize';
 import { t } from '../strings';
 import { ChipGroup } from '../tags/ChipGroup';
 import { TagAddField } from '../tags/TagAddField';
-import { TagChip } from '../tags/TagChip';
+import { DraggableTagChip } from '../dnd/DraggableTagChip';
 import { IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { showActionFailed } from '../ui/toasts';
@@ -74,7 +74,7 @@ export function TagsSection({ ids }: { ids: readonly string[] }) {
           {tags.length > 0 && (
             <ChipGroup role="list" label={t.organize.panel.tags.group}>
               {tags.map((tag) => (
-                <TagChip key={tag.id} tag={tag} role="assigned" onRemove={() => remove(tag)} />
+                <DraggableTagChip key={tag.id} tag={tag} role="assigned" onRemove={() => remove(tag)} />
               ))}
             </ChipGroup>
           )}

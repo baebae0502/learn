@@ -70,7 +70,7 @@ M3의 임시 목록을 Zotero 7·Finder 수준의 자료 표로 바꾸고, 표�
 - 제목 칸에는 "재생 불가" 표시가 없다 — 재생 불가는 재생을 시도한 뒤에야 알 수 있고 저장하지 않는다. 저장된 코덱 점검은 M8 입력이다(Q-39).
 - 빈 값(저자 없음, 연도 없음)은 셀을 비운다("—"는 진행 열 전용 표기다).
 - 정렬 비교: `Intl.Collator('ko', { numeric: true, sensitivity: 'base' })`. 빈 값은 방향과 관계없이 맨 뒤. 같은 값은 추가일 내림차순, 그다음 id로 안정 정렬(구현은 SQL의 `created_at DESC, rowid DESC` 목록 순서를 그대로 둔다, Q-46).
-- `LIBRARY_SORT_COLUMNS`에 `updatedAt`·`storageMode`·`size`·`originalName`을 더한다(값을 더하는 것뿐이라 저장된 `library.sort`는 그대로 유효하다). `openedAt`·`progress`는 M7 열이 생길 때까지 정렬 대상으로만 남는다.
+- `LIBRARY_SORT_COLUMNS`에 `updatedAt`·`storageMode`·`size`·`originalName`을 더한다(값을 더하는 것뿐이라 저장된 `library.sort`는 그대로 유효하다). `progress`는 M7 열이 생길 때까지 정렬 대상으로만 남는다. `openedAt`은 M5가 "마지막으로 연 날" 열로 올린다(M5 명세 5.1).
 
 ### 3.2 열 구성과 기억
 

@@ -694,6 +694,17 @@ async function rowDropShots(theme: 'light' | 'dark'): Promise<void> {
   } finally {
     await onRow.cancel().catch(() => {});
     await onRow.close().catch(() => {});
+    // The cancel tells the page nothing (CDP) or something it may not act on; the user's next pointer is what clears the marker.
+    // A stale one would be in every later shot and would make the next theme's "marks it" check pass without a new drag.
+    const stillMarked = await row.getAttribute('data-drop-target').then((v) => v !== null).catch(() => null);
+    await s.page.mouse.move(400, 300).catch(() => {});
+    const cleared = await within(
+      expect(row).not.toHaveAttribute('data-drop-target', /.*/, { timeout: 2_000 }).then(() => true),
+      3000,
+      false,
+    );
+    results[`rowDrop-${theme}-cancel`] = { markedRightAfterCancel: stillMarked, clearedByNextPointer: cleared };
+    check(`row drop ${theme}: after the Finder drag is cancelled the next pointer leaves no marker`, cleared, null);
   }
 }
 

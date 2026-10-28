@@ -349,6 +349,32 @@ test('a drop target in a window that is not main keeps full strength — the nam
       await notMain(false);
     }
     await files.cancel();
+    // Chromium's CDP cancel hands the page no event at all, so the page learns of it from the pointer that comes back.
+    await page.mouse.move(600, 400);
+    await expect.poll(() => marked(page), { message: 'a cancelled Finder drag leaves no row marked' }).toEqual([]);
+    await files.close();
+  } finally {
+    await t.app.close();
+  }
+});
+
+test('Finder\'s files that leave the window (a dragleave that goes to no element) unmark the row; a dragleave into another element does not', async ({}, testInfo) => {
+  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { page } = t;
+    const target = await createCollection(page, '창 밖으로');
+    const files = await finderDrag(page, MP4);
+    await files.send('dragEnter', page.getByTestId('content'));
+    await files.send('dragOver', treeRow(page, target));
+    expect(await marked(page)).toEqual([`nav-collection-${target}`]);
+    const leave = (related: boolean) => page.evaluate((related) => {
+      document.body.dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: related ? document.documentElement : null }));
+    }, related);
+    await leave(true);
+    await page.waitForTimeout(400);
+    expect(await marked(page), 'a dragleave into another element').toEqual([`nav-collection-${target}`]);
+    await leave(false);
+    await expect.poll(() => marked(page), { message: 'a dragleave out of the window' }).toEqual([]);
     await files.close();
   } finally {
     await t.app.close();

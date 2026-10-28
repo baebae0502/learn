@@ -285,14 +285,18 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       ));
     }
     if (row.kind === 'collection') {
-      const { node, match, secondary } = row.ranked;
+      const { node, match, parent, count } = row.ranked;
       return option(row, index, { 'data-testid': 'palette-collection', 'data-collection-id': node.id }, (
         <>
           <Icon icon={Folder} />
           <span className="p-title ellipsis">{highlight(node.name, match)}</span>
           <span className="p-meta">
             {/* Where it sits and how many it holds, "분자생물학 안 · 14개" (palette.html). */}
-            <span className="p-sub ellipsis">{secondary}</span>
+            {/* Only the parent's name gives way; " 안 · 14개" stays whole. The accessible name keeps the whole text. */}
+            <span className="p-sub p-where">
+              {parent !== null && <span className="ellipsis">{parent}</span>}
+              <span className="p-count">{t.palette.collectionCount(parent !== null, count)}</span>
+            </span>
             {index === cursor && <Kbd accelerator="Enter" />}
           </span>
         </>

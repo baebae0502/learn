@@ -369,3 +369,29 @@ test('a Korean composition in the palette does not take a collection row: ↩ wh
     await app.close();
   }
 });
+
+test('a long parent name gives way in a palette collection row: its ellipsis, never the count', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const parent = await createCollection(page, '2026 가을 학기 분자생물학 심화 세미나 발표 자료 모음 보관함 정리본');
+    await createCollection(page, '신호 전달', parent);
+    await paletteWith(app, page, '신호 전달');
+    const row = page.getByTestId('palette-collection');
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('.p-sub')).toHaveText('2026 가을 학기 분자생물학 심화 세미나 발표 자료 모음 보관함 정리본 안 · 0개'); // the whole text stays for a screen reader
+    const fits = await row.evaluate((el) => {
+      const count = el.querySelector<HTMLElement>('.p-count')!;
+      const name = el.querySelector<HTMLElement>('.p-where > .ellipsis')!;
+      const box = el.getBoundingClientRect();
+      const at = count.getBoundingClientRect();
+      return {
+        countInside: at.left >= box.left && at.right <= box.right,
+        countClipped: count.scrollWidth > count.clientWidth,
+        nameTruncated: name.scrollWidth > name.clientWidth,
+      };
+    });
+    expect(fits).toEqual({ countInside: true, countClipped: false, nameTruncated: true });
+  } finally {
+    await app.close();
+  }
+});

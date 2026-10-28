@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { OrganizeSnapshot } from '@learn/domain';
 import { buildOrganizeModel } from '../organize/model';
 import { item } from '../organize/testing';
-import { COLLECTION_RESULTS_MAX, rankCollections } from './collections';
+import { COLLECTION_RESULTS_MAX, collectionMeta, rankCollections } from './collections';
 
 const at = '2026-10-01T00:00:00.000Z';
 const c = (id: string, name: string, parentId: string | null = null) => ({ id, name, parentId, createdAt: at });
@@ -55,13 +55,16 @@ describe('palette 컬렉션 results (spec 7.2)', () => {
     expect(ids('효소 억제제')).toEqual([]);
   });
 
-  it('gives the secondary text the row shows: "<parent> 안 · N개" under a parent, "N개" at the top (mockup)', () => {
-    const byId = new Map(rankCollections(model, '노트', 20).map((r) => [r.node.id, r.secondary]));
-    expect(byId.get('note1')).toBe('0개');
-    expect(byId.get('note2')).toBe('분자생물학 안 · 0개');
-    expect(byId.get('deep')).toBe('7장 · 세포 주기 안 · 0개'); // the parent only, not the whole path
-    expect(rankCollections(model, '신호')[0]!.secondary).toBe('분자생물학 안 · 1개'); // 6장 holds i1
-    expect(rankCollections(model, '통계')[0]!.secondary).toBe('1개');
+  it('gives the parent and the count the row shows: "<parent> 안 · N개" under a parent, "N개" at the top (mockup)', () => {
+    const meta = (query: string) => new Map(rankCollections(model, query, 20).map((r) => [r.node.id, r]));
+    const byId = meta('노트');
+    expect(byId.get('note1')).toMatchObject({ parent: null, count: 0 });
+    expect(byId.get('note2')).toMatchObject({ parent: '분자생물학', count: 0 });
+    expect(byId.get('deep')).toMatchObject({ parent: '7장 · 세포 주기', count: 0 }); // the parent only, not the whole path
+    expect(rankCollections(model, '신호')[0]).toMatchObject({ parent: '분자생물학', count: 1 }); // 6장 holds i1
+    expect(rankCollections(model, '통계')[0]).toMatchObject({ parent: null, count: 1 });
+    expect(collectionMeta(byId.get('deep')!)).toBe('7장 · 세포 주기 안 · 0개');
+    expect(collectionMeta(rankCollections(model, '통계')[0]!)).toBe('1개');
   });
 
   it('lists nothing for an empty query or a model with no collection', () => {

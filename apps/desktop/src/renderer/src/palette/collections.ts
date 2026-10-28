@@ -10,8 +10,15 @@ export interface RankedCollection {
   node: CollectionNode;
   /** Where the first query word matched the name (for <mark>). */
   match: Match;
-  /** "분자생물학 안 · 14개" (mockup): the parent's name and the collection's count; just "14개" at the top level. */
-  secondary: string;
+  /** The parent collection's name, or null at the top level. The row ellipsizes it alone, so the count stays whole. */
+  parent: string | null;
+  /** How many items the collection holds. */
+  count: number;
+}
+
+/** "분자생물학 안 · 14개" (mockup), or just "14개" at the top level: the text a screen reader gets for the row's meta. */
+export function collectionMeta(row: Pick<RankedCollection, 'parent' | 'count'>): string {
+  return t.palette.collectionMeta(row.parent, row.count);
 }
 
 const collator = new Intl.Collator('ko', { numeric: true });
@@ -57,6 +64,6 @@ export function rankCollections(model: OrganizeModel, query: string, max = COLLE
   }
   return top.map(({ node, match }) => {
     const parent = model.path(node.id).at(-2);
-    return { node, match, secondary: t.palette.collectionMeta(parent?.name ?? null, model.count(node.id)) };
+    return { node, match, parent: parent?.name ?? null, count: model.count(node.id) };
   });
 }

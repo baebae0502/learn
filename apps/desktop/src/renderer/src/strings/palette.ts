@@ -1,6 +1,8 @@
 import { waGwa } from './josa';
 
 /** ⌘K palette: 자료 (with a query) above 명령 (design-spec 10.5, palette.html, spec §4.4). */
+const collectionCount = (underParent: boolean, count: number) => (underParent ? ` 안 · ${count}개` : `${count}개`);
+
 export const palette = {
   dialogLabel: '명령 팔레트',
   /** It finds items and commands (M4); the launcher says the same (shell.launcher). */
@@ -19,7 +21,9 @@ export const palette = {
   /** The same sentence in three pieces, so the row can mark the query between the quotes. */
   searchLibraryParts: (query: string): [string, string, string] => ['라이브러리에서 ‘', query, '’ 검색'],
   /** A collection row's secondary text (palette.html): "분자생물학 안 · 14개", or "14개" for a top-level collection. */
-  collectionMeta: (parent: string | null, count: number) => (parent === null ? `${count}개` : `${parent} 안 · ${count}개`),
+  collectionMeta: (parent: string | null, count: number) => (parent === null ? collectionCount(false, count) : `${parent}${collectionCount(true, count)}`),
+  /** The part of that text the row never shortens: " 안 · 14개" after a parent's name, "14개" alone at the top level. */
+  collectionCount,
   /** While an import or a sheet holds the window: what is unavailable, then why and what next. */
   busyTitle: '지금은 명령을 실행할 수 없습니다',
   busyBody: '진행 중인 작업이 있습니다. 작업이 끝나면 다시 쓸 수 있습니다.',

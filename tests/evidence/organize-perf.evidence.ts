@@ -120,6 +120,28 @@ function installProbe(page: Page): Promise<void> {
 }
 
 /**
+ * The tree draws only the rows near its visible part (Virtualizer), so in a short window, such as the Mac runner's 768 px
+ * screen, a collection far down the list is not on the page until the tree scrolls to it: scroll from the top until it is.
+ */
+async function revealNavRow(page: Page, testId: string): Promise<void> {
+  const row = page.getByTestId(testId);
+  const tree = page.getByTestId('sidebar-tree');
+  if ((await row.count()) === 0) {
+    await tree.evaluate((e) => e.scrollTo(0, 0));
+    for (let i = 0; i < 60 && (await row.count()) === 0; i++) {
+      const moved = await tree.evaluate((e) => {
+        const before = e.scrollTop;
+        e.scrollBy(0, Math.max(1, Math.floor(e.clientHeight * 0.8)));
+        return e.scrollTop !== before;
+      });
+      if (!moved) break;
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    }
+  }
+  await row.scrollIntoViewIfNeeded();
+}
+
+/**
  * Arms the clock for the next `kind` event; the page has the wait registered when this returns, so an action sent right
  * after it (a key press needs no actionability wait) cannot be missed. Await the returned function after the action.
  */
@@ -208,6 +230,7 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
     const switchMs: Array<{ view: string; ms: number }> = [];
     const beforeSwitches = await settleCalls(app, 500);
     for (const f of [...ring, ...ring]) {
+      await revealNavRow(page, rowOf(f)); // before the clock starts: the scroll is not part of the switch
       const waiting = await arm(page, 'down', { count: f.count, firstId: org.ids[f.first]! });
       await page.getByTestId(rowOf(f)).click();
       const ms = await waiting();

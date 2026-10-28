@@ -5,14 +5,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { COMMANDS, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
+import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, createCollection, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls, specialRow,
-  stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, treeRow, type MenuNode,
+  FIXTURES, assignTag, confirmCalls, createCollection, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot,
+  rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls, specialRow, stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, treeRow,
+  type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
+const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
 const REVEAL = process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기';
 
 /** Closes what a command opened: sheets by Escape once they rendered, other windows directly, then the palette. */
@@ -61,6 +63,13 @@ const escaped = (p: string) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A value submenu's command runs from one of its rows (P-18): this value; the other rows are the menu unit tests'. */
 const REPRESENTATIVE_ARGS: Partial<Record<CommandId, CommandArgs>> = { 'library.sortBy': { column: 'year' } };
 
+/** Every command the organise milestone put in the registry: this test runs each of them itself (none is left to another test). */
+const M5_COMMANDS: readonly CommandId[] = [
+  'collection.new', 'collection.newChild', 'collection.rename', 'collection.importInto', 'collection.delete', 'collection.addItems', 'collection.removeItems',
+  'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8',
+  'tag.rename', 'tag.setColor', 'tag.clearColor', 'tag.delete', 'tags.clearFilter', 'library.findEverywhere', 'library.sortBy',
+] as CommandId[];
+
 /**
  * Commands this test does not run, each with the test that does (`<spec file> › <test title>`): F6 / ⇧F6 are keys of
  * the renderer keymap, with no menu item to click.
@@ -68,18 +77,6 @@ const REPRESENTATIVE_ARGS: Partial<Record<CommandId, CommandArgs>> = { 'library.
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
-  'collection.newChild': 'collections.spec.ts › new sub-collection from the menu and the palette: the parent opens and the child is named under it',
-  'collection.rename': 'collections.spec.ts › rename by the ↩ key, the menu and the palette keeps the tree in name order and allows equal names',
-  'collection.importInto': 'collections.spec.ts › an empty collection says so in the table and the item panel, and its button brings files into it',
-  'library.findEverywhere': 'organize-search.spec.ts › the palette lists 내 라이브러리 전체에서 찾기 only for a search outside 내 라이브러리, and running it keeps the query',
-  'collection.delete': 'collections.spec.ts › delete asks in the sheet words, the view moves to the parent, and 실행 취소 brings it back without what was deleted before it',
-  'tag.color2': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color3': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color4': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color5': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color6': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color7': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
-  'tag.color8': 'tags.spec.ts › 1–8 keys put the tag at that slot on the selection or take it off, tell an empty slot, and are ignored in text fields and while composing; the palette and the ⌘/ sheet show them',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {
@@ -268,8 +265,8 @@ test('every registry command runs without a page error (library and reader menus
     expect(fs.existsSync(opened)).toBe(true);
     await runMenuCommand(app, 'nav.back');
 
-    // Tag commands (M5 Task 6), on tags made for the purpose: 1 from 파일 › 색 태그 ▸ (the other seven keys are tags.spec's), the
-    // chip menu's rows through the native menu path, 태그 선택 해제 through the palette.
+    // Tag commands, on tags made for the purpose: 1 from 파일 › 색 태그 ▸ (the other seven keys further down), the chip menu's
+    // rows through the native menu path, 태그 선택 해제 through the palette.
     await rowByTitle(page, 'sample').click();
     const sampleId = await page.evaluate(async () => {
       const r = await window.learn.library.list();
@@ -305,9 +302,83 @@ test('every registry command runs without a page error (library and reader menus
     await expect(page.getByTestId(`tag-chip-${plain}`)).toHaveCount(0);
     ran.add('tag.delete');
 
+    {
+      // The collection commands, on a collection made for the purpose, through the native menu path of its tree row (a right
+      // click selects the row first, so each command acts on it).
+      const parent = await createCollection(page, '정리 시험');
+      await expect(treeRow(page, parent)).toBeVisible();
+      const nameField = page.getByTestId('rename-input');
+
+      await stubContextMenu(app, commandById('collection.newChild').label);
+      await treeRow(page, parent).click({ button: 'right' });
+      await expect(nameField).toBeFocused();
+      await page.keyboard.type('하위');
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await organizeSnapshot(page)).collections.some((c) => c.name === '하위' && c.parentId === parent)).toBe(true);
+      ran.add('collection.newChild');
+
+      await stubContextMenu(app, commandById('collection.rename').label);
+      await treeRow(page, parent).click({ button: 'right' });
+      await expect(nameField).toBeFocused();
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.type('정리 시험 2');
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await organizeSnapshot(page)).collections.find((c) => c.id === parent)?.name).toBe('정리 시험 2');
+      ran.add('collection.rename');
+
+      await stubOpenDialog(app, [KO_PDF]);
+      await stubContextMenu(app, commandById('collection.importInto').label);
+      await treeRow(page, parent).click({ button: 'right' });
+      await expect.poll(async () => (await organizeSnapshot(page)).members[parent]?.length ?? 0).toBe(1);
+      ran.add('collection.importInto');
+
+      // 컬렉션 삭제…: the sheet's question is asked in the sheet's words, the collection (and its child) go, 실행 취소 brings them back.
+      await stubConfirm(app, 'confirm');
+      await stubContextMenu(app, commandById('collection.delete').label);
+      await treeRow(page, parent).click({ button: 'right' });
+      await expect(treeRow(page, parent)).toHaveCount(0);
+      const asked = await confirmCalls(app);
+      expect(asked).toHaveLength(1);
+      expect(asked[0]!.message).toMatch(/^‘정리 시험 2’[을를] 삭제하겠습니까\?$/);
+      await expect(page.getByTestId('undo-toast')).toBeVisible();
+      await page.getByTestId('undo-action').click();
+      await expect(treeRow(page, parent)).toBeVisible();
+      ran.add('collection.delete');
+
+      // The other seven colour keys, from 파일 › 색 태그 ▸ on the selected sample (1 ran above): each puts its slot's tag on it.
+      await specialRow(page, 'all').click();
+      await rowByTitle(page, 'sample').click();
+      const target = await page.evaluate(async () => {
+        const r = await window.learn.library.list();
+        return r.ok ? (r.data.find((i) => i.title === 'sample')?.id ?? null) : null;
+      });
+      const slots = await makeTags(page, [2, 3, 4, 5, 6, 7, 8].map((n) => ({ name: `색 ${n}`, slot: n })));
+      for (const [i, id] of slots.entries()) {
+        const command = `tag.color${i + 2}` as CommandId;
+        await runMenuCommand(app, command);
+        await expect.poll(async () => (await organizeSnapshot(page)).tagged[id] ?? [], { message: command }).toEqual([target]);
+        ran.add(command);
+      }
+
+      // 내 라이브러리 전체에서 찾기: listed in the palette only for a search outside 내 라이브러리; it keeps the query.
+      await treeRow(page, parent).click();
+      await runMenuCommand(app, 'library.find');
+      await page.keyboard.type('zzzz');
+      await runPalette(page, app, '내 라이브러리 전체에서 찾기', 'library.findEverywhere');
+      await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
+      await expect(searchInput).toHaveValue('zzzz');
+      await page.getByTestId('search-field-clear').click();
+      ran.add('library.findEverywhere');
+    }
+
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.
     const all = COMMANDS.map((c) => c.id);
+    // The M5 commands, all run here: a command added to the registry later fails this until it is run above.
+    const m5 = all.filter((id) => /^(collection|tag|tags)\./.test(id) || id === 'library.findEverywhere' || id === 'library.sortBy').sort();
+    expect(m5, 'the M5 commands in the registry').toEqual([...M5_COMMANDS].sort());
+    expect(m5.filter((id) => !ran.has(id)), 'M5 commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M5_COMMANDS.includes(id as CommandId)), 'M5 commands left to another test').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
     expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);
     for (const [id, where] of Object.entries(COVERED_ELSEWHERE)) {

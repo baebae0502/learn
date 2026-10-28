@@ -1,4 +1,4 @@
-// @evidence — M5 Task 4: the native menu bar's 보기 › 정렬 기준 ▸ open on macOS (the Mac suite `evidence`); Linux runs the
+// @evidence — M5: the native menu bar's 보기 › 정렬 기준 ▸ open on macOS (the Mac suite `evidence`); Linux runs the
 // launch and the JSON checks and records the captures as skipped.
 import fs from 'node:fs';
 import os from 'node:os';

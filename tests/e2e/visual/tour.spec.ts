@@ -749,7 +749,7 @@ test('fatal: the library cannot be opened (a short and a deep library folder)', 
   }
 });
 
-// M5 Task 5: the sidebar. Pairs for the critic: library.html (tree open with a selection; the three special views),
+// M5: the sidebar. Pairs for the critic: library.html (tree open with a selection; the three special views),
 // library.html?state=empty-collection, and the unpaired row being named (design-spec 6 field, 3.1).
 test('organize: the sidebar tree with a selection, a row being named, an empty collection, the special views', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
@@ -828,7 +828,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
   }
 });
 
-// M5 Task 6: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
+// M5: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
 // dots in the title cell, a selected row on the accent fill) and components.html?part=1 (chips, the eight colours).
 test('organize: the tag selector with a filter and dim chips, the table dots with a selected row, and the filter that leaves nothing', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
@@ -911,7 +911,7 @@ test('organize: the first tag chip focused from the keyboard — the ring is who
   }
 });
 
-// M5 Task 7: the item panel's 태그 and 컬렉션 sections, the add field with its suggestions, several items with their common
+// M5: the item panel's 태그 and 컬렉션 sections, the add field with its suggestions, several items with their common
 // sections, and the open 컬렉션에 추가 ▾ menu. Pairs for the critic: library.html (inspectorItem) and library.html?state=multi.
 test('organize: the item panel with tags and collections, the add field, several items, the open 컬렉션에 추가 menu', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());

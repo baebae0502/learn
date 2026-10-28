@@ -5,7 +5,7 @@ import { cachedSnapshot, patchSnapshot } from './snapshotCache';
 import { withMembers, withoutMembers } from './snapshotPatch';
 
 /**
- * What changes memberships, and the only place that does (the item panel, the menus, Task 8's drops): the call, the
+ * What changes memberships, and the only place that does (the item panel, the menus, the drops): the call, the
  * snapshot patched at once, and what an undo needs. `collections:addItems` and `removeItems` answer the ids that really
  * changed, and those are what an undo puts back or takes out: an empty answer is nothing to undo.
  */

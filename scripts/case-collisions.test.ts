@@ -10,7 +10,7 @@ const stem = (file: string): string => file.replace(/\.[^.]+$/, '');
 /**
  * Files in one directory whose import names differ only by case. macOS volumes are case-insensitive by default, so an
  * import of `./TagDots` there can open `tagDots.ts` (the resolver tries `.ts` before `.tsx`) — the Linux build and tests
- * pass while the Mac build fails (Mac run 40420653407).
+ * pass while the Mac build fails.
  */
 export function caseCollisions(paths: readonly string[]): string[][] {
   const groups = new Map<string, Set<string>>();

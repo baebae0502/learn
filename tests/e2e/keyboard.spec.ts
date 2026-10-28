@@ -530,11 +530,13 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
 
     // The search of a collection with no result offers the whole library; ⌘K lists the collection between 자료 and 명령.
     await runMenuCommand(app, 'library.find');
+    await expect(page.getByTestId('search-field').getByRole('searchbox')).toBeFocused(); // keys go where the focus is when they arrive
     await page.keyboard.type('효소 억제제');
     await expect(page.getByTestId('search-empty-everywhere')).toBeVisible();
     await expectNoSeriousA11y(page, 'quick search, no result in a collection');
     await page.keyboard.press('Escape');
     await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused();
     await page.keyboard.type('신호');
     await expect(page.getByTestId('palette-collection')).toHaveCount(1);
     await expectNoSeriousA11y(page, 'palette, the 컬렉션 group');

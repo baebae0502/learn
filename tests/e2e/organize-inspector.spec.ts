@@ -1,5 +1,5 @@
 // The item panel's 태그 and 컬렉션 sections, what several items have in common, 컬렉션에 추가 ▾ / ▸ and 이 컬렉션에서 빼기
-// (M5 Task 7). Data is made through the page's API (helpers); every behaviour under test goes through the screen, the
+// (M5). Data is made through the page's API (helpers); every behaviour under test goes through the screen, the
 // item menu (stubbed in main: the rows it recorded, and the click on the one a path names) or the menu bar's own items.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';

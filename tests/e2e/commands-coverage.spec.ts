@@ -60,7 +60,7 @@ async function menuLabel(app: ElectronApplication, id: CommandId): Promise<strin
 }
 const escaped = (p: string) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** A value submenu's command runs from one of its rows (P-18): this value; the other rows are the menu unit tests'. */
+/** A value submenu's command runs from one of its rows: this value; the other rows are the menu unit tests'. */
 const REPRESENTATIVE_ARGS: Partial<Record<CommandId, CommandArgs>> = { 'library.sortBy': { column: 'year' } };
 
 /** Every command the organise milestone put in the registry: this test runs each of them itself (none is left to another test). */
@@ -363,6 +363,7 @@ test('every registry command runs without a page error (library and reader menus
       // 내 라이브러리 전체에서 찾기: listed in the palette only for a search outside 내 라이브러리; it keeps the query.
       await treeRow(page, parent).click();
       await runMenuCommand(app, 'library.find');
+      await expect(searchInput).toBeFocused(); // keys go where the focus is when they arrive
       await page.keyboard.type('zzzz');
       await runPalette(page, app, '내 라이브러리 전체에서 찾기', 'library.findEverywhere');
       await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');

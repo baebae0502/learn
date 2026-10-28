@@ -1072,7 +1072,7 @@ export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500)
   return JSON.parse(last) as Record<string, number>;
 }
 
-// ---- M5 sidebar and collections (Task 5) ---------------------------------------------------------------------------
+// ---- M5 sidebar and collections ------------------------------------------------------------------------------------
 
 /** A special view's row (spec 3.2): 내 라이브러리, 최근 연 자료, 미분류, 중복 항목. */
 export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates'): Locator => page.getByTestId(`nav-scope-${kind}`);
@@ -1158,7 +1158,7 @@ export async function runPalette(page: Page, app: ElectronApplication, query: st
   await page.locator(`[data-testid="palette-item"][data-command-id="${commandId}"]`).click();
 }
 
-// ---- M5 tags (Task 6) ------------------------------------------------------------------------------------------------------
+// ---- M5 tags -------------------------------------------------------------------------------------------------------------
 
 /** A chip of the tag selector (the item panel may show the same tag too, so the selector is named). */
 export const tagChip = (page: Page, tagId: string): Locator => page.getByTestId('tag-selector').getByTestId(`tag-chip-${tagId}`);

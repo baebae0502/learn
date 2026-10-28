@@ -34,7 +34,7 @@ export function withTagMerged(s: OrganizeSnapshot, fromId: string, intoId: strin
   return { ...s, tags: s.tags.filter((tag) => tag.id !== fromId), tagged };
 }
 
-/** The tag put on (`assigned`) or taken off these items. A tag with no item has no key (Q-2). */
+/** The tag put on (`assigned`) or taken off these items. A tag with no item has no key. */
 export function withTagged(s: OrganizeSnapshot, tagId: string, itemIds: readonly string[], assigned: boolean): OrganizeSnapshot {
   const current = s.tagged[tagId] ?? [];
   const gone = new Set(itemIds);

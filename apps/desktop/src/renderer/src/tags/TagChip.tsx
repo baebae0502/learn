@@ -21,7 +21,7 @@ export interface TagChipProps {
   dim?: boolean;
   onToggle?: () => void;
   onRemove?: () => void;
-  /** Task 8 passes RAC useDrag props here (hasDragButton: true); the keys it wants are composed with ours. */
+  /** The drag and drop code passes RAC useDrag props here (hasDragButton: true); the keys it wants are composed with ours. */
   dragProps?: Record<string, unknown>;
   /** The chip is its name field (a filter chip being renamed). */
   editing?: boolean;

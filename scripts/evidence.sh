@@ -10,7 +10,7 @@
 #   packaged  false (default) | true   (also build and exercise an unsigned electron-builder --dir app)
 #
 # Output: evidence/<label>/<run_id>/{evidence,demo}/ plus run.json (timings, download speed); a demo recording is
-# also trimmed and given its chapters (demo/**/m4-demo.final.mov, scripts/finish-demo.sh).
+# also trimmed and given its chapters (demo/**/m5-demo.final.mov, scripts/finish-demo.sh).
 # EVIDENCE_RUN_ID=<id> skips the dispatch and attaches to (or re-downloads) an existing run.
 # Exit status: the run's (gh run watch --exit-status); 3 if the run passed but its evidence could not be downloaded.
 # Every macOS run costs billed minutes (x10 on a private repo): log it in docs/mac-verification.md.

@@ -249,7 +249,65 @@ const DOCS: Doc[] = [
       },
     ],
   },
+  {
+    file: '회귀 모형 정리.pdf',
+    title: '회귀 모형 정리',
+    subtitle: '통계 · 4주차 정리',
+    pages: [
+      {
+        heading: '1. 단순 선형 회귀',
+        paragraphs: [
+          '단순 선형 회귀는 설명 변수 하나로 반응 변수의 평균을 직선으로 나타낸다. 기울기는 설명 변수가 한 단위 늘 때 반응 변수의 평균이 얼마나 달라지는지를 말해 준다.',
+          '최소제곱법은 관측값과 직선 사이의 세로 거리를 제곱해 더한 값이 가장 작아지는 직선을 고른다. 이 직선은 언제나 두 변수의 평균을 지난다.',
+        ],
+        bullets: ['기울기 — 한 단위당 평균의 변화', '절편 — 설명 변수가 0일 때의 평균', '결정계수 — 변동 가운데 직선이 설명하는 몫'],
+      },
+      {
+        heading: '2. 잔차로 모형 점검하기',
+        paragraphs: [
+          '잔차는 관측값에서 직선이 말하는 값을 뺀 것이다. 모형이 알맞다면 잔차는 0 둘레에서 특별한 모양 없이 흩어진다.',
+          '잔차가 곡선 모양으로 휘어 있으면 직선이 아닌 관계를 놓친 것이고, 설명 변수가 커질수록 퍼짐이 커지면 분산이 일정하다는 가정이 깨진 것이다.',
+        ],
+      },
+    ],
+  },
+  {
+    file: '학회 초록 정리.pdf',
+    title: '학회 초록 정리',
+    subtitle: '학회 준비 · 발표 요약',
+    pages: [
+      {
+        heading: '1. 초록에 담을 것',
+        paragraphs: [
+          '초록은 연구의 질문, 방법, 결과, 의미를 150단어 안에 차례로 담는다. 읽는 사람이 발표를 들을지 정하는 글이므로 결과를 숨기지 않는다.',
+          '방법은 재현할 수 있을 만큼만 적고, 결과는 숫자 하나와 그 불확실성으로 말한다. 의미는 질문에 대한 답과 남은 한계를 한 문장씩 쓴다.',
+        ],
+        bullets: ['질문 — 무엇을 알고 싶었는가', '방법 — 어떻게 확인했는가', '결과 — 무엇이 달라졌는가', '의미 — 그래서 무엇을 할 수 있는가'],
+      },
+      {
+        heading: '2. 발표 일정',
+        paragraphs: ['접수 마감 전주에 초록을 확정하고, 발표 자료는 마감 이틀 전까지 선배에게 한 번 보인다. 질의응답에서 받을 질문은 미리 다섯 개를 적어 둔다.'],
+      },
+    ],
+  },
 ];
+
+/** The two notes the library gets later, in the collection chapters: a window drop into a collection and a Finder drop on a tree row. */
+export const EXTRA_TITLES = ['회귀 모형 정리', '학회 초록 정리'] as const;
+
+/** The collections and tags the organise chapters make (demo.evidence.ts): invented and readable. */
+export const DEMO_ORGANIZE = {
+  parent: '생명과학',
+  child: '6장 · 신호 전달',
+  /** Made and put on these titles right after the first import (a library tags in the item panel, and the colour chapter needs chips first); the colour comes on camera. */
+  tags: [
+    { name: '중요', titles: [READ_TITLE, '단백질 접힘 강의 노트', '효소 반응 속도론 정리'] },
+    { name: '시험 범위', titles: ['효소 반응 속도론 정리', '열역학 제2법칙 요약'] },
+    { name: '복습', titles: ['광합성 명반응과 암반응'] },
+  ],
+  /** The tag typed on camera in the item panel. */
+  typedTag: '발표 준비',
+} as const;
 
 /** The fixture videos the demo copies in (from fixtures/generated), and their demo names. */
 export const VIDEOS: ReadonlyArray<readonly [string, string]> = [
@@ -276,6 +334,8 @@ export const DEMO_METADATA: Readonly<Record<string, ItemMetadata>> = {
   '광합성 명반응과 암반응': { creators: [{ name: '정하늘', role: 'author' }], date: '2021', publisher: '생명과학 II' },
   '광합성 실험 영상': { creators: [{ name: '정하늘', role: 'lecturer' }], date: '2024-05' },
   [UNPLAYABLE_TITLE]: { creators: [{ name: '김도윤', role: 'lecturer' }], date: '2019' },
+  '회귀 모형 정리': { creators: [{ name: '한지민', role: 'author' }], date: '2023-11' },
+  '학회 초록 정리': { creators: [{ name: '윤서아', role: 'author' }], date: '2025-10', publisher: '대학원 연구 모임' },
 };
 
 const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -322,10 +382,12 @@ export const PDF_FOOTER =
   '<div style="width:100%;padding:0 22mm;font-size:8pt;color:#73777e;text-align:right;font-family:sans-serif"><span class="pageNumber"></span> / <span class="totalPages"></span></div>';
 
 export interface DemoMedia {
-  /** Everything but the PDF to read: the drop (6 PDFs and the 2 videos). */
+  /** Everything but the PDF to read and the two extra notes: the first drop (6 PDFs and the 2 videos). */
   drop: string[];
-  /** The PDF the demo imports with ⌘O and opens. */
+  /** The PDF the demo opens and edits. */
   read: string;
+  /** The two notes the collection chapters bring in later, in EXTRA_TITLES order. */
+  extra: string[];
 }
 
 /**
@@ -370,6 +432,7 @@ export async function writeDemoMedia(
   fs.rmSync(pages, { recursive: true, force: true });
   for (const [from, to] of VIDEOS) fs.copyFileSync(path.join(fixtures, from), path.join(dir, to));
   const read = path.join(dir, `${READ_TITLE}.pdf`);
-  const drop = [...DOCS.map((d) => path.join(dir, d.file)), ...VIDEOS.map(([, to]) => path.join(dir, to))].filter((f) => f !== read);
-  return { read, drop };
+  const extra = EXTRA_TITLES.map((title) => path.join(dir, `${title}.pdf`));
+  const drop = [...DOCS.map((d) => path.join(dir, d.file)), ...VIDEOS.map(([, to]) => path.join(dir, to))].filter((f) => f !== read && !extra.includes(f));
+  return { read, drop, extra };
 }

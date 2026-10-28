@@ -110,13 +110,13 @@ const PLANS: readonly DemoPlan[] = IS_MAC
   : [{ display: 'switch', capture: 'screencapture', why: 'the only attempt' }];
 /**
  * The demo's whole budget, attempts included. The `all` evidence step (playwright.evidence.config.ts globalTimeout
- * 1440 s, step limit 25 min), recomputed for M4 from the last Mac time of each suite:
- * - typically 884 s: the rest of the suite 578 s (baseline and mockups 39 s, shell and spikes 238 s, perf 170 s,
- *   library 131 s), the demo 297 s, Playwright's own 9 s;
- * - at worst 1410 s: the rest 723 s with a 1.25 runner margin, plus 4.5 s for three opaque retakes and 60 s for four
- *   JXA handler lookups that each hit their 15 s limit, 45 s for the open panel's bounded waits, the demo at its own
- *   limit (463.5 + 60 s), the afterAll's restores after a timeout (RESTORE_HOOK_MS, 45 s) and Playwright's 9 s. That
- *   leaves 30 s to the globalTimeout.
+ * 1620 s, step limit 28 min), recomputed for M5 from the last Mac time of each suite (run ids in the commit message):
+ * - typically 805 s: the rest of the suite 499 s (baseline and mockups 34 s, shell and spikes 207 s, library 57 s,
+ *   perf and organise perf 117 s, organize 84 s), the demo 297 s (M4's, until M5's own run), Playwright's own 9 s;
+ * - at worst 1548 s: the rest with a 1.25 runner margin (624 s), plus 64.5 s for the opaque retakes and JXA lookups at
+ *   their limits, 45 s for the open panel's bounded waits, 120 s for the organize suite's System Events and captures at
+ *   their 15 s limits, the demo at its own limit (580 + 60 s), the afterAll's restores after a timeout (45 s) and
+ *   Playwright's 9 s. That leaves 72 s to the globalTimeout.
  * For M5 the budget is one full attempt and a retry of an attempt that ended early (FULL_ATTEMPT_MS + 240 s): when the
  * worst case outgrows the evidence step, the step's limit is raised rather than the budget cut (the runner's minutes
  * are free). The longer Mac pre-roll and the wait for the drop toast fall inside the demo's own budget.

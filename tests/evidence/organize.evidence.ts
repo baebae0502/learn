@@ -888,7 +888,7 @@ test("M5 organize: ⌘K lists 컬렉션 between 자료 and 명령; a collection 
         buttons: await empty.locator('.btn').allTextContents(),
       };
       value['noResults'] = v;
-      check("search: the collection view's no-results names the view and has both actions", v.body?.startsWith('‘형광 현미경’의 제목·저자·태그') === true && v.buttons.join('|') === '검색어 지우기|내 라이브러리 전체에서 찾기', v);
+      check("search: the collection view's no-results names the view and has both actions", v.body?.startsWith('‘형광 현미경’의 제목⁠·저자⁠·태그') === true && v.buttons.join('|') === '검색어 지우기|내 라이브러리 전체에서 찾기', v);
     });
     await shots(s.app, s.page, 'm5-10-search-none-collection', '‘쥐똥나무 열매’: no results in a collection, two actions (light)');
     await s.page.getByTestId('search-empty-everywhere').click();

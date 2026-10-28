@@ -821,12 +821,15 @@ export async function stubContextMenu(app: ElectronApplication, pick: string | r
   await app.evaluate(({ Menu }, pick) => {
     interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; submenu?: { items: LiveItem[] }; click(): void }
     interface Recorded { id: string | null; label: string; enabled: boolean; checked: boolean; type: string; submenu?: Recorded[] }
-    const g = globalThis as { __learnPopups?: Recorded[][]; __learnPopupAt?: Array<{ x: number; y: number }> };
+    const g = globalThis as { __learnPopups?: Recorded[][]; __learnPopupAt?: Array<{ x: number; y: number }>; __learnPopupTimes?: number[] };
     g.__learnPopups = [];
     g.__learnPopupAt = [];
+    g.__learnPopupTimes = [];
     const record = (items: LiveItem[]): Recorded[] =>
       items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type, ...(i.submenu ? { submenu: record(i.submenu.items) } : {}) }));
     Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { x?: number; y?: number; callback?: () => void }) {
+      // Epoch ms with the fraction: a page's `performance.timeOrigin + event.timeStamp` is on the same clock to about a millisecond.
+      g.__learnPopupTimes!.push(performance.timeOrigin + performance.now());
       g.__learnPopups!.push(record(this.items));
       g.__learnPopupAt!.push({ x: options?.x ?? Number.NaN, y: options?.y ?? Number.NaN });
       const path = pick === null ? [] : typeof pick === 'string' ? [pick] : pick;
@@ -849,6 +852,10 @@ export async function stubContextMenu(app: ElectronApplication, pick: string | r
 /** The point (window coordinates) each popup menu recorded since `stubContextMenu` opened at, oldest first. */
 export const recordedPopupPoints = (app: ElectronApplication): Promise<Array<{ x: number; y: number }>> =>
   app.evaluate(() => (globalThis as { __learnPopupAt?: Array<{ x: number; y: number }> }).__learnPopupAt ?? []);
+
+/** When each popup menu was shown since `stubContextMenu` (epoch ms), oldest first: the moment main called `Menu.popup`. */
+export const recordedPopupTimes = (app: ElectronApplication): Promise<number[]> =>
+  app.evaluate(() => (globalThis as { __learnPopupTimes?: number[] }).__learnPopupTimes ?? []);
 
 /** Every popup menu recorded since `stubContextMenu`, oldest first. */
 export const recordedPopups = (app: ElectronApplication): Promise<PopupItem[][]> =>

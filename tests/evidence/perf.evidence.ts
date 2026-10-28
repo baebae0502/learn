@@ -17,7 +17,8 @@ import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
 import { median, percentile } from './percentile';
-import { searchSteps } from './search-steps';
+import { organizeSteps, searchSteps } from './search-steps';
+import { seedOrganizeFixture } from './organize-fixture';
 
 interface Marks {
   processStart: number;
@@ -386,6 +387,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
   // 1. One real PDF, then 10,000 items that share its asset: one transaction, one libraryChanged. The rows are made
   //    here (seedRows; main keeps no sample data), and the search inputs below come from them.
   const libraryRows = seedRows(LIBRARY_ITEMS, 1, undefined, { longTexts: true });
+  let organize!: Awaited<ReturnType<typeof seedOrganizeFixture>>;
   const seeded = await launch(lib, ud);
   try {
     const [from] = await importPaths(seeded.page, [path.join(FIXTURES, 'sample.pdf')]);
@@ -395,6 +397,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     );
     expect(added, 'main added every seeded row, in one transaction').toBe(LIBRARY_ITEMS);
     await expect.poll(() => shownTotal(seeded.page), { timeout: 30_000 }).toBeGreaterThanOrEqual(LIBRARY_ITEMS);
+    // M5: spec 12's library — 200 collections, 50 tags, 30,000 memberships, 20,000 assignments, 50 duplicate groups — so the list,
+    // the search (tag names in its index) and the palette (collections among its rows) are timed with the organise data present.
+    organize = await seedOrganizeFixture(seeded.app, seeded.page);
+    await expect.poll(() => shownTotal(seeded.page), { timeout: 30_000 }).toBe(organize.fixture.n);
   } finally {
     await seeded.app.close();
   }
@@ -462,6 +468,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       return { out, count };
     }, LIBRARY_RUNS);
     const listIpcMs = listed.out;
+    /** The M4 record (docs/mac-verification.md, Linux xvfb of the library task): the list is to be no slower now that tagIds are gone. */
+    const M4_LIST_IPC_MS = 269;
     // The long fields' payload (spec 7.1): the seeded abstracts and memos, each cut at 4,000 characters.
     const searchTextsPayload = await page.evaluate(async () => {
       const t0 = performance.now();
@@ -524,7 +532,9 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     // The quick search measures of the timed inputs only: the warm-up query above is left out.
     const measuresBefore = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures)).filter((m) => m.name === 'learn:search').length;
     const steps = searchSteps(libraryRows);
-    for (const step of steps) {
+    // The tag step reaches the search's tag field and the collection step the palette's collection rows.
+    const extra = organizeSteps({ tag: organize.fixture.facts.tagNames[0]!, collection: organize.fixture.facts.collectionNames[0]! });
+    for (const step of [...steps, ...extra.tag]) {
       for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
       for (let i = 0; i < step.chars.length; i++) await timeInput(() => page.keyboard.press('Backspace'));
     }
@@ -556,7 +566,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       if (painted === null) paletteUnpainted++;
       else paletteMs.push(Math.round(painted - t0));
     };
-    for (const step of steps) {
+    for (const step of [...steps, ...extra.collection]) {
       for (const ch of step.chars) await timePaletteInput(() => page.keyboard.insertText(ch));
       for (let i = 0; i < step.chars.length; i++) await timePaletteInput(() => page.keyboard.press('Backspace'));
     }
@@ -639,9 +649,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       runs: LIBRARY_RUNS,
       budgetMs: LIBRARY_BUDGET_MS,
       linuxCiLimitMs: Object.fromEntries(Object.entries(LIBRARY_BUDGET_MS).map(([k, v]) => [k, 2 * v])),
-      listIpcMs: { runs: listIpcMs, median: median(listIpcMs) },
+      listIpcMs: { runs: listIpcMs, median: median(listIpcMs), m4BaselineMs: M4_LIST_IPC_MS, vsM4Ms: median(listIpcMs) - M4_LIST_IPC_MS },
+      organizeFixture: { collections: organize.fixture.spec.collections, tags: organize.fixture.spec.tags, memberships: organize.fixture.spec.memberships, assignments: organize.fixture.spec.assignments, duplicateGroups: organize.fixture.spec.duplicateGroups },
       firstPaintMs: { runs: firstPaintMs, median: median(firstPaintMs) },
-      inputToPaintMs: { inputs: inputToPaintMs.length, groups: steps.map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintMs: { inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
       searchTextsPayload,
       paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
@@ -651,7 +662,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('library-perf.json', result, 'M4 library of 10,000 items: list, first rows, quick search, search payload, palette, scroll, sort, item panel (spec 9, M5 12)');
+    if (median(listIpcMs) > M4_LIST_IPC_MS) testInfo.annotations.push({ type: 'list IPC above the M4 record', description: `${median(listIpcMs)} ms against ${M4_LIST_IPC_MS} ms` });
+    writeJson('library-perf.json', result, 'M4 library of 10,000 items: list, first rows, quick search, search payload, palette, scroll, sort, item panel (spec 9, M5 12), over the organise fixture');
     console.log(
       '[measure] library',
       JSON.stringify({

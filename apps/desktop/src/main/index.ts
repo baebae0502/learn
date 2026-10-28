@@ -420,7 +420,16 @@ if (!app.requestSingleInstanceLock()) {
     };
     registerAllIpc(createHandle(devOrigin), deps);
     // E2E only (LEARN_E2E=1, never packaged): the seeding hook a large-library test calls through app.evaluate.
-    if (isE2E(app.isPackaged, process.env)) installTestHooks({ repo: () => deps.getContext().repo, broadcast });
+    if (isE2E(app.isPackaged, process.env)) {
+      installTestHooks({
+        repo: () => deps.getContext().repo,
+        organize: () => {
+          const ctx = deps.getContext();
+          return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
+        },
+        broadcast,
+      });
+    }
 
     activation.markReady();
     mainWindow = openMainWindow();

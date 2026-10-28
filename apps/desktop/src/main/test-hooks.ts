@@ -1,5 +1,6 @@
-import { newId, type LearnEventMap } from '@learn/domain';
-import type { LibraryRepository } from '@learn/db';
+import { createHash } from 'node:crypto';
+import { newId, type LearnEventMap, type TagColorId } from '@learn/domain';
+import type { CollectionsRepository, Db, LibraryRepository, TagsRepository } from '@learn/db';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -42,9 +43,142 @@ export function seedItems(repo: SeedRepo, input: SeedItemsInput, makeId: () => s
   return rows.map((r) => r.id);
 }
 
+export interface SeedOrganizeInput {
+  /** Ids of the items to organise, in the order every index below counts them by. */
+  items: string[];
+  /** `parent` is the index of an earlier entry, or null for a top-level collection. */
+  collections: Array<{ name: string; parent: number | null }>;
+  /** [collection index, item index] */
+  memberships: Array<[number, number]>;
+  /** A coloured tag has both `color` and `position` (1–8); an uncoloured one has neither. */
+  tags: Array<{ name: string; color: TagColorId | null; position: number | null }>;
+  /** [tag index, item index] */
+  assignments: Array<[number, number]>;
+  /**
+   * Item-index groups that share one file. Given, every other item gets a file of its own, so these groups are the
+   * library's only duplicates; left out, the items keep the one file seedItems gave them all.
+   */
+  duplicates?: number[][];
+}
+export interface SeedOrganizeResult {
+  collectionIds: string[];
+  tagIds: string[];
+}
+export interface OrganizeSeedDeps {
+  db: Db;
+  collections: CollectionsRepository;
+  tags: TagsRepository;
+}
+
+interface FileRow {
+  storage_mode: string;
+  relative_path: string | null;
+  external_path: string | null;
+  original_name: string;
+  mime: string;
+  size: number;
+  availability: string;
+  created_at: string;
+  checked_at: string | null;
+}
+
+/**
+ * Items that share one file are one duplicate group for the snapshot (same sha256), and seedItems makes every item share
+ * one. Each group gets one asset row of its own and every other item another, all pointing at the original's stored
+ * file with a made-up hash (and the revision row an asset must have), so the groups are exactly the duplicates.
+ */
+function giveFiles(db: Db, itemIds: readonly string[], groups: readonly number[][]): void {
+  const groupOf = new Map<number, number>();
+  groups.forEach((g, k) =>
+    g.forEach((i) => {
+      if (groupOf.has(i)) throw new Error(`seedOrganize: item ${i} is in two duplicate groups`);
+      groupOf.set(i, k);
+    }),
+  );
+  const read = db.prepare(
+    `SELECT a.storage_mode, a.relative_path, a.external_path, a.original_name, a.mime, a.size, a.availability, a.created_at, a.checked_at
+       FROM item_assets ia JOIN assets a ON a.id = ia.asset_id WHERE ia.item_id = ? AND ia.role = 'original'`,
+  );
+  const insertAsset = db.prepare(
+    `INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+     VALUES (@id, @sha256, @storage_mode, @relative_path, @external_path, @original_name, @mime, @size, @availability, @created_at, @checked_at)`,
+  );
+  const insertRevision = db.prepare('INSERT INTO source_revisions (id, asset_id, hash, created_at) VALUES (?, ?, ?, ?)');
+  const repoint = db.prepare(`UPDATE item_assets SET asset_id = ? WHERE item_id = ? AND role = 'original'`);
+  const groupAsset = new Map<number, string>();
+  itemIds.forEach((itemId, i) => {
+    const g = groupOf.get(i);
+    let assetId = g === undefined ? undefined : groupAsset.get(g);
+    if (assetId === undefined) {
+      const file = read.get(itemId) as FileRow | undefined;
+      if (!file) throw new Error(`seedOrganize: item ${i} has no original file`);
+      assetId = newId();
+      const sha256 = createHash('sha256').update(g === undefined ? `seed-file:item-${i}` : `seed-file:group-${g}`).digest('hex');
+      insertAsset.run({ id: assetId, sha256, ...file });
+      insertRevision.run(newId(), assetId, sha256, file.created_at);
+      if (g !== undefined) groupAsset.set(g, assetId);
+    }
+    repoint.run(assetId, itemId);
+  });
+}
+
+/**
+ * The organise fixture (collections, memberships, tags, assignments, duplicate groups) in one transaction through the
+ * repositories, so every rule they enforce (names, positions, live items only) holds for the seed too. Seed-only: ids
+ * are fresh each time; what is deterministic is the structure the indexes describe.
+ */
+export function seedOrganize(deps: OrganizeSeedDeps, input: SeedOrganizeInput): SeedOrganizeResult {
+  const item = (i: number, what: string): string => {
+    const id = input.items[i];
+    if (id === undefined) throw new Error(`seedOrganize: ${what} points at item ${i}, and there are ${input.items.length}`);
+    return id;
+  };
+  return deps.db.transaction(() => {
+    const collectionIds: string[] = [];
+    input.collections.forEach((c, i) => {
+      if (c.parent !== null && !(c.parent >= 0 && c.parent < i)) throw new Error(`seedOrganize: collection ${i} has parent ${c.parent}, which is not an earlier entry`);
+      collectionIds.push(deps.collections.create({ name: c.name, parentId: c.parent === null ? null : collectionIds[c.parent]! }).id);
+    });
+    const members = new Map<number, string[]>();
+    for (const [c, i] of input.memberships) {
+      if (collectionIds[c] === undefined) throw new Error(`seedOrganize: a membership points at collection ${c}`);
+      const list = members.get(c) ?? [];
+      list.push(item(i, 'a membership'));
+      members.set(c, list);
+    }
+    for (const [c, ids] of members) {
+      const added = deps.collections.addItemsChanged(collectionIds[c]!, ids);
+      if (added.length !== ids.length) throw new Error(`seedOrganize: collection ${c} took ${added.length} of ${ids.length} memberships (a repeated pair?)`);
+    }
+    const tagIds = input.tags.map((t) => {
+      if ((t.color === null) !== (t.position === null)) throw new Error(`seedOrganize: tag ${t.name} needs both colour and position, or neither`);
+      const made = deps.tags.create(t.name);
+      return t.color === null ? made.id : deps.tags.setColor(made.id, t.color, t.position).id;
+    });
+    const tagged = new Map<number, string[]>();
+    for (const [t, i] of input.assignments) {
+      if (tagIds[t] === undefined) throw new Error(`seedOrganize: an assignment points at tag ${t}`);
+      const list = tagged.get(t) ?? [];
+      list.push(item(i, 'an assignment'));
+      tagged.set(t, list);
+    }
+    for (const [t, ids] of tagged) {
+      const added = deps.tags.assignChanged(tagIds[t]!, ids);
+      if (added.length !== ids.length) throw new Error(`seedOrganize: tag ${t} took ${added.length} of ${ids.length} assignments (a repeated pair?)`);
+    }
+    if (input.duplicates) {
+      input.duplicates.forEach((g) => g.forEach((i) => item(i, 'a duplicate group')));
+      giveFiles(deps.db, input.items, input.duplicates);
+    }
+    return { collectionIds, tagIds };
+  })();
+}
+
 export interface LearnTestHooks {
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
+  /** Seed-only: the organise fixture over items that exist (E2E, one transaction). */
+  seedOrganize(input: SeedOrganizeInput): SeedOrganizeResult;
 }
 
 /**
@@ -53,6 +187,7 @@ export interface LearnTestHooks {
  */
 export function installTestHooks(deps: {
   repo(): SeedRepo;
+  organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
@@ -62,6 +197,11 @@ export function installTestHooks(deps: {
       const ids = seedItems(deps.repo(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });
       return ids.length;
+    },
+    seedOrganize(input) {
+      const out = seedOrganize(deps.organize(), input);
+      deps.broadcast('libraryChanged', { reason: 'import' });
+      return out;
     },
   };
 }

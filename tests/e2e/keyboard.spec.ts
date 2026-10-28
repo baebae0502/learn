@@ -491,6 +491,9 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
     // The item panel: one item with tags and two collection paths, the add field with a suggestion, several items, the menu.
     await treeRow(page, bio).click();
     await selectRows(page, ['sample']);
+    // The 1024 px macOS runner folds the panel beside the table; folded, its controls cannot be reached.
+    const panelFolded = (await page.getByTestId('shell').getAttribute('data-inspector')) !== 'shown';
+    await showItemPanel(app, page);
     await expect(page.getByTestId('tags-section')).toBeVisible();
     await expect(page.getByTestId('collection-path')).toHaveCount(2);
     await expectNoSeriousA11y(page, 'item panel with tags and collections');
@@ -506,6 +509,11 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
     await expect(page.getByTestId(`add-to-collection-${ch6}`)).toBeVisible();
     await expectNoSeriousA11y(page, 'the 컬렉션에 추가 menu open');
     await page.keyboard.press('Escape');
+    // Shown on demand, the panel leaves the table narrower than its columns: the header cells moved below would be under it.
+    if (panelFolded) {
+      await runMenuCommand(app, 'view.toggleInspector');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    }
 
     // The search of a collection with no result offers the whole library; ⌘K lists the collection between 자료 and 명령.
     await runMenuCommand(app, 'library.find');

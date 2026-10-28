@@ -331,13 +331,26 @@ test('a first list read past 300 ms shows the header and 불러오는 중… in 
       ipcMain.removeHandler(channel);
       ipcMain.handle(channel, () => new Promise((resolve) => (g.__learnReleaseList = () => resolve(reply))));
     }, [Channels.library.list, listed] as const);
-    // When the shell and the loading line first appear, from the document's first node on.
+    // When the shell and the loading line first appear, from the document's first node on. The time is taken in the
+    // insertion itself: an observer runs at the end of the task, after the loading timer has started in the same task,
+    // so the shell's time it records is late by the rest of that task (about 18 ms on the Mac runner).
     await page.addInitScript(() => {
       const g = globalThis as { __learnSeen?: Record<string, number> };
       g.__learnSeen = {};
-      new MutationObserver(() => {
+      const note = () => {
         for (const id of ['shell', 'table-loading', 'empty-state']) if (!(id in g.__learnSeen!) && document.querySelector(`[data-testid="${id}"]`)) g.__learnSeen![id] = performance.now();
-      }).observe(document, { childList: true, subtree: true });
+      };
+      const proto = Node.prototype as unknown as Record<'appendChild' | 'insertBefore', (this: Node, ...args: unknown[]) => unknown>;
+      for (const name of ['appendChild', 'insertBefore'] as const) {
+        const insert = proto[name];
+        proto[name] = function (this: Node, ...args: unknown[]) {
+          const result = insert.apply(this, args);
+          if (this.isConnected) note();
+          return result;
+        };
+      }
+      // Anything put in by another call is still seen, at the end of its task.
+      new MutationObserver(note).observe(document, { childList: true, subtree: true });
     });
     await page.reload();
     await expect(page.getByTestId('table-loading')).toHaveText('불러오는 중…');

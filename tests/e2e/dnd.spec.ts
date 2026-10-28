@@ -694,6 +694,9 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await hold(box.y + 10);
     expect(await scrollTop(), 'and back up at the top edge').toBeLessThan(down);
     await cancelDrag(page);
+    // Chromium's own drag autoscroll goes on after the drag has ended, up to the tree's edge, and React Aria's scroll view
+    // keeps the pointer off the rows until 300 ms after the last scroll: a click before then lands on the tree, not on a row.
+    await expect.poll(() => treeBox().locator('[role="row"]').first().evaluate((r) => getComputedStyle(r).pointerEvents), { message: 'the rows take the pointer again' }).not.toBe('none');
   });
 
   test('(e) a collection row is one drop target over its whole height, and no between-rows marker is ever drawn', async () => {

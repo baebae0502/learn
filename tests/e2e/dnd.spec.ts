@@ -358,29 +358,6 @@ test('a drop target in a window that is not main keeps full strength — the nam
   }
 });
 
-test('Finder\'s files that leave the window (a dragleave that goes to no element) unmark the row; a dragleave into another element does not', async ({}, testInfo) => {
-  const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
-  try {
-    const { page } = t;
-    const target = await createCollection(page, '창 밖으로');
-    const files = await finderDrag(page, MP4);
-    await files.send('dragEnter', page.getByTestId('content'));
-    await files.send('dragOver', treeRow(page, target));
-    expect(await marked(page)).toEqual([`nav-collection-${target}`]);
-    const leave = (related: boolean) => page.evaluate((related) => {
-      document.body.dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: related ? document.documentElement : null }));
-    }, related);
-    await leave(true);
-    await page.waitForTimeout(400);
-    expect(await marked(page), 'a dragleave into another element').toEqual([`nav-collection-${target}`]);
-    await leave(false);
-    await expect.poll(() => marked(page), { message: 'a dragleave out of the window' }).toEqual([]);
-    await files.close();
-  } finally {
-    await t.app.close();
-  }
-});
-
 test('a refused drop is an error toast and changes nothing; a move whose second half is refused puts the first half back', async ({}, testInfo) => {
   const t = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

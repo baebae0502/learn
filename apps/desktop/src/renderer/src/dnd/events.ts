@@ -53,7 +53,10 @@ export function installDndEvents(win: Window = window): () => void {
   // so the sweep waits for a moment in which none comes.
   let leaving: ReturnType<typeof setTimeout> | undefined;
   const left = (e: DragEvent) => {
-    if (e.relatedTarget === null && dragState.get().kind === null) leaving = setTimeout(gone, LEAVE_GRACE_MS);
+    // The sweep's own dragleaves are untrusted and must not arm the wait again.
+    if (!e.isTrusted || e.relatedTarget !== null || dragState.get().kind !== null) return;
+    clearTimeout(leaving);
+    leaving = setTimeout(gone, LEAVE_GRACE_MS);
   };
   const stillIn = () => clearTimeout(leaving);
   const dropped = (e: DragEvent) => {

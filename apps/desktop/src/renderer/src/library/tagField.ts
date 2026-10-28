@@ -18,7 +18,7 @@ function sameNames(a: TagNames, b: TagNames): boolean {
 
 /**
  * Each tagged item's tag names, joined by a space, in the model's tag order (spec 7.1): the search index's last short
- * field. Only items in the list are in it (the model's `tagItems` counts those, P-7). No model yet is no tags.
+ * field. Only items in the list are in it (the model's `tagItems` counts those). No model yet is no tags.
  */
 export function tagNamesFor(model: OrganizeModel | undefined): TagNames {
   if (model === undefined) return NO_TAG_NAMES;

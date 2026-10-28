@@ -2,8 +2,9 @@
 // (runMenuCommand) because CDP keys never reach native accelerators on Linux — the macOS lane presses them for real.
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
+import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
   FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
@@ -40,28 +41,6 @@ async function f6To(page: Page, pane: string): Promise<void> {
   for (let i = 0; i < 4 && (await inPane(page)) !== pane; i++) await page.keyboard.press('F6');
   expect(await inPane(page)).toBe(pane);
 }
-/**
- * Presses `from`, drags it over `to` and holds there with the button down: the target has its drop marker when this returns,
- * and the function it returns ends the drag without dropping (esc, then the button up). Chromium thins out dragover while
- * the pointer rests, so the pointer moves a few pixels on the target to settle the last one, then two frames pass.
- */
-async function holdDragOver(page: Page, from: Locator, to: Locator): Promise<() => Promise<void>> {
-  const a = (await from.boundingBox())!;
-  const b = (await to.boundingBox())!;
-  const [ax, ay] = [a.x + 40, a.y + a.height / 2];
-  const [bx, by] = [b.x + b.width / 2, b.y + b.height / 2];
-  await page.mouse.move(ax, ay);
-  await page.mouse.down();
-  await page.mouse.move(ax + 10, ay + 10, { steps: 4 }); // past the drag threshold
-  await page.mouse.move(bx, by, { steps: 14 });
-  for (const d of [1, 2, 3]) await page.mouse.move(bx + d, by, { steps: 2 });
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-  return async () => {
-    await page.keyboard.press('Escape');
-    await page.mouse.up();
-  };
-}
-
 test('import → open → page → back → palette → settings → shortcuts, with axe at every stop', async ({}, testInfo) => {
   // No colour-scheme emulation: the theme the settings window picks reaches prefers-color-scheme (axe in both themes).
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
@@ -555,11 +534,14 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
     // Mid-drag states: a table row over a collection row (its drop marker), a header cell being moved (the insertion line).
     await specialRow(page, 'all').click();
     await selectRows(page, [KO]);
-    const release = await holdDragOver(page, rowByTitle(page, KO), treeRow(page, conf));
+    await beginDrag(page, rowByTitle(page, KO), 'items');
+    await hover(page, treeRow(page, conf));
     await expect(treeRow(page, conf)).toHaveAttribute('data-drop-target', /.*/);
     await expectNoSeriousA11y(page, 'a table row dragged over a collection');
-    await release();
+    await cancelDrag(page);
     await expect(treeRow(page, conf)).not.toHaveAttribute('data-drop-target', /.*/);
+    // A cancelled drag files nothing.
+    expect((await organizeSnapshot(page)).members[conf] ?? []).toEqual([]);
     const header = (col: string) => page.locator(`[data-testid="column-header"][data-col="${col}"]`);
     const [from, to] = [(await header('createdAt').boundingBox())!, (await header('creators').boundingBox())!];
     await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);

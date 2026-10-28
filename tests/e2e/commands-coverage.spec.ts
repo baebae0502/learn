@@ -381,6 +381,7 @@ test('every registry command runs without a page error (library and reader menus
     expect(m5.filter((id) => !ran.has(id)), 'M5 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M5_COMMANDS.includes(id as CommandId)), 'M5 commands left to another test').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
+    // The backstop for M5 commands outside the prefix filter above: they still have to run here or be covered elsewhere.
     expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);
     for (const [id, where] of Object.entries(COVERED_ELSEWHERE)) {
       const [file, title] = where.split(' › ') as [string, string];

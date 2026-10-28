@@ -32,7 +32,7 @@ import { expect, test, type ElectronApplication, type Locator, type Page } from 
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { commandById, commandLabel, type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
-import { finderDrag } from '../e2e/dnd-helpers';
+import { MOVE_KEY, finderDrag } from '../e2e/dnd-helpers';
 import {
   NativeInputNotPermitted, ROOT, assignTag, bringAppToFront, closeSheet, createTag, drag, dropSource, expectWindow, launch, nativeKeystroke, organizeSnapshot, osascript,
   osascriptLimits, rowByTitle, runMenuCommand, seedMetadata, stubConfirm, type KeyModifier, type LaunchOptions, type Session,
@@ -77,7 +77,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The platform's add-to-selection modifier for a click (⌘ on macOS, Ctrl elsewhere). */
 const MOD = IS_MAC ? 'Meta' : 'Control';
 /** The platform's move modifier for a drop (⌘ on macOS, Shift elsewhere: React Aria's own choice) and how a caption names it. */
-const MOVE_KEY = IS_MAC ? 'Meta' : 'Shift';
 const MOVE_LABEL = IS_MAC ? '⌘' : 'Shift';
 const PARENT = DEMO_ORGANIZE.parent;
 const CHILD = DEMO_ORGANIZE.child;
@@ -729,6 +728,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     // The item panel needs room beside the sidebar (the runner's own 1024 mode has none): ⌥⌘I shows it before chapter 9.
     const roomy = (await inspectorWidth()) > 0;
     const colourTitle = '광합성 실험 영상';
+    const toggleTitle = '광합성 명반응과 암반응';
 
     // 3. 새 컬렉션: ⇧⌘N puts a named-in-place row at the top of the tree; no dialog, and the view stays where it was.
     await chapter(`${key('Shift+CmdOrCtrl+N')} 키로 새 컬렉션을 만듭니다. 이름은 트리 안에서 바로 적습니다.`);
@@ -782,12 +782,17 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await glideClick(page, 'main', rowByTitle(page, READ_TITLE));
     await scriptedDrag(rowByTitle(page, READ_TITLE), tree(childId), { move: true });
     await expect.poll(async () => (await snapshot()).members[childId] ?? []).toEqual([ids[READ_TITLE]]);
+    // A move takes the row out of the parent too: a drop that only added would leave it there.
+    await expect.poll(async () => (await snapshot()).members[parentId] ?? []).not.toContain(ids[READ_TITLE]);
+    // A collection's view lists its subtree, so the moved row is still in the parent's view (now through the child).
+    await expect(rows).toHaveCount(3);
     await expect(page.getByTestId('undo-toast')).toBeVisible();
     await expect(countOf(childId)).toHaveText('1');
     await park(page, 'main');
     await pause(3000);
     await glideClick(page, 'main', page.getByTestId('undo-action'));
     await expect.poll(async () => (await snapshot()).members[childId] ?? []).toEqual([]);
+    await expect.poll(async () => (await snapshot()).members[parentId] ?? []).toContain(ids[READ_TITLE]);
     await expect.poll(async () => (await snapshot()).members[parentId]?.length ?? 0).toBe(3);
     await park(page, 'main');
     await pause(2500);
@@ -807,8 +812,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect.poll(() => slotOf('시험 범위')).toBe(2);
     await park(page, 'main');
     await pause(2200); // the dots on the rows that already carry the tags
+    const taggedWith = async (name: string, title = colourTitle) => ((await snapshot()).tagged[tagIds[name]!] ?? []).includes(ids[title]!);
+    // On and off again on a row without 중요, so chapter 8's counts are the same as without it.
+    await glideClick(page, 'main', rowByTitle(page, toggleTitle));
+    const onAt = await press('1', [], 'tag.color1', () => taggedWith('중요', toggleTitle));
+    await expect.poll(() => taggedWith('중요', toggleTitle)).toBe(true);
+    await afterKey(onAt, 1500);
+    const offAt = await press('1', [], 'tag.color1', async () => !(await taggedWith('중요', toggleTitle)));
+    await expect.poll(() => taggedWith('중요', toggleTitle)).toBe(false);
+    await afterKey(offAt, 1500);
     await glideClick(page, 'main', rowByTitle(page, colourTitle));
-    const taggedWith = async (name: string) => ((await snapshot()).tagged[tagIds[name]!] ?? []).includes(ids[colourTitle]!);
     const oneAt = await press('1', [], 'tag.color1', () => taggedWith('중요'));
     await expect.poll(() => taggedWith('중요')).toBe(true);
     await afterKey(oneAt, 1500);

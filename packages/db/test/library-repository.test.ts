@@ -460,3 +460,26 @@ describe('LibraryRepository.insertImported into a collection', () => {
     expect(repo.counts()).toMatchObject({ items: 2, collectionItems: 0 });
   });
 });
+
+describe('LibraryRepository.targetFacts', () => {
+  it('answers the storage mode and availability of the live items among the ids, once each, in the order asked', () => {
+    const [a, b, c] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    repo.trash([b]);
+    const facts = repo.targetFacts([c, newId(), a, b, c]);
+    expect(facts.map((f) => f.id)).toEqual([c, a]);
+    expect(facts[0]).toEqual({ id: c, storageMode: repo.getItem(c)!.storageMode, availability: repo.getItem(c)!.availability });
+    expect(repo.targetFacts([])).toEqual([]);
+  });
+
+  it('asks the database 500 ids at a time', () => {
+    const real = [seedItem(db).itemId, seedItem(db).itemId];
+    const asked = [real[0]!, ...Array.from({ length: 700 }, () => newId()), real[1]!];
+    const prepare = vi.spyOn(db, 'prepare');
+    try {
+      expect(repo.targetFacts(asked).map((f) => f.id)).toEqual(real);
+      expect(prepare.mock.calls.map(([sql]) => (String(sql).match(/\?/g) ?? []).length).filter((n) => n > 0)).toEqual([500, 202]);
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+});

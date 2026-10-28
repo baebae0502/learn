@@ -27,19 +27,21 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     let itemIds: string[] = [];
     let tagId: string | undefined;
     if (input.kind === 'item') {
-      // One query for the whole selection, in the order asked (the old read per id made ⌘A on 10 000 rows 10 000 reads).
-      let items = ctx.repo.getItems(input.itemIds);
-      if (items.length === 0) return null;
-      if (items.length === 1) {
+      // One query for the whole selection, in the order asked (the old read per id made ⌘A on 10 000 rows 10 000 reads);
+      // the menu needs two facts per item, so the rest of an item (metadata, revision, position) is not read.
+      let facts = ctx.repo.targetFacts(input.itemIds);
+      if (facts.length === 0) return null;
+      if (facts.length === 1) {
         // Same check as library.get, so "다시 연결…" shows for a linked file that went missing this session.
         try {
-          items = [await refreshItemAvailability(ctx, items[0]!.id)];
+          const item = await refreshItemAvailability(ctx, facts[0]!.id);
+          facts = [{ id: item.id, storageMode: item.storageMode, availability: item.availability }];
         } catch (e) {
           console.warn(`[ui] availability check failed: ${toLearnError(e).code}`); // fall back to the stored state
         }
       }
-      targets = items.map((i) => itemTarget(i));
-      itemIds = items.map((i) => i.id);
+      targets = facts.map((f) => itemTarget(f));
+      itemIds = facts.map((f) => f.id);
     } else if (input.kind === 'collection') {
       const live = new Set(organize!.collections.map((c) => c.id));
       targets = input.collectionIds.filter((id) => live.has(id)).map((id) => ({ kind: 'collection', id }));

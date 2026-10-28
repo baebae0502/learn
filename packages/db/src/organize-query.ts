@@ -5,12 +5,17 @@ import { TAG_ORDER, isTagColor } from './tags-repository';
 
 interface CollectionRow { id: string; name: string; parent_id: string | null; created_at: string }
 interface TagRow { id: string; name: string; color: string | null; position: number | null }
-interface PairRow { owner: string; item: string }
+
+/*
+ * The two pair queries exclude the few trashed rows with NOT IN over a small set rather than joining every pair to its
+ * item and collection: a join lets SQLite start from the items and sort 30,000 pairs into stored order, which took
+ * four times as long at 10,000 items. Foreign keys guarantee each pair's item and collection exist.
+ */
 
 /** Rows of (owner, item) in their stored order → owner → items; an owner with no row has no key. */
-function groupItems(rows: readonly PairRow[]): Record<string, string[]> {
+function groupItems(rows: ReadonlyArray<readonly [string, string]>): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const r of rows) (out[r.owner] ??= []).push(r.item);
+  for (const [owner, item] of rows) (out[owner] ??= []).push(item);
   return out;
 }
 
@@ -31,21 +36,23 @@ export function readOrganizeSnapshot(db: Db): OrganizeSnapshot {
 
     const members = groupItems(
       db
-        .prepare(`SELECT ci.collection_id AS owner, ci.item_id AS item
+        .prepare(`SELECT ci.collection_id, ci.item_id
                   FROM collection_items ci
-                  JOIN collections c ON c.id = ci.collection_id AND c.deleted_at IS NULL
-                  JOIN items i ON i.id = ci.item_id AND i.deleted_at IS NULL
+                  WHERE ci.collection_id NOT IN (SELECT id FROM collections WHERE deleted_at IS NOT NULL)
+                    AND ci.item_id NOT IN (SELECT id FROM items WHERE deleted_at IS NOT NULL)
                   ORDER BY ci.rowid`)
-        .all() as PairRow[],
+        .raw()
+        .all() as Array<[string, string]>,
     );
 
     const tagged = groupItems(
       db
-        .prepare(`SELECT it.tag_id AS owner, it.item_id AS item
+        .prepare(`SELECT it.tag_id, it.item_id
                   FROM item_tags it
-                  JOIN items i ON i.id = it.item_id AND i.deleted_at IS NULL
+                  WHERE it.item_id NOT IN (SELECT id FROM items WHERE deleted_at IS NOT NULL)
                   ORDER BY it.rowid`)
-        .all() as PairRow[],
+        .raw()
+        .all() as Array<[string, string]>,
     );
 
     const duplicates = new LibraryRepository(db).duplicateGroups().map((g) => g.itemIds);

@@ -22,12 +22,15 @@ export function formatSize(bytes: number): string {
 /** The local calendar day of `d` (what 오늘/어제 compare). */
 export const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
+/** One formatter for every row of the table: building one per date was the largest single cost of drawing a page of rows. */
+const TIME_OF_DAY = new Intl.DateTimeFormat('ko-KR', { hour: 'numeric', minute: '2-digit' });
+
 /** design-spec 9: "오늘 오전 9:24", "어제 오후 8:40", otherwise "2026. 10. 12.". */
 export function formatDate(iso: string, now: Date = new Date()): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return t.common.noValue;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  const time = d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+  const time = TIME_OF_DAY.format(d);
   if (dayKey(d) === dayKey(now)) return `${t.common.today} ${time}`;
   if (dayKey(d) === dayKey(yesterday)) return `${t.common.yesterday} ${time}`;
   return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;

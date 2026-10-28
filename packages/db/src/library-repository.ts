@@ -203,13 +203,42 @@ export class LibraryRepository {
     this.db.transaction(() => {
       for (let start = 0; start < unique.length; start += GET_ITEMS_CHUNK) {
         const chunk = unique.slice(start, start + GET_ITEMS_CHUNK);
-        const rows = this.db.prepare(`${ITEM_SELECT} AND i.id IN (${chunk.map(() => '?').join(',')})`).all(...chunk) as ItemDbRow[];
+        // `+` keeps the planner on the ids: with the deleted_at index it scans every live item once per chunk (10,000 ids: 190 ms instead of 80).
+        const rows = this.db.prepare(`${ITEM_FROM} WHERE +i.deleted_at IS NULL AND i.id IN (${chunk.map(() => '?').join(',')})`).all(...chunk) as ItemDbRow[];
         for (const r of rows) found.set(r.id, toItem(r));
       }
     })();
     return unique.flatMap((id) => {
       const item = found.get(id);
       return item ? [item] : [];
+    });
+  }
+
+  /**
+   * What a command's availability needs of each item (storage mode and availability) for the live ids, once each, in the
+   * order asked. getItems without the metadata, revision and reading position: a context menu over every row of a large
+   * library only needs these two facts per item.
+   */
+  targetFacts(ids: readonly string[]): Array<{ id: string; storageMode: StorageMode; availability: Availability }> {
+    const unique = [...new Set(ids)];
+    const found = new Map<string, { id: string; storageMode: StorageMode; availability: Availability }>();
+    this.db.transaction(() => {
+      for (let start = 0; start < unique.length; start += GET_ITEMS_CHUNK) {
+        const chunk = unique.slice(start, start + GET_ITEMS_CHUNK);
+        const rows = this.db
+          .prepare(
+            `SELECT i.id, a.storage_mode, a.availability FROM items i
+             JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+             JOIN assets a ON a.id = ia.asset_id
+             WHERE +i.deleted_at IS NULL AND i.id IN (${chunk.map(() => '?').join(',')})`,
+          )
+          .all(...chunk) as Array<{ id: string; storage_mode: StorageMode; availability: Availability }>;
+        for (const r of rows) found.set(r.id, { id: r.id, storageMode: r.storage_mode, availability: r.availability });
+      }
+    })();
+    return unique.flatMap((id) => {
+      const f = found.get(id);
+      return f ? [f] : [];
     });
   }
 
@@ -326,13 +355,13 @@ export class LibraryRepository {
   duplicateGroups(): DuplicateGroup[] {
     const rows = this.db
       .prepare(`WITH live AS (
-                  SELECT i.id, i.created_at, i.rowid AS rid, a.sha256 FROM items i
-                  JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+                  SELECT a.sha256 AS sha256, ia.item_id AS id FROM item_assets ia
                   JOIN assets a ON a.id = ia.asset_id
-                  WHERE i.deleted_at IS NULL)
-                SELECT sha256, id FROM live
-                WHERE sha256 IN (SELECT sha256 FROM live GROUP BY sha256 HAVING COUNT(DISTINCT id) >= 2)
-                ORDER BY sha256, created_at, rid`)
+                  WHERE ia.role = 'original' AND ia.item_id NOT IN (SELECT id FROM items WHERE deleted_at IS NOT NULL))
+                SELECT live.sha256, live.id FROM live
+                JOIN items i ON i.id = live.id
+                WHERE live.sha256 IN (SELECT sha256 FROM live GROUP BY sha256 HAVING COUNT(DISTINCT id) >= 2)
+                ORDER BY live.sha256, i.created_at, i.rowid`)
       .all() as { sha256: string; id: string }[];
     const groups: DuplicateGroup[] = [];
     for (const r of rows) {

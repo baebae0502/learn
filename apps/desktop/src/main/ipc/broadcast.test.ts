@@ -63,8 +63,10 @@ const repo = {
   trashChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   restoreChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   updateMetadata: vi.fn((_id: string, _u: unknown) => item()),
-  /** The menu's one query for a selection: the items it knows, in the order asked. */
-  getItems: vi.fn((ids: string[]) => ids.flatMap((id) => (id === ITEM ? [item()] : id === OTHER ? [{ ...item(), id: OTHER }] : []))),
+  /** The menu's one query for a selection: the facts of the items it knows, in the order asked. */
+  targetFacts: vi.fn((ids: string[]) =>
+    ids.flatMap((id) => (id === ITEM || id === OTHER ? [{ id, storageMode: item().storageMode, availability: item().availability }] : [])),
+  ),
   getItem: vi.fn((id: string) => (id === ITEM ? item() : undefined)),
   getAsset: vi.fn((id: string) => (id === ASSET ? { id: ASSET, availability: stored.availability } : undefined)),
   setAvailability: vi.fn((_id: string, a: Availability) => void (stored.availability = a)),
@@ -193,11 +195,11 @@ describe('collection and tag mutations broadcast reason collections / tags, only
 
 describe('the item context menu reads the selection once and its input is checked (spec 9.1)', () => {
   it('asks for the whole selection with one query, in the order given, and does not read item by item', async () => {
-    repo.getItems.mockClear();
+    repo.targetFacts.mockClear();
     repo.getItem.mockClear();
     await call('ui:showContextMenu', { kind: 'item', itemIds: [OTHER, ITEM], x: 1, y: 2 });
-    expect(repo.getItems).toHaveBeenCalledTimes(1);
-    expect(repo.getItems).toHaveBeenCalledWith([OTHER, ITEM]);
+    expect(repo.targetFacts).toHaveBeenCalledTimes(1);
+    expect(repo.targetFacts).toHaveBeenCalledWith([OTHER, ITEM]);
     expect(repo.getItem).not.toHaveBeenCalled(); // two targets: no single-target file check either
     expect(popup).toHaveBeenCalledTimes(1);
   });

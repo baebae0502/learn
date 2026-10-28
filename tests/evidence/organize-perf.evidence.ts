@@ -160,8 +160,8 @@ const summary = (runs: readonly number[]) => ({ runs: runs.map(tenth), median: t
 
 test('10,000 items with the organise fixture: organise IPC, view switch, tag filter, key 1, drop, context menu (organize-perf.json)', { tag: '@perf' }, async ({}, testInfo) => {
   const linuxCi = process.platform === 'linux' && Boolean(process.env['CI']);
-  // On Linux CI the whole test, seeding included, ends within 90 s (one session, no restart; the limit stops a hang).
-  test.setTimeout(linuxCi ? 90_000 : 240_000);
+  // On Linux CI the whole test, seeding included, ends within 120 s (one session, no restart; the limit stops a hang; a loaded host took 53-80 s).
+  test.setTimeout(linuxCi ? 120_000 : 240_000);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     const { app, page } = s;
@@ -266,6 +266,8 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
 
     // 7. The context menu with everything selected: the page's contextmenu event → main's Menu.popup (stubbed: the OS draws the menu).
     await stubContextMenu(app, null);
+    // the timing below is only the all-selected menu if the selection really is every item
+    await expect(page.getByTestId('inspector-multi').locator('h2')).toHaveText('자료 10001개 선택');
     const menuMs: number[] = [];
     const beforeMenu = await settleCalls(app, 300);
     for (let i = 0; i < RUNS; i++) {

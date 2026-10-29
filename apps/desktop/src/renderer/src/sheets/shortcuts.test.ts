@@ -39,21 +39,27 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists ⌘+ / ⌘− / ⌘0 under 라이브러리 (design-spec 7.4), after the import commands', () => {
     const library = shortcutGroups('darwin')[1]!;
-    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', '빠른 검색', '항목 패널 보기/가리기', '글자 크게', '글자 작게', '기본 글자 크기']);
+    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '빠른 검색', '항목 패널 보기/가리기', '글자 크게', '글자 작게', '기본 글자 크기']);
     // ⌥⌘I under its neutral name: the sheet shows no pane state (design-spec 7.4).
-    expect(library.rows[4]).toEqual({ label: '항목 패널 보기/가리기', keys: ['⌥', '⌘', 'I'], spoken: '⌥⌘I' });
-    expect(shortcutGroups('linux')[1]!.rows[4]).toEqual({ label: '항목 패널 보기/가리기', keys: ['Ctrl', 'Alt', 'I'], spoken: 'Ctrl+Alt+I' });
-    expect(library.rows.slice(5).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
+    expect(library.rows[3]).toEqual({ label: '항목 패널 보기/가리기', keys: ['⌥', '⌘', 'I'], spoken: '⌥⌘I' });
+    expect(shortcutGroups('linux')[1]!.rows[3]).toEqual({ label: '항목 패널 보기/가리기', keys: ['Ctrl', 'Alt', 'I'], spoken: 'Ctrl+Alt+I' });
+    expect(library.rows.slice(4).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
   });
   it('lists the selected item\'s shortcut (⇧⌘R) in its own 자료 group, after 라이브러리 (design-spec 7.4)', () => {
     const item = (platform: string) => shortcutGroups(platform).find((g) => g.title === '자료')!.rows;
     expect(item('darwin')).toEqual([{ label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }]);
     expect(item('linux')).toEqual([{ label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }]);
   });
-  it('folds the eight colour keys into one line, 1–8, under 정리 after 자료 (spec 4.2)', () => {
+  it('lists 새 컬렉션 and folds the eight colour keys into one line, 1–8, under 정리 after 자료 (M5 spec 9.3, spec 4.2)', () => {
     const organize = (platform: string) => shortcutGroups(platform).find((g) => g.title === '정리')!.rows;
-    expect(organize('darwin')).toEqual([{ label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' }]);
-    expect(organize('linux')).toEqual([{ label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' }]);
+    expect(organize('darwin')).toEqual([
+      { label: '새\u00a0컬렉션', keys: ['⇧', '⌘', 'N'], spoken: '⇧⌘N' },
+      { label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' },
+    ]);
+    expect(organize('linux')).toEqual([
+      { label: '새\u00a0컬렉션', keys: ['Ctrl', 'Shift', 'N'], spoken: 'Ctrl+Shift+N' },
+      { label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' },
+    ]);
     const titles = shortcutGroups('darwin').map((g) => g.title);
     expect(titles.indexOf('정리')).toBe(titles.indexOf('자료') + 1);
     // The eight registry rows are not listed apart, in 자료 or anywhere.

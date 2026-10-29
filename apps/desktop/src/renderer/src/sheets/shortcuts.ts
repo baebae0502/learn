@@ -16,8 +16,13 @@ export interface ShortcutGroup {
   rows: ShortcutRow[];
 }
 
-/** Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). */
-const ORDER = ['app', 'library', 'item', 'viewer'] as const;
+/**
+ * Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). 정리 holds
+ * the collection and tag commands whatever their context (M5 spec 9.3), then the colour keys.
+ */
+const ORDER = ['app', 'library', 'item', 'organize', 'viewer'] as const;
+const groupOf = (c: (typeof COMMANDS)[number]): (typeof ORDER)[number] =>
+  /^(collection|tags?)\./.test(c.id) ? 'organize' : (c.contexts[0] as (typeof ORDER)[number]);
 /**
  * The sheet's own order (design-spec 7.4: ⌘, then ⌘K, ⌘/ and ⌃⌘S): these lead their group in this order, the rest
  * follow in registry order. COMMANDS itself keeps app.palette last (R-10).
@@ -48,11 +53,11 @@ const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
 };
 
 /** The colour keys as one line (spec 4.2): the first and last slot's key, spelled the way the platform spells a key. */
-function colorKeysGroup(platform: string): ShortcutGroup {
+function colorKeysRow(platform: string): ShortcutRow {
   const slots = COMMANDS.filter((c) => tagSlot(c.id) !== null && c.key !== undefined);
   const first = keySpecKeys(slots[0]!.key!, platform).at(-1)!;
   const last = keySpecKeys(slots.at(-1)!.key!, platform).at(-1)!;
-  return { title: t.sheets.groups.organize, rows: [{ label: t.sheets.colorKeys.label, keys: [`${first}–${last}`], spoken: t.sheets.colorKeys.spoken(first, last) }] };
+  return { label: t.sheets.colorKeys.label, keys: [`${first}–${last}`], spoken: t.sheets.colorKeys.spoken(first, last) };
 }
 
 /**
@@ -62,7 +67,7 @@ function colorKeysGroup(platform: string): ShortcutGroup {
 export function shortcutGroups(platform: string): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => c.contexts[0] === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
+    rows: COMMANDS.filter((c) => groupOf(c) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .map((c): ShortcutRow => {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
@@ -72,8 +77,8 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))
-    // The eight colour keys are one line under 정리, after 자료 (spec 4.2).
-    .flatMap((g, i) => (ORDER[i] === 'item' ? [g, colorKeysGroup(platform)] : [g]))
+    // The eight colour keys are one line, last in 정리 (spec 4.2).
+    .map((g, i) => (ORDER[i] === 'organize' ? { ...g, rows: [...g.rows, colorKeysRow(platform)] } : g))
     .filter((g) => g.rows.length > 0);
   const dialogs: ShortcutGroup = {
     title: t.sheets.groups.dialogs,

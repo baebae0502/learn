@@ -174,6 +174,8 @@ const STOP_MS = 30_000;
  * consecutive F6 stops) may be read together with their pill.
  */
 const afterKey = (pressedAt: number, result = 2500) => sleep(Math.max(0, pressedAt + (PILL_GONE_MS + result) * PACE - Date.now()));
+/** The caption of a chapter that opens a sheet: two lines left of the sheet (final critique minor 5: it hid the caption's end). */
+const SHEET_CAPTION_WIDTH = 400;
 /** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second, 3.5–6.5 s. */
 const captionMs = (text: string) => Math.min(6500, Math.max(3500, Math.round((text.length / 12) * 1000)));
 /** A shortcut as this platform's menus write it (⌘O on macOS, Ctrl+O elsewhere). */
@@ -429,22 +431,38 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       }
       mouseAt.set(p, { x, y });
     };
+    /**
+     * Where the pointer rests when it hovers nothing and covers no overlay element (demo.css): the main window's empty
+     * sidebar bottom (x 120, 72 from the bottom); the settings window's empty header corner.
+     */
+    const parkSpot = async (p: Page, kind: WindowKind) => {
+      const { w, h } = await p.evaluate(() => ({ w: innerWidth, h: innerHeight }));
+      return kind === 'main' ? { x: 120, y: h - 72 } : { x: w - 40, y: 18 };
+    };
+    /**
+     * After a scripted pointer action Playwright's own pointer (CDP) stays where the action ended, unseen while the system arrow
+     * is the pointer, and its hover opens title tooltips over row names there (critique minor 2): it goes to the park spot. The
+     * drawn cursor is that pointer, so it stays.
+     */
+    const releasePointer = async (p: Page, kind: WindowKind) => {
+      if (cursor === 'synthetic') return;
+      const at = await parkSpot(p, kind);
+      await p.mouse.move(at.x, at.y);
+    };
     /** Glides onto the middle of an element, rests on it, presses it (where the pointer already is), and stays a beat. */
     const glideClick = async (p: Page, kind: WindowKind, target: Locator, opts: { modifiers?: Array<'Shift' | 'Meta' | 'Control'>; button?: 'right' } = {}) => {
       const box = (await target.boundingBox())!;
       await glide(p, kind, box.x + box.width / 2, box.y + box.height / 2);
       await pause(250);
       await target.click({ ...(opts.modifiers ? { modifiers: opts.modifiers } : {}), ...(opts.button ? { button: opts.button } : {}) });
+      await releasePointer(p, kind);
       await pause(400);
     };
-    /**
-     * Rests the pointer where it hovers nothing and covers no overlay element (demo.css): the main window's empty
-     * sidebar bottom (x 120, 72 from the bottom); the settings window's empty header corner.
-     */
+    /** Rests the pointer at the park spot (parkSpot). */
     const park = async (p: Page, kind: WindowKind) => {
-      const { w, h } = await p.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-      if (kind === 'main') await glide(p, kind, 120, h - 72);
-      else await glide(p, kind, w - 40, 18);
+      const at = await parkSpot(p, kind);
+      await glide(p, kind, at.x, at.y);
+      await releasePointer(p, kind);
     };
     /**
      * A caption on a page (an empty text clears it): bottom-left, above the pill band, at most `maxWidth` wide; or at
@@ -592,6 +610,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       if (opts.move) await page.keyboard.up(MOVE_KEY);
       await scriptedTag(null);
       mouseAt.set(page, { x: bx + 3, y: by });
+      await releasePointer(page, 'main');
     };
     /**
      * A Finder drag of a real file onto an element, as the OS sends it (Chromium's drag events through CDP): the arrow comes in
@@ -610,6 +629,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         await pause(2200);
         await scriptedTag(null); // with the drop, never a frame after it
         await files.send('drop', onto);
+        await releasePointer(page, 'main');
       } finally {
         await files.close().catch(() => {});
       }
@@ -685,18 +705,19 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     started = Date.now();
 
     // 1. First run: the empty library says how to bring files in.
-    // 37 characters were on screen 2.5 s (15 a second, design critique): 5.5 s is 7 a second, and the drag starts half
-    // a second after the caption has gone.
-    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.', page, 5500);
+    // 37 characters were on screen 2.5 s (15 a second, design critique), then 4.0 s in the trimmed file (final critique
+    // nit: the still head's cut takes about 1.5 s of it): 6.5 s leaves about 5 s, and the drag starts half a second after
+    // the caption has gone.
+    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.', page, 6500);
     await expect(page.getByTestId('content').getByRole('button').first()).toBeVisible();
-    await pause(6000);
+    await pause(7000);
 
     // 2. Files dragged in and dropped (a synthetic drag of real files: a Finder drag cannot be scripted): the window is the
     //    drop target, the drop imports copies, the result is a toast. The tag stays until the drop.
     const all = [...media.drop, media.read];
     const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     await dropSource(page, all);
-    await chapter('자료 파일을 창으로 끌어 놓으면 사본으로 가져옵니다. (끌기는 스크립트로 재현하고, 저자·연도는 데모에서 적어 넣었습니다)');
+    await chapter('자료 파일을 창으로 끌어 놓으면 사본으로 가져옵니다. (끌기는 스크립트로 재현하고, 저자\u2060·연도와 태그는 데모에서 넣었습니다)');
     const overlay = page.getByTestId('drop-overlay');
     await glide(page, 'main', 14, mainH * 0.55); // the pointer comes in from the window's left edge
     await drag(page, 'dragenter', 'source');
@@ -843,15 +864,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await glideClick(page, 'main', chip(tagIds['시험 범위']!));
     await expect(page.getByTestId('toolbar-count')).toHaveText(`${withBoth.length}개 / ${all.length}개`);
     await park(page, 'main');
-    await pause(3000);
+    await pause(3000); // the two-chip result is the chapter's end frame (brief (c): it holds 2.5 s)
+
+    // 9. The item panel: 태그 추가, a new name, ↩ makes it and puts it on the item. A window with no room for the panel shows it first.
+    //    Chapter 8's filter goes first, under this caption, so chapter 8 ends on its result.
+    await chapter('항목 패널에서 태그를 더합니다. 새 이름을 쓰고 ↩를 누르면 만들어 붙입니다.');
     await glideClick(page, 'main', chip(tagIds['시험 범위']!));
     await glideClick(page, 'main', chip(tagIds['중요']!));
     await expect(rows).toHaveCount(all.length);
     await park(page, 'main');
-    await pause(1500);
-
-    // 9. The item panel: 태그 추가, a new name, ↩ makes it and puts it on the item. A window with no room for the panel shows it first.
-    await chapter('항목 패널에서 태그를 더합니다. 새 이름을 쓰고 ↩를 누르면 만들어 붙입니다.');
+    await pause(800);
     if (!roomy) {
       notes.push('the window has no room for the item panel beside the sidebar: ⌥⌘I shows it');
       const shownAt = await press('i', ['option', 'command'], 'view.toggleInspector', async () => (await inspectorWidth()) > 0);
@@ -974,8 +996,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3200);
 
     // 16. ⌘/: the shortcut sheet, now with the organise shortcuts (the 정리 group); ↩ closes it. The caption is read
-    //     before the sheet comes (a sheet covers the window's middle).
-    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('Shift+CmdOrCtrl+N')} ‘${label('collection.new')}’과 1–8 색 태그 키도 들어 있습니다.`, page, 9000); // read before the sheet (2.5 s) and kept up while it shows (5 s), until chapter 17 replaces it
+    //     before the sheet comes (a sheet covers the window's middle), and at most 400 px wide, left of where the sheet starts.
+    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('Shift+CmdOrCtrl+N')} ‘${label('collection.new')}’\u2060과 1–8 색 태그 키도 들어 있습니다.`, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 9000); // read before the sheet (2.5 s) and kept up while it shows (5 s), until chapter 17 replaces it
     // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
     await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
     await pause(2500);

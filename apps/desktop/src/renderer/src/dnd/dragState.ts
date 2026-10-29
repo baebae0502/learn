@@ -38,15 +38,20 @@ const subscribe = (fn: () => void) => {
   return () => void listeners.delete(fn);
 };
 
-/** `<html data-dnd>` names the drag that is running: the styles and the tests read it, nothing else does. */
-function show(kind: DragKind | null): void {
-  if (typeof document === 'undefined') return; // unit tests have no document
-  if (kind === null) delete document.documentElement.dataset['dnd'];
-  else document.documentElement.dataset['dnd'] = kind;
+/**
+ * `<html data-dnd>` names the drag that is running — ours, or `files` while Finder's are over the window: the styles and the
+ * tests read it, nothing else does.
+ */
+function show(): void {
+  const root = typeof document === 'undefined' ? undefined : document.documentElement;
+  if (!root) return; // unit tests have no document, or a stub without one
+  const kind = snapshot.kind ?? (files ? 'files' : null);
+  if (kind === null) delete root.dataset['dnd'];
+  else root.dataset['dnd'] = kind;
 }
 function replace(next: DragSnapshot): void {
   snapshot = next;
-  show(next.kind);
+  show();
   emit();
 }
 
@@ -144,7 +149,11 @@ export const dragState = {
   native: () => native,
   setNative: (v: boolean) => void (native = v),
   filesOver: () => files,
-  setFilesOver: (v: boolean) => void (files = v),
+  setFilesOver: (v: boolean) => {
+    if (files === v) return;
+    files = v;
+    show();
+  },
   alt: () => alt,
   setAlt: (v: boolean) => void (alt = v),
   subscribe,

@@ -33,9 +33,11 @@
   /* Not the main window either (data-window-not-main: neither key nor the parent of one of our sheets): the chrome
      recedes as Finder's does (design-spec 2.1; runs 39642950406, 39653189858). Never under prefers-contrast: more.
      - Text: --text-inactive (primary at 30 %); the selected sidebar row's name and count --text-inactive-selected
-       (35 %, on the selection fill); the ⌘K launcher's placeholder and keycap labels too. Content is untouched.
+       (35 %, on the selection fill); the ⌘K launcher's placeholder and keycap labels too, and the 태그 필터's placeholder.
+       Content is untouched.
      - Glyphs keep their solid colour (primary, row icons the accent text) and fade as a whole (--opacity-inactive on
-       the svg), so overlapping strokes do not darken where translucent ones would (critic N4-1).
+       the svg), so overlapping strokes do not darken where translucent ones would (critic N4-1). The sidebar's own buttons
+       (컬렉션's 새 컬렉션, the tag selector's "…" and its field's glass) are chrome too: as the toolbar toggle and the launcher.
      - macOS: the toolbar takes the inactive material's colour and, in dark, the sidebar edge and the toolbar hairline
        turn black (design-spec 8.2). Linux/Windows keep the toolbar: main fixes the controls overlay's colour. */
   @media not (prefers-contrast: more) {
@@ -44,7 +46,8 @@
     :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher :is(.placeholder, .kbd) {
       color: var(--text-inactive);
     }
-    :root[data-window-not-main] .sidebar .tag-selector :is(.head, .chip:not(.is-on) .chip-main) {
+    :root[data-window-not-main] .sidebar .tag-selector :is(.head, .chip:not(.is-on) .chip-main),
+    :root[data-window-not-main] .sidebar .tag-selector .field-input::placeholder {
       color: var(--text-inactive);
     }
     :root[data-window-not-main] .sidebar :is(.nav-row:is([data-current], [data-selected]), .nav-row:is([data-current], [data-selected]) .count) {
@@ -52,18 +55,22 @@
     }
     :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn,
     :root[data-window-not-main] .titlebar .btn .icon,
-    :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
+    :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon,
+    :root[data-window-not-main] .sidebar .tag-selector .field > .icon {
       color: var(--text-primary);
     }
     :root[data-window-not-main] .sidebar .nav-row .icon:not(.disclosure .icon) {
+    :root[data-window-not-main] .sidebar :is(.section-label, .tag-selector) .icon-btn,
       color: var(--accent-text);
     }
     :root[data-window-not-main] :is(.titlebar, .sidebar-top) .icon-btn > .icon,
     :root[data-window-not-main] .titlebar .btn .icon,
     :root[data-window-not-main] .sidebar .nav-row .icon,
-    :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon {
+    :root[data-window-not-main] :is(.sidebar, .titlebar) .launcher > .icon,
+    :root[data-window-not-main] .sidebar .tag-selector .field > .icon {
       opacity: var(--opacity-inactive);
     }
+    :root[data-window-not-main] .sidebar :is(.section-label, .tag-selector) .icon-btn > .icon,
     /* A drop target is the window's action now, as the overlay is (screens/drop.css): full strength in a window that is not main
        (a Finder drag always comes into one). */
     :root[data-window-not-main] .sidebar .nav-list .nav-row[data-drop-target] {
@@ -83,6 +90,7 @@
     }
     :root[data-platform='darwin'][data-window-not-main] .titlebar {
       background: var(--bg-chrome-inactive);
+    :root[data-window-not-main] .sidebar :is(.section-label, .tag-selector) .icon-btn[aria-disabled='true'] > .icon,
       border-bottom-color: var(--separator-chrome-inactive);
     }
     :root[data-platform='darwin'][data-window-not-main] .sidebar {

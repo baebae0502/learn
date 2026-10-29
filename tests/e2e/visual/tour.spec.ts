@@ -644,6 +644,12 @@ test('table: several rows selected with the keyboard cursor, sorted by title, an
     await rowAt(s.page, 0).click();
     await panelSettled(s.page, 'PDF · 3쪽');
     await shoot(s.page, 'table-sorted-light', { mask: dates() });
+    // Tags, so the not-main capture shows the tag selector's "…", glass and placeholder dimmed with the rest of the chrome.
+    await makeTags(s.page, [
+      { name: '중요', slot: 1, items: [pdf!.id] },
+      { name: '수용체', items: [pdf!.id] },
+    ]);
+    await expect(s.page.getByTestId('tag-selector')).toBeVisible();
     // Another window takes the key: the selection turns neutral and the cursor ring goes (design-spec 2.1, 3.1).
     await s.page.keyboard.press('ArrowDown');
     await expect(rowAt(s.page, 1)).toHaveAttribute('data-focus-visible', 'true');

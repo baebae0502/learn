@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, NativeInputNotPermitted, addToCollection, bringAppToFront, bringFinderToFront, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, nativeKeystroke, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  FIXTURES, NativeInputNotPermitted, addToCollection, bringAppToFront, bringFinderToFront, assignTag, createCollection, createTag, drag, importPaths, ipcCalls, launch, mainWindow, makeTags, menuItemEnabled, organizeSnapshot, rowAt, rowByTitle, nativeKeystroke, runMenuCommand, seedLibrary, seedMetadata, selectRows,
   setTagColor, showItemPanel, tagChip, tokenColor, treeRow, type Session,
 } from '../e2e/helpers';
 import { COMMANDS, SUBMENUS, itemTarget, type CommandContextState } from '../../packages/domain/src/commands';
@@ -230,6 +230,64 @@ test('M5 tags: the selector, its chips and the table dots — light and dark', T
     await shots(s.app, s.page, `m5-06-tags-selector-${theme}`, `tags: the selector with 수용체 chosen and the table dots, the first row selected (${theme})`);
   }
   await setTheme(s.page, 'light');
+});
+
+test('M5 sidebar: header buttons and tag filter dim when not main — light and dark', TAG, async () => {
+  const NAME = 'not main: 새 컬렉션 and "…" dim as the toolbar toggle, the 태그 필터 glass and placeholder as the launcher\'s';
+  await expect(s.page.getByTestId('tag-selector')).toBeVisible();
+  await expect(s.page.getByTestId('new-collection')).toBeVisible();
+  const read = () =>
+    s.page.evaluate(() => {
+      const style = (sel: string, pseudo?: string) => {
+        const e = document.querySelector(sel);
+        return e ? getComputedStyle(e, pseudo) : null;
+      };
+      const glyph = (sel: string) => {
+        const c = style(sel);
+        return c ? { color: c.color, opacity: c.opacity } : null;
+      };
+      return {
+        notMain: document.documentElement.hasAttribute('data-window-not-main'),
+        toggle: glyph('[data-testid="sidebar-top"] .icon-btn > .icon'),
+        launcherGlyph: glyph('[data-testid="launcher"] > .icon'),
+        launcherPlaceholder: style('[data-testid="launcher"] .placeholder')?.color ?? null,
+        newCollection: glyph('[data-testid="new-collection"] > .icon'),
+        more: glyph('[data-testid="tag-selector-more"] > .icon'),
+        filterGlass: glyph('[data-testid="tag-filter-field"] > .icon'),
+        filterPlaceholder: style('[data-testid="tag-filter-field"] .field-input', '::placeholder')?.color ?? null,
+      };
+    });
+  const same = (a: unknown, b: unknown) => a !== null && JSON.stringify(a) === JSON.stringify(b);
+  const value: Record<string, unknown> = {};
+  results['notMainSidebar'] = value;
+  try {
+    for (const theme of ['light', 'dark'] as const) {
+      await setTheme(s.page, theme);
+      const key = await read();
+      // Another window of ours takes the key: this one is neither key nor main (as in the tour's table-inactive).
+      await s.app.evaluate(({ BrowserWindow }) => {
+        const w = new BrowserWindow({ width: 300, height: 200, show: true });
+        void w.loadURL('about:blank');
+        w.focus();
+        (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
+      });
+      await expect(s.page.locator('html')).toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
+      const v = await read();
+      value[theme] = { key, notMain: v };
+      // The toggle's glyph fading is what proves the rule applied: without it every value below would match at full strength.
+      const ok =
+        v.notMain && v.toggle !== null && Number(v.toggle.opacity) < 1 &&
+        same(v.newCollection, v.toggle) && same(v.more, v.toggle) &&
+        same(v.filterGlass, v.launcherGlyph) && v.filterPlaceholder !== null && v.filterPlaceholder === v.launcherPlaceholder;
+      check(`${NAME} (${theme})`, ok, value[theme]);
+      await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
+      await (await mainWindow(s.app)).evaluate((w) => w.focus());
+      await expect(s.page.locator('html')).not.toHaveAttribute('data-window-not-main', '', { timeout: 5_000 });
+    }
+  } finally {
+    await setTheme(s.page, 'light');
+    if (IS_MAC) await focusApp(s.app);
+  }
 });
 
 test('M5 tags: the digits 1–8 on macOS — never typed into a field, once on a row (macOS only)', TAG, async () => {

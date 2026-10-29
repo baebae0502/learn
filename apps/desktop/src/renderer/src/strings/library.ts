@@ -33,12 +33,12 @@ export const library = {
   /** Read out politely as the results change; with none, the no-results state speaks instead. */
   searchStatus: (n: number) => `일치하는 자료 ${n}개`,
   /** In the table body's place when nothing matches (spec 4.3). */
-  searchEmptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료가 없습니다`,
+  searchEmptyTitle: (query: string) => `‘${query}’\u2060${waGwa(query)} 일치하는 자료가 없습니다`,
   /**
    * Where the search looked (spec 7.1): in 내 라이브러리 the fields; in any other view that view's name first ("‘분자생물학’의 …").
    * With a tag filter on, how many tags narrowed the result (spec 3.6).
    */
   searchEmptyBody: (view: string | null, tagCount: number) =>
-    `${view === null ? '' : `‘${view}’의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
+    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
   searchClear: '검색어 지우기',
 } as const;

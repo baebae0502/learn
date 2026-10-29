@@ -10,8 +10,8 @@ afterEach(() => {
 describe('showUndoToast (spec 3.4, 8.2)', () => {
   it('is a success toast with one verb, 실행 취소, that runs the undo', async () => {
     let undone = 0;
-    showUndoToast('‘학회 준비’를 삭제했습니다', async () => void undone++);
-    expect(last()).toMatchObject({ kind: 'success', title: '‘학회 준비’를 삭제했습니다', testId: 'undo-toast', action: { label: '실행 취소', testId: 'undo-action' } });
+    showUndoToast('‘학회 준비’\u2060를 삭제했습니다', async () => void undone++);
+    expect(last()).toMatchObject({ kind: 'success', title: '‘학회 준비’\u2060를 삭제했습니다', testId: 'undo-toast', action: { label: '실행 취소', testId: 'undo-action' } });
     last().action!.onAction();
     await Promise.resolve();
     expect(undone).toBe(1);

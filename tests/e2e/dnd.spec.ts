@@ -144,7 +144,7 @@ test.describe('rows, collections and tag chips', () => {
 
     // Out of the viewed collection, into another top-level one.
     await dragTo(page, rowByTitle(page, a!.title), 'items', treeRow(page, stat), { key: MOVE_KEY });
-    await expect(toast).toContainText('자료 1개를 ‘이동 통계’로 옮겼습니다.');
+    await expect(toast).toContainText('자료 1개를 ‘이동 통계’\u2060로 옮겼습니다.');
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     expect(await members(page, bio)).not.toContain(a!.id);
     expect(await members(page, stat)).toEqual([a!.id]);
@@ -156,7 +156,7 @@ test.describe('rows, collections and tag chips', () => {
 
     // Into a descendant: it leaves 이동 시험 itself and stays in the view through 이동 장.
     await dragTo(page, rowByTitle(page, a!.title), 'items', treeRow(page, c6), { key: MOVE_KEY });
-    await expect(toast).toContainText('자료 1개를 ‘이동 장’으로 옮겼습니다.');
+    await expect(toast).toContainText('자료 1개를 ‘이동 장’\u2060으로 옮겼습니다.');
     await expect(page.getByTestId('item-row')).toHaveCount(3);
     expect(await members(page, bio)).not.toContain(a!.id);
     expect(await members(page, c6)).toEqual([a!.id]);

@@ -12,7 +12,7 @@ export const palette = {
   listLabel: '검색 결과',
   groups: { items: '자료', collections: '컬렉션', commands: '명령' },
   /** 와/과 by the query's last syllable, as the quick search's no-results title (josa.ts). */
-  emptyTitle: (query: string) => `‘${query}’${waGwa(query)} 일치하는 자료·컬렉션·명령이 없습니다`,
+  emptyTitle: (query: string) => `‘${query}’\u2060${waGwa(query)} 일치하는 자료·컬렉션·명령이 없습니다`,
   /** `example`: 초성 → word from the library's titles, or ㅅㅈ → 설정 (palette/items.ts initialsExample). */
   emptyBody: (example: string) => `초성으로도 찾을 수 있습니다. 예: ${example}`,
   example: (initials: string, word: string) => `${initials} → ${word}`,

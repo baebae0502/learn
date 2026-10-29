@@ -229,17 +229,17 @@ test('delete asks in the sheet words, the view moves to the parent, and 실행 �
     // 6장 goes first (it is deleted before its parent).
     await treeRow(page, c6).click({ button: 'right' });
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]).toEqual({ type: 'none', message: '‘6장’을 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1 });
+    expect((await confirmCalls(app))[0]).toEqual({ type: 'none', message: '‘6장’\u2060을 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1 });
     await expect(treeRow(page, c6)).toHaveCount(0);
     await expect(title(page)).toHaveText('분자생물학'); // the view that was inside it moved to the parent
-    await expect(page.getByTestId('undo-toast').first()).toContainText('‘6장’을 삭제했습니다');
+    await expect(page.getByTestId('undo-toast').first()).toContainText('‘6장’\u2060을 삭제했습니다');
     await specialRow(page, 'all').click();
     await expect(page.getByTestId('item-row')).toHaveCount(1); // the item stays in the library
 
     // The parent has one live child left; the sheet says so and the view goes to 내 라이브러리 (it was top level).
     await treeRow(page, bio).click({ button: 'right' });
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(2);
-    expect((await confirmCalls(app))[1]).toMatchObject({ message: '‘분자생물학’을 삭제하겠습니까?', detail: '하위 컬렉션 1개도 함께 삭제합니다.\n자료는 내 라이브러리에 남습니다.' });
+    expect((await confirmCalls(app))[1]).toMatchObject({ message: '‘분자생물학’\u2060을 삭제하겠습니까?', detail: '하위 컬렉션 1개도 함께 삭제합니다.\n자료는 내 라이브러리에 남습니다.' });
     await expect.poll(() => names(page)).toEqual([]);
     await expect(title(page)).toHaveText('내 라이브러리');
 
@@ -254,7 +254,7 @@ test('delete asks in the sheet words, the view moves to the parent, and 실행 �
     await stubConfirm(app, 'cancel');
     await treeRow(page, stats).click({ button: 'right' });
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]!.message).toBe('‘통계’를 삭제하겠습니까?');
+    expect((await confirmCalls(app))[0]!.message).toBe('‘통계’\u2060를 삭제하겠습니까?');
     await expect(treeRow(page, stats)).toBeVisible();
     expect(await names(page)).toContain('통계');
   } finally {
@@ -270,7 +270,7 @@ test('an empty collection says so in the table and the item panel, and its butto
     await treeRow(page, conf).click();
     const empty = page.getByTestId('collection-empty');
     await expect(empty).toContainText('이\u00a0컬렉션은 비어 있습니다');
-    await expect(empty).toContainText('다른\u00a0컬렉션의 자료를 사이드바의 ‘학회 준비’로 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.');
+    await expect(empty).toContainText('다른\u00a0컬렉션의 자료를 사이드바의 ‘학회 준비’\u2060로 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.');
     await expect(page.getByTestId('collection-empty-import')).toHaveText('이\u00a0컬렉션으로 가져오기…');
     await expect(page.getByTestId('inspector-collection').locator('.pe-title')).toHaveText('학회 준비');
     await expect(page.getByTestId('collection-empty-meta')).toHaveText(/^자료 0개 · 오늘\s(오전|오후)\s\d{1,2}:\d{2} 만듦$/);
@@ -289,7 +289,7 @@ test('an empty collection says so in the table and the item panel, and its butto
     await treeRow(page, conf).click();
     await stubOpenDialog(app, [KO_PDF]);
     await page.getByTestId('collection-empty-import').click();
-    await expect(page.getByTestId('import-done')).toHaveText('‘학회 준비’에 자료 1개를 가져왔습니다');
+    await expect(page.getByTestId('import-done')).toHaveText('‘학회 준비’\u2060에 자료 1개를 가져왔습니다');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(treeRow(page, conf).locator('.count')).toHaveText('1');
     await specialRow(page, 'all').click();
@@ -307,7 +307,7 @@ test('imports go into the collection being viewed: ⌘O, a window drop with the 
     await treeRow(page, a).click();
     await stubOpenDialog(app, [PDF]);
     await runMenuCommand(app, 'file.importManaged');
-    await expect(page.getByTestId('import-done')).toHaveText('‘논문’에 자료 1개를 가져왔습니다');
+    await expect(page.getByTestId('import-done')).toHaveText('‘논문’\u2060에 자료 1개를 가져왔습니다');
     await expect.poll(async () => (await organizeSnapshot(page)).members[a]?.length).toBe(1);
 
     // In 내 라이브러리 nothing is filed.
@@ -321,10 +321,10 @@ test('imports go into the collection being viewed: ⌘O, a window drop with the 
     await treeRow(page, a).click();
     await dropSource(page, [MP4]);
     await drag(page, 'dragenter', 'source');
-    await expect(page.getByTestId('drop-overlay').getByRole('heading')).toHaveText('‘논문’으로 가져오기');
+    await expect(page.getByTestId('drop-overlay').getByRole('heading')).toHaveText('‘논문’\u2060으로 가져오기');
     await drag(page, 'dragover', 'source');
     await drag(page, 'drop', 'source');
-    await expect(page.getByTestId('import-done').filter({ hasText: '‘논문’에 자료 1개를 가져왔습니다' }).first()).toBeVisible(); // newest first
+    await expect(page.getByTestId('import-done').filter({ hasText: '‘논문’\u2060에 자료 1개를 가져왔습니다' }).first()).toBeVisible(); // newest first
     await expect.poll(async () => (await organizeSnapshot(page)).members[a]?.length).toBe(2);
 
     // 가져오지 않음 for a duplicate files the item that is already in the library into this collection.
@@ -332,13 +332,13 @@ test('imports go into the collection being viewed: ⌘O, a window drop with the 
     await treeRow(page, b).click();
     const sheet = await expectWindow(app, 'sheet', () => importFiles(s, [PDF]));
     await closeSheet(sheet, 'Escape'); // esc = leave it out
-    await expect(page.getByTestId('import-done').filter({ hasText: '이미 있는 자료 1개를 ‘발표’에 넣었습니다' })).toBeVisible();
+    await expect(page.getByTestId('import-done').filter({ hasText: '이미 있는 자료 1개를 ‘발표’\u2060에 넣었습니다' })).toBeVisible();
     await expect.poll(async () => (await organizeSnapshot(page)).members[b]?.length).toBe(1);
     // A second time there is nothing new to file: no such sentence.
     const again = await expectWindow(app, 'sheet', () => importFiles(s, [PDF]));
     await closeSheet(again, 'Escape');
     await page.waitForTimeout(500);
-    await expect(page.getByTestId('import-done').filter({ hasText: '이미 있는 자료 1개를 ‘발표’에 넣었습니다' })).toHaveCount(1);
+    await expect(page.getByTestId('import-done').filter({ hasText: '이미 있는 자료 1개를 ‘발표’\u2060에 넣었습니다' })).toHaveCount(1);
     expect((await organizeSnapshot(page)).members[b]).toHaveLength(1);
   } finally {
     await app.close();

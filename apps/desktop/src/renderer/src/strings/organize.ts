@@ -23,7 +23,7 @@ export const organize = {
   /** The table body and the item panel while a view has nothing in it (spec 3.6). */
   empty: {
     collectionTitle: '이\u00a0컬렉션은 비어 있습니다',
-    collectionBody: (name: string) => `다른\u00a0컬렉션의 자료를 사이드바의 ‘${name}’${euroRo(name)} 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.`,
+    collectionBody: (name: string) => `다른\u00a0컬렉션의 자료를 사이드바의 ‘${name}’\u2060${euroRo(name)} 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.`,
     collectionMeta: (made: string) => `자료 0개 · ${made} 만듦`,
     recent: '최근 30일 안에 연 자료가 없습니다',
     unfiled: '모든\u00a0자료가 컬렉션에 들어 있습니다',
@@ -31,10 +31,10 @@ export const organize = {
   },
   /** 컬렉션 삭제… (spec 3.4): the sheet and the toast. */
   remove: {
-    message: (name: string) => `‘${name}’${eulReul(name)} 삭제하겠습니까?`,
+    message: (name: string) => `‘${name}’\u2060${eulReul(name)} 삭제하겠습니까?`,
     detail: (children: number) => `${children > 0 ? `하위 컬렉션 ${children}개도 함께 삭제합니다.\n` : ''}자료는 내 라이브러리에 남습니다.`,
     confirm: '삭제',
-    done: (name: string) => `‘${name}’${eulReul(name)} 삭제했습니다`,
+    done: (name: string) => `‘${name}’\u2060${eulReul(name)} 삭제했습니다`,
   },
   /** The tag selector and what comes of tags (spec 4, 5.1). 합니다체; "이 보기", "모든 태그" bound with U+00A0. */
   tags: {
@@ -68,7 +68,7 @@ export const organize = {
     noSlot: (slot: number) => `색 태그 ${slot}${iGa(slot)} 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.`,
     /** Renaming a tag to another's name (spec 4.1): the sheet. */
     mergeMessage: (existing: string) => `‘${existing}’ 태그가 이미 있습니다. 두 태그를 합치겠습니까?`,
-    mergeDetail: (from: string, into: string) => `‘${from}’ 태그의 자료는 ‘${into}’${euroRo(into)} 옮겨지고, ‘${from}’ 태그는 없어집니다.`,
+    mergeDetail: (from: string, into: string) => `‘${from}’ 태그의 자료는 ‘${into}’\u2060${euroRo(into)} 옮겨지고, ‘${from}’ 태그는 없어집니다.`,
     mergeConfirm: '합치기',
     /** 태그 삭제… (spec 4.1): the sheet; there is no undo. */
     deleteMessage: (name: string) => `‘${name}’ 태그를 삭제하겠습니까?`,
@@ -104,12 +104,12 @@ export const organize = {
     addToCollection: '컬렉션에 추가',
     newCollection: '새 컬렉션',
     /** The undo toast of 이 컬렉션에서 빼기 (spec 9.2): `n` items, however many memberships went. */
-    removed: (collection: string, n: number) => `‘${collection}’에서 자료 ${n}개를 뺐습니다.`,
+    removed: (collection: string, n: number) => `‘${collection}’\u2060에서 자료 ${n}개를 뺐습니다.`,
   },
   /** Drag and drop (spec 8.2): the badge on the drag image, its plain-text form for other apps, and the move toast (sentence as the spec has it). */
   dnd: {
     badge: (n: number) => `자료 ${n}개`,
     plain: (n: number) => `자료 ${n}개`,
-    moved: (n: number, target: string) => `자료 ${n}개를 ‘${target}’${euroRo(target)} 옮겼습니다.`,
+    moved: (n: number, target: string) => `자료 ${n}개를 ‘${target}’\u2060${euroRo(target)} 옮겼습니다.`,
   },
 } as const;

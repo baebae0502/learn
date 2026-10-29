@@ -160,7 +160,7 @@ test('the search is limited to the view and the tag filter; its empty state name
     await page.getByTestId(`nav-collection-${bio}`).click();
     await expect(page.getByTestId('toolbar-title')).toHaveText('분자생물학');
     await expect(input(page)).toHaveValue('효소 억제제');
-    await expect(body).toHaveText(`‘분자생물학’의 ${FIELDS}`);
+    await expect(body).toHaveText(`‘분자생물학’\u2060의 ${FIELDS}`);
     await expect(page.getByTestId('search-empty-everywhere')).toHaveText('내 라이브러리 전체에서 찾기');
     await expectNoSeriousA11y(page, 'quick search, no results in a collection');
 
@@ -178,7 +178,7 @@ test('the search is limited to the view and the tag filter; its empty state name
     // A special view is named in the same way.
     await page.getByTestId('nav-scope-unfiled').click();
     await input(page).fill('신호'); // SIGNAL is filed in 분자생물학
-    await expect(body).toHaveText(`‘미분류’의 ${FIELDS}`);
+    await expect(body).toHaveText(`‘미분류’\u2060의 ${FIELDS}`);
     await page.getByTestId('search-empty-everywhere').click();
     await expect.poll(() => titles(page)).toEqual([SIGNAL]);
 
@@ -321,8 +321,8 @@ test('the palette lists 컬렉션 between 자료 and 명령: by name with 초성
 
     // Nothing matches: the title names all three groups.
     await paletteWith(app, page, 'ㅍㅍㅍㅍ');
-    await expect(page.getByTestId('palette-empty').locator('.pe-title')).toHaveText('‘ㅍㅍㅍㅍ’와 일치하는 자료·컬렉션·명령이 없습니다');
-    await expect(page.getByTestId('palette-status')).toHaveText('‘ㅍㅍㅍㅍ’와 일치하는 자료·컬렉션·명령이 없습니다');
+    await expect(page.getByTestId('palette-empty').locator('.pe-title')).toHaveText('‘ㅍㅍㅍㅍ’\u2060와 일치하는 자료·컬렉션·명령이 없습니다');
+    await expect(page.getByTestId('palette-status')).toHaveText('‘ㅍㅍㅍㅍ’\u2060와 일치하는 자료·컬렉션·명령이 없습니다');
   } finally {
     await app.close();
   }

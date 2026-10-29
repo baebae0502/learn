@@ -775,7 +775,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(2500);
 
     // 6. ⌘ moves instead of adding (inside a collection: out of it, into the target), with 실행 취소 in the toast.
-    await chapter(`컬렉션 안에서 ${MOVE_LABEL} 키를 누른 채 놓으면 옮깁니다. 토스트의 ‘실행 취소’로 되돌립니다. (끌기는 스크립트로 재현합니다)`);
+    await chapter(`컬렉션 안에서 ${MOVE_LABEL} 키를 누른 채 놓으면 옮깁니다. 토스트의 ‘실행 취소’\u2060로 되돌립니다. (끌기는 스크립트로 재현합니다)`);
     await glideClick(page, 'main', tree(parentId));
     await expect(page.getByTestId('toolbar-title')).toHaveText(PARENT);
     await expect(rows).toHaveCount(3);
@@ -931,7 +931,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
     // 13. 컬렉션 삭제…: the collection's menu (the pick scripted); the sheet is skipped (said); the view goes to the parent; 실행 취소.
     await stubConfirm(app, 'confirm');
-    await chapter('컬렉션을 지우면 확인 시트가 뜨고, 지운 뒤에는 토스트의 ‘실행 취소’로 되돌립니다. (메뉴 고르기와 확인 시트는 스크립트로 재현합니다)');
+    await chapter('컬렉션을 지우면 확인 시트가 뜨고, 지운 뒤에는 토스트의 ‘실행 취소’\u2060로 되돌립니다. (메뉴 고르기와 확인 시트는 스크립트로 재현합니다)');
     await pause(1000);
     await pickFromNextPopup(label('collection.delete'));
     await glideClick(page, 'main', tree(childId), { button: 'right' });

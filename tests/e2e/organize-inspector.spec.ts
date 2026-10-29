@@ -503,7 +503,7 @@ test('이 컬렉션에서 빼기: only inside a collection; takes the items out 
     await selectRows(page, ['sample', KO]);
     await stubContextMenu(app, REMOVE);
     await rowByTitle(page, KO).click({ button: 'right' }); // inside the selection: it stays whole
-    await expect(page.getByTestId('undo-toast')).toContainText('‘분자생물학’에서 자료 2개를 뺐습니다.');
+    await expect(page.getByTestId('undo-toast')).toContainText('‘분자생물학’\u2060에서 자료 2개를 뺐습니다.');
     await expect(page.getByTestId('item-row')).toHaveCount(1); // only h264 is left in the view
     expect((await organizeSnapshot(page)).members).toEqual({ [bio]: [m!.id] }); // 6장 lost both too, 분자생물학 lost sample
 
@@ -515,7 +515,7 @@ test('이 컬렉션에서 빼기: only inside a collection; takes the items out 
     // The menu bar's item does the same for the selection.
     await selectRows(page, ['sample']);
     await runMenuCommand(app, 'collection.removeItems');
-    await expect(page.getByTestId('undo-toast')).toContainText('‘분자생물학’에서 자료 1개를 뺐습니다.');
+    await expect(page.getByTestId('undo-toast')).toContainText('‘분자생물학’\u2060에서 자료 1개를 뺐습니다.');
     await expect.poll(() => membersOf(page, bio)).toEqual([m!.id]);
   } finally {
     await app.close();

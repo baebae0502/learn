@@ -119,9 +119,9 @@ test('⌘F selects the field; 초성, two letters, AND over every field, the abs
     // No results: the state in the table body's place, its particle chosen by the last syllable (‘…’과 / ‘…’와).
     await input(page).fill('효소 반응');
     const empty = page.getByTestId('search-empty');
-    await expect(empty.locator('.pe-title')).toHaveText('‘효소 반응’과 일치하는 자료가 없습니다');
+    await expect(empty.locator('.pe-title')).toHaveText('‘효소 반응’\u2060과 일치하는 자료가 없습니다');
     await input(page).fill('신호 이영희');
-    await expect(empty.locator('.pe-title')).toHaveText('‘신호 이영희’와 일치하는 자료가 없습니다');
+    await expect(empty.locator('.pe-title')).toHaveText('‘신호 이영희’\u2060와 일치하는 자료가 없습니다');
     await expect(empty.locator('.pe-text')).toHaveText('제목\u2060·저자\u2060·태그\u2060·출판사\u2060·원래 이름\u2060·초록\u2060·메모에서 찾았습니다.');
     await expect(page.getByTestId('toolbar-count')).toHaveText('0개 / 4개');
     await expect(page.getByTestId('item-row')).toHaveCount(0);

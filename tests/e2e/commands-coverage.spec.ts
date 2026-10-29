@@ -195,7 +195,7 @@ test('every registry command runs without a page error (library and reader menus
     await treeRow(page, filing).click();
     await rowByTitle(page, 'sample').click();
     await runMenuCommand(app, 'collection.removeItems');
-    await expect(page.getByTestId('undo-toast')).toContainText('‘전수 시험’에서 자료 1개를 뺐습니다.');
+    await expect(page.getByTestId('undo-toast')).toContainText('‘전수 시험’\u2060에서 자료 1개를 뺐습니다.');
     await expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([]);
     await specialRow(page, 'all').click();
     ran.add('collection.removeItems');
@@ -339,7 +339,7 @@ test('every registry command runs without a page error (library and reader menus
       await expect(treeRow(page, parent)).toHaveCount(0);
       const asked = await confirmCalls(app);
       expect(asked).toHaveLength(1);
-      expect(asked[0]!.message).toMatch(/^‘정리 시험 2’[을를] 삭제하겠습니까\?$/);
+      expect(asked[0]!.message).toMatch(/^‘정리 시험 2’\u2060[을를] 삭제하겠습니까\?$/);
       await expect(page.getByTestId('undo-toast')).toBeVisible();
       await page.getByTestId('undo-action').click();
       await expect(treeRow(page, parent)).toBeVisible();

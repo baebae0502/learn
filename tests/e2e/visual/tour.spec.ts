@@ -829,6 +829,12 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
     await specialRow(s.page, 'unfiled').click();
     await shoot(s.page, 'sidebar-special-light', { mask: dates() });
+
+    // An empty collection with a 9-character name: ‘…’로 is one 어절 (U+2060), so the line breaks before the quote, never after it.
+    const signal = await createCollection(s.page, '세포막 신호 전달');
+    await treeRow(s.page, signal).click();
+    await expect(s.page.getByTestId('collection-empty')).toBeVisible();
+    await shoot(s.page, 'collection-empty-long-light', { mask: [s.page.getByTestId('collection-empty-meta')] });
   } finally {
     await s.app.close();
   }

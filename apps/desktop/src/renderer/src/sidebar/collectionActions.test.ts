@@ -163,14 +163,14 @@ describe('deleting (spec 3.4)', () => {
     const { actions, deps, snapshot } = setup();
     await actions.remove('bio');
     expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({
-      message: '‘분자생물학’을 삭제하겠습니까?',
+      message: '‘분자생물학’\u2060을 삭제하겠습니까?',
       detail: '하위 컬렉션 3개도 함께 삭제합니다.\n자료는 내 라이브러리에 남습니다.',
       confirm: '삭제',
     });
     expect(deps.collections.remove).toHaveBeenCalledExactlyOnceWith({ collectionId: 'bio' });
     expect(snapshot().collections.map((c) => c.id)).toEqual(['stats']);
     expect(deps.undoToast).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(deps.undoToast).mock.calls[0]![0]).toBe('‘분자생물학’을 삭제했습니다');
+    expect(vi.mocked(deps.undoToast).mock.calls[0]![0]).toBe('‘분자생물학’\u2060을 삭제했습니다');
     await vi.mocked(deps.undoToast).mock.calls[0]![1]();
     expect(deps.collections.restore).toHaveBeenCalledExactlyOnceWith({ collectionId: 'bio' });
     expect(deps.forget).toHaveBeenCalledExactlyOnceWith(['bio', 'c6', 'lab', 'c7']); // restored folded
@@ -178,7 +178,7 @@ describe('deleting (spec 3.4)', () => {
   it('a collection with no sub-collections says only that the items stay, and a vowel name takes 를', async () => {
     const { actions, deps } = setup();
     await actions.remove('stats');
-    expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({ message: '‘통계’를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' });
+    expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({ message: '‘통계’\u2060를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' });
   });
   it('the view moves to the parent when it was inside the deleted collection (to 내 라이브러리 from the top level), and stays otherwise', async () => {
     const inside = setup({}, { kind: 'collection', id: 'lab' });

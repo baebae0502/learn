@@ -72,7 +72,7 @@ describe('rows dropped on a collection row (spec 8.2)', () => {
     expect(calls).toEqual(['remove', 'add']);
     expect(deps.removeFromScope).toHaveBeenCalledWith(model, 'bio', ['a', 'b'], expect.any(Array));
     const [title, undo] = toast(deps);
-    expect(title).toBe('자료 2개를 ‘6장’으로 옮겼습니다.');
+    expect(title).toBe('자료 2개를 ‘6장’\u2060으로 옮겼습니다.');
     await (undo as () => Promise<void>)();
     // The added ids come back out before the removed ones go back in: an item the target held already is in both.
     expect(calls.slice(2)).toEqual(['undoAdds', 'undoRemovals']);
@@ -80,8 +80,8 @@ describe('rows dropped on a collection row (spec 8.2)', () => {
     expect(deps.undoRemovals).toHaveBeenCalledWith([{ collectionId: 'bio', itemIds: ['a', 'b'] }]);
   });
 
-  it('the particle follows the target: ‘실험 노트’로, ‘통계’로, ‘분자생물학’으로', async () => {
-    for (const [id, name] of [['note', '‘실험 노트’로'], ['stat', '‘통계’로'], ['bio', '‘분자생물학’으로']] as const) {
+  it('the particle follows the target: ‘실험 노트’\u2060로, ‘통계’\u2060로, ‘분자생물학’\u2060으로', async () => {
+    for (const [id, name] of [['note', '‘실험 노트’\u2060로'], ['stat', '‘통계’\u2060로'], ['bio', '‘분자생물학’\u2060으로']] as const) {
       const { deps, actions } = setup({ scope: (): LibraryScope => ({ kind: 'collection', id: id === 'bio' ? 'c6' : 'bio' }) });
       await actions.itemsOn(id, ['a'], 'move');
       expect(toast(deps)[0], id).toBe(`자료 1개를 ${name} 옮겼습니다.`);
@@ -99,7 +99,7 @@ describe('rows dropped on a collection row (spec 8.2)', () => {
       addItemsTo: vi.fn<DropDeps['addItemsTo']>(async () => ['a']),
     });
     await actions.itemsOn('stat', ['a'], 'move');
-    expect(toast(deps)[0]).toBe('자료 1개를 ‘통계’로 옮겼습니다.');
+    expect(toast(deps)[0]).toBe('자료 1개를 ‘통계’\u2060로 옮겼습니다.');
   });
 
   it('outside a collection the move key only adds (nothing is taken out of anywhere)', async () => {

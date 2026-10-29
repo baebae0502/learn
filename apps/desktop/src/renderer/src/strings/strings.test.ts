@@ -85,6 +85,35 @@ describe('UI copy (design-spec 4, 9)', () => {
 });
 
 /**
+ * ‘<이름>’ + 조사 is one 어절 (design-spec 4): keep-all still breaks after a closing quote, so U+2060 sits between ’ and the
+ * particle. A ’ right before a Hangul syllable is a break opportunity; one before U+2060 is not.
+ */
+const QUOTE_THEN_HANGUL = /’(?=[가-힣])/;
+describe('a closing quote keeps its particle (design-spec 4)', () => {
+  it('no copy string has ’ right before a Hangul syllable', () => {
+    expect(copy.filter((s) => QUOTE_THEN_HANGUL.test(s.text)).map(show)).toEqual([]);
+  });
+  it.each([
+    ['the empty collection', t.organize.empty.collectionBody('6장 · 신호 전달'), '’⁠로 끌어'],
+    ['the import toast', t.toast.importedInto('6장 · 신호 전달', 1), '’⁠에 자료'],
+    ['the link toast', t.toast.linkedInto('학회 준비', 2), '’⁠에 자료'],
+    ['the toast for items already there', t.toast.filedExisting('학회 준비', 2), '’⁠에 넣었습니다'],
+    ['the drop overlay title', t.drop.titleInto('분자생물학'), '’⁠으로 가져오기'],
+    ['the search no-results title', t.library.searchEmptyTitle('형광'), '’⁠과 일치'],
+    ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0), '’⁠의 '],
+    ['the palette no-results title', t.palette.emptyTitle('세포'), '’⁠와 일치'],
+    ['the delete sheet', t.organize.remove.message('학회 준비'), '’⁠를 삭제'],
+    ['the delete toast', t.organize.remove.done('통계'), '’⁠를 삭제'],
+    ['the tag merge detail', t.organize.tags.mergeDetail('수용체', '중요'), '’⁠로 옮겨지고'],
+    ['the panel\'s removal toast', t.organize.panel.removed('통계', 1), '’⁠에서 자료'],
+    ['the drop toast', t.organize.dnd.moved(2, '실험 노트'), '’⁠로 옮겼습니다'],
+  ])('%s: U+2060 between ’ and the particle', (_, text, joined) => {
+    expect(text).toContain(joined);
+    expect(text).not.toMatch(QUOTE_THEN_HANGUL);
+  });
+});
+
+/**
  * Korean string literals of the main process and the library package (no tests, comments removed first): error
  * messages become toasts and notices, dialog titles, buttons and filter names are on screen too (N-3, C-4).
  */

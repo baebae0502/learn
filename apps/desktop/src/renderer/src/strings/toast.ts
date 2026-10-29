@@ -5,9 +5,9 @@ export const toast = {
   more: (n: number) => `외 ${n}개`,
   importFailed: '가져오지 못했습니다',
   /** An import into the collection being viewed (spec 3.7): the collection named, and the existing items 가져오지 않음 filed. */
-  importedInto: (name: string, n: number) => `‘${name}’에 자료 ${n}개를 가져왔습니다`,
-  linkedInto: (name: string, n: number) => `‘${name}’에 자료 ${n}개를 연결했습니다`,
-  filedExisting: (name: string, n: number) => `이미 있는 자료 ${n}개를 ‘${name}’에 넣었습니다`,
+  importedInto: (name: string, n: number) => `‘${name}’\u2060에 자료 ${n}개를 가져왔습니다`,
+  linkedInto: (name: string, n: number) => `‘${name}’\u2060에 자료 ${n}개를 연결했습니다`,
+  filedExisting: (name: string, n: number) => `이미 있는 자료 ${n}개를 ‘${name}’\u2060에 넣었습니다`,
   /** The verb on a result toast that can be taken back (collection deleted, items moved or taken out). */
   undo: '실행 취소',
   undoFailed: '되돌리지 못했습니다',

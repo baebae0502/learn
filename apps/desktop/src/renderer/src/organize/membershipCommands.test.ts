@@ -81,7 +81,7 @@ describe('이 컬렉션에서 빼기 (spec 9.2, owner decision 0)', () => {
     expect(deps.removeFromScope).toHaveBeenCalledExactlyOnceWith(model, 'bio', ['a', 'b']);
     expect(deps.undoToast).toHaveBeenCalledOnce();
     const [title, undo] = deps.undoToast.mock.calls[0]! as [string, () => Promise<void>];
-    expect(title).toBe('‘분자생물학’에서 자료 2개를 뺐습니다.'); // a was in two collections, b in one: two items
+    expect(title).toBe('‘분자생물학’\u2060에서 자료 2개를 뺐습니다.'); // a was in two collections, b in one: two items
     await undo();
     expect(deps.undoRemovals).toHaveBeenCalledExactlyOnceWith([{ collectionId: 'bio', itemIds: ['a'] }, { collectionId: 'c6', itemIds: ['a', 'b'] }]);
   });

@@ -5,7 +5,7 @@ export const drop = {
   label: '파일 놓기',
   title: '놓으면 라이브러리로 가져옵니다',
   /** The overlay title while a collection is being viewed (spec 3.7): the files go into it. */
-  titleInto: (name: string) => `‘${name}’${euroRo(name)} 가져오기`,
+  titleInto: (name: string) => `‘${name}’\u2060${euroRo(name)} 가져오기`,
   files: (n: number) => `파일 ${n}개`,
   pdf: 'PDF',
   video: '동영상',

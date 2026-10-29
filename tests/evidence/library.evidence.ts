@@ -381,7 +381,7 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
     const title = await s.page.getByTestId('search-empty').locator('.pe-title').textContent();
     v['none'] = { title };
     await allShots(s.app, s.page, 'm4-05c-search-none-dark', 'quick search: no results, dark');
-    check('search: no results in dark says which query', title === '‘효소 억제제’와 일치하는 자료가 없습니다', v['none']);
+    check('search: no results in dark says which query', title === '‘효소 억제제’\u2060와 일치하는 자료가 없습니다', v['none']);
   });
   await field.fill('');
   await theme('light');

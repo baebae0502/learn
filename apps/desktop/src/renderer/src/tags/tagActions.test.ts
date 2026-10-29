@@ -88,7 +88,7 @@ describe('renaming in the chip (spec 4.1)', () => {
     await actions.finishRename('중요', 'enter');
     expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({
       message: '‘중요’ 태그가 이미 있습니다. 두 태그를 합치겠습니까?',
-      detail: '‘수용체’ 태그의 자료는 ‘중요’로 옮겨지고, ‘수용체’ 태그는 없어집니다.',
+      detail: '‘수용체’ 태그의 자료는 ‘중요’\u2060로 옮겨지고, ‘수용체’ 태그는 없어집니다.',
       confirm: '합치기',
     });
     expect(deps.tags.rename).not.toHaveBeenCalled();

@@ -73,17 +73,17 @@ describe('importToast (spec 3.7)', () => {
     expect(importToast(report({ imported: 1 }), 'linked', null)).toEqual({ kind: 'success', title: '자료 1개를 연결했습니다', testId: 'import-done' });
   });
   it('names the collection when every imported item went in', () => {
-    expect(importToast(report({ imported: 2, filed: 2 }), 'managed', into)?.title).toBe('‘학회 준비’에 자료 2개를 가져왔습니다');
-    expect(importToast(report({ imported: 1, filed: 1 }), 'linked', into)?.title).toBe('‘학회 준비’에 자료 1개를 연결했습니다');
+    expect(importToast(report({ imported: 2, filed: 2 }), 'managed', into)?.title).toBe('‘학회 준비’\u2060에 자료 2개를 가져왔습니다');
+    expect(importToast(report({ imported: 1, filed: 1 }), 'linked', into)?.title).toBe('‘학회 준비’\u2060에 자료 1개를 연결했습니다');
   });
   it('does not when some did not (the collection was deleted meanwhile): the library\'s plain sentence', () => {
     expect(importToast(report({ imported: 2, filed: 1 }), 'managed', into)?.title).toBe('자료 2개를 가져왔습니다');
   });
   it('adds the existing items it filed as a line under the title; with nothing imported that sentence is the title', () => {
     expect(importToast(report({ imported: 1, filed: 1, filedExisting: 2 }), 'managed', into)).toEqual({
-      kind: 'success', title: '‘학회 준비’에 자료 1개를 가져왔습니다', lines: ['이미 있는 자료 2개를 ‘학회 준비’에 넣었습니다'], testId: 'import-done',
+      kind: 'success', title: '‘학회 준비’\u2060에 자료 1개를 가져왔습니다', lines: ['이미 있는 자료 2개를 ‘학회 준비’\u2060에 넣었습니다'], testId: 'import-done',
     });
-    expect(importToast(report({ filedExisting: 1 }), 'managed', into)).toEqual({ kind: 'success', title: '이미 있는 자료 1개를 ‘학회 준비’에 넣었습니다', testId: 'import-done' });
+    expect(importToast(report({ filedExisting: 1 }), 'managed', into)).toEqual({ kind: 'success', title: '이미 있는 자료 1개를 ‘학회 준비’\u2060에 넣었습니다', testId: 'import-done' });
   });
   it('says nothing for nothing', () => {
     expect(importToast(report(), 'managed', into)).toBeNull();

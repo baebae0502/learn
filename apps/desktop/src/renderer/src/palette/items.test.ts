@@ -76,10 +76,10 @@ describe('palette 자료 results (spec §4.4)', () => {
   });
 
   it('chooses 와 or 과 after the quoted query by its last syllable (josa.ts waGwa, as the quick search does)', () => {
-    expect(t.palette.emptyTitle('효소 억제제')).toBe('‘효소 억제제’와 일치하는 자료·컬렉션·명령이 없습니다');
-    expect(t.palette.emptyTitle('신호 전달')).toBe('‘신호 전달’과 일치하는 자료·컬렉션·명령이 없습니다');
-    expect(t.palette.emptyTitle('Bayesian')).toBe('‘Bayesian’와 일치하는 자료·컬렉션·명령이 없습니다');
-    expect(t.palette.emptyTitle('2023')).toBe('‘2023’과 일치하는 자료·컬렉션·명령이 없습니다'); // 삼: digits read as Korean numbers
+    expect(t.palette.emptyTitle('효소 억제제')).toBe('‘효소 억제제’\u2060와 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('신호 전달')).toBe('‘신호 전달’\u2060과 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('Bayesian')).toBe('‘Bayesian’\u2060와 일치하는 자료·컬렉션·명령이 없습니다');
+    expect(t.palette.emptyTitle('2023')).toBe('‘2023’\u2060과 일치하는 자료·컬렉션·명령이 없습니다'); // 삼: digits read as Korean numbers
     expect(t.palette.searchLibrary('신호')).toBe('라이브러리에서 ‘신호’ 검색');
     expect(t.palette.searchLibraryParts('신호').join('')).toBe(t.palette.searchLibrary('신호'));
     expect(t.palette.resultCount(4, 0, 1)).toBe('자료 4개, 명령 1개');
@@ -94,8 +94,8 @@ describe('palette 자료 results (spec §4.4)', () => {
   it("says where the search looked: the fields in 내 라이브러리, the view's name first elsewhere, and the tag filter's count (spec 7.1, 3.6)", () => {
     const fields = '제목\u2060·저자\u2060·태그\u2060·출판사\u2060·원래 이름\u2060·초록\u2060·메모에서 찾았습니다.';
     expect(t.library.searchEmptyBody(null, 0)).toBe(fields);
-    expect(t.library.searchEmptyBody('분자생물학', 0)).toBe(`‘분자생물학’의 ${fields}`);
-    expect(t.library.searchEmptyBody('미분류', 2)).toBe(`‘미분류’의 ${fields} 고른 태그 2개로 거른 결과입니다.`);
+    expect(t.library.searchEmptyBody('분자생물학', 0)).toBe(`‘분자생물학’\u2060의 ${fields}`);
+    expect(t.library.searchEmptyBody('미분류', 2)).toBe(`‘미분류’\u2060의 ${fields} 고른 태그 2개로 거른 결과입니다.`);
     expect(t.library.searchEmptyBody(null, 1)).toMatch(/ 고른 태그 1개로 거른 결과입니다\.$/);
     // a line may end with a dot, never start with one
     for (const body of [t.library.searchEmptyBody('분자생물학', 0), t.library.searchEmptyBody(null, 2)]) expect(body).not.toMatch(/[^\u2060]·/);

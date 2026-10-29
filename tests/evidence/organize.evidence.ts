@@ -182,7 +182,7 @@ test('M5 sidebar: the collection menu open and the delete sheet open (macOS only
   await pressEscape();
   await sleep(500);
   // The sheet: the product's own ui.confirm with the words 컬렉션 삭제… sends, left open for the capture.
-  const answer = s.page.evaluate(() => window.learn.ui.confirm({ message: '‘학회 준비’를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' }));
+  const answer = s.page.evaluate(() => window.learn.ui.confirm({ message: '‘학회 준비’\u2060를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' }));
   await sleep(1500);
   const sheetShot = await fullScreenShot('m5-05-sheet-delete', '컬렉션 삭제… sheet over the main window');
   await pressEscape();
@@ -957,7 +957,7 @@ test("M5 organize: ⌘K lists 컬렉션 between 자료 and 명령; a collection 
         buttons: await empty.locator('.btn').allTextContents(),
       };
       value['noResults'] = v;
-      check("search: the collection view's no-results names the view and has both actions", v.body?.startsWith('‘형광 현미경’의 제목⁠·저자⁠·태그') === true && v.buttons.join('|') === '검색어 지우기|내 라이브러리 전체에서 찾기', v);
+      check("search: the collection view's no-results names the view and has both actions", v.body?.startsWith('‘형광 현미경’\u2060의 제목⁠·저자⁠·태그') === true && v.buttons.join('|') === '검색어 지우기|내 라이브러리 전체에서 찾기', v);
     });
     await shots(s.app, s.page, 'm5-10-search-none-collection', '‘쥐똥나무 열매’: no results in a collection, two actions (light)');
     await s.page.getByTestId('search-empty-everywhere').click();

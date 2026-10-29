@@ -177,7 +177,7 @@ describe('ui.reportIdle (spec 8, P-4: the settings window is prepared once the m
 });
 
 describe('ui.confirm (a question as a sheet on the main window, in the renderer\'s words)', () => {
-  const ask = { message: '‘학회 준비’를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' };
+  const ask = { message: '‘학회 준비’\u2060를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' };
   beforeEach(() => messageBox.mockClear());
 
   it('shows the message with the confirming button first and the default, 취소 after it, and answers whether the first was chosen', async () => {

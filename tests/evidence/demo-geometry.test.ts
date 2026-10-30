@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { captionSpot, type Rect } from './demo-geometry';
+import { CAPTION_BOX, captionBottom, captionSpot, parkSpot, type Rect } from './demo-geometry';
 
 /** The settings window as settings-window.ts opens it: 600 wide, centred across the main window, 96 below its top. */
 const settingsOver = (main: Rect, height = 518): Rect => ({ x: main.x + (main.width - 600) / 2, y: main.y + 96, width: 600, height });
@@ -46,5 +46,28 @@ describe('where the arrow rests while Finder is in front (Mac risk 8)', () => {
     expect(desktopSpot(display, learn, { x: 404, y: 248, width: 600, height: 380 })).toEqual({ x: 704, y: 668 });
     // No room under it either: beside it, on the left.
     expect(desktopSpot(display, learn, { x: 404, y: 360, width: 600, height: 380 })).toEqual({ x: 364, y: 384 });
+  });
+});
+
+describe('the caption and the parked pointer clear the sidebar\'s tag selector (round 2 minors 2, 3)', () => {
+  it('the caption stays at 108 while the selector is lower, and rises to 16 above it once it reaches higher', () => {
+    expect(captionBottom(684, null)).toBe(108);
+    expect(captionBottom(684, 620)).toBe(108); // 684 − 620 + 16 = 80: lower than the pill band's top
+    expect(captionBottom(684, 540)).toBe(160); // a selector that wrapped to two rows
+  });
+
+  it('the pointer rests under the tree\'s last row, or higher when a three-line caption would reach it', () => {
+    expect(parkSpot(684, 300, 540)).toEqual({ x: 120, y: 348 });
+    expect(parkSpot(684, 500, 540).y).toBe(684 - 160 - 96 - 28);
+    const tall = parkSpot(684, 520, 540); // a long tree: above the caption's top, the arrow included
+    expect(tall.y + 28).toBeLessThanOrEqual(684 - captionBottom(684, 540) - CAPTION_BOX.lines3);
+    expect(parkSpot(684, 640, null)).toEqual({ x: 120, y: 684 - 108 - 96 - 28 }); // no selector: above the caption box
+  });
+
+  it('a raised caption is checked against the settings window where it really is', () => {
+    const main = { x: 0, y: 25, width: 1440, height: 875 };
+    const s = { x: 400, y: 500, width: 600, height: 150 }; // clear of the box at 108, over it at 300
+    expect(captionSpot(main, s)).toEqual({ target: 'main' });
+    expect(captionSpot(main, s, 300)).toEqual({ target: 'main', maxWidth: 352 }); // narrower, left of it
   });
 });

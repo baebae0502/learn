@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { closeSheet, drag, expectWindow, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importPaths, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
 
 const IS_MAC = process.platform === 'darwin';
 const DEMO = { env: { LEARN_DEMO_OVERLAY: '1' } };
@@ -160,10 +160,23 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     await page.evaluate((text) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text, ms: 900, maxWidth: 300 } })), long);
     expect((await caption.boundingBox())!.width).toBeLessThanOrEqual(300);
     await expect(caption).toHaveCount(0, { timeout: 2000 });
-    // A lasting tag while a scripted gesture is on screen, until it is cleared.
+    // Higher, above a tag selector that has grown (the script measures it: round 2 minor 2).
+    await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-caption', { detail: { text: '태그 위에', ms: 900, bottom: 200 } })));
+    await expect.poll(async () => page.evaluate(() => innerHeight - document.querySelector('[data-testid="demo-caption"]')!.getBoundingClientRect().bottom)).toBeCloseTo(200, 0);
+    await expect(caption).toHaveCount(0, { timeout: 2000 });
+    // A lasting tag while a scripted gesture is on screen, until it is cleared: at the content area's top-left, under the
+    // table's header, off the sidebar's launcher and labels (round 2 minor 4).
+    await importPaths(page, [path.join(FIXTURES, 'sample.pdf')]);
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: '스크립트로 재현' })));
     const tag = page.getByTestId('demo-tag');
     await expect(tag).toHaveText('스크립트로 재현');
+    const placed = await page.evaluate(() => {
+      const head = document.querySelector('[data-testid="table-head-clip"]')!.getBoundingClientRect();
+      const box = document.querySelector('[data-testid="demo-tag"]')!.getBoundingClientRect();
+      return { left: box.left - head.left, below: box.top - head.bottom };
+    });
+    expect(placed.left).toBeCloseTo(16, 0);
+    expect(placed.below).toBeGreaterThanOrEqual(12); // 12, and up to 8 more while it fades in
     await page.waitForTimeout(2500);
     await expect(tag).toBeVisible();
     await page.evaluate(() => dispatchEvent(new CustomEvent('learn:demo-tag', { detail: null })));

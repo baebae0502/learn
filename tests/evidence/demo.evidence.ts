@@ -39,7 +39,7 @@ import {
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
-import { captionSpot } from './demo-geometry';
+import { captionBottom, captionSpot, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron } from './demo-mac';
 import { DEMO_METADATA, DEMO_ORGANIZE, PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
@@ -263,6 +263,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   const notes: string[] = [];
   const input = { native: 0, menu: 0 };
   const chapters: Array<{ at: number; ms: number; title: string }> = [];
+  /** An overlay element (caption, tag, parked pointer) found over the sidebar's labels, launcher or tag chips (round 2 minors 2–4). */
+  const overlayClashes: string[] = [];
   let s: Session | null = null;
   let rec: Recording | null = null;
   /** x11grab recordings end when told; macOS screencapture after RECORD_SECONDS. */
@@ -431,13 +433,21 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       }
       mouseAt.set(p, { x, y });
     };
+    /** The main window's sidebar as drawn now: the tag selector's top (null: none drawn) and the last tree row's bottom. */
+    const sidebarNow = (p: Page) =>
+      p.evaluate(() => {
+        const tags = document.querySelector('.sidebar .tag-selector')?.getBoundingClientRect();
+        const rows = [...document.querySelectorAll('[data-testid="sidebar-tree"] [role="row"]')].map((r) => r.getBoundingClientRect().bottom);
+        return { h: innerHeight, w: innerWidth, tagTop: tags && tags.height > 0 ? tags.top : null, treeBottom: rows.length > 0 ? Math.max(...rows) : 0 };
+      });
     /**
-     * Where the pointer rests when it hovers nothing and covers no overlay element (demo.css): the main window's empty
-     * sidebar bottom (x 120, 72 from the bottom); the settings window's empty header corner.
+     * Where the pointer rests when it hovers nothing and covers no overlay element (demo.css): in the main window the
+     * tree's empty part, clear of the tag chips and of the caption above them (demo-geometry.ts parkSpot); the settings
+     * window's empty header corner.
      */
     const parkSpot = async (p: Page, kind: WindowKind) => {
-      const { w, h } = await p.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-      return kind === 'main' ? { x: 120, y: h - 72 } : { x: w - 40, y: 18 };
+      const now = await sidebarNow(p);
+      return kind === 'main' ? parkAt(now.h, now.treeBottom, now.tagTop) : { x: now.w - 40, y: 18 };
     };
     /**
      * After a scripted pointer action Playwright's own pointer (CDP) stays where the action ended, unseen while the system arrow
@@ -463,6 +473,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       const at = await parkSpot(p, kind);
       await glide(p, kind, at.x, at.y);
       await releasePointer(p, kind);
+      if (kind === 'main') await overlayClear(p, `parked at ${at.x},${at.y}`, at);
     };
     /**
      * A caption on a page (an empty text clears it): bottom-left, above the pill band, at most `maxWidth` wide; or at
@@ -470,14 +481,53 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      * 위치 card, mac1 m3).
      */
     type Captioned = { target: Page; place?: 'top'; top?: number; maxWidth?: number };
-    const caption = ({ target, place, top, maxWidth }: Captioned, text: string, holdMs?: number) =>
-      target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), {
+    /**
+     * Whether the overlay keeps clear of the sidebar's own text where it is drawn now: the caption and the tag off the launcher,
+     * the section labels and the tag selector; a parked pointer (`at`, its tip, the arrow 20 px below it) off the chips and the
+     * caption. Anything found is recorded in overlayClashes, judged at the end.
+     */
+    const overlayClear = async (p: Page, what: string, at?: { x: number; y: number }) => {
+      await p.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const found = await p.evaluate((pt) => {
+        const boxes = (sel: string) => [...document.querySelectorAll(sel)].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+        const hit = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+        const captions = boxes('[data-testid="demo-caption"]:not([data-leaving])');
+        const tags = boxes('[data-testid="demo-tag"]');
+        const guarded: Record<string, DOMRect[]> = { 'the tag selector': boxes('.sidebar .tag-selector'), 'the launcher': boxes('.sidebar .launcher'), 'a section label': boxes('.sidebar .section-label') };
+        const out: string[] = [];
+        const at = (r: DOMRect) => `${Math.round(r.left)},${Math.round(r.top)}–${Math.round(r.right)},${Math.round(r.bottom)}`;
+        for (const [name, rects] of Object.entries(guarded)) {
+          for (const r of rects) {
+            for (const c of captions) if (hit(c, r)) out.push(`caption ${at(c)} over ${name} ${at(r)}`);
+            for (const c of tags) if (hit(c, r)) out.push(`tag ${at(c)} over ${name} ${at(r)}`);
+          }
+        }
+        if (pt) {
+          const under = (r: DOMRect) => pt.x >= r.left - 4 && pt.x <= r.right + 4 && pt.y + 20 >= r.top && pt.y <= r.bottom;
+          if (boxes('.sidebar .tag-selector').some(under)) out.push('pointer parked on the tag selector');
+          if (captions.some(under)) out.push('pointer parked on the caption');
+        }
+        return out;
+      }, at ?? null);
+      for (const f of found) overlayClashes.push(`${what}: ${f}`);
+    };
+    /** In the main window a bottom caption stands above the tag selector once that has grown (demo-geometry.ts captionBottom). */
+    const mainCaptionBottom = async () => {
+      const now = await sidebarNow(page);
+      return captionBottom(now.h, now.tagTop);
+    };
+    const caption = async ({ target, place, top, maxWidth }: Captioned, text: string, holdMs?: number) => {
+      const bottom = target === page && !place ? await mainCaptionBottom() : undefined;
+      await target.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-caption', { detail })), {
         text,
         ms: text ? Math.max(captionMs(text), holdMs ?? 0) : 1,
         ...(place ? { place } : {}),
         ...(top !== undefined ? { top } : {}),
+        ...(bottom !== undefined ? { bottom } : {}),
         ...(maxWidth !== undefined ? { maxWidth } : {}),
       });
+      if (text && target === page) await overlayClear(page, `caption "${text.slice(0, 24)}…"`);
+    };
     let lastCaptioned: Captioned = { target: page };
     /** A chapter starts: its time, and its title as the on-screen caption in the window it is about (T13-m4, R2-m6). */
     const chapter = async (title: string, where: Page | Captioned = page, holdMs?: number) => {
@@ -499,7 +549,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings') && x.isVisible())))
         .toBe(true);
       const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
-      const spot = captionSpot(m, w);
+      const spot = captionSpot(m, w, await mainCaptionBottom());
       if (spot.target === 'main') return { target: page, ...(spot.maxWidth !== undefined ? { maxWidth: spot.maxWidth } : {}) };
       notes.push('a settings chapter is captioned in the settings window (it covers the main window\'s caption room)');
       if (!opts.clicksTiles) return { target: settings, place: 'top' };
@@ -507,7 +557,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       return { target: settings, place: 'top', top: Math.round(tiles.y + tiles.height + 12) };
     };
     /** The lasting "스크립트로 재현" tag while a scripted gesture is on screen (T13R2-m3). */
-    const scriptedTag = (text: string | null) => page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
+    const scriptedTag = async (text: string | null) => {
+      await page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
+      if (text) await overlayClear(page, `tag "${text}"`);
+    };
     /**
      * A shortcut: the real key through System Events on macOS (NSMenu sees it), else the menu item's own click().
      * Returns when the key went out (for afterKey). On macOS (demo-keys.ts): a key System Events refuses, or that runs
@@ -995,14 +1048,19 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await park(page, 'main');
     await pause(3200);
 
-    // 16. ⌘/: the shortcut sheet, now with the organise shortcuts (the 정리 group); ↩ closes it. The caption is read
-    //     before the sheet comes (a sheet covers the window's middle), and at most 400 px wide, left of where the sheet starts.
-    await chapter(`${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('Shift+CmdOrCtrl+N')} ‘${label('collection.new')}’\u2060과 1–8 색 태그 키도 들어 있습니다.`, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 9000); // read before the sheet (2.5 s) and kept up while it shows (5 s), until chapter 17 replaces it
-    // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above the caption meanwhile.
+    // 16. ⌘/: the shortcut sheet, now with the organise shortcuts (the 정리 group); ↩ closes it. The caption is read in
+    //     full before the sheet comes, and goes as it comes: macOS dims the window under a sheet, a caption with it (round 2
+    //     minor 1). At most 400 px wide, left of where the sheet starts, should it still be fading out.
+    const sheetTitle = `${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('Shift+CmdOrCtrl+N')} ‘${label('collection.new')}’\u2060과 1–8 색 태그 키도 들어 있습니다.`;
+    await chapter(sheetTitle, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 60_000); // cleared below, before the sheet
+    // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above it meanwhile.
     await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
-    await pause(2500);
+    await pause(captionMs(sheetTitle));
+    await caption({ target: page }, '');
+    await expect(page.getByTestId('demo-caption')).toHaveCount(0, { timeout: 2000 });
     const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts', windowUp('sheet')));
     await expect(sheet.getByTestId('shortcut-row').filter({ hasText: label('collection.new') }).first()).toBeVisible();
+    if ((await page.getByTestId('demo-caption').count()) > 0) overlayClashes.push('ch16: a caption in the main window under the sheet');
     await pause(5000);
     await closeSheet(sheet, 'Enter');
 
@@ -1086,6 +1144,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           displaySwitch: display.result,
           attempt: plan,
           notes: [...history, ...notes],
+          /** The overlay over the sidebar's own text, where the script found it (empty: clear throughout). */
+          overlayClashes,
           chapters,
         },
         null,
@@ -1097,6 +1157,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
+  expect.soft(overlayClashes, 'captions, the tag and the parked pointer keep clear of the sidebar\'s labels and tag chips').toEqual([]);
   // A demo longer than the fixed macOS recording lost its end: say so (the files above are written either way).
   if (IS_MAC && rec?.file) expect(demoSeconds, 'the demo fits the recording (RECORD_SECONDS)').toBeLessThanOrEqual(RECORD_SECONDS);
   return { lost: null };

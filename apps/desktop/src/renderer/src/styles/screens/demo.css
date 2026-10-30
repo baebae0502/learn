@@ -11,17 +11,22 @@
    - pill: centred, bottom 40, 52 tall (bottom band 40–92); aside (data-aside: a command that opens a sheet, or any
      pill shown while one hangs over the window's middle — a macOS sheet at 1024 × 743 is nearly as tall as the
      window), bottom-left, at left 24, where the sheet leaves room. Fixed when the pill appears;
-   - caption: left 24, bottom 108 (above the pill band), at most 560 wide and never wider than the window allows; beside
-     a settings window that covers that box, narrower (an inline max-width, left of it); only when even that leaves no
-     room, in the settings window at the top (data-place top, 12 down or under its theme tiles), since its bottom is the
-     라이브러리 위치 card (critique mac1 m3, concern 4);
-   - tag ("스크립트로 재현" while a scripted gesture is on screen): top-left, 16 below the toolbar;
-   - parked pointer (demo.evidence.ts park()): x 120, 72 from the bottom — left of the pill (whose left edge is at
-     least 512 − 200 = 312 at 1024), below the caption's lowest edge (108), in the sidebar's empty bottom; while a
-     sheet is open (the pill then bottom-left), 240 from the bottom, above the caption.
+   - caption: left 24, bottom 108 (above the pill band), or higher (an inline bottom) when the sidebar's tag selector
+     reaches above that: 16 above its top — clear even while it rises in from 8 lower — so the 태그 header and its "…"
+     stay clear (round 2 minor 2); at most 560 wide
+     and never wider than the window allows; beside a settings window that covers that box, narrower (an inline
+     max-width, left of it); only when even that leaves no room, in the settings window at the top (data-place top, 12
+     down or under its theme tiles), since its bottom is the 라이브러리 위치 card (critique mac1 m3, concern 4);
+   - tag ("스크립트로 재현" while a scripted gesture is on screen): the content area's top-left, 16 in and 12 under the
+     table's header band (inline, measured when it is shown; an empty library has the same band) — on the drop overlay it
+     comes with, clear of the sidebar's launcher and labels (round 2 minor 4);
+   - parked pointer (demo.evidence.ts park(), demo-geometry.ts parkSpot): x 120 in the sidebar's tree, in its empty part
+     under the last row and clear of the caption above the tag selector (the sidebar's bottom holds the tag chips since
+     M5, round 2 minor 3); while a sheet is open (the pill then bottom-left), 240 from the bottom.
    Separate windows are another matter: the settings window carries its own overlay (the script captions a settings
    chapter in the main window unless the settings window covers that caption box), and the ⌘/ chapter shows its
-   caption before the sheet opens. */
+   caption before the sheet opens and clears it as the sheet comes: macOS dims the parent under a sheet, and a caption
+   there would fade with it (round 2 minor 1). */
 @layer screens {
   .demo-overlay {
     --demo-hud-bg: light-dark(rgb(28 28 30 / 0.86), rgb(78 78 84 / 0.9)); /* local: demo HUD, lighter on a dark window */

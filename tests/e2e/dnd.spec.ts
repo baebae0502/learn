@@ -875,36 +875,61 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       await recordRowFocus(page);
       // A focus React Aria moves with no input of the user's onto another row is not a choice of view: after a screen reader's click
       // (the virtual modality) it moves the focus only after the next frame and any running transition, onto the element it found
-      // when it was asked, and on the Mac that was the row below the viewed row's old place. Here such a move comes in the drop's own
-      // task: the drag's end gives the rows back from React Aria's `inert` (all but its drop targets are inert while it runs), in the
-      // event that drops, and an observer of that change focuses a row in sight in that task's microtasks.
+      // when it was asked, and on the Mac that was the row below the viewed row's old place. Here such moves come in the drop's own
+      // task, a frame after it, and after a transition that starts with it (the Mac's failure: React Aria's moves wait for both): the
+      // drag's end gives the rows back from React Aria's `inert` (all but its drop targets are inert while it runs), in the event
+      // that drops, and an observer of that change focuses a row in sight in that task's microtasks, starts the transition, and
+      // focuses another row on the next frame and a third when the transition has ended.
       await page.evaluate((skip) => {
+        const w = window as unknown as { __others: string[]; __transitioned?: boolean };
+        w.__others = [];
+        delete w.__transitioned;
         const tree = document.querySelector<HTMLElement>('.sidebar-tree')!;
-        const seen = new MutationObserver((changes) => {
-          if (!changes.some((c) => c.target instanceof HTMLElement && !c.target.inert)) return;
-          seen.disconnect();
+        const fading = document.createElement('div');
+        fading.style.cssText = 'position: fixed; left: 0; top: 0; width: 4px; height: 4px; opacity: 1; transition: opacity 150ms linear';
+        document.body.append(fading);
+        fading.getBoundingClientRect(); // its opacity is drawn before it changes, or no transition runs
+        const others = () => {
           const box = tree.getBoundingClientRect();
-          const row = [...tree.querySelectorAll<HTMLElement>('[role="row"][data-testid^="nav-collection-"]')].find((r) => {
+          return [...tree.querySelectorAll<HTMLElement>('[role="row"][data-testid^="nav-collection-"]')].filter((r) => {
             const b = r.getBoundingClientRect();
             return !skip.includes(r.dataset['key']!) && b.top >= box.top && b.bottom <= box.bottom;
           });
-          (window as unknown as { __other?: string }).__other = row?.dataset['key'];
-          row?.focus();
+        };
+        const focusNext = () => {
+          const row = others().find((r) => !w.__others.includes(r.dataset['key']!));
+          if (!row) return;
+          w.__others.push(row.dataset['key']!);
+          row.focus();
+        };
+        const seen = new MutationObserver((changes) => {
+          if (!changes.some((c) => c.target instanceof HTMLElement && !c.target.inert)) return;
+          seen.disconnect();
+          focusNext();
+          window.requestAnimationFrame(focusNext);
+          fading.addEventListener('transitionend', () => {
+            w.__transitioned = true;
+            focusNext();
+            fading.remove();
+          });
+          fading.style.opacity = '0';
         });
         seen.observe(tree, { subtree: true, attributes: true, attributeFilter: ['inert'] });
       }, [leaf, target]);
       await keyboardDrop(page, how);
-      const other = (await page.evaluate(() => (window as unknown as { __other?: string }).__other))!;
-      expect(other, `${how}: a row took the focus in the drop's own task`).toBeTruthy();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __transitioned?: boolean }).__transitioned), `${how}: the transition ran`).toBe(true);
+      const others = await page.evaluate(() => (window as unknown as { __others: string[] }).__others);
+      expect(others, `${how}: rows took the focus in the drop's own task, a frame later and after a transition`).toHaveLength(3);
       await expect.poll(() => parentOf(leaf), `${how}: the drop moved the viewed collection`).toBe(target);
       await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
-      // Past React Aria's (stretched) wait, its last move has come. The other row never takes the view meanwhile: looked at all along,
+      // Past React Aria's (stretched) wait, its last move has come. No other row takes the view meanwhile: looked at all along,
       // not once before React has drawn.
-      let took = false;
-      for (const until = Date.now() + 2000; Date.now() < until; await frames(page, 2)) took ||= (await treeRow(page, other).getAttribute('aria-selected')) === 'true';
-      expect(took, `${how}: a focus on another row in the drop's own task does not move the view`).toBe(false);
+      let took: string | undefined;
+      for (const until = Date.now() + 2000; Date.now() < until; await frames(page, 2))
+        for (const other of others) if (!took && (await treeRow(page, other).getAttribute('aria-selected')) === 'true') took = other;
+      expect(took, `${how}: a focus on another row in the drop's own task, a frame later or after a transition does not move the view`).toBeUndefined();
       await relaxDropWait(page);
-      expect(await rowFocus(page), `${how}: the other row did take the focus`).toContain(other);
+      for (const other of others) expect(await rowFocus(page), `${how}: the other row ${other} did take the focus`).toContain(other);
       // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
       expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
       await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
@@ -919,7 +944,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     }
   });
 
-  test('(i2) after a keyboard drop, once React Aria\'s own late focus moves have had their turn, a focus on another row with no key, pointer or click — VoiceOver moving its cursor — moves the view there', async () => {
+  test('(i2) after a keyboard drop, once React Aria\'s own late focus moves have had their turn, a focus on a row with no key, pointer or click — VoiceOver moving its cursor — moves the view there: the dropped-on row, then another', async () => {
     const { page } = s;
     for (const how of ['enter', 'click'] as const) {
       const { leaf, target } = await dragLeafFar(page, how);
@@ -930,7 +955,11 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       await page.waitForTimeout(200);
       await frames(page, 2);
       await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished)));
-      // VO-→ with "keyboard focus follows the VoiceOver cursor" moves the focus and sends the page no event of its own.
+      // VO-→ with "keyboard focus follows the VoiceOver cursor" moves the focus and sends the page no event of its own. The dropped-on
+      // row first: after the drop it is the viewed row's parent, just above it, where VoiceOver's user goes next.
+      await treeRow(page, target).evaluate((e) => (e as HTMLElement).focus());
+      await expect(page.locator('.sidebar-tree [role="row"][aria-selected="true"]'), `${how}: the view follows VoiceOver's cursor to the dropped-on row`).toHaveAttribute('data-key', target);
+      await expect(treeRow(page, target), `${how}: and the focus stays there`).toBeFocused();
       const next = (await inSight(page)).find((r) => r.id !== leaf && r.id !== target)!.id;
       await treeRow(page, next).evaluate((e) => (e as HTMLElement).focus());
       await expect(page.locator('.sidebar-tree [role="row"][aria-selected="true"]'), `${how}: the view follows VoiceOver's cursor`).toHaveAttribute('data-key', next);

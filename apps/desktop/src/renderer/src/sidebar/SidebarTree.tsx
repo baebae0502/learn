@@ -424,13 +424,31 @@ export function SidebarTree(props: SidebarTreeProps) {
 
   // ---- effects --------------------------------------------------------------------------------------------------------
   // React Aria's last focus moves after a drop are asked for by its rows' effects, in the render its wait ends with: a render of the
-  // sidebar asked for then is the same one or a later one, and its effects run after its rows' (dragState's awaitLateMoves).
+  // sidebar asked for then is the same one or a later one, and its effects run after its rows' (dragState's awaitLateMoves). Each
+  // waits in `afterRendered`, in the order asked: a render runs its own and those asked before it (a batched render keeps only the
+  // last), and a sidebar that goes runs the rest at once, so a drop's guard is never left without its end.
+  const afterRendered = useRef(new Set<() => void>());
   const [rendered, setRendered] = useState<{ then: () => void } | null>(null);
   useEffect(() => {
-    dragState.setAfterRender((then) => setRendered({ then }));
-    return () => dragState.setAfterRender(null);
+    const waiting = afterRendered.current;
+    dragState.setAfterRender((then) => {
+      waiting.add(then);
+      setRendered({ then });
+    });
+    return () => {
+      dragState.setAfterRender(null);
+      for (const then of waiting) then();
+      waiting.clear();
+    };
   }, []);
-  useEffect(() => rendered?.then(), [rendered]);
+  useEffect(() => {
+    if (!rendered) return;
+    for (const then of afterRendered.current) {
+      afterRendered.current.delete(then);
+      then();
+      if (then === rendered.then) break;
+    }
+  }, [rendered]);
 
   // The keyboard cursor follows the view when something else moved it (an item panel path, the palette): tabbing into the
   // tree then lands on the view's row and does not move the view to where the cursor was.

@@ -241,6 +241,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - m-19 · 취소한 Finder 끌기: 다음 포인터 이동에서 지우는 것만 E2E가 있고(`dnd.spec.ts:351-354`), 누름·키에서 지우는 것은 없다. 취소는 페이지에 이벤트를 주지 않아 합성으로 만들기 어렵다 → 실기 목록.
 - m-23 · `tests/e2e/tags.spec.ts`(빈 라이브러리 선택기), `tests/e2e/organize-inspector.spec.ts`(새 이름에서 esc): 없음 확인이 `waitForTimeout(400)`에만 기대고 양성 대조가 없다 → 정리 호출 수가 느는 것을 먼저 기다리게 다음 시험 작업에서.
 - m-27 · `docs/spec-amendments.md` §9: A6(`openedAt` 열의 M5 이동)과 A8(조건부 "옮기기 ▸")은 `design-spec.md` 글을 바꾸지 않았으니 §9 자신의 정의(:97)로는 B층이다 → 다음 명세 개정 정리.
+- 재검토 Minor 2 · `apps/desktop/src/renderer/src/dnd/drops.ts:96`: `collectionOn`이 IPC를 기다리는 동안 50ms를 넘기면 놓기의 데이터 렌더(패치·드러내기)가 React Aria의 기다림 뒤, 우리 해제 뒤에 올 수 있고, 그 렌더가 청하는 focusSafely는 막지 않는다. 대개 보는 행을 겨누어 해가 거의 없다 → 느린 IPC를 만들 수 있는 다음 끌어 놓기 작업에서 확인.
 - m-29 · 검토 체크리스트 4의 전제("렌더러는 놓인 경로를 보지 않는다")는 M3부터 틀렸다: 렌더러가 `pathForFile`로 경로를 얻어 `library:import`에 보낸다(`dnd/fileDrop.ts:7-11`, `treeDnd.ts:84`). 퇴보가 아니며 경계는 그대로다 → M5 명세 8.4에 바르게 적었다. 체크리스트 자체는 컨트롤러의 것이다.
 
 ### 실기에서만 확인할 것 (M5)

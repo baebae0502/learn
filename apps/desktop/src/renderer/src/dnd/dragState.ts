@@ -20,9 +20,12 @@ let alt = false;
 let native = false;
 let pointerDrop = false;
 let dropFocus: string | null = null;
-/** Whether the guard is for a drop (kept until the user's next input) or only for a drag that is over the row (gone with the drag). */
+/**
+ * Whether the guard is for a drop (kept until React Aria's late moves have come or the user's next input) or only for a drag that is
+ * over the row (gone with the drag).
+ */
 let dropped = false;
-/** A drop's guard covers every row, not only the dropped-on one: React Aria's late focus moves after it have not all come yet. */
+/** A drop's guard covers every row, not only the dropped-on one, while React Aria's late focus moves after it have not all come. */
 let lateMoves = false;
 /** The drop whose late moves are awaited: an earlier drop's wait does not end a later one's. */
 let lateRun = 0;
@@ -76,13 +79,15 @@ function replace(next: DragSnapshot): void {
  *   later, runs after it; the render it asks for then is the sidebar's next, whose effects run after its rows' (afterRender);
  * - each of those waits for a frame, then for any running transition (runAfterTransition): this one asks for a frame after them,
  *   then joins the same queue of React Aria's, behind them.
- * Then only the dropped-on row is guarded, until the user's next input.
+ * Then the whole guard goes, the dropped-on row's too: React Aria moves no focus after them (its wait is over), and VoiceOver moves the
+ * focus with its cursor and sends the page no input — the dropped-on row, just above the viewed one after a drop, is where its user
+ * goes next. A drag that is over a row by then keeps its own guard.
  */
 function awaitLateMoves(): void {
   lateMoves = true;
   const run = ++lateRun;
   const release = () => {
-    if (run === lateRun) lateMoves = false;
+    if (run === lateRun && dropped) dragState.clearDropFocus();
   };
   queueMicrotask(() =>
     setTimeout(
@@ -135,9 +140,9 @@ export const dragState = {
    * The drop on the tree row `key` is handed over (onItemDrop, which React Aria calls in the drop's own event, right after it has
    * recorded the drop). React Aria then moves the tree's cursor to that row with the keyboard modality — on each render once the
    * rows have changed, and again on its own 50 ms timer — and the sidebar takes the focus for the view (selection follows the
-   * cursor): those moves are not the user's choice. The guard stays until the user's next pointer, key or click outside a drag
-   * (`clearDropFocus`): no input of the user's is ever taken for the drop's. Until React Aria's late moves have come it covers
-   * every row (`awaitLateMoves`), then the dropped-on row only. A cursor parked for the drop goes back.
+   * cursor): those moves are not the user's choice. The guard covers every row until React Aria's late moves have come
+   * (`awaitLateMoves`), or until the user's next pointer, key or click outside a drag (`clearDropFocus`) if that is sooner: no input
+   * of the user's is ever taken for the drop's. A cursor parked for the drop goes back.
    */
   armDropFocus: (key: string) => {
     dropFocus = key;
@@ -183,11 +188,10 @@ export const dragState = {
     park?.();
   },
   /**
-   * The guard if a focus on the row `key` is React Aria's, not the user's: the row a drag is over or a drop landed on, and right
-   * after a drop any row. React Aria moves the focus to the dropped-on row, and after a screen reader's click (the virtual
-   * modality) its focus moves wait for the next frame and for any running transition, then go to the element they found when they
-   * were asked — by then a row the user never chose (focusSafely). Once those have come, a focus on another row with no input is
-   * the user's: VoiceOver moves the focus with its cursor and sends the page no key, pointer or click. `pointer`: the drop was by
+   * The guard if a focus on the row `key` is React Aria's, not the user's: the row a drag is over, and right after a drop any row.
+   * React Aria moves the focus to the dropped-on row, and after a screen reader's click (the virtual modality) its focus moves wait
+   * for the next frame and for any running transition, then go to the element they found when they were asked — by then a row the
+   * user never chose (focusSafely). Once those have come, a focus on any row with no input is the user's: VoiceOver moves the focus with its cursor and sends the page no key, pointer or click. `pointer`: the drop was by
    * mouse, so no keyboard ring and no scroll.
    */
   takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key || lateMoves ? { pointer: pointerDrop } : null),

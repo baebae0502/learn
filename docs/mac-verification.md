@@ -533,10 +533,11 @@ run [40269632733](https://github.com/baebae0502/learn/actions/runs/40269632733)(
 | 74 | [40902667278](https://github.com/baebae0502/learn/actions/runs/40902667278) | 10-30 00:32 KST | all / 예 / da4ca6a (1회차 비평 고침과 문서) | 1515초 → 26분(무료) | **실패**: 증거 61/61, 판정 69/69 · 39/39 · 45/45, 데모 194.0초 · 장 17개. 기능 E2E 281 통과 · 2 실패 · 34 건너뜀: (1) dnd (c) — esc가 React Aria의 첫 끌기 프레임에서 사라졌다. 시험이 이제 첫 드롭 대상을 기다린다. (2) table-columns 머리 — 옛 스크롤 막대의 여백을 한 프레임 늦게 쟀다. 앱 고침: 행 수나 행 높이가 바뀌면 레이아웃 효과에서 잰다. Mac 비평(opus) 2회차(이 실행): blocker·major 0, 데모 minor 4 — dec86b4에서 고침 |
 | 75 | [41002306047](https://github.com/baebae0502/learn/actions/runs/41002306047) | 10-30 13:20 KST | all / 예 / 1227372 (최종 검토 고침) | 1777초 → 30분(무료) | **실패**: 증거 61/61, 판정 69/69 · 39/39 · 42/45 + 못 읽음 3, 데모 200.8초. 기능 E2E 288 통과 · 1 실패: dnd (i), 화면 읽기 프로그램 클릭(포인터 없는 클릭)의 키보드 드롭 — React Aria의 가상 모드가 미룬 포커스가 `Virtualizer`가 다시 쓴 행에 떨어져 보기가 바뀌었다. 앱 고침: 977676d → 774cbbc → af807d6. 놓은 뒤 React Aria가 어느 행으로든 옮기는 포커스·선택을 붙잡아 둔다. 붙잡기는 React Aria의 늦은 이동(드롭 렌더, 그 50ms 기다림, 렌더 한 번, 프레임 하나, 그다음 자신의 runAfterTransition)이 다 지난 뒤 끝나고, 그 뒤로는 VoiceOver 탐색이 보기를 따른다 |
 | 76 | [41024983289](https://github.com/baebae0502/learn/actions/runs/41024983289) | 10-30 17:13 KST | all / 예 / af807d6 (PR의 최종 코드) | 1907초 → 32분(무료) | **성공**: 증거 61/61, 기능 E2E 291 통과 · 0 예상 밖 · 27 건너뜀. 판정 m3-shell 69/69 · m4-library 39/39 · m5-organize 42/45 ok + 못 읽음 3(System Events 팝업 탐침, `ok: null`로 따로 셈 — 아래 "정리 판정 값"), PNG 321장. M5 데모 `m5-demo.final.mov` 206.4초, 장 17개 |
+| 77 | [41080539766](https://github.com/baebae0502/learn/actions/runs/41080539766) | 10-31 00:25 KST | organize / 아니오 / 316eba5 (M5 후속: 열 머리 끌기의 유령 칸, 놓기 가드가 놓기의 변경이 그려질 때까지 기다림) | 178초 → 3분(무료) | **성공**: 증거 15/15, 정리 판정 42/45 ok + 읽지 못함 3(System Events 팝업). `m5-09-column-drag-{light,dark}`에 유령 칸(`--bg-raised` + e1)이 포인터 곁에, 원래 칸은 눌린 채움, 2px `--accent-ring` 선이 그 위 — Linux 투어와 같다 |
 
 **합계: macOS 76회, 563분.** M5 17회 201분(Task 4 `evidence` 2회 12분, Task 5–10 `organize` 8회 20분, Task 11 `perf` 2회 6분, Task 12 `all` 5회 163분 — Task 1 스파이크 run 40269632733은 번호 밖). 저장소가 공개라 모두 무료다.
 
-**전체 합계(튜터 목업 2회 5분 포함, 2026-10-30 두 PR 병합 뒤): macOS 78회, 568분.**
+**전체 합계(튜터 목업 2회 5분 포함): macOS 79회, 571분.** 2026-10-30 두 PR 병합 뒤 78회 568분, M5 후속(run 77) 3분.
 
 ### 정리 판정 값 (`m5-organize.json`, run 41024983289)
 판정 45개: ok 42 · 못 읽음 3 · 실패 0(`tally`). 못 읽음 셋은 System Events가 러너에서 네이티브 팝업 메뉴를 주소로 잡지 못하는 탐침이고, 값을 `ok: null`로 남겨 ok와 따로 센다. 메뉴는 메뉴 줄에서 계산한 ↓ 수로 열고 PNG로 본다:

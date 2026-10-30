@@ -105,7 +105,7 @@ const picker = (opts: AppMenuOptions) => (picked: PickedCommand | null): void =>
   if (picked) opts.onCommand(picked.commandId, picked.args);
 };
 
-/** The menu bar's rows: key equivalents are live there (see entriesToTemplate), and a row with a colour draws its dot (M-2), as the popups do. */
+/** The menu bar's rows: key equivalents are live there (see entriesToTemplate), and a row with a colour draws its dot, as the popups do. */
 const barOptions = (opts: AppMenuOptions): TemplateOptions => ({ surface: 'menubar', platform: opts.platform, dotIcon });
 
 /** What the submenus are built from: the reported context and the library read for the menu bar (the selection is not listed: 색 태그 ▸ is marked by the reported slots, collections by none). */

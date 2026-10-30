@@ -38,12 +38,24 @@ const on = (key: string) => ({ type: 'item', key, dropPosition: 'on' }) as const
 const types = new Set([MIME_COLLECTION]);
 
 describe('the tree while a collection is dragged by keyboard after a Finder drag left the window', () => {
-  it('marks no row for what a collection cannot be dropped on, and the allowed ones still answer', () => {
+  it('the drag of ours drops the stale "files over", so the collection rules answer, not the files ones', () => {
     // The Finder drag ended with a dragleave only, so the window listeners left "files over" set.
     dragState.setFilesOver(true);
     dragState.beginCollection('bio'); // a drag of ours
+    expect(dragState.filesOver()).toBe(false);
     for (const key of ['bio', 'c6', SCOPE_KEYS.all]) expect(treeDropOperation(on(key), types as never, ['move']), key).toBe('cancel');
     expect(treeDropOperation(on('stat'), types as never, ['move'])).toBe('move');
+  });
+});
+
+describe('Finder\'s files over the tree (no drag of ours)', () => {
+  const files = new Set(['Files']);
+  it('a collection and 내 라이브러리 take them as a copy; a special view takes none', () => {
+    dragState.setFilesOver(true);
+    for (const key of ['bio', 'c6', SCOPE_KEYS.all]) expect(treeDropOperation(on(key), files as never, ['copy', 'move']), key).toBe('copy');
+    expect(treeDropOperation(on(SCOPE_KEYS.unfiled), files as never, ['copy'])).toBe('cancel');
+    // ⌥ or the move key narrow what is allowed, not whether files drop.
+    expect(treeDropOperation(on('stat'), files as never, ['move'])).toBe('move');
   });
 });
 

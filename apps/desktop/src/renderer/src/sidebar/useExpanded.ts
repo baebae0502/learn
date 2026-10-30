@@ -22,7 +22,7 @@ export function useExpanded(model: OrganizeModel | undefined): { expanded: Reado
   return { expanded, settled: model !== undefined && (read.isSuccess || read.isError) };
 }
 
-/** Writes the open collections (at most as many as the setting takes). */
+/** Writes the open collections (at most as many as the setting takes): the newest kept, the ones opened last are at the end. */
 export function saveExpanded(ids: ReadonlySet<string>): void {
-  saveSetting('sidebar.expanded', [...ids].slice(0, SIDEBAR_EXPANDED_MAX));
+  saveSetting('sidebar.expanded', [...ids].slice(-SIDEBAR_EXPANDED_MAX));
 }

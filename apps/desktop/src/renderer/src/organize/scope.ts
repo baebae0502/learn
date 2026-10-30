@@ -66,8 +66,9 @@ export function scopePath(model: OrganizeModel | undefined, scope: LibraryScope)
 
 /**
  * What the table shows for the scope the user chose: a collection that is gone, or a view that needs the snapshot before
- * it arrived, shows `all`. The chosen scope itself is left as it is — an undo that brings the collection back brings the
- * view back with it.
+ * it arrived, shows `all`. The chosen scope itself is left as it is, so a collection that comes back (another window's undo,
+ * a snapshot that catches up) is shown again. Deleting the viewed collection here moves the view to its parent
+ * (collectionActions), and its undo does not move it back.
  */
 export function resolveScope(model: OrganizeModel | undefined, scope: LibraryScope): LibraryScope {
   switch (scope.kind) {

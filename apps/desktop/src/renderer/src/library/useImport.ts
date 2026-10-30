@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { ImportOutcome, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { afterEditing } from '../inspector/editGuard';
+import { inChunks } from '../organize/membership';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import type { ImportTarget } from '../sidebar/importTarget';
@@ -32,7 +33,11 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
           {
             confirm,
             importAgain: (path, m, collectionId) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true, ...(collectionId ? { collectionId } : {}) })),
-            fileExisting: async (collectionId, itemIds) => (await unwrap(api().collections.addItems({ collectionId, itemIds: [...itemIds] }))).length,
+            fileExisting: async (collectionId, itemIds) => {
+              let filed = 0;
+              for (const chunk of inChunks([...itemIds])) filed += (await unwrap(api().collections.addItems({ collectionId, itemIds: chunk }))).length;
+              return filed;
+            },
           },
           into?.id ?? null,
         );

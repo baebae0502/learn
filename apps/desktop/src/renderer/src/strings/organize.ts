@@ -51,7 +51,6 @@ export const organize = {
     sort: '정렬',
     sortName: '이름순',
     sortCount: '많이 쓴 순',
-    clearFilter: '태그 선택 해제',
     filterLabel: '태그 필터',
     filterPlaceholder: '태그 필터',
     /** In the cloud: the filter field matches no tag / the view has no tagged item. */
@@ -83,8 +82,8 @@ export const organize = {
      * Under it: how many tags were chosen, and which when there are few ("태그 N개" never breaks across lines; the names are a
      * spaced list that can wrap, so U+00A0 before each "·" keeps any "·" from starting a line: design-spec 9).
      */
-    filterEmptySeparator: '\u00a0· ',
     filterEmptyBody: (count: number, names: string) => `고른 태그\u00a0${count}개${names === '' ? '' : `(${names})`}로 거른 결과입니다.`,
+    filterEmptySeparator: '\u00a0· ',
   },
   /** The item panel's 태그 and 컬렉션 sections, what several items have in common, and 컬렉션에 추가 ▾ (M5 spec 6.1, 6.2). */
   panel: {

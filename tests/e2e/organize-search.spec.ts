@@ -187,7 +187,7 @@ test('the search is limited to the view and the tag filter; its empty state name
     await chip(page, key).click(); // 핵심: FOLD alone
     await expect.poll(() => titles(page)).toEqual([FOLD]);
     await input(page).fill('광합성'); // PHOTO is in the library but has no 핵심
-    await expect(body).toHaveText(`${FIELDS} 고른 태그 1개로 거른 결과입니다.`);
+    await expect(body).toHaveText(`${FIELDS} 고른 태그\u00a01개로 거른 결과입니다.`);
     await expect(page.getByTestId('toolbar-count')).toHaveText('0개 / 4개');
     await page.getByTestId('search-empty-clear').click();
     await expect.poll(() => titles(page)).toEqual([FOLD]); // the filter stays when the query goes

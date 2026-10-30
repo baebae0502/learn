@@ -10,5 +10,5 @@ export function dotTags(tags: readonly OrganizeTag[]): readonly OrganizeTag[] {
 /** The row's accessible description (spec 5.1): the dots say it by colour, this says it by name. Null when there is no dot. */
 export function tagsDescription(tags: readonly OrganizeTag[]): string | null {
   const dots = dotTags(tags);
-  return dots.length === 0 ? null : t.organize.tags.description(dots.map((tag) => tag.name).join(', '));
+  return dots.length === 0 ? null : t.organize.tags.description(dots.map((tag) => tag.name).join(t.organize.tags.descriptionSeparator));
 }

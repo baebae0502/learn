@@ -26,7 +26,7 @@ export const organize = {
   empty: {
     collectionTitle: '이\u00a0컬렉션은 비어 있습니다',
     collectionBody: (name: string) => `다른\u00a0컬렉션의 자료를 사이드바의 ‘${name}’\u2060${euroRo(name)} 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.`,
-    collectionMeta: (made: string) => `자료 0개 · ${made} 만듦`,
+    collectionMeta: (made: string) => `자료 0개\u00a0· ${made} 만듦`, // drawn in the item panel: its stats line's U+00A0 (design-spec 9)
     recent: '최근 30일 안에 연 자료가 없습니다',
     unfiled: '모든\u00a0자료가 컬렉션에 들어 있습니다',
     duplicates: '중복된 자료가 없습니다',
@@ -63,7 +63,8 @@ export const organize = {
     nameTooLong: '태그 이름은 200자까지 쓸 수 있습니다.',
     removeLabel: (name: string) => `‘${name}’ 태그 떼기`,
     /** The table row's description (spec 5.1): the coloured tags, the way the dots show them. */
-    description: (names: string) => `태그: ${names}`, // the names, already joined by commas
+    description: (names: string) => `태그: ${names}`, // the names joined by descriptionSeparator
+    descriptionSeparator: ', ',
     /** The palette's row for a colour key: the slot and the tag that holds it. */
     paletteName: (slot: number, name: string) => `색 태그 ${slot} · ${name}`,
     /** A colour key pressed with no tag at its slot (spec 4.2). */
@@ -78,7 +79,11 @@ export const organize = {
     deleteConfirm: '삭제',
     /** The table body when the chosen tags leave no item and nothing is typed in the search (spec 3.6). */
     filterEmpty: '고른 태그를 모두 가진 자료가 없습니다',
-    /** Under it: how many tags were chosen, and which when there are few ("태그 N개" never breaks across lines). */
+    /**
+     * Under it: how many tags were chosen, and which when there are few ("태그 N개" never breaks across lines; the names are a
+     * spaced list that can wrap, so U+00A0 before each "·" keeps any "·" from starting a line: design-spec 9).
+     */
+    filterEmptySeparator: '\u00a0· ',
     filterEmptyBody: (count: number, names: string) => `고른 태그\u00a0${count}개${names === '' ? '' : `(${names})`}로 거른 결과입니다.`,
   },
   /** The item panel's 태그 and 컬렉션 sections, what several items have in common, and 컬렉션에 추가 ▾ (M5 spec 6.1, 6.2). */

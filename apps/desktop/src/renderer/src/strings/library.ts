@@ -39,6 +39,6 @@ export const library = {
    * With a tag filter on, how many tags narrowed the result (spec 3.6).
    */
   searchEmptyBody: (view: string | null, tagCount: number) =>
-    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그 ${tagCount}개로 거른 결과입니다.` : ''}`,
+    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그\u00a0${tagCount}개로 거른 결과입니다.` : ''}`,
   searchClear: '검색어 지우기',
 } as const;

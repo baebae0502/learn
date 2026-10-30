@@ -280,7 +280,7 @@ test('an empty collection says so in the table and the item panel, and its butto
     await expect(empty).toContainText('다른\u00a0컬렉션의 자료를 사이드바의 ‘학회 준비’\u2060로 끌어\u00a0놓거나, 파일을 바로 이\u00a0컬렉션으로 가져오세요.');
     await expect(page.getByTestId('collection-empty-import')).toHaveText('이\u00a0컬렉션으로 가져오기…');
     await expect(page.getByTestId('inspector-collection').locator('.pe-title')).toHaveText('학회 준비');
-    await expect(page.getByTestId('collection-empty-meta')).toHaveText(/^자료 0개 · 오늘\s(오전|오후)\s\d{1,2}:\d{2} 만듦$/);
+    await expect(page.getByTestId('collection-empty-meta')).toHaveText(/^자료 0개\u00a0· 오늘\s(오전|오후)\s\d{1,2}:\d{2} 만듦$/);
     await expect(page.getByTestId('toolbar-count')).toHaveText('0개');
     await expectNoSeriousA11y(page, 'an empty collection');
 

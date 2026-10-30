@@ -95,8 +95,8 @@ describe('palette 자료 results (spec §4.4)', () => {
     const fields = '제목\u2060·저자\u2060·태그\u2060·출판사\u2060·원래 이름\u2060·초록\u2060·메모에서 찾았습니다.';
     expect(t.library.searchEmptyBody(null, 0)).toBe(fields);
     expect(t.library.searchEmptyBody('분자생물학', 0)).toBe(`‘분자생물학’\u2060의 ${fields}`);
-    expect(t.library.searchEmptyBody('미분류', 2)).toBe(`‘미분류’\u2060의 ${fields} 고른 태그 2개로 거른 결과입니다.`);
-    expect(t.library.searchEmptyBody(null, 1)).toMatch(/ 고른 태그 1개로 거른 결과입니다\.$/);
+    expect(t.library.searchEmptyBody('미분류', 2)).toBe(`‘미분류’\u2060의 ${fields} 고른 태그\u00a02개로 거른 결과입니다.`);
+    expect(t.library.searchEmptyBody(null, 1)).toMatch(/ 고른 태그\u00a01개로 거른 결과입니다\.$/);
     // a line may end with a dot, never start with one
     for (const body of [t.library.searchEmptyBody('분자생물학', 0), t.library.searchEmptyBody(null, 2)]) expect(body).not.toMatch(/[^\u2060]·/);
     expect(t.library.searchPlaceholder).toBe('제목, 저자, 태그 검색');

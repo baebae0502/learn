@@ -521,12 +521,12 @@ run [40269632733](https://github.com/baebae0502/learn/actions/runs/40269632733)(
 | 70 | [40645177814](https://github.com/baebae0502/learn/actions/runs/40645177814) | 10-28 15:39 | perf / 아니오 / b7ae0d8 (Task 11 + 드롭 표시 정리) | 174초 → 3분(무료) | **실패**: 5 통과 · 1 실패. 정리 성능 시험(`organize-perf.evidence.ts`)이 컬렉션 행을 누르다 시간이 다 됐다 — 러너의 1024×768 화면에서는 사이드바가 짧아 `Virtualizer`가 그 행을 그리지 않았다. `library-perf`는 ok: 목록 IPC 중앙값 132ms(예산 150), 첫 그리기 153ms. 고침: d649d9e(시계를 켜기 전에 트리를 그 행까지 스크롤한다), Linux 1024×768에서 먼저 실패를 봤다 |
 | 71 | [40653779499](https://github.com/baebae0502/learn/actions/runs/40653779499) | 10-28 17:00 | perf / 아니오 / d649d9e | 172초 → 3분(무료) | **성공**: 6/6. 정리 성능 중앙값(darwin-arm64) 대 예산: `library:organize` 38.4/50, 보기 전환 45.5/100, 태그 필터 43.1/100, `1` 키 하나 69.3/100 · 10,001개 134.8/300, 100행 드롭 59/200, 1만 선택 컨텍스트 메뉴 97/150 — 모두 예산 안 |
 | 72 | [40656813184](https://github.com/baebae0502/learn/actions/runs/40656813184) | 10-28 17:26 | all / 예 / 15b69a3 (Task 12 시험 + Step 9 한도) | 2080초 → 35분(무료) | **실패**: 증거 60/60, 판정 m3-shell 69/69 · m4-library 39/39 · m5-organize 43/43, 데모 ok(196.6초, 장 17개). 기능 E2E 282 통과 · 3 실패 · 32 건너뜀. 원인(러너의 1024×684 창으로 Linux에서 재현): (1) dnd (e) — (d)의 트리 가장자리 드롭 뒤 Chromium의 끌기 자동 스크롤과 React Aria의 300ms 포인터 이벤트 멈춤 때문에 (e)의 클릭이 트리로 갔고, Playwright의 재시도가 `overflow:hidden`인 셸을 112px 스크롤했다. 앱 고침: `.window`를 `overflow: clip`으로(21c99a4). (2) 표 "first list read" — 300ms 간격을 MutationObserver 콜백에서 쟀다. 이제 삽입 안에서 기록한다(간격 310ms, 하한 290은 그대로). (3) 키보드 "axe at every M5 state" — 1024px에서는 항목 패널이 접혀 있어 시험이 먼저 연다(9872d2f). 첫 실행 전체 화면 시험은 설계상 `test.fail`이다(알려진 Electron/macOS 결함) |
-| 73 | [40708161452](https://github.com/baebae0502/learn/actions/runs/40708161452) | 10-28 23:39 | all / 예 / 9872d2f | 2385초 → 40분(무료) | **성공**: 증거 60/60, 기능 E2E 290 통과 · 0 예상 밖 · 27 건너뜀. 판정 69/69, 39/39, 43/43, PNG 321장. M5 데모 `m5-demo.final.mov` 200.7초, 장 17개, 첫 시도. Step 9 한도: `globalTimeout` 1620초, 증거 단계 28분, 기능 E2E 1406초 / 25분, 잡 63분. Mac 비평: (컨트롤러가 덧붙임) |
+| 73 | [40708161452](https://github.com/baebae0502/learn/actions/runs/40708161452) | 10-28 23:39 | all / 예 / 9872d2f | 2385초 → 40분(무료) | **성공**: 증거 60/60, 기능 E2E 290 통과 · 0 예상 밖 · 27 건너뜀. 판정 69/69, 39/39, 43/43, PNG 321장. M5 데모 `m5-demo.final.mov` 200.7초, 장 17개, 첫 시도. Step 9 한도: `globalTimeout` 1620초, 증거 단계 28분, 기능 E2E 1406초 / 25분, 잡 63분. 정리 판정 43은 40 ok와 null 셋(System Events가 팝업을 읽지 못해 PNG로 판정; 아래 "정리 판정 값"). Mac 비평(opus) 1회차: blocker 0, major 2, minor 7, nit 4 — 모두 고침(아래 "데모"의 비평 줄) |
 
 **합계: macOS 73회, 475분.** M5 14회 113분(Task 4 `evidence` 2회 12분, Task 5–10 `organize` 8회 20분, Task 11 `perf` 2회 6분, Task 12 `all` 2회 75분 — Task 1 스파이크 run 40269632733은 번호 밖). 저장소가 공개라 모두 무료다.
 
 ### 정리 판정 값 (`m5-organize.json`, run 40708161452)
-판정 43개가 모두 ok다. 판정별 값은 이 갱신의 입력에 없어 옮기지 않았다 — `evidence/m5b/40708161452/evidence/evidence-results/m5-organize.json`. 작업별 판정 값은 위 "M5 작업별 실행"의 61–69 줄에 있다.
+판정 43개 중 40개가 ok이고, 셋(태그 메뉴의 하위 메뉴 열림, 항목 메뉴의 ‘컬렉션에 추가 ▸’ 열림과 그 첫 줄)은 System Events가 팝업을 읽지 못해 값이 null이라 PNG로 판정했다(`opened: null`). 그때의 증거는 이런 판정을 통과로 셌다. 이 고침 묶음부터 `m5-organize.json`은 그런 판정을 `ok: null`로 남기고 `tally`(ok · 못 읽음 · 실패)로 따로 센다. 판정별 값은 이 갱신의 입력에 없어 옮기지 않았다 — `evidence/m5b/40708161452/evidence/evidence-results/m5-organize.json`. 작업별 판정 값은 위 "M5 작업별 실행"의 61–69 줄에 있다.
 
 ### 성능 (참고값, 판정은 기준 장비)
 | 측정(명세 12절) | 예산 | Linux 로컬(Task 11, 부하 9–11) | Mac `all` run 40708161452 | Mac `perf` run 40653779499 |
@@ -547,7 +547,13 @@ run [40269632733](https://github.com/baebae0502/learn/actions/runs/40269632733)(
 
 ### 데모 (run 40708161452)
 - artifact의 `m5-demo.final.mov`: 200.7초, 장 17개 내장, 첫 시도. 해상도·프레임률·`notes`·커서·네이티브 키 수와 장 시각표는 이 갱신의 입력에 없어 옮기지 않았다(`m5-demo.final.chapters.txt`). 앞선 `all` run 40656813184의 데모는 196.6초, 장 17개였다.
-- Mac 비평(opus) 판정: (컨트롤러가 덧붙임).
+- Mac 비평(opus) 판정:
+  - 1회차(run 40708161452의 PNG와 데모): blocker 0, major 2, minor 7, nit 4. 모두 고쳤다 — f34685c, fd13096, e7335d1, 25dd830, a575fe6, 06aee54. nit (c)(‘컬렉션에 추가’의 두 순서: 네이티브 하위 메뉴는 새 컬렉션이 처음, 웹 팝업은 끝)는 설계로 두고 명세 6.2에 적었다.
+  - 2회차 대상 실행:
+    run 40902667278
+  - 2회차 대상 head:
+    da4ca6a
+  - 2회차 판정: blocker·major 0, 데모 minor 4. 1회차 13건은 모두 FIXED(nit (c)는 설계로 유지). minor 넷은 이 고침 묶음에서 고쳤다: ch16 캡션이 ⌘/ 시트가 어둡게 한 창 아래에 남음(이제 시트가 뜨기 전에 다 읽히고 시트와 함께 사라진다), ch11·ch12 캡션이 두 줄로 늘어난 태그 선택기의 머리를 가림(캡션이 선택기 위 16px로 올라간다), 쉬는 화살표가 태그 칩 위(트리의 빈 곳, 캡션 위로 옮김), ch2 "스크립트로 재현" 꼬리표가 실행기와 ‘라이브러리’ 이름을 가림(내용 영역 왼쪽 위, 표 머리 아래로 옮김). 데모 스크립트가 이제 캡션·꼬리표·쉬는 화살표가 사이드바의 이름·실행기·태그 칩과 겹치는지 재서 `m5-demo.chapters.json`의 `overlayClashes`에 남긴다.
 
 ## 알려진 한계
 

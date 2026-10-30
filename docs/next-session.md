@@ -206,7 +206,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **검색·팔레트**: 태그 필드, 범위의 결과 없음과 "내 라이브러리 전체에서 찾기", 컬렉션 묶음·순위, IME 검사 하나.
 - **표**: 열 머리 끌어 순서 바꾸기, 머리 띠 분리(레거시 스크롤 막대), 열 폭 기록 상한.
 - **성능**: 정리 픽스처 `seedOrganize`와 `organize-perf.json`(ADR-0004 "결과와 위험"). 조용한 Mac `perf` 실행(run 40653779499)에서는 일곱 줄 모두 예산 안이다. **넘은 줄**: Linux 로컬(Task 11, 부하 9–11)에서 `library:organize` 88ms(50), 보기 전환 115ms(100), `1` 키 하나 109ms(100)·1만 개 349ms(300), 컨텍스트 메뉴 192ms(150), 검색 입력 p95 77–96ms(50) — 모두 2배 선 아래. Mac `all`(run 40708161452)에서 컨텍스트 메뉴 190ms(150)와 검색 입력 p95 55ms(50).
-- **검증**: M5 키보드 전용 여정(명세 1절 조건 5), M5 상태마다 axe(21곳), 명령 전수 실행에 M5 명령 22개, 시각 투어의 M5 상태(라이트·다크, 기준 PNG 127장), Mac `all` + 데모(M5 장 17개, run 40708161452).
+- **검증**: M5 키보드 전용 여정(명세 1절 조건 5), M5 상태마다 axe(21곳), 명령 전수 실행에 M5 명령 22개, 시각 투어의 M5 상태(라이트·다크, 기준 PNG 128장), Mac `all` + 데모(M5 장 17개, run 40708161452).
 - **코드 규칙**: 주석에는 이유를 말로 쓰고 판정 번호는 커밋 메시지에 둔다. 테스트 훅(`__learnTest`, `__learnIpcCalls`, `__learnRenders`, `__learnProbes`)은 시험이 만들 때만 돈다.
 
 ### M5에서 나온 M6 입력
@@ -220,16 +220,33 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 ### 소유자 결정 대기 (M5)
 - **열 머리 끌기의 유령 칸**(Task 9 디자인 minor 2): 끄는 동안 포인터를 따라가는 칸이 없다. 비평은 탭 끌기 문법(`--bg-raised` + e1, 1px 들림, 가로로만)을 제안했다. 이대로 내보낼지, 더할지 소유자가 정한다(PR 설명에 같은 질문).
 
-### 남은 것 (M5 브랜치 전체 검토에 넘김)
-- `commands.ts`의 크기: 하위 메뉴 정의를 `D/submenus.ts`로 옮긴다(Task 4 minor #10).
-- 좁은 창에서 검색 결과가 비면 보이는 폭 밖의 열에 가로로 닿을 수 없다(빈 상태에 최소 폭이 없다).
-- 상태 보드의 `.window` 캡처가 macOS에서 빈 미디어 소스 id로 실패한다. `cgWindowId`가 메인 종류와 맞고, 보드 창은 `goto` 뒤 맞지 않게 된다. `shotFailures`에 기록된다.
-- `within()` 타이머가 빠른 결과 뒤에도 남아 있고, `captureOpenPopupSubmenu`의 문서 주석에 `opened:false` 줄 둘이 겹친다.
-- 유휴 검색 색인 미리 만들기가 더는 `MainWindow`에서 돌지 않고, `tagField.ts`가 모듈 수준의 `last` 맵을 가진다.
-- `1`을 누르면 정리 모델을 다시 만들고, 태그가 바뀌면 1만 항목 검색 색인을 다시 만든다(61ms, 유휴 콜백). `library:organize` IPC와 검색 입력 p95가 Linux CI 선에 가깝다.
+### PR 남은 것 (M5 브랜치 전체 검토, 고치지 않고 넘김)
+검토 E절의 판정과 minor 가운데 이 브랜치에서 고치지 않은 것. 줄마다 파일과 기다리는 이유. (`within()` 타이머와 `captureOpenPopupSubmenu` 문서 주석은 m-20·m-21로 증거 파일을 고치면서 함께 고쳤다.)
+- E1 · `packages/domain/src/commands.ts`(650줄, 하위 메뉴 정의 :372–400): `D/submenus.ts`로 옮긴다. 동작이 그대로인 이동이라 지금 하면 허브 파일만 흔들고 CI를 다시 돌린다 → M6 첫 작업.
+- E2 · `.table-scroller[data-empty]`: 좁은 창에서 검색 결과가 비면 보이는 폭 밖의 열 머리에 가로로 닿을 수 없다. 빈 스크롤러의 `overflow: hidden`은 axe 때문에 일부러 둔 것이고 닿을 데이터가 없다 → M6 표 작업과 함께.
+- E3 · `tests/evidence/capture.ts`: 상태 보드의 `.window` 캡처가 macOS에서 빈 미디어 소스 id로 실패한다(`cgWindowId`는 메인 창 종류와 맞고 보드 창은 `goto` 뒤 맞지 않게 된다). 증거 하네스만의 일이고 `shotFailures`에 기록되며 판정이 그 PNG에 기대지 않는다 → 다음 증거 작업.
+- E5·m-26 · `docs/next-session.md`: 유휴 검색 색인 미리 만들기는 `MainWindow`에서 `library/useSearch.ts`로 옮겨 갔다(퇴보가 아니다). `tagField.ts`의 모듈 수준 `last` 맵은 렌더러 하나에 창 하나라 맞다. 명세 2절의 "웹 스냅샷·커넥터의 컬렉션·태그 고르기 → M12·M13" 입력 줄은 아직 이 문서에 없다 → 다음 문서 갱신.
+- E6 · `1`을 누르면 정리 모델을 다시 만들고, 태그가 바뀌면 1만 항목 검색 색인을 다시 만든다(61ms, 유휴 콜백). `library:organize` IPC와 검색 입력 p95가 Linux CI 선에 가깝다. Mac `perf` 실행은 일곱 줄 모두 예산 안이다 → M6 측정 입력(위 "M5에서 나온 M6 입력").
+- m-1 · `apps/desktop/src/main/index.ts:209-211`: 소속만 바뀐 알림(`itemIds` 있음)에도 메뉴 막대를 다시 만들고 그때마다 정리 스냅샷 전체를 main에서 읽는다. 결과는 맞고 비용만 든다 → 메뉴 막대 전용 읽기를 M6 성능 작업에서(메뉴 막대 E2E를 다시 돌려야 한다).
+- m-2 · `apps/desktop/src/main/test-hooks.ts:203`: `seedOrganize`가 `{reason:'import'}`만 알려 메뉴 막대 관찰자는 무시한다. 시험 전용 훅이고 지금의 메뉴 막대 E2E는 뒤따르는 알림 순서로 통과한다 → 다음에 시드 훅을 고칠 때 `collections`·`tags`도 알린다.
+- m-4 · `packages/db/src/collections-repository.ts:119`: 같은 밀리초에 따로 지운 하위 컬렉션도 함께 되살아난다. 이론상의 경우다 → M6 휴지통/복원 정책.
+- m-6 · `apps/desktop/src/renderer/src/organize/membershipCommands.ts:44-46`: `removeFromScope`가 중간에 실패하면 이미 뺀 것이 오류 토스트만 남기고 실행 취소가 없다. 부분 실패의 실행 취소를 어떻게 보일지 정해야 한다 → M6 휴지통·되돌리기 흐름과 함께.
+- m-7 · `apps/desktop/src/renderer/src/tags/TagAddField.tsx:26,44`: "아는 이름"을 `toLocaleLowerCase('ko-KR')`로 정하지만 DB는 ASCII만 접는다(É/é에서 "새 태그 만들기" 안내가 숨는데 태그는 만들어진다). ASCII 밖 태그 이름의 E2E가 함께 와야 한다 → 다음 태그 작업.
+- m-8 · `apps/desktop/src/renderer/src/library/tagField.ts:31-37`: 색이 바뀌면 이름 순서가 바뀌어 검색 색인(약 61ms)을 괜히 다시 만든다 → E6과 함께 M6 측정에서.
+- m-9 · `useScopeView`가 바뀔 때마다 다섯 곳(`MainWindow.tsx:260`, `useLibraryRows.ts:23`, `InfoPane.tsx:35`, `TagSelector.tsx:40`, `TagFilterEmpty.tsx:28`)에서 돈다. 한 번 계산해 내려 주는 구조 변경이다 → M6 표·성능 작업.
+- m-15 · `apps/desktop/src/renderer/src/dnd/treeDnd.ts`: 이름을 고치는 행의 거절이 적용되는 곳(`treeDropOperation`)에서 시험되지 않는다(`rules.test.ts`는 `'draft:new'`만). 동작은 E2E "the row being named takes no part in drag and drop…"가 지킨다 → 다음 끌어 놓기 작업에서 단위 시험.
+- m-16 · `tests/e2e/dnd.spec.ts:702-723`: 구역 마지막 행의 아래 절반은 스텁 단위 시험(`treeDnd.test.ts`)으로만 고정된다. E2E는 가운데 행을 잰다 → 다음 끌어 놓기 작업.
+- m-17 · `apps/desktop/src/renderer/src/dnd/treeDnd.ts:62`: 우리 MIME을 단 외부 끌기는 `dragState`가 쉬고 있어도 복사로 답한다. main이 id를 검사하므로 굳히기일 뿐이다 → 다음 끌어 놓기 작업.
+- m-18 · `apps/desktop/src/renderer/src/dnd/events.ts:57`: 창을 떠나는 판단이 `dragleave`의 `relatedTarget !== null`에 기댄다. Chromium에서 확실하지 않다 → 실기 목록(아래 "실기에서만 확인할 것 (M5)").
+- m-19 · 취소한 Finder 끌기: 다음 포인터 이동에서 지우는 것만 E2E가 있고(`dnd.spec.ts:351-354`), 누름·키에서 지우는 것은 없다. 취소는 페이지에 이벤트를 주지 않아 합성으로 만들기 어렵다 → 실기 목록.
+- m-23 · `tests/e2e/tags.spec.ts`(빈 라이브러리 선택기), `tests/e2e/organize-inspector.spec.ts`(새 이름에서 esc): 없음 확인이 `waitForTimeout(400)`에만 기대고 양성 대조가 없다 → 정리 호출 수가 느는 것을 먼저 기다리게 다음 시험 작업에서.
+- m-27 · `docs/spec-amendments.md` §9: A6(`openedAt` 열의 M5 이동)과 A8(조건부 "옮기기 ▸")은 `design-spec.md` 글을 바꾸지 않았으니 §9 자신의 정의(:97)로는 B층이다 → 다음 명세 개정 정리.
+- m-29 · 검토 체크리스트 4의 전제("렌더러는 놓인 경로를 보지 않는다")는 M3부터 틀렸다: 렌더러가 `pathForFile`로 경로를 얻어 `library:import`에 보낸다(`dnd/fileDrop.ts:7-11`, `treeDnd.ts:84`). 퇴보가 아니며 경계는 그대로다 → M5 명세 8.4에 바르게 적었다. 체크리스트 자체는 컨트롤러의 것이다.
 
 ### 실기에서만 확인할 것 (M5)
 - 끌기(Task 8 ①–⑧): ① 실제 손으로 끄는 중 esc → 행·컬렉션 끌기 모두 표시가 남지 않는다 ② 실제 ⌘를 누르면 커서 배지가 이동으로 바뀌고 컬렉션 보기에서 ⌘로 놓으면 토스트 + 실행 취소, 다른 범위에서는 넣기만(그 범위의 "이동" 배지도 — Q-82) ③ 끌기 이미지(Retina 라이트·다크): 선명도, 배지 위치, 긴 제목 말줄임 ④ Finder 파일: 사이드바 행 위에서 오버레이가 사라지고 행 표시가 뜬다. ⌥ 커서 배지는 행 위에서 "복사"로 보여도 놓으면 "연결했습니다"(RAC 매핑, Q-83) ⑤ 끄는 동안 키(⌘K·F6)가 앱에 가지 않는다 ⑥ VoiceOver로 컬렉션 키보드 끌기(끌기 단추 이름, 대상 안내, 놓은 뒤 안내, ⌥→) ⑦ 실제 손으로 태그 칩을 선택 안/밖 행에 끌기 ⑧ 스프링 로딩(약 0.8초)과 트리 가장자리 자동 스크롤의 느낌. 그 밖: 실제 손 끌기(트랙패드, 스프링 로딩 800ms가 손에 맞는지, 가장자리 자동 스크롤), 실제 ⌘ = 이동(커서 배지가 이동으로 바뀜), 실제 esc가 드롭 표시를 지우는지, 끌기 미리보기의 Retina 모양(OS의 끌기 그림은 합성 끌기에 찍히지 않는다), Finder 파일 끌기 중 오버레이가 사이드바 안에서 사라지는지, 끄는 중 키 입력이 앱에 가지 않는지, 트랙패드로 열 머리 끌기(문턱 4px이 손에 맞는지, 열 경계를 지날 때 커서가 화살표로 남는지), 빠른 가로 스크롤에서 머리가 본문보다 늦지 않은지. Finder 끌기를 컬렉션 행 위에 두고 esc → 창 밖으로 끌기 → ⌘-Tab 뒤 고리가 남지 않는지(창을 떠나는 정리는 CDP가 신뢰된 `dragleave`를 보낼 수 없어 단위 테스트만 있다).
+- 끌기가 창을 떠날 때(검토 m-18, `dnd/events.ts:57`): Finder 파일이나 행을 끌고 있다가 창 밖에 내려 두고 가만히 있을 때 — 창 안의 드롭 고리가 사라지는지(창을 떠나는 판단이 `dragleave`의 `relatedTarget`에 기댄다). 창 안에서 행 사이를 지날 때는 고리가 깜박이지 않는지.
+- 취소한 Finder 끌기(검토 m-19): esc로 취소한 뒤 포인터를 움직이지 않고 마우스를 누르거나 키를 누를 때도 드롭 표시가 지워지는지(포인터 이동은 E2E가 있다).
 - IME: 실제 한글 IME로 새 컬렉션 이름 쓰기·칩 이름 바꾸기·태그 필터 칸·태그 추가 칸·팔레트에서 컬렉션 행 고르기(조합 중 ↩가 조합만 끝내는지).
 - VoiceOver: 트리(구역·수준·펼침·개수), 태그 칩 묶음(도구 모음, "눌림", 흐린 칩의 "이 보기에 없음"), 항목 패널의 태그 칩과 경로 줄, 네이티브 메뉴 하위 메뉴의 체크, ⇧F10과 VO-⇧-M으로 컬렉션·칩 메뉴. 트리에 포커스가 있을 때 Finder 파일을 트리 행에 놓으면 "선택 안 됨"/"선택됨"을 한 번 읽는다(미분류가 보기를 가져가지 않게 선택을 잠시 비우는 값이다. 앱 안의 끌기는 이 안내를 내지 않는다).
 - 키보드·화면: 실제 키보드의 숫자 1–8(한국어 입력 소스에서도), 컬렉션 범위에서의 실제 ⌘O 패널(컬렉션에 들어가는지 — 같은 패널이 컬렉션 id를 들고 돈다), Retina에서 12px 펼침 화살표의 대비.

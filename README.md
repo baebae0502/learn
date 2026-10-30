@@ -30,7 +30,7 @@
 E2E 스크립트는 빌드 후 `pnpm fixtures`를 자동으로 실행한다. fixture를 다시 만들려면 `node fixtures/generate.mjs --force`. E2E 스크린샷과 trace는 `test-results/`에 남는다.
 
 ### 시각 투어 기준 PNG
-`tests/e2e/visual/tour.spec.ts`는 셸의 모든 상태를 라이트·다크로 찍어 Linux 기준 PNG(`tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png`)와 비교한다. 화면이 바뀌는 수정 뒤에는 1x 기준을 다시 찍고, 바뀐 PNG를 하나씩 눈으로 확인한 뒤, 갱신 없이 한 번 더 돌려 결정적인지 확인한다. 기준 PNG는 127장이다(M4: 라이브러리 기본·선택 없음·다중 선택·검색 결과 없음·불러오는 중·편집 중·팔레트 자료 결과, M5: 사이드바 트리·특수 보기·빈 컬렉션·태그 선택기·항목 패널의 태그와 컬렉션·다중 선택의 공통 절·표의 스크롤 막대와 머리 끌기·컬렉션 안의 검색 결과 없음·팔레트 컬렉션·끌기 상태, 라이트·다크).
+`tests/e2e/visual/tour.spec.ts`는 셸의 모든 상태를 라이트·다크로 찍어 Linux 기준 PNG(`tests/e2e/visual/tour.spec.ts-snapshots/*-linux.png`)와 비교한다. 화면이 바뀌는 수정 뒤에는 1x 기준을 다시 찍고, 바뀐 PNG를 하나씩 눈으로 확인한 뒤, 갱신 없이 한 번 더 돌려 결정적인지 확인한다. 기준 PNG는 128장이다(M4: 라이브러리 기본·선택 없음·다중 선택·검색 결과 없음·불러오는 중·편집 중·팔레트 자료 결과, M5: 사이드바 트리·특수 보기·빈 컬렉션(이름이 긴 컬렉션 포함)·태그 선택기·항목 패널의 태그와 컬렉션·다중 선택의 공통 절·표의 스크롤 막대와 머리 끌기·컬렉션 안의 검색 결과 없음·팔레트 컬렉션·끌기 상태, 라이트·다크).
 
     pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all   # 1x 기준 PNG를 모두 다시 찍는다
     git status --short tests/e2e/visual/tour.spec.ts-snapshots           # 바뀐 파일을 하나씩 확인한다

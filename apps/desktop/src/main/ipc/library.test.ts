@@ -124,9 +124,9 @@ describe('library.getItems', () => {
     expect(getItems).toHaveBeenCalledWith([A, B]);
   });
 
-  it('refuses no ids, more than 5,000, and anything that is not a uuid, without asking the repository', async () => {
+  it('refuses no ids, more than 5,000, anything that is not a uuid, and an unknown key, without asking the repository', async () => {
     getItems.mockClear();
-    for (const raw of [{ ids: [] }, { ids: ['nope'] }, { ids: Array.from({ length: 5001 }, () => A) }, {}, undefined]) {
+    for (const raw of [{ ids: [] }, { ids: ['nope'] }, { ids: Array.from({ length: 5001 }, () => A) }, {}, undefined, { ids: [A], extra: 1 }]) {
       expect(await invoke('library:getItems', raw), JSON.stringify(raw)?.slice(0, 40)).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     }
     expect(getItems).not.toHaveBeenCalled();
@@ -151,6 +151,13 @@ describe('importing into a collection', () => {
     expect(await invoke('library:import', { paths: ['/a.pdf'], mode: 'managed', collectionId: 'nope' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(await invoke('library:pickAndImport', { mode: 'managed', collectionId: 'nope' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(await invoke('library:pickAndImport', { mode: 'managed', collectionId: COLL })).toMatchObject({ ok: true, data: [] }); // the panel is cancelled in this file's mock
+    expect(importMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown key on both import channels', async () => {
+    importMany.mockClear();
+    expect(await invoke('library:import', { paths: ['/a.pdf'], mode: 'managed', collectionId: COLL, extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(await invoke('library:pickAndImport', { mode: 'managed', extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     expect(importMany).not.toHaveBeenCalled();
   });
 });

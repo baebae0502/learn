@@ -191,6 +191,31 @@ describe('collection and tag mutations broadcast reason collections / tags, only
       [CHANGED, { reason: 'tags', itemIds: [OTHER] }],
     ]);
   });
+
+  it('every collection and tag input refuses an unknown key, and nothing is changed or announced', async () => {
+    const valid: Record<string, object> = {
+      'collections:create': { name: '세포 신호', parentId: null },
+      'collections:rename': { collectionId: COLL, name: '세포 신호' },
+      'collections:move': { collectionId: COLL, parentId: null },
+      'collections:remove': { collectionId: COLL },
+      'collections:restore': { collectionId: COLL },
+      'collections:addItems': { collectionId: COLL, itemIds: [ITEM] },
+      'collections:removeItems': { collectionId: COLL, itemIds: [ITEM] },
+      'tags:create': { name: '시험' },
+      'tags:rename': { tagId: TAG, name: '시험' },
+      'tags:setColor': { tagId: TAG, color: null, position: null },
+      'tags:remove': { tagId: TAG },
+      'tags:assign': { tagId: TAG, itemIds: [ITEM] },
+      'tags:unassign': { tagId: TAG, itemIds: [ITEM] },
+      'tags:togglePosition': { position: 1, itemIds: [ITEM] },
+    };
+    for (const mock of [...Object.values(collections), ...Object.values(tags)]) mock.mockClear();
+    for (const [channel, input] of Object.entries(valid)) {
+      expect(await call(channel, { ...input, extra: 1 }), channel).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    }
+    for (const mock of [...Object.values(collections), ...Object.values(tags)]) expect(mock).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
+  });
 });
 
 describe('the item context menu reads the selection once and its input is checked (spec 9.1)', () => {

@@ -19,20 +19,20 @@ export const pickAndImportInput = z.object({
   mode: storageModeSchema,
   allowDuplicate: z.boolean().default(false),
   collectionId: importCollectionSchema,
-});
+}).strict();
 export const importPathsInput = z.object({
   paths: z.array(z.string().min(1).max(4096)).min(1).max(500),
   mode: storageModeSchema,
   allowDuplicate: z.boolean().default(false),
   collectionId: importCollectionSchema,
-});
+}).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
 export const assetIdInput = z.object({ assetId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
 /** library.getItems: items by id. 5,000 like the other id lists; main asks the database 500 at a time. */
-export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) });
+export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) }).strict();
 /** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
 export const nameSchema = z.string().normalize('NFC').trim().min(1).max(200);
 /** Item titles allow more than collection/tag names. */
@@ -45,17 +45,19 @@ export const updateMetadataInput = z.object({
   title: titleSchema.optional(),
   metadata: itemMetadataSchema.optional(),
 });
-export const collectionIdInput = z.object({ collectionId: z.uuid() });
-export const createCollectionInput = z.object({ name: nameSchema, parentId: z.uuid().nullable().optional() });
-export const renameCollectionInput = z.object({ collectionId: z.uuid(), name: nameSchema });
-export const moveCollectionInput = z.object({ collectionId: z.uuid(), parentId: z.uuid().nullable() });
-export const collectionItemsInput = z.object({ collectionId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) });
-export const createTagInput = z.object({ name: nameSchema });
-export const tagIdInput = z.object({ tagId: z.uuid() });
-export const renameTagInput = z.object({ tagId: z.uuid(), name: nameSchema });
-export const setTagColorInput = z.object({ tagId: z.uuid(), color: tagColorSchema.nullable(), position: positionSchema.nullable() });
-export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) });
-export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) });
+/** The organize inputs (collections, tags) and the imports that file into a collection are strict like every M5 input: an
+ * unknown key is refused, not dropped. */
+export const collectionIdInput = z.object({ collectionId: z.uuid() }).strict();
+export const createCollectionInput = z.object({ name: nameSchema, parentId: z.uuid().nullable().optional() }).strict();
+export const renameCollectionInput = z.object({ collectionId: z.uuid(), name: nameSchema }).strict();
+export const moveCollectionInput = z.object({ collectionId: z.uuid(), parentId: z.uuid().nullable() }).strict();
+export const collectionItemsInput = z.object({ collectionId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
+export const createTagInput = z.object({ name: nameSchema }).strict();
+export const tagIdInput = z.object({ tagId: z.uuid() }).strict();
+export const renameTagInput = z.object({ tagId: z.uuid(), name: nameSchema }).strict();
+export const setTagColorInput = z.object({ tagId: z.uuid(), color: tagColorSchema.nullable(), position: positionSchema.nullable() }).strict();
+export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
+export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
 export const settingGetInput = z.object({ key: z.string().min(1).max(100) });
 export const settingSetInput = z.object({ key: z.string().min(1).max(100), value: z.unknown() });
 /** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */

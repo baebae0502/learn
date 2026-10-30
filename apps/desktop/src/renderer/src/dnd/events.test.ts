@@ -73,7 +73,19 @@ describe('installDndEvents: the user\'s next input ends a drop\'s guard', () => 
       dragState.end();
       expect(dragState.dropGuarded(), type).toBe(true);
       handlers[type]!({});
-      expect(dragState.dropGuarded(), type).toBe(false);
+      expect(dragState.takeDropFocus('stat'), type).toBeNull();
     }
+  });
+
+  it('a drag whose end never comes (its kind stays) does not hold a drop\'s guard: the drop ended it, so the next input is the user\'s', () => {
+    dragState.beginCollection('bio');
+    dragState.setNative(true); // wrongly: React Aria's end of the drag is taken for a native drag's early one
+    dragState.armDropFocus('stat');
+    dragState.endUnlessNative();
+    expect(dragState.get().kind).toBe('collection');
+    handlers['keydown']!({});
+    expect(dragState.takeDropFocus('stat')).toBeNull();
+    dragState.setNative(false);
+    dragState.end();
   });
 });

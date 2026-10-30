@@ -416,13 +416,22 @@ export function SidebarTree(props: SidebarTreeProps) {
   };
 
   const onSelectionChange = (selection: Selection) => {
-    // After a drop, before the user's next input, a selection is React Aria's own (dragState.takeDropFocus): the view stays.
+    // Right after a drop, before React Aria's late moves have come, a selection is its own (dragState.takeDropFocus): the view stays.
     if (reader || selection === 'all' || chevronDown.current || dragState.dropGuarded()) return;
     const key = [...selection][0];
     if (key !== undefined && String(key) !== DRAFT_KEY) selectScope(String(key));
   };
 
   // ---- effects --------------------------------------------------------------------------------------------------------
+  // React Aria's last focus moves after a drop are asked for by its rows' effects, in the render its wait ends with: a render of the
+  // sidebar asked for then is the same one or a later one, and its effects run after its rows' (dragState's awaitLateMoves).
+  const [rendered, setRendered] = useState<{ then: () => void } | null>(null);
+  useEffect(() => {
+    dragState.setAfterRender((then) => setRendered({ then }));
+    return () => dragState.setAfterRender(null);
+  }, []);
+  useEffect(() => rendered?.then(), [rendered]);
+
   // The keyboard cursor follows the view when something else moved it (an item panel path, the palette): tabbing into the
   // tree then lands on the view's row and does not move the view to where the cursor was.
   useEffect(() => {

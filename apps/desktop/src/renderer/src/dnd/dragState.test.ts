@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { runAfterTransition } from 'react-aria/private/utils/runAfterTransition';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dragState, setDndGate } from './dragState';
 
 afterEach(() => {
@@ -66,7 +67,7 @@ describe('dragState', () => {
     }
   });
 
-  it('a drop guards the focus on every row — React Aria moves it more than once, and late onto another row — until the user\'s next input', () => {
+  it('a drop guards the focus on every row — React Aria moves it more than once, and late onto another row — in the drop\'s own task, and until the user\'s next input', () => {
     dragState.armDropFocus('stat');
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
@@ -178,6 +179,75 @@ describe('dragState', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe('a drop\'s guard of every row lasts until React Aria\'s own late focus moves have had their turn, then guards the dropped-on row only', () => {
+    // The page's frames, run by hand: React Aria's runAfterTransition and the guard's release ask for them through `window`.
+    let frames: Array<() => void> = [];
+    const frame = () => {
+      const now = frames;
+      frames = [];
+      for (const fn of now) fn();
+    };
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      const raf = (fn: () => void) => frames.push(fn);
+      vi.stubGlobal('window', { requestAnimationFrame: raf, cancelAnimationFrame: () => {} });
+    });
+    afterEach(() => {
+      dragState.setAfterRender(null);
+      frames = [];
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    });
+
+    it('React Aria\'s moves — the drop\'s render and its 50 ms wait, each a frame and any transition later (focusSafely) — are guarded; the user\'s next focus (VoiceOver\'s, no input) is not', async () => {
+      const moves: Array<{ pointer: boolean } | null> = [];
+      const reactAriaMove = () => runAfterTransition(() => moves.push(dragState.takeDropFocus('bio')));
+      // The render React Aria's timer asks for, and the sidebar's (SidebarTree) in it: the rows' effects run before the sidebar's.
+      let rowsMove = false;
+      let sidebar: (() => void) | null = null;
+      dragState.setAfterRender((then) => void (sidebar = then));
+      const render = () => {
+        if (rowsMove) reactAriaMove();
+        sidebar?.();
+      };
+      dragState.armDropFocus('stat'); // onItemDrop, in the drop's event
+      setTimeout(() => void (rowsMove = true), 50); // React Aria's wait ends (useDroppableCollection's updateFocusAfterDrop)
+      await Promise.resolve(); // the drop's own render (a microtask), and its effects' move
+      reactAriaMove();
+      frame();
+      frame();
+      expect(moves, 'the move the drop\'s render asked for').toEqual([{ pointer: false }]);
+      await vi.advanceTimersByTimeAsync(50);
+      expect(sidebar, 'the release asks for the sidebar\'s render after React Aria\'s wait').not.toBeNull();
+      frame();
+      frame();
+      expect(dragState.dropGuarded(), 'and waits for it').toBe(true);
+      render();
+      frame();
+      frame();
+      frame();
+      expect(moves, 'the move React Aria\'s wait asked for').toEqual([{ pointer: false }, { pointer: false }]);
+      expect(dragState.takeDropFocus('bio'), 'then a focus on another row is the user\'s').toBeNull();
+      expect(dragState.dropGuarded()).toBe(false);
+      expect(dragState.takeDropFocus('stat'), 'the dropped-on row stays guarded until the next input').toEqual({ pointer: false });
+    });
+
+    it('a release from an earlier drop does not end a later drop\'s guard', async () => {
+      dragState.armDropFocus('stat');
+      await vi.advanceTimersByTimeAsync(25);
+      dragState.clearDropFocus(); // the next input
+      dragState.armDropFocus('bio'); // a second drop
+      await vi.advanceTimersByTimeAsync(25); // the first drop's wait ends
+      frame();
+      frame();
+      expect(dragState.takeDropFocus('chem')).not.toBeNull();
+      await vi.advanceTimersByTimeAsync(25);
+      frame();
+      frame();
+      expect(dragState.takeDropFocus('chem')).toBeNull();
+    });
   });
 
   it('the gate starts open, and closing and opening it is heard once each', () => {

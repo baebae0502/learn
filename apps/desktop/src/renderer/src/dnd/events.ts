@@ -36,7 +36,7 @@ export function installDndEvents(win: Window = window): () => void {
     if (dragState.get().kind === null) {
       dragState.clearDropFocus(); // a key of a keyboard drag is the drag's
       gone();
-    }
+    } else if (dragState.dropHeld()) dragState.clearDropFocus(); // but a drop ended the drag, even when its end never came
     dragState.setPointerDrop(false);
   };
   // A native drag gives the page no pointer events, so a pointer that moves while Finder's files are still "over" means the drag

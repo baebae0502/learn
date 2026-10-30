@@ -186,6 +186,9 @@ test('chips: coloured slots first by slot, then by name; × and ⌫ take a tag o
     await expect.poll(focusedChip).toBe(`tag-chip-${red}`); // nothing after: the one before
     await page.keyboard.press('Backspace');
     await expect.poll(() => chipIds(page)).toEqual([yellow]);
+    // The chip goes when main has taken the tag off; the focus comes to its neighbour on the next frame. A key pressed before that
+    // lands on the page, not on a chip.
+    await expect.poll(focusedChip).toBe(`tag-chip-${yellow}`); // nothing after: the one before
     await page.keyboard.press('Backspace');
     await expect.poll(() => chipIds(page)).toEqual([]);
     await expect(page.getByTestId('tag-add-chip')).toBeFocused();

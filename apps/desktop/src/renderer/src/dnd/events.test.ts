@@ -49,3 +49,31 @@ describe('installDndEvents: the drag leaving the window', () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 });
+
+describe('installDndEvents: the user\'s next input ends a drop\'s guard', () => {
+  let handlers: Record<string, Handler>;
+  let remove: () => void;
+  beforeEach(() => {
+    handlers = {};
+    const win = { addEventListener: (type: string, fn: Handler) => void (handlers[type] = fn), removeEventListener: () => {} };
+    vi.stubGlobal('document', { querySelectorAll: () => [] });
+    remove = installDndEvents(win as unknown as Window);
+  });
+  afterEach(() => {
+    remove();
+    dragState.clearDropFocus();
+    vi.unstubAllGlobals();
+  });
+
+  it('a pointer, a key, or a screen reader\'s click (no pointer, no key) — but not the click that drops in a keyboard drag', () => {
+    for (const type of ['pointerdown', 'keydown', 'click']) {
+      dragState.beginCollection('bio');
+      handlers[type]!({}); // in the drag: the drag's own input (a keyboard drag drops on ↩ or on a screen reader's click)
+      dragState.armDropFocus('stat');
+      dragState.end();
+      expect(dragState.dropGuarded(), type).toBe(true);
+      handlers[type]!({});
+      expect(dragState.dropGuarded(), type).toBe(false);
+    }
+  });
+});

@@ -94,7 +94,7 @@ export const dragState = {
    * The drop on the tree row `key` is handed over (onItemDrop, which React Aria calls in the drop's own event, right after it has
    * recorded the drop). React Aria then moves the tree's cursor to that row with the keyboard modality — on each render once the
    * rows have changed, and again on its own 50 ms timer — and the sidebar takes the focus for the view (selection follows the
-   * cursor): those moves are not the user's choice. The guard stays until the user's next pointer or key outside a drag
+   * cursor): those moves are not the user's choice. The guard stays until the user's next pointer, key or click outside a drag
    * (`clearDropFocus`): no timer, and no input of the user's is ever taken for the drop's. A cursor parked for the drop goes back.
    */
   armDropFocus: (key: string) => {
@@ -138,8 +138,15 @@ export const dragState = {
     keyboardPark = null;
     park?.();
   },
-  /** The guard if `key` is the row dropped on; `pointer`: the drop was by mouse, so no keyboard ring and no scroll. */
-  takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key ? { pointer: pointerDrop } : null),
+  /**
+   * The guard if a focus on the row `key` is React Aria's, not the user's: the row a drag is over, or after a drop any row. React
+   * Aria moves the focus to the dropped-on row, and after a screen reader's click (the virtual modality) its focus moves wait for
+   * the next frame and for any running transition, then go to the element they found when they were asked — by then a row the
+   * user never chose (focusSafely). `pointer`: the drop was by mouse, so no keyboard ring and no scroll.
+   */
+  takeDropFocus: (key: string): { pointer: boolean } | null => (dropFocus === key || (dropped && dropFocus !== null) ? { pointer: pointerDrop } : null),
+  /** A drop's guard holds: no input of the user's since, so a change of the tree's selection now is React Aria's. */
+  dropGuarded: (): boolean => dropped && dropFocus !== null,
   clearDropFocus: () => {
     dropFocus = null;
     dropped = false;

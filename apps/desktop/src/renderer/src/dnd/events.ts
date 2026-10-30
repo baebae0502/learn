@@ -30,7 +30,8 @@ export function installDndEvents(win: Window = window): () => void {
     // A drag that React Aria turns into its own virtual one prevents the native drag, so it is not a native drag.
     setTimeout(() => dragState.setNative(!e.defaultPrevented), 0);
   };
-  // The guard of a drop's focus move (dragState.armDropFocus) never outlives the user's next input.
+  // The guard of a drop's focus move (dragState.armDropFocus) never outlives the user's next input — a screen reader's click (no
+  // pointer, no key) among them.
   const input = () => {
     if (dragState.get().kind === null) {
       dragState.clearDropFocus(); // a key of a keyboard drag is the drag's
@@ -84,6 +85,7 @@ export function installDndEvents(win: Window = window): () => void {
   win.addEventListener('pointerdown', input, true);
   win.addEventListener('pointermove', moved, true);
   win.addEventListener('keydown', input, true);
+  win.addEventListener('click', input, true);
   return () => {
     win.removeEventListener('dragenter', track, true);
     win.removeEventListener('dragover', track, true);
@@ -95,5 +97,6 @@ export function installDndEvents(win: Window = window): () => void {
     win.removeEventListener('pointermove', moved, true);
     clearTimeout(leaving);
     win.removeEventListener('keydown', input, true);
+    win.removeEventListener('click', input, true);
   };
 }

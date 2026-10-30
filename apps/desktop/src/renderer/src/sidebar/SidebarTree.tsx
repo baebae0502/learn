@@ -389,11 +389,16 @@ export function SidebarTree(props: SidebarTreeProps) {
     const key = el.dataset['key']!;
     const dropFocus = dragState.takeDropFocus(key);
     if (dropFocus) {
-      // React Aria moved the focus to the row that was dropped on (a drop whose cursor was not parked above): the view stays where
-      // it was, and so does the cursor. After a mouse drop the cursor goes back quietly — React Aria set the keyboard modality for
-      // its own move, which would scroll the tree to the cursor and draw a keyboard ring on it.
+      // React Aria moved the focus after a drop — to the row that was dropped on (a drop whose cursor was not parked above), or late,
+      // to another row: the view stays where it was, and so does the cursor. After a mouse drop the cursor goes back quietly — React
+      // Aria set the keyboard modality for its own move, which would scroll the tree to the cursor and draw a keyboard ring on it.
       if (dropFocus.pointer) document.dispatchEvent(new window.PointerEvent('pointermove'));
-      if (key !== selectedKey) tap.current?.selectionManager.setFocusedKey(selectedKey);
+      if (key !== selectedKey) {
+        tap.current?.selectionManager.setFocusedKey(selectedKey);
+        // React Aria put its cursor on this row in this same event, so it sees no change of cursor to follow: the focus goes back
+        // here, without scrolling the tree.
+        treeRef.current?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(selectedKey)}"]`)?.focus({ preventScroll: true });
+      }
       return;
     }
     if (key !== DRAFT_KEY && key !== selectedKey) selectScope(key);
@@ -411,7 +416,8 @@ export function SidebarTree(props: SidebarTreeProps) {
   };
 
   const onSelectionChange = (selection: Selection) => {
-    if (reader || selection === 'all' || chevronDown.current) return;
+    // After a drop, before the user's next input, a selection is React Aria's own (dragState.takeDropFocus): the view stays.
+    if (reader || selection === 'all' || chevronDown.current || dragState.dropGuarded()) return;
     const key = [...selection][0];
     if (key !== undefined && String(key) !== DRAFT_KEY) selectScope(String(key));
   };

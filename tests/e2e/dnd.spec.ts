@@ -870,6 +870,12 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       await relaxDropWait(page);
       // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
       expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
+      // A focus React Aria moves later, with no input of the user's, onto another row is not a choice of view: after a screen reader's
+      // click (the virtual modality) it moves the focus only after the next frame and any running transition, onto the element it
+      // found then, and on the Mac that was the row below the viewed row's old place.
+      const other = (await inSight(page)).find((r) => r.id !== leaf && r.id !== target)!.id;
+      await treeRow(page, other).evaluate((e) => (e as HTMLElement).focus());
+      await expect(treeRow(page, other), `${how}: a late focus on another row does not move the view`).not.toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
       await expect(treeRow(page, leaf), `${how}: the focus is on the viewed row`).toBeFocused();
       await expect(treeRow(page, target), `${how}: the dropped-on row is not the view`).not.toHaveAttribute('aria-selected', 'true');

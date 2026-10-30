@@ -66,13 +66,27 @@ describe('dragState', () => {
     }
   });
 
-  it('a drop guards the focus on the dropped-on key only — React Aria moves it more than once — until the user\'s next input', () => {
+  it('a drop guards the focus on every row — React Aria moves it more than once, and late onto another row — until the user\'s next input', () => {
     dragState.armDropFocus('stat');
-    expect(dragState.takeDropFocus('bio')).toBeNull(); // another row's focus is the user's
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
     expect(dragState.takeDropFocus('stat')).toEqual({ pointer: false });
+    // No input since the drop: a focus on another row is React Aria's too (its focus moves after a screen reader's click wait for
+    // the next frame and any transition, and land on the element they found then), and so is a change of selection.
+    expect(dragState.takeDropFocus('bio')).toEqual({ pointer: false });
+    expect(dragState.dropGuarded()).toBe(true);
     dragState.clearDropFocus();
     expect(dragState.takeDropFocus('stat')).toBeNull();
+    expect(dragState.takeDropFocus('bio')).toBeNull();
+    expect(dragState.dropGuarded()).toBe(false);
+  });
+
+  it('a drag over a row guards that row only: no drop yet, so another row\'s focus or a selection is not the drop\'s', () => {
+    dragState.beginItems(['a']);
+    dragState.hoverDropFocus('stat');
+    expect(dragState.takeDropFocus('stat')).not.toBeNull();
+    expect(dragState.takeDropFocus('bio')).toBeNull();
+    expect(dragState.dropGuarded()).toBe(false);
+    dragState.end();
   });
 
   it('it tells a drop by mouse from one by keyboard, and the next pointer or key forgets the guard', () => {

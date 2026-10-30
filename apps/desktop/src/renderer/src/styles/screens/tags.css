@@ -1,0 +1,51 @@
+@layer screens {
+  /* The tag selector at the sidebar's foot (mockup .tag-selector): a hairline above, the head, the chips and the filter field,
+     at most 40 % of the sidebar's height — the chips scroll inside it while the head and the field stay. */
+  .tag-selector {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    min-height: 0;
+    max-height: 40%;
+    padding: var(--space-8) var(--space-16) var(--space-12) var(--space-24);
+    border-top: 1px solid var(--separator);
+  }
+  /* Over the macOS vibrancy material the opaque --separator is the material's own grey (1.04:1 measured in dark); the
+     translucent one keeps its ratio on any surface (design-spec 3.1). */
+  :root[data-vibrancy='1'] .tag-selector {
+    border-top-color: var(--separator-on-surface);
+  }
+  .tag-selector .head {
+    display: flex;
+    align-items: center;
+    flex: none;
+    height: 24px; /* local: section header row, as .section-label */
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+    font-weight: var(--weight-semibold);
+  }
+  .tag-selector .head .icon-btn {
+    margin-right: -6px; /* local: the glyph lines up with the filter field's right edge and the 새 컬렉션 button's column */
+  }
+  .tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: var(--space-4);
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* A scroll box clips what its chips draw outside them: room for the 3 px focus ring and the name field's halo, given back by
+       the margin so the chips stay where they are. */
+    padding: var(--space-4);
+    margin: calc(-1 * var(--space-4));
+  }
+  .tag-field {
+    flex: none;
+  }
+  .tag-none {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+}

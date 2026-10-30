@@ -131,7 +131,7 @@ test('the ⌘/ sheet lists the selected row’s shortcut under 자료 (design-sp
     await expect(group.locator('.visually-hidden')).toHaveText(IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R');
     // 자료 follows 라이브러리 (design-spec 7.4 lists ⇧⌘R with the library keys).
     const titles = await sheet.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
-    expect(titles).toEqual(['앱', '라이브러리', '자료', '리더', '팔레트·대화상자']);
+    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '리더', '팔레트·대화상자']);
     await closeSheet(sheet, 'Escape');
   } finally {
     await app.close();

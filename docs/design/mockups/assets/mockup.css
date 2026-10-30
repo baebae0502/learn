@@ -2210,7 +2210,7 @@ h2,
   flex: 0 1 auto;
 }
 .palette .p-item .p-meta {
-  color: var(--text-tertiary);
+  color: var(--text-secondary); /* 12 px information: 4.5:1 (8.3) */
   font: var(--type-footnote);
   margin-left: auto;
   white-space: nowrap;

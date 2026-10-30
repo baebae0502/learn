@@ -100,10 +100,23 @@ export async function focusApp(app: ElectronApplication): Promise<void> {
 
 /** CGWindowID of the main window (or another of ours): getMediaSourceId() is `window:<CGWindowID>:0` on macOS. */
 export async function cgWindowId(app: ElectronApplication, kind: 'main' | 'settings' = 'main'): Promise<string> {
-  const sourceId = await app.evaluate(
-    ({ BrowserWindow }, k) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(`window=${k}`))?.getMediaSourceId() ?? '',
-    kind,
-  );
+  const ask = () =>
+    app.evaluate(
+      ({ BrowserWindow }, k) => {
+        const open = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+        // A window that went to another page (the state board is the main window on `?window=gallery`) no longer names its kind: the
+        // only window there is, is the main one.
+        const win = open.find((w) => w.webContents.getURL().includes(`window=${k}`)) ?? (k === 'main' && open.length === 1 ? open[0] : undefined);
+        return win?.getMediaSourceId() ?? '';
+      },
+      kind,
+    );
+  let sourceId = await ask();
+  // The id can be empty for a moment after a window changed; ask once more before giving up.
+  if (!/^window:\d+:/.test(sourceId)) {
+    await sleep(300);
+    sourceId = await ask();
+  }
   const m = /^window:(\d+):/.exec(sourceId);
   if (!m) throw new Error(`unexpected media source id: ${JSON.stringify(sourceId)}`);
   return m[1]!;
@@ -439,6 +452,201 @@ export async function captureOpenMenu(app: ElectronApplication, target: string |
   await pressEscape();
   const keyboard = { shot: keyShot.file, ok: typed.ok, stderr: typed.stderr.trim(), open };
   return { click, keyboard };
+}
+
+/**
+ * The rows of the submenu `label` of menu-bar menu `index` as System Events sees them, each with its check mark
+ * (AXMenuItemMarkChar; empty when unchecked). Null when the submenu is not open or System Events refuses.
+ */
+export async function submenuItems(target: string | number, index: number, label: string): Promise<Array<{ name: string; mark: string }> | null> {
+  const script = [
+    'set out to {}',
+    'tell application "System Events"',
+    `tell ${processRef(target)}`,
+    `set sub to menu 1 of menu item "${label}" of menu 1 of menu bar item ${index} of menu bar 1`,
+    'repeat with i in (menu items of sub)',
+    'set n to name of i',
+    'if n is missing value then set n to "-"',
+    'set m to ""',
+    'try',
+    'set mark to value of attribute "AXMenuItemMarkChar" of i',
+    'if mark is not missing value then set m to mark',
+    'end try',
+    'set end of out to n & "|" & m',
+    'end repeat',
+    'end tell',
+    'end tell',
+    "set AppleScript's text item delimiters to linefeed",
+    'return out as text',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 20_000);
+  if (!r.ok || r.stdout.trim() === '') return null;
+  return r.stdout.trim().split('\n').map((line) => {
+    const at = line.lastIndexOf('|');
+    return { name: line.slice(0, at), mark: line.slice(at + 1) };
+  });
+}
+
+/** Whether the menu row `label` of menu-bar menu `index` is the selected (highlighted) one; null when System Events cannot say. */
+async function menuRowSelected(target: string | number, index: number, label: string): Promise<boolean | null> {
+  const script = [
+    'tell application "System Events"',
+    `tell ${processRef(target)}`,
+    'try',
+    `return (value of attribute "AXSelected" of menu item "${label}" of menu 1 of menu bar item ${index} of menu bar 1) as text`,
+    'on error',
+    'return "unknown"',
+    'end try',
+    'end tell',
+    'end tell',
+  ];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 10_000);
+  const out = r.ok ? r.stdout.trim() : '';
+  return out === 'true' ? true : out === 'false' ? false : null;
+}
+
+/**
+ * Menu-bar menu `index` opened by the keyboard (⌃F2, → ×(index−1), ↓), then ↓ one row at a time — AppKit skips separators and
+ * disabled rows, so no count of presses can be fixed in advance — until System Events says the row `label` is the selected
+ * one, and → opens its submenu. `opened` is true only when the row was selected before → and the submenu then lists rows: the menu
+ * being open and its rows readable is not the submenu being open (the rows are in the AX tree either way).
+ */
+export async function captureOpenSubmenu(app: ElectronApplication, target: string | number, index: number, label: string, prefix: string, what: string) {
+  await focusApp(app);
+  const keys = ['tell application "System Events"', 'key code 120 using control down', 'delay 0.4'];
+  for (let i = 1; i < index; i++) keys.push('key code 124', 'delay 0.15');
+  keys.push('key code 125', 'delay 0.4', 'end tell');
+  const typed = await tryExec('osascript', keys.flatMap((l) => ['-e', l]), 20_000);
+  try {
+    await sleep(600);
+    const rowCount = ((await menuItemNames(target, index)) ?? []).length;
+    let downs = 0;
+    let selected = false;
+    for (let step = 0; step <= rowCount + 1; step++) {
+      selected = (await menuRowSelected(target, index, label)) === true;
+      if (selected) break;
+      await tryExec('osascript', ['-e', 'tell application "System Events" to key code 125'], 10_000);
+      downs++;
+      await sleep(250);
+    }
+    let rows: Array<{ name: string; mark: string }> | null = null;
+    let stillSelected: boolean | null = null;
+    if (selected) {
+      await tryExec('osascript', ['-e', 'tell application "System Events" to key code 124'], 10_000);
+      await sleep(1000);
+      rows = await submenuItems(target, index, label);
+      stillSelected = await menuRowSelected(target, index, label); // information only: the highlight may move into the submenu
+    }
+    const opened = selected && rows !== null && rows.length > 0;
+    const shot = await fullScreenShot(`${prefix}-keyboard`, `${what}: ⌃F2, → ×${index - 1}, ↓ ×${downs + 1}, → via System Events`);
+    return { shot: shot.file, ok: typed.ok, stderr: typed.stderr.trim(), downs, selected, stillSelected, opened, rows };
+  } finally {
+    await pressEscape();
+    await pressEscape();
+    await pressEscape();
+  }
+}
+
+/**
+ * The places System Events may keep an open pop-up menu under: which one holds it is not documented, so each is tried and the
+ * first that lists rows wins. Null from every candidate means the pop-up cannot be addressed (the caller records "unknown").
+ */
+const POPUP_CANDIDATES = ['menu 1', 'menu 1 of window 1', 'menu 1 of UI element 1 of window 1'] as const;
+
+async function popupScript(target: string | number, candidate: string, body: string[]): Promise<string | null> {
+  const script = ['tell application "System Events"', `tell ${processRef(target)}`, 'try', `set pop to ${candidate}`, ...body, 'on error', 'return "unknown"', 'end try', 'end tell', 'end tell'];
+  const r = await tryExec('osascript', script.flatMap((l) => ['-e', l]), 10_000);
+  const out = r.ok ? r.stdout.trim() : '';
+  return out === '' || out === 'unknown' ? null : out;
+}
+
+/** The candidate that currently lists the rows of an open pop-up menu, with those rows; null when none does. */
+async function findPopup(target: string | number): Promise<{ candidate: string; rows: string[] } | null> {
+  for (const candidate of POPUP_CANDIDATES) {
+    const out = await popupScript(target, candidate, ['set out to {}', 'repeat with i in (menu items of pop)', 'set n to name of i', 'if n is missing value then set n to "-"', 'set end of out to n', 'end repeat', "set AppleScript's text item delimiters to linefeed", 'return out as text']);
+    if (out !== null) return { candidate, rows: out.split('\n') };
+  }
+  return null;
+}
+
+/**
+ * An open pop-up (context) menu: ↓ one row at a time — AppKit skips separators and disabled rows, and → on a row without a
+ * submenu goes elsewhere — until System Events says the row `label` is the selected one, then → opens its submenu. `opened`
+ * is true when the row was selected and its submenu then lists rows; false when the highlight was read at every step and never
+ * was this row, or the submenu listed nothing; null when System Events cannot address the pop-up or cannot read the highlight
+ * or the rows (the PNG is then taken after `fallbackDowns` presses — the row's place among the enabled rows, the first ↓
+ * selecting the first — and judged by eye).
+ * Escape clears whatever is still open, in a finally.
+ */
+export async function captureOpenPopupSubmenu(app: ElectronApplication, target: string | number, label: string, fallbackDowns: number, prefix: string, what: string) {
+  await focusApp(app);
+  try {
+    const found = await findPopup(target);
+    const press = (code: number) => tryExec('osascript', ['-e', `tell application "System Events" to key code ${code}`], 10_000);
+    const selectedNow = async (): Promise<boolean | null> => {
+      const v = await popupScript(target, found!.candidate, [`return (value of attribute "AXSelected" of menu item "${label}" of pop) as text`]);
+      return v === 'true' ? true : v === 'false' ? false : null; // null: System Events could not say
+    };
+    let downs = 0;
+    // opened: true — the row was selected before → and its submenu then listed rows; false — System Events read the highlight and it
+    // never was this row (or the submenu came up empty): a wrong menu; null — something could not be read, so nothing is judged.
+    let opened: boolean | null = null;
+    let readable = found !== null;
+    let rows: string[] | null = null;
+    const fallbackKeys = async () => {
+      for (; downs < fallbackDowns; downs++) {
+        await press(125);
+        await sleep(250);
+      }
+      await press(124);
+      await sleep(1000);
+    };
+    if (found === null) {
+      await fallbackKeys();
+    } else {
+      let selected: boolean | null = await selectedNow();
+      if (selected === null) {
+        readable = false; // AXSelected cannot be read on this pop-up: press the derived count and judge nothing
+        await fallbackKeys();
+      } else {
+        for (let step = 0; selected === false && step <= found.rows.length + 1; step++) {
+          await press(125);
+          downs++;
+          await sleep(250);
+          selected = await selectedNow();
+          if (selected === null) {
+            readable = false;
+            break;
+          }
+        }
+        if (selected === true) {
+          await press(124);
+          await sleep(1000);
+          const sub = await popupScript(target, found.candidate, [
+            'set out to {}',
+            `repeat with i in (menu items of menu 1 of menu item "${label}" of pop)`,
+            'set n to name of i',
+            'if n is missing value then set n to "-"',
+            'set end of out to n',
+            'end repeat',
+            "set AppleScript's text item delimiters to linefeed",
+            'return out as text',
+          ]);
+          rows = sub === null ? null : sub.split('\n');
+          opened = rows === null ? null : rows.length > 0; // null: the rows could not be read
+        } else if (selected === false) {
+          opened = false; // read every step, and the highlight never reached this row
+        }
+      }
+    }
+    const shot = await fullScreenShot(`${prefix}`, `${what}: ↓ ×${downs} then → via System Events${readable ? '' : ' (the highlight could not be read: opened unknown)'}`);
+    // fallback: the row was not confirmed by System Events; `downs` presses were made on a count worked out from the menu.
+    return { shot: shot.file, downs, opened, rows, addressable: found !== null, readable, fallback: !readable, fallbackDowns: readable ? null : fallbackDowns };
+  } finally {
+    await pressEscape();
+    await pressEscape();
+    await pressEscape();
+  }
 }
 
 /** RGB at points of a PNG (device pixels), decoded by the app page's own canvas (no image library needed). */

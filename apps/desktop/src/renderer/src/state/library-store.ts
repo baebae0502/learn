@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import type { LibraryScope } from '@learn/domain';
+import { saveSetting } from '../data/saveSetting';
+import { SCOPE_ALL, sameScope } from '../organize/scope';
 import type { SelectionState } from '../library/selectionModel';
 
 /**
@@ -24,9 +27,31 @@ export interface LibraryState extends SelectionState {
   /** The item whose info is being edited, or null (inspector/InfoEditor.tsx). */
   editingId: string | null;
   setEditing(id: string | null): void;
+  /** The scope the table shows (spec 3.1), as chosen. What is shown when it cannot be (organize/scope.ts resolveScope) is not stored. */
+  scope: LibraryScope;
+  /** False until the stored view was checked against the collections and the list; the table and the window's ready mark wait. */
+  scopeReady: boolean;
+  /** Counts scope changes: the table goes back to the top (or to `revealOnScope`) when it moves. */
+  scopeEpoch: number;
+  /** The one row a scope change shows (setScope's keepSelected), or null for the top. */
+  revealOnScope: string | null;
+  /**
+   * Shows another scope: the selection and the tag filter are emptied (the search query stays, spec 3.5) and the view is
+   * remembered. `keepSelected` is the one exception — that item stays selected and is shown.
+   */
+  setScope(scope: LibraryScope, opts?: { keepSelected?: string }): void;
+  /** Sets the stored view at start and marks the store ready; nothing is written back. */
+  restoreScope(scope: LibraryScope): void;
+  /** Tags that narrow the table: an item must have all of them (spec 4.3). Session only. */
+  tagFilter: ReadonlySet<string>;
+  toggleTagFilter(tagId: string): void;
+  clearTagFilter(): void;
+  /** A tag was deleted (or merged into `replaceWith`, which takes its place): it leaves the filter, so no filter waits on a tag that is gone. */
+  dropFromTagFilter(tagId: string, replaceWith?: string): void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
+const NO_TAGS: ReadonlySet<string> = new Set();
 const same = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((id) => b.has(id));
 
 export const useLibrary = create<LibraryState>()((set, get) => ({
@@ -37,6 +62,44 @@ export const useLibrary = create<LibraryState>()((set, get) => ({
   lastOpenedId: null,
   query: '',
   editingId: null,
+  scope: SCOPE_ALL,
+  scopeReady: false,
+  scopeEpoch: 0,
+  revealOnScope: null,
+  tagFilter: NO_TAGS,
+  setScope: (scope, opts) => {
+    const s = get();
+    const keep = opts?.keepSelected ?? null;
+    const moved = !sameScope(s.scope, scope);
+    if (!moved && keep === null) return;
+    set({
+      scope,
+      tagFilter: NO_TAGS,
+      selected: keep === null ? NONE : new Set([keep]),
+      anchorId: keep,
+      cursorId: keep,
+      scopeEpoch: s.scopeEpoch + 1,
+      revealOnScope: keep,
+    });
+    if (moved) saveSetting('library.view', scope);
+  },
+  restoreScope: (scope) => set({ scope, scopeReady: true }),
+  toggleTagFilter: (tagId) => {
+    const next = new Set(get().tagFilter);
+    if (!next.delete(tagId)) next.add(tagId);
+    set({ tagFilter: next });
+  },
+  clearTagFilter: () => {
+    if (get().tagFilter.size > 0) set({ tagFilter: NO_TAGS });
+  },
+  dropFromTagFilter: (tagId, replaceWith) => {
+    const current = get().tagFilter;
+    if (!current.has(tagId)) return;
+    const next = new Set(current);
+    next.delete(tagId);
+    if (replaceWith !== undefined) next.add(replaceWith);
+    set({ tagFilter: next });
+  },
   setEditing: (editingId) => set({ editingId }),
   setQuery: (query) => set({ query }),
   setLastOpened: (lastOpenedId) => set({ lastOpenedId }),

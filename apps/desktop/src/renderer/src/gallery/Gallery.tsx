@@ -1,7 +1,14 @@
-import { useState } from 'react';
-import { Bookmark, ChevronDown, Copy, FileText, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
-import { commandById, commandLabel } from '@learn/domain';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { Bookmark, ChevronDown, ChevronRight, Copy, Ellipsis, FileText, Folder, FolderOpen, FolderPlus, FolderSearch, LibraryBig, Link, Link2Off, PanelLeft, Plus, Search, TriangleAlert, VideoOff, X } from 'lucide-react';
+import { TAG_COLORS, commandById, commandLabel, type OrganizeTag } from '@learn/domain';
+import { DragPreview } from '../dnd/DragPreview';
+import { DEFAULT_TAGS_SELECTOR } from '../organize/viewSettings';
 import { t } from '../strings';
+import { ChipGroup } from '../tags/ChipGroup';
+import { tagColorVar } from '../tags/tagColor';
+import { TagChip } from '../tags/TagChip';
+import { TagDots } from '../tags/TagDots';
+import { selectorMenu } from '../tags/selectorMenu';
 import { Button, IconButton, type ButtonVariant, type ForcedState } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
@@ -267,7 +274,7 @@ function Part2() {
       </section>
       <section>
         <h2 className="g-title">사이드바 행</h2>
-        <div className="g-list nav-list">
+        <div className="g-list g-cols nav-list">
           {(
             [
               ['기본'],
@@ -276,14 +283,41 @@ function Part2() {
               ['선택(포커스)', 'selected focused'],
               ['키보드 커서', 'cursor'],
               ['선택(포커스) + 커서: 링 없음', 'selected focused cursor'],
+              ['드롭 대상', 'drop'],
             ] as const
           ).map(([name, force]) => (
             <div key={name} className="nav-row" data-force={force}>
-              <Icon icon={LibraryBig} />
+              <Icon icon={Folder} />
               <span className="label ellipsis">{name}</span>
               <span className="count num">12</span>
             </div>
           ))}
+          {/* The tree's rows (design-spec 6 트리): the 16 px gutter on every row with the 12 px chevron in it, 16 px per level, the name being typed. */}
+          <div className="nav-row" data-testid="g-row-closed">
+            <span className="disclosure">
+              <Icon icon={ChevronRight} size="xs" />
+            </span>
+            <Icon icon={Folder} />
+            <span className="label ellipsis">펼침 칸: 접힘</span>
+            <span className="count num">48</span>
+          </div>
+          <div className="nav-row">
+            <span className="disclosure">
+              <Icon icon={ChevronDown} size="xs" />
+            </span>
+            <Icon icon={FolderOpen} />
+            <span className="label ellipsis">펼침 칸: 펼침</span>
+            <span className="count num">14</span>
+          </div>
+          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties}>
+            <Icon icon={Folder} />
+            <span className="label ellipsis">들여쓴 행</span>
+            <span className="count num">9</span>
+          </div>
+          <div className="nav-row" style={{ '--indent': 1 } as CSSProperties} data-force="selected">
+            <Icon icon={Folder} />
+            <input className="name-field" defaultValue={'새\u00a0컬렉션'} readOnly aria-label="이름 칸" data-testid="g-name-field" />
+          </div>
         </div>
       </section>
       <section>
@@ -457,11 +491,199 @@ function Part3() {
   );
 }
 
-const PARTS = { 1: Part1, 2: Part2, 3: Part3 } as const;
+const sample = (name: string, position: number | null = null): OrganizeTag => ({
+  id: `g-${name}`,
+  name,
+  color: position === null ? null : TAG_COLORS[position - 1]!.id,
+  position,
+});
+const G_TAGS = [sample('중요', 1), sample('시험 범위', 2)];
+
+/**
+ * Tag chips and colour dots (design-spec 4, 6 태그 칩·색 점; mockup components part 1 and 3): every state of the chip, the eight
+ * colours, the table's dots on a plain row and on the accent row, and the selector as the sidebar draws it.
+ */
+function Part4() {
+  const plain = sample('수용체');
+  const row = (label: string, ...chips: ReactNode[]) => (
+    <div className="g-row">
+      <span className="g-label">{label}</span>
+      {chips}
+    </div>
+  );
+  return (
+    <>
+      <section>
+        <h2 className="g-title">태그 칩</h2>
+        <div className="g-stack" data-testid="g-chips">
+          {row('기본', <TagChip key="a" tag={plain} role="filter" />)}
+          {row('호버', <TagChip key="a" tag={plain} role="filter" force={['hover']} />)}
+          {row('포커스', <TagChip key="a" tag={plain} role="filter" force={['focus']} />)}
+          {row('선택(필터)', <TagChip key="a" tag={sample('시험 범위')} role="filter" on />)}
+          {row('흐린(현재 보기에 없음)', <TagChip key="a" tag={sample('회귀분석')} role="filter" dim />)}
+          {row('선택 + 흐림', <TagChip key="a" tag={sample('회귀분석')} role="filter" on dim />, <TagChip key="b" tag={sample('회귀분석')} role="filter" on dim force={['hover']} />)}
+          {row('붙은 칩 · 기본 (× 자리 비워 둠)', <TagChip key="a" tag={plain} role="assigned" />, <TagChip key="b" tag={sample('중요', 1)} role="assigned" />)}
+          {row('붙은 칩 · 호버', <TagChip key="a" tag={plain} role="assigned" force={['hover']} />, <TagChip key="b" tag={sample('중요', 1)} role="assigned" force={['focus']} />)}
+          {row(
+            '긴 이름(160 박스)',
+            <div key="a" className="g-box">
+              <TagChip tag={sample('아주 긴 태그 이름이 칩 한 개의 폭을 넘어가는 경우')} role="filter" />
+            </div>,
+          )}
+          {row(
+            '이름 칸',
+            <span key="a" className="chip is-editing">
+              <input className="chip-input" defaultValue="수용체" readOnly aria-label="이름 칸" />
+            </span>,
+          )}
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">태그 8색</h2>
+        <div className="g-swatches" data-testid="g-swatches">
+          {TAG_COLORS.map((c, i) => (
+            <span key={c.id} className="g-swatch">
+              <i style={{ background: tagColorVar(i + 1) }} />
+              <span>
+                {i + 1} · {c.label}
+              </span>
+              <code>--tag-{i + 1}</code>
+            </span>
+          ))}
+        </div>
+        <div className="g-row">
+          <ChipGroup label="색 태그" className="g-chipgroup">
+            {TAG_COLORS.map((c, i) => (
+              <TagChip key={c.id} tag={sample(`${i + 1} ${c.label}`, i + 1)} role="filter" />
+            ))}
+          </ChipGroup>
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">표의 색 점</h2>
+        <div className="g-table" data-testid="g-dots">
+          {(
+            [
+              ['기본', undefined],
+              ['선택(포커스)', 'selected focused'],
+            ] as const
+          ).map(([name, force]) => (
+            <div key={name} className="table-row" data-force={force}>
+              <div className="td is-first" data-col="title">
+                <Icon icon={FileText} />
+                <span className="item-title ellipsis">{name} · 분자생물학 6장</span>
+                <span className="linked-mark c-tertiary">
+                  <Icon icon={Link} size="sm" />
+                </span>
+                <TagDots tags={G_TAGS} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">태그 선택기</h2>
+        <div className="g-list tag-board">
+          <div className="tag-selector" data-testid="g-selector">
+            <div className="head">
+              <span>태그</span>
+              <span className="spacer" />
+              <IconButton icon={Ellipsis} label="태그 표시" size="small" />
+            </div>
+            <ChipGroup label="태그 목록" className="tag-cloud">
+              {[sample('중요', 1), sample('시험 범위', 2), sample('수용체'), sample('G 단백질')].map((tag) => (
+                <TagChip key={tag.id} tag={tag} role="filter" on={tag.name === '수용체'} />
+              ))}
+              <TagChip tag={sample('회귀분석')} role="filter" dim />
+            </ChipGroup>
+            <SearchField aria-label="태그 필터" placeholder="태그 필터" size="small" className="tag-field" />
+          </div>
+        </div>
+        <div className="g-row g-top">
+          <MenuList aria-label="태그 표시" entries={selectorMenu(DEFAULT_TAGS_SELECTOR, 2)} onAction={noop} />
+        </div>
+      </section>
+    </>
+  );
+}
+
+/**
+ * Drag and drop at rest (M5 spec 8; part=5): the image of a row drag (one row; several; a long title cut at 240), and the
+ * drop target of a tree row, the 컬렉션 heading and a table row (design-spec 6 트리; mockup components part 1 "드롭 대상").
+ */
+function Part5() {
+  return (
+    <>
+      <section>
+        <h2 className="g-title">끌기 미리보기</h2>
+        <div className="g-row g-previews">
+          <DragPreview title="분자생물학 6장 · 신호 전달" type="pdf" count={1} />
+          <DragPreview title="분자생물학 6장 · 신호 전달" type="pdf" count={3} />
+          <DragPreview title="Signal Transduction in Eukaryotic Cells — lecture notes for the whole spring term" type="video" count={12} />
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">드롭 대상 · 트리</h2>
+        <div className="g-list nav-list">
+          <div className="nav-row">
+            <Icon icon={Folder} />
+            <span className="label ellipsis">기본</span>
+            <span className="count num">12</span>
+          </div>
+          <div className="nav-row" data-force="drop" data-testid="g-drop-row">
+            <Icon icon={Folder} />
+            <span className="label ellipsis">드롭 대상</span>
+            <span className="count num">12</span>
+          </div>
+          <div className="section-label">
+            <div className="heading-drop" data-force="drop" data-testid="g-drop-heading">
+              <span className="heading-label">컬렉션</span>
+              <span className="spacer" />
+              <IconButton icon={FolderPlus} size="small" label={t.organize.sidebar.newTip} />
+            </div>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2 className="g-title">드롭 대상 · 표 행</h2>
+        <div className="g-table">
+          <div className="table-head">
+            {G_COLUMNS.map((c, i) => (
+              <div key={c.id} className={cx('th', c.end && 'end', i === 0 && 'is-first', i === G_COLUMNS.length - 1 && 'is-last')} style={c.width ? { width: c.width } : undefined}>
+                <div className="th-sort">
+                  <span className="ellipsis">{c.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {([['기본', undefined], ['드롭 대상', 'drop']] as const).map(([name, force]) => (
+            <div key={name} className="table-row" data-force={force} data-testid={force ? 'g-drop-table-row' : undefined}>
+              <div className="td is-first" data-col="title">
+                <Icon icon={FileText} />
+                <span className="item-title ellipsis">{name} · 분자생물학 6장</span>
+              </div>
+              <div className="td" data-col="type" style={{ width: 88 }}>
+                <span className="ellipsis">PDF</span>
+              </div>
+              <div className="td end num" data-col="size" style={{ width: 80 }}>
+                <span className="ellipsis">4.2 MB</span>
+              </div>
+              <div className="td num is-last" data-col="createdAt" style={{ width: 132 }}>
+                <span className="ellipsis">2026. 10. 20.</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+const PARTS = { 1: Part1, 2: Part2, 3: Part3, 4: Part4, 5: Part5 } as const;
 
 /**
  * Component state board (design-spec 10.8): learn://app/index.html?window=gallery&part=1|2 for the visual tour,
- * part=3 for behaviour tests. Opened only by tests.
+ * part=3 for behaviour tests, part=4 for the tags. Opened only by tests.
  */
 export function Gallery() {
   const Part = PARTS[readWindowParams(location.search).part];

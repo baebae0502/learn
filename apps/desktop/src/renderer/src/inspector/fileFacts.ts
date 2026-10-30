@@ -1,5 +1,5 @@
 import type { PDFDocumentLoadingTask } from 'pdfjs-dist';
-import { assetUrl } from '@learn/domain';
+import { assetUrl, type LibraryItem } from '@learn/domain';
 import { pdfSource, pdfjs } from '../viewers/pdfjs';
 
 /** What the panel's head can tell from the file itself (spec §5.3): a PDF's page count, a video's length. */
@@ -56,4 +56,18 @@ export function probeVideo(assetId: string): Probe {
   }).finally(release);
   video.src = assetUrl(assetId);
   return { done, cancel: release };
+}
+
+declare global {
+  interface Window {
+    /** E2E only: a test creates this array to count the files the panel opens; nothing is kept where it does not exist. */
+    __learnProbes?: Array<{ kind: 'pdf' | 'video'; assetId: string }>;
+  }
+}
+
+/** Opens the item's file for its fact (pdf.js for a PDF, a video element for a video), noting it where a test asks to count. */
+export function startProbe(item: Pick<LibraryItem, 'type' | 'assetId'>): Probe {
+  const kind = item.type === 'pdf' ? 'pdf' : 'video';
+  window.__learnProbes?.push({ kind, assetId: item.assetId });
+  return kind === 'pdf' ? probePdf(item.assetId) : probeVideo(item.assetId);
 }

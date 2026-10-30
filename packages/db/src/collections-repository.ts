@@ -102,8 +102,9 @@ export class CollectionsRepository {
   }
 
   /**
-   * Restores a soft-deleted collection with its whole subtree and any deleted ancestors (so it has a live place
-   * in the tree). A live collection is returned unchanged (its separately deleted descendants stay deleted).
+   * Restores a soft-deleted collection with the descendants that were deleted together with it (the same `deleted_at`:
+   * one `softDelete` stamps its whole subtree with one time) and any deleted ancestors (so it has a live place in the
+   * tree). A descendant deleted earlier, on its own, stays deleted. A live collection is returned unchanged.
    */
   restore(id: string): Collection {
     return this.restoreChanged(id).collection;
@@ -112,9 +113,10 @@ export class CollectionsRepository {
   /** `restore`, also saying whether anything was restored (false for a collection that was already live). */
   restoreChanged(id: string): { collection: Collection; changed: boolean } {
     return this.db.transaction(() => {
-      if (!this.db.prepare('SELECT 1 FROM collections WHERE id = ?').get(id)) throw notFound();
-      if (this.isLive(id)) return { collection: this.get(id)!, changed: false };
-      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM sub) AND deleted_at IS NOT NULL`).run({ id });
+      const root = this.db.prepare('SELECT deleted_at FROM collections WHERE id = ?').get(id) as { deleted_at: string | null } | undefined;
+      if (!root) throw notFound();
+      if (root.deleted_at === null) return { collection: this.get(id)!, changed: false };
+      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM sub) AND deleted_at = @deletedAt`).run({ id, deletedAt: root.deleted_at });
       this.db.prepare(`${ANCESTORS} UPDATE collections SET deleted_at = NULL WHERE id IN (SELECT id FROM anc) AND deleted_at IS NOT NULL`).run({ id });
       return { collection: this.get(id)!, changed: true };
     })();

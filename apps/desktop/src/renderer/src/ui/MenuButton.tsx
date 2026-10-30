@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
-import { SoftDisabled, type ForcedState } from './Button';
+import { IconButton, SoftDisabled, type ForcedState } from './Button';
 import { cx } from './cx';
 import { useDisabledReason } from './disabledReason';
 import { Icon } from './Icon';
@@ -21,6 +21,14 @@ export interface MenuButtonItem<K extends string> {
    * updates it from `onAction`.
    */
   checked?: boolean;
+  /**
+   * A mark that is the item's own state, not the group's one answer: a check in the check column (a collection that
+   * already holds the selection). A group with any `marked` item is a multiple-selection group (menuitemcheckbox +
+   * aria-checked); not mixed with `checked` in one group.
+   */
+  marked?: boolean;
+  /** Level in a tree list: the label is indented 16 px a level, as the sidebar tree steps. */
+  indent?: number;
   /** State board only. */
   force?: ForcedState[];
 }
@@ -38,17 +46,27 @@ export type MenuEntry<K extends string> = MenuButtonItem<K> | MenuButtonSection<
 const isSeparator = <K extends string>(e: MenuEntry<K>): e is MenuSeparator => 'separator' in e;
 const isSection = <K extends string>(e: MenuEntry<K>): e is MenuButtonSection<K> => 'items' in e;
 
-/** Single-choice selection props for a group whose items carry `checked`; none otherwise. */
+/** Selection props for a group whose items carry `checked` (one answer) or `marked` (each its own); none otherwise. */
 function choice<K extends string>(items: readonly MenuButtonItem<K>[]) {
-  if (!items.some((i) => i.checked !== undefined)) return { selectionMode: 'none' as const };
-  return { selectionMode: 'single' as const, selectedKeys: items.filter((i) => i.checked).map((i) => i.id), onSelectionChange: () => {} };
+  if (items.some((i) => i.checked !== undefined)) return { selectionMode: 'single' as const, selectedKeys: items.filter((i) => i.checked).map((i) => i.id), onSelectionChange: () => {} };
+  if (items.some((i) => i.marked !== undefined)) return { selectionMode: 'multiple' as const, selectedKeys: items.filter((i) => i.marked).map((i) => i.id), onSelectionChange: () => {} };
+  return { selectionMode: 'none' as const };
 }
 
 function Item<K extends string>({ item, platform }: { item: MenuButtonItem<K>; platform: string }) {
   return (
-    <MenuItem id={item.id} textValue={item.label} className="mi" isDisabled={item.isDisabled} data-testid={item.testId} data-force={item.force?.join(' ')}>
+    <MenuItem
+      id={item.id}
+      textValue={item.label}
+      className="mi"
+      isDisabled={item.isDisabled}
+      data-testid={item.testId}
+      data-force={item.force?.join(' ')}
+      data-indent={item.indent}
+      style={item.indent ? ({ '--indent': item.indent } as CSSProperties) : undefined}
+    >
       <span className="check" aria-hidden="true">
-        {item.checked && <Icon icon={Check} size="sm" />}
+        {(item.checked || item.marked) && <Icon icon={Check} size="sm" />}
       </span>
       <span className="mi-label">{item.label}</span>
       {item.accelerator && <span className="shortcut">{acceleratorLabel(item.accelerator, platform)}</span>}
@@ -75,6 +93,7 @@ export function MenuList<K extends string>(props: {
       aria-label={props['aria-label']}
       style={props.style}
       data-testid={props.testId}
+      shouldCloseOnSelect
       onAction={(key) => props.onAction(String(key) as K)}
       {...choice(topItems)}
     >
@@ -82,7 +101,7 @@ export function MenuList<K extends string>(props: {
         if (isSeparator(entry)) return <Separator key={`sep-${i}`} className="msep" />;
         if (isSection(entry)) {
           return (
-            <MenuSection key={`sec-${i}`} id={`sec-${i}`} {...choice(entry.items)}>
+            <MenuSection key={`sec-${i}`} id={`sec-${i}`} shouldCloseOnSelect {...choice(entry.items)}>
               {entry.header && <Header className="mhead">{entry.header}</Header>}
               {entry.items.map((item) => (
                 <Item key={item.id} item={item} platform={platform} />
@@ -135,5 +154,28 @@ export function MenuButton<K extends string>(props: {
       </MenuTrigger>
       {reason.description}
     </>
+  );
+}
+
+/**
+ * The "…" button of a web pop-up menu (design-spec 7.3 태그 선택기): an icon-only trigger with a tooltip, the same menu
+ * (MenuList) in the same popover. For a button inside the content that has no room for a label.
+ */
+export function MenuIconButton<K extends string>(props: {
+  label: string;
+  icon: LucideIcon;
+  items: readonly MenuEntry<K>[];
+  onAction(id: K): void;
+  placement?: 'bottom start' | 'bottom end';
+  size?: 'regular' | 'small';
+  testId?: string;
+}) {
+  return (
+    <MenuTrigger>
+      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} />
+      <Popover className="menu-popover" placement={props.placement ?? 'bottom end'} offset={4}>
+        <MenuList entries={props.items} onAction={props.onAction} aria-label={props.label} />
+      </Popover>
+    </MenuTrigger>
   );
 }

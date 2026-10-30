@@ -1,7 +1,13 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, acceleratorLabel, availableMenuCommands, commandById, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
-import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged } from './app-menu';
+import { COMMANDS, NO_LIBRARY_VIEW, acceleratorLabel, availableMenuCommands, commandById, columnsMask, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged, submenuShapeKey } from './app-menu';
+import { ALL_COMMANDS, ALL_SUBMENUS, LIBRARY } from './testing';
+
+// app-menu draws colour dots through dot-icon (Electron's nativeImage); the test observes the made icon's scale instead.
+vi.mock('electron', () => ({
+  nativeImage: { createFromBuffer: (_png: Buffer, opts: { scaleFactor: number }) => ({ scale: opts.scaleFactor }) },
+}));
 
 interface Shape {
   label?: string;
@@ -44,11 +50,14 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.file', label: '파일', submenu: [
     { id: 'file.importManaged', label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' },
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
+    { id: 'collection.new', label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N' },
     SEP,
     // The selected item's commands (design-spec 7.3, 7.4 ⇧⌘R), in the 파일 menu's order.
     { id: 'item.showInFolder', label: platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R' },
     { id: 'item.exportCopy', label: '사본 내보내기…' },
     { id: 'item.openExternally', label: '기본 앱으로 열기' },
+    // 컬렉션에 추가 ▸ has no row without the library read for the menu bar (those tests build without it).
+    { id: 'collection.removeItems', label: '이\u00a0컬렉션에서 빼기' },
     SEP,
     ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
@@ -74,6 +83,19 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     SEP,
     { id: 'view.toggleSidebar', label: '사이드바 보기/가리기', accelerator: platformAccelerator('Ctrl+Cmd+S', platform) },
     { id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I' },
+    // 보기 › 정렬 기준 ▸ (spec 5.2): the columns drawn by default, the sort in force and the two directions, each a row with its value.
+    {
+      id: 'library.sortBy', label: '정렬 기준', submenu: [
+        { id: 'library.sortBy?column=title', label: '제목' },
+        { id: 'library.sortBy?column=creators', label: '저자' },
+        { id: 'library.sortBy?column=year', label: '연도' },
+        { id: 'library.sortBy?column=type', label: '종류' },
+        { id: 'library.sortBy?column=createdAt', label: '추가일' },
+        SEP,
+        { id: 'library.sortBy?direction=asc', label: '오름차순' },
+        { id: 'library.sortBy?direction=desc', label: '내림차순' },
+      ],
+    },
     SEP,
     // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
     { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
@@ -175,7 +197,7 @@ describe('buildAppMenu', () => {
     const items = walk(build('darwin'));
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
-      expect(found, c.id).toHaveLength(c.menu ? 1 : 0);
+      expect(found, c.id).toHaveLength(c.menu && c.submenu !== 'collections' ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
       if (found[0]) {
         expect(found[0].label).toBe(c.label);
         expect(found[0].accelerator).toBe(c.accelerator);
@@ -192,6 +214,15 @@ describe('buildAppMenu', () => {
     expect(onCommand).toHaveBeenCalledWith('nav.back');
     // Role items act natively; they never route through the registry.
     expect(items.filter((i) => i.role).every((i) => i.click === undefined)).toBe(true);
+  });
+
+  it('a submenu row dispatches its command with the row\'s value; the head dispatches nothing', () => {
+    const onCommand = vi.fn();
+    const items = walk(build('linux', false, onCommand));
+    items.find((i) => i.id === 'library.sortBy?column=year')!.click!({ enabled: true } as never, undefined, {} as never);
+    items.find((i) => i.id === 'library.sortBy?direction=asc')!.click!({ enabled: true } as never, undefined, {} as never);
+    expect(onCommand.mock.calls).toEqual([['library.sortBy', { column: 'year' }], ['library.sortBy', { direction: 'asc' }]]);
+    expect(items.find((i) => i.id === 'library.sortBy')!.click).toBeUndefined();
   });
 
   it('orders registry items by group then order, with separators between groups and after built-ins', () => {
@@ -295,7 +326,7 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
   };
   const toggles: CommandSpec[] = [commandById('view.toggleSidebar'), panel];
   const base: CommandContextState = {
-    view: 'library', blocked: false, textSize: 13, sidebar: 'shown', inspector: 'shown', libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0,
+    view: 'library', blocked: false, textSize: 13, sidebar: 'shown', inspector: 'shown', libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
   };
   const next = (over: Partial<CommandContextState>): CommandContextState => ({ ...base, ...over });
 
@@ -413,7 +444,7 @@ describe('in-place enabled toggle (the menu is built once; reports only flip ena
   it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
     const asked: string[] = [];
     applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
-    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1']);
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags']); // the group's head is placed in 파일 too
   });
 });
 
@@ -462,5 +493,108 @@ describe('shortcut collisions per platform (registry items, hidden twins, Electr
     expect(mac.filter((a) => a === '⌥⌘I')).toHaveLength(1);
     expect(mac.filter((a) => a === '⌥⌘J')).toHaveLength(1);
     expect(walk(build('darwin', true)).find((i) => String(i.role ?? '').toLowerCase() === 'toggledevtools')?.accelerator).toBe('Alt+CmdOrCtrl+J');
+  });
+});
+
+describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', () => {
+  const context = (over: Partial<CommandContextState> = {}): CommandContextState => ({
+    view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW, ...over,
+  });
+  const radios = (c: CommandContextState) => {
+    const menu = buildAppMenu({ isDev: false, platform: 'linux', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), context: c });
+    return (walk(menu).find((i) => i.id === 'library.sortBy')!.submenu as MenuItemConstructorOptions[]).map((i) => (i.type === 'separator' ? '-' : `${i.label}${i.checked ? ' ○' : ''}`));
+  };
+
+  it('draws the radios from the reported context: the sort in force is on, the columns drawn are the rows', () => {
+    expect(radios(context())).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○']);
+    expect(radios(context({ sortColumn: 'size', sortDirection: 'asc', columnsShown: columnsMask(['title', 'size']) }))).toEqual(['제목', '크기 ○', '-', '오름차순 ○', '내림차순']);
+  });
+  it('the submenus are a function of the sort, the columns and the shared colour slots only: those are what rebuild the menu bar, the counts flip enabled in place', () => {
+    const a = context();
+    expect(submenuShapeKey(a)).toBe(submenuShapeKey(context({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, blocked: true, textSize: 15, scope: 'recent', searchActive: true })));
+    for (const over of [{ sortColumn: 'title' }, { sortDirection: 'asc' }, { columnsShown: 1 }, { selectionTagPositions: 0b1 }] as const) expect(submenuShapeKey(context(over)), JSON.stringify(over)).not.toBe(submenuShapeKey(a));
+  });
+  it('the head is switched in place with its command; its rows are on whenever the head is reachable', () => {
+    const template = buildAppMenu({ isDev: false, platform: 'linux', commands: COMMANDS, enabled: ALL, onCommand: vi.fn(), context: context() });
+    const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+    const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    applyMenuEnabled(lookup, new Set<CommandId>(['library.sortBy']));
+    expect(byId.get('library.sortBy')?.enabled).toBe(true);
+    applyMenuEnabled(lookup, new Set<CommandId>());
+    expect(byId.get('library.sortBy')?.enabled).toBe(false);
+    expect(byId.get('library.sortBy?column=year')?.enabled).toBe(true);
+  });
+
+  describe('a group and a collections submenu', () => {
+    const build2 = (enabled: ReadonlySet<CommandId>, organize: typeof LIBRARY | null = LIBRARY, onCommand = vi.fn()) =>
+      buildAppMenu({ isDev: false, platform: 'darwin', commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled, onCommand, context: context(), organize });
+    const ONE = new Set<CommandId>(availableMenuCommands({ ...context(), selectionCount: 1, selectionAvailable: 1 }, ALL_COMMANDS, ALL_SUBMENUS));
+    const labels = (items: Shape[]): unknown[] => items.map((i) => (i.submenu ? { [i.label ?? '']: labels(i.submenu) } : (i.label ?? i.type)));
+    const file = (t: MenuItemConstructorOptions[]) => shape(t).find((m) => m.id === 'menu.file')!.submenu!;
+
+    it('puts 색 태그 ▸ and 컬렉션에 추가 ▸ in 파일 after the file commands (by order), from the library read for the menu bar, with no marks', () => {
+      expect(labels(file(build2(ONE)))).toEqual([
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator',
+        'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
+        { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
+        '이\u00a0컬렉션에서 빼기',
+        { '색 태그': ['시험 범위', '중요'] },
+        'separator', '윈도우 닫기',
+      ]);
+    });
+    const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
+      walk(buildAppMenu({ isDev: false, platform, commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled: ONE, onCommand, context: context(), organize: LIBRARY }))
+        .find((i) => i.id === 'submenu.colorTags')!.submenu as MenuItemConstructorOptions[];
+    it('on macOS the rows carry no key at all (a key equivalent without Cmd would reach the menu before the page), and a row runs its own command', () => {
+      const onCommand = vi.fn();
+      const rows = colorRows('darwin', onCommand);
+      expect(rows.map((r) => [r.id, r.accelerator, r.registerAccelerator, r.type])).toEqual([
+        ['tag.color1', undefined, undefined, undefined],
+        ['tag.color3', undefined, undefined, undefined],
+      ]);
+      rows[1]!.click!({ enabled: true } as never, undefined, {} as never);
+      expect(onCommand).toHaveBeenCalledWith('tag.color3', undefined);
+    });
+    it('the menu bar draws the colour dot on the 색 태그 rows (a row of another submenu has none)', () => {
+      const template = buildAppMenu({ isDev: false, platform: 'linux', commands: ALL_COMMANDS, submenus: ALL_SUBMENUS, enabled: ONE, onCommand: vi.fn(), context: context(), organize: LIBRARY });
+      const rows = colorRows('linux');
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) expect(r.icon, String(r.id)).toBeDefined();
+      const add = walk(template).find((i) => i.label === '컬렉션에 추가')!;
+      for (const r of walk(add.submenu as MenuItemConstructorOptions[])) expect(r.icon, String(r.label)).toBeUndefined();
+    });
+    it('on linux the slots show at the right edge without being registered, and a pick made with the key is dropped', () => {
+      const onCommand = vi.fn();
+      const rows = colorRows('linux', onCommand);
+      expect(rows.map((r) => [r.id, r.accelerator, r.registerAccelerator, r.type])).toEqual([
+        ['tag.color1', '1', false, undefined],
+        ['tag.color3', '3', false, undefined],
+      ]);
+      rows[0]!.click!({ enabled: true } as never, undefined, { triggeredByAccelerator: true } as never);
+      expect(onCommand).not.toHaveBeenCalled();
+      rows[1]!.click!({ enabled: true } as never, undefined, {} as never);
+      expect(onCommand).toHaveBeenCalledWith('tag.color3', undefined);
+    });
+    it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
+      expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '윈도우 닫기',
+      ]);
+      expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
+    });
+    it('the group\'s members and its head are switched in place by the menu-bar judgement, like any command', () => {
+      const template = build2(new Set());
+      const byId = new Map(walk(template).flatMap((i) => (i.id ? [[i.id, i] as const] : [])));
+      const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+      const state = () => [byId.get('submenu.colorTags')?.enabled, byId.get('tag.color1')?.enabled, byId.get('tag.color3')?.enabled];
+      expect(state()).toEqual([false, false, false]);
+      applyMenuEnabled(lookup, new Set<CommandId>(['tag.color3' as CommandId]), ALL_COMMANDS, ALL_SUBMENUS);
+      expect(state()).toEqual([true, false, true]);
+      applyMenuEnabled(lookup, new Set<CommandId>(), ALL_COMMANDS, ALL_SUBMENUS);
+      expect(state()).toEqual([false, false, false]);
+    });
+    it('a group on the menu bar is judged like a menu command; without one the judgement is the registry\'s', () => {
+      expect(ONE.has('tag.color1' as CommandId)).toBe(true);
+      expect(availableMenuCommands(context(), COMMANDS, [])).toEqual(availableMenuCommands(context()));
+    });
   });
 });

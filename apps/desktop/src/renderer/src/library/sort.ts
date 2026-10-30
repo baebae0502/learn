@@ -1,20 +1,34 @@
-import { LIBRARY_SORT_COLUMNS, SETTINGS, type ItemType, type LibraryItem, type StorageMode } from '@learn/domain';
+import { SETTINGS, type CommandArgs, type ItemType, type LibraryItem, type LibrarySortColumn, type StorageMode } from '@learn/domain';
 
-export type LibrarySortColumn = (typeof LIBRARY_SORT_COLUMNS)[number];
+export type { LibrarySortColumn };
 export type LibrarySort = { column: LibrarySortColumn; direction: 'asc' | 'desc' };
 
 /** 추가일, newest first (spec §3.1). */
 export const DEFAULT_SORT: LibrarySort = { column: 'createdAt', direction: 'desc' };
 
-/** library.sort as stored, else the default. */
-export function parseSort(raw: unknown): LibrarySort {
+/** The recent view sorts by when the item was opened, newest first (spec 3.2). */
+export const DEFAULT_SORT_RECENT: LibrarySort = { column: 'openedAt', direction: 'desc' };
+
+/** library.sort (or library.sort.recent, with its own fallback) as stored, else the fallback. */
+export function parseSort(raw: unknown, fallback: LibrarySort = DEFAULT_SORT): LibrarySort {
   const r = SETTINGS['library.sort'].safeParse(raw);
-  return r.success ? r.data : DEFAULT_SORT;
+  return r.success ? r.data : fallback;
 }
 
 const NEWEST_FIRST: ReadonlySet<LibrarySortColumn> = new Set<LibrarySortColumn>(['createdAt', 'updatedAt', 'openedAt', 'size', 'progress']);
 /** The direction a first press on a column sorts in (as Finder): dates and sizes newest or largest first. */
 export const firstDirection = (column: LibrarySortColumn): 'asc' | 'desc' => (NEWEST_FIRST.has(column) ? 'desc' : 'asc');
+
+/**
+ * The sort a 보기 › 정렬 기준 row asks for (spec 5.2): its column and/or its direction, the other staying as it is — the
+ * column list and the direction list are two sets of radios, unlike a header press (which picks the column's first
+ * direction). Null when there is nothing to do.
+ */
+export function sortFromArgs(current: LibrarySort, args: Pick<CommandArgs, 'column' | 'direction'> | undefined): LibrarySort | null {
+  if (!args || (args.column === undefined && args.direction === undefined)) return null;
+  const next: LibrarySort = { column: args.column ?? current.column, direction: args.direction ?? current.direction };
+  return next.column === current.column && next.direction === current.direction ? null : next;
+}
 
 const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
 const TYPE_ORDER: Readonly<Record<ItemType, number>> = { pdf: 0, video: 1 };

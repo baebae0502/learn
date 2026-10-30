@@ -1,4 +1,5 @@
-import type { LibraryItem } from '@learn/domain';
+import { tagPositionsMask, type LibraryItem } from '@learn/domain';
+import type { OrganizeModel } from '../organize/model';
 import { sortItems, type LibrarySort } from './sort';
 
 /** The table selection as the command context reports it: flat numbers, so a report compares field by field. */
@@ -34,4 +35,22 @@ export function selectionCounts(items: readonly LibraryItem[], selected: Readonl
 export function inTableOrder(items: readonly LibraryItem[], selected: ReadonlySet<string>, sort: LibrarySort): string[] {
   if (selected.size === 0) return [];
   return sortItems(items.filter((i) => selected.has(i.id)), sort).map((i) => i.id);
+}
+
+/**
+ * The colour slots 1–8 whose tag every selected item has, as the command context's mask (selectionTagPositions): what the menu bar's
+ * 색 태그 ▸ checks. Counts only the selected rows still in the list (as selectionCounts does); nothing selected is 0.
+ */
+export function selectionTagPositions(model: Pick<OrganizeModel, 'tags' | 'tagItems'> | null | undefined, items: readonly LibraryItem[], selected: ReadonlySet<string>): number {
+  if (!model || selected.size === 0) return 0;
+  const ids: string[] = [];
+  for (const i of items) if (selected.has(i.id)) ids.push(i.id);
+  if (ids.length === 0) return 0;
+  const shared: number[] = [];
+  for (const tag of model.tags) {
+    if (tag.position === null) continue;
+    const has = model.tagItems(tag.id);
+    if (ids.every((id) => has.has(id))) shared.push(tag.position);
+  }
+  return tagPositionsMask(shared);
 }

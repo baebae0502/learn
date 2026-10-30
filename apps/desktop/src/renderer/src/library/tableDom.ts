@@ -5,11 +5,12 @@ import { afterPaint } from '../ui/afterPaint';
 
 /** One table per window. Its rows outside the viewport are not in the DOM: the virtualizer draws them on scroll. */
 const GRID = '[data-testid="library-table"]';
+const SCROLLER = '[data-testid="library-scroller"]';
 const rowEl = (id: string) => document.querySelector<HTMLElement>(`${GRID} [data-testid="item-row"][data-item-id="${CSS.escape(id)}"]`);
 
-/** What scrolls the rows: the grid itself (`div.library-table[role=grid]` is the scroll element; its header is sticky). */
+/** What scrolls the rows: the table's scroller, below the header row (which sits outside it and only follows it sideways). */
 export function tableScroller(): HTMLElement | null {
-  return document.querySelector<HTMLElement>(GRID);
+  return document.querySelector<HTMLElement>(SCROLLER);
 }
 
 /** The scrollTop that puts row `index` in the middle of a `viewport`-tall view (never above the top). */
@@ -17,12 +18,11 @@ export function centredScrollTop(index: number, rowHeight: number, viewport: num
   return Math.max(0, Math.round(index * rowHeight - (viewport - rowHeight) / 2));
 }
 
-/** Whole below the sticky column header and above the view's bottom edge. */
+/** Whole inside the scroller's view (the column header is above it). */
 function fullyShown(row: HTMLElement, scroller: HTMLElement): boolean {
   const r = row.getBoundingClientRect();
   const view = scroller.getBoundingClientRect();
-  const top = scroller.querySelector<HTMLElement>('[role="columnheader"]')?.getBoundingClientRect().bottom ?? view.top;
-  return r.top >= top && r.bottom <= view.bottom;
+  return r.top >= view.top && r.bottom <= view.bottom;
 }
 
 /**

@@ -4,9 +4,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
+import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, closeSheet, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow, openItem, releaseCopies, releaseOpenDialog,
-  releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel, stubOpenDialog,
+  FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow,
+  makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
+  specialRow, stubOpenDialog, tagChip, treeRow,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -39,7 +41,6 @@ async function f6To(page: Page, pane: string): Promise<void> {
   for (let i = 0; i < 4 && (await inPane(page)) !== pane; i++) await page.keyboard.press('F6');
   expect(await inPane(page)).toBe(pane);
 }
-
 test('import → open → page → back → palette → settings → shortcuts, with axe at every stop', async ({}, testInfo) => {
   // No colour-scheme emulation: the theme the settings window picks reaches prefers-color-scheme (axe in both themes).
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
@@ -47,7 +48,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expectNoSeriousA11y(page, 'empty library');
     await stubOpenDialog(app, [MP4, PDF]); // newest first: the PDF heads the list
     await page.keyboard.press('F6'); // sidebar
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.keyboard.press('F6'); // content: first control of the first-run screen
     expect(await focusedTestId(page)).toBe('import-managed');
     await page.keyboard.press('Enter');
@@ -57,7 +58,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expectNoSeriousA11y(page, 'library list');
 
     await page.keyboard.press('Shift+F6'); // sidebar (whether or not the success toast is still up)
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.keyboard.press('F6'); // content: the table's cursor row
     expect(await focusedTestId(page)).toBe('item-row');
     await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
@@ -324,6 +325,246 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
   }
 });
 
+// Spec 1 condition 5 and spec 13 (AC18): from a new collection to a tag filter by keyboard only. ⌘ shortcuts go through their
+// menu items (runMenuCommand) because CDP keys never reach native accelerators on Linux; every other key is a real key press.
+// The colour tag at slot 1 is made through the page's API first: tags are made in the item panel (organize-inspector.spec
+// walks that keyboard path), and this journey is about filing and filtering.
+test('M5 keyboard only: ⇧⌘N → name → table → select → 컬렉션에 추가 ▸ → 1 → sidebar → the collection → tag chip → Space filters, with axe at every new stop', async ({}, testInfo) => {
+  const NAME = '분자생물학';
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const selected = page.locator('[data-testid="item-row"][aria-selected="true"]');
+  try {
+    await importPaths(page, [PDF, KO_PDF, MP4]);
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+    const [important] = await makeTags(page, [{ name: '중요', slot: 1 }]);
+
+    // New collection: ⇧⌘N puts a named-in-place row at the top of the tree, with the name selected and the focus in the field.
+    // The view does not move (a Finder new folder does not either).
+    await runMenuCommand(app, 'collection.new');
+    const field = page.getByTestId('rename-input');
+    await expect(field).toBeFocused();
+    await expectNoSeriousA11y(page, 'sidebar, a collection being named');
+    await page.keyboard.type(NAME);
+    await page.keyboard.press('Enter');
+    await expect(field).toHaveCount(0);
+    const collection = (await organizeSnapshot(page)).collections.find((c) => c.name === NAME);
+    expect(collection, 'the collection exists in main').toBeDefined();
+    expect(collection!.parentId).toBeNull();
+    await expect(treeRow(page, collection!.id)).toBeVisible();
+    await expect(page.getByTestId('toolbar-title')).not.toHaveText(NAME);
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+
+    // Table: F6 comes down on the table (its first row is chosen when the focus arrives without a cursor), ↓ chooses the next.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await expect(selected).toHaveCount(1);
+    const first = await selected.getAttribute('data-item-id');
+    await page.keyboard.press('ArrowDown');
+    await expect(selected).toHaveCount(1);
+    const second = (await selected.getAttribute('data-item-id'))!;
+    expect(second).not.toBe(first);
+
+    // Menu command: 파일 › 컬렉션에 추가 ▸ › the collection. The menu bar is rebuilt a moment after the collection exists, so the
+    // submenu row is waited for.
+    await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${collection!.id}`)).toBe(true);
+    await runMenuCommand(app, 'collection.addItems', { collectionId: collection!.id });
+    await expect.poll(async () => (await organizeSnapshot(page)).members[collection!.id] ?? []).toEqual([second]);
+
+    // 1 puts the slot-1 tag on the chosen row; its dot shows in the title cell. Focus is still on the table.
+    await page.keyboard.press('1');
+    await expect.poll(async () => (await organizeSnapshot(page)).tagged[important!] ?? []).toEqual([second]);
+    await expect(page.locator(`[data-testid="item-row"][data-item-id="${second}"] [data-testid="tag-dots"]`)).toBeVisible();
+    await expectNoSeriousA11y(page, 'table, a row with a colour dot');
+
+    // One more row into the collection, without the tag: the filter below must have something to leave out.
+    await page.keyboard.press('ArrowDown');
+    await expect(selected).toHaveCount(1);
+    const third = (await selected.getAttribute('data-item-id'))!;
+    expect([first, second]).not.toContain(third);
+    await runMenuCommand(app, 'collection.addItems', { collectionId: collection!.id });
+    await expect.poll(async () => [...((await organizeSnapshot(page)).members[collection!.id] ?? [])].sort()).toEqual([second, third].sort());
+
+    // Sidebar: F6 lands on the current view's row; ↓ moves the view with the cursor, through the special views to the collection.
+    await f6To(page, 'sidebar');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
+    const row = `nav-collection-${collection!.id}`;
+    for (let i = 0; i < 6 && (await focusedTestId(page)) !== row; i++) await page.keyboard.press('ArrowDown');
+    expect(await focusedTestId(page)).toBe(row);
+    await expect(page.getByTestId('toolbar-title')).toHaveText(NAME);
+    await expect(page.getByTestId('item-row')).toHaveCount(2);
+    await expectNoSeriousA11y(page, 'sidebar, the collection viewed from the keyboard');
+
+    // Tag selector: Tab reaches the chip (one rolling stop), Space puts it in the filter; only the tagged row stays.
+    await tabTo(page, `tag-chip-${important}`, 6);
+    await expectNoSeriousA11y(page, 'tag selector, a chip with the focus');
+    await page.keyboard.press('Space');
+    await expect(tagChip(page, important!)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await expect(page.locator(`[data-testid="item-row"][data-item-id="${second}"]`)).toBeVisible();
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 2개');
+    await expectNoSeriousA11y(page, 'a tag filter on');
+
+    // Space again takes it out: the keyboard path back is as short as the way in.
+    await page.keyboard.press('Space');
+    await expect(tagChip(page, important!)).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('item-row')).toHaveCount(2);
+  } finally {
+    await app.close();
+  }
+});
+
+// Spec 13 "axe(심각 이상 0)": every screen state M5 adds beyond the keyboard journey's stops, in one library.
+test('axe at every M5 state: the sidebar and its special views, a collection being named, an empty collection, the tag selector and its filter, coloured dots, the item panel\'s tags and collections, several items, the search and palette collections, an undo toast, a row dragged over a collection, a header being moved, the drop overlay', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  try {
+    // No collection yet: the sidebar says how to make one.
+    await expect(page.getByTestId('sidebar-hint')).toBeVisible();
+    await expectNoSeriousA11y(page, 'sidebar, no collections yet');
+
+    const [sample, ko, mp4] = await importPaths(page, [PDF, KO_PDF, MP4]);
+    // The same PDF again: a duplicate group; and one opened item: the recent view.
+    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+    await expect(page.getByTestId('item-row')).toHaveCount(4);
+    // Two rows carry the title now: the first import is opened by its id.
+    await page.locator(`[data-testid="item-row"][data-item-id="${sample!.id}"]`).dblclick();
+    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await runMenuCommand(app, 'nav.back');
+    const bio = await createCollection(page, '분자생물학');
+    const ch6 = await createCollection(page, '6장 · 신호 전달', bio);
+    const conf = await createCollection(page, '학회 준비');
+    await addToCollection(page, bio, [sample!.id, ko!.id, mp4!.id]);
+    await addToCollection(page, ch6, [sample!.id]);
+    const [important, exam] = await makeTags(page, [
+      { name: '중요', slot: 1, items: [sample!.id, ko!.id] },
+      { name: '시험 범위', slot: 2, items: [mp4!.id] },
+    ]);
+
+    // The sidebar: special views (all three have content), the tree with a child open, the tag selector below.
+    await treeRow(page, bio).locator('.disclosure').click();
+    await expect(treeRow(page, ch6)).toBeVisible();
+    await expectNoSeriousA11y(page, 'sidebar, special views, the tree open, the tag selector');
+    for (const kind of ['recent', 'unfiled', 'duplicates'] as const) {
+      await specialRow(page, kind).click();
+      await expect(specialRow(page, kind)).toHaveAttribute('aria-selected', 'true');
+      await expectNoSeriousA11y(page, `special view ${kind}`);
+    }
+
+    // A collection with coloured dots, one row selected (a dot on the accent fill), and the file-drop overlay in a collection.
+    await treeRow(page, bio).click();
+    await selectRows(page, [KO]);
+    await expect(page.locator('[data-testid="item-row"][aria-selected="true"] [data-testid="tag-dots"]')).toBeVisible();
+    await expectNoSeriousA11y(page, 'collection view, coloured dots on a selected row');
+    await dropSource(page, [PDF]);
+    await drag(page, 'dragenter', 'source');
+    await expect(page.getByTestId('drop-overlay')).toBeVisible();
+    await expectNoSeriousA11y(page, 'the drop overlay beside the sidebar, naming the collection');
+    await drag(page, 'dragleave', 'source');
+    await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
+
+    // A collection being renamed in its row: Enter on the viewed row turns it into the field.
+    await treeRow(page, bio).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('rename-input')).toBeFocused();
+    await expectNoSeriousA11y(page, 'a collection being renamed');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('rename-input')).toHaveCount(0);
+
+    // The tag selector: its "…" menu, a filter on, and a filter that leaves nothing.
+    await page.getByTestId('tag-selector-more').click();
+    await expect(page.getByTestId('tag-menu-all')).toBeVisible();
+    await expectNoSeriousA11y(page, 'tag selector menu');
+    await page.keyboard.press('Escape');
+    await tagChip(page, important!).click();
+    await expect(tagChip(page, important!)).toHaveAttribute('aria-pressed', 'true');
+    await expectNoSeriousA11y(page, 'a tag filter on');
+    await tagChip(page, exam!).click(); // no item has both
+    await expect(page.getByTestId('tag-filter-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'a tag filter that leaves nothing');
+    await page.getByTestId('tag-filter-empty-clear').click();
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+
+    // An empty collection: the table body and the item panel say so.
+    await treeRow(page, conf).click();
+    await expect(page.getByTestId('collection-empty')).toBeVisible();
+    await expectNoSeriousA11y(page, 'an empty collection');
+
+    // The item panel: one item with tags and two collection paths, the add field with a suggestion, several items, the menu.
+    await treeRow(page, bio).click();
+    await selectRows(page, ['sample']);
+    // The 1024 px macOS runner folds the panel beside the table; folded, its controls cannot be reached.
+    const panelFolded = (await page.getByTestId('shell').getAttribute('data-inspector')) !== 'shown';
+    await showItemPanel(app, page);
+    await expect(page.getByTestId('tags-section')).toBeVisible();
+    await expect(page.getByTestId('collection-path')).toHaveCount(2);
+    await expectNoSeriousA11y(page, 'item panel with tags and collections');
+    await page.getByTestId('tag-add-chip').click();
+    await page.getByTestId('tag-input').fill('시');
+    await expect(page.getByTestId('tag-suggestion')).toHaveCount(1);
+    await expectNoSeriousA11y(page, 'tag add field with a suggestion');
+    await page.keyboard.press('Escape');
+    await selectRows(page, ['sample', KO, 'sample-h264-aac'], { modifier: 'Meta' });
+    await expect(page.getByTestId('inspector-multi')).toBeVisible();
+    await expectNoSeriousA11y(page, 'several items, common tags and collections');
+    await page.getByTestId('add-to-collection').click();
+    await expect(page.getByTestId(`add-to-collection-${ch6}`)).toBeVisible();
+    await expectNoSeriousA11y(page, 'the 컬렉션에 추가 menu open');
+    await page.keyboard.press('Escape');
+    // Shown on demand, the panel leaves the table narrower than its columns: the header cells moved below would be under it.
+    if (panelFolded) {
+      await runMenuCommand(app, 'view.toggleInspector');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    }
+
+    // The search of a collection with no result offers the whole library; ⌘K lists the collection between 자료 and 명령.
+    await runMenuCommand(app, 'library.find');
+    await expect(page.getByTestId('search-field').getByRole('searchbox')).toBeFocused(); // keys go where the focus is when they arrive
+    await page.keyboard.type('효소 억제제');
+    await expect(page.getByTestId('search-empty-everywhere')).toBeVisible();
+    await expectNoSeriousA11y(page, 'quick search, no result in a collection');
+    await page.keyboard.press('Escape');
+    await runMenuCommand(app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused();
+    await page.keyboard.type('신호');
+    await expect(page.getByTestId('palette-collection')).toHaveCount(1);
+    await expectNoSeriousA11y(page, 'palette, the 컬렉션 group');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('palette')).toHaveCount(0);
+
+    // An undo toast: 이 컬렉션에서 빼기 inside a collection.
+    await treeRow(page, ch6).click();
+    await selectRows(page, ['sample']);
+    await runMenuCommand(app, 'collection.removeItems');
+    await expect(page.getByTestId('undo-toast')).toBeVisible();
+    await expectNoSeriousA11y(page, 'an undo toast');
+    await page.getByTestId('undo-action').click();
+    await expect(page.getByTestId('undo-toast')).toHaveCount(0);
+
+    // Mid-drag states: a table row over a collection row (its drop marker), a header cell being moved (the insertion line).
+    await specialRow(page, 'all').click();
+    await selectRows(page, [KO]);
+    await beginDrag(page, rowByTitle(page, KO), 'items');
+    await hover(page, treeRow(page, conf));
+    await expect(treeRow(page, conf)).toHaveAttribute('data-drop-target', /.*/);
+    await expectNoSeriousA11y(page, 'a table row dragged over a collection');
+    await cancelDrag(page);
+    await expect(treeRow(page, conf)).not.toHaveAttribute('data-drop-target', /.*/);
+    // A cancelled drag files nothing.
+    expect((await organizeSnapshot(page)).members[conf] ?? []).toEqual([]);
+    const header = (col: string) => page.locator(`[data-testid="column-header"][data-col="${col}"]`);
+    const [from, to] = [(await header('createdAt').boundingBox())!, (await header('creators').boundingBox())!];
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 6, from.y + from.height / 2, { steps: 8 });
+    await expect(page.getByTestId('column-drop-line')).toBeVisible();
+    await expectNoSeriousA11y(page, 'a header cell being moved');
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.getByTestId('column-drop-line')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -332,7 +573,7 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.getByTestId('content').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('sidebar');
-    await expect(page.getByTestId('nav-library')).toHaveAttribute('data-focus-visible', 'true');
+    await expect(page.getByTestId('nav-scope-all')).toHaveAttribute('data-focus-visible', 'true');
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('content');
     await page.keyboard.press('Shift+F6');
@@ -436,13 +677,13 @@ test('the palette, the drop overlay and the ⌘/ sheet keep the focus on F6 / �
     await expect(page.getByTestId('palette')).toHaveCount(0);
 
     await page.keyboard.press('F6');
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await drag(page, 'dragenter', [['a.pdf', 'application/pdf']]);
     await expect(page.getByTestId('drop-overlay')).toBeVisible();
     await expectNoSeriousA11y(page, 'drop overlay');
     for (const key of ['F6', 'Shift+F6']) {
       await page.keyboard.press(key);
-      expect(await focusedTestId(page)).toBe('nav-library');
+      expect(await focusedTestId(page)).toBe('nav-scope-all');
     }
     await drag(page, 'dragleave', [['a.pdf', 'application/pdf']]);
     await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
@@ -615,7 +856,7 @@ test('a fold after the user left the sidebar row moves no focus', async ({}, tes
   const zoom = async (f: number) => (await mainWindow(app)).evaluate((w, f) => w.webContents.setZoomFactor(f), f);
   try {
     await page.keyboard.press('F6');
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await page.getByTestId('content').click({ position: { x: 300, y: 300 } }); // nothing there takes the focus
     expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
     await page.keyboard.press('ArrowDown'); // the keyboard is in use again, on nothing
@@ -637,7 +878,7 @@ test('a sidebar that folds by itself hands a keyboard focus to the toolbar toggl
   try {
     await page.getByTestId('content').click({ position: { x: 5, y: 5 } }); // a pointer user first…
     await page.keyboard.press('F6'); // …who now navigates by keyboard: F6 counts as keyboard input
-    expect(await focusedTestId(page)).toBe('nav-library');
+    expect(await focusedTestId(page)).toBe('nav-scope-all');
     await zoom(2);
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
     await expect(page.getByTestId('toolbar-sidebar-toggle')).toBeFocused();

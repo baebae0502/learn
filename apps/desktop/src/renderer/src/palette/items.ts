@@ -16,23 +16,47 @@ const openedAt = (i: LibraryItem): number => (i.openedAt === null ? -Infinity : 
 /** -1 when `a` comes first (the larger value), 1 when `b` does, 0 when equal. */
 const larger = (a: number | string, b: number | string): number => (a === b ? 0 : a > b ? -1 : 1);
 
+/** A 초성 match scores past every letter match, and a match outside the title past every 초성 match (a title is far shorter than 2^20 characters). */
+const INITIALS = 1 << 20;
+const NO_TITLE = 1 << 21;
+
 /**
- * The 자료 group: the quick search's matches (search.ts, the same rules), title matches first — the earlier in the title
- * the higher — then matches in other fields; a tie goes to the last opened, then the newest added, then the id (stable).
+ * How well the title matched, lower first (spec 7.2): a letter match by its offset, then a 초성 match by its offset
+ * (ㅅㅎ reads 신호, but a title that holds 신호 itself is the better answer), then rows that matched in another field.
+ */
+export function matchScore(match: Match | null): number {
+  if (match === null) return NO_TITLE;
+  return (match.kind === 'initials' ? INITIALS : 0) + match.start;
+}
+
+interface Scored extends RankedItem {
+  score: number;
+}
+
+/** Among equal scores: the last opened, then the newest added, then the id (stable). Negative when `a` comes first. */
+const tieBreak = (a: LibraryItem, b: LibraryItem): number => larger(openedAt(a), openedAt(b)) || larger(a.createdAt, b.createdAt) || -larger(a.id, b.id);
+
+/**
+ * The 자료 group: the quick search's matches (search.ts, the same rules) ranked by `matchScore`, the best `max` kept. Each
+ * match is scored once and only a row that could enter the top `max` is compared further — a partial selection over the
+ * matches instead of sorting all of them on every keystroke (measured at 10,000 matches in items.rank.test.ts). The dates behind
+ * a tie are parsed only for rows that tie.
  */
 export function rankItems(items: readonly LibraryItem[], result: SearchResult, max = ITEM_RESULTS_MAX): RankedItem[] {
-  return items
-    .filter((item) => result.ids.has(item.id))
-    .map((item) => ({ item, match: result.titleMatches.get(item.id) ?? null }))
-    .sort(
-      (a, b) =>
-        Number(a.match === null) - Number(b.match === null) ||
-        (a.match && b.match ? a.match.start - b.match.start : 0) ||
-        larger(openedAt(a.item), openedAt(b.item)) ||
-        larger(a.item.createdAt, b.item.createdAt) ||
-        -larger(a.item.id, b.item.id),
-    )
-    .slice(0, max);
+  const top: Scored[] = [];
+  if (max <= 0) return [];
+  for (const item of items) {
+    if (!result.ids.has(item.id)) continue;
+    const match = result.titleMatches.get(item.id) ?? null;
+    const score = matchScore(match);
+    if (top.length === max && score > top[max - 1]!.score) continue; // worse than everything kept: nothing to compare
+    let at = top.length;
+    while (at > 0 && (score < top[at - 1]!.score || (score === top[at - 1]!.score && tieBreak(item, top[at - 1]!.item) < 0))) at--;
+    if (at === max) continue; // ties with the last kept and loses the tie-break
+    top.splice(at, 0, { item, match, score });
+    if (top.length > max) top.pop();
+  }
+  return top.map(({ item, match }) => ({ item, match }));
 }
 
 /** Right of the title (spec §4.4): 저자 · 연도, whichever there are; the kind when there is neither. */

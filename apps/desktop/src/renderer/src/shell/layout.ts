@@ -8,7 +8,7 @@ export const INSPECTOR = { default: layout.inspectorWidth, min: layout.inspector
  * The content column never gets narrower than this: below it the item panel folds away by itself, then the sidebar
  * (design-spec 2.1 "항목 패널 → 사이드바 순으로 자동 접힌다", 8.3 200 % zoom without sideways scrolling). The M4
  * table's default columns at their default widths need 664 (200 + 180 + 64 + 88 + 132, the column catalogue): in a
- * column between 520 and that the table scrolls sideways inside its own scroll view (.library-table), never the window.
+ * column between 520 and that the table scrolls sideways inside its own scroll view (.table-scroller), never the window.
  */
 export const CONTENT_MIN = 520;
 

@@ -1,12 +1,12 @@
 @layer screens {
   /* Window-wide drop overlay (design-spec 6 드롭 오버레이, 7.2; mockup library-empty.html?state=drop). Below the 52 px
-     bar: the traffic lights and the sidebar top stay visible. Opaque: nothing of the window shows through.
+     bar and right of the sidebar (--drop-left, measured when it shows): the traffic lights and the whole sidebar column stay visible. Opaque: nothing of the window shows through.
      The ring, the tile and the current card mark a drop target, not the focus: none of the not-key / not-main rules
      (utilities.css) reach them, so a drag from Finder onto a background window sees them at full strength. */
   .drop-overlay {
     position: absolute;
     z-index: 50;
-    inset: var(--toolbar-height) 0 0 0;
+    inset: var(--toolbar-height) 0 0 var(--drop-left, 0px);
     display: grid;
     place-items: center;
     background: var(--bg-content);

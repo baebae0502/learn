@@ -144,7 +144,7 @@ test('library screen and fonts', TAG, async () => {
   for (const sel of [
     '[data-testid="toolbar-title"]',
     '.sidebar .section-label',
-    '[data-testid="nav-library"] .label',
+    '[data-testid="nav-scope-all"] .label',
     '[data-testid="item-row"][data-title="sample"] .item-title',
     '[data-testid="item-row"][data-title="한글 경로 (테스트) #1"] .item-title',
   ]) {

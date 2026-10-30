@@ -2,7 +2,9 @@
   .window {
     position: relative;
     height: 100vh;
-    overflow: hidden;
+    /* clip, not hidden: a hidden box still scrolls when something inside it is scrolled into view, and then the whole
+       window sits shifted with no scrollbar to bring it back. Only the panes scroll. */
+    overflow: clip;
     background: var(--bg-content);
   }
   .window-panes {
@@ -51,6 +53,8 @@
   .sidebar-scroll {
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     padding: 0 var(--space-8) var(--space-12);
   }

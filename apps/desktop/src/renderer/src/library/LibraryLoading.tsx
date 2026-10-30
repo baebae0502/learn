@@ -25,6 +25,7 @@ export function LibraryLoading() {
     <LibraryTable
       rows={NO_ROWS}
       columns={settings.columns}
+      forced={settings.forced}
       sort={settings.sort}
       onSortChange={settings.setSort}
       onColumnsChange={settings.setColumns}

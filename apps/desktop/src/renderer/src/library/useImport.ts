@@ -2,33 +2,45 @@ import { useCallback } from 'react';
 import type { ImportOutcome, Result, StorageMode } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { afterEditing } from '../inspector/editGuard';
+import { inChunks } from '../organize/membership';
 import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
+import type { ImportTarget } from '../sidebar/importTarget';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { showToast } from '../ui/toasts';
 import { BUSY_MIN_MS, busyScreenSettled } from './busyScreen';
-import { LIST_REFRESH_WAIT_MS, failureLines, settleImport, settledWithin, type ImportFlowDeps } from './import-flow';
+import { LIST_REFRESH_WAIT_MS, failureLines, importToast, settleImport, settledWithin, type ImportFlowDeps } from './import-flow';
 
 /** Runs one import end to end: dialog/copy in main, duplicate questions, result toasts; commands stay disabled meanwhile. */
 export function useImport(confirm: ImportFlowDeps['confirm']) {
   const setImporting = useShell((s) => s.setImporting);
   const setView = useShell((s) => s.setView);
   return useCallback(
-    /** `count`: how many files the request brings in, when known before it runs (a drop). */
-    async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode, count?: number) => {
+    /** `count`: how many files the request brings in, when known before it runs (a drop). `into`: the collection the request files into. */
+    async (request: () => Promise<Result<ImportOutcome[]>>, mode: StorageMode, count?: number, into: ImportTarget | null = null) => {
       clearImportMarks();
       perfMark('import:start');
       setImporting(true, count ?? null);
       try {
         const outcomes = await unwrap(request());
         perfMark('import:answered');
-        const report = await settleImport(outcomes, mode, {
-          confirm,
-          importAgain: (path, m) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true })),
-        });
+        const report = await settleImport(
+          outcomes,
+          mode,
+          {
+            confirm,
+            importAgain: (path, m, collectionId) => unwrap(api().library.import({ paths: [path], mode: m, allowDuplicate: true, ...(collectionId ? { collectionId } : {}) })),
+            fileExisting: async (collectionId, itemIds) => {
+              let filed = 0;
+              for (const chunk of inChunks([...itemIds])) filed += (await unwrap(api().collections.addItems({ collectionId, itemIds: chunk }))).length;
+              return filed;
+            },
+          },
+          into?.id ?? null,
+        );
         // The import ends when the list shows what it brought: otherwise the empty library's own screen (with its
         // buttons) flashes between the busy screen and the first rows (critique T13R2-m1).
         // At most LIST_REFRESH_WAIT_MS: a wedged list read must never hold the import (and the window) for good.
@@ -39,7 +51,8 @@ export function useImport(confirm: ImportFlowDeps['confirm']) {
         // toast never comes a frame before the text (re-review m-N4).
         if (count !== undefined) await new Promise<void>((resolve) => afterPaintOr(100, resolve));
         await settledWithin(busyScreenSettled(), BUSY_MIN_MS + 200);
-        if (report.imported > 0) showToast({ kind: 'success', title: (mode === 'linked' ? t.toast.linked : t.toast.imported)(report.imported), testId: 'import-done' });
+        const done = importToast(report, mode, into);
+        if (done) showToast(done);
         if (report.failed.length > 0) {
           const { lines, hints } = failureLines(report.failed);
           showToast({ kind: 'error', title: t.toast.failedTitle(report.failed.length), lines, body: hints.join(' ') || undefined, testId: 'import-failures' });

@@ -5,7 +5,7 @@ import { timed } from '../ui/perfMarks';
 /**
  * Quick search over the library list (spec 4.2). Every query word must be in some field (AND). Fields compare NFC and
  * lower-cased, with whitespace runs as one space. The short fields (title, creators, publisher, original file name,
- * year) also have a 초성 string, so ㅅㅎ finds 신호; the long ones (abstract, memo) are matched literally.
+ * year, tag names) also have a 초성 string, so ㅅㅎ finds 신호; the long ones (abstract, memo) are matched literally.
  *
  * Built once per list (once more when the long texts arrive), the index keeps each kind of text as ONE string with a
  * separator between fields and items. A query word is then a few native indexOf scans of those strings, not a loop over
@@ -134,13 +134,17 @@ type ShortPart = Omit<SearchIndex, 'long' | 'longStarts' | 'longItems'>;
 type LongPart = Pick<SearchIndex, 'long' | 'longStarts' | 'longItems'>;
 const NO_LONG: LongPart = { long: '', longStarts: new Int32Array(1), longItems: new Int32Array(0) };
 
-function shortPart(items: readonly LibraryItem[]): ShortPart {
+/** Per item, the names of its tags joined by a space: the last short field (spec 7.1). Only items that have a tag are in it. */
+export type TagNames = ReadonlyMap<string, string>;
+export const NO_TAG_NAMES: TagNames = new Map();
+
+function shortPart(items: readonly LibraryItem[], tags: TagNames): ShortPart {
   const n = items.length;
   const raw: string[] = [];
   for (const it of items) {
     raw.push(clean(it.title));
     for (const name of it.creators) raw.push(SEP, clean(name));
-    raw.push(SEP, clean(it.publisher ?? ''), SEP, clean(it.originalName), SEP, it.year === null ? '' : String(it.year), SEP);
+    raw.push(SEP, clean(it.publisher ?? ''), SEP, clean(it.originalName), SEP, it.year === null ? '' : String(it.year), SEP, clean(tags.get(it.id) ?? ''), SEP);
   }
   const short = foldJoined(raw.join(''));
   const starts = new Int32Array(n + 1);
@@ -153,7 +157,7 @@ function shortPart(items: readonly LibraryItem[]): ShortPart {
     const titleEnd = short.indexOf(SEP, at);
     titleEnds[k] = titleEnd;
     let end = titleEnd;
-    for (let f = 0; f < it.creators.length + 3; f++) end = short.indexOf(SEP, end + 1); // creators, publisher, file name, year
+    for (let f = 0; f < it.creators.length + 4; f++) end = short.indexOf(SEP, end + 1); // creators, publisher, file name, year, tag names
     at = end + 1;
     const nfc = it.title.normalize('NFC');
     plainTitle[k] = titleEnd - starts[k]! === nfc.length && !SURROGATE.test(nfc) ? 1 : 0;
@@ -185,32 +189,58 @@ function longPart(items: readonly LibraryItem[], texts: readonly SearchText[] | 
   return { long, longStarts, longItems: Int32Array.from(owners) };
 }
 
-const shortParts = new WeakMap<readonly LibraryItem[], ShortPart>();
-/** The short part of this list array, built once: the long texts arriving later rebuild only their own part. */
-function shortPartFor(items: readonly LibraryItem[]): ShortPart {
-  let short = shortParts.get(items);
-  if (!short) {
-    short = shortPart(items);
-    shortParts.set(items, short);
-  }
-  return short;
+const shortParts = new WeakMap<readonly LibraryItem[], { tags: TagNames; part: ShortPart }>();
+/** The short part of this list array and tag map, built once: the long texts arriving later rebuild only their own part. */
+function shortPartFor(items: readonly LibraryItem[], tags: TagNames): ShortPart {
+  const hit = shortParts.get(items);
+  if (hit && hit.tags === tags) return hit.part;
+  const part = shortPart(items, tags);
+  shortParts.set(items, { tags, part });
+  return part;
 }
 
-export function buildSearchIndex(items: readonly LibraryItem[], texts?: readonly SearchText[]): SearchIndex {
-  return { ...shortPartFor(items), ...longPart(items, texts) };
+export function buildSearchIndex(items: readonly LibraryItem[], texts?: readonly SearchText[], tags: TagNames = NO_TAG_NAMES): SearchIndex {
+  return { ...shortPartFor(items, tags), ...longPart(items, texts) };
 }
 
-const indexes = new WeakMap<readonly LibraryItem[], { texts: readonly SearchText[] | undefined; index: SearchIndex }>();
+const indexes = new WeakMap<readonly LibraryItem[], { texts: readonly SearchText[] | undefined; tags: TagNames; index: SearchIndex }>();
 /**
- * The index of this list array and these long texts, built once and shared: the toolbar count and the table ask for it
- * in the same frame. A list read again is a new array, so a new index.
+ * The index of this list array, these long texts and this tag map, built once and shared: the toolbar count and the table
+ * ask for it in the same frame. A list read again is a new array, so a new index; a tag renamed, put on or taken off is a
+ * new map (library/tagField.ts), so a new index too — a collection edit is not (the same map comes back).
  */
-export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly SearchText[]): SearchIndex {
+export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly SearchText[], tags: TagNames = NO_TAG_NAMES): SearchIndex {
   const hit = indexes.get(items);
-  if (hit && hit.texts === texts) return hit.index;
-  const index = timed('search:index', () => buildSearchIndex(items, texts));
-  indexes.set(items, { texts, index });
+  if (hit && hit.texts === texts && hit.tags === tags) return hit.index;
+  const index = timed('search:index', () => buildSearchIndex(items, texts, tags));
+  indexes.set(items, { texts, tags, index });
   return index;
+}
+
+/** The fields the short index holds: a change to any of them changes what a query can find. */
+function sameSearchedFields(a: LibraryItem, b: LibraryItem): boolean {
+  return (
+    a.title === b.title && a.publisher === b.publisher && a.originalName === b.originalName && a.year === b.year &&
+    a.creators.length === b.creators.length && a.creators.every((c, k) => c === b.creators[k])
+  );
+}
+
+/**
+ * A list patched in place (same length and ids; a few rows replaced) keeps the old list's index when none of the replaced
+ * rows changed a searched field: opening an item, a re-checked file or a relink must not make the next keystroke pay for a
+ * new index. The index reads `items` for titles and ids only, which are the same. Anything else is left to build a new one.
+ */
+export function carrySearchIndex(prev: readonly LibraryItem[], next: readonly LibraryItem[]): void {
+  if (prev.length !== next.length) return;
+  for (let k = 0; k < prev.length; k++) {
+    const a = prev[k]!;
+    const b = next[k]!;
+    if (a !== b && (a.id !== b.id || !sameSearchedFields(a, b))) return;
+  }
+  const short = shortParts.get(prev);
+  if (short) shortParts.set(next, short);
+  const full = indexes.get(prev);
+  if (full) indexes.set(next, full);
 }
 
 export interface SearchResult {

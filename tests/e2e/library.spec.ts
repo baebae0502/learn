@@ -319,7 +319,7 @@ test('a first list read that fails says so where the list goes, and 다시 시�
     await expect(notice).toContainText('잠시 뒤 다시 시도하세요');
     await expect(s.page.getByTestId('empty-state')).toHaveCount(0); // never "아직 자료가 없습니다" for a list we could not read
     await expect(s.page.getByTestId('toolbar-count')).toHaveCount(0);
-    await expect(s.page.getByTestId('nav-library').locator('.count')).toHaveCount(0);
+    await expect(s.page.getByTestId('nav-scope-all').locator('.count')).toHaveCount(0);
     await expect(s.page.getByTestId('import-menu')).toBeEnabled(); // importing still works
     await expect(s.page.getByTestId('list-error')).toHaveCount(0); // the notice is the message; no toast on top
     // The next read answers when the test says so: meanwhile 다시 시도 is pending (focusable, presses ignored).

@@ -46,7 +46,11 @@ test('dragging files in shows the window-wide overlay with counts; ⌥ switches 
     expect(await page.getByTestId('drop-copy').locator('.dm-text').evaluate((e) => (e as HTMLElement).innerText)).toBe('라이브러리 폴더에 복사합니다.\n원본은 그대로 둡니다.');
     // The key that switches to linking, from the accelerator helpers: ⌥ on macOS, Alt elsewhere.
     await expect(page.getByTestId('drop-link').locator('.kbd')).toHaveText(IS_MAC ? '⌥' : 'Alt');
-    expect(await overlay.boundingBox()).toMatchObject({ x: 0, y: 52 });
+    // Right of the sidebar (M5 spec 8.4): the sidebar column keeps its own part of the window; under the 52 px bar as before.
+    const side = (await page.locator('[data-sidebar-area]').boundingBox())!;
+    const box = (await overlay.boundingBox())!;
+    expect(box.y).toBe(52);
+    expect(Math.abs(box.x - (side.x + side.width))).toBeLessThanOrEqual(1);
     // The sidebar top (traffic lights, toggle) stays above the overlay.
     expect(await page.evaluate(() => document.elementFromPoint(200, 26)?.closest('[data-testid="sidebar-top"]') !== null)).toBe(true);
     expect(await drag(page, 'dragover', THREE, { altKey: true })).toBe('link');

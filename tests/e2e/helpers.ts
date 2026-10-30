@@ -1,9 +1,12 @@
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
-import { COMMANDS, type CommandId } from '../../packages/domain/src/commands';
+import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { LibraryItem } from '../../packages/domain/src/library';
+import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
+import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
@@ -489,17 +492,34 @@ export interface SeedRow {
   creators: string[];
   year: number | null;
   createdAt: string;
+  /** Long search fields, only for the 1만 항목 @perf (seedRows' `longTexts`). */
+  abstract?: string;
+  extra?: string;
 }
 
 const SEED_KO = ['세포', '신호', '전달', '단백질', '효소', '반응', '유전자', '발현', '대사', '경로', '면역', '수용체', '광합성', '열역학', '확률', '통계', '강의', '노트'];
 const SEED_EN = ['Signal', 'Protein', 'Enzyme', 'Kinetics', 'Bayesian', 'Inference', 'Linear', 'Algebra', 'Membrane', 'Transport', 'Genome', 'Lecture', 'Notes', 'Review'];
 const SEED_NAMES = ['김민지', '이서준', '박지훈', '최유나', '정하늘', 'Alice Kim', 'Brian Lee', 'Chen Wei', 'Dana Park', 'Erik Lund'];
 
+/** Words from the Korean list up to `length` characters; from the row's number, so rows differ and every run is the same. */
+function longText(from: number, length: number): string {
+  const words: string[] = [];
+  for (let k = from, size = 0; size < length; k++) {
+    const word = SEED_KO[k % SEED_KO.length]!;
+    words.push(word);
+    size += word.length + 1;
+  }
+  return words.join(' ').slice(0, length);
+}
+/** One row in ten has a 600-character abstract; one in a hundred a 6,000-character abstract and a 5,000-character memo (past the 4,000 cut). */
+const longTextsOf = (i: number): Pick<SeedRow, 'abstract' | 'extra'> =>
+  i % 100 === 7 ? { abstract: longText(i, 6_000), extra: longText(i + 1, 5_000) } : i % 10 === 3 ? { abstract: longText(i, 600) } : {};
+
 /**
  * `count` seeded rows from a fixed generator (mulberry32): Korean and English titles, each ending in its running number
  * (so every title is unique), 0–4 creators, a year or none, and 추가일 one minute apart going back from `base`.
  */
-export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z')): SeedRow[] {
+export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T00:00:00.000Z'), opts: { longTexts?: boolean } = {}): SeedRow[] {
   let a = seed | 0;
   const rand = () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -510,12 +530,13 @@ export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T
   const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
   return Array.from({ length: count }, (_, i) => {
     const words = rand() < 0.6 ? SEED_KO : SEED_EN;
-    return {
+    const row: SeedRow = {
       title: `${pick(words)} ${pick(words)} ${i + 1}`,
       creators: Array.from({ length: Math.floor(rand() * 5) }, () => pick(SEED_NAMES)),
       year: rand() < 0.1 ? null : 1985 + Math.floor(rand() * 41),
       createdAt: new Date(base - i * 60_000).toISOString(),
     };
+    return opts.longTexts ? { ...row, ...longTextsOf(i) } : row;
   });
 }
 
@@ -529,6 +550,16 @@ export async function seedLibrary(app: ElectronApplication, opts: { count: numbe
   if (added !== opts.count) throw new Error(`seedLibrary: ${added} of ${opts.count} items added`);
 }
 
+/** E2E only: starts the render counts of R/ui/renderCount.ts in this page, from zero. */
+export const watchRenders = (page: Page): Promise<void> =>
+  page.evaluate(() => {
+    (window as unknown as { __learnRenders?: Record<string, number> }).__learnRenders = {};
+  });
+
+/** How often each counted component rendered since watchRenders. */
+export const renderCounts = (page: Page): Promise<Record<string, number>> =>
+  page.evaluate(() => ({ ...((window as unknown as { __learnRenders?: Record<string, number> }).__learnRenders ?? {}) }));
+
 /** One application-menu entry as JSON. Runtime roles are lower-case (`selectall`, `togglefullscreen`). */
 export interface MenuNode {
   label: string;
@@ -536,6 +567,7 @@ export interface MenuNode {
   accelerator: string | null;
   id: string | null;
   enabled: boolean;
+  checked: boolean;
   type: string;
   submenu: MenuNode[] | null;
 }
@@ -544,7 +576,7 @@ export interface MenuNode {
 export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]> {
   return app.evaluate(({ Menu }) => {
     interface LiveItem {
-      label: string; role?: string; accelerator?: string; id?: string; enabled: boolean; type: string; submenu?: { items: LiveItem[] };
+      label: string; role?: string; accelerator?: string; id?: string; enabled: boolean; checked: boolean; type: string; submenu?: { items: LiveItem[] };
     }
     const walk = (items: LiveItem[]): MenuNode[] =>
       items.map((i) => ({
@@ -553,6 +585,7 @@ export async function menuSnapshot(app: ElectronApplication): Promise<MenuNode[]
         accelerator: i.accelerator ?? null,
         id: i.id ?? null,
         enabled: i.enabled,
+        checked: i.checked,
         type: i.type,
         submenu: i.submenu ? walk(i.submenu.items) : null,
       }));
@@ -569,18 +602,20 @@ export async function enabledMenuCommands(app: ElectronApplication): Promise<Com
 }
 
 /**
- * Click an application-menu item by id the way Electron does for a mouse click: the MenuItem's own `click()`
- * with the focused window. Waits up to 5 s for the item to become clickable (the renderer reports its context
- * asynchronously), then throws when it is missing, hidden or disabled (a user couldn't click it).
+ * Click an application-menu item the way Electron does for a mouse click: the MenuItem's own `click()` with the focused
+ * window. `args` names a row of the command's submenu (보기 › 정렬 기준 ▸ 연도 = `{ column: 'year' }`); the command's own
+ * item (the submenu's head) is what must be on. Waits up to 5 s for it to become clickable (the renderer reports its
+ * context asynchronously), then throws when the item is missing, hidden or disabled (a user couldn't click it).
  */
-export async function runMenuCommand(app: ElectronApplication, id: CommandId): Promise<void> {
+export async function runMenuCommand(app: ElectronApplication, id: CommandId, args?: CommandArgs): Promise<void> {
   await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
-  await app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
-    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
-    if (!item) throw new Error(`no application menu item with id ${id}`);
-    if (!item.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
+  const itemId = menuItemId(id, args);
+  await app.evaluate(({ BrowserWindow, Menu, webContents }, itemId) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(itemId);
+    if (!item) throw new Error(`no application menu item with id ${itemId}`);
+    if (!item.enabled || !item.visible) throw new Error(`menu item ${itemId} is not clickable`);
     item.click(undefined, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
-  }, id);
+  }, itemId);
 }
 
 /**
@@ -757,7 +792,7 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
 }
 
 /** Whether the application-menu item exists, is visible and is enabled right now. */
-export async function menuItemEnabled(app: ElectronApplication, id: CommandId): Promise<boolean> {
+export async function menuItemEnabled(app: ElectronApplication, id: string): Promise<boolean> {
   return app.evaluate(({ Menu }, id) => {
     const item = Menu.getApplicationMenu()?.getMenuItemById(id);
     return Boolean(item && item.enabled && item.visible);
@@ -772,21 +807,40 @@ export interface PopupItem {
   /** A checkbox item's mark (the column header menu); false for the others. */
   checked: boolean;
   type: string;
+  /** The rows of a submenu (컬렉션에 추가 ▸, 색 태그 ▸), as recorded. */
+  submenu?: PopupItem[];
 }
 
 /**
- * Replace native popups in main for the rest of the session: every `Menu.prototype.popup` records its items, then
- * (one task later, like a user) clicks the enabled item labelled `pick` through its own `click()` and closes the
- * menu. A null `pick`, or no enabled item with that label, only closes it (dismissed).
+ * Replace native popups in main for the rest of the session: every `Menu.prototype.popup` records its items (submenus
+ * too) and the point it opened at, then (one task later, like a user) clicks the enabled row `pick` names through its
+ * own `click()` and closes the menu. `pick` is a label, or a path of labels down the submenus (`['컬렉션에 추가', '학회']`);
+ * a path that ends on a submenu's head, a null `pick`, or no enabled row with that label only closes the menu (dismissed).
  */
-export async function stubContextMenu(app: ElectronApplication, pick: string | null): Promise<void> {
+export async function stubContextMenu(app: ElectronApplication, pick: string | readonly string[] | null): Promise<void> {
   await app.evaluate(({ Menu }, pick) => {
-    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; click(): void }
-    const g = globalThis as { __learnPopups?: PopupItem[][] };
+    interface LiveItem { id?: string; label: string; enabled: boolean; visible: boolean; checked: boolean; type: string; submenu?: { items: LiveItem[] }; click(): void }
+    interface Recorded { id: string | null; label: string; enabled: boolean; checked: boolean; type: string; submenu?: Recorded[] }
+    const g = globalThis as { __learnPopups?: Recorded[][]; __learnPopupAt?: Array<{ x: number; y: number }>; __learnPopupTimes?: number[] };
     g.__learnPopups = [];
-    Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { callback?: () => void }) {
-      g.__learnPopups!.push(this.items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type })));
-      const target = pick === null ? undefined : this.items.find((i) => i.label === pick && i.enabled && i.visible);
+    g.__learnPopupAt = [];
+    g.__learnPopupTimes = [];
+    const record = (items: LiveItem[]): Recorded[] =>
+      items.map((i) => ({ id: i.id ?? null, label: i.label, enabled: i.enabled, checked: i.checked, type: i.type, ...(i.submenu ? { submenu: record(i.submenu.items) } : {}) }));
+    Menu.prototype.popup = function popup(this: { items: LiveItem[] }, options?: { x?: number; y?: number; callback?: () => void }) {
+      // Epoch ms with the fraction: a page's `performance.timeOrigin + event.timeStamp` is on the same clock to about a millisecond.
+      g.__learnPopupTimes!.push(performance.timeOrigin + performance.now());
+      g.__learnPopups!.push(record(this.items));
+      g.__learnPopupAt!.push({ x: options?.x ?? Number.NaN, y: options?.y ?? Number.NaN });
+      const path = pick === null ? [] : typeof pick === 'string' ? [pick] : pick;
+      let level: LiveItem[] = this.items;
+      let found: LiveItem | undefined;
+      for (const label of path) {
+        found = level.find((i) => i.label === label && i.enabled && i.visible);
+        if (!found) break;
+        level = found.submenu?.items ?? [];
+      }
+      const target = path.length > 0 && found && !found.submenu ? found : undefined;
       setTimeout(() => {
         target?.click();
         options?.callback?.();
@@ -794,6 +848,14 @@ export async function stubContextMenu(app: ElectronApplication, pick: string | n
     };
   }, pick);
 }
+
+/** The point (window coordinates) each popup menu recorded since `stubContextMenu` opened at, oldest first. */
+export const recordedPopupPoints = (app: ElectronApplication): Promise<Array<{ x: number; y: number }>> =>
+  app.evaluate(() => (globalThis as { __learnPopupAt?: Array<{ x: number; y: number }> }).__learnPopupAt ?? []);
+
+/** When each popup menu was shown since `stubContextMenu` (epoch ms), oldest first: the moment main called `Menu.popup`. */
+export const recordedPopupTimes = (app: ElectronApplication): Promise<number[]> =>
+  app.evaluate(() => (globalThis as { __learnPopupTimes?: number[] }).__learnPopupTimes ?? []);
 
 /** Every popup menu recorded since `stubContextMenu`, oldest first. */
 export const recordedPopups = (app: ElectronApplication): Promise<PopupItem[][]> =>
@@ -942,4 +1004,207 @@ export async function nativeKeyCode(
   const script = `tell application "System Events" to key code ${code}${usingClause(modifiers)}`;
   const sentAt = Date.now();
   return { frontmost, script, output: osascript(script), focusedWindow, sentAt };
+}
+
+/**
+ * Organize setup through the page's preload API (`window.learn.collections.*`, `tags.*`), as the sidebar will call it. The
+ * screen's own flows are checked through the screen by the specs that own them; these make the data those specs need.
+ */
+export async function createCollection(page: Page, name: string, parentId: string | null = null): Promise<string> {
+  const r = await page.evaluate((input) => window.learn.collections.create(input), { name, parentId });
+  if (!r.ok) throw new Error(`collections.create failed: ${r.code}`);
+  return r.data.id;
+}
+
+/** Files the items in the collection; the number of memberships that are new. */
+export async function addToCollection(page: Page, collectionId: string, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.collections.addItems(input), { collectionId, itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`collections.addItems failed: ${r.code}`);
+  return r.data.length;
+}
+
+export async function createTag(page: Page, name: string): Promise<string> {
+  const r = await page.evaluate((input) => window.learn.tags.create(input), { name });
+  if (!r.ok) throw new Error(`tags.create failed: ${r.code}`);
+  return r.data.id;
+}
+
+/** Puts the tag on the items; the number of assignments that are new. */
+export async function assignTag(page: Page, tagId: string, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.tags.assign(input), { tagId, itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`tags.assign failed: ${r.code}`);
+  return r.data;
+}
+
+/** Colour and position together, as the screen always sets them (a position holds one tag). */
+export async function setTagColor(page: Page, tagId: string, color: TagColorId | null, position: number | null): Promise<void> {
+  const r = await page.evaluate((input) => window.learn.tags.setColor(input), { tagId, color, position });
+  if (!r.ok) throw new Error(`tags.setColor failed: ${r.code}`);
+}
+
+/** The organize snapshot as main sends it. Counts as a `library:organize` call. */
+export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
+  const r = await page.evaluate(() => window.learn.library.organize());
+  if (!r.ok) throw new Error(`library.organize failed: ${r.code}`);
+  return r.data;
+}
+
+/** How often main ran each IPC channel since launch (E2E only: ipc/register.ts counts, test-hooks.ts installs the counter). */
+export const ipcCalls = (app: ElectronApplication): Promise<Record<string, number>> =>
+  app.evaluate(() => ({ ...((globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls ?? {}) }));
+
+/**
+ * The `library:*` call counts once none has changed for `quietMs`: what a change read is then final, and a count taken
+ * next cannot be missing a read that is still on its way.
+ */
+export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500): Promise<Record<string, number>> {
+  const read = async () => Object.fromEntries(Object.entries(await ipcCalls(app)).filter(([k]) => k.startsWith('library:')));
+  let last = JSON.stringify(await read());
+  let since = Date.now();
+  while (Date.now() - since < quietMs) {
+    await new Promise((r) => setTimeout(r, 100));
+    const now = JSON.stringify(await read());
+    if (now !== last) {
+      last = now;
+      since = Date.now();
+    }
+  }
+  return JSON.parse(last) as Record<string, number>;
+}
+
+// ---- M5 sidebar and collections ------------------------------------------------------------------------------------
+
+/** A special view's row (spec 3.2): 내 라이브러리, 최근 연 자료, 미분류, 중복 항목. */
+export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates'): Locator => page.getByTestId(`nav-scope-${kind}`);
+/** A collection's row in the tree. */
+export const treeRow = (page: Page, collectionId: string): Locator => page.getByTestId(`nav-collection-${collectionId}`);
+
+/**
+ * dialog.showMessageBox replaced in main for the rest of the session (the ui.confirm sheet): it answers `answer` — 'confirm'
+ * is the first button — and records every question. Calling it again resets the record.
+ */
+export async function stubConfirm(app: ElectronApplication, answer: 'confirm' | 'cancel'): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnConfirms?: unknown[]; __learnRealMessageBox?: typeof dialog.showMessageBox };
+    g.__learnConfirms = [];
+    g.__learnRealMessageBox ??= dialog.showMessageBox;
+    dialog.showMessageBox = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { type?: string; message: string; detail?: string; buttons?: string[]; defaultId?: number; cancelId?: number };
+      g.__learnConfirms!.push({ type: o.type ?? null, message: o.message, detail: o.detail ?? '', buttons: o.buttons ?? [], defaultId: o.defaultId ?? null, cancelId: o.cancelId ?? null });
+      return { response: answer === 'confirm' ? 0 : 1, checkboxChecked: false };
+    }) as typeof dialog.showMessageBox;
+  }, answer);
+}
+export interface ConfirmCall {
+  /** The dialog's type: 'warning' carries the caution symbol, 'none' the app icon. */
+  type: string | null;
+  message: string;
+  detail: string;
+  buttons: string[];
+  defaultId: number | null;
+  cancelId: number | null;
+}
+/** The questions the stubbed sheet was asked since `stubConfirm`, oldest first. */
+export const confirmCalls = (app: ElectronApplication): Promise<ConfirmCall[]> =>
+  app.evaluate(() => (globalThis as { __learnConfirms?: ConfirmCall[] }).__learnConfirms ?? []);
+
+/** A made-up tree of collections: ids in creation order, each one's parent (null at the top) and children (in creation order). */
+export interface CollectionTree {
+  ids: string[];
+  parent: Record<string, string | null>;
+  children: Record<string, string[]>;
+}
+/**
+ * `count` collections named 과목 000, 과목 001 … (so creation order is name order), eight at the top and then breadth first
+ * with four children each, at most four levels deep (200 fit). Made through the page's own API, one call each.
+ */
+export async function createCollectionTree(page: Page, count: number): Promise<CollectionTree> {
+  return page.evaluate(async (count) => {
+    const ids: string[] = [];
+    const parent: Record<string, string | null> = {};
+    const children: Record<string, string[]> = {};
+    const depth: Record<string, number> = {};
+    const queue: string[] = [];
+    for (let i = 0; i < count; i++) {
+      let parentId: string | null = null;
+      if (i >= 8) {
+        while ((children[queue[0]!] ?? []).length >= 4 || depth[queue[0]!]! >= 4) queue.shift();
+        parentId = queue[0]!;
+      }
+      const made = await window.learn.collections.create({ name: `과목 ${String(i).padStart(3, '0')}`, parentId });
+      if (!made.ok) throw new Error(`collections.create failed: ${made.code}`);
+      const id = made.data.id;
+      ids.push(id);
+      parent[id] = parentId;
+      children[id] = [];
+      depth[id] = parentId === null ? 1 : depth[parentId]! + 1;
+      if (parentId !== null) children[parentId]!.push(id);
+      queue.push(id);
+    }
+    return { ids, parent, children };
+  }, count);
+}
+/** Every collection that has children stored as open (sidebar.expanded), then the page reloaded so the tree starts that way. */
+export async function expandAll(page: Page, tree: CollectionTree): Promise<void> {
+  const open = tree.ids.filter((id) => tree.children[id]!.length > 0);
+  await page.evaluate((ids) => window.learn.settings.set({ key: 'sidebar.expanded', value: ids }), open);
+  await page.reload();
+  await page.getByTestId('app-ready').waitFor({ state: 'attached' });
+}
+/** ⌘K, the query, and the row of `commandId` (the palette closes and the command runs from where the focus was). */
+export async function runPalette(page: Page, app: ElectronApplication, query: string, commandId: CommandId): Promise<void> {
+  await runMenuCommand(app, 'app.palette');
+  await page.getByTestId('palette-input').fill(query);
+  await page.locator(`[data-testid="palette-item"][data-command-id="${commandId}"]`).click();
+}
+
+// ---- M5 tags -------------------------------------------------------------------------------------------------------------
+
+/** A chip of the tag selector (the item panel may show the same tag too, so the selector is named). */
+export const tagChip = (page: Page, tagId: string): Locator => page.getByTestId('tag-selector').getByTestId(`tag-chip-${tagId}`);
+
+/** The colour a token resolves to in this page (light-dark() resolved), as getComputedStyle writes it. */
+export const tokenColor = (page: Page, token: string): Promise<string> =>
+  page.evaluate((name) => {
+    const probe = document.createElement('div');
+    probe.style.background = `var(${name})`;
+    document.body.append(probe);
+    const colour = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return colour;
+  }, token);
+
+/**
+ * Tags through the page's API, as the screen sets them: the ids in the order given. `slot` is colour N = slot N (colour and
+ * slot together, as the screen always sets them); `items` are the ones the tag goes on.
+ */
+export async function makeTags<const S extends ReadonlyArray<{ name: string; slot?: number; items?: readonly string[] }>>(page: Page, specs: S): Promise<{ -readonly [K in keyof S]: string }> {
+  const ids: string[] = [];
+  for (const spec of specs) {
+    const tagId = await createTag(page, spec.name);
+    if (spec.slot !== undefined) await setTagColor(page, tagId, TAG_COLORS[spec.slot - 1]!.id, spec.slot);
+    if (spec.items && spec.items.length > 0) await assignTag(page, tagId, spec.items);
+    ids.push(tagId);
+  }
+  return ids as { -readonly [K in keyof S]: string };
+}
+
+/**
+ * `count` PDFs that differ by one trailing comment: each imports as an item of its own, with its own file and revision
+ * (items the E2E hook seeds share one revision, so a page-count probe would be answered from the cache).
+ */
+export function distinctPdfs(dir: string, count: number): string[] {
+  fs.mkdirSync(dir, { recursive: true });
+  const bytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
+  return Array.from({ length: count }, (_, i) => {
+    const file = path.join(dir, `distinct-${String(i + 1).padStart(2, '0')}.pdf`);
+    fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from(`\n% copy ${i + 1}\n`)]));
+    return file;
+  });
+}
+
+/** Takes the tag off by the chip's × (it shows on hover and focus, so the chip is hovered first). The × is the chip body's sibling. */
+export async function removeChip(chip: Locator): Promise<void> {
+  await chip.hover();
+  await chip.locator('xpath=..').getByTestId('tag-chip-remove').click();
 }

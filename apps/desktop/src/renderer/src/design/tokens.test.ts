@@ -172,6 +172,29 @@ describe('colour tokens', () => {
     }
   }
 
+  it('the drop ring (tree row, 컬렉션 heading, table row) and the header drop line are --accent-ring, which keeps 3:1 on the surface and on its own soft fill in both themes', () => {
+    for (const theme of THEMES) {
+      const c = palette(theme);
+      for (const s of ['bgSidebar', 'bgContent', 'bgContentAlt'] as const) {
+        expectContrast(`${theme} accentRing/${s}`, c('accentRing'), c(s), 3);
+        expectContrast(`${theme} accentRing/accentSoft@${s}`, c('accentRing'), on(c, 'accentSoft', s), 3);
+      }
+    }
+    // The dark --accent is a fill for white text: as a ring on the sidebar it misses 3:1, which is why the ring is its own token.
+    expect(contrast(palette('dark')('accent'), palette('dark')('bgSidebar'))).toBeLessThan(3);
+    const styles = path.join(__dirname, '..', 'styles');
+    const rules = [
+      ['screens/dnd.css', /(?:\.nav-row, )?\.heading-drop[^{]*\{[^}]*box-shadow:[^;]*;/g],
+      ['components/list.css', /\.table-row:is\(\[data-drop-target\][^{]*\{[^}]*box-shadow:[^;]*;/g],
+      ['screens/library.css', /\.col-drop-line\s*\{[^}]*background:[^;]*;/g],
+    ] as const;
+    for (const [file, pattern] of rules) {
+      const found = fs.readFileSync(path.join(styles, file), 'utf8').match(pattern) ?? [];
+      expect(found.length, `${file} has a drop rule`).toBeGreaterThan(0);
+      for (const rule of found) expect(rule, file).toContain('var(--accent-ring)');
+    }
+  });
+
   it('in high-contrast mode separators and borders reach 3:1', () => {
     for (const theme of THEMES) {
       const c = palette(theme, colorsContrastMore);
@@ -241,7 +264,7 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
    * 39618864364), inactive light #ececec and dark #141414 (run 39631541294). Active dark is tested at #404040, a margin
    * above the measurement (a mid-tone wallpaper lightens it on real hardware); #ececec is the light worst case.
    */
-  const MATERIALS: Record<Theme, readonly string[]> = { light: ['#f6f6f6', '#ececec'], dark: ['#404040', '#141414'] };
+  const MATERIALS: Record<Theme, readonly string[]> = { light: ['#f6f6f6', '#ececec'], dark: ['#404040', '#383838', '#141414'] };
   type SidebarToken = ColorToken | keyof typeof colorsVibrancySidebar;
 
   for (const theme of THEMES) {
@@ -263,7 +286,11 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
           expectContrast(`textTertiary/${name}`, pick('textTertiary'), bg, 3); // section labels, counts
         }
         expectContrast('sidebarCountSelected/selected row', pick('sidebarCountSelected'), selected, 4.5);
+        // A drop target's count and the heading's label (dnd.css) sit on the soft fill over the material and take the selected row's count colour.
+        expectContrast('sidebarCountSelected/accentSoft over the material', pick('sidebarCountSelected'), composite(pick('accentSoft'), material), 4.5);
         expectContrast('focus/material', pick('focus'), material, 3);
+        // The drop target's ring (--accent-ring) against the material it is drawn next to.
+        expectContrast('accentRing/material', pick('accentRing'), material, 3);
       });
       // The ⌘K launcher: a field (--bg-field, --border) with a keycap (--bg-control) on the material. Roles (8.3, 6):
       // the placeholder and the magnifier are tertiary text and an icon (3:1); the keycap label is a shortcut, which
@@ -282,10 +309,25 @@ describe('sidebar text over the macOS vibrancy material (design-spec 8.3)', () =
     }
   }
 
+  it('the tag selector\'s top rule uses the translucent separator over the material (the opaque one is the material\'s own grey)', () => {
+    for (const theme of THEMES) {
+      for (const hex of MATERIALS[theme]) {
+        const material = parseColor(hex);
+        const line = composite(parseColor(colors.separatorOnSurface[theme]), material);
+        expect(contrast(line, material), `${theme} on ${hex}`).toBeGreaterThanOrEqual(1.25);
+      }
+    }
+    expect(contrast(parseColor(colors.separator.dark), parseColor(MATERIALS.dark[0]!))).toBeLessThan(1.25);
+    const css = fs.readFileSync(new URL('../styles/screens/tags.css', import.meta.url), 'utf8');
+    expect(css).toMatch(/:root\[data-vibrancy='1'\] \.tag-selector\s*\{[^}]*border-top-color:\s*var\(--separator-on-surface\)/);
+  });
   it('the base tokens alone would fail on the dark material (why the sidebar has its own)', () => {
     const material = parseColor(MATERIALS.dark[0]!);
     expect(contrast(parseColor(colors.textTertiary.dark), material)).toBeLessThan(3);
     expect(contrast(parseColor(colors.textSecondary.dark), composite(parseColor(colors.fillSelected.dark), material))).toBeLessThan(4.5);
+    // A drop target's count on the soft fill: secondary text would be 4.06:1 at #404040, hence the selected row's count colour (dnd.css).
+    const soft = composite(parseColor(colors.accentSoft.dark), material);
+    expect(contrast(parseColor(colors.textSecondary.dark), soft)).toBeLessThan(4.5);
     // The launcher: the sidebar's own tertiary on the hovered field, and the keycap's secondary label on it.
     const hovered = composite(parseColor(colors.fillHover.dark), composite(parseColor(colors.bgField.dark), material));
     expect(contrast(parseColor(colorsVibrancySidebar.textTertiary.dark), hovered)).toBeLessThan(3);

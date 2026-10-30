@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem } from '@learn/domain';
-import { DEFAULT_SORT, firstDirection, parseSort, sortItems } from './sort';
+import { DEFAULT_SORT, DEFAULT_SORT_RECENT, firstDirection, parseSort, sortFromArgs, sortItems } from './sort';
 
 let n = 0;
 const item = (over: Partial<LibraryItem>): LibraryItem => ({
   id: `id-${String(++n).padStart(3, '0')}`, title: 't', type: 'pdf', mime: 'application/pdf', size: 1, storageMode: 'managed',
   availability: 'available', assetId: 'a', revisionId: 'r', originalName: 'f.pdf', createdAt: '2026-10-01T00:00:00.000Z',
-  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, publisher: null, tagIds: [], progress: null, openedAt: null, ...over,
+  updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null, publisher: null, progress: null, openedAt: null, ...over,
 });
 const titles = (items: readonly LibraryItem[]) => items.map((i) => i.title);
 
@@ -56,5 +56,30 @@ describe('library sort (M4 spec 3.1)', () => {
   it('a first press sorts dates and sizes newest or largest first, the rest A to Z (Finder; ruling 7)', () => {
     expect((['createdAt', 'updatedAt', 'openedAt', 'size', 'progress'] as const).map((c) => firstDirection(c))).toEqual(['desc', 'desc', 'desc', 'desc', 'desc']);
     expect((['title', 'creators', 'year', 'type', 'storageMode', 'originalName'] as const).map((c) => firstDirection(c))).toEqual(['asc', 'asc', 'asc', 'asc', 'asc', 'asc']);
+  });
+});
+
+describe('the recent view\'s own sort (spec 3.2)', () => {
+  it('defaults to 마지막으로 연 날, newest first, and reads its stored value like the main sort', () => {
+    expect(DEFAULT_SORT_RECENT).toEqual({ column: 'openedAt', direction: 'desc' });
+    expect(parseSort(null, DEFAULT_SORT_RECENT)).toEqual(DEFAULT_SORT_RECENT);
+    expect(parseSort({ column: 'title', direction: 'asc' }, DEFAULT_SORT_RECENT)).toEqual({ column: 'title', direction: 'asc' });
+    expect(parseSort(null)).toEqual({ column: 'createdAt', direction: 'desc' });
+    expect(firstDirection('openedAt')).toBe('desc');
+  });
+});
+
+describe('sortFromArgs (보기 › 정렬 기준: a column and/or a direction)', () => {
+  const current = { column: 'createdAt', direction: 'desc' } as const;
+  it('changes only what the row names: a column keeps the direction, a direction keeps the column', () => {
+    expect(sortFromArgs(current, { column: 'title' })).toEqual({ column: 'title', direction: 'desc' }); // not firstDirection: the two radio sets are independent
+    expect(sortFromArgs(current, { direction: 'asc' })).toEqual({ column: 'createdAt', direction: 'asc' });
+    expect(sortFromArgs(current, { column: 'size', direction: 'asc' })).toEqual({ column: 'size', direction: 'asc' });
+  });
+  it('is nothing to do when there is no value or it changes nothing', () => {
+    expect(sortFromArgs(current, undefined)).toBeNull();
+    expect(sortFromArgs(current, {})).toBeNull();
+    expect(sortFromArgs(current, { column: 'createdAt' })).toBeNull();
+    expect(sortFromArgs(current, { column: 'createdAt', direction: 'desc' })).toBeNull();
   });
 });

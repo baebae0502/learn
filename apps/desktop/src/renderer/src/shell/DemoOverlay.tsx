@@ -15,16 +15,19 @@ const RING_AFTER_UP_MS = 250;
 const RING_REST_MAX_MS = 1500;
 /** How long a chapter caption stays when the script names no duration. */
 const CAPTION_MS = 3500;
+/** A bottom caption's distance from the window's bottom in demo.css: above the pill band (40 + 52) and 16 more. */
+const CAPTION_BOTTOM = 108;
 /** Exits run at 0.75 × the base duration (design-spec 8.1), as the CSS does. */
 const EXIT_MS = Math.round(motion.base * 0.75);
 
 /**
  * Script-only input for recordings, as window CustomEvents (the overlay exists only in demo builds, so nothing else
- * listens): `learn:demo-caption` (detail: the chapter title, or { text, ms, place, top, maxWidth }) shows it as a caption
- * for `ms`, bottom-left (at most `maxWidth` wide: beside a settings window) or (place 'top', `top` px down) at the top,
- * where the bottom holds the page's own text (the settings window);
+ * listens): `learn:demo-caption` (detail: the chapter title, or { text, ms, place, top, bottom, maxWidth }) shows it as a
+ * caption for `ms`, bottom-left (`bottom` px up: above the tag selector once it has grown; at most `maxWidth` wide: beside a
+ * settings window) or (place 'top', `top` px down) at the top, where the bottom holds the page's own text (the settings window);
  * `learn:demo-tag` (detail: a short text, or null) shows it as a lasting tag until cleared ("스크립트로 재현" while a
- * scripted gesture is on screen); `learn:demo-pointer` (detail: { hidden?, mode? }) hides the drawn pointer (the
+ * scripted gesture is on screen), at the content area's top-left, under the table's header: the sidebar's launcher and
+ * labels stay clear; `learn:demo-pointer` (detail: { hidden?, mode? }) hides the drawn pointer (the
  * pointer is in another window), or sets what it draws: 'follow', a disc where the pointer is (synthetic input, no
  * cursor on screen), or 'clicks', only a ring at the system's own cursor while a button is down (macOS: the real
  * arrow is the pointer; a second, trailing one was critique mac1 M1).
@@ -89,7 +92,23 @@ function useTransient<T>(): [Shown<T> | null, (value: T, ms: number | null) => v
  */
 export function DemoOverlay() {
   const [pill, showPill, endPill] = useTransient<DemoPill>();
-  const [caption, showCaption] = useTransient<{ text: string; place: 'bottom' | 'top'; top?: number; maxWidth?: number }>();
+  const [caption, showCaption] = useTransient<{ text: string; place: 'bottom' | 'top'; top?: number; bottom?: number; maxWidth?: number }>();
+  // While a bottom caption shows, the sidebar's tag selector may grow under it (a chapter that makes tags): it stays 16 above
+  // the selector's top — clear even while it rises in from 8 lower — over whatever bottom the script gave.
+  const [tagLift, setTagLift] = useState(0);
+  const captionAtBottom = caption !== null && caption.place === 'bottom';
+  useEffect(() => {
+    const selector = captionAtBottom ? document.querySelector('.sidebar .tag-selector') : null;
+    if (!selector) return setTagLift(0);
+    const measure = () => {
+      const r = selector.getBoundingClientRect();
+      setTagLift(r.height > 0 ? Math.ceil(innerHeight - r.top + 16) : 0);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(selector);
+    return () => observer.disconnect();
+  }, [captionAtBottom]);
   const [pointer, setPointer] = useState<DrawnPointer | null>(null);
   const [pointerHidden, setPointerHidden] = useState(false);
   const [mode, setMode] = useState<PointerMode>('follow');
@@ -97,7 +116,7 @@ export function DemoOverlay() {
   useEffect(() => {
     modeRef.current = mode;
   });
-  const [tag, setTag] = useState<string | null>(null);
+  const [tag, setTag] = useState<{ text: string; left?: number; top?: number } | null>(null);
   // A sheet hangs over the middle of this window: a pill shown now starts bottom-left, where the sheet leaves room.
   const sheetOpen = useRef(false);
   /** Drops the drawn pointer until the next real move (set by the listeners' effect). */
@@ -202,18 +221,30 @@ export function DemoOverlay() {
     dropPointer.current = gone;
     const onCaption = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
-      const d: { text?: unknown; ms?: unknown; place?: unknown; top?: unknown; maxWidth?: unknown } = typeof detail === 'object' && detail !== null ? detail : { text: detail };
+      const d: { text?: unknown; ms?: unknown; place?: unknown; top?: unknown; bottom?: unknown; maxWidth?: unknown } = typeof detail === 'object' && detail !== null ? detail : { text: detail };
       const px = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.round(v) : undefined);
       const top = px(d.top);
+      const bottom = px(d.bottom);
       const maxWidth = px(d.maxWidth);
       showCaption(
-        { text: String(d.text ?? ''), place: d.place === 'top' ? 'top' : 'bottom', ...(top !== undefined ? { top } : {}), ...(maxWidth !== undefined ? { maxWidth } : {}) },
+        {
+          text: String(d.text ?? ''),
+          place: d.place === 'top' ? 'top' : 'bottom',
+          ...(top !== undefined ? { top } : {}),
+          ...(bottom !== undefined ? { bottom } : {}),
+          ...(maxWidth !== undefined ? { maxWidth } : {}),
+        },
         typeof d.ms === 'number' && d.ms > 0 ? d.ms : CAPTION_MS,
       );
     };
     const onTag = (e: Event) => {
       const detail = (e as CustomEvent<unknown>).detail;
-      setTag(typeof detail === 'string' && detail ? detail : null);
+      if (typeof detail !== 'string' || !detail) return setTag(null);
+      // The content area's top-left, under the table's header band (where the drop overlay the tag comes with lies), with or
+      // without a table: a window-anchored tag sat on the sidebar's launcher and 라이브러리 label (round 2 minor 4).
+      const content = document.querySelector('[data-testid="content"]')?.getBoundingClientRect();
+      const band = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--table-header-height')) || 0;
+      setTag(content && content.width > 0 ? { text: detail, left: Math.round(content.left + 16), top: Math.round(content.top + band + 12) } : { text: detail });
     };
     const onPointer = (e: Event) => {
       const detail = (e as CustomEvent<{ hidden?: boolean; mode?: PointerMode } | null>).detail ?? {};
@@ -260,8 +291,8 @@ export function DemoOverlay() {
         />
       )}
       {tag && (
-        <div className="demo-hud demo-tag" data-testid="demo-tag">
-          {tag}
+        <div className="demo-hud demo-tag" data-testid="demo-tag" style={tag.left !== undefined ? { left: tag.left, top: tag.top } : undefined}>
+          {tag.text}
         </div>
       )}
       {caption && caption.text && (
@@ -271,7 +302,11 @@ export function DemoOverlay() {
           data-place={caption.place}
           data-leaving={caption.leaving ? '' : undefined}
           data-testid="demo-caption"
-          style={{ ...(caption.top !== undefined ? { top: caption.top } : {}), ...(caption.maxWidth !== undefined ? { maxWidth: caption.maxWidth } : {}) }}
+          style={{
+            ...(caption.top !== undefined ? { top: caption.top } : {}),
+            ...(caption.place === 'bottom' && (caption.bottom !== undefined || tagLift > CAPTION_BOTTOM) ? { bottom: Math.max(caption.bottom ?? CAPTION_BOTTOM, tagLift) } : {}),
+            ...(caption.maxWidth !== undefined ? { maxWidth: caption.maxWidth } : {}),
+          }}
         >
           {caption.text}
         </div>

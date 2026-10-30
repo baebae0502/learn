@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { formatDate, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
+import { afterEach, describe, expect, it } from 'vitest';
+import { dayKey, formatDate, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -64,5 +64,39 @@ describe('homeRelative (paths on screen show the home folder as ~)', () => {
     expect(formatDuration(1_100_000)).toBe('18:20');
     expect(formatDuration(3_725_000)).toBe('1:02:05');
     expect(formatDuration(-5)).toBe('0:00');
+  });
+});
+
+describe('time of day follows the current time zone on every call', () => {
+  const zone0 = process.env.TZ;
+  afterEach(() => {
+    if (zone0 === undefined) delete process.env.TZ;
+    else process.env.TZ = zone0;
+  });
+  const old = (d: Date) => d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+
+  it('after a zone change the clock time and the 오늘/어제 label agree in the new zone', () => {
+    const instant = new Date(Date.UTC(2026, 9, 21, 14, 24)); // 23:24 in Seoul, 07:24 in Los Angeles: another day-part, same date
+    process.env.TZ = 'Asia/Seoul';
+    expect(formatDate(instant.toISOString(), instant)).toBe('오늘 오후 11:24');
+    process.env.TZ = 'America/Los_Angeles';
+    expect(instant.getHours()).toBe(7);
+    expect(formatDate(instant.toISOString(), instant)).toBe('오늘 오전 7:24');
+    // a "now" one calendar day later in the new zone: the label and the clock move together
+    const later = new Date(Date.UTC(2026, 9, 22, 15, 0));
+    expect(dayKey(later)).not.toBe(dayKey(instant));
+    expect(formatDate(instant.toISOString(), later)).toBe('어제 오전 7:24');
+  });
+
+  it.each(['Asia/Seoul', 'America/New_York'])('equals toLocaleTimeString("ko-KR") every 7 minutes over a day in %s', (zone) => {
+    process.env.TZ = zone;
+    for (let min = 0; min < 24 * 60 * 2; min += 7) {
+      const d = new Date(2026, 9, 21, 0, 0 + min); // two days: covers a repeat of every hour, including 12 o'clock
+      expect(formatTimeOfDay(d), d.toString()).toBe(old(d));
+    }
+    for (const [h, m] of [[0, 0], [0, 5], [11, 59], [12, 0], [12, 5], [23, 59]] as const) {
+      const d = new Date(2026, 9, 21, h, m);
+      expect(formatTimeOfDay(d)).toBe(old(d));
+    }
   });
 });

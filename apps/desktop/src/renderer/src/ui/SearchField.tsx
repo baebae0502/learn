@@ -6,9 +6,7 @@ import type { ForcedState } from './Button';
 import { IconButton } from './Button';
 import { cx } from './cx';
 import { Icon } from './Icon';
-
-/** A key that belongs to a Korean composition: isComposing, or the keyCode 229 macOS IMEs send without it. */
-const composing = (e: { nativeEvent: { isComposing: boolean }; keyCode: number }): boolean => e.nativeEvent.isComposing || e.keyCode === 229;
+import { isComposingKey } from './ime';
 
 /**
  * Search field (design-spec 6 검색 필드): 28 (small 24, footnote), 14 px magnifier and placeholder in tertiary colour,
@@ -50,7 +48,7 @@ export function SearchField(props: {
       onSubmit={props.onSubmit}
       onClear={props.onClear}
       onKeyDown={(e) => {
-        if (!composing(e)) props.onKeyDown?.(e);
+        if (!isComposingKey(e)) props.onKeyDown?.(e);
       }}
       onFocus={props.onFocus && (() => props.onFocus!())}
       autoFocus={props.autoFocus}
@@ -71,7 +69,7 @@ export function SearchField(props: {
             // RAC clears on esc and submits on ↩ without asking whether a composition owns the key.
             // Chromium's own type=search also empties on esc, as the key's default: held back too.
             onKeyDownCapture={(e) => {
-              if (!composing(e) || (e.key !== 'Escape' && e.key !== 'Enter')) return;
+              if (!isComposingKey(e) || (e.key !== 'Escape' && e.key !== 'Enter')) return;
               e.stopPropagation();
               e.preventDefault();
             }}

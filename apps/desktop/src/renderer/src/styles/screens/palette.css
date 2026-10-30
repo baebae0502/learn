@@ -121,7 +121,7 @@
     align-items: center;
     gap: var(--space-8);
     margin-left: auto;
-    color: var(--text-tertiary);
+    color: var(--text-secondary); /* 12 px information: 4.5:1 (8.3), as the stats line of the item panel */
     font: var(--type-footnote);
     white-space: nowrap;
   }
@@ -129,6 +129,15 @@
   .palette .p-item .p-sub {
     min-width: 0;
     max-width: 240px; /* local: the title keeps at least half of the 624 px row */
+  }
+  /* A collection row's "<parent> 안 · N개": the parent's name gives way, the count never does. */
+  .palette .p-item .p-where {
+    display: flex;
+    min-width: 0;
+  }
+  .palette .p-item .p-where > .p-count {
+    flex: none;
+    white-space: pre;
   }
   .palette .p-item mark {
     background: none;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { searchSteps } from './search-steps';
+import { organizeSteps, searchSteps } from './search-steps';
 
 const items = [
   { title: '세포 신호 전달 개요', creators: ['김민지', 'Lee'] },
@@ -21,5 +21,19 @@ describe("search inputs taken from the rows the test seeds (Task 3's seedRows)",
   });
   it('leaves out what the library does not have', () => {
     expect(searchSteps([{ title: 'v2 · 01', creators: ['x'] }])).toEqual([]);
+  });
+});
+
+
+describe('the typed steps that reach the organise fixture', () => {
+  it('types the first two characters of a tag name and of a collection name, one at a time', () => {
+    expect(organizeSteps({ tag: '복습필요', collection: '분자생물학' })).toEqual({
+      tag: [{ group: 'tag', chars: ['복', '습'] }],
+      collection: [{ group: 'collection', chars: ['분', '자'] }],
+    });
+  });
+  it('leaves out spaces, so a name with one still types two characters', () => {
+    expect(organizeSteps({ tag: '읽는 중', collection: 'A B' }).tag[0]!.chars).toEqual(['읽', '는']);
+    expect(organizeSteps({ tag: '읽는 중', collection: 'A B' }).collection[0]!.chars).toEqual(['A', 'B']);
   });
 });

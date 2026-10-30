@@ -7,12 +7,12 @@
 #
 #   scripts/finish-demo.sh <video> <chapters.json> <output> [corner-tag]
 #
-#   video          the raw recording (macOS m4-demo.mov from screencapture -V, or the Linux x11grab m4-demo.mp4)
-#   chapters.json  m4-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
+#   video          the raw recording (macOS m5-demo.mov from screencapture -V, or the Linux x11grab m5-demo.mp4)
+#   chapters.json  m5-demo.chapters.json from the same run: demoSeconds, offset (seconds from the chapters' zero to the
 #                  recording's first frame, assuming a file of recordSeconds), recordSeconds (macOS) and chapters[].ms /
 #                  .title
 #   output         the finished file (same container as <video>); beside it <output without extension>.chapters.txt and
-#                  .chapters.json list the chapters on ITS timeline (m4-demo.chapters.txt/.json are the raw recording's)
+#                  .chapters.json list the chapters on ITS timeline (m5-demo.chapters.txt/.json are the raw recording's)
 #   corner-tag     optional text burned into the bottom-left corner, inside the drop overlay's 12 px inset (x 40,
 #                  48 above the bottom, device px; re-encodes; the Linux recording uses it)
 #

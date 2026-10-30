@@ -3,6 +3,8 @@
 // renderer's copy (design-spec 9: 합니다체, verb buttons, U+00A0 groups; cause + next step). No Electron import.
 export const mainStrings = {
   settingsWindow: { title: '설정' },
+  /** The sheets ui:confirm shows: the confirming button's text comes from the page, the cancel button is main's. */
+  confirmSheet: { cancel: '취소' },
   libraryFolder: {
     pickTitle: '라이브러리 폴더 선택',
     pickButton: '선택',
@@ -83,6 +85,10 @@ export const mainStrings = {
     devTools: '개발자 도구',
     window: { minimize: '최소화', zoom: '확대/축소', front: '모두 앞으로 가져오기' },
     aboutOther: 'Learn 정보',
+    /** 보기 › 정렬 기준 ▸ (menu/submenus.ts): the two directions; the columns are named by the catalogue. */
+    sort: { asc: '오름차순', desc: '내림차순' },
+    /** The first row of 컬렉션에 추가 ▸: a collection made for the selection (no dialog, spec 3.4). */
+    newCollection: '새\u00a0컬렉션',
   },
   /** The About panel's credits, one line each (README "런타임 의존성 라이선스"). */
   about: {

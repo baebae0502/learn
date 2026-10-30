@@ -261,7 +261,7 @@
           ${icon('search-x')}
           <div class="pe-title">‘효소 억제제’와 일치하는 자료가 없습니다</div>
           <div class="pe-text">이&nbsp;컬렉션의 제목·저자·태그에서 찾았습니다.</div>
-          <div class="row gap-8" style="margin-top:8px"><div class="btn">검색어 지우기</div><div class="btn">내 라이브러리 전체에서 찾기</div></div>
+          <div class="row gap-8"><div class="btn">검색어 지우기</div><div class="btn">내 라이브러리 전체에서 찾기</div></div>
         </div>`,
       });
       insp = inspectorNone();

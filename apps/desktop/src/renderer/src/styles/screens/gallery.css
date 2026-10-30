@@ -9,6 +9,10 @@
     gap: var(--space-24) var(--space-32);
     align-content: start;
   }
+  /* The board rides in the main window kind: its hidden title bar keeps the traffic lights over the first 52 px (design-spec 2.1). */
+  :root[data-platform='darwin'] .gallery {
+    padding-top: var(--toolbar-height);
+  }
   /* Board sections only: RAC's MenuSection is a <section> too. */
   .gallery > section {
     display: flex;
@@ -55,6 +59,64 @@
     padding: var(--space-8);
     border-radius: var(--radius-lg);
     background: var(--bg-sidebar);
+  }
+  /* The drag images side by side: they are inline boxes of their own width. */
+  .gallery .g-previews {
+    flex-wrap: wrap;
+    gap: var(--space-16);
+    align-items: center;
+  }
+  /* The tag board: the selector inside a sidebar-wide box, the swatches in two columns. */
+  .gallery .g-list.tag-board {
+    padding: 0;
+    overflow: hidden;
+  }
+  /* The board's box has no height of its own for the selector's 40 % cap to count from: the chips take what they need. */
+  .gallery .tag-board .tag-selector {
+    max-height: none;
+  }
+  .gallery .tag-board .tag-cloud {
+    flex: none;
+  }
+  /* The chip rows: room between them for a focus ring (3 px) and the name field's halo. */
+  .gallery .g-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+  .gallery .g-box {
+    width: 160px; /* local: a narrow box for a long name */
+  }
+  .gallery .g-swatches {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4) var(--space-16);
+  }
+  .gallery .g-swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    font: var(--type-footnote);
+  }
+  .gallery .g-swatch i {
+    width: 16px; /* local: swatch */
+    height: 16px; /* local: swatch */
+    border-radius: var(--radius-sm);
+  }
+  .gallery .g-swatch code {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font: var(--type-caption);
+  }
+  /* Two sidebar widths side by side: the state rows of the sidebar fit the board without making it taller. */
+  .gallery .g-list.g-cols {
+    display: block;
+    width: calc(2 * 240px + var(--space-16)); /* local: two sidebar-wide columns */
+    columns: 2;
+    column-gap: var(--space-16);
+  }
+  .gallery .g-list.g-cols > * {
+    break-inside: avoid;
   }
   /* The board's table rows are static (the library table is virtualized): flex rows, the title taking the rest and
      the other columns their widths inline; the header keeps the body's 4 px top inset. */

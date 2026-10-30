@@ -357,6 +357,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
       ['열기', true],
       [REVEAL, false],
       ['사본 내보내기…', false],
+      ['컬렉션에 추가', true], // filing needs no file
     ]); // 기본 앱으로 열기 is not a context-menu item (design-spec 7.3)
     await openItem(s.page, 'linked');
     const notice = s.page.getByTestId('missing-notice');

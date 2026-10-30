@@ -7,7 +7,7 @@ import { Icon } from './Icon';
 import { Tooltip } from './Tooltip';
 
 /** Gallery only: draw a state without interacting (CSS reads [data-force~=…] next to RAC's data attributes). */
-export type ForcedState = 'hover' | 'pressed' | 'focus' | 'on' | 'active' | 'selected' | 'focused' | 'cursor';
+export type ForcedState = 'hover' | 'pressed' | 'focus' | 'on' | 'active' | 'selected' | 'focused' | 'cursor' | 'drop';
 export type ButtonVariant = 'primary' | 'secondary' | 'plain' | 'plain-accent' | 'plain-danger';
 
 type Base = Omit<AriaButtonProps, 'className' | 'children' | 'style'>;

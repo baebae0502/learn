@@ -1,10 +1,8 @@
 import { z } from 'zod';
 import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
-import { COLUMN_WIDTH_MAX } from './library-columns';
-
-/** Sortable fields. openedAt / progress have no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). */
-export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
+import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
+import { libraryScopeSchema } from './organize';
 
 const storedColumnId = z.string().min(1).max(64);
 /**
@@ -13,14 +11,26 @@ const storedColumnId = z.string().min(1).max(64);
  * each column's minimum.
  */
 export const columnConfigSchema = z.object({
-  visible: z.array(storedColumnId).max(64),
-  order: z.array(storedColumnId).max(64),
+  visible: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
+  order: z.array(storedColumnId).max(STORED_COLUMN_IDS_MAX),
   widths: z.record(storedColumnId, z.number().int().min(0).max(COLUMN_WIDTH_MAX)),
 });
 
+const sortSchema = z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) });
+/** The most collection ids the sidebar remembers as open: a bound, so a runaway list cannot grow the settings value. */
+export const SIDEBAR_EXPANDED_MAX = 2000;
+
 /** Library-scoped settings (stored in the library DB). */
 export const SETTINGS = {
-  'library.sort': z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z.enum(['asc', 'desc']) }),
+  'library.sort': sortSchema,
+  /** The recent view's own sort (spec 3.2): the other views share `library.sort`. */
+  'library.sort.recent': sortSchema,
+  /** The scope the table showed last (spec 3.1). A collection that is gone is dropped by the renderer on read, not here. */
+  'library.view': libraryScopeSchema,
+  /** The collections the sidebar tree shows open. Ids of collections that no longer exist are dropped on read (the renderer). */
+  'sidebar.expanded': z.array(z.uuid()).max(SIDEBAR_EXPANDED_MAX),
+  /** The tag selector's display and order (spec 4.3). */
+  'tags.selector': z.object({ show: z.enum(['view', 'all']), sort: z.enum(['name', 'count']) }),
   'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
@@ -31,9 +41,19 @@ export const SETTINGS = {
 export type SettingKey = keyof typeof SETTINGS;
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(SETTINGS, key);
 
+/**
+ * What a write may carry beyond what a read accepts. A record has no length of its own: column ids stay open (a later
+ * build's columns must read back), so the count of widths is bounded on the way in only — a stored value that has more is
+ * still read, and the renderer cleans it.
+ */
+const WRITE_SCHEMAS: Partial<Record<SettingKey, z.ZodType>> = {
+  'library.columns': columnConfigSchema.refine((c) => Object.keys(c.widths).length <= STORED_COLUMN_IDS_MAX, { message: 'too many widths' }),
+};
+
+/** Validates a value about to be stored (the write path). */
 export function parseSetting(key: string, value: unknown): unknown {
   if (!isSettingKey(key)) throw new LearnError('VALIDATION_FAILED', '알 수 없는 설정 항목입니다.');
-  const r = SETTINGS[key].safeParse(value);
+  const r = (WRITE_SCHEMAS[key] ?? SETTINGS[key]).safeParse(value);
   if (!r.success) throw new LearnError('VALIDATION_FAILED', '설정 값이 올바르지 않습니다.');
   return r.data;
 }

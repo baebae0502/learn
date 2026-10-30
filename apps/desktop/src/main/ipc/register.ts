@@ -61,6 +61,12 @@ export type ChannelResult<C extends Channel> = Extract<Contract, { channel: C }>
 type Handler<S extends z.ZodType, T> = (input: z.output<S>, event: IpcMainInvokeEvent) => Promise<T> | T;
 export type Handle = <C extends Channel, S extends z.ZodType>(channel: C, schema: S, fn: Handler<S, ChannelResult<C>>) => void;
 
+/** E2E only (test-hooks.ts installs the counter): which channels a change really called. Nothing is kept otherwise. */
+function countCall(channel: string): void {
+  const calls = (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls;
+  if (calls) calls[channel] = (calls[channel] ?? 0) + 1;
+}
+
 /**
  * The single IPC entry point: sender URL check, window-kind check (CHANNEL_KINDS, by the sender's webContents), zod
  * validation, `Result` envelope, and error-code-only logging. A sender the channel does not allow is refused before
@@ -77,6 +83,7 @@ export function createHandle(devOrigin: string | null): Handle {
         }
         const parsed = schema.safeParse(raw ?? undefined);
         if (!parsed.success) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
+        countCall(channel);
         return ok(await fn(parsed.data, event));
       } catch (e) {
         const failure = failureFrom(e);

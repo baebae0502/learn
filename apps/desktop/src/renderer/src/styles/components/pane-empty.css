@@ -33,6 +33,17 @@
   .pane-empty .btn {
     margin-top: var(--space-8);
   }
+  /* Two actions side by side (the library's no-results state): the row carries the gap above them. */
+  .pane-empty .pe-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-8);
+    margin-top: var(--space-8);
+  }
+  .pane-empty .pe-actions .btn {
+    margin-top: 0;
+  }
   .pane-empty.top {
     justify-content: flex-start;
     padding-top: var(--space-48);

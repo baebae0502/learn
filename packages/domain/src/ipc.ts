@@ -1,28 +1,38 @@
 import { z } from 'zod';
-import { COMMAND_IDS, type CommandContextState, type CommandId } from './commands';
+import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
+import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
 import type { DuplicateChoice, SheetPayload } from './sheets';
 import { prefsFields } from './settings';
-import { LIBRARY_COLUMN_IDS, type LibraryColumnId } from './library-columns';
+import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
-export const pickAndImportInput = z.object({ mode: storageModeSchema, allowDuplicate: z.boolean().default(false) });
+/** The collection an import files its items into: a uuid, or null/absent for none. */
+const importCollectionSchema = z.uuid().nullable().optional();
+export const pickAndImportInput = z.object({
+  mode: storageModeSchema,
+  allowDuplicate: z.boolean().default(false),
+  collectionId: importCollectionSchema,
+}).strict();
 export const importPathsInput = z.object({
   paths: z.array(z.string().min(1).max(4096)).min(1).max(500),
   mode: storageModeSchema,
   allowDuplicate: z.boolean().default(false),
-});
+  collectionId: importCollectionSchema,
+}).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
 export const assetIdInput = z.object({ assetId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
+/** library.getItems: items by id. 5,000 like the other id lists; main asks the database 500 at a time. */
+export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) }).strict();
 /** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
 export const nameSchema = z.string().normalize('NFC').trim().min(1).max(200);
 /** Item titles allow more than collection/tag names. */
@@ -35,17 +45,19 @@ export const updateMetadataInput = z.object({
   title: titleSchema.optional(),
   metadata: itemMetadataSchema.optional(),
 });
-export const collectionIdInput = z.object({ collectionId: z.uuid() });
-export const createCollectionInput = z.object({ name: nameSchema, parentId: z.uuid().nullable().optional() });
-export const renameCollectionInput = z.object({ collectionId: z.uuid(), name: nameSchema });
-export const moveCollectionInput = z.object({ collectionId: z.uuid(), parentId: z.uuid().nullable() });
-export const collectionItemsInput = z.object({ collectionId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) });
-export const createTagInput = z.object({ name: nameSchema });
-export const tagIdInput = z.object({ tagId: z.uuid() });
-export const renameTagInput = z.object({ tagId: z.uuid(), name: nameSchema });
-export const setTagColorInput = z.object({ tagId: z.uuid(), color: tagColorSchema.nullable(), position: positionSchema.nullable() });
-export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) });
-export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) });
+/** The organize inputs (collections, tags) and the imports that file into a collection are strict like every M5 input: an
+ * unknown key is refused, not dropped. */
+export const collectionIdInput = z.object({ collectionId: z.uuid() }).strict();
+export const createCollectionInput = z.object({ name: nameSchema, parentId: z.uuid().nullable().optional() }).strict();
+export const renameCollectionInput = z.object({ collectionId: z.uuid(), name: nameSchema }).strict();
+export const moveCollectionInput = z.object({ collectionId: z.uuid(), parentId: z.uuid().nullable() }).strict();
+export const collectionItemsInput = z.object({ collectionId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
+export const createTagInput = z.object({ name: nameSchema }).strict();
+export const tagIdInput = z.object({ tagId: z.uuid() }).strict();
+export const renameTagInput = z.object({ tagId: z.uuid(), name: nameSchema }).strict();
+export const setTagColorInput = z.object({ tagId: z.uuid(), color: tagColorSchema.nullable(), position: positionSchema.nullable() }).strict();
+export const tagItemsInput = z.object({ tagId: z.uuid(), itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
+export const togglePositionInput = z.object({ position: positionSchema, itemIds: z.array(z.uuid()).min(1).max(5000) }).strict();
 export const settingGetInput = z.object({ key: z.string().min(1).max(100) });
 export const settingSetInput = z.object({ key: z.string().min(1).max(100), value: z.unknown() });
 /** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */
@@ -77,6 +89,18 @@ export const commandContextInput = z
     selectionCount: contextCount,
     selectionAvailable: contextCount,
     selectionRelinkable: contextCount,
+    /** The colour slots 1–8 whose tag every selected item has, as a bitmask (bit n−1 = slot n). */
+    selectionTagPositions: z.number().int().min(0).max(255),
+    scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
+    collectionCount: contextCount,
+    /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */
+    tagPositions: z.number().int().min(0).max(255),
+    tagFilterCount: contextCount,
+    searchActive: z.boolean(),
+    sortColumn: z.enum(LIBRARY_SORT_COLUMNS),
+    sortDirection: z.enum(['asc', 'desc']),
+    /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
+    columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
@@ -87,23 +111,31 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('shortcuts') }),
 ]);
 export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
+/** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
+export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
+export type ConfirmInput = z.input<typeof confirmInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
-/** Native context menus by kind (ADR-0005 §4): items now; collections and tags get theirs in M5. */
+/** Native context menus by kind (ADR-0005 §4): the registry commands that list the kind fill it; a kind none lists answers null. */
 export const showContextMenuInput = z.discriminatedUnion('kind', [
   // The whole table selection (⌘A in a large library): the bound of the reported selection counts.
   z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(1_000_000), ...point }),
   z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
 ]);
-/** The table header's native menu: which columns show now, and where the pointer is. */
+/** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z
-  .object({ visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length), ...point })
+  .object({
+    visible: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length),
+    locked: z.array(z.enum(LIBRARY_COLUMN_IDS)).max(LIBRARY_COLUMN_IDS.length).optional(),
+    ...point,
+  })
   .strict();
 
 export type PickAndImportInput = z.input<typeof pickAndImportInput>;
 export type ImportPathsInput = z.input<typeof importPathsInput>;
+export type GetItemsInput = z.input<typeof getItemsInput>;
 
 export type ItemIdInput = z.input<typeof itemIdInput>;
 export type AssetIdInput = z.input<typeof assetIdInput>;
@@ -164,6 +196,10 @@ export interface LearnApi {
     revealExport(): Promise<Result<void>>;
     /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
     searchTexts(): Promise<Result<SearchText[]>>;
+    /** Collections, tags, memberships, tag assignments and duplicate groups in one read (the sidebar's data). */
+    organize(): Promise<Result<OrganizeSnapshot>>;
+    /** The non-trashed items among `ids`, once each in the order asked; unknown and trashed ids are skipped. */
+    getItems(input: GetItemsInput): Promise<Result<LibraryItem[]>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;
@@ -172,8 +208,9 @@ export interface LearnApi {
     move(input: MoveCollectionInput): Promise<Result<Collection>>;
     remove(input: CollectionIdInput): Promise<Result<void>>;
     restore(input: CollectionIdInput): Promise<Result<Collection>>;
-    addItems(input: CollectionItemsInput): Promise<Result<number>>;
-    removeItems(input: CollectionItemsInput): Promise<Result<number>>;
+    /** The ids whose membership really changed. */
+    addItems(input: CollectionItemsInput): Promise<Result<string[]>>;
+    removeItems(input: CollectionItemsInput): Promise<Result<string[]>>;
   };
   tags: {
     list(): Promise<Result<Tag[]>>;
@@ -201,13 +238,15 @@ export interface LearnApi {
     savePosition(input: SavePositionInput): Promise<Result<void>>;
   };
   ui: {
-    showContextMenu(input: ShowContextMenuInput): Promise<Result<{ commandId: CommandId } | null>>;
+    showContextMenu(input: ShowContextMenuInput): Promise<Result<PickedCommand | null>>;
     /** The calling window's current state (the windowState push only reports changes). */
     windowState(): Promise<Result<WindowState>>;
     /** The main window's command context changed; main re-derives the menu bar from it (other windows are ignored). */
     reportContext(input: CommandContextInput): Promise<Result<void>>;
     /** The duplicate sheet over the calling window; closing it without an answer is 'skip'. */
     confirmDuplicate(input: ConfirmDuplicateInput): Promise<Result<{ choice: DuplicateChoice }>>;
+    /** A sheet on the main window with the confirming button first (the default) and 취소: true when it was chosen. */
+    confirm(input: ConfirmInput): Promise<Result<boolean>>;
     /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */
     showShortcuts(): Promise<Result<void>>;
     /** ⌘, : opens the settings window, or brings it to the front (the main-owned app.settings command). */

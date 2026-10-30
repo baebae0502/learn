@@ -135,6 +135,52 @@ describe('CollectionsRepository: soft delete / restore', () => {
     expect(deletedAt(a)).toBe('2026-10-20T02:00:00.000Z');
   });
 
+  it('restores only the descendants deleted with the target: a child deleted earlier stays deleted', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const [a, b, c] = chain(3) as [string, string, string];
+    const sibling = repo.create({ name: 'sibling', parentId: a }).id;
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    repo.softDelete(b); // b and c
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    repo.softDelete(a); // a and sibling; b and c keep their own time
+    expect(repo.restoreChanged(a)).toMatchObject({ changed: true, collection: { id: a } });
+    expect(ids(repo.list())).toEqual([a, sibling]);
+    expect([deletedAt(b), deletedAt(c)]).toEqual(['2026-10-20T01:00:00.000Z', '2026-10-20T01:00:00.000Z']);
+    // Restoring the child that went first brings back its own subtree.
+    expect(repo.restore(b)).toMatchObject({ id: b, parentId: a });
+    expect(ids(repo.list())).toEqual([a, b, c, sibling]);
+  });
+
+  it('brings back every descendant deleted in the same batch, however deep, with their items', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const [a, b, c, d] = chain(4) as [string, string, string, string];
+    const side = repo.create({ name: 'side', parentId: b }).id;
+    const { itemId } = seedItem(db);
+    repo.addItems(d, [itemId]);
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    repo.softDelete(b); // b, c, d, side
+    expect(ids(repo.list())).toEqual([a]);
+    vi.setSystemTime(new Date('2026-10-20T03:00:00.000Z'));
+    expect(repo.restore(b)).toMatchObject({ id: b, parentId: a });
+    expect(ids(repo.list())).toEqual([a, b, c, d, side]);
+    expect(repo.get(d)).toMatchObject({ itemCount: 1 });
+  });
+
+  it('still restores every deleted ancestor, whatever its batch, and only the target\'s own batch below it', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const [a, b, c, d] = chain(4) as [string, string, string, string];
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    repo.softDelete(d); // d alone
+    vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
+    repo.softDelete(b); // b, c (d keeps its time)
+    vi.setSystemTime(new Date('2026-10-20T03:00:00.000Z'));
+    repo.softDelete(a); // a
+    expect(repo.restoreChanged(c)).toMatchObject({ changed: true, collection: { id: c, parentId: b } });
+    expect(ids(repo.list())).toEqual([a, b, c]); // a (03:00) and b (02:00) come back with c; d (01:00) does not
+    expect(deletedAt(d)).toBe('2026-10-20T01:00:00.000Z');
+  });
+
   it('throws NOT_FOUND for unknown or already-deleted targets', () => {
     const a = repo.create({ name: 'a' }).id;
     repo.softDelete(a);

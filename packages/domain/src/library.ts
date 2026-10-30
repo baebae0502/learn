@@ -23,7 +23,6 @@ export interface LibraryItem {
   year: number | null;
   /** From the metadata (quick search's short fields, spec 4.2); null when there is none. */
   publisher: string | null;
-  tagIds: string[];
   progress: number | null;
   openedAt: string | null;
 }
@@ -55,6 +54,17 @@ export interface SearchText {
   extra: string | null;
 }
 
+/** Quick search reads at most this many characters of each long field (spec 7.1): what lies past it is not searched. */
+export const SEARCH_TEXT_FIELD_MAX = 4000;
+
+/** The first SEARCH_TEXT_FIELD_MAX UTF-16 units of a long field, never ending on half a surrogate pair. */
+export function clipSearchText(text: string): string {
+  if (text.length <= SEARCH_TEXT_FIELD_MAX) return text;
+  const cut = text.slice(0, SEARCH_TEXT_FIELD_MAX);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+}
+
 export interface ItemDetail {
   item: LibraryItem;
   metadata: ItemMetadata;
@@ -77,7 +87,8 @@ export interface DuplicateGroup {
 }
 
 export type ImportOutcome =
-  | { status: 'imported'; path: string; item: LibraryItem }
+  /** `collectionId`: the collection the item was filed into — present only when that really happened (it is absent if the import asked for none, or the collection was gone by then). */
+  | { status: 'imported'; path: string; item: LibraryItem; collectionId?: string }
   | { status: 'duplicate'; path: string; existingItemId: string }
   | { status: 'failed'; path: string; code: ErrorCode; message: string };
 

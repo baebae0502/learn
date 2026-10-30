@@ -35,6 +35,12 @@
     color: var(--text-primary);
     flex: none;
   }
+  .menu .mi[data-disabled] .check {
+    color: inherit; /* a disabled row is dim as a whole, its mark too */
+  }
+  .menu .mi .mi-label {
+    padding-left: calc(var(--indent, 0) * var(--space-16)); /* a tree list steps 16 px a level, as the sidebar tree */
+  }
   .menu .mi .shortcut {
     margin-left: auto;
     padding-left: var(--space-24);

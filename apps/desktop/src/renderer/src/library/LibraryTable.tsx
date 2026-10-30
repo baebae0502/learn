@@ -2,12 +2,12 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/rea
 import { ChevronDown, ChevronUp, Clapperboard, FileText } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode,
+  type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
 } from 'react';
-import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem } from '@learn/domain';
+import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem, type OrganizeTag } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { usePrefs } from '../data/queries';
-import { defaultDensity, density as ROW_HEIGHT, layout } from '../design/tokens';
+import { defaultDensity, density as ROW_HEIGHT } from '../design/tokens';
 import { formatDate, formatSize } from '../format';
 import type { Match } from '../palette/hangul';
 import { highlight } from '../palette/highlight';
@@ -16,12 +16,18 @@ import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
+import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
+import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
-import { ItemMarks } from './ItemMarks';
+import { wheelSteps } from './columnDrag';
+import { useColumnReorder } from './useColumnReorder';
+import { TagDots } from '../tags/TagDots';
+import { tagsDescription } from '../tags/dotTags';
+import { LinkMark, StatusFlags } from './ItemMarks';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
@@ -29,6 +35,8 @@ import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort
 export interface LibraryTableProps {
   rows: readonly LibraryItem[];
   columns: ColumnConfig;
+  /** Columns the view shows whatever `columns` says (the recent view's 마지막으로 연 날): drawn after the title, locked in the header menu. */
+  forced?: readonly LibraryColumnId[];
   sort: LibrarySort;
   onSortChange(sort: LibrarySort): void;
   /** Resize release, column-menu toggle / reset. */
@@ -37,6 +45,8 @@ export interface LibraryTableProps {
   onContextMenu(itemIds: readonly string[], x: number, y: number): void;
   /** Matched range per title, for <mark> (the quick search's). */
   titleMatches?: ReadonlyMap<string, Match> | null;
+  /** The tags of an item (the organize model's, coloured ones first by slot): the colour dots after its title and the row's description. */
+  tagsOf?: (itemId: string) => readonly OrganizeTag[];
   /** Scroll this row into view once after mount (return from the reader). */
   revealId?: string | null;
   /** What the body shows while there are no rows (the loading line, a no-results state). The header stays. */
@@ -50,9 +60,12 @@ const BODY_BOTTOM = 8;
 const OVERSCAN = 8;
 /** ← / → on a focused column edge. */
 const RESIZE_STEP = 8;
+const NO_COLUMNS: readonly LibraryColumnId[] = [];
 /** Tabular figures (design-spec 6 표: 숫자는 tabular). */
-const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'size']);
+const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size']);
 const ROW = '[data-testid="item-row"]';
+const NO_TAGS: readonly OrganizeTag[] = [];
+const tagsDescriptionId = (itemId: string) => `row-tags-${itemId}`;
 const rowIdOf = (target: EventTarget): string | null =>
   target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['itemId'] ?? null) : null;
 const isMac = () => currentPlatform() === 'darwin';
@@ -73,6 +86,8 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
       return formatDate(item.createdAt, now);
     case 'updatedAt':
       return formatDate(item.updatedAt, now);
+    case 'openedAt':
+      return item.openedAt === null ? '' : formatDate(item.openedAt, now);
     case 'storageMode':
       return t.library.storage[item.storageMode];
     case 'size':
@@ -82,15 +97,18 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
   }
 }
 
-/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks. */
-function TitleCell({ item, match }: { item: LibraryItem; match: Match | null }) {
+/** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks and the colour dots. */
+function TitleCell({ item, match, tags }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[] }) {
   return (
     <>
       <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>
-      <ItemMarks item={item} flagTestId="missing-flag" />
+      {/* The mockup's order: title, link mark, dots, status flags. */}
+      <LinkMark item={item} />
+      <TagDots tags={tags} />
+      <StatusFlags item={item} flagTestId="missing-flag" />
     </>
   );
 }
@@ -109,6 +127,10 @@ interface ItemRowProps {
   now: Date;
   /** The part of the title the quick search matched. */
   match: Match | null;
+  /** The item's tags, for its dots and its description. */
+  tags: readonly OrganizeTag[];
+  /** The rows a drag of this row takes (spec 8.2): the selection in table order when the row is in it, else the row alone. */
+  dragIdsOf: (rowId: string) => string[];
 }
 
 /**
@@ -116,13 +138,20 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf }: ItemRowProps) {
   const last = columns.length - 1;
+  const rowRef = useRef<HTMLDivElement>(null);
+  const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf);
+  // The names of the coloured tags are the row's description; they sit beside the cells, not in the title, so the row's name stays the title.
+  const description = tagsDescription(tags);
   return (
     <div
+      ref={rowRef}
+      {...rowProps}
       role="row"
       aria-rowindex={index + 2}
       aria-selected={selected}
+      aria-describedby={description !== null ? tagsDescriptionId(item.id) : undefined}
       tabIndex={tabStop ? 0 : -1}
       className="table-row"
       style={{ transform: `translateY(${top}px)` }}
@@ -133,6 +162,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       data-selected={selected || undefined}
       data-focus-visible={ring || undefined}
       data-missing={item.availability === 'missing' || undefined}
+      data-drop-target={isDropTarget || undefined}
     >
       {columns.map((c, i) => (
         <div
@@ -143,7 +173,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           data-col={c.id}
         >
           {c.id === 'title' ? (
-            <TitleCell item={item} match={match} />
+            <TitleCell item={item} match={match} tags={tags} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}
@@ -151,6 +181,11 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           )}
         </div>
       ))}
+      {description !== null && (
+        <span hidden id={tagsDescriptionId(item.id)}>
+          {description}
+        </span>
+      )}
     </div>
   );
 });
@@ -169,8 +204,8 @@ export function LibraryTable(props: LibraryTableProps) {
   const selected = useLibrary((s) => s.selected);
   const cursorId = useLibrary((s) => s.cursorId);
   const rowHeight = ROW_HEIGHT[usePrefs().data?.density ?? defaultDensity];
-  const header = layout.tableHeaderHeight;
-  const visible = useMemo(() => visibleColumns(columns), [columns]);
+  const forced = props.forced ?? NO_COLUMNS;
+  const visible = useMemo(() => visibleColumns(columns, forced), [columns, forced]);
   const last = visible.length - 1;
   const order = useMemo(() => rowOrder(rows.map((r) => r.id)), [rows]);
   const cursorIndex = order.indexOf(cursorId);
@@ -178,6 +213,9 @@ export function LibraryTable(props: LibraryTableProps) {
   const stop = cursorIndex >= 0 ? cursorIndex : Math.max(0, rows.findIndex((r) => selected.has(r.id)));
 
   const grid = useRef<HTMLDivElement>(null);
+  const head = useRef<HTMLDivElement>(null);
+  const headClip = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const getItemKey = useCallback((i: number) => rows[i]!.id, [rows]);
   // The stop row is always drawn, however far the view scrolled from it: a focused row that left the DOM would drop
   // the focus to <body>.
@@ -191,23 +229,60 @@ export function LibraryTable(props: LibraryTableProps) {
   );
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => grid.current,
+    getScrollElement: () => scroller.current,
     estimateSize: () => rowHeight,
     overscan: OVERSCAN,
     getItemKey,
     rangeExtractor,
     paddingStart: BODY_TOP,
     paddingEnd: BODY_BOTTOM,
-    // The sticky header sits above the rows in the same scroll view; a row brought into view clears it by the 4 px inset.
-    scrollMargin: header,
-    scrollPaddingStart: header + BODY_TOP,
+    // The header sits above the scroller, not in it: a row brought into view clears the top edge by the 4 px inset.
+    scrollPaddingStart: BODY_TOP,
     scrollPaddingEnd: BODY_BOTTOM,
   });
   // Rows have one height, the density's: a new density measures every row again (spec §3.4).
   useLayoutEffect(() => virtualizer.measure(), [virtualizer, rowHeight]);
 
+  // A classic scroll bar takes a column from the scroller; the header band keeps that column free. The width goes onto
+  // the grid at once (no frame with a header wider than the rows) and into state for the title edge's size below.
+  const [gutter, setGutter] = useState(0);
+  const measureGutter = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const view = scroller.current;
+    const root = grid.current;
+    if (!view || !root) return;
+    const measure = () => {
+      const w = view.offsetWidth - view.clientWidth;
+      root.style.setProperty('--scrollbar-w', `${w}px`);
+      setGutter(w);
+    };
+    measure();
+    measureGutter.current = measure;
+    const observer = new ResizeObserver(measure);
+    observer.observe(view);
+    return () => {
+      measureGutter.current = null;
+      observer.disconnect();
+    };
+  }, []);
+  // Rows added or removed bring the bar or take it away in the commit that draws them; the observer would only report it at the
+  // next frame, and a read in between (a test's, a handler's) would find the header over the bar's column.
+  useLayoutEffect(() => measureGutter.current?.(), [rows.length, rowHeight]);
+  // The header follows the body sideways (the body's scroll event comes before the frame that paints it).
+  const onScrollerScroll = useCallback(() => {
+    if (headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
+  }, []);
+  // A wheel or sweep over the header, which no longer scrolls, goes to the body.
+  const onHeadWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
+    const view = scroller.current;
+    if (!view) return;
+    const step = wheelSteps(e, { width: view.clientWidth, height: view.clientHeight });
+    view.scrollBy(step.x, step.y);
+  }, []);
+  const reorder = useColumnReorder({ head, clip: headClip, scroller, visible, forced, columns, onColumnsChange: props.onColumnsChange });
+
   // The title takes what the other columns leave (at least its minimum): its width, for its edge, is computed.
-  const viewWidth = virtualizer.scrollRect?.width ?? 0;
+  const viewWidth = Math.max(0, (virtualizer.scrollRect?.width ?? 0) - gutter);
   const [live, setLive] = useState<ReadonlyMap<LibraryColumnId, number> | null>(null);
   const widths = useMemo(() => live ?? fixedWidths(columns, visible), [live, columns, visible]);
   const tracks = useMemo(() => columnTemplates(visible, widths), [visible, widths]);
@@ -218,6 +293,21 @@ export function LibraryTable(props: LibraryTableProps) {
   useLayoutEffect(() => {
     latest.current = { props, order, visible, widths, titleWidth, rowHeight, stop };
   });
+  const dragIdsOf = useCallback((rowId: string): string[] => {
+    const selection = useLibrary.getState().selected;
+    return selection.has(rowId) ? inOrder(selection, latest.current.order) : [rowId];
+  }, []);
+  // Another view starts at the top (spec 3.5); a view entered for one item (a collection path in the item panel) shows that row.
+  const scopeEpoch = useLibrary((s) => s.scopeEpoch);
+  const seenEpoch = useRef(scopeEpoch);
+  useLayoutEffect(() => {
+    if (seenEpoch.current === scopeEpoch) return;
+    seenEpoch.current = scopeEpoch;
+    const reveal = useLibrary.getState().revealOnScope;
+    const at = reveal === null ? -1 : latest.current.order.indexOf(reveal);
+    if (at >= 0) virtualizer.scrollToIndex(at);
+    else virtualizer.scrollToOffset(0);
+  }, [scopeEpoch, virtualizer]);
 
   // ---- selection --------------------------------------------------------------------------------------------------
   const follow = useRef(false);
@@ -243,6 +333,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // The ring shows for keyboard use only (design-spec 6: 마우스 클릭으로는 링을 띄우지 않는다): a key turns it on, a
   // press turns it off, and focus that enters the table brings it when the last input was a key (F6, Tab).
   const [ring, setRing] = useState(false);
+  const keyMenuAt = useRef<number | null>(null);
   const focusStop = useCallback(() => {
     grid.current?.querySelector<HTMLElement>(`${ROW}[data-index="${latest.current.stop}"]`)?.focus({ preventScroll: true });
   }, []);
@@ -272,13 +363,27 @@ export function LibraryTable(props: LibraryTableProps) {
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
     if (isNavigationKey(e)) setRing(true);
     if (e.target instanceof Element && e.target.closest('[role="separator"]')) return; // a column edge has its own keys
+    if (isContextMenuKey(e.nativeEvent)) {
+      // ⇧F10 and the menu key open the focused row's menu under it, as a right-click would (spec 9.1); the browser's own
+      // menu event for the key is not wanted (it would open a second menu elsewhere).
+      const row = e.target instanceof Element ? e.target.closest<HTMLElement>(ROW) : null;
+      const id = row ? rowIdOf(row) : null;
+      if (row === null || id === null) return; // the header and the empty body keep the browser's
+      e.preventDefault();
+      setRing(true);
+      keyMenuAt.current = performance.now();
+      apply({ kind: 'contextMenu', id });
+      const at = menuPointFor(row);
+      latest.current.props.onContextMenu(inOrder(useLibrary.getState().selected, latest.current.order), at.x, at.y);
+      return;
+    }
     const key = gridKey(e.nativeEvent, isMac());
     if (!key) return;
     e.preventDefault();
     switch (key.kind) {
       case 'move': {
-        const view = grid.current?.clientHeight ?? 0;
-        const page = Math.floor((view - header - BODY_TOP) / latest.current.rowHeight);
+        const view = scroller.current?.clientHeight ?? 0;
+        const page = Math.floor((view - BODY_TOP) / latest.current.rowHeight);
         return apply({ kind: 'move', to: key.to, extend: key.extend, page }, true);
       }
       case 'all':
@@ -293,7 +398,7 @@ export function LibraryTable(props: LibraryTableProps) {
       case 'swallow':
         return;
     }
-  }, [apply, header]);
+  }, [apply]);
 
   // The edit menu's 모두 선택 (role selectAll) runs the page's select-all, which asks <body> first (selectstart): while
   // the table has the focus it selects every row instead of the page's text. ⌘A itself comes as a key (onKeyDown).
@@ -308,12 +413,28 @@ export function LibraryTable(props: LibraryTableProps) {
   }, [apply]);
 
   // ---- rows: press, double-click, right-click (delegated: the rows keep no handlers of their own) ----------------
+  // A press on a row inside a multiple selection keeps the selection until the button goes up: a drag that starts from it
+  // takes all of it (spec 8.2). A release without a drag is a click, which then makes that row the selection.
+  const pendingCollapse = useRef<string | null>(null);
   const onBodyMouseDown = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     const mac = isMac();
     if (mac && e.ctrlKey) return; // ⌃-click is the context menu on macOS (onContextMenu)
+    pendingCollapse.current = null;
     const id = rowIdOf(e.target);
-    if (id !== null) apply({ kind: 'click', id, shift: e.shiftKey, toggle: mac ? e.metaKey : e.ctrlKey });
+    if (id === null) return;
+    const toggle = mac ? e.metaKey : e.ctrlKey;
+    const selection = useLibrary.getState().selected;
+    if (!e.shiftKey && !toggle && selection.size > 1 && selection.has(id)) {
+      pendingCollapse.current = id;
+      return;
+    }
+    apply({ kind: 'click', id, shift: e.shiftKey, toggle });
+  }, [apply]);
+  const onBodyClick = useCallback(() => {
+    const id = pendingCollapse.current;
+    pendingCollapse.current = null;
+    if (id !== null) apply({ kind: 'click', id, shift: false, toggle: false });
   }, [apply]);
   // A double-click opens its row, which the first press selected alone (spec §3.3; M3's single-click open is gone).
   const onBodyDoubleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
@@ -324,6 +445,10 @@ export function LibraryTable(props: LibraryTableProps) {
   // Right-click selects first (design-spec 7.1, Finder): a row outside the selection becomes the selection; inside it,
   // the menu acts on every selected item, in table order.
   const onBodyContextMenu = useCallback((e: MouseEvent<HTMLDivElement>) => {
+    if (isKeyMenuEcho(performance.now(), keyMenuAt.current)) {
+      e.preventDefault();
+      return;
+    }
     const id = rowIdOf(e.target);
     if (id === null) return;
     e.preventDefault();
@@ -343,7 +468,8 @@ export function LibraryTable(props: LibraryTableProps) {
     const at = { x: e.clientX, y: e.clientY };
     void (async () => {
       try {
-        const picked = await unwrap(api().ui.showColumnMenu({ visible: latest.current.props.columns.visible, ...at }));
+        const { columns: current, forced: locked } = latest.current.props;
+        const picked = await unwrap(api().ui.showColumnMenu({ visible: current.visible, ...(locked && locked.length > 0 ? { locked: [...locked] } : {}), ...at }));
         if (!picked) return;
         const { columns: cfg, onColumnsChange } = latest.current.props;
         onColumnsChange('reset' in picked ? defaultColumns() : toggleColumn(cfg, picked.toggle));
@@ -420,85 +546,96 @@ export function LibraryTable(props: LibraryTableProps) {
       onBlur={onBlur}
       onPointerDownCapture={() => setRing(false)}
     >
-      <div role="row" aria-rowindex={1} className="table-head" onContextMenu={onHeaderMenu}>
-        {visible.map((c, i) => {
-          const direction = sort.column === c.id ? sort.direction : null;
-          const width = c.id === 'title' ? titleWidth : widths.get(c.id)!;
-          return (
-            <div
-              key={c.id}
-              role="columnheader"
-              aria-colindex={i + 1}
-              aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
-              className={cx('th', c.align === 'end' && 'end', i === 0 && 'is-first', i === last && 'is-last')}
-              data-testid="column-header"
-              data-col={c.id}
-              data-sorted={direction !== null || undefined}
-            >
-              {/* Out of the Tab order (the grid is one stop) and pressed without taking the focus from the rows. */}
-              <button type="button" tabIndex={-1} className="th-sort" onMouseDown={(e) => e.preventDefault()} onClick={() => onSort(c.id)}>
-                <span className="ellipsis">{c.label}</span>
-                {direction && <Icon icon={direction === 'asc' ? ChevronUp : ChevronDown} size="xs" />}
-              </button>
-              {/* A column edge (design-spec 2.1): the last column has none (no next column to trade with). */}
-              {i < last && (
+      <div className="table-head-wrap">
+        <div ref={headClip} className="table-head-clip" data-testid="table-head-clip" onWheel={onHeadWheel}>
+          <div ref={head} role="row" aria-rowindex={1} className="table-head" data-reordering={reorder.drag ? '' : undefined} onContextMenu={onHeaderMenu} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
+            {visible.map((c, i) => {
+              const direction = sort.column === c.id ? sort.direction : null;
+              const width = c.id === 'title' ? titleWidth : widths.get(c.id)!;
+              return (
                 <div
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label={t.library.resizeColumn(c.label)}
-                  aria-valuenow={Math.round(width)}
-                  aria-valuemin={c.minWidth}
-                  aria-valuemax={COLUMN_WIDTH_MAX}
-                  tabIndex={-1}
-                  className="col-resizer"
-                  data-testid="column-resizer"
+                  key={c.id}
+                  role="columnheader"
+                  aria-colindex={i + 1}
+                  aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}
+                  className={cx('th', c.align === 'end' && 'end', i === 0 && 'is-first', i === last && 'is-last')}
+                  data-testid="column-header"
                   data-col={c.id}
-                  onPointerDown={(e) => onEdgeDown(e, c.id)}
-                  onPointerMove={onEdgeMove}
-                  onPointerUp={onEdgeUp}
-                  onLostPointerCapture={onEdgeUp}
-                  onDoubleClick={() => onEdgeDoubleClick(c)}
-                  onKeyDown={(e) => onEdgeKey(e, c.id)}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {showEmpty ? (
-        <div role="row" aria-rowindex={2} className="table-empty">
-          <div role="gridcell" className="table-empty-cell">
-            {props.empty}
+                  data-sorted={direction !== null || undefined}
+                  data-dragging={reorder.drag?.id === c.id || undefined}
+                >
+                  {/* Out of the Tab order (the grid is one stop) and pressed without taking the focus from the rows. */}
+                  <button type="button" tabIndex={-1} className="th-sort" onMouseDown={(e) => e.preventDefault()} onClick={() => onSort(c.id)}>
+                    <span className="ellipsis">{c.label}</span>
+                    {direction && <Icon icon={direction === 'asc' ? ChevronUp : ChevronDown} size="xs" />}
+                  </button>
+                  {/* A column edge (design-spec 2.1): the last column has none (no next column to trade with). */}
+                  {i < last && (
+                    <div
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={t.library.resizeColumn(c.label)}
+                      aria-valuenow={Math.round(width)}
+                      aria-valuemin={c.minWidth}
+                      aria-valuemax={COLUMN_WIDTH_MAX}
+                      tabIndex={-1}
+                      className="col-resizer"
+                      data-testid="column-resizer"
+                      data-col={c.id}
+                      onPointerDown={(e) => onEdgeDown(e, c.id)}
+                      onPointerMove={onEdgeMove}
+                      onPointerUp={onEdgeUp}
+                      onLostPointerCapture={onEdgeUp}
+                      onDoubleClick={() => onEdgeDoubleClick(c)}
+                      onKeyDown={(e) => onEdgeKey(e, c.id)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {reorder.drag?.lineX != null && <div className="col-drop-line" data-testid="column-drop-line" aria-hidden="true" style={{ left: reorder.drag.lineX }} />}
           </div>
         </div>
-      ) : (
-        <div
-          role="rowgroup"
-          className="table-body"
-          style={{ height: virtualizer.getTotalSize() }}
-          onMouseDown={onBodyMouseDown}
-          onDoubleClick={onBodyDoubleClick}
-          onContextMenu={onBodyContextMenu}
-        >
-          {items.map((v) => {
-            const item = rows[v.index]!;
-            return (
-              <ItemRow
-                key={v.key}
-                item={item}
-                index={v.index}
-                top={v.start - header}
-                selected={selected.has(item.id)}
-                tabStop={v.index === stop}
-                ring={ring && focusedId === item.id}
-                columns={visible}
-                now={now}
-                match={props.titleMatches?.get(item.id) ?? null}
-              />
-            );
-          })}
-        </div>
-      )}
+      </div>
+      <div ref={scroller} className="table-scroller" data-testid="library-scroller" data-empty={showEmpty || undefined} onScroll={onScrollerScroll}>
+        {showEmpty ? (
+          <div role="row" aria-rowindex={2} className="table-empty">
+            <div role="gridcell" className="table-empty-cell">
+              {props.empty}
+            </div>
+          </div>
+        ) : (
+          <div
+            role="rowgroup"
+            className="table-body"
+            style={{ height: virtualizer.getTotalSize() }}
+            onMouseDown={onBodyMouseDown}
+            onClick={onBodyClick}
+            onDoubleClick={onBodyDoubleClick}
+            onContextMenu={onBodyContextMenu}
+          >
+            {items.map((v) => {
+              const item = rows[v.index]!;
+              return (
+                <ItemRow
+                  key={v.key}
+                  item={item}
+                  index={v.index}
+                  top={v.start}
+                  selected={selected.has(item.id)}
+                  tabStop={v.index === stop}
+                  ring={ring && focusedId === item.id}
+                  columns={visible}
+                  now={now}
+                  match={props.titleMatches?.get(item.id) ?? null}
+                  tags={props.tagsOf?.(item.id) ?? NO_TAGS}
+                  dragIdsOf={dragIdsOf}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

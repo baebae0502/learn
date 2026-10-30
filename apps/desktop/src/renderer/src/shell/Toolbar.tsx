@@ -11,6 +11,8 @@ export function Toolbar(props: {
   /** The window's title when it is not `title`; null keeps the previous one (a view still loading). */
   windowTitle?: string | null;
   count?: string;
+  /** The title's tooltip when it is not the title itself (a collection's full path). */
+  titleTip?: string;
   titleTestId?: string;
   leading?: ReactNode;
   actions?: ReactNode;
@@ -28,7 +30,7 @@ export function Toolbar(props: {
       {hidden && <SidebarToggle place="toolbar" />}
       {props.leading}
       <div className="tb-title">
-        <h1 className="title ellipsis" title={props.title} data-testid={props.titleTestId ?? 'toolbar-title'}>
+        <h1 className="title ellipsis" title={props.titleTip ?? props.title} data-testid={props.titleTestId ?? 'toolbar-title'}>
           {props.title}
         </h1>
         {props.count && (

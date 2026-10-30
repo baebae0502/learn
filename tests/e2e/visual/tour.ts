@@ -48,8 +48,8 @@ export async function setTheme(page: Page, theme: TourTheme): Promise<void> {
 }
 
 /** Fonts loaded, two frames painted, pointer parked in a corner that hovers nothing. */
-export async function settle(page: Page): Promise<void> {
-  await page.mouse.move(1439, 899);
+export async function settle(page: Page, park = true): Promise<void> {
+  if (park) await page.mouse.move(1439, 899);
   await page.evaluate(async () => {
     await document.fonts.ready;
     await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
@@ -61,20 +61,20 @@ export async function settle(page: Page): Promise<void> {
  * a state that differs from its baseline still reaches the critic (R-2). Critic captures run without updating; the
  * baselines are updated by the 1x run only (README).
  */
-export async function shoot(page: Page, name: string, opts: { mask?: Locator[] } = {}): Promise<void> {
-  if (TOUR_2X) await capture2x(page, name);
-  await settle(page);
+export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean } = {}): Promise<void> {
+  if (TOUR_2X) await capture2x(page, name, opts.keepPointer !== true);
+  await settle(page, opts.keepPointer !== true);
   // Tight on purpose: at most 300 pixels may differ by more than the default per-pixel threshold (0.2), so a moved
   // or recoloured 2 px focus ring fails while the Debian ↔ Ubuntu font raster noise passes (verified on CI, I2).
   await expect(page).toHaveScreenshot(`${name}.png`, { animations: 'disabled', caret: 'hide', mask: opts.mask, maxDiffPixels: 300, threshold: 0.2 });
 }
 
-async function capture2x(page: Page, name: string): Promise<void> {
+async function capture2x(page: Page, name: string, park: boolean): Promise<void> {
   const cdp = await page.context().newCDPSession(page);
   try {
     const { w, h } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 2, mobile: false });
-    await settle(page);
+    await settle(page, park);
     const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
     fs.mkdirSync(TOUR_DIR, { recursive: true });
     fs.writeFileSync(path.join(TOUR_DIR, `${name}.png`), Buffer.from(data, 'base64'));

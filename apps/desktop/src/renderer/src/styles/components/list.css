@@ -26,10 +26,11 @@
     border-radius: var(--radius-md);
     color: var(--text-primary);
     min-width: 0;
+    position: relative;
     outline: none;
     cursor: default;
   }
-  .nav-row > .icon {
+  .nav-row .icon {
     color: var(--accent-text);
   }
   .nav-row .label {
@@ -39,6 +40,53 @@
     color: var(--text-tertiary);
     font: var(--type-footnote);
     font-variant-numeric: tabular-nums;
+  }
+  /* Tree rows (design-spec 6 트리; mockup .disclosure): every row has the 16 px gutter, so icons line up level by level; the
+     12 px chevron sits in the gutter of its own level. Leaves draw none, the gutter stays. */
+  .nav-row .disclosure {
+    position: absolute;
+    left: calc(var(--indent, 0) * 16px); /* local: one level is 16 px (design-spec 6 트리) */
+    top: 0;
+    width: 16px; /* local: the disclosure gutter */
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-tertiary);
+    outline: none;
+  }
+  .nav-row .disclosure .icon {
+    color: inherit;
+  }
+  /* The name being typed in a row (spec 3.4): the field of design-spec 6 (1 px focus border, 3 px halo), 22 px high. */
+  .nav-row .name-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: min(22px, calc(var(--row-height) - 6px)); /* local: a field inside a 24–32 px row; its 3 px halo stays inside the row */
+    padding: 0 var(--space-4);
+    margin-inline-start: calc(-1 * var(--space-4)); /* the name stays where the row's name was */
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+    color: var(--text-primary);
+    font: var(--type-body);
+    outline: none;
+  }
+  .nav-row .rename-note {
+    position: absolute;
+    left: calc(var(--space-16) + var(--indent, 0) * 16px + 16px + var(--space-2)); /* local: under the field: past the gutter and the icon */
+    top: 100%;
+    z-index: 2;
+    padding: var(--space-2) var(--space-8);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--danger-text);
+    font: var(--type-footnote);
+    white-space: nowrap;
   }
   .nav-row:is([data-hovered], [data-force~='hover']) {
     background: var(--fill-hover);
@@ -56,19 +104,43 @@
     background: var(--accent);
     color: var(--text-on-accent);
   }
-  .nav-list:focus-within .nav-row:is([data-current], [data-selected]) :is(.icon, .count),
-  .nav-row[data-force~='focused'] :is(.icon, .count) {
+  .nav-list:focus-within .nav-row:is([data-current], [data-selected]) :is(.icon, .count, .disclosure),
+  .nav-row[data-force~='focused'] :is(.icon, .count, .disclosure) {
     color: var(--text-on-accent);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) {
     background: var(--fill-selected);
     color: var(--text-primary);
   }
-  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) > .icon {
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .icon:not(.disclosure .icon) {
     color: var(--accent-text);
+  }
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .disclosure,
+  :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .disclosure .icon {
+    color: var(--text-tertiary);
   }
   :root[data-window-inactive] .nav-list:focus-within .nav-row:is([data-current], [data-selected]) .count {
     color: var(--sidebar-count-selected, var(--text-secondary));
+  }
+  /* The keyboard is in the name field, not in the list (design-spec 3.1): the selection is the neutral one, and the row that
+     holds the field has no fill — the field is its selection. These out-rank the focus-within fill above. */
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) {
+    background: var(--fill-selected);
+    color: var(--text-primary);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .icon:not(.disclosure .icon) {
+    color: var(--accent-text);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .count {
+    color: var(--sidebar-count-selected, var(--text-secondary));
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .disclosure,
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]) .disclosure .icon {
+    color: var(--text-tertiary);
+  }
+  .nav-list:has(.name-field:focus) .nav-row:is([data-current], [data-selected]):has(.name-field),
+  .nav-row[data-force~='selected']:has(.name-field) {
+    background: none;
   }
   /* Keyboard cursor: inset 2 px ring on a row that is not filled. The sidebar is a single-selection list: on its
      accent-filled row the cursor draws no ring, since the neutral → accent fill change already shows that the list has
@@ -88,8 +160,10 @@
      (the header text over the icon) and the last column's ends 24 px in. */
   .table-head {
     height: var(--table-header-height);
+    /* The header's bottom line. The library table draws it on its header band instead (screens/library.css), under a
+       scroll bar's column too; the state board's header keeps this one. */
     box-shadow: inset 0 -1px 0 var(--separator);
-    background: var(--bg-content); /* the rows scroll under the sticky header */
+    background: var(--bg-content);
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
@@ -153,6 +227,16 @@
     color: var(--text-primary);
     font-weight: var(--weight-medium);
   }
+  /* The header cell being dragged to a new place (M5 spec 5.1): the fill of a pressed control. */
+  .table-head .th[data-dragging] {
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+  }
+  /* The dragged cell is one pressed surface: no divider inside or against its edges. */
+  .table-head .th[data-dragging]::before,
+  .table-head .th[data-dragging] + .th::before {
+    display: none;
+  }
   /* A column edge (design-spec 2.1, the pane boundary's grammar): only the cursor changes, never the line. The 8 px
      left of the edge: a column clips what lies past its own box. */
   .table-head .col-resizer {
@@ -163,6 +247,10 @@
     width: 8px; /* local: hit area */
     cursor: col-resize;
     touch-action: none;
+  }
+  /* A header drag in progress keeps the arrow: the column edges do not offer to resize under it. */
+  .table-head[data-reordering] .col-resizer {
+    pointer-events: none;
   }
   .table-row {
     height: var(--row-height);
@@ -226,6 +314,13 @@
   .table-row[data-force~='focused'][data-force~='cursor'] {
     box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--text-on-accent) 75%, transparent);
   }
+  /* A drop target (M5 spec 8.3): a tag chip over the row — the tree row's 2 px accent ring inside and the soft accent fill (screens/dnd.css). A chip
+     takes the focus when pressed, so the table never has it (no accent selection) while this shows. */
+  .table-row:is([data-drop-target], [data-force~='drop']) {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent-ring);
+  }
+
   .inline-flag {
     display: inline-flex;
     align-items: center;

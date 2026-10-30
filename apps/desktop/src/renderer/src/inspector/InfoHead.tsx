@@ -16,9 +16,9 @@ import { useFileFacts } from './useFileFacts';
  * A missing file: a linked one leads with 다시 연결… and keeps 열기 (it reaches the notice); a managed one leads
  * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
  */
-export function InfoHead({ item }: { item: LibraryItem }) {
+export function InfoHead({ item, probe = true }: { item: LibraryItem; probe?: boolean }) {
   const { env, run, isEnabled } = useCommands();
-  const facts = useFileFacts(item);
+  const facts = useFileFacts(item, probe);
   const platform = currentPlatform();
   const target = { itemIds: [item.id] };
   const label = (id: CommandId) => commandLabel(commandById(id), platform);

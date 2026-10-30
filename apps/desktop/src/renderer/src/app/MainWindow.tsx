@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { commandById, commandLabel, commandMention, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
+import { columnsMask, commandById, commandLabel, commandMention, tagPositionsMask, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
 import { useKeymap } from '../commands/keymap';
 import { runCommand, runPicked, type CommandEnv } from '../commands/registry';
+import { commandTargets } from '../commands/targets';
 import { useReportContext } from '../commands/useReportContext';
 import { useMenuCommands } from '../commands/useMenuCommands';
 import { keys, useItems, useLibrarySync, usePrefs } from '../data/queries';
 import { queryClient } from '../data/query-client';
-import { freshTargets } from '../data/targets';
 import { useBusyScreen } from '../library/busyScreen';
+import { visibleColumns } from '../library/columns';
+import { sortFromArgs } from '../library/sort';
 import { createExportCopy } from '../library/exportCopy';
 import { whenPanelCloses } from '../library/fileActions';
 import { runFileAction } from '../library/runFileAction';
@@ -20,14 +22,14 @@ import { InspectorToggle } from '../inspector/InspectorToggle';
 import { startEditing } from '../inspector/startEditing';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
-import { LibrarySidebar } from '../library/LibrarySidebar';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
-import { inTableOrder, selectionCounts } from '../library/selection';
+import { inTableOrder, selectionCounts, selectionTagPositions } from '../library/selection';
 import { useImport } from '../library/useImport';
 import { useLibrarySettings } from '../library/useLibrarySettings';
-import { useSearch } from '../library/useSearch';
+import { LibraryToolbar } from '../library/LibraryToolbar';
+import { useScopeView } from '../library/useScopeView';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
@@ -38,16 +40,28 @@ import { DropOverlay } from '../shell/DropOverlay';
 import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
-import { Toolbar } from '../shell/Toolbar';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
+import { membershipCommands } from '../organize/actions';
+import type { OrganizeModel } from '../organize/model';
+import { SCOPE_ALL } from '../organize/scope';
+import { useRestoreView } from '../organize/useRestoreView';
+import { setDndGate } from '../dnd/dragState';
+import { installDndEvents } from '../dnd/events';
+import { collectionActions } from '../sidebar/actions';
+import { importTarget, type ImportTarget } from '../sidebar/importTarget';
+import { LibrarySidebar } from '../sidebar/LibrarySidebar';
+import { useExpandedRead } from '../sidebar/useExpanded';
+import { tagActions } from '../tags/actions';
+import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
+import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
@@ -68,9 +82,11 @@ const DROP_CLEAR_FALLBACK_MS = 250;
 const NO_ITEMS: readonly LibraryItem[] = [];
 
 export function MainWindow(_props: { info: AppInfo }) {
+  countRender('MainWindow');
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  const scopeReady = useRestoreView();
   usePanePersistence();
   const items = useItems();
   const prefs = usePrefs().data;
@@ -101,6 +117,10 @@ export function MainWindow(_props: { info: AppInfo }) {
       setQuestionOpen(false);
     }
   }, []);
+  // Where an import goes, read when it runs (spec 3.7): the collection being viewed, if any. Refs, so the command env and the
+  // drop handler do not change with the view.
+  const intoRef = useRef<ImportTarget | null>(null);
+  const modelRef = useRef<OrganizeModel | undefined>(undefined);
   const runImport = useImport(confirm);
   /** 다시 연결…'s open panel is up: a sheet on this window (follow-up D), which holds it like ours do (blocked). */
   const [relinking, setRelinking] = useState(false);
@@ -183,9 +203,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   );
 
   const onDrop = useCallback(
-    (paths: string[], mode: StorageMode, unresolved: number) => {
+    (paths: string[], mode: StorageMode, unresolved: number, target?: ImportTarget | null) => {
       clearImportMarks(true);
       perfMark('drop');
+      // The collection being viewed, unless the drop says where it goes: a sidebar row (a collection, or null for 내 라이브러리).
+      const into = target === undefined ? intoRef.current : target;
       // The overlay leaves in the frame after the drop, whatever the import does (Mac run 3, critique n6: it stayed
       // 0.55 s over a frozen screen). The import is held (the window too) from now, but its request goes to main only
       // once the frame without the overlay has been painted, so main's import work cannot keep that frame off screen.
@@ -202,10 +224,11 @@ export function MainWindow(_props: { info: AppInfo }) {
           async () => {
             await cleared;
             perfMark('import:sent');
-            return api().library.import({ paths, mode });
+            return api().library.import({ paths, mode, ...(into ? { collectionId: into.id } : {}) });
           },
           mode,
           paths.length,
+          into,
         );
     },
     [runImport],
@@ -232,7 +255,13 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   const list = items.data ?? NO_ITEMS;
   const count = list.length;
-  const found = useSearch(list);
+  // The toolbar (LibraryToolbar) names the view and counts its rows; it subscribes to the quick search itself, so a
+  // keystroke does not render this window.
+  const scopeView = useScopeView(list);
+  modelRef.current = scopeView.model;
+  intoRef.current = importTarget(scopeView.model, scopeView.scope, undefined);
+  const sidebarReady = useExpandedRead().isFetched;
+  const tagCount = useLibrary((s) => s.tagFilter.size);
   // The command env does not depend on the list (a re-read list is a new array every time); targetsOf reads the newest
   // one here when a command is judged.
   const listRef = useRef(list);
@@ -242,9 +271,19 @@ export function MainWindow(_props: { info: AppInfo }) {
   const selected = useLibrary((s) => s.selected);
   const selection = useMemo(() => selectionCounts(list, selected), [list, selected]);
   /** The sort in force, read (like listRef) when a menu or palette item command takes the selection in table order. */
-  const { sort } = useLibrarySettings();
+  const { sort, setSort, columns, forced } = useLibrarySettings();
   const sortRef = useRef(sort);
   sortRef.current = sort;
+  // What the menu bar's 정렬 기준 and the 1–8 keys need to know, as flat values (the reported context has no arrays).
+  const columnsShown = useMemo(() => columnsMask(visibleColumns(columns, forced).map((c) => c.id)), [columns, forced]);
+  // The colour tags every selected item has: the menu bar's 색 태그 ▸ draws the ✓ (a mask, so the report stays flat).
+  const sharedTagPositions = useMemo(() => selectionTagPositions(scopeView.model, list, selected), [scopeView.model, list, selected]);
+  const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
+  const scopeKind = scopeView.scope.kind;
+  const collectionCount = scopeView.model?.collectionCount ?? 0;
+  // Whether a query is typed, not what it found: the answer follows every keystroke, this only turns over when the field
+  // empties or fills.
+  const searching = useLibrary((s) => s.query.trim() !== '');
   // A drop into the empty library: a quiet screen, then "자료 N개를 가져오는 중…" past 300 ms, held its minimum time.
   const busy = useBusyScreen(importing && importCount !== null && count === 0 ? importCount : null);
   // The quick search goes with the table: not in the empty library or on its busy screen (spec 3.5, design-spec 2.4).
@@ -276,11 +315,32 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionCount: selection.count,
     selectionAvailable: selection.available,
     selectionRelinkable: selection.relinkable,
+    selectionTagPositions: sharedTagPositions,
+    scope: scopeKind,
+    collectionCount,
+    tagPositions,
+    tagFilterCount: tagCount,
+    searchActive: searching,
+    sortColumn: sort.column,
+    sortDirection: sort.direction,
+    columnsShown,
     // Item commands from the menu bar and the palette run on these ids, in the order the table shows them.
     selection: () => inTableOrder(listRef.current, useLibrary.getState().selected, sortRef.current),
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row.
-    targetsOf: (ids) => freshTargets(queryClient, listRef.current, ids),
-    importFiles: (mode) => void runImport(() => api().library.pickAndImport({ mode }), mode),
+    targetsOf: (target) => commandTargets(queryClient, listRef.current, target),
+    importFiles: (mode, collectionId) => {
+      const into = collectionId === undefined ? intoRef.current : importTarget(modelRef.current, { kind: 'all' }, collectionId);
+      void runImport(() => api().library.pickAndImport({ mode, ...(into ? { collectionId: into.id } : {}) }), mode, undefined, into);
+    },
+    newCollection: (opts) => collectionActions.startNew(opts),
+    renameCollection: (id) => collectionActions.startRename(id),
+    deleteCollection: (id) => void collectionActions.remove(id),
+    toggleTagPosition: (position, itemIds) => void tagActions.togglePosition(position, itemIds),
+    renameTag: (tagId) => tagActions.startRename(tagId),
+    setTagColor: (tagId, position) => void tagActions.setColor(tagId, position),
+    clearTagColor: (tagId) => void tagActions.clearColor(tagId),
+    deleteTag: (tagId) => void tagActions.remove(tagId),
+    clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => setView({ kind: 'library' }),
     // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
     open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
@@ -294,12 +354,19 @@ export function MainWindow(_props: { info: AppInfo }) {
     exportCopy: (itemId) => void exportCopy(itemId),
     // Opens the edit form on the selected item, showing a folded panel first (inspector/startEditing.ts).
     editInfo: startEditing,
+    addToCollection: membershipCommands.add,
+    removeFromCollection: (itemIds) => void membershipCommands.remove(itemIds),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,
     focusSearch: focusQuickSearch,
+    findEverywhere: () => useLibrary.getState().setScope(SCOPE_ALL),
+    sortBy: (args) => {
+      const next = sortFromArgs(sortRef.current, args);
+      if (next) setSort(next);
+    },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, runImport, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -317,7 +384,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   const showItemMenu = useCallback(async (itemIds: readonly string[], x: number, y: number) => {
     try {
       const picked = await unwrap(api().ui.showContextMenu({ kind: 'item', itemIds: [...itemIds], x, y }));
-      if (picked) runPicked(picked.commandId, envRef.current, itemIds);
+      if (picked) runPicked(picked, envRef.current, { itemIds });
     } catch (e) {
       actionFailed(e);
     }
@@ -340,13 +407,21 @@ export function MainWindow(_props: { info: AppInfo }) {
     });
   }, [view.kind, count]);
 
+  // Every drag and drop of the window goes through one gate (spec 8.4: a held window ignores drops): the library shows and
+  // nothing holds the window. The overlay, the rows, the chips and the sidebar all follow it.
+  const dndOpen = view.kind === 'library' && !blocked && !held;
+  useEffect(() => setDndGate(dndOpen), [dndOpen]);
+  useEffect(() => installDndEvents(), []);
   const toolbar =
     view.kind === 'reader' ? (
       <ReaderToolbar itemId={view.itemId} />
     ) : (
-      <Toolbar
-        title={t.shell.myLibrary}
-        count={count > 0 ? (found ? t.shell.countOf(found.ids.size, count) : t.shell.count(count)) : undefined}
+      <LibraryToolbar
+        title={scopeView.label}
+        titleTip={scopeView.tooltip}
+        items={list}
+        scoped={scopeView.scoped.length}
+        filtered={scopeView.filtered}
         actions={
           <>
             <ImportMenuButton />
@@ -375,7 +450,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={<LibrarySidebar count={count} />}
+        sidebar={<LibrarySidebar onFilesDrop={onDrop} />}
+        sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
         inspector={showsTable ? <Inspector mode="info" /> : undefined}
@@ -383,7 +459,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           <>
             <Palette />
             {/* Finder → window while the library shows and nothing holds the window; a file drag closes the palette. */}
-            <DropOverlay enabled={view.kind === 'library' && !blocked && !held} onDrop={onDrop} />
+            <DropOverlay enabled={dndOpen} onDrop={onDrop} intoName={intoRef.current?.name} />
             <Toasts />
             {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build). */}
             {readWindowParams(location.search).demo && <DemoOverlay />}
@@ -392,7 +468,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       >
         {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
       </Shell>
-      {(items.isSuccess || items.isError) && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
+      {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
     </CommandProvider>
   );
 }

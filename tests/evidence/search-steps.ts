@@ -3,7 +3,7 @@
 import { initialOf } from '../../apps/desktop/src/renderer/src/palette/hangul';
 
 export interface SearchStep {
-  group: 'ko' | 'initials' | 'en' | 'creator';
+  group: 'ko' | 'initials' | 'en' | 'creator' | 'tag' | 'collection';
   /** Typed one by one, then erased one by one (each a timed input). */
   chars: string[];
 }
@@ -34,4 +34,15 @@ export function searchSteps(items: ReadonlyArray<{ title: string; creators: read
     ...en.map((chars) => ({ group: 'en' as const, chars })),
     ...(creator ? [{ group: 'creator' as const, chars: [...creator.replace(/\s/gu, '')].slice(0, 2) }] : []),
   ];
+}
+
+/**
+ * Two more typed steps for a library with the organise fixture: the first two characters of a tag name (the quick search
+ * reads tag names) and of a top-level collection name (the palette lists collections). The fixture names the first two of
+ * each so they share a first character and differ in the second: the second input narrows the result, so every input
+ * redraws the rows the test waits for.
+ */
+export function organizeSteps(names: { tag: string; collection: string }): { tag: SearchStep[]; collection: SearchStep[] } {
+  const two = (name: string) => [...name.replace(/\s/gu, '')].slice(0, 2);
+  return { tag: [{ group: 'tag', chars: two(names.tag) }], collection: [{ group: 'collection', chars: two(names.collection) }] };
 }

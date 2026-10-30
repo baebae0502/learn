@@ -8,7 +8,7 @@ on:
       suite:
         description: Evidence suite (Playwright tag @<suite>; all = no filter)
         type: choice
-        options: [baseline, e2e, evidence, perf, demo, mockups, library, all]
+        options: [baseline, e2e, evidence, perf, demo, mockups, library, organize, all]
         default: baseline
       runner:
         description: GitHub-hosted Apple Silicon runner image
@@ -83,8 +83,8 @@ jobs:
   mac:
     needs: fixtures
     runs-on: ${{ inputs.runner }}
-    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 25 + functional E2E ≤ 15 = 45 min.
-    timeout-minutes: 45
+    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 28 + functional E2E ≤ 25 + 5 = 63 min.
+    timeout-minutes: 63
     env:
       SUITE: ${{ inputs.suite }}
       PACKAGED: ${{ inputs.packaged }}
@@ -100,6 +100,17 @@ jobs:
         run: |
           defaults write com.github.Electron ApplePersistenceIgnoreState YES
           defaults write app.learn.desktop ApplePersistenceIgnoreState YES
+
+      # 스크롤 막대 항상 보기: the table's header sits outside its vertical scroller so a classic scroll bar
+      # starts under it. The runner already draws classic bars (a virtual display with a mouse); this makes it explicit
+      # for the two suites that look at it. App domains only, not -g: nothing else on the machine changes, and the VM is
+      # gone after the run. AppKit reads it when the app starts, so it comes before the suite. The evidence test measures
+      # the bar and fails when none is drawn.
+      - name: Always show scroll bars
+        if: ${{ inputs.suite == 'organize' || inputs.suite == 'all' }}
+        run: |
+          defaults write com.github.Electron AppleShowScrollBars -string Always
+          defaults write app.learn.desktop AppleShowScrollBars -string Always
 
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
 
@@ -129,6 +140,8 @@ jobs:
           sysctl -n machdep.cpu.brand_string hw.model hw.ncpu hw.memsize
           system_profiler SPDisplaysDataType
           ls -la fixtures/generated
+          defaults read -g AppleShowScrollBars 2>&1 || echo "AppleShowScrollBars: not set globally (Automatic)"
+          defaults read com.github.Electron AppleShowScrollBars 2>&1 || echo "AppleShowScrollBars: not set for com.github.Electron"
 
       # Display spike (Task 13): the runner's screen is 1024×768 @1x, where the 1440×900 window shrinks to 1024×684.
       # Every suite: install displayplacer (v1.4.0, MIT, pinned by sha256) and save `displayplacer list` — every screen id
@@ -176,12 +189,12 @@ jobs:
           fi
           echo "LEARN_PACKAGED_APP=$APP/Contents/MacOS/Learn" >> "$GITHUB_ENV"
 
-      # A hang fails this step (Playwright globalTimeout 24 min inside, step limit 25) instead of cancelling the job.
+      # A hang fails this step (Playwright globalTimeout 27 min inside, step limit 28) instead of cancelling the job.
       # A suite that selects no evidence tests fails fast, except `all` (and `e2e`, which is the functional suite).
       - name: Evidence suite
         id: evidence
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        timeout-minutes: 25
+        timeout-minutes: 28
         run: |
           if [ "$SUITE" = all ]; then
             pnpm exec playwright test -c playwright.evidence.config.ts
@@ -202,10 +215,10 @@ jobs:
       # The functional E2E suite (tests/e2e, unpackaged app) on Apple Silicon: suites e2e and all.
       - name: Functional E2E
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["e2e","all"]'), inputs.suite) }}
-        timeout-minutes: 15
+        timeout-minutes: 25
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
-        run: pnpm exec playwright test --reporter=list,json --global-timeout 840000
+        run: pnpm exec playwright test --reporter=list,json --global-timeout 1406000
 
       - name: Upload evidence
         if: always()

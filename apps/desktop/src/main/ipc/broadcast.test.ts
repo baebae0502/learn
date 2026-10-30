@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
+import { NO_LIBRARY_VIEW, commandById, commandLabel, type Availability, type CommandContextState, type LibraryItem, type Result } from '@learn/domain';
+import { mainStrings } from '../strings';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -7,7 +8,7 @@ const handlers = new Map<string, Listener>();
 const sent: Array<[string, unknown]> = [];
 const fakeWindow = { isDestroyed: () => false, webContents: { isDestroyed: () => false, send: (ch: string, p: unknown) => sent.push([ch, p]) } };
 const disk: { availability: Availability } = { availability: 'available' };
-const popup = vi.fn(async (_entries: unknown, _at: unknown): Promise<string | null> => null);
+const popup = vi.fn(async (_entries: unknown, _at: unknown): Promise<{ commandId: string; args?: unknown } | null> => null);
 /** shell.showItemInFolder / shell.openPath: what main asked the OS to show or open. */
 const shellCalls: Array<[string, string]> = [];
 const openPathResult = { value: '' };
@@ -35,6 +36,11 @@ vi.mock('@learn/library', () => ({
   // The named copy the OS can open (library openable.ts, final review I1): its own tests cover the naming and copying.
   openableFile: vi.fn(async (_layout: unknown, asset: { id: string }, title: string, src: string) => `/library/derived/open/${asset.id}/${title}.pdf <- ${src}`),
 }));
+// The item menu reads the tags for 색 태그 ▸ (the fake database has no tables): none has a slot here, so the group is left out.
+vi.mock('@learn/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@learn/db')>()),
+  readOrganizeSnapshot: () => ({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [] }),
+}));
 vi.mock('../menu/context-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/context-menu')>()),
   popupCommandMenu: (entries: unknown, at: unknown) => popup(entries, at),
@@ -57,6 +63,10 @@ const repo = {
   trashChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   restoreChanged: vi.fn((ids: string[]) => ids.slice(0, 1)),
   updateMetadata: vi.fn((_id: string, _u: unknown) => item()),
+  /** The menu's one query for a selection: the facts of the items it knows, in the order asked. */
+  targetFacts: vi.fn((ids: string[]) =>
+    ids.flatMap((id) => (id === ITEM || id === OTHER ? [{ id, storageMode: item().storageMode, availability: item().availability }] : [])),
+  ),
   getItem: vi.fn((id: string) => (id === ITEM ? item() : undefined)),
   getAsset: vi.fn((id: string) => (id === ASSET ? { id: ASSET, availability: stored.availability } : undefined)),
   setAvailability: vi.fn((_id: string, a: Availability) => void (stored.availability = a)),
@@ -76,7 +86,7 @@ const tags = {
   togglePositionChanged: vi.fn((): { tagId: string; assigned: boolean; itemIds: string[] } | null => null),
 };
 /** The main window's report each test starts from: the context menu judges its own fresh targets, not these counts. */
-const LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
+const LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
 /** What the main window last reported (deps.uiContext.current()). */
 const reported: { ctx: CommandContextState } = { ctx: LIBRARY };
 const deps = stubDeps({
@@ -149,10 +159,10 @@ describe('library mutations broadcast libraryChanged', () => {
 describe('collection and tag mutations broadcast reason collections / tags, only when something changed', () => {
   it('collections: create announces; addItems/removeItems announce the items that changed, or nothing', async () => {
     await call('collections:create', { name: '세포 신호' });
-    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: 1 });
-    expect(await call('collections:removeItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: 0 });
+    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: [ITEM] });
+    expect(await call('collections:removeItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: [] });
     collections.addItemsChanged.mockReturnValueOnce([]);
-    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: 0 });
+    expect(await call('collections:addItems', { collectionId: COLL, itemIds: [ITEM] })).toEqual({ ok: true, data: [] });
     expect(sent).toEqual([
       [CHANGED, { reason: 'collections' }],
       [CHANGED, { reason: 'collections', itemIds: [ITEM] }],
@@ -181,6 +191,61 @@ describe('collection and tag mutations broadcast reason collections / tags, only
       [CHANGED, { reason: 'tags', itemIds: [OTHER] }],
     ]);
   });
+
+  it('every collection and tag input refuses an unknown key, and nothing is changed or announced', async () => {
+    const valid: Record<string, object> = {
+      'collections:create': { name: '세포 신호', parentId: null },
+      'collections:rename': { collectionId: COLL, name: '세포 신호' },
+      'collections:move': { collectionId: COLL, parentId: null },
+      'collections:remove': { collectionId: COLL },
+      'collections:restore': { collectionId: COLL },
+      'collections:addItems': { collectionId: COLL, itemIds: [ITEM] },
+      'collections:removeItems': { collectionId: COLL, itemIds: [ITEM] },
+      'tags:create': { name: '시험' },
+      'tags:rename': { tagId: TAG, name: '시험' },
+      'tags:setColor': { tagId: TAG, color: null, position: null },
+      'tags:remove': { tagId: TAG },
+      'tags:assign': { tagId: TAG, itemIds: [ITEM] },
+      'tags:unassign': { tagId: TAG, itemIds: [ITEM] },
+      'tags:togglePosition': { position: 1, itemIds: [ITEM] },
+    };
+    for (const mock of [...Object.values(collections), ...Object.values(tags)]) mock.mockClear();
+    for (const [channel, input] of Object.entries(valid)) {
+      expect(await call(channel, { ...input, extra: 1 }), channel).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    }
+    for (const mock of [...Object.values(collections), ...Object.values(tags)]) expect(mock).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
+  });
+});
+
+describe('the item context menu reads the selection once and its input is checked (spec 9.1)', () => {
+  it('asks for the whole selection with one query, in the order given, and does not read item by item', async () => {
+    repo.targetFacts.mockClear();
+    repo.getItem.mockClear();
+    await call('ui:showContextMenu', { kind: 'item', itemIds: [OTHER, ITEM], x: 1, y: 2 });
+    expect(repo.targetFacts).toHaveBeenCalledTimes(1);
+    expect(repo.targetFacts).toHaveBeenCalledWith([OTHER, ITEM]);
+    expect(repo.getItem).not.toHaveBeenCalled(); // two targets: no single-target file check either
+    expect(popup).toHaveBeenCalledTimes(1);
+  });
+  it('a single target still has its file re-checked (the stored state may be a session old)', async () => {
+    repo.getItem.mockClear();
+    await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
+    expect(repo.getItem).toHaveBeenCalled();
+  });
+  it('answers the picked command with its row\'s value, and null when dismissed or when no item is known', async () => {
+    popup.mockResolvedValueOnce({ commandId: 'library.sortBy', args: { column: 'year' } });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: { commandId: 'library.sortBy', args: { column: 'year' } } });
+    popup.mockResolvedValueOnce({ commandId: 'item.open' });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: { commandId: 'item.open' } });
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 })).toEqual({ ok: true, data: null }); // dismissed
+    popup.mockClear();
+    expect(await call('ui:showContextMenu', { kind: 'item', itemIds: ['3c2d1e0f-9a8b-4c7d-8e6f-5a4b3c2d1e11'], x: 1, y: 2 })).toEqual({ ok: true, data: null });
+    expect(popup).not.toHaveBeenCalled();
+  });
+  it('an input with no ids is not a menu: the input is still checked', async () => {
+    expect(await call('ui:showContextMenu', { kind: 'collection', collectionIds: [], x: 1, y: 2 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+  });
 });
 
 describe('item context menu re-checks the file first', () => {
@@ -194,6 +259,8 @@ describe('item context menu re-checks the file first', () => {
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: false },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
+      'separator',
+      { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
@@ -214,6 +281,8 @@ describe('item context menu re-checks the file first', () => {
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: true },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: true },
+      'separator',
+      { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
     ]);
     expect(sent).toEqual([]);
   });

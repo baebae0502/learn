@@ -115,9 +115,32 @@ export function showToast(data: ToastData): string {
   return toastQueue.add(data);
 }
 
+/** The error toast of an action that was refused: the cause main gave, when there is one. */
+export function showActionFailed(e: unknown): void {
+  showToast({ kind: 'error', title: t.toast.actionFailed, body: e instanceof Error ? e.message : undefined, testId: 'action-error' });
+}
+
 /** Closes a toast by the key showToast returned: the only way a busy toast goes. */
 export function closeToast(key: string): void {
   toastQueue.close(key);
+}
+
+/**
+ * A result toast that can be taken back (spec 3.4, 8.2): one verb, 실행 취소, which runs `undo` and closes the toast. A
+ * refused undo is an error toast with the cause main gave (cause + next step), so the user is never left thinking it worked.
+ */
+export function showUndoToast(title: string, undo: () => Promise<void>, opts: { testId?: string } = {}): string {
+  return showToast({
+    kind: 'success',
+    title,
+    testId: opts.testId ?? 'undo-toast',
+    action: {
+      label: t.toast.undo,
+      testId: 'undo-action',
+      onAction: () =>
+        void undo().catch((e: unknown) => showToast({ kind: 'error', title: t.toast.undoFailed, body: e instanceof Error ? e.message : undefined, testId: 'undo-failed' })),
+    },
+  });
 }
 
 /** Where no frames come (a hidden or minimised window), a toast counts from this long after it mounted. */

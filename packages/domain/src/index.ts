@@ -10,6 +10,7 @@ export * from './ipc-channels';
 export * from './library';
 export * from './library-columns';
 export * from './metadata';
+export * from './organize';
 export * from './reading';
 export * from './result';
 export * from './settings';

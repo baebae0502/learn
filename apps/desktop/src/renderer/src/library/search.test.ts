@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { matchKorean } from '../palette/hangul';
-import { buildSearchIndex, foldText, parseQuery, search, searchCached, searchIndexFor } from './search';
+import { buildSearchIndex, carrySearchIndex, foldText, parseQuery, search, searchCached, searchIndexFor, type TagNames } from './search';
 
 let seq = 0;
 const item = (over: Partial<LibraryItem> & { title: string }): LibraryItem => {
@@ -10,7 +10,7 @@ const item = (over: Partial<LibraryItem> & { title: string }): LibraryItem => {
   return {
     id, type: 'pdf', mime: 'application/pdf', size: 1, storageMode: 'managed', availability: 'available', assetId: `a-${id}`, revisionId: `r-${id}`,
     originalName: `${id}.pdf`, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z', creators: [], year: null,
-    publisher: null, tagIds: [], progress: null, openedAt: null, ...over,
+    publisher: null, progress: null, openedAt: null, ...over,
   };
 };
 
@@ -165,6 +165,86 @@ function library(n: number): { items: LibraryItem[]; texts: SearchText[] } {
   }
   return { items, texts };
 }
+
+describe('carrying the index over a patched list (an opened notice, spec 10.3)', () => {
+  const patchedList = (change: Partial<LibraryItem>) => ITEMS.map((i) => (i.id === FOLD.id ? { ...i, ...change } : i));
+
+  it('a patched list whose searched fields are the same takes the old list\'s index', () => {
+    const before = searchIndexFor(ITEMS, TEXTS);
+    const next = patchedList({ openedAt: '2026-10-25T00:00:00.000Z', availability: 'missing' });
+    carrySearchIndex(ITEMS, next);
+    expect(searchIndexFor(next, TEXTS)).toBe(before);
+    expect(found('단백질', searchIndexFor(next, TEXTS), next)).toEqual(['단백질 접힘 강의 노트']);
+  });
+
+  it('a changed title, creator, publisher, file name or year builds a new index', () => {
+    for (const change of [{ title: '새 제목' }, { creators: ['박지훈'] }, { publisher: 'X' }, { originalName: 'x.pdf' }, { year: 1999 }]) {
+      const before = searchIndexFor(ITEMS, TEXTS);
+      const next = patchedList(change);
+      carrySearchIndex(ITEMS, next);
+      expect(searchIndexFor(next, TEXTS), JSON.stringify(change)).not.toBe(before);
+    }
+    const next = patchedList({ title: '완전히 새로운 제목' });
+    expect(found('완전히', searchIndexFor(next, TEXTS), next)).toEqual(['완전히 새로운 제목']);
+  });
+
+  it('carries nothing when the lists differ in length or in an id, or the old list has no index', () => {
+    const next = ITEMS.slice(1);
+    carrySearchIndex(ITEMS, next);
+    expect(searchIndexFor(next, TEXTS)).not.toBe(searchIndexFor(ITEMS, TEXTS));
+    const lone = [item({ title: '혼자' })];
+    const other = [{ ...lone[0]!, id: 'other' }];
+    carrySearchIndex(lone, other); // never indexed: nothing to carry, and no throw
+    expect(searchIndexFor(other).items).toBe(other);
+  });
+});
+
+describe('tag names are the last short field (spec 7.1)', () => {
+  const names = (pairs: Array<[LibraryItem, string]>): TagNames => new Map(pairs.map(([i, n]) => [i.id, n]));
+  const TAGS = names([[FOLD, '핵심 개념'], [PHOTO, '수용체 Gq']]);
+  const withTags = buildSearchIndex(ITEMS, TEXTS, TAGS);
+
+  it('finds an item by a tag name, by its 초성 and in any case, next to what the other fields find', () => {
+    expect(found('개념', withTags)).toEqual([FOLD.title]);
+    expect(found('ㄱㄴ', withTags)).toEqual([FOLD.title]); // 개념
+    expect(found('GQ', withTags)).toEqual([PHOTO.title]);
+    expect(found('수용체', withTags)).toEqual([SIGNAL.title, PHOTO.title]); // SIGNAL's abstract, PHOTO's tag
+    expect(found('개념', index)).toEqual([]); // the same list without the tag field finds nothing
+  });
+
+  it('is one more field of the AND: a word in the title and a word in the tags of the same item', () => {
+    expect(found('접힘 핵심', withTags)).toEqual([FOLD.title]);
+    expect(found('광합성 핵심', withTags)).toEqual([]); // 핵심 is FOLD's, 광합성 is PHOTO's
+  });
+
+  it('marks nothing in the title for a tag-only match, and the other items keep their own fields and marks', () => {
+    expect(mark('개념', FOLD, withTags)).toBeNull();
+    expect(search(withTags, '개념')!.ids.has(FOLD.id)).toBe(true);
+    // The tag field sits between FOLD and BAYES: BAYES's creator, file name and title offsets are still its own.
+    expect(found('jane', withTags)).toEqual([BAYES.title]);
+    expect(found('h264', withTags)).toEqual([BAYES.title]);
+    expect(mark('bayes', BAYES, withTags)).toEqual({ start: 9, end: 14, kind: 'word' });
+  });
+
+  it('is built again when the map changes, and shared while it is the same map', () => {
+    const a = searchIndexFor(ITEMS, TEXTS, TAGS);
+    expect(searchIndexFor(ITEMS, TEXTS, TAGS)).toBe(a);
+    const renamed = names([[FOLD, '정리 완료']]);
+    const b = searchIndexFor(ITEMS, TEXTS, renamed);
+    expect(b).not.toBe(a);
+    expect(found('개념', b)).toEqual([]);
+    expect(found('정리', b)).toEqual([FOLD.title]);
+    expect(searchIndexFor(ITEMS, TEXTS)).not.toBe(a); // no tags is a different input again
+  });
+
+  it('a patched list carries its index only with the tag map it was built with', () => {
+    const before = searchIndexFor(ITEMS, TEXTS, TAGS);
+    const next = ITEMS.map((i) => (i.id === FOLD.id ? { ...i, openedAt: '2026-10-25T00:00:00.000Z' } : i));
+    carrySearchIndex(ITEMS, next);
+    expect(searchIndexFor(next, TEXTS, TAGS)).toBe(before);
+    expect(searchIndexFor(next, TEXTS, names([[FOLD, '다른 태그']]))).not.toBe(before);
+  });
+});
 
 describe('quick search at 10,000 items (spec 9: input → paint p95 ≤ 50 ms; this is the search part of it)', () => {
   it('builds its index in well under a second and answers typing-like queries far inside the budget', () => {

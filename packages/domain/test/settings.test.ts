@@ -85,6 +85,13 @@ describe('library table settings (M4 spec 3.1, 3.2)', () => {
     expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [] }))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('library.columns', { visible: 'title', order: [], widths: {} }))).toBe('VALIDATION_FAILED');
   });
+  it('library.columns bounds how many ids it stores: 64 of each, a 65th width is refused', () => {
+    const ids = Array.from({ length: 64 }, (_, i) => `later-${i}`);
+    const widths = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`later-${i}`, 100]));
+    expect(parseSetting('library.columns', { visible: ['title'], order: ids, widths: widths(64) })).toEqual({ visible: ['title'], order: ids, widths: widths(64) });
+    expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [], widths: widths(65) }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('library.columns', { visible: ['title'], order: [...ids, 'one-more'], widths: {} }))).toBe('VALIDATION_FAILED');
+  });
   it('keeps the palette history as known command ids, twenty at most (palette.recent, spec §4.4)', () => {
     expect(parseSetting('palette.recent', ['app.settings', 'view.textBigger'])).toEqual(['app.settings', 'view.textBigger']);
     expect(parseSetting('palette.recent', [])).toEqual([]);

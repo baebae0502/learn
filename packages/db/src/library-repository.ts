@@ -1,5 +1,5 @@
 import {
-  LearnError, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
+  LearnError, clipSearchText, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
   type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
 } from '@learn/domain';
 import type { Db } from './connection';
@@ -27,6 +27,8 @@ export interface NewImportRecord {
   assetIsNew: boolean;
   revision: { id: string; createdAt: string } | null;
   job: { id: string; kind: string; dedupeKey: string; payload: Record<string, unknown> } | null;
+  /** File the new item into this collection in the same transaction; skipped when it is gone by then. */
+  collectionId?: string | null;
 }
 
 export interface LibraryCounts {
@@ -69,15 +71,18 @@ LEFT JOIN reading_positions rp ON rp.item_id = i.id`;
 const ITEM_SELECT = `${ITEM_FROM} WHERE i.deleted_at IS NULL`;
 const TRASH_SELECT = `${ITEM_FROM} WHERE i.deleted_at IS NOT NULL`;
 
+/** SQLite caps the variables of one statement; ids are asked in chunks of this size (getItems). */
+const GET_ITEMS_CHUNK = 500;
+
 const toAsset = (r: AssetDbRow): AssetRow => ({
   id: r.id, sha256: r.sha256, storageMode: r.storage_mode, relativePath: r.relative_path, externalPath: r.external_path,
   originalName: r.original_name, mime: r.mime, size: r.size, availability: r.availability, createdAt: r.created_at, checkedAt: r.checked_at,
 });
 
-const toItem = (r: ItemDbRow, tagIds: string[], meta: ItemMetadata = parseItemMetadata(r.metadata_json)): LibraryItem => ({
+const toItem = (r: ItemDbRow, meta: ItemMetadata = parseItemMetadata(r.metadata_json)): LibraryItem => ({
   id: r.id, title: r.title, type: r.type, mime: r.mime, size: r.size, storageMode: r.storage_mode,
   availability: r.availability, assetId: r.asset_id, revisionId: r.revision_id, originalName: r.original_name, createdAt: r.created_at,
-  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), publisher: meta.publisher || null, tagIds, progress: r.progress, openedAt: r.opened_at,
+  updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), publisher: meta.publisher || null, progress: r.progress, openedAt: r.opened_at,
 });
 
 const itemNotFound = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
@@ -113,11 +118,15 @@ export class LibraryRepository {
     return rows.map((r) => r.id);
   }
 
-  /** item + (new asset + first revision) + item_asset + extract job, all-or-nothing. */
-  insertImported(rec: NewImportRecord): void {
+  /**
+   * item + (new asset + first revision) + item_asset + extract job (+ the collection membership), all-or-nothing.
+   * Returns whether the item was filed into `rec.collectionId`: false when none was asked for, and also when the
+   * collection is deleted or unknown by now (the import itself still succeeds).
+   */
+  insertImported(rec: NewImportRecord): boolean {
     if (rec.assetIsNew && !rec.revision) throw new Error('a new asset requires an initial revision');
     const a = rec.asset;
-    this.db.transaction(() => {
+    return this.db.transaction(() => {
       if (rec.assetIsNew) {
         this.db
           .prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
@@ -140,6 +149,14 @@ export class LibraryRepository {
                     ON CONFLICT(dedupe_key) DO NOTHING`)
           .run(rec.job.id, rec.job.kind, rec.job.dedupeKey, JSON.stringify(rec.job.payload), rec.item.createdAt, rec.item.createdAt);
       }
+      if (!rec.collectionId) return false;
+      // Selecting from collections (not inserting the id blind) is what skips a collection deleted after the import began.
+      return (
+        this.db
+          .prepare(`INSERT OR IGNORE INTO collection_items (collection_id, item_id, added_at)
+                    SELECT c.id, ?, ? FROM collections c WHERE c.id = ? AND c.deleted_at IS NULL`)
+          .run(rec.item.id, rec.item.createdAt, rec.collectionId).changes > 0
+      );
     })();
   }
 
@@ -170,17 +187,66 @@ export class LibraryRepository {
     })();
   }
 
-  /** Non-trashed items, newest first. Tags come from one pairs query merged in memory (no per-item queries). */
+  /** Non-trashed items, newest first. */
   listItems(): LibraryItem[] {
     const rows = this.db.prepare(`${ITEM_SELECT} ORDER BY i.created_at DESC, i.rowid DESC`).all() as ItemDbRow[];
-    const tags = this.tagIdsByItem(false);
-    return rows.map((r) => toItem(r, tags.get(r.id) ?? []));
+    return rows.map((r) => toItem(r));
+  }
+
+  /**
+   * The non-trashed items among `ids`, each once, in the order the ids first appear; unknown and trashed ids are
+   * skipped. One transaction, 500 ids per statement.
+   */
+  getItems(ids: readonly string[]): LibraryItem[] {
+    const unique = [...new Set(ids)];
+    const found = new Map<string, LibraryItem>();
+    this.db.transaction(() => {
+      for (let start = 0; start < unique.length; start += GET_ITEMS_CHUNK) {
+        const chunk = unique.slice(start, start + GET_ITEMS_CHUNK);
+        // `+` keeps the planner on the ids: with the deleted_at index it scans every live item once per chunk (10,000 ids: 190 ms instead of 80).
+        const rows = this.db.prepare(`${ITEM_FROM} WHERE +i.deleted_at IS NULL AND i.id IN (${chunk.map(() => '?').join(',')})`).all(...chunk) as ItemDbRow[];
+        for (const r of rows) found.set(r.id, toItem(r));
+      }
+    })();
+    return unique.flatMap((id) => {
+      const item = found.get(id);
+      return item ? [item] : [];
+    });
+  }
+
+  /**
+   * What a command's availability needs of each item (storage mode and availability) for the live ids, once each, in the
+   * order asked. getItems without the metadata, revision and reading position: a context menu over every row of a large
+   * library only needs these two facts per item.
+   */
+  targetFacts(ids: readonly string[]): Array<{ id: string; storageMode: StorageMode; availability: Availability }> {
+    const unique = [...new Set(ids)];
+    const found = new Map<string, { id: string; storageMode: StorageMode; availability: Availability }>();
+    this.db.transaction(() => {
+      for (let start = 0; start < unique.length; start += GET_ITEMS_CHUNK) {
+        const chunk = unique.slice(start, start + GET_ITEMS_CHUNK);
+        const rows = this.db
+          .prepare(
+            `SELECT i.id, a.storage_mode, a.availability FROM items i
+             JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+             JOIN assets a ON a.id = ia.asset_id
+             WHERE +i.deleted_at IS NULL AND i.id IN (${chunk.map(() => '?').join(',')})`,
+          )
+          .all(...chunk) as Array<{ id: string; storage_mode: StorageMode; availability: Availability }>;
+        for (const r of rows) found.set(r.id, { id: r.id, storageMode: r.storage_mode, availability: r.availability });
+      }
+    })();
+    return unique.flatMap((id) => {
+      const f = found.get(id);
+      return f ? [f] : [];
+    });
   }
 
   /**
    * Quick search's long fields (spec 4.2): abstract and memo of the live items that have either. SQLite drops the rest
    * first; `json_valid` comes first in a CASE because json_extract throws on malformed JSON. The schema still decides
-   * (a stored value that no longer parses reads as empty, as everywhere else).
+   * (a stored value that no longer parses reads as empty, as everywhere else). Each field is cut at SEARCH_TEXT_FIELD_MAX
+   * characters: 10,000 items of 10,000-character abstracts would not fit the first query's time.
    */
   searchTexts(): SearchText[] {
     const rows = this.db
@@ -194,8 +260,8 @@ export class LibraryRepository {
       .all() as Array<{ id: string; metadata_json: string }>;
     return rows.flatMap((r) => {
       const meta = parseItemMetadata(r.metadata_json);
-      const abstract = meta.abstract || null;
-      const extra = meta.extra || null;
+      const abstract = meta.abstract ? clipSearchText(meta.abstract) : null;
+      const extra = meta.extra ? clipSearchText(meta.extra) : null;
       return abstract || extra ? [{ id: r.id, abstract, extra }] : [];
     });
   }
@@ -203,7 +269,7 @@ export class LibraryRepository {
   /** Non-trashed item, or undefined. */
   getItem(id: string): LibraryItem | undefined {
     const row = this.db.prepare(`${ITEM_SELECT} AND i.id = ?`).get(id) as ItemDbRow | undefined;
-    return row && toItem(row, this.tagIdsOf(id));
+    return row && toItem(row);
   }
 
   /** Detail pane data for a non-trashed item. */
@@ -212,7 +278,7 @@ export class LibraryRepository {
     if (!row) throw itemNotFound();
     const metadata = parseItemMetadata(row.metadata_json);
     return {
-      item: toItem(row, this.tagIdsOf(id), metadata),
+      item: toItem(row, metadata),
       metadata,
       file: {
         originalName: row.original_name, mime: row.mime, size: row.size, storageMode: row.storage_mode,
@@ -282,21 +348,20 @@ export class LibraryRepository {
   /** Trashed items, most recently deleted first. */
   listTrash(): LibraryItem[] {
     const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
-    const tags = this.tagIdsByItem(true);
-    return rows.map((r) => toItem(r, tags.get(r.id) ?? []));
+    return rows.map((r) => toItem(r));
   }
 
   /** Non-trashed items whose original files have identical content (same sha256, any storage mode), 2+ per group. */
   duplicateGroups(): DuplicateGroup[] {
     const rows = this.db
       .prepare(`WITH live AS (
-                  SELECT i.id, i.created_at, i.rowid AS rid, a.sha256 FROM items i
-                  JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+                  SELECT a.sha256 AS sha256, ia.item_id AS id FROM item_assets ia
                   JOIN assets a ON a.id = ia.asset_id
-                  WHERE i.deleted_at IS NULL)
-                SELECT sha256, id FROM live
-                WHERE sha256 IN (SELECT sha256 FROM live GROUP BY sha256 HAVING COUNT(DISTINCT id) >= 2)
-                ORDER BY sha256, created_at, rid`)
+                  WHERE ia.role = 'original' AND ia.item_id NOT IN (SELECT id FROM items WHERE deleted_at IS NOT NULL))
+                SELECT live.sha256, live.id FROM live
+                JOIN items i ON i.id = live.id
+                WHERE live.sha256 IN (SELECT sha256 FROM live GROUP BY sha256 HAVING COUNT(DISTINCT id) >= 2)
+                ORDER BY live.sha256, i.created_at, i.rowid`)
       .all() as { sha256: string; id: string }[];
     const groups: DuplicateGroup[] = [];
     for (const r of rows) {
@@ -305,24 +370,6 @@ export class LibraryRepository {
       else groups.push({ sha256: r.sha256, itemIds: [r.id] });
     }
     return groups;
-  }
-
-  private tagIdsByItem(trashed: boolean): Map<string, string[]> {
-    const rows = this.db
-      .prepare(`SELECT it.item_id, it.tag_id FROM item_tags it JOIN items i ON i.id = it.item_id
-                WHERE i.deleted_at IS ${trashed ? 'NOT NULL' : 'NULL'} ORDER BY it.rowid`)
-      .all() as { item_id: string; tag_id: string }[];
-    const map = new Map<string, string[]>();
-    for (const r of rows) {
-      const list = map.get(r.item_id);
-      if (list) list.push(r.tag_id);
-      else map.set(r.item_id, [r.tag_id]);
-    }
-    return map;
-  }
-
-  private tagIdsOf(itemId: string): string[] {
-    return (this.db.prepare('SELECT tag_id FROM item_tags WHERE item_id = ? ORDER BY rowid').all(itemId) as { tag_id: string }[]).map((r) => r.tag_id);
   }
 
   setAvailability(assetId: string, availability: Availability, checkedAt: string): void {

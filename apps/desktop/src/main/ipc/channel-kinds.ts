@@ -36,6 +36,8 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'library:showInFolder': MAIN,
   'library:openExternally': MAIN,
   'library:searchTexts': MAIN,
+  'library:organize': MAIN,
+  'library:getItems': MAIN,
   'library:exportCopy': MAIN,
   'library:revealExport': MAIN,
 
@@ -71,6 +73,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'ui:windowState': MAIN_AND_SETTINGS,
   'ui:reportContext': MAIN,
   'ui:confirmDuplicate': MAIN,
+  'ui:confirm': MAIN,
   'ui:showShortcuts': MAIN,
   'ui:openSettings': MAIN,
   'ui:themeShown': MAIN_AND_SETTINGS,

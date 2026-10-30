@@ -149,7 +149,7 @@ test('M4 table: selection — focused accent, unfocused neutral, the cursor ring
     await allShots(s.app, s.page, 'm4-02-multi-light', 'three rows selected (1, 3, 6), the keyboard cursor on the sixth');
   });
   await guard('unfocused selection: neutral fill', async () => {
-    await s.page.getByTestId('nav-library').focus();
+    await s.page.getByTestId('nav-scope-all').focus();
     const v = { fill: await fill(0), neutral: await tokenColor(s.page, '--fill-selected') };
     check('unfocused selection: neutral fill', v.fill === v.neutral, v);
     unfocusedWindowShot = (await allShots(s.app, s.page, 'm4-02-unfocused-light', 'the selection while the sidebar has the focus')).find((e) => e.kind === 'window')?.file ?? null;
@@ -381,7 +381,7 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
     const title = await s.page.getByTestId('search-empty').locator('.pe-title').textContent();
     v['none'] = { title };
     await allShots(s.app, s.page, 'm4-05c-search-none-dark', 'quick search: no results, dark');
-    check('search: no results in dark says which query', title === '‘효소 억제제’와 일치하는 자료가 없습니다', v['none']);
+    check('search: no results in dark says which query', title === '‘효소 억제제’\u2060와 일치하는 자료가 없습니다', v['none']);
   });
   await field.fill('');
   await theme('light');
@@ -431,7 +431,7 @@ test('M4 library: the item panel — its fold at this width, ⌥⌘I from a real
   await expect.poll(state).toBe('shown');
 
   // The new item is the newest row (index 0): the table (its own scroll view) back at the top, where the virtualizer draws it.
-  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await page.getByTestId('library-scroller').evaluate((grid) => grid.scrollTo(0, 0));
   await selectRows(page, [path.parse(src).name]);
   await expect(page.getByTestId('inspector-kind')).toHaveText('PDF · 3쪽');
   const vw = await page.evaluate(() => innerWidth);
@@ -490,7 +490,7 @@ test('M4 library: 정보 편집 — the form in place, ⌘↩ from a real keystr
       return r.ok ? (r.data.metadata.publisher ?? null) : null;
     }, item!.id);
   // The new item is the newest row (index 0): the table (its own scroll view) at the top, where the virtualizer draws it.
-  await page.getByTestId('library-table').evaluate((grid) => grid.scrollTo(0, 0));
+  await page.getByTestId('library-scroller').evaluate((grid) => grid.scrollTo(0, 0));
   await selectRows(page, [title]);
   const shownBefore = (await state()) === 'shown';
   if (!shownBefore) await runMenuCommand(s.app, 'view.toggleInspector'); // the 1024 px runner folds it

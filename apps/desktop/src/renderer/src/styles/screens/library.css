@@ -1,24 +1,60 @@
 @layer screens {
-  /* The table fills the content column and is its own scroll view (the virtualizer's): the header sticks to its top,
-     the body is as tall as every row and the virtualizer draws the rows near the view, each on the grid tracks the table
-     computes (columns.ts columnTemplates, as --head-cols / --row-cols). Narrower than the columns' least width, it
-     scrolls sideways. */
+  /* The table fills the content column. Its header row sits outside the vertical scroller (a classic scroll bar then
+     starts under the header instead of crossing it): the header band keeps the scroll bar's width as its right padding
+     (--scrollbar-w, measured by LibraryTable; 0 for overlay bars), and the scroller sends its sideways position to the
+     band's clip so the header and the body move together. The scroller is the virtualizer's: the body is as tall as
+     every row and the virtualizer draws the rows near the view, each on the grid tracks the table computes
+     (columns.ts columnTemplates, as --head-cols / --row-cols). Narrower than the columns' least width, it scrolls
+     sideways. */
   .library-table {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: auto;
+    overflow: hidden;
     outline: none;
   }
-  .library-table .table-head {
-    position: sticky;
-    top: 0;
-    z-index: 1;
+  .library-table .table-head-wrap {
+    position: relative;
     flex: none;
+    padding-right: var(--scrollbar-w, 0px); /* local: the scroller's classic scroll bar */
+    background: var(--bg-content);
+  }
+  /* The header's bottom line runs the whole width, over the scroll bar's column too. */
+  .library-table .table-head-wrap::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px; /* local: hairline */
+    background: var(--separator);
+    pointer-events: none;
+  }
+  .library-table .table-head-clip {
+    overflow: hidden;
+  }
+  .library-table .table-head {
+    position: relative;
     display: grid;
     grid-template-columns: var(--head-cols);
     min-width: var(--table-min-width);
+    box-shadow: none;
+  }
+  .library-table .table-scroller {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    /* A row is inset 8 px from the body's sides: scrolling one into view (a click or key that focuses it) keeps that
+       inset instead of putting the row's edge flush with the scroller's. */
+    scroll-padding-inline: var(--space-8);
+  }
+  /* An empty state has nothing to scroll to, and a scroller that overflows with nothing focusable in it would become a
+     keyboard stop of its own (Chromium): it does not scroll while the table has no rows. */
+  .library-table .table-scroller[data-empty] {
+    overflow: hidden;
   }
   .library-table .table-body {
     position: relative;
@@ -32,6 +68,18 @@
     right: 0;
     display: grid;
     grid-template-columns: var(--row-cols);
+  }
+  /* The insertion line of a header drag: 2 px on the boundary where the column would land, in the drop markers' teal
+     (--accent-ring keeps 3:1 in dark too; --accent is a fill for white text). */
+  .library-table .col-drop-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px; /* local: the line's own width */
+    margin-left: -1px; /* local: centred on the boundary */
+    background: var(--accent-ring);
+    pointer-events: none;
+    z-index: 2; /* local: over the cells' dividers */
   }
   /* The loading line (and a no-results state) takes the body's place under the header. */
   .library-table :is(.table-empty, .table-empty-cell) {

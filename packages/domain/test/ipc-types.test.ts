@@ -4,6 +4,7 @@ import type { LearnApi } from '../src/ipc';
 import type { LibraryItem, SearchText } from '../src/library';
 import type { LibraryColumnId } from '../src/library-columns';
 import type { Result } from '../src/result';
+import type { PickedCommand } from '../src/commands';
 
 type P<F> = F extends (i: infer I) => unknown ? I : never;
 
@@ -37,6 +38,8 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
     expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
+    // A context-menu pick carries its row's value: the renderer runs the command with it.
+    expectTypeOf<ReturnType<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Promise<Result<PickedCommand | null>>>();
     expectTypeOf<P<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     // The renderer learns only whether a copy was saved, never where: revealExport shows it.
     expectTypeOf<ReturnType<LearnApi['library']['exportCopy']>>().toEqualTypeOf<Promise<Result<{ saved: boolean }>>>();

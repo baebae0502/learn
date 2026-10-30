@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, closeSheet, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  stubContextMenu, stubSaveDialog, type Session,
+  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -139,6 +139,32 @@ test('quick search: 초성 results with the count and the title mark, and no res
       await shoot(s.page, `search-none-${theme}`, { mask: dates() });
       await field.fill('');
       await expect(s.page.getByTestId('item-row')).toHaveCount(4);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('quick search in a collection: no results names the view and offers the whole library (library.html ?state=noresults)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-col="createdAt"]')];
+  const field = s.page.getByTestId('search-field').locator('input');
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    await seedMetadata(s.page, items[0]!.id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [items[0]!.id]);
+    await s.page.getByTestId(`nav-collection-${bio}`).click();
+    await expect(s.page.getByTestId('toolbar-title')).toHaveText('분자생물학');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await runMenuCommand(s.app, 'library.find');
+      await expect(field).toBeFocused();
+      await field.fill('효소 억제제');
+      await expect(s.page.getByTestId('search-empty-everywhere')).toBeVisible();
+      await shoot(s.page, `search-none-collection-${theme}`, { mask: dates() });
+      await field.fill('');
+      await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     }
   } finally {
     await s.app.close();
@@ -419,6 +445,31 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
   }
 });
 
+test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const ids = await paletteLibrary(s, testInfo.outputPath('media'));
+    const bio = await createCollection(s.page, '분자생물학');
+    const ch6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    await createCollection(s.page, '7장 · 세포 주기', bio);
+    await addToCollection(s.page, ch6, [ids[1]!]);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await runMenuCommand(s.app, 'app.palette');
+      await s.page.getByTestId('palette-input').fill('신호');
+      await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
+      await expect(s.page.getByTestId('palette-collection')).toHaveCount(1);
+      await expect(s.page.locator('.palette .p-group')).toHaveText(['자료', '컬렉션', '명령']);
+      await shoot(s.page, `palette-collections-${theme}`, { mask: dates() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('palette')).toBeHidden();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('drop overlay: copy and ⌥ link, and in a window that is neither key nor main', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const files: Array<[string, string]> = [
@@ -593,6 +644,12 @@ test('table: several rows selected with the keyboard cursor, sorted by title, an
     await rowAt(s.page, 0).click();
     await panelSettled(s.page, 'PDF · 3쪽');
     await shoot(s.page, 'table-sorted-light', { mask: dates() });
+    // Tags, so the not-main capture shows the tag selector's "…", glass and placeholder dimmed with the rest of the chrome.
+    await makeTags(s.page, [
+      { name: '중요', slot: 1, items: [pdf!.id] },
+      { name: '수용체', items: [pdf!.id] },
+    ]);
+    await expect(s.page.getByTestId('tag-selector')).toBeVisible();
     // Another window takes the key: the selection turns neutral and the cursor ring goes (design-spec 2.1, 3.1).
     await s.page.keyboard.press('ArrowDown');
     await expect(rowAt(s.page, 1)).toHaveAttribute('data-focus-visible', 'true');
@@ -608,6 +665,38 @@ test('table: several rows selected with the keyboard cursor, sorted by title, an
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('table: a long list with its scroll bar under the header, and a header cell mid-drag with its insertion line', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const header = (col: string) => s.page.locator(`[data-testid="column-header"][data-col="${col}"]`);
+  try {
+    const [pdf] = await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')]);
+    await seedLibrary(s.app, { count: 59, from: pdf! });
+    await expect(s.page.getByTestId('toolbar-count')).toHaveText('60개');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // Linux draws a classic scroll bar: it starts under the header, which ends where the bar's column begins (spec 5.2).
+      expect(await s.page.getByTestId('library-scroller').evaluate((e: HTMLElement) => e.offsetWidth - e.clientWidth)).toBeGreaterThan(0);
+      await shoot(s.page, `table-scrollbar-${theme}`, { mask: dates() });
+    }
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const [from, to] = [(await header('createdAt').boundingBox())!, (await header('creators').boundingBox())!];
+      const y = from.y + from.height / 2;
+      await s.page.mouse.move(from.x + from.width / 2, y);
+      await s.page.mouse.down();
+      await s.page.mouse.move(to.x + 6, y, { steps: 8 });
+      await expect(s.page.getByTestId('column-drop-line')).toBeVisible();
+      await shoot(s.page, `column-drag-${theme}`, { mask: dates(), keepPointer: true });
+      await s.page.keyboard.press('Escape'); // the drag ends without a save: the next theme starts from the same columns
+      await s.page.mouse.up();
+      await expect(s.page.getByTestId('column-drop-line')).toHaveCount(0);
+    }
   } finally {
     await s.app.close();
   }
@@ -663,5 +752,328 @@ test('fatal: the library cannot be opened (a short and a deep library folder)', 
     } finally {
       await s.app.close();
     }
+  }
+});
+
+// M5: the sidebar. Pairs for the critic: library.html (tree open with a selection; the three special views),
+// library.html?state=empty-collection, and the unpaired row being named (design-spec 6 field, 3.1).
+test('organize: the sidebar tree with a selection, a row being named, an empty collection, the special views', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    const c6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    const c7 = await createCollection(s.page, '7장 · 세포 주기', bio);
+    await createCollection(s.page, '실험 노트', bio); // empty: its row shows no number
+    const stats = await createCollection(s.page, '통계');
+    await createCollection(s.page, '회귀분석', stats);
+    const conf = await createCollection(s.page, '학회 준비');
+    await addToCollection(s.page, bio, items.map((i) => i.id));
+    await addToCollection(s.page, c6, [items[0]!.id, items[1]!.id]);
+    await addToCollection(s.page, c7, [items[2]!.id]);
+    await addToCollection(s.page, stats, [items[3]!.id]);
+
+    // The tree open, 6장 viewed, the table focused: the sidebar's selection is the neutral one, as library.html draws it.
+    await treeRow(s.page, bio).locator('.disclosure').click();
+    await treeRow(s.page, c6).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    await expect(s.page.getByTestId('info-section')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `sidebar-tree-${theme}`, { mask: dates() });
+    }
+
+    // A new collection being named: the field with the default name selected, at the top of the tree.
+    await setTheme(s.page, 'light');
+    await runMenuCommand(s.app, 'collection.new');
+    const field = s.page.getByTestId('rename-input');
+    await expect(field).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect(field).toBeFocused();
+      await shoot(s.page, `sidebar-edit-${theme}`, { mask: dates() });
+    }
+    await s.page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+
+    // The viewed collection being renamed (↩ on its row): the selection stays the neutral one and the row holds only the field.
+    await setTheme(s.page, 'light');
+    await treeRow(s.page, c6).click();
+    await s.page.keyboard.press('Enter');
+    await expect(field).toBeFocused();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect(field).toBeFocused();
+      await shoot(s.page, `sidebar-rename-${theme}`, { mask: dates() });
+    }
+    await s.page.keyboard.press('Escape');
+    await expect(field).toHaveCount(0);
+
+    // An empty collection: the table body and the item panel; the panel's day is masked.
+    await treeRow(s.page, conf).click();
+    await expect(s.page.getByTestId('collection-empty')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `collection-empty-${theme}`, { mask: [s.page.getByTestId('collection-empty-meta')] });
+    }
+
+    // The special views: 최근 연 자료 (an item was opened), 미분류 and 중복 항목 (the same file imported again, in no collection).
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'all').click();
+    await openItem(s.page, 'sample');
+    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await runMenuCommand(s.app, 'nav.back');
+    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), path.join(FIXTURES, 'sample.pdf'));
+    for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
+    await specialRow(s.page, 'unfiled').click();
+    await shoot(s.page, 'sidebar-special-light', { mask: dates() });
+
+    // An empty collection with a 9-character name: ‘…’로 is one 어절 (U+2060), so the line breaks before the quote, never after it.
+    const signal = await createCollection(s.page, '세포막 신호 전달');
+    await treeRow(s.page, signal).click();
+    await expect(s.page.getByTestId('collection-empty')).toBeVisible();
+    await shoot(s.page, 'collection-empty-long-light', { mask: [s.page.getByTestId('collection-empty-meta')] });
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M5: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
+// dots in the title cell, a selected row on the accent fill) and components.html?part=1 (chips, the eight colours).
+test('organize: the tag selector with a filter and dim chips, the table dots with a selected row, and the filter that leaves nothing', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const [a, b, c, d] = items.map((i) => i.id) as [string, string, string, string];
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [a, b, c]);
+    const [, , , , receptor, , , regression] = await makeTags(s.page, [
+      { name: '중요', slot: 1, items: [a, b] },
+      { name: '시험 범위', slot: 2, items: [a] },
+      { name: '다시 보기', slot: 4, items: [b] },
+      { name: '질문 있음', slot: 5, items: [c] },
+      { name: '수용체', items: [a, b] },
+      { name: 'G 단백질', items: [a] },
+      { name: '인산화', items: [c] },
+      { name: '회귀분석', items: [d] },
+      { name: '표본 추출', items: [d] },
+    ]);
+    // A collection, 모든 태그 (the two tags of the item outside it are dim), one chip on, a row selected with the table focused.
+    await treeRow(s.page, bio).click();
+    await s.page.getByTestId('tag-selector-more').click();
+    await s.page.getByTestId('tag-menu-all').click();
+    await tagChip(s.page, receptor!).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    await expect(s.page.getByTestId('info-section')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-selector-${theme}`, { mask: dates() });
+    }
+    // A dim chip chosen too: nothing has both. The body says so; the chips keep their state.
+    await setTheme(s.page, 'light');
+    await tagChip(s.page, regression!).click();
+    await expect(s.page.getByTestId('tag-filter-empty')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-filter-empty-${theme}`, { mask: [s.page.getByTestId('inspector-panel')] });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('component state board: tag chips and colour dots (gallery part 4)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.goto('learn://app/index.html?window=gallery&part=4&platform=linux&det=1');
+      await s.page.getByTestId('gallery').waitFor();
+      expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await shoot(s.page, `gallery4-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('organize: the first tag chip focused from the keyboard — the ring is whole at the cloud\'s edge', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const ids = items.map((i) => i.id);
+    await makeTags(s.page, [
+      { name: '중요', slot: 1, items: ids.slice(0, 2) },
+      { name: '시험 범위', slot: 2, items: ids.slice(0, 1) },
+      { name: '수용체', items: ids.slice(0, 2) },
+    ]);
+    await s.page.getByTestId('tag-selector-more').focus();
+    await s.page.keyboard.press('Tab'); // the cloud's one stop: its first chip
+    await expect(s.page.locator('[data-testid="tag-selector"] [data-chip-id]:focus-visible')).toHaveCount(1);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `tags-focus-${theme}`, { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M5: the item panel's 태그 and 컬렉션 sections, the add field with its suggestions, several items with their common
+// sections, and the open 컬렉션에 추가 ▾ menu. Pairs for the critic: library.html (inspectorItem) and library.html?state=multi.
+test('organize: the item panel with tags and collections, the add field, several items, the open 컬렉션에 추가 menu', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const [sample, ko, h264] = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    const c6 = await createCollection(s.page, '6장 · 신호 전달', bio);
+    await createCollection(s.page, '통계');
+    await addToCollection(s.page, bio, [sample!.id, ko!.id, h264!.id]);
+    await addToCollection(s.page, c6, [sample!.id, ko!.id]);
+    const important = await createTag(s.page, '중요');
+    await setTagColor(s.page, important, 'yellow', 1);
+    const exam = await createTag(s.page, '시험 범위');
+    await setTagColor(s.page, exam, 'red', 2);
+    for (const name of ['수용체', 'G 단백질', '2차 전령']) await assignTag(s.page, await createTag(s.page, name), [sample!.id]);
+    await assignTag(s.page, important, [sample!.id, ko!.id]);
+    await assignTag(s.page, exam, [sample!.id]);
+    // What the field will offer: one coloured suggestion among plain ones, so the mark column and the names' column are judged together.
+    for (const name of ['수용체 억제제', '수용체 작용제', '수용기', '신경 수용 경로']) {
+      const id = await createTag(s.page, name);
+      if (name === '수용체 작용제') await setTagColor(s.page, id, 'green', 3);
+    }
+
+    // One item with four colours' worth of chips (two coloured, three plain) in two collections (library.html inspectorItem).
+    await selectRows(s.page, ['sample']);
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await expect(s.page.getByTestId('tags-section').getByTestId(`tag-chip-${important}`)).toBeVisible();
+    await expect(s.page.getByTestId('collection-path')).toHaveCount(2);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-item-${theme}`, { mask: masks() });
+    }
+    // The add field with "수용" typed and the second suggestion chosen.
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('tag-add-chip').click();
+      await s.page.getByTestId('tag-input').fill('수용');
+      await expect(s.page.getByTestId('tag-suggestion')).toHaveCount(4);
+      await s.page.keyboard.press('ArrowDown');
+      await s.page.keyboard.press('ArrowDown');
+      await shoot(s.page, `organize-tag-add-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('tag-field')).toHaveCount(0);
+    }
+    // A name that is no tag yet: the hint is the last row of the floating list (no suggestion chosen).
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('tag-add-chip').click();
+      await s.page.getByTestId('tag-input').fill('수용 후보');
+      await expect(s.page.getByTestId('tag-hint')).toBeVisible();
+      await shoot(s.page, `organize-tag-hint-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId('tag-field')).toHaveCount(0);
+    }
+    // Three items, no tag in common, one collection (library.html?state=multi).
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+    await expect(s.page.getByTestId('multi-row')).toHaveCount(3);
+    await expect(s.page.getByTestId('tags-common-none')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-multi-${theme}`, { mask: masks() });
+    }
+    // Two items that share a tag and two collections: the common chips and both rows.
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1'], { modifier: 'Meta' });
+    await expect(s.page.getByTestId('tags-section').getByTestId(`tag-chip-${important}`)).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `organize-multi-common-${theme}`, { mask: masks() });
+    }
+    // The 컬렉션에 추가 ▾ menu open on the three: 분자생물학 marked and off, 6장 and 통계 on.
+    await selectRows(s.page, ['sample', '한글 경로 (테스트) #1', 'sample-h264-aac'], { modifier: 'Meta' });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.getByTestId('add-to-collection').click();
+      await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toBeVisible();
+      await shoot(s.page, `organize-multi-menu-${theme}`, { mask: masks() });
+      await s.page.keyboard.press('Escape');
+      await expect(s.page.getByTestId(`add-to-collection-${bio}`)).toHaveCount(0);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M5: drag and drop at rest. A drag cannot be held for a screenshot (the tour parks the pointer), so the drop state is
+// forced on a real tree row and a real table row, in the window the drag would run in; the drag image and the heading are on the
+// state board (part 5). Pairs for the critic: components.html?part=1 ("드롭 대상 (⌘ 이동)") and library.html for the window.
+test('drag and drop: a tree row and a table row as drop targets, then the board with the drag image', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const bio = await createCollection(s.page, '분자생물학');
+    await createCollection(s.page, '6장 · 신호 전달', bio);
+    const stat = await createCollection(s.page, '통계');
+    await addToCollection(s.page, bio, items.map((i) => i.id));
+    await treeRow(s.page, bio).locator('.disclosure').click();
+    await treeRow(s.page, bio).click();
+    await rowAt(s.page, 0).click();
+    await expect(rowAt(s.page, 0)).toHaveAttribute('aria-selected', 'true');
+    const force = (id: string, on: boolean) => s.page.evaluate(({ id, on }) => {
+      const el = document.querySelector(id.startsWith('row:') ? `[data-testid="item-row"][data-index="${id.slice(4)}"]` : `[data-testid="${id}"]`)!;
+      if (on) el.setAttribute('data-force', 'drop');
+      else el.removeAttribute('data-force');
+    }, { id, on });
+
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await rowAt(s.page, 0).click(); // the table holds the focus, as it does while a table row is dragged (the loop's end blurs it)
+      // A collection row: the neighbour of the viewed one, as a row dragged out of 분자생물학 would find it.
+      await force(`nav-collection-${stat}`, true);
+      await shoot(s.page, `dnd-tree-drop-${theme}`, { mask: dates() });
+      await force(`nav-collection-${stat}`, false);
+      // The viewed collection as a target (a collection dragged onto it, a Finder file): the tree holds the focus, so its selection is
+      // the accent fill, and the drop mark has to win over it.
+      await treeRow(s.page, bio).click();
+      await force(`nav-collection-${bio}`, true);
+      await shoot(s.page, `dnd-tree-drop-viewed-${theme}`, { mask: dates() });
+      await force(`nav-collection-${bio}`, false);
+      // A table row beside the selected one: a tag chip over it. Pressing a chip takes the focus out of the table, so the selected row
+      // is the neutral one, and the target is a striped row and a plain one in turn.
+      await s.page.evaluate(() => void (document.activeElement as HTMLElement | null)?.blur());
+      await force('row:1', true);
+      await shoot(s.page, `dnd-row-drop-striped-${theme}`, { mask: dates() });
+      await force('row:1', false);
+      await force('row:2', true);
+      await shoot(s.page, `dnd-row-drop-${theme}`, { mask: dates() });
+      await force('row:2', false);
+    }
+
+    // The overlay beside the sidebar (the pair of the existing drop-* shots, which change by design).
+    const two: Array<[string, string]> = [['a.pdf', 'application/pdf'], ['b.pdf', 'application/pdf']];
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await drag(s.page, 'dragenter', two);
+      await expect(s.page.getByTestId('drop-overlay')).toBeVisible();
+      await shoot(s.page, `dnd-overlay-beside-sidebar-${theme}`);
+      await drag(s.page, 'dragleave', two);
+      await expect(s.page.getByTestId('drop-overlay')).toHaveCount(0);
+    }
+
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await s.page.goto('learn://app/index.html?window=gallery&part=5&platform=linux&det=1');
+      await s.page.getByTestId('gallery').waitFor();
+      expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
+      await shoot(s.page, `gallery5-${theme}`);
+    }
+  } finally {
+    await s.app.close();
   }
 });

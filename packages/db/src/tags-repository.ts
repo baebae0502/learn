@@ -4,7 +4,7 @@ import type { Db } from './connection';
 interface TagDbRow { id: string; name: string; color: string | null; position: number | null; item_count: number }
 
 const COLOR_IDS: ReadonlySet<string> = new Set(TAG_COLORS.map((c) => c.id));
-const isTagColor = (c: string | null): c is TagColorId => c !== null && COLOR_IDS.has(c);
+export const isTagColor = (c: string | null): c is TagColorId => c !== null && COLOR_IDS.has(c);
 
 /** Every tag column the `Tag` type needs; `item_count` ignores trashed items. Callers add WHERE/ORDER. */
 export const TAG_SELECT = `
@@ -90,13 +90,17 @@ export class TagsRepository {
     })();
   }
 
-  /** Sets color and position; a position held by another tag is taken from it (that tag keeps its color). */
+  /**
+   * Sets color and position. A position held by another tag is taken from it together with that tag's color: in the
+   * app a color and its key are one thing (color N = key N), so a tag left with a color but no key would be a
+   * color the keyboard cannot reach.
+   */
   setColor(id: string, color: TagColorId | null, position: number | null): Tag {
     if (color !== null && !isTagColor(color)) throw new LearnError('VALIDATION_FAILED', '지원하지 않는 태그 색입니다.');
     if (position !== null) checkPosition(position);
     return this.db.transaction(() => {
       if (!this.get(id)) throw notFound();
-      if (position !== null) this.db.prepare('UPDATE tags SET position = NULL WHERE position = ? AND id <> ?').run(position, id);
+      if (position !== null) this.db.prepare('UPDATE tags SET color = NULL, position = NULL WHERE position = ? AND id <> ?').run(position, id);
       this.db.prepare('UPDATE tags SET color = ?, position = ? WHERE id = ?').run(color, position, id);
       return this.get(id)!;
     })();

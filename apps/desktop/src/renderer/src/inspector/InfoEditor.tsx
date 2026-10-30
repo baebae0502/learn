@@ -10,6 +10,7 @@ import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button, IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
+import { isComposingKey } from '../ui/ime';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { leaveEditing, openEditSession } from './editGuard';
@@ -18,8 +19,6 @@ import { takeFocusRequest } from './startEditing';
 
 let rowSeq = 0;
 const newRowKey = () => `row-${++rowSeq}`;
-/** A key that only finishes a Korean composition (design-spec 7.4): it neither saves nor cancels. */
-const composing = (e: KeyboardEvent) => e.nativeEvent.isComposing || e.keyCode === 229;
 const fieldInput = (root: HTMLElement | null, field: InfoTextField) =>
   root?.querySelector<HTMLElement>(`[data-testid="editor-field"][data-field="${field}"] :is(input, textarea)`) ?? null;
 
@@ -203,8 +202,9 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
     if (takeFocusRequest(item.id)) fieldInput(rootRef.current, 'title')?.focus();
   }, [item.id]);
 
+  // A key that only finishes a Korean composition (design-spec 7.4) neither saves nor cancels.
   const onKeyDown = (ev: KeyboardEvent<HTMLDivElement>) => {
-    if (composing(ev) || ev.key === 'Process') return;
+    if (isComposingKey(ev) || ev.key === 'Process') return;
     const command = currentPlatform() === 'darwin' ? ev.metaKey : ev.ctrlKey;
     const plain = !ev.metaKey && !ev.ctrlKey && !ev.altKey && !ev.shiftKey;
     if (ev.key === 'Enter' && (command || (plain && ev.target instanceof HTMLInputElement))) {
@@ -241,19 +241,22 @@ export function InfoEditor({ item, detail }: { item: LibraryItem; detail: ItemDe
                 <Input className="field ed-input" />
                 <FieldError className="ed-error">{error}</FieldError>
               </TextField>
-              <select
-                className="field ed-select"
-                aria-label={e.creatorRole(i + 1)}
-                value={c.role}
-                onChange={(ev) => setCreator(i, { role: ev.target.value as CreatorDraft['role'] })}
-                data-testid="creator-role"
-              >
-                {CREATOR_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {t.inspector.roles[r]}
-                  </option>
-                ))}
-              </select>
+              <span className="ed-select-wrap">
+                <select
+                  className="field ed-select"
+                  aria-label={e.creatorRole(i + 1)}
+                  value={c.role}
+                  onChange={(ev) => setCreator(i, { role: ev.target.value as CreatorDraft['role'] })}
+                  data-testid="creator-role"
+                >
+                  {CREATOR_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {t.inspector.roles[r]}
+                    </option>
+                  ))}
+                </select>
+                <Icon icon={ChevronDown} size="xs" />
+              </span>
               <IconButton icon={ChevronUp} size="small" label={e.creatorUp(i + 1)} isDisabled={i === 0} disabledReason={e.creatorFirst} onPress={() => moveCreator(i, -1)} testId="creator-up" />
               <IconButton icon={ChevronDown} size="small" label={e.creatorDown(i + 1)} isDisabled={i === draft.creators.length - 1} disabledReason={e.creatorLast} onPress={() => moveCreator(i, 1)} testId="creator-down" />
               <IconButton icon={Minus} size="small" label={e.creatorRemove(i + 1)} onPress={() => removeCreator(i)} testId="creator-remove" />

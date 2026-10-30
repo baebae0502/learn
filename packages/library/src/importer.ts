@@ -18,6 +18,8 @@ export interface ImportHooks {
 export interface ImportOptions {
   mode: StorageMode;
   allowDuplicate?: boolean;
+  /** File each imported item into this collection in the item's own transaction; a collection gone by then is skipped. */
+  collectionId?: string | null;
 }
 
 export class Importer {
@@ -78,16 +80,19 @@ export class Importer {
 
     await hooks?.beforeCommit?.();
     const item = { id: newId(), type: kind.type, title: titleFromFile(src), createdAt: now };
-    repo.insertImported({
+    const collectionId = opts.collectionId ?? null;
+    const filed = repo.insertImported({
       item,
       asset,
       assetIsNew: !reusable,
       revision: reusable ? null : { id: newId(), createdAt: now },
       job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha256}:${EXTRACTOR_VERSION}`, payload: { sha256, type: kind.type } },
+      collectionId,
     });
     const saved = repo.getItem(item.id);
     if (!saved) throw new LearnError('INTERNAL', '가져온 항목을 다시 읽지 못했습니다.');
-    return { status: 'imported', path: src, item: saved };
+    // The outcome names the collection only when the membership really exists: the renderer counts from it.
+    return filed && collectionId !== null ? { status: 'imported', path: src, item: saved, collectionId } : { status: 'imported', path: src, item: saved };
   }
 
   /** Reused managed asset: make sure a verified file sits at the hash-addressed target. */

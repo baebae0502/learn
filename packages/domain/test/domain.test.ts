@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, importPathsInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
   VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
@@ -62,13 +62,43 @@ describe('ipc contract', () => {
     expect(importPathsInput.safeParse({ paths: [], mode: 'managed' }).success).toBe(false);
     expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'copy' }).success).toBe(false);
   });
-  it('takes the reported command context strictly, with the library and selection counts (P-2)', () => {
-    const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1 };
+  it('takes the collection an import files into: a uuid, null, or nothing', () => {
+    const COLL = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(pickAndImportInput.parse({ mode: 'managed', collectionId: COLL })).toEqual({ mode: 'managed', allowDuplicate: false, collectionId: COLL });
+    expect(importPathsInput.parse({ paths: ['/a.pdf'], mode: 'linked', collectionId: null })).toEqual({
+      paths: ['/a.pdf'], mode: 'linked', allowDuplicate: false, collectionId: null,
+    });
+    // Without a collection the key stays absent, so the importer sees "none", not a value.
+    expect(importPathsInput.parse({ paths: ['/a.pdf'], mode: 'linked' })).not.toHaveProperty('collectionId');
+    for (const bad of ['', 'not-a-uuid', 7, {}]) {
+      expect(pickAndImportInput.safeParse({ mode: 'managed', collectionId: bad }).success, String(bad)).toBe(false);
+      expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'managed', collectionId: bad }).success, String(bad)).toBe(false);
+    }
+  });
+  it('asks for items by id: 1 to 5,000 uuids', () => {
+    const id = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(getItemsInput.parse({ ids: [id] })).toEqual({ ids: [id] });
+    expect(getItemsInput.safeParse({ ids: Array.from({ length: 5000 }, () => id) }).success).toBe(true);
+    expect(getItemsInput.safeParse({ ids: Array.from({ length: 5001 }, () => id) }).success).toBe(false);
+    expect(getItemsInput.safeParse({ ids: [] }).success).toBe(false);
+    expect(getItemsInput.safeParse({ ids: ['not-a-uuid'] }).success).toBe(false);
+    expect(getItemsInput.safeParse({}).success).toBe(false);
+  });
+  it('takes the reported command context strictly, with the library and selection counts and the view (P-2, spec 9.4)', () => {
+    const view = { selectionTagPositions: 0b11, scope: 'collection', collectionCount: 4, tagPositions: 0b101, tagFilterCount: 2, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b1111 };
+    const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1, ...view };
     expect(commandContextInput.parse(ctx)).toEqual(ctx);
     // The fatal screen reports neither pane.
-    expect(commandContextInput.safeParse({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 }).success).toBe(true);
-    for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable'] as const) {
+    const fatal = { view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 0b11111 };
+    expect(commandContextInput.safeParse(fatal).success).toBe(true);
+    for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable', 'collectionCount', 'tagFilterCount'] as const) {
       for (const bad of [-1, 1.5, 1_000_001, '1']) expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
+    }
+    for (const [k, bad] of [['scope', 'trash'], ['tagPositions', 256], ['tagPositions', -1], ['selectionTagPositions', 256], ['selectionTagPositions', -1], ['searchActive', 'yes'], ['sortColumn', 'tags'], ['sortDirection', 'up'], ['columnsShown', 2 ** LIBRARY_COLUMN_IDS.length], ['columnsShown', 1.5]] as const) {
+      expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
+    }
+    // Every field is required: a report from before a field existed is refused, not guessed.
+    for (const k of Object.keys(ctx).filter((key) => key !== 'sidebar' && key !== 'inspector')) {
       const without: Record<string, unknown> = { ...ctx };
       delete without[k];
       expect(commandContextInput.safeParse(without).success, `${k} missing`).toBe(false);

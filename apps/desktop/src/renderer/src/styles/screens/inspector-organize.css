@@ -1,0 +1,201 @@
+@layer screens {
+  /* 태그 절 (library.html .tag-cloud): the chips wrap with 4 px between; the outlined 태그 추가 chip ends the line. */
+  .inspector .tag-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+  }
+  .inspector .tag-add {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6); /* the mockup chip's icon–text gap */
+    height: var(--control-height-small); /* the chips' 22 */
+    padding: 0 var(--space-8);
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    white-space: nowrap;
+    cursor: default;
+    outline: none;
+  }
+  .inspector .tag-add[data-hovered] {
+    background: var(--fill-hover);
+  }
+  .inspector .tag-add[data-pressed] {
+    background: var(--fill-pressed);
+  }
+  .inspector .tag-add[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* The add field the chip becomes: a pill with the field's focus border and halo (design-spec 6 필드), the suggestions
+     below it as a menu-like list (the active row is the accent, as in the palette and menus). */
+  .inspector .tag-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+  }
+  /* The field takes the line under the chips with the chips' own 4 px row gap: its 3 px halo stays off the row above. */
+  .inspector .tag-line:not(:empty) + .tag-field {
+    margin-top: var(--space-4);
+  }
+  .inspector .tag-input-wrap > .icon {
+    color: var(--text-tertiary); /* design-spec 5: icons in a field are tertiary */
+  }
+  .inspector .tag-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    height: var(--control-height-small);
+    padding: 0 var(--space-8);
+    border-radius: var(--radius-pill);
+    background: var(--bg-field);
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  .inspector .tag-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    outline: none;
+  }
+  .inspector .tag-input::placeholder {
+    color: var(--field-placeholder, var(--text-tertiary));
+    opacity: 1;
+  }
+  /* The suggestions float under the field (a non-modal popover in the page's overlay layer, hence not under .inspector): the menu's
+     surface, the field's width. The mark column sits under the field's plus and the names start where the typed text does. */
+  .tag-suggest-popover {
+    width: var(--trigger-width);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    font: var(--type-body);
+    outline: none;
+  }
+  .tag-suggest {
+    margin: 0;
+    padding: var(--space-4);
+    list-style: none;
+  }
+  .tag-suggest-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6); /* the field's icon–text gap */
+    height: 24px; /* local: the menus' row */
+    padding: 0 var(--space-8) 0 var(--space-4); /* list 4 + row 4 = the field's 8: the mark column sits under the plus */
+    border-radius: var(--radius-sm);
+    cursor: default;
+  }
+  .tag-suggest-row[data-active] {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .tag-suggest-mark {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 14px; /* local: the field's plus (design-spec 5, 14 in a field) */
+  }
+  .tag-suggest-mark .dot {
+    width: 8px; /* local: design-spec 4, the colour dot */
+    height: 8px; /* local: design-spec 4, the colour dot */
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px oklch(0% 0 0 / 0.16); /* local: the dot's inner hairline (design-spec 4) */
+  }
+  .tag-suggest-popover .tag-hint {
+    margin: 0;
+    padding: var(--space-4) var(--space-12) var(--space-4) calc(var(--space-8) + 14px + var(--space-6)); /* local: the names' column (8 + the 14 px mark + 6) */
+    border-top: 1px solid var(--separator-on-surface);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+  .inspector .tag-error {
+    margin: 0;
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+  .inspector .tag-error {
+    color: var(--danger-text);
+  }
+
+  /* 컬렉션 절 (library.html .collection-path): 24 px rows, the folder in the accent, the separators tertiary; a row is a button. */
+  .inspector .collection-path {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    width: calc(100% + var(--space-16));
+    height: 24px; /* local: library.html .collection-path */
+    margin: 0 calc(-1 * var(--space-8)); /* the link-button inset: the hover fill clears the icon, the icon stays in the body column */
+    padding: 0 var(--space-8);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: start;
+    cursor: default;
+    outline: none;
+  }
+  .inspector .collection-path .icon {
+    flex: none;
+    color: var(--accent-text);
+  }
+  .inspector .collection-path .path-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .inspector .collection-path .sep {
+    margin-inline: var(--space-6); /* the mockup's gap around › */
+    color: var(--text-tertiary);
+  }
+  .inspector .collection-path[data-hovered] {
+    background: var(--fill-hover);
+  }
+  .inspector .collection-path[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+
+  /* An empty-state line that ends a section closes it at the section's 12, like the others. */
+  .inspector .info-hint:last-child {
+    margin-bottom: 0;
+  }
+
+  /* The info form's role field off the Mac: our own chevron instead of Chromium's arrow. The Mac keeps the system select. */
+  .inspector .ed-select-wrap {
+    position: relative;
+    display: grid;
+    min-width: 0;
+  }
+  .inspector .ed-select-wrap > .icon {
+    display: none;
+  }
+  :root:not([data-platform='darwin']) .inspector .ed-select {
+    appearance: none;
+    padding-inline-end: var(--space-20);
+  }
+  :root:not([data-platform='darwin']) .inspector .ed-select-wrap > .icon {
+    display: block;
+    position: absolute;
+    inset-inline-end: var(--space-6);
+    inset-block: 0;
+    margin-block: auto;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+}

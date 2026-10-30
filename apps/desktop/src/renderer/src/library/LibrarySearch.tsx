@@ -4,6 +4,7 @@ import { focusPaneNamed } from '../shell/panes';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { SearchField } from '../ui/SearchField';
+import { countRender } from '../ui/renderCount';
 import { currentPlatform } from '../ui/platform';
 import { focusFirstRow } from './tableDom';
 import { useSearch } from './useSearch';
@@ -12,10 +13,13 @@ const NO_ITEMS: readonly LibraryItem[] = [];
 /** The field's input while it is mounted (one toolbar per window): ⌘F reaches it from the registry. */
 const field: { current: HTMLInputElement | null } = { current: null };
 
-/** ⌘F (`library.find`): the quick search field takes the focus with its text selected (spec 4.1). */
-export function focusQuickSearch(): void {
+/**
+ * ⌘F (`library.find`): the quick search field takes the focus with its text selected (spec 4.1). `select: false` leaves the
+ * text as it is (the caret where it was): the focus returning after a button that kept the query.
+ */
+export function focusQuickSearch(opts: { select?: boolean } = {}): void {
   field.current?.focus();
-  field.current?.select();
+  if (opts.select ?? true) field.current?.select();
 }
 
 /**
@@ -25,6 +29,7 @@ export function focusQuickSearch(): void {
  * sheet or an import holds the window): the transient states keep their controls (design-spec 6).
  */
 export function LibrarySearch({ disabled = false }: { disabled?: boolean }) {
+  countRender('LibrarySearch');
   const query = useLibrary((s) => s.query);
   const setQuery = useLibrary((s) => s.setQuery);
   const found = useSearch(useItems().data ?? NO_ITEMS);

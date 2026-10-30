@@ -34,6 +34,11 @@ describe('column header menu entries (design-spec 7.3 열 머리, M4 spec 3.2)',
   it('keeps the title checked even when the renderer leaves it out', () => {
     expect(columnMenuEntries([], '열 구성 되돌리기')[0]).toEqual({ kind: 'column', id: 'title', label: '제목', checked: true, enabled: false });
   });
+  it('draws a column the view forces on checked and fixed, like the title, whatever was reported as shown', () => {
+    const entries = columnMenuEntries(['title', 'creators'], '열 구성 되돌리기', ['openedAt']);
+    expect(entries.find((e) => e !== 'separator' && e.kind === 'column' && e.id === 'openedAt')).toEqual({ kind: 'column', id: 'openedAt', label: '마지막으로 연 날', checked: true, enabled: false });
+    expect(entries.find((e) => e !== 'separator' && e.kind === 'column' && e.id === 'updatedAt')).toMatchObject({ checked: false, enabled: true });
+  });
 });
 
 describe('popupColumnMenu', () => {

@@ -15,9 +15,10 @@ const CLIP = { overflow: 'hidden' } as const;
  * Layout B (design-spec 2.3): a full-height sidebar whose top 88 px (traffic lights + toggle, ⌘K launcher, 8 gap)
  * is identical in every view, a 1 px boundary with a ±4 px resize handle, and the main column: the 52 px toolbar over
  * the content and, in the library, the item panel (design-spec 2.5) — a nested group whose boundary works as the
- * sidebar's does, so the toolbar spans both.
+ * sidebar's does, so the toolbar spans both. `sidebarFoot` sits under the scrolling part of the sidebar, as tall as it is
+ * (the tag selector).
  */
-export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar: ReactNode; children: ReactNode; inspector?: ReactNode; overlays?: ReactNode }) {
+export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; launcher?: ReactNode; toolbar: ReactNode; children: ReactNode; inspector?: ReactNode; overlays?: ReactNode }) {
   const panelRef = usePanelRef();
   const groupRef = useRef<HTMLDivElement>(null);
   const inspectorRef = usePanelRef();
@@ -109,7 +110,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
           groupResizeBehavior="preserve-pixel-size"
         >
           {/* inert while folded: nothing in a 0 px panel may take focus or be read out. */}
-          <nav className="sidebar-inner" aria-label={t.shell.sidebar} inert={hidden}>
+          <nav className="sidebar-inner" data-sidebar-area="" aria-label={t.shell.sidebar} inert={hidden}>
             <div className="sidebar-top" data-testid="sidebar-top">
               <SidebarToggle place="sidebar" />
             </div>
@@ -117,6 +118,7 @@ export function Shell(props: { sidebar: ReactNode; launcher?: ReactNode; toolbar
             <div className="sidebar-scroll" data-pane="sidebar">
               {props.sidebar}
             </div>
+            {props.sidebarFoot}
           </nav>
         </Panel>
         {/* Window-splitter pattern: the focusable handle is named after the pane it resizes. */}

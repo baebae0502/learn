@@ -158,7 +158,7 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     const [menu] = await recordedPopups(s.app);
     expect(menu!.map((i) => [i.type === 'separator' ? '-' : i.label, i.checked, i.enabled])).toEqual([
       ['제목', true, false], ['저자', true, true], ['연도', true, true], ['종류', true, true], ['추가일', true, true],
-      ['수정일', false, true], ['보관', false, true], ['크기', false, true], ['원래 이름', false, true],
+      ['수정일', false, true], ['마지막으로 연 날', false, true], ['보관', false, true], ['크기', false, true], ['원래 이름', false, true],
       ['-', false, true], ['열 구성 되돌리기', false, true],
     ]);
     const size = rowAt(s.page, 0).locator('[data-col="size"]');
@@ -272,7 +272,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect(rowAt(page, 5999)).toBeInViewport();
     expect(await page.getByTestId('item-row').count()).toBeLessThan(120);
     // PageUp moves the cursor by the rows the view shows, and the row it lands on is drawn and in view.
-    const pageRows = await page.getByTestId('library-table').evaluate((g) => Math.floor((g.clientHeight - 28 - 4) / 28));
+    const pageRows = await page.getByTestId('library-scroller').evaluate((g) => Math.floor((g.clientHeight - 4) / 28));
     await page.keyboard.press('PageUp');
     await expect(rowAt(page, 5999 - pageRows)).toBeFocused();
     await expect(rowAt(page, 5999 - pageRows)).toBeInViewport({ ratio: 1 });
@@ -283,7 +283,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     expect(await bg(5990)).toBe(await bg(5992));
     expect(await bg(5991)).not.toBe(await bg(5990));
     // ⌘A, then a right-click inside the selection: every id goes to the menu (more than the old 5000 bound)
-    // and none of M4's item commands applies to 6000 items.
+    // and none of M4's file commands applies to 6000 items; filing them into a collection does.
     await page.keyboard.press('ControlOrMeta+a');
     await expect(rowAt(page, 5999)).toHaveAttribute('aria-selected', 'true');
     await stubContextMenu(app, null);
@@ -291,7 +291,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
     const items = (await recordedPopups(app))[0]!.filter((i) => i.type !== 'separator');
     expect(items.length).toBeGreaterThan(0);
-    expect(items.every((i) => !i.enabled)).toBe(true);
+    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['컬렉션에 추가']);
     await expect(page.getByTestId('action-error')).toHaveCount(0);
   } finally {
     await app.close();
@@ -331,13 +331,26 @@ test('a first list read past 300 ms shows the header and 불러오는 중… in 
       ipcMain.removeHandler(channel);
       ipcMain.handle(channel, () => new Promise((resolve) => (g.__learnReleaseList = () => resolve(reply))));
     }, [Channels.library.list, listed] as const);
-    // When the shell and the loading line first appear, from the document's first node on.
+    // When the shell and the loading line first appear, from the document's first node on. The time is taken in the
+    // insertion itself: an observer runs at the end of the task, after the loading timer has started in the same task,
+    // so the shell's time it records is late by the rest of that task (about 18 ms on the Mac runner).
     await page.addInitScript(() => {
       const g = globalThis as { __learnSeen?: Record<string, number> };
       g.__learnSeen = {};
-      new MutationObserver(() => {
+      const note = () => {
         for (const id of ['shell', 'table-loading', 'empty-state']) if (!(id in g.__learnSeen!) && document.querySelector(`[data-testid="${id}"]`)) g.__learnSeen![id] = performance.now();
-      }).observe(document, { childList: true, subtree: true });
+      };
+      const proto = Node.prototype as unknown as Record<'appendChild' | 'insertBefore', (this: Node, ...args: unknown[]) => unknown>;
+      for (const name of ['appendChild', 'insertBefore'] as const) {
+        const insert = proto[name];
+        proto[name] = function (this: Node, ...args: unknown[]) {
+          const result = insert.apply(this, args);
+          if (this.isConnected) note();
+          return result;
+        };
+      }
+      // Anything put in by another call is still seen, at the end of its task.
+      new MutationObserver(note).observe(document, { childList: true, subtree: true });
     });
     await page.reload();
     await expect(page.getByTestId('table-loading')).toHaveText('불러오는 중…');
@@ -387,7 +400,7 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
     await showItemPanel(app, page);
-    const table = page.getByTestId('library-table');
+    const table = page.getByTestId('library-scroller');
     await expect.poll(() => table.evaluate((g) => g.scrollWidth - g.clientWidth), { message: 'the columns must overflow the table here' }).toBeGreaterThan(0);
     await rowAt(page, 0).click();
     await page.keyboard.press('End');
@@ -399,7 +412,7 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await expect
       .poll(() =>
         page.evaluate(() => {
-          const g = document.querySelector('[data-testid="library-table"]')!.getBoundingClientRect();
+          const g = document.querySelector('[data-testid="library-scroller"]')!.getBoundingClientRect();
           const r = document.querySelector('[data-testid="item-row"][data-index="150"]')?.getBoundingClientRect();
           return r !== undefined && r.top >= g.top && r.bottom <= g.bottom;
         }),

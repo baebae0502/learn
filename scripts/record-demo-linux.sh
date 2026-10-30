@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record the M4 demo on Linux at @2x, as a supplement to the macOS recording (a script, not a CI step):
+# Record the M5 demo on Linux at @2x, as a supplement to the macOS recording (a script, not a CI step):
 # Xvfb, the @demo test at full pace (LEARN_DEMO_PACE=1) with --force-device-scale-factor=2, and ffmpeg x11grab of
 # exactly the window, started and stopped by the test (capture.ts startX11Recording); then scripts/finish-demo.sh embeds
 # the chapters and burns in the corner tag "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)".
@@ -10,9 +10,9 @@
 # while evidence-results/ holds anything, unless --force.
 #
 # Output (gitignored): evidence/demo-linux/<UTC timestamp>/
-#   m4-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
-#   m4-demo.chapters.raw.txt/.json the chapter list on the raw recording's timeline, input, screen and window bounds, notes
-#   m4-demo-linux.chapters.txt/.json the chapters on the finished video's own timeline (finish-demo.sh)
+#   m5-demo-linux.mp4          the video (H.264 yuv420p CRF 18, 30 fps), chapters embedded, the corner tag burned in
+#   m5-demo.chapters.raw.txt/.json the chapter list on the raw recording's timeline, input, screen and window bounds, notes
+#   m5-demo-linux.chapters.txt/.json the chapters on the finished video's own timeline (finish-demo.sh)
 #   frames/ch-NN.png           one frame per chapter: 3 s in, or halfway through a shorter chapter
 #   run.log, build.log         the Playwright run and the build
 # Needs Xvfb, xdpyinfo, ffmpeg (with x11grab and libx264), ffprobe, node, pnpm and python3. Builds the app first.
@@ -98,14 +98,14 @@ STATUS=${PIPESTATUS[0]}
 set -e
 
 SRC="evidence-results/$LABEL"
-for f in m4-demo.chapters.raw.txt m4-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
-if [[ ! -s $SRC/m4-demo.mp4 ]]; then
+for f in m5-demo.chapters.raw.txt m5-demo.chapters.json; do [[ -f $SRC/$f ]] && cp "$SRC/$f" "$OUT/"; done
+if [[ ! -s $SRC/m5-demo.mp4 ]]; then
   echo "no recording in $SRC (test exit $STATUS)" >&2
   exit 1
 fi
-VIDEO="$OUT/m4-demo-linux.mp4"
-scripts/finish-demo.sh "$SRC/m4-demo.mp4" "$OUT/m4-demo.chapters.json" "$VIDEO" "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)"
-rm -f "$SRC/m4-demo.mp4"
+VIDEO="$OUT/m5-demo-linux.mp4"
+scripts/finish-demo.sh "$SRC/m5-demo.mp4" "$OUT/m5-demo.chapters.json" "$VIDEO" "Linux 보조 녹화 · 창 테두리 없음 (창 관리자 없음)"
+rm -f "$SRC/m5-demo.mp4"
 
 ffprobe -v error -select_streams v:0 -show_entries stream=width,height,pix_fmt,r_frame_rate,codec_name -show_entries format=duration -of default=nw=1 "$VIDEO" | tee "$OUT/ffprobe.txt"
 ffprobe -v error -show_chapters -of csv=p=0 "$VIDEO" | wc -l | xargs -I{} echo "embedded chapters: {}" | tee -a "$OUT/ffprobe.txt"

@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowLeftToLine, ArrowRightToLine, Command, ExternalLink, FileOutput, FilePlus, FolderOpen, FolderSearch, Keyboard, Link, PanelLeft, PanelRight, Pencil, Search, Settings, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -6,6 +6,7 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'file.importManaged': FilePlus,
   'file.importLinked': Link,
   'library.find': Search,
+  'library.findEverywhere': LibraryBig,
   'nav.back': ArrowLeft,
   'item.relink': Link,
   'item.open': FolderOpen,
@@ -13,6 +14,27 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'item.openExternally': ExternalLink,
   'item.editInfo': Pencil,
   'item.exportCopy': FileOutput,
+  'collection.addItems': FolderPlus,
+  'collection.removeItems': FolderMinus,
+  'collection.new': FolderPlus,
+  'collection.newChild': FolderTree,
+  'collection.rename': Pencil,
+  'collection.importInto': FolderInput,
+  'collection.delete': Trash2,
+  // The colour keys, the tag chip's menu and 태그 선택 해제; the palette lists the keys and the last only.
+  'tag.color1': Tag,
+  'tag.color2': Tag,
+  'tag.color3': Tag,
+  'tag.color4': Tag,
+  'tag.color5': Tag,
+  'tag.color6': Tag,
+  'tag.color7': Tag,
+  'tag.color8': Tag,
+  'tag.rename': Pencil,
+  'tag.setColor': Palette,
+  'tag.clearColor': Eraser,
+  'tag.delete': Trash2,
+  'tags.clearFilter': FilterX,
   'view.toggleSidebar': PanelLeft,
   'view.toggleInspector': PanelRight,
   'app.shortcuts': Keyboard,
@@ -24,4 +46,6 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'view.textReset': Type,
   'view.nextPane': ArrowRightToLine,
   'view.previousPane': ArrowLeftToLine,
+  // Not listed in the palette (a run there carries no value); the table is exhaustive.
+  'library.sortBy': ArrowUpDown,
 };

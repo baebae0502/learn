@@ -1,0 +1,151 @@
+@layer components {
+  /* Tag chip (design-spec 6 태그 칩; mockup .chip): a 22 px pill, footnote, --fill-hover. It holds the control that is the chip. */
+  /* The chips of a group wrap (the selector's cloud, the item panel's tags). */
+  .chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    height: 22px; /* local: chip height (design-spec 6) */
+    border-radius: var(--radius-pill);
+    background: var(--fill-hover);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    white-space: nowrap;
+    -webkit-app-region: no-drag;
+  }
+  .chip-main {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+    height: 100%;
+    padding: 0 var(--space-8);
+    border: 0;
+    border-radius: inherit;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: default;
+    outline: none;
+  }
+  .chip-label {
+    min-width: 0;
+  }
+  /* The colour dot (design-spec 4): 8 px with a 0.5 px inner border, the same on a chip and in the table. */
+  .chip .dot,
+  .tag-dots i {
+    flex: none;
+    width: 8px; /* local: colour dot (design-spec 4) */
+    height: 8px; /* local: colour dot (design-spec 4) */
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 0.5px oklch(0% 0 0 / 0.16); /* local: the dot's 0.5 px inner border (design-spec 4) */
+  }
+  .chip:is(:hover, [data-force~='hover']) {
+    background: var(--fill-pressed);
+  }
+  .chip:is(:has(> .chip-main:focus-visible), [data-force~='focus']) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  /* Not in the view shown (모든 태그): a hairline ring and tertiary text. */
+  .chip.is-dim {
+    color: var(--text-tertiary);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--fill-hover);
+  }
+  .chip.is-dim:is(:hover, [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  /* In the filter: the accent fill. */
+  .chip.is-on {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .chip.is-on:is(:hover, [data-force~='hover']) {
+    background: var(--accent-hover);
+  }
+  /* 태그 추가 (the item panel's): only a border. */
+  .chip.add {
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  /* Chosen but not in the view shown: the filter can only empty the table (spec 3.6), so the dim chip's hollow stays, in accent. */
+  .chip.is-on.is-dim {
+    background: transparent;
+    color: var(--accent-text);
+    box-shadow: inset 0 0 0 1px var(--accent-text);
+  }
+  .chip.is-on.is-dim:is(:hover, [data-force~='hover']) {
+    background: var(--fill-hover);
+  }
+  /* The × of an assigned chip always has its place (the chip's width does not move) and shows on hover or focus (design-spec 6). */
+  .chip .x {
+    display: grid;
+    visibility: hidden;
+    place-items: center;
+    flex: none;
+    width: 14px; /* local: the × target */
+    height: 14px; /* local: the × target */
+    margin-left: calc(-1 * var(--space-2)); /* label to × 6: the chip-main's 8 less 2 */
+    margin-right: var(--space-4); /* the × box ends 4 inside the pill */
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--text-secondary);
+    cursor: default;
+  }
+  .chip:is(:hover, :focus-within, [data-force~='hover'], [data-force~='focus']) .x {
+    visibility: visible;
+  }
+  .chip .x:is(:hover) {
+    background: var(--fill-pressed);
+  }
+  /* The name being typed: the pill is the field (design-spec 6 field: a 1 px focus border and the 3 px halo). */
+  .chip.is-editing {
+    gap: var(--space-6);
+    padding: 0 var(--space-8);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  .chip-input {
+    min-width: 2em;
+    max-width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    field-sizing: content;
+  }
+  :root:not([data-platform='darwin']) .chip-input::selection {
+    background: color-mix(in oklch, var(--accent) 35%, transparent);
+    color: inherit;
+  }
+  /* The note about a name that is too long takes a line of its own in the cloud. */
+  .chip-note {
+    flex: 0 0 100%;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+
+  /* The table's colour dots (spec 5.1; mockup .tag-dots): after the title, 4 px apart. */
+  .tag-dots {
+    display: inline-flex;
+    gap: var(--space-4);
+    flex: none;
+  }
+  /* On the accent-filled row the inner border gives way to a 1 px white ring (design-spec 4). */
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] .tag-dots i,
+  .table-row[data-force~='focused'] .tag-dots i {
+    box-shadow: 0 0 0 1px var(--text-on-accent);
+  }
+}

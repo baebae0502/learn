@@ -235,6 +235,16 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     );
   });
 
+  it('searchTexts: the abstract and the memo are cut at 4,000 characters each, shorter ones are left alone (spec 7.1)', () => {
+    const long = seedItem(db);
+    const short = seedItem(db);
+    repo.updateMetadata(long.itemId, { metadata: { creators: [], abstract: `${'가'.repeat(4000)}첫째 이후`, extra: `${'나'.repeat(4500)}둘째 이후` } });
+    repo.updateMetadata(short.itemId, { metadata: { creators: [], abstract: '짧은 초록', extra: '짧은 메모' } });
+    const byId = new Map(repo.searchTexts().map((t) => [t.id, t]));
+    expect(byId.get(long.itemId)).toEqual({ id: long.itemId, abstract: '가'.repeat(4000), extra: '나'.repeat(4000) });
+    expect(byId.get(short.itemId)).toEqual({ id: short.itemId, abstract: '짧은 초록', extra: '짧은 메모' });
+  });
+
   it('degrades corrupt stored metadata to empty without failing the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { itemId } = seedItem(db);
@@ -243,7 +253,7 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expect(warn).toHaveBeenCalledWith('METADATA_CORRUPT_JSON');
   });
 
-  it('reflects tags and reading position in listItems and getItem', () => {
+  it('reflects the reading position in listItems and getItem; tags are not on the item (the organize snapshot has them)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
     const a = seedItem(db);
@@ -257,8 +267,9 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     new ReadingRepository(db).save({ itemId: a.itemId, revisionId: a.revisionId, locator: { kind: 'pdf', pageIndex: 4 }, progress: 0.25 });
 
     const byId = new Map(repo.listItems().map((i) => [i.id, i]));
-    expect(byId.get(a.itemId)).toMatchObject({ tagIds: [t1.id, t2.id], progress: 0.25, openedAt: '2026-10-20T03:00:00.000Z' });
-    expect(byId.get(b.itemId)).toMatchObject({ tagIds: [t1.id], progress: null, openedAt: null });
+    expect(byId.get(a.itemId)).toMatchObject({ progress: 0.25, openedAt: '2026-10-20T03:00:00.000Z' });
+    expect(byId.get(b.itemId)).toMatchObject({ progress: null, openedAt: null });
+    expect(byId.get(a.itemId)).not.toHaveProperty('tagIds');
     expect(repo.getItem(a.itemId)).toEqual(byId.get(a.itemId));
     expect(repo.getItem(b.itemId)).toEqual(byId.get(b.itemId));
   });
@@ -306,13 +317,14 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     expect(repo.getItem(a)).toBeUndefined();
     const trash = repo.listTrash();
     expect(trash.map((i) => i.id)).toEqual([b, a]);
-    expect(trash[1]).toMatchObject({ id: a, tagIds: [tag.id] });
+    expect(trash[1]).toMatchObject({ id: a });
+    expect(trash[1]).not.toHaveProperty('tagIds');
     expect((db.prepare('SELECT deleted_at FROM items WHERE id = ?').get(a) as { deleted_at: string }).deleted_at).toBe('2026-10-20T02:00:00.000Z');
     expect(repo.counts().items).toBe(1);
 
     expect(repo.restore([a, c, newId()])).toBe(1); // only a was in the trash
     expect(repo.listTrash().map((i) => i.id)).toEqual([b]);
-    expect(repo.getItem(a)).toMatchObject({ id: a, tagIds: [tag.id] });
+    expect(repo.getItem(a)).toMatchObject({ id: a });
     expect(repo.listItems().map((i) => i.id).sort()).toEqual([a, c].sort());
   });
 
@@ -387,5 +399,87 @@ describe('LibraryRepository.insertItemsForAsset (E2E seeding only, P-22)', () =>
     invalid[1] = { ...invalid[1]!, metadataJson: JSON.stringify({ date: 'soon' }) };
     expect(() => repo.insertItemsForAsset(invalid)).toThrow(/metadata/);
     expect(repo.counts().items).toBe(2);
+  });
+});
+
+describe('LibraryRepository.getItems', () => {
+  it('answers the live items among the ids, once each, in the order asked', () => {
+    const [a, b, c] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    repo.trash([b]);
+    const unknown = newId();
+    expect(repo.getItems([c, unknown, a, b, c]).map((i) => i.id)).toEqual([c, a]); // unknown and trashed are skipped, c once
+    expect(repo.getItems([])).toEqual([]);
+    expect(repo.getItems([a])[0]).toEqual(repo.getItem(a));
+  });
+
+  it('asks the database 500 ids at a time, however many it is given', () => {
+    const real = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    const filler = Array.from({ length: 1200 }, () => newId());
+    // One real id in each of the three chunks (positions 0, 600 and 1202 of 1203).
+    const asked = [real[0]!, ...filler.slice(0, 599), real[1]!, ...filler.slice(599), real[2]!];
+    expect(asked).toHaveLength(1203);
+    const prepare = vi.spyOn(db, 'prepare');
+    try {
+      expect(repo.getItems(asked).map((i) => i.id)).toEqual(real);
+      const variables = prepare.mock.calls.map(([sql]) => (String(sql).match(/\?/g) ?? []).length).filter((n) => n > 0);
+      expect(variables).toEqual([500, 500, 203]);
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+});
+
+describe('LibraryRepository.insertImported into a collection', () => {
+  const filed = (collectionId: string, itemId: string) =>
+    db.prepare('SELECT added_at FROM collection_items WHERE collection_id = ? AND item_id = ?').get(collectionId, itemId) as { added_at: string } | undefined;
+
+  it('files the item in the collection in the same transaction and says so', () => {
+    const coll = new CollectionsRepository(db).create({ name: '강의' });
+    const rec = { ...record(asset(SHA_A, 'managed')), collectionId: coll.id };
+    expect(repo.insertImported(rec)).toBe(true);
+    expect(filed(coll.id, rec.item.id)).toEqual({ added_at: rec.item.createdAt });
+    expect(new CollectionsRepository(db).get(coll.id)).toMatchObject({ itemCount: 1 });
+  });
+
+  it('imports anyway, with no membership, when the collection was deleted meanwhile or never existed', () => {
+    const cols = new CollectionsRepository(db);
+    const gone = cols.create({ name: '지운 것' });
+    cols.softDelete(gone.id);
+    const one = { ...record(asset(SHA_A, 'managed')), collectionId: gone.id };
+    expect(repo.insertImported(one)).toBe(false);
+    expect(repo.getItem(one.item.id)).toMatchObject({ id: one.item.id });
+    const two = { ...record(asset(SHA_B, 'managed')), collectionId: newId() };
+    expect(repo.insertImported(two)).toBe(false);
+    expect(repo.getItem(two.item.id)).toMatchObject({ id: two.item.id });
+    expect(repo.counts().collectionItems).toBe(0);
+  });
+
+  it('files nothing without a collection (absent or null)', () => {
+    expect(repo.insertImported(record(asset(SHA_A, 'managed')))).toBe(false);
+    expect(repo.insertImported({ ...record(asset(SHA_B, 'managed')), collectionId: null })).toBe(false);
+    expect(repo.counts()).toMatchObject({ items: 2, collectionItems: 0 });
+  });
+});
+
+describe('LibraryRepository.targetFacts', () => {
+  it('answers the storage mode and availability of the live items among the ids, once each, in the order asked', () => {
+    const [a, b, c] = [seedItem(db).itemId, seedItem(db).itemId, seedItem(db).itemId];
+    repo.trash([b]);
+    const facts = repo.targetFacts([c, newId(), a, b, c]);
+    expect(facts.map((f) => f.id)).toEqual([c, a]);
+    expect(facts[0]).toEqual({ id: c, storageMode: repo.getItem(c)!.storageMode, availability: repo.getItem(c)!.availability });
+    expect(repo.targetFacts([])).toEqual([]);
+  });
+
+  it('asks the database 500 ids at a time', () => {
+    const real = [seedItem(db).itemId, seedItem(db).itemId];
+    const asked = [real[0]!, ...Array.from({ length: 700 }, () => newId()), real[1]!];
+    const prepare = vi.spyOn(db, 'prepare');
+    try {
+      expect(repo.targetFacts(asked).map((f) => f.id)).toEqual(real);
+      expect(prepare.mock.calls.map(([sql]) => (String(sql).match(/\?/g) ?? []).length).filter((n) => n > 0)).toEqual([500, 202]);
+    } finally {
+      prepare.mockRestore();
+    }
   });
 });

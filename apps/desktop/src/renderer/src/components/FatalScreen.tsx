@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { NO_LIBRARY_VIEW } from '@learn/domain';
 import { DatabaseZap, MonitorX } from 'lucide-react';
 import { api, unwrap } from '../api';
 import { useReportIdle } from '../app/useReportIdle';
@@ -35,7 +36,7 @@ export function FatalScreen({ kind = 'library', code, libraryRoot = null, backup
   useReportIdle(true);
   // No library, no registry command can run: only main-owned commands (설정…) stay in the menu bar.
   useEffect(() => {
-    void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 });
+    void api().ui.reportContext({ view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW });
   }, []);
   const sep = currentPlatform() === 'win32' ? '\\' : '/';
   const backup = kind === 'library' && libraryRoot && backupFile ? `${libraryRoot}${sep}${backupFile}` : null;

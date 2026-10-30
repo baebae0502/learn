@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
-import { COMMANDS, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
+import { COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
 import { CHANNEL_KINDS } from '../../apps/desktop/src/main/ipc/channel-kinds';
 import type { WindowKind } from '../../apps/desktop/src/main/window-kinds';
 import {
@@ -18,7 +18,7 @@ test.beforeAll(() => {
 });
 
 /** What an empty library reports first: no items, nothing selected. */
-const EMPTY_LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0 };
+const EMPTY_LIBRARY: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
 const TOP_LABELS: Record<MenuName, string> = { app: 'Learn', file: '파일', edit: '편집', view: '보기', go: '이동', window: '윈도우', help: '도움말' };
 const HANGUL = /[가-힣]/;
 
@@ -34,7 +34,7 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
 /** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin). */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
 ];
 
@@ -132,14 +132,27 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     }
     // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
-      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], ['-', ''],
-      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], ['-', ''],
+      [null, '파일 가져오기…'], [null, '외부 파일 연결…'], [null, '새\u00a0컬렉션'], ['-', ''],
+      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], [null, '컬렉션에 추가'], [null, '이 컬렉션에서 빼기'], ['-', ''],
       ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
     if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
     // The text size group; the second 글자 크게 is ⌘+'s hidden ⌘= twin (menuSnapshot does not carry `visible`).
     expect(entries(topMenu(menu, '보기'))).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
+    // 정렬 기준 ▸ (spec 5.2): off in the empty library, its rows drawn from the default sort and the five default columns.
+    const sort = all.find((n) => n.id === 'library.sortBy')!;
+    expect(sort).toMatchObject({ label: '정렬 기준', enabled: false });
+    expect(sort.submenu!.map((n) => (n.type === 'separator' ? ['-'] : [n.id, n.label, n.type, n.checked]))).toEqual([
+      ['library.sortBy?column=title', '제목', 'radio', false],
+      ['library.sortBy?column=creators', '저자', 'radio', false],
+      ['library.sortBy?column=year', '연도', 'radio', false],
+      ['library.sortBy?column=type', '종류', 'radio', false],
+      ['library.sortBy?column=createdAt', '추가일', 'radio', true],
+      ['-'],
+      ['library.sortBy?direction=asc', '오름차순', 'radio', false],
+      ['library.sortBy?direction=desc', '내림차순', 'radio', true],
+    ]);
     expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
@@ -245,7 +258,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
-    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…']);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…', '컬렉션에 추가']);
   } finally {
     await app.close();
   }

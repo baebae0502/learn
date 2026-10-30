@@ -17,7 +17,8 @@ import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
 import { median, percentile } from './percentile';
-import { searchSteps } from './search-steps';
+import { organizeSteps, searchSteps } from './search-steps';
+import { seedOrganizeFixture } from './organize-fixture';
 
 interface Marks {
   processStart: number;
@@ -360,7 +361,7 @@ test('a drop of 8 files into an empty library: drop → overlay gone → import 
 });
 
 /** spec 9, ms. Linux CI fails beyond twice each; every other run reports. */
-const LIBRARY_BUDGET_MS = { listIpc: 150, firstPaint: 500, inputToPaintP95: 50, searchP95: 300, scrollFrameP95: 16.7, sortToPaint: 100, inspectorToPaint: 100 } as const;
+const LIBRARY_BUDGET_MS = { listIpc: 150, firstPaint: 500, inputToPaintP95: 50, paletteInputToPaintP95: 50, searchP95: 300, scrollFrameP95: 16.7, sortToPaint: 100, inspectorToPaint: 100 } as const;
 const LIBRARY_ITEMS = 10_000;
 /** Each single-shot timing five times (spec 9: five or more). */
 const LIBRARY_RUNS = 5;
@@ -371,20 +372,22 @@ interface PerfLog {
   marks: Array<{ name: string; at: number }>;
   measures: Array<{ name: string; ms: number }>;
   inputs: number[];
+  paletteInputs: number[];
 }
 const tenth = (x: number) => Math.round(x * 10) / 10;
 
 test('10,000 items: list, first rows, quick search, scroll, sort and the item panel against spec 9 (library-perf.json)', { tag: '@perf' }, async ({}, testInfo) => {
   const linuxCi = process.platform === 'linux' && Boolean(process.env['CI']);
-  // On Linux CI the whole test, the seeding and five launches included, ends within a minute.
-  test.setTimeout(linuxCi ? 60_000 : 180_000);
+  // On Linux CI the whole test, the seeding and five launches included, ends within 90 s: the limit stops a hang.
+  test.setTimeout(linuxCi ? 90_000 : 180_000);
   const lib = testInfo.outputPath('library');
   const ud = testInfo.outputPath('userdata');
   const shownTotal = async (page: Page) => Number(/^(\d+)개$/.exec((await page.getByTestId('toolbar-count').textContent()) ?? '')?.[1] ?? 0);
 
   // 1. One real PDF, then 10,000 items that share its asset: one transaction, one libraryChanged. The rows are made
   //    here (seedRows; main keeps no sample data), and the search inputs below come from them.
-  const libraryRows = seedRows(LIBRARY_ITEMS);
+  const libraryRows = seedRows(LIBRARY_ITEMS, 1, undefined, { longTexts: true });
+  let organize!: Awaited<ReturnType<typeof seedOrganizeFixture>>;
   const seeded = await launch(lib, ud);
   try {
     const [from] = await importPaths(seeded.page, [path.join(FIXTURES, 'sample.pdf')]);
@@ -394,6 +397,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     );
     expect(added, 'main added every seeded row, in one transaction').toBe(LIBRARY_ITEMS);
     await expect.poll(() => shownTotal(seeded.page), { timeout: 30_000 }).toBeGreaterThanOrEqual(LIBRARY_ITEMS);
+    // M5: spec 12's library — 200 collections, 50 tags, 30,000 memberships, 20,000 assignments, 50 duplicate groups — so the list,
+    // the search (tag names in its index) and the palette (collections among its rows) are timed with the organise data present.
+    organize = await seedOrganizeFixture(seeded.app, seeded.page);
+    await expect.poll(() => shownTotal(seeded.page), { timeout: 30_000 }).toBe(organize.fixture.n);
   } finally {
     await seeded.app.close();
   }
@@ -461,8 +468,20 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       return { out, count };
     }, LIBRARY_RUNS);
     const listIpcMs = listed.out;
+    /** The M4 record (docs/mac-verification.md, Linux xvfb of the library task): the list is to be no slower now that tagIds are gone. */
+    const M4_LIST_IPC_MS = 269;
+    // The long fields' payload (spec 7.1): the seeded abstracts and memos, each cut at 4,000 characters.
+    const searchTextsPayload = await page.evaluate(async () => {
+      const t0 = performance.now();
+      const r = await window.learn.library.searchTexts();
+      if (!r.ok) throw new Error(`library.searchTexts failed: ${r.code}`);
+      const longestField = r.data.reduce((m, t) => Math.max(m, t.abstract?.length ?? 0, t.extra?.length ?? 0), 0);
+      return { items: r.data.length, bytes: new TextEncoder().encode(JSON.stringify(r.data)).length, longestField, ms: Math.round(performance.now() - t0) };
+    });
+    expect(searchTextsPayload.items, 'every seeded row with an abstract or a memo comes back').toBe(libraryRows.filter((r) => r.abstract || r.extra).length);
+    expect(searchTextsPayload.longestField, 'no field is longer than the cut (SEARCH_TEXT_FIELD_MAX)').toBeLessThanOrEqual(4000);
     await page.evaluate(() => {
-      const log: PerfLog = { marks: [], measures: [], inputs: [] };
+      const log: PerfLog = { marks: [], measures: [], inputs: [], paletteInputs: [] };
       (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog = log;
       new PerformanceObserver((list) => {
         for (const e of list.getEntries()) {
@@ -472,22 +491,24 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
         }
       }).observe({ entryTypes: ['mark', 'measure'] });
       document.addEventListener('input', (e) => {
-        if ((e.target as Element | null)?.closest('[data-testid="search-field"]')) log.inputs.push(e.timeStamp);
+        const target = e.target as Element | null;
+        if (target?.closest('[data-testid="search-field"]')) log.inputs.push(e.timeStamp);
+        else if (target?.closest('[data-testid="palette-input"]')) log.paletteInputs.push(e.timeStamp);
       }, true);
     });
     const inputCount = () => page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.inputs.length);
-    /** The first learn:table:painted after `t0` (the page's clock), or null after 3 s. */
-    const paintedAfter = (t0: number) =>
-      page.evaluate(async (t0) => {
+    /** The first mark `name` (the table's by default) after `t0` (the page's clock), or null after 3 s. */
+    const paintedAfter = (t0: number, name = 'learn:table:painted') =>
+      page.evaluate(async ([t0, name]) => {
         const log = (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog;
         const until = performance.now() + 3000;
         while (performance.now() < until) {
-          const m = log.marks.find((x) => x.name === 'learn:table:painted' && x.at > t0);
+          const m = log.marks.find((x) => x.name === name && x.at > t0);
           if (m) return m.at;
           await new Promise((r) => setTimeout(r, 5));
         }
         return null;
-      }, t0);
+      }, [t0, name] as const);
 
     // Quick search, one character at a time, typed then erased.
     await runMenuCommand(s.app, 'library.find');
@@ -511,7 +532,9 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     // The quick search measures of the timed inputs only: the warm-up query above is left out.
     const measuresBefore = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures)).filter((m) => m.name === 'learn:search').length;
     const steps = searchSteps(libraryRows);
-    for (const step of steps) {
+    // The tag step reaches the search's tag field and the collection step the palette's collection rows.
+    const extra = organizeSteps({ tag: organize.fixture.facts.tagNames[0]!, collection: organize.fixture.facts.collectionNames[0]! });
+    for (const step of [...steps, ...extra.tag]) {
       for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
       for (let i = 0; i < step.chars.length; i++) await timeInput(() => page.keyboard.press('Backspace'));
     }
@@ -523,10 +546,39 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       .map((m) => tenth(m.ms));
     expect(searchMs.length, "quick search is timed (timed() in search.ts' searchCached)").toBeGreaterThan(0);
 
-    // Scroll: the grid is the table's own scroll view (a sticky header, the rows placed by the virtualizer), 40 px every
+    // The palette (spec 12: input → paint, p95 ≤ 50 ms at 10,000 items): ⌘K, then the same inputs typed and erased in its
+    // field, each timed to the first frame that paints its rows (usePaintMark, learn:palette:painted).
+    await runMenuCommand(s.app, 'app.palette');
+    await expect(page.getByTestId('palette-input')).toBeFocused();
+    const paletteInputCount = () => page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.paletteInputs.length);
+    await page.keyboard.insertText('a'); // the warm-up: not timed
+    await page.waitForTimeout(500);
+    await page.keyboard.press('Backspace');
+    await page.waitForTimeout(300);
+    const paletteMs: number[] = [];
+    let paletteUnpainted = 0;
+    const timePaletteInput = async (act: () => Promise<void>) => {
+      const before = await paletteInputCount();
+      await act();
+      await expect.poll(paletteInputCount).toBe(before + 1);
+      const t0 = await page.evaluate((i) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.paletteInputs[i]!, before);
+      const painted = await paintedAfter(t0, 'learn:palette:painted');
+      if (painted === null) paletteUnpainted++;
+      else paletteMs.push(Math.round(painted - t0));
+    };
+    for (const step of [...steps, ...extra.collection]) {
+      for (const ch of step.chars) await timePaletteInput(() => page.keyboard.insertText(ch));
+      for (let i = 0; i < step.chars.length; i++) await timePaletteInput(() => page.keyboard.press('Backspace'));
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    expect(paletteUnpainted, 'every palette input re-drew its rows (usePaintMark on the query)').toBe(0);
+    expect(paletteMs.length, 'enough palette inputs for a p95').toBeGreaterThanOrEqual(20);
+
+    // Scroll: the scroller is the table's own scroll view (the rows placed by the virtualizer, the header above it), 40 px every
     // frame for 150 frames.
     const scroll = await page.evaluate(async () => {
-      const target = document.querySelector<HTMLElement>('[data-testid="library-table"]')!;
+      const target = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       if (target.scrollHeight <= target.clientHeight + 1) throw new Error('the table does not scroll');
       const deltas: number[] = [];
       await new Promise<void>((done) => {
@@ -597,21 +649,26 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       runs: LIBRARY_RUNS,
       budgetMs: LIBRARY_BUDGET_MS,
       linuxCiLimitMs: Object.fromEntries(Object.entries(LIBRARY_BUDGET_MS).map(([k, v]) => [k, 2 * v])),
-      listIpcMs: { runs: listIpcMs, median: median(listIpcMs) },
+      listIpcMs: { runs: listIpcMs, median: median(listIpcMs), m4BaselineMs: M4_LIST_IPC_MS, vsM4Ms: median(listIpcMs) - M4_LIST_IPC_MS },
+      organizeFixture: { collections: organize.fixture.spec.collections, tags: organize.fixture.spec.tags, memberships: organize.fixture.spec.memberships, assignments: organize.fixture.spec.assignments, duplicateGroups: organize.fixture.spec.duplicateGroups },
       firstPaintMs: { runs: firstPaintMs, median: median(firstPaintMs) },
-      inputToPaintMs: { inputs: inputToPaintMs.length, groups: steps.map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintMs: { inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
+      searchTextsPayload,
+      paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
       scrollFrameMs: { frames: frameMs.length, p95: percentile(frameMs, 95), max: Math.max(...frameMs), scrolledPx: scroll.scrolledTo },
       sortToPaintMs: { columns: SORT_COLUMNS, runs: sortToPaintMs, median: median(sortToPaintMs), max: Math.max(...sortToPaintMs) },
       inspectorToPaintMs: { panel, forcedShown, runs: inspectorToPaintMs, median: median(inspectorToPaintMs), max: Math.max(...inspectorToPaintMs) },
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('library-perf.json', result, 'M4 library of 10,000 items: list, first rows, quick search, scroll, sort, item panel (spec 9)');
+    if (median(listIpcMs) > M4_LIST_IPC_MS) testInfo.annotations.push({ type: 'list IPC above the M4 record', description: `${median(listIpcMs)} ms against ${M4_LIST_IPC_MS} ms` });
+    writeJson('library-perf.json', result, 'M4 library of 10,000 items: list, first rows, quick search, search payload, palette, scroll, sort, item panel (spec 9, M5 12), over the organise fixture');
     console.log(
       '[measure] library',
       JSON.stringify({
         list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, searchP95: result.searchMs.p95,
+        paletteP95: result.paletteInputToPaintMs.p95, textsBytes: result.searchTextsPayload.bytes,
         scrollP95: result.scrollFrameMs.p95, sort: result.sortToPaintMs.median, inspector: result.inspectorToPaintMs.median,
       }),
     );
@@ -624,6 +681,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       gate(result.listIpcMs.median, LIBRARY_BUDGET_MS.listIpc, 'library.list of 10,000 items, median');
       gate(result.firstPaintMs.median, LIBRARY_BUDGET_MS.firstPaint, 'list arrived → first rows painted, median');
       gate(result.inputToPaintMs.p95, LIBRARY_BUDGET_MS.inputToPaintP95, 'search input → rows painted, p95');
+      gate(result.paletteInputToPaintMs.p95, LIBRARY_BUDGET_MS.paletteInputToPaintP95, 'palette input → rows painted, p95');
       gate(result.searchMs.p95, LIBRARY_BUDGET_MS.searchP95, 'metadata search, p95');
       gate(result.scrollFrameMs.p95, LIBRARY_BUDGET_MS.scrollFrameP95, 'scroll frame interval, p95');
       gate(result.sortToPaintMs.median, LIBRARY_BUDGET_MS.sortToPaint, 'sort column change → rows painted, median');

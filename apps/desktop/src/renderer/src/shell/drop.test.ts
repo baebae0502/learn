@@ -197,8 +197,8 @@ describe('the document refuses drops nothing takes (review minor 2)', () => {
   function guarded() {
     const listeners = new Map<string, (e: Event) => void>();
     guardDocumentDrops({ addEventListener: (type: string, fn: (e: Event) => void) => listeners.set(type, fn) } as unknown as Document);
-    return (type: 'dragover' | 'drop', init: { defaultPrevented?: boolean; dropEffect?: string } = {}) => {
-      const dataTransfer = { dropEffect: init.dropEffect ?? 'copy' };
+    return (type: 'dragover' | 'drop', init: { defaultPrevented?: boolean; dropEffect?: string; types?: string[] } = {}) => {
+      const dataTransfer = { dropEffect: init.dropEffect ?? 'copy', types: init.types ?? [] };
       const e = { defaultPrevented: init.defaultPrevented ?? false, dataTransfer, preventDefault: vi.fn() };
       listeners.get(type)!(e as unknown as Event);
       return e;
@@ -218,5 +218,14 @@ describe('the document refuses drops nothing takes (review minor 2)', () => {
     const fire = guarded();
     const taken = fire('dragover', { defaultPrevented: true, dropEffect: 'move' });
     expect(taken.dataTransfer.dropEffect).toBe('move');
+  });
+
+  it('a drag of our own — rows, a collection, a tag — follows the same rule: refused where no drop target took it, left alone where one did (M5 spec 8.1)', () => {
+    const fire = guarded();
+    for (const type of ['application/x-learn-items+json', 'application/x-learn-collection+json', 'application/x-learn-tag+json']) {
+      expect(fire('dragover', { types: [type] }).dataTransfer.dropEffect, type).toBe('none');
+      expect(fire('dragover', { types: [type], defaultPrevented: true, dropEffect: 'copy' }).dataTransfer.dropEffect, type).toBe('copy');
+      expect(fire('drop', { types: [type] }).preventDefault, type).toHaveBeenCalled();
+    }
   });
 });

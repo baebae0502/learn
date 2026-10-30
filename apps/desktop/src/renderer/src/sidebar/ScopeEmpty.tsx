@@ -24,7 +24,7 @@ export function ScopeEmpty({ scope, name }: { scope: LibraryScope; name: string 
         top
         testId="collection-empty"
         action={
-          <Button testId="collection-empty-import" isDisabled={!isEnabled('collection.importInto', target)} onPress={() => void run('collection.importInto', target)}>
+          <Button testId="collection-empty-import" isDisabled={!isEnabled('collection.importInto', target)} disabledReason={t.common.busy} onPress={() => void run('collection.importInto', target)}>
             {commandLabel(commandById('collection.importInto'), currentPlatform())}
           </Button>
         }

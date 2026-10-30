@@ -6,8 +6,8 @@ import { platformAccelerator } from '../../packages/domain/src/accelerator';
 import { commandById, type CommandId } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createCollectionTree, drag, dropSource, expandAll, expectWindow, importFiles, importPaths, launch, menuSnapshot,
-  menuItemEnabled, organizeSnapshot, rowAt, runMenuCommand, runPalette, specialRow, stubConfirm, stubContextMenu, stubOpenDialog, treeRow, type MenuNode,
+  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createCollectionTree, drag, dropSource, expandAll, expectDisabledReason, expectWindow, holdOpenDialog, importFiles, importPaths, launch, menuSnapshot,
+  menuItemEnabled, openItem, organizeSnapshot, releaseOpenDialog, rowAt, runMenuCommand, runPalette, specialRow, stubConfirm, stubContextMenu, stubOpenDialog, treeRow, type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -46,6 +46,13 @@ test('⇧⌘N makes a row in the tree and names it in place; ↩ creates it and 
     await page.keyboard.press('Escape');
     await expect(field(page)).toHaveCount(0);
     expect(await names(page)).toEqual(['논문 읽기']);
+
+    // In the reader 새 컬렉션 is off (a library command): the button says why, and comes back with the library.
+    await openItem(page, 'sample');
+    await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(true);
+    await expectDisabledReason(page.getByTestId('new-collection'), '라이브러리로 돌아가면 만들 수 있습니다');
+    await runMenuCommand(app, 'nav.back');
+    await expectDisabledReason(page.getByTestId('new-collection'), null);
   } finally {
     await app.close();
   }
@@ -287,8 +294,11 @@ test('an empty collection says so in the table and the item panel, and its butto
 
     // The button files the open panel's pick into this collection.
     await treeRow(page, conf).click();
-    await stubOpenDialog(app, [KO_PDF]);
+    // While the open panel is up the button is off and says why.
+    await holdOpenDialog(app, [KO_PDF]);
     await page.getByTestId('collection-empty-import').click();
+    await expectDisabledReason(page.getByTestId('collection-empty-import'), '진행 중인 작업이 끝나면 쓸 수 있습니다');
+    await releaseOpenDialog(app);
     await expect(page.getByTestId('import-done')).toHaveText('‘학회 준비’\u2060에 자료 1개를 가져왔습니다');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
     await expect(treeRow(page, conf).locator('.count')).toHaveText('1');

@@ -16,6 +16,8 @@ export const organize = {
     /** What a new collection starts as and an empty name falls back to (Finder's new folder). */
     newName: '새\u00a0컬렉션',
     newTip: '새\u00a0컬렉션',
+    /** The "+" while the reader shows: 새 컬렉션 is a library command (its disabled reason). */
+    newInReader: '라이브러리로 돌아가면 만들 수 있습니다',
     emptyHint: '컬렉션이 없습니다. 자료를 묶으려면 새\u00a0컬렉션을 만드세요.',
     nameLabel: '컬렉션 이름',
     nameTooLong: '컬렉션 이름은 200자까지 쓸 수 있습니다.',

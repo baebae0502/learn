@@ -42,6 +42,7 @@ export function TagFilterEmpty() {
         <Button
           testId="tag-filter-empty-clear"
           isDisabled={!isEnabled('tags.clearFilter')}
+          disabledReason={t.common.busy}
           onPress={() => {
             run('tags.clearFilter');
             requestAnimationFrame(focusTagStop);

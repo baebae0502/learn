@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createTag, expectWindow, importPaths, launch, makeTags, menuSnapshot, openItem, organizeSnapshot,
-  recordedPopupPoints, recordedPopups, rowByTitle, runMenuCommand, runPalette, selectRows, setTagColor, stubConfirm, stubContextMenu, tagChip, tokenColor, type MenuNode,
+  FIXTURES, addToCollection, closeSheet, confirmCalls, createCollection, createTag, expectDisabledReason, expectWindow, holdOpenDialog, importPaths, launch, makeTags, menuSnapshot, openItem, organizeSnapshot,
+  recordedPopupPoints, recordedPopups, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, setTagColor, stubConfirm, stubContextMenu, tagChip, tokenColor, type MenuNode,
 } from './helpers';
 import { expectNoSeriousA11y } from './a11y';
 
@@ -162,6 +162,12 @@ test('filter: chips narrow the table to the items that have every chosen tag, N�
     await expect(page.getByTestId('tag-filter-empty')).toBeVisible();
     await expect(page.getByTestId('tag-filter-empty')).toContainText('고른 태그를 모두 가진 자료가 없습니다');
     await expect(page.getByTestId('search-empty')).toHaveCount(0);
+    // While the open panel of an import is up the button is off and says why.
+    await holdOpenDialog(app, []);
+    await runMenuCommand(app, 'file.importManaged');
+    await expectDisabledReason(page.getByTestId('tag-filter-empty-clear'), '진행 중인 작업이 끝나면 쓸 수 있습니다');
+    await releaseOpenDialog(app); // cancelled: nothing imported
+    await expectDisabledReason(page.getByTestId('tag-filter-empty-clear'), null);
     await page.getByTestId('tag-filter-empty-clear').click();
     await expect(page.getByTestId('tag-filter-empty')).toHaveCount(0);
     await expect(tagChip(page, f3)).toHaveAttribute('aria-pressed', 'false');

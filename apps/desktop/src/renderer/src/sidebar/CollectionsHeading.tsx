@@ -12,7 +12,7 @@ import { IconButton } from '../ui/Button';
  * `dropRoot`: the tree's heading takes a collection dropped on it (spec 8.3: it becomes top-level); the standalone one has nothing to take.
  */
 export function CollectionsHeading({ dropRoot = false }: { dropRoot?: boolean }) {
-  const { run, isEnabled } = useCommands();
+  const { env, run, isEnabled } = useCommands();
   const body = (
     <>
       <span className="heading-label" data-testid="collections-heading">
@@ -26,6 +26,7 @@ export function CollectionsHeading({ dropRoot = false }: { dropRoot?: boolean })
         accelerator={commandById('collection.new').accelerator}
         excludeFromTabOrder
         isDisabled={!isEnabled('collection.new')}
+        disabledReason={env.view === 'viewer' ? t.organize.sidebar.newInReader : t.common.busy}
         testId="new-collection"
         onPress={() => void run('collection.new')}
       />

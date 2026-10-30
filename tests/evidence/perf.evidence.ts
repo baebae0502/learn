@@ -378,7 +378,7 @@ const tenth = (x: number) => Math.round(x * 10) / 10;
 
 test('10,000 items: list, first rows, quick search, scroll, sort and the item panel against spec 9 (library-perf.json)', { tag: '@perf' }, async ({}, testInfo) => {
   const linuxCi = process.platform === 'linux' && Boolean(process.env['CI']);
-  // On Linux CI the whole test, the seeding and five launches included, ends within a minute.
+  // On Linux CI the whole test, the seeding and five launches included, ends within 90 s: the limit stops a hang.
   test.setTimeout(linuxCi ? 90_000 : 180_000);
   const lib = testInfo.outputPath('library');
   const ud = testInfo.outputPath('userdata');

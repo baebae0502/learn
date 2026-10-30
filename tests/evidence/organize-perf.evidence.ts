@@ -279,18 +279,26 @@ test('10,000 items with the organise fixture: organise IPC, view switch, tag fil
 
     // 6. Key 1 on every item: the library has some items with the tag, so the first press adds it to all, the next takes it from all.
     await page.keyboard.press('ControlOrMeta+a');
-    await expect(rowAt(page, 0)).toHaveAttribute('data-selected', /.*/);
+    // Row 0 was selected already: the timings below are the all-selected key only once the panel counts every item.
+    await expect(page.getByTestId('inspector-multi').locator('h2')).toHaveText(`자료 ${n}개 선택`);
     const allAdd: number[] = [];
     const allRemove: number[] = [];
     for (let k = 0; k < 2 * RUNS; k++) {
       const on = k % 2 === 0;
       (on ? allAdd : allRemove).push(await key({ dots: { tagId: tag0, on } }));
+      if (k === 0) {
+        const tagged = await page.evaluate(async (tagId) => {
+          const r = await window.learn.library.organize();
+          return r.ok ? (r.data.tagged[tagId]?.length ?? 0) : -1;
+        }, tag0);
+        expect(tagged, 'the first press tagged every item').toBe(n);
+      }
     }
 
     // 7. The context menu with everything selected: the page's contextmenu event → main's Menu.popup (stubbed: the OS draws the menu).
     await stubContextMenu(app, null);
     // the timing below is only the all-selected menu if the selection really is every item
-    await expect(page.getByTestId('inspector-multi').locator('h2')).toHaveText('자료 10001개 선택');
+    await expect(page.getByTestId('inspector-multi').locator('h2')).toHaveText(`자료 ${n}개 선택`);
     const menuMs: number[] = [];
     const beforeMenu = await settleCalls(app, 300);
     for (let i = 0; i < RUNS; i++) {

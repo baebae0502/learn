@@ -188,9 +188,14 @@ test('the keyboard cursor still scrolls its row in under the 4 px top inset and 
         return document.querySelector('[data-testid="item-row"][data-index="0"]')!.getBoundingClientRect().top - view.getBoundingClientRect().top;
       });
     await expect.poll(gapAbove).toBeCloseTo(4, 0);
-    // One row up from the 40th: PageUp/PageDown land fully below the header's edge (the scroller's top).
+    // PageDown moves the cursor a page down, and the row it lands on is in full view: below the header's edge (the scroller's
+    // top) and above the bottom.
+    const focusedIndex = () => page.evaluate(() => Number(document.activeElement?.getAttribute('data-index') ?? -1));
     await page.keyboard.press('PageDown');
+    await expect.poll(focusedIndex, { message: 'PageDown moved the cursor' }).toBeGreaterThan(0);
+    const first = await focusedIndex();
     await page.keyboard.press('PageDown');
+    await expect.poll(focusedIndex, { message: 'and again' }).toBeGreaterThan(first);
     const r = await page.evaluate(() => {
       const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!.getBoundingClientRect();
       const cur = document.activeElement!.getBoundingClientRect();

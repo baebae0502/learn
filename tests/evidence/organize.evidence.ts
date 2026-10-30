@@ -34,14 +34,24 @@ const noted = (name: string, entries: ManifestEntry[]): ManifestEntry[] => {
 };
 /** page + window + screen shots, the failed ones listed in `shotFailures`. */
 const shots = async (app: Parameters<typeof allShots>[0], page: Page, name: string, description: string): Promise<ManifestEntry[]> => noted(name, await allShots(app, page, name, description));
-/** Every check's verdict and the value it was judged on, in the order measured (asserted by the last test). */
-const checks: Record<string, { ok: boolean; value: unknown }> = {};
-const save = () => writeJson('m5-organize.json', { ...results, checks, platform: `${process.platform}-${process.arch}`, at: new Date().toISOString() }, 'M5 organize measurements');
+/**
+ * Every check's verdict and the value it was judged on, in the order measured (asserted by the last test). `ok: null`: the
+ * probe could not read the answer (System Events cannot address a pop-up), so the check is neither passed nor failed — the
+ * PNGs judge it, and the tally counts it apart.
+ */
+const checks: Record<string, { ok: boolean | null; value: unknown }> = {};
+const tally = () => {
+  const oks = Object.values(checks).map((c) => c.ok);
+  return { total: oks.length, ok: oks.filter((o) => o === true).length, unread: oks.filter((o) => o === null).length, failed: oks.filter((o) => o === false).length };
+};
+const save = () => writeJson('m5-organize.json', { ...results, checks, tally: tally(), platform: `${process.platform}-${process.arch}`, at: new Date().toISOString() }, 'M5 organize measurements');
 
 /** Record one check (judged later, never here). */
-function check(name: string, ok: boolean, value: unknown): void {
+function check(name: string, ok: boolean | null, value: unknown): void {
   checks[name] = { ok, value };
 }
+/** All of `reads` true: true; any false: false; otherwise (some could not be read) null. */
+const allRead = (...reads: Array<boolean | null>): boolean | null => (reads.includes(false) ? false : reads.includes(null) ? null : true);
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
 /** Run a carried check; a throw becomes a failed check with the error (codes and messages only, never a path). */
 async function guard(name: string, run: () => Promise<void>): Promise<void> {
@@ -414,8 +424,8 @@ test('M5 tags: the chip menu with 색 지정 ▸ open and the item menu with 색
   await sleep(1200);
   const item = await captureOpenPopupSubmenu(s.app, pid, '색 태그', popupRowNumber('item', 'colorTags'), 'm5-06-menu-item-color-tags', 'the item menu with 색 태그 ▸ open: the tags by slot, the digits at the right, a check for what every selected item has');
   results['tagMenus'] = { chip, item };
-  // `opened` is null when System Events cannot address a pop-up: the controller then reads the PNGs.
-  check('tag menus: ran and, where System Events can tell, the submenus opened', (chip.opened ?? true) && (item.opened ?? true), { chip: chip.opened, item: item.opened });
+  // `opened` is null when System Events cannot address a pop-up: the check is then unread (null), and the PNGs judge it.
+  check('tag menus: ran and, where System Events can tell, the submenus opened', allRead(chip.opened, item.opened), { chip: chip.opened, item: item.opened });
 });
 
 test('M5 item panel: 태그 and 컬렉션 sections, the add field with suggestions, several items with the open 컬렉션에 추가 ▾ — light and dark', TAG, async () => {
@@ -526,9 +536,11 @@ function downsTo(rows: readonly PopupRow[], label: string): number | null {
   const at = rows.filter((r) => r.type !== 'separator' && r.visible && r.enabled).findIndex((r) => r.label === label);
   return at < 0 ? null : at + 1;
 }
-/** `run` or, when it does not answer in `ms` (main is busy under a native menu, say), `fallback`. */
-const within = <T>(run: Promise<T>, ms: number, fallback: T): Promise<T> =>
-  Promise.race([run.catch(() => fallback), new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
+/** `run` or, when it does not answer in `ms` (main is busy under a native menu, say), `fallback`. The timer goes with the answer. */
+const within = <T>(run: Promise<T>, ms: number, fallback: T): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([run.catch(() => fallback), new Promise<T>((resolve) => (timer = setTimeout(() => resolve(fallback), ms)))]).finally(() => clearTimeout(timer));
+};
 
 test('downsTo: counts the rows a key reaches — not separators, disabled rows or rows that are not drawn — and says null when it cannot tell', () => {
   const row = (label: string, over: Partial<PopupRow> = {}): PopupRow => ({ label, type: 'normal', enabled: true, visible: true, ...over });
@@ -643,11 +655,11 @@ test('M5 item context menu: 컬렉션에 추가 ▸ open on a row (macOS only)',
   if (mismatch || shownDowns === null || derived === null) console.warn(`[evidence] item menu ↓ count: derived ${derived}, shown ${shownDowns}, pressed ${opened.downs}, patched ${patched}`);
   results['itemMenu'] = { ...opened, derivedDowns: derived, shownDowns, mismatch, derivedRows, shownRows };
   // A check fails only for a menu that is really wrong: the highlight was read and it never was this row, or the submenu listed
-  // nothing. Anything that could not be read is data (opened: null, fallback: true), not a failure.
-  check('item menu: the 컬렉션에 추가 ▸ submenu opened (where System Events can tell)', opened.opened !== false, { opened: opened.opened, downs: opened.downs, derivedDowns: derived, shownDowns, fallback: opened.fallback });
+  // nothing. Anything that could not be read is data (opened: null, fallback: true) and an unread check, not a pass.
+  check('item menu: the 컬렉션에 추가 ▸ submenu opened (where System Events can tell)', allRead(opened.opened), { opened: opened.opened, downs: opened.downs, derivedDowns: derived, shownDowns, fallback: opened.fallback });
   check(
     'item menu: the submenu that opened lists 새 컬렉션 first (where System Events can read it)',
-    opened.rows === null || opened.rows[0]?.replace(/\s/g, '') === '새컬렉션',
+    opened.rows === null ? null : opened.rows[0]?.replace(/\s/g, '') === '새컬렉션',
     opened.rows,
   );
 });
@@ -978,5 +990,6 @@ test("M5 organize: ⌘K lists 컬렉션 between 자료 and 명령; a collection 
 
 test('M5 organize: verdict of every check above (m5-organize.json checks)', TAG, async () => {
   save();
-  for (const [name, c] of Object.entries(checks)) expect.soft(c.ok, `${name}: ${JSON.stringify(c.value)}`).toBe(true);
+  // An unread check (null) is not a failure; the tally in the JSON keeps it apart from the passes.
+  for (const [name, c] of Object.entries(checks)) expect.soft(c.ok, `${name}: ${JSON.stringify(c.value)}`).not.toBe(false);
 });

@@ -572,8 +572,10 @@ async function findPopup(target: string | number): Promise<{ candidate: string; 
 /**
  * An open pop-up (context) menu: ↓ one row at a time — AppKit skips separators and disabled rows, and → on a row without a
  * submenu goes elsewhere — until System Events says the row `label` is the selected one, then → opens its submenu. `opened`
- * is true when the row was selected and its submenu then lists rows; false when the highlight was READ at every step and never was this row, or the submenu listed nothing; null when System Events cannot address the pop-up or cannot read the highlight or the rows (the
- * PNG is then taken after `fallbackDowns` presses — the row's place among the enabled rows, the first ↓ selecting the first — and judged by eye); false when it could and the submenu did not open.
+ * is true when the row was selected and its submenu then lists rows; false when the highlight was read at every step and never
+ * was this row, or the submenu listed nothing; null when System Events cannot address the pop-up or cannot read the highlight
+ * or the rows (the PNG is then taken after `fallbackDowns` presses — the row's place among the enabled rows, the first ↓
+ * selecting the first — and judged by eye).
  * Escape clears whatever is still open, in a finally.
  */
 export async function captureOpenPopupSubmenu(app: ElectronApplication, target: string | number, label: string, fallbackDowns: number, prefix: string, what: string) {

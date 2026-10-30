@@ -113,7 +113,10 @@ test('200 collections: the tree is virtual and its keys follow the model — Hom
     const tree = await createCollectionTree(page, 200);
     await expandAll(page, tree);
     const scroller = page.getByTestId('sidebar-tree');
-    expect(await page.locator('[data-testid="sidebar-tree"] [role="row"][data-key]').count(), 'rows in the DOM').toBeLessThan(90);
+    const drawn = await page.locator('[data-testid="sidebar-tree"] [role="row"][data-key]').count();
+    expect(drawn, 'rows in the DOM').toBeLessThan(90);
+    // And more than the tree folded would have (its top-level rows and the special views): the expand-all took.
+    expect(drawn, 'rows in the DOM, all open').toBeGreaterThan(tree.ids.filter((id) => tree.parent[id] === null).length + 4);
     // The "컬렉션" heading is 36 px, starting where the special views end (12 gap + 24 label), whatever the density.
     const g = await page.evaluate(() => {
       const specials = [...document.querySelectorAll('[data-testid^="nav-scope-"]')];

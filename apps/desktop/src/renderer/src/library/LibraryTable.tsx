@@ -246,6 +246,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // A classic scroll bar takes a column from the scroller; the header band keeps that column free. The width goes onto
   // the grid at once (no frame with a header wider than the rows) and into state for the title edge's size below.
   const [gutter, setGutter] = useState(0);
+  const measureGutter = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const view = scroller.current;
     const root = grid.current;
@@ -256,10 +257,17 @@ export function LibraryTable(props: LibraryTableProps) {
       setGutter(w);
     };
     measure();
+    measureGutter.current = measure;
     const observer = new ResizeObserver(measure);
     observer.observe(view);
-    return () => observer.disconnect();
+    return () => {
+      measureGutter.current = null;
+      observer.disconnect();
+    };
   }, []);
+  // Rows added or removed bring the bar or take it away in the commit that draws them; the observer would only report it at the
+  // next frame, and a read in between (a test's, a handler's) would find the header over the bar's column.
+  useLayoutEffect(() => measureGutter.current?.(), [rows.length, rowHeight]);
   // The header follows the body sideways (the body's scroll event comes before the frame that paints it).
   const onScrollerScroll = useCallback(() => {
     if (headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;

@@ -43,8 +43,21 @@ test('the header sits above the scroller: the scroll bar starts under it, the he
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
+    // The bar comes with the rows: the header keeps clear of it from the commit that draws them on, not a frame later. Every DOM
+    // change while the rows arrive is read in its own microtask, before any frame could paint it.
+    await page.evaluate(() => {
+      const w = window as unknown as { __crossed: number[] };
+      w.__crossed = [];
+      new MutationObserver(() => {
+        const clip = document.querySelector('[data-testid="table-head-clip"]')!.getBoundingClientRect();
+        const view = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
+        const over = clip.right - (view.getBoundingClientRect().left + view.clientWidth);
+        if (Math.abs(over) >= 0.5) w.__crossed.push(over);
+      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+    });
     await seedLibrary(app, { count: 150, from: pdf! });
     await expect(page.getByTestId('toolbar-count')).toHaveText('151개');
+    expect(await page.evaluate(() => (window as unknown as { __crossed: number[] }).__crossed), 'the header never crosses the bar, not even for a frame').toEqual([]);
     const start = await edges(page);
     if (process.platform === 'linux') expect(start.gutter, 'Chromium on Linux draws a classic scroll bar').toBeGreaterThan(0);
     expect(start.clipBottom).toBeCloseTo(start.top, 0); // the scroller (and its bar) begins at the header's bottom edge

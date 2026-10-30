@@ -639,6 +639,9 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await expect(page.getByTestId(`drag-handle-${parent}`)).toBeFocused();
     await page.keyboard.press('Enter');
     await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
+    // React Aria takes the drag's keys only from its first frame on, when it marks the first drop target: an esc before then is
+    // lost and the drag goes on.
+    await expect.poll(() => marked(page), { message: 'the drag shows its first drop target' }).not.toEqual([]);
     await page.keyboard.press('Escape');
     await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
     expect(await parentOf(parent)).toBe(tree.ids[0]);
@@ -889,7 +892,10 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await expect(specialRow(page, 'all')).toBeFocused();
     await treeBox().evaluate((e) => void (e.scrollTop = 1500));
     await frames(page, 4);
-    const rows = await inSight(page);
+    // An empty collection in sight: (g) filled the middle row at this scroll, and which row is the middle one depends on the
+    // window's height and on what (i) moved.
+    const filled = (await organizeSnapshot(page)).members;
+    const rows = (await inSight(page)).filter((r) => (filled[r.id]?.length ?? 0) === 0);
     const to = rows[Math.floor(rows.length / 2)]!.id;
     const before = await treeBox().evaluate((e) => e.scrollTop);
     const mp4 = await finderDrag(page, MP4);

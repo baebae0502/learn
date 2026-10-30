@@ -58,16 +58,16 @@ window.Mockup = (() => {
    * title bar (A) or beside it at full height (B). With a single tab (the library alone,
    * M3–M6) there is no tab strip: the title bar becomes a unified toolbar (`unified`).
    */
-  function windowShell({ tabs, unified = null, sidebar = '', main, inspector = null, overlays = '', above = '', inactive = false }) {
+  function windowShell({ tabs, unified = null, sidebar = '', main, inspector = null, overlays = '', above = '', inactive = false, cls: extra = '', style = '' }) {
     const single = tabs.length <= 1;
-    const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', inactive ? 'is-inactive' : '', single ? 'single-tab' : ''].join(' ');
+    const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', inactive ? 'is-inactive' : '', single ? 'single-tab' : '', extra].join(' ');
     const middle =
       single && unified
         ? `<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
            <div class="tb-actions">${unified.actions || ''}</div>`
         : `<div class="tabs" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
     return `
-    <div class="${cls}">
+    <div class="${cls}" ${style ? `style="${style}"` : ''}>
       <div class="traffic-lights" aria-hidden="true"><i class="close"></i><i class="min"></i><i class="zoom"></i></div>
       <header class="titlebar">
         ${toggle('tb-toggle')}
@@ -97,14 +97,28 @@ window.Mockup = (() => {
     ].map((t) => ({ ...t, active: t.id === active }));
   }
 
-  /** Pop-up menus open 4 px below their button, left-aligned (or right-aligned with data-align="end"). */
+  /**
+   * Pop-up menus open 4 px below their button, left-aligned (or right-aligned with data-align="end").
+   * Tooltips open 6 px below their target, centred on it and kept inside their container (design-spec 6).
+   */
   function placeMenus() {
+    for (const tip of document.querySelectorAll('.tooltip[data-anchor]')) {
+      const anchor = document.getElementById(tip.dataset.anchor);
+      if (!anchor) continue;
+      const r = anchor.getBoundingClientRect();
+      const host = tip.offsetParent.getBoundingClientRect();
+      const w = tip.offsetWidth;
+      const left = Math.max(4, Math.min(r.left + r.width / 2 - w / 2 - host.left, host.width - w - 4));
+      tip.style.top = `${Math.round(r.bottom - host.top + 6)}px`;
+      tip.style.left = `${Math.round(left)}px`;
+    }
     for (const menu of document.querySelectorAll('.menu[data-anchor]')) {
       const anchor = document.getElementById(menu.dataset.anchor);
       if (!anchor) continue;
       const r = anchor.getBoundingClientRect();
       const host = menu.offsetParent.getBoundingClientRect();
-      menu.style.top = `${r.bottom - host.top + 4}px`;
+      // data-place="above": no room below (a button at the window's bottom edge) — open 4 px above it instead.
+      menu.style.top = menu.dataset.place === 'above' ? `${r.top - host.top - 4 - menu.offsetHeight}px` : `${r.bottom - host.top + 4}px`;
       if (menu.dataset.align === 'end') menu.style.right = `${host.right - r.right}px`;
       else menu.style.left = `${r.left - host.left}px`;
     }
@@ -120,6 +134,8 @@ window.Mockup = (() => {
     '.btn', '.icon-btn', '.field', '.seg', '.tab', '.chip', '.nav-row', '.table-row', '.th', '.thumb', '.cue',
     '.zoom-btn', '.speed-btn', '.mi', '.p-item', '.switch', '.checkbox', '.theme-tile', '.scrubber', '.drop-mode',
     '.collection-path', '.volume', '.toast',
+    // Tutor (tutor.html)
+    '.cite', '.tool', '.tu-scope', '.tu-composer', '.attach', '.agent-row', '.radio', '.proposal',
   ].join(',');
 
   /**
@@ -164,7 +180,8 @@ window.Mockup = (() => {
    * and listed short compounds, must be bound with U+00A0 so a line never splits them.
    * User/document text (titles, subtitles, PDF pages) is out of scope.
    */
-  const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files';
+  const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files, ' +
+    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];
@@ -177,9 +194,25 @@ window.Mockup = (() => {
     if (issues.length) console.warn(`copy lint: ${issues.length}`, issues);
   }
 
+  /** A conversation is scrolled to its newest message only when it overflows (`.to-end`); a short one starts at the top. */
+  function scrollToEnd() {
+    for (const el of document.querySelectorAll('.to-end')) {
+      el.classList.remove('to-end');
+      const overflow = el.scrollHeight - el.clientHeight;
+      if (overflow > 1) {
+        el.classList.add('to-end');
+        // Scrolled past the session's title (or the title is far above): the title line under the panel head appears.
+        const title = el.querySelector(':scope > .tu-title');
+        const sticky = el.previousElementSibling;
+        if (sticky && sticky.classList.contains('tu-sticky') && (!title || overflow > title.offsetHeight + 16)) sticky.hidden = false;
+      }
+    }
+  }
+
   async function mount(html) {
     document.body.innerHTML = html;
     await document.fonts.ready;
+    scrollToEnd();
     placeMenus();
     milestones();
     copyLint();

@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Learn 목업 · 튜터 (T1). Spec: docs/superpowers/specs/2026-10-26-tutor-mockup-design.md
+  Shared: ?theme=light|dark  ?ms=1 (milestone badges)  ?layout=B (owner's layout; A is not drawn)
+  ?state=1…10  (spec §2; default 5)
+     1 모드 전환   2 첫 사용 동의   3 에이전트 고르기   4 빈 세션   5 대화(스트리밍)
+     6 인용        7 제안 카드      8 실패              9 세션 목록  10 좁은 창
+  §4 — the owner's decisions of 2026-10-27 are the defaults, except ?cite (no answer; provisional) (tutor-decisions.md):
+     ?width=340|380|440            tutor width (default 380: decided, range 320–560)
+     ?msg=doc|bubble               message shape: bubbles (default: decided, against the designer's pick) or document style
+     ?cite=page|p|icon             citation chip: "42쪽" (default, PROVISIONAL: the owner did not answer) · "p. 42" · icon + number
+     ?consent=card|sheet           consent (state 2): card in the tutor panel (default: decided) or sheet on the window
+     ?sessions=sidebar|panel       session list (state 9): left sidebar (default: decided) or a list button in the tutor head
+  Sub-states:
+     ?mode=tutor|info              state 1: 정보 mode under the same head (reader 320 wide; with &view=library the library)
+     ?consent=card&later=1         state 2: the card after 나중에 (tutor off)
+     ?agents=list|none|searching|blocked   state 3: detected list · none installed · searching · none ready
+     ?fail=offline|agent|login     state 8 (default offline)
+     ?sessions=…&empty=1           state 9: no sessions for this item; &sheet=delete: the delete sheet
+     ?fold=collapsed|open|960      state 10: window 1040 folded · 1040 opened (sidebar folds) · 960 opened
+     ?menu=agent                   the composer's agent menu (opens above the button)
+     ?view=reader|library          library = the one library-view sheet (tutor mode beside the item table)
+     ?backend=agent|fake           fake = the fake backend's marker (dev and demo builds only)
+     ?scroll=top                   a conversation from its top (to compare ?msg= on the same content)
+-->
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Learn 목업 · 튜터</title>
+    <link rel="stylesheet" href="../../../apps/desktop/src/renderer/src/design/fonts.css" />
+    <link rel="stylesheet" href="../../../apps/desktop/src/renderer/src/design/tokens.css" />
+    <link rel="stylesheet" href="assets/mockup.css" />
+    <script src="assets/icons.js"></script>
+    <script src="assets/data.js"></script>
+    <script src="assets/mockup.js"></script>
+    <script src="assets/views.js"></script>
+  </head>
+  <body>
+    <script>
+      Mockup.render('tutor');
+    </script>
+  </body>
+</html>

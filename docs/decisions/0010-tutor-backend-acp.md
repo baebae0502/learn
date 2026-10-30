@@ -39,7 +39,7 @@
 
   | 종류 | 도구 | 시점 |
   |---|---|---|
-  | 읽기 | `search_library`, `read_pdf_pages`, `read_transcript`, `get_notes`, `get_context`(선택과 현재 위치), `get_memories`(P4) | T1: PDF 쪽·현재 선택. M8: 대본. M10: 기억. `search_library`·`get_notes`의 시점은 다음 마일스톤에서 정한다 |
+  | 읽기 | `search_library`, `read_pdf_pages`, `read_transcript`, `get_notes`, `get_context`(선택과 현재 위치), `get_memories`(P4) | T1: PDF 쪽·현재 선택(선택 바구니 — 여러 구간과 각각의 질문), 캡처한 그림(이미지), `@`로 범위에 더한 자료(2026-10-27). M8: 대본. M10: 기억. `search_library`·`get_notes`의 시점은 다음 마일스톤에서 정한다 |
   | 읽기(저장소) | `list_tree`, `read_file(path, lines)`, `search_code` | M11 |
   | 제안 | `propose_note`(앵커가 있는 초안, "노트로 저장"), `propose_check`(확인 문제), `propose_memory`(근거 메시지가 있는 claim 초안, 사용자가 승인·수정) | M9(노트·확인 문제), M10(기억) |
   | 제안(저장소) | 코드 투어(설명이 붙은 여러 앵커의 순서 있는 노트, 한 단계씩 넘긴다), 구조 안내(노트) | M11 |
@@ -48,6 +48,7 @@
   - **튜터는 화면을 움직이지 않는다.** 위치 이동은 사용자가 인용 칩을 누를 때뿐이다.
   - 에이전트의 웹 검색은 기본으로 끈다. 나중에 세션마다 켜는 선택지가 될 수 있고, 그때 웹 인용은 link 앵커로 저장한다(ADR-0009).
   - MCP 서버의 전송(localhost HTTP + bearer 헤더 / 앱이 싣는 stdio 실행 파일 / 초안 RFD "MCP-over-ACP")은 T1에서 정한다.
+  - 무엇을 보내고 무엇을 읽어 가게 하는지, 도구 결과의 모양, 계열마다 읽는 단위, 그림 전달은 [ADR-0013](0013-presenting-material-to-agents.md)이 정한다.
 
 ### 3. 튜터의 두뇌는 Learn에 있다
 백엔드와 무관하게 Learn이 한다.
@@ -132,6 +133,7 @@ P3 정의, AC11 범위, 키체인 시점은 `docs/spec-amendments.md` 2–4절�
 - Anthropic의 입장이 모호하다. 넓은 공개 전 서면 확인이 출시 조건이다(M14). 그 전에도 문서는 "without prior notice" 집행을 말한다. `claude-agent-acp`에는 구독 로그인을 숨기는 `--hide-claude-auth` 옵션이 있다(https://github.com/agentclientprotocol/claude-agent-acp/pull/1079, 2026-09-04 병합).
 - 사용자가 에이전트 CLI를 직접 설치하고 로그인해야 한다. `claude-agent-acp`는 Node ≥ 22가 필요하고, `CLAUDE_CODE_EXECUTABLE`로 사용자의 `claude`를 가리키지 않으면 SDK의 네이티브 바이너리를 받는다. Electron의 Node(`ELECTRON_RUN_AS_NODE`)로 어댑터를 돌릴 수 있는지는 확인하지 않았다.
 - 답의 품질과 동작이 에이전트·버전마다 다르다. 잠금과 범위는 에이전트마다 T1 테스트로 확인한다.
+- T1에서 채울 빈칸: 대화마다 고정된 MCP 범위 토큰, claude.ai 커넥터 끄기, 에이전트별 최소 버전(격리 손잡이가 없으면 튜터를 막는다), 로그인 상태 카드, 대화마다 빈 작업 폴더, 프로세스 감독·취소 시한, 프록시의 루프백 가로채기, 에이전트 자신의 대화 기록 고지 — 근거는 [`docs/research/llm-for-zotero.md`](../research/llm-for-zotero.md) 3절(2026-10-27 조사).
 - 재검토 조건: Anthropic이 서면으로 거절할 때, ACP v2가 안정판이 되어 v1과 호환되지 않을 때, 공급사가 이 사용 방식을 막을 때.
 
 ## 검증 (T1)

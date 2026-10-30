@@ -397,6 +397,14 @@ Task 14의 macOS 실행. 마지막 `all` 실행(**run 39920413383, 18efa56 — P
 
 **합계: macOS 59회, 362분.** Task 3의 판정 값과 PNG는 `evidence/m4-t3d/40098617639/evidence/evidence-results/`, Task 4는 `evidence/task4b/40100757864/evidence/evidence-results/`(`m4-library.json`, `task4b/m4-04*.png`), Task 5는 `evidence/task5b/40107292541/evidence/evidence-results/`(`task5b/m4-05*.png`), Task 6은 `evidence/m4-t6/40112125869/evidence/evidence-results/`(`m4-t6/m4-inspector-*.png`), Task 7은 `evidence/m4-t7c/40119488421/evidence/evidence-results/`(`m4-t7c/m4-inspector-edit-*.png`), Task 8은 `evidence/m4-t8b/40125361565/evidence/evidence-results/`(`m4-t8b/m4-08-*.png`), Task 9는 `evidence/m4-t9b/40130074939/evidence/evidence-results/`(`m4-t9b/m4-09-*.png`). 28회의 비활성 창 PNG는 키 창 상태로 찍혀 있었다(디자인 비평이 찾음): 그 실행의 검사는 계산된 스타일만 읽어 통과했다.
 
+## 튜터 목업 (브랜치 `tutor-mockup`, macos-15 arm64, `suite=mockups`)
+| # | run | 머리 | 분 | 결과 |
+|---|---|---|---|---|
+| 1 | [40307407842](https://github.com/baebae0502/learn/actions/runs/40307407842) | 2026-10-26 초안 | 3 | 성공 · PNG 130 · SF 렌더의 리더 도구 막대 글자 폭이 Linux Pretendard와 1px 안(디자인 명세 2.5) |
+| 2 | [40472701331](https://github.com/baebae0502/learn/actions/runs/40472701331) | c7fa4c9 (소유자 결정·말풍선) | 2 | 성공 · PNG 131 · 말풍선·인용 칩·안내 카드가 SF/Apple SD Gothic Neo에서 라이트·다크 모두 읽힌다(통제자 확인) |
+
+이 두 실행(5분)은 M4·M5 절의 합계에 들어 있지 않고, 두 브랜치를 병합한 뒤 M5 절 끝의 전체 합계에 넣었다.
+
 ## M4 라이브러리 (2026-10-25, macos-15 arm64)
 
 M4의 macOS 실행. 마지막 `all` 실행(**run 40162034858, a2f5add**)에서 증거 42/0, 셸 판정 69/69, 라이브러리 판정 39/39, 데모는 첫 시도에 녹화됐다. 같은 실행의 기능 E2E는 184 통과 · 3 실패 · 18 건너뜀(사이드바 위 88px 비교 2개와 `drop.spec.ts`의 드롭 문구 시간 단언)이었고, 3라운드 수정(1d2b91e, 테스트만)이 그 셋을 고쳤다. 그 뒤 기능 E2E만 세 번 더 돌려(표 56–58) 남은 Mac 차이를 고쳤고, 최종 검토 수정까지 들어간 **최종 `all`(run 40242680541, 0a2b409)은 처음으로 전부 녹색**이다: 증거 42/42, 셸 판정 69/69, 라이브러리 판정 39/39, 기능 E2E 189 통과 · 0 실패, 데모 158초 16장. 아래의 자세한 판정 값은 40162034858의 것이고, 최종 실행의 값도 모두 ok다(바뀐 숫자: 바쁨 토스트 345ms, 드롭 뒤 최장 프레임 간격 36ms). 아래 값은 `evidence/<label>/<run>/evidence/evidence-results/`의 JSON(`m4-library.json`, `m3-shell.json`, `library-perf.json`, `perf.json`, `open-latency.json`, `theme-switch.json`, `drop-import.json`, `e2e-report.json`)과 데모 파일에서 옮겼다. UI 작업마다 컨트롤러가 `library` suite를 한 번씩 돌렸다(P-25). 실행 기록은 위 "M4 표 스파이크"와 "M4 작업별 실행" 표이고, 거기서 Task 1 스파이크 1회(27), Task 3–9 `library`, Task 10·12 `perf`, Task 11 `evidence`, Task 12 `demo`, Task 13 `all` 2회와 `e2e` 1회(53–55)로 M4는 모두 29회다. 저장소가 공개라 모두 무료다.
@@ -527,6 +535,8 @@ run [40269632733](https://github.com/baebae0502/learn/actions/runs/40269632733)(
 | 76 | [41024983289](https://github.com/baebae0502/learn/actions/runs/41024983289) | 10-30 17:13 KST | all / 예 / af807d6 (PR의 최종 코드) | 1907초 → 32분(무료) | **성공**: 증거 61/61, 기능 E2E 291 통과 · 0 예상 밖 · 27 건너뜀. 판정 m3-shell 69/69 · m4-library 39/39 · m5-organize 42/45 ok + 못 읽음 3(System Events 팝업 탐침, `ok: null`로 따로 셈 — 아래 "정리 판정 값"), PNG 321장. M5 데모 `m5-demo.final.mov` 206.4초, 장 17개 |
 
 **합계: macOS 76회, 563분.** M5 17회 201분(Task 4 `evidence` 2회 12분, Task 5–10 `organize` 8회 20분, Task 11 `perf` 2회 6분, Task 12 `all` 5회 163분 — Task 1 스파이크 run 40269632733은 번호 밖). 저장소가 공개라 모두 무료다.
+
+**전체 합계(튜터 목업 2회 5분 포함, 2026-10-30 두 PR 병합 뒤): macOS 78회, 568분.**
 
 ### 정리 판정 값 (`m5-organize.json`, run 41024983289)
 판정 45개: ok 42 · 못 읽음 3 · 실패 0(`tally`). 못 읽음 셋은 System Events가 러너에서 네이티브 팝업 메뉴를 주소로 잡지 못하는 탐침이고, 값을 `ok: null`로 남겨 ok와 따로 센다. 메뉴는 메뉴 줄에서 계산한 ↓ 수로 열고 PNG로 본다:

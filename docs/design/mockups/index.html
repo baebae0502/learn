@@ -36,15 +36,18 @@
         ['palette', '명령 팔레트', []],
         ['settings', '설정', []],
         ['dialogs', '대화상자', [['점검', 'scene=recovery'], ['백업', 'scene=backup'], ['코덱', 'scene=codec']]],
+        // Tutor (T1 mockup): layout B only; states 1–10 and the owner's decisions (tutor-decisions.md).
+        ['tutor', '튜터(T1)', [...Array.from({ length: 10 }, (_, i) => [String(i + 1), `state=${i + 1}`]), ['폭 340', 'width=340'], ['폭 440', 'width=440'], ['말풍선', 'msg=bubble'], ['p. 42', 'state=6&cite=p'], ['아이콘', 'state=6&cite=icon'], ['동의 시트', 'state=2&consent=sheet'], ['세션 패널', 'state=9&sessions=panel'], ['라이브러리', 'view=library'], ['정보 모드', 'state=1&mode=info'], ['부품', 'part=4'], ['부품 2', 'part=5']], 'B'],
       ];
       const t = document.getElementById('t');
-      for (const [file, label, states] of screens) {
-        const link = (q, text) => `<a href="${file}.html?${q}">${text}</a>`;
+      for (const [file, label, states, only] of screens) {
+        const link = (q, text, f = file) => `<a href="${f}.html?${q}">${text}</a>`;
+        const layouts = only ? [only] : ['A', 'B'];
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${label}</td>
-          <td>${link('theme=light&layout=A', 'A')}${link('theme=light&layout=B', 'B')}</td>
-          <td>${link('theme=dark&layout=A', 'A')}${link('theme=dark&layout=B', 'B')}</td>
-          <td>${states.map(([n, q]) => link('theme=light&layout=B&' + q, n)).join('')}</td>`;
+          <td>${layouts.map((l) => link(`theme=light&layout=${l}`, l)).join('')}</td>
+          <td>${layouts.map((l) => link(`theme=dark&layout=${l}`, l)).join('')}</td>
+          <td>${states.map(([n, q]) => (q.startsWith('part=') ? link(q, n, 'components') : link('theme=light&layout=B&' + q, n))).join('')}</td>`;
         t.appendChild(tr);
       }
     </script>

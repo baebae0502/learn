@@ -761,6 +761,7 @@ h2,
   color: var(--text-tertiary);
   font: var(--type-footnote);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .nav-row.is-hover {
   background: var(--fill-hover);
@@ -1567,6 +1568,7 @@ h2,
   align-items: center;
   gap: var(--space-6);
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 .page-field .field {
   width: 44px;
@@ -2771,4 +2773,971 @@ h2,
 }
 .toast.static {
   width: 100%;
+}
+
+/* ── Tutor (T1 mockup, tutor.html) ──────────────────────────────────────────
+   The right slot is a modal inspector [정보 | 튜터] (design-spec 2.5). The tutor mode has its own
+   width, remembered apart from 정보 (320): 380 by default; 340 and 440 are drawn for the owner's
+   decision (range 320–560). Everything below is built from tokens; non-token values say "local". */
+.window.has-tutor {
+  --inspector-w: var(--tutor-w, 380px); /* local: tutor width under decision (?width=340|380|440) */
+}
+.window.has-tutor .inspector {
+  position: relative;
+}
+.insp-head {
+  /* Pane-header rhythm (2.4): the switch's edge sits on the content's 16 px column, buttons 12 from the right. */
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--pane-header-height);
+  flex: none;
+  padding: 0 var(--space-12) 0 var(--space-16);
+  border-bottom: 1px solid var(--separator);
+}
+.segmented .seg.is-hover {
+  background: var(--fill-hover);
+}
+.segmented.mode .seg {
+  padding: 0 var(--space-16);
+}
+/* Tooltip (design-spec 6): raised surface, caption, radius 4, 2·8 inset (18 high), 6 below the target. */
+.tooltip {
+  position: absolute;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  height: 18px;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-sm);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+  color: var(--text-primary);
+  font: var(--type-caption);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.tooltip .sc {
+  color: var(--text-tertiary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Key Symbols', var(--font-system);
+  letter-spacing: 0.04em;
+}
+.tooltip .why {
+  color: var(--text-secondary);
+}
+
+/* Conversation column */
+.tu-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+  padding: var(--space-16) var(--space-16) var(--space-12);
+}
+/* A running conversation is scrolled to its newest message: older turns leave at the top. */
+.tu-scroll.to-end {
+  justify-content: flex-end;
+}
+.tu-scroll > * {
+  flex: none;
+}
+.tu-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tu-title .t {
+  font: var(--type-headline);
+}
+.tu-title .m {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-title .m .icon {
+  color: var(--text-tertiary);
+}
+.tu-msg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.tu-msg .body {
+  font: var(--type-paragraph);
+  color: var(--text-primary);
+}
+.tu-msg .body p {
+  margin: 0;
+}
+.tu-msg .body p + p,
+.tu-msg .body p + ol,
+.tu-msg .body ol + p {
+  margin-top: var(--space-8);
+}
+.tu-msg .body ol {
+  margin: 0;
+  padding-left: var(--space-20);
+}
+.tu-msg .body li + li {
+  margin-top: 2px;
+}
+/* Document style (?msg=doc): every turn starts on the same left edge; only the user's turn sits on a faint surface. */
+.tu-msg.user .bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--fill-hover);
+  font: var(--type-paragraph);
+}
+.tu-msg.user .bubble p {
+  margin: 0;
+}
+/* Bubble style (default, the owner's decision): the user's turn on the right in the accent wash, the tutor's on the left. */
+[data-msg='bubble'] .tu-msg.user {
+  align-items: flex-end;
+}
+[data-msg='bubble'] .tu-msg.user .bubble {
+  max-width: 88%;
+  background: var(--accent-soft);
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-sm) var(--radius-xl);
+}
+[data-msg='bubble'] .tu-msg.tutor {
+  align-items: flex-start;
+}
+[data-msg='bubble'] .tu-msg.tutor .body {
+  max-width: 100%; /* the tutor's lane is the left edge, the surface and the tail corner; its right edge lines up with the column */
+  padding: var(--space-8) var(--space-12);
+  background: var(--fill-hover);
+  border-radius: var(--radius-xl) var(--radius-xl) var(--radius-xl) var(--radius-sm);
+}
+[data-msg='bubble'] .tu-msg.tutor.is-streaming .body {
+  width: 100%; /* the surface opens at full width while the answer streams */
+}
+[data-msg='bubble'] .tu-msg.tutor > :not(.body) {
+  align-self: stretch; /* tools, copy row, notices, cards span the column; only the bubble hugs its text */
+}
+.tu-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  padding-left: var(--space-8);
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-quote .q {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tu-quote .cite {
+  margin-top: -1px;
+}
+.proposal .p-meta .cite {
+  margin-left: var(--space-6);
+}
+
+/* Citation chip: a location in the item. Pressing it moves the reader there (the tutor never moves it). */
+.cite {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 18px; /* local: inline chip that fits the 20 px paragraph line */
+  padding: 0 var(--space-4);
+  margin: 0 0 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: var(--type-footnote);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.cite .icon {
+  color: inherit;
+}
+.cite-tail {
+  white-space: nowrap;
+}
+.panel .cite,
+.tu-quote .cite {
+  margin-left: 0;
+}
+.cite.is-hover {
+  background-image: linear-gradient(var(--fill-hover), var(--fill-hover));
+}
+.cite.is-pressed {
+  background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+  color: light-dark(var(--accent-pressed), var(--accent-text)); /* 5.18:1 in light (accent-text is 4.35 there) */
+}
+/* The citation the reader is showing right now (after a press): a ring, not a second accent fill. */
+.cite.is-current {
+  box-shadow: inset 0 0 0 1px var(--accent-ring);
+}
+.cite.is-focus {
+  /* inside ring, like rows and tabs: an inline chip must not reach into the lines above and below */
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: calc(var(--focus-ring-width) * -1);
+}
+[data-msg='bubble'] .tu-msg.user .cite:not(.is-unverified),
+[data-msg='bubble'] .tu-msg.tutor .body .cite:not(.is-unverified) {
+  background-color: var(--bg-content); /* longhand: keeps the hover/pressed layer */
+}
+/* The bubble already is --fill-hover: a chip's state layers step up one. */
+[data-msg='bubble'] .tu-msg.user .bubble .cite.is-hover:not(.is-unverified),
+[data-msg='bubble'] .tu-msg.tutor .body .cite.is-hover:not(.is-unverified) {
+  background-image: linear-gradient(var(--fill-pressed), var(--fill-pressed));
+}
+[data-msg='bubble'] .tu-msg.user .bubble .cite.is-pressed:not(.is-unverified),
+[data-msg='bubble'] .tu-msg.tutor .body .cite.is-pressed:not(.is-unverified) {
+  background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
+}
+/* the chips sit side by side in one bubble on the board */
+[data-msg='bubble'] .state-row .cite + .cite {
+  margin-left: var(--space-4);
+}
+.cite.is-disabled {
+  opacity: 0.45;
+}
+/* Not verified: the tutor pointed at a place Learn's tools did not return in this turn. */
+.cite.is-unverified {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+.cite.is-unverified.is-hover {
+  background-image: linear-gradient(var(--fill-hover), var(--fill-hover));
+}
+
+/* Tool chip: what the tutor read through Learn's tools in this turn. A status, not a button. */
+.tu-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  height: 22px;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  white-space: nowrap;
+}
+.tool .icon {
+  color: var(--text-tertiary);
+}
+.tool.is-failed,
+.tool.is-failed .icon {
+  color: var(--danger-text);
+}
+.tool.is-focus {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+.spinner.sm {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px; /* local: 12 px spinner in a chip */
+}
+
+/* Sent-scope line under each request (spec 12: 요청마다 보낸 자료·발췌·기억 개수). */
+.tu-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
+  align-self: flex-start;
+  height: 22px;
+  padding: 0 var(--space-4);
+  margin-left: calc(var(--space-4) * -1);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  white-space: nowrap;
+}
+.tu-scope-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+[data-msg='bubble'] .tu-msg.user .tu-scope {
+  align-self: flex-end;
+  margin: 0 calc(var(--space-4) * -1) 0 0;
+}
+.tu-scope .icon {
+  color: var(--text-tertiary);
+}
+.tu-scope.is-hover {
+  background: var(--fill-hover);
+}
+.tu-scope.is-focus {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: calc(var(--focus-ring-width) * -1);
+}
+.tu-scope.is-disabled {
+  opacity: 0.45;
+}
+.tu-scope-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-12);
+  row-gap: var(--space-4);
+  margin: calc(var(--space-4) * -1) 0 0;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  font: var(--type-footnote);
+}
+[data-msg='bubble'] .tu-scope-list {
+  align-self: stretch;
+}
+.tu-scope-list dt {
+  color: var(--text-secondary);
+}
+.tu-scope-list dd {
+  margin: 0;
+  min-width: 0;
+}
+.tu-msg .tu-foot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: calc(var(--space-4) * -1);
+}
+.stream-caret {
+  /* Where the streamed answer is being written. */
+  display: inline-block;
+  width: 2px;
+  height: 15px; /* local: cap height + descender of 13 px text, as the field caret */
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  background: var(--accent-ring);
+}
+.tu-cut {
+  color: var(--text-secondary);
+}
+
+/* Inline notices in the conversation: failed requests, unverified citations. */
+.tu-notice {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: var(--space-8);
+  row-gap: 2px;
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-content); /* a framed card, not a bubble: the verification is Learn's voice, not the tutor's */
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+}
+.tu-notice > .icon {
+  margin-top: 1px;
+}
+.tu-notice .nt {
+  font: var(--type-headline);
+}
+.tu-notice .nt-text {
+  grid-column: 2;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  text-wrap: pretty;
+}
+.tu-notice .nt-actions {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-8);
+}
+.tu-notice .nt-cmd {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+.tu-cmd {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-sm);
+  background: var(--fill-pressed);
+  color: var(--text-primary);
+}
+
+/* Composer */
+.tu-composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0 var(--space-16) var(--space-16);
+  padding: var(--space-8) var(--space-8) var(--space-8) var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-field);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.tu-composer.is-focus {
+  box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+}
+.tu-composer.is-disabled .input,
+.tu-composer.is-disabled .foot {
+  opacity: 0.45;
+}
+.tu-composer .input {
+  min-height: 40px; /* local: two paragraph lines (2 × 20) */
+  font: var(--type-paragraph);
+  color: var(--text-primary);
+}
+.tu-composer .input.placeholder {
+  color: var(--text-tertiary);
+}
+.tu-composer .caret {
+  display: inline-block;
+  width: 1px;
+  height: 15px;
+  margin-left: 1px;
+  vertical-align: -3px;
+  background: var(--text-primary);
+}
+.tu-composer .foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-left: calc(var(--space-8) * -1);
+}
+.btn.square {
+  width: var(--control-height);
+  padding: 0;
+}
+.btn.small.square {
+  width: var(--control-height-small);
+}
+.tu-agent.fake,
+.tu-agent.fake .icon,
+.tu-agent.warn,
+.tu-agent.warn .icon {
+  color: var(--warning-text);
+}
+/* Attached selection (auto-attached while text is selected in the reader; × removes it). */
+.attach {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  align-self: flex-start;
+  max-width: 100%;
+  height: 22px; /* one chip size for tool and attachment chips (22 · r6) */
+  padding: 0 var(--space-4) 0 var(--space-8);
+  border-radius: var(--radius-md);
+  background: var(--fill-hover);
+  color: var(--text-primary);
+  font: var(--type-footnote);
+}
+.attach > .icon {
+  color: var(--text-secondary);
+}
+.attach .x {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+.attach.is-hover .x {
+  background: var(--fill-pressed);
+}
+.attach.ctx {
+  padding-right: var(--space-8);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  color: var(--text-secondary);
+}
+
+/* Proposal cards (M9 note · check question, M10 memory): drafts the user confirms before anything is written. */
+.proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e0);
+}
+.proposal .p-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  font-weight: var(--weight-semibold);
+}
+.proposal .p-head > .icon {
+  color: var(--accent-text);
+}
+.proposal .p-head .cite {
+  margin-left: auto;
+}
+.proposal .p-body {
+  font: var(--type-paragraph);
+  color: var(--text-primary);
+}
+.proposal .p-meta {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.proposal .p-meta.c-warning {
+  color: var(--warning-text);
+}
+.proposal .p-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+.proposal .p-actions .btn.plain.leading {
+  margin-left: auto;
+  margin-right: calc(var(--space-8) * -1);
+}
+.proposal.is-focus {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+.proposal.is-done {
+  flex-direction: row;
+  align-items: center;
+  padding: var(--space-8) var(--space-12);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.badge-soft {
+  /* footnote 500 — the segmented control's weight; 18 = the 16 px line + 2 */
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-xs);
+  background: var(--fill-pressed);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  font-weight: var(--weight-medium);
+}
+.badge-soft.warn {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+}
+
+/* Agent list (state 3) and consent (state 2) */
+.tu-section-title {
+  font: var(--type-title3);
+}
+.tu-text {
+  margin: 0;
+  color: var(--text-secondary);
+  font: var(--type-paragraph);
+  text-wrap: pretty;
+}
+.agent-group {
+  border-radius: var(--radius-lg);
+  background: var(--bg-control);
+  box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+}
+.agent-group.dev {
+  background: transparent;
+  box-shadow: none;
+  outline: 1px dashed var(--border-strong);
+  outline-offset: -1px;
+}
+.agent-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  column-gap: var(--space-12);
+  row-gap: 2px;
+  align-items: start;
+  padding: var(--space-12) var(--space-12) var(--space-12) var(--space-16);
+}
+.agent-row + .agent-row {
+  border-top: 1px solid var(--separator-on-surface);
+}
+.agent-row .radio {
+  margin-top: 2px;
+}
+.agent-row .a-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  font: var(--type-headline);
+}
+.agent-row .a-text {
+  grid-column: 2;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  text-wrap: pretty;
+}
+.agent-row .a-flag {
+  grid-column: 2;
+  font: var(--type-footnote);
+}
+.agent-row .a-action {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+/* The adapter's install command under the row text: code that wraps (a long package name), copy at its end. */
+.agent-row .a-cmd {
+  grid-column: 2 / 4;
+  grid-row: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+.agent-row .a-cmd .tu-cmd {
+  display: block; /* inline text that wraps (the base .tu-cmd is a one-line inline-flex box) */
+  flex: 0 1 auto;
+  height: auto;
+  min-height: 20px;
+  padding: 2px var(--space-8);
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word; /* breaks at spaces and after the scope's "/" (<wbr>), not inside a name */
+}
+.agent-row.is-unavailable .a-name {
+  color: var(--text-secondary);
+}
+.agent-row.is-unavailable .radio {
+  opacity: 0.45;
+}
+.radio {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--bg-control);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.radio.is-on {
+  background: var(--accent);
+  box-shadow: none;
+}
+.radio.is-on::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-on-accent);
+}
+.radio.is-focus {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+.tu-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-16);
+  border-top: 1px solid var(--separator);
+}
+.tu-foot .btn.plain.leading {
+  margin-left: calc(var(--space-8) * -1);
+}
+.tu-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding: var(--space-16);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e0);
+}
+.tu-consent .c-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.tu-consent .c-head h2 {
+  margin: 0;
+  font: var(--type-title3);
+}
+.badge-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-lg);
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.tu-facts {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  column-gap: var(--space-8);
+  row-gap: var(--space-12);
+  margin: 0;
+}
+.tu-facts dt {
+  color: var(--text-secondary);
+  padding-top: 1px;
+}
+.tu-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+.tu-facts .f-title {
+  font: var(--type-headline);
+}
+.tu-facts .f-text {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  text-wrap: pretty;
+}
+.tu-consent .c-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+.dialog .tu-facts {
+  margin-top: var(--space-4);
+}
+
+/* Fake backend marker (dev and demo builds only): a strip under the head, and the agent button in warning text. */
+.tu-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-height: var(--row-height);
+  padding: var(--space-4) var(--space-16);
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  font: var(--type-footnote);
+  border-bottom: 1px solid var(--separator);
+}
+
+/* Session list: reader sidebar segment (?sessions=sidebar) or a list that drops from the tutor head (?sessions=panel). */
+.nav-row .time {
+  color: var(--text-tertiary);
+  font: var(--type-footnote);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.nav-row.is-selected .time {
+  color: var(--text-secondary);
+}
+.nav-row.is-renaming {
+  padding-right: var(--space-4);
+}
+.nav-row.is-renaming .field {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: calc(var(--space-4) * -1);
+  padding: 0 var(--space-4);
+}
+.text-sel {
+  background: color-mix(in oklch, var(--focus) 30%, transparent); /* local: selected text in a rename field */
+  border-radius: 1px;
+}
+.tu-sessions {
+  position: absolute;
+  z-index: 5;
+  inset: var(--pane-header-height) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-content);
+}
+.tu-sessions .ts-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-8) var(--space-4);
+}
+.tu-sessions .ts-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 var(--space-8) var(--space-12);
+}
+.tu-sessions .nav-row {
+  padding-left: var(--space-8);
+}
+.tu-sessions .section-label {
+  padding-left: var(--space-8);
+}
+.tu-sessions .nav-row > .icon {
+  color: var(--text-secondary);
+}
+.tu-sessions .nav-row .sub {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-sessions .nav-row .icon-btn.sm {
+  color: var(--text-secondary);
+}
+.tu-sessions .nav-row.is-hover .time {
+  display: none;
+}
+.sidebar .tu-sess .nav-row > .icon,
+.sidebar .tu-lib-sessions .nav-row > .icon {
+  color: var(--accent-text);
+}
+
+/* Reader stage beside the tutor: pages zoomed to fit, the user's selection, and the place a pressed citation points to. */
+.tu-stage .pdf-scroll > .pdf-page {
+  zoom: var(--pg-zoom, 1);
+}
+/* The page a pressed citation points to: the thumbnail's current-page grammar on the page itself (a 2 px
+   ring, no fill), shown for a moment. Page precision only — Learn verifies pages, not passages. */
+.pdf-page.cite-page {
+  box-shadow: 0 0 0 2px var(--accent-ring), var(--shadow-page);
+}
+/* The passage attached to the question: Learn's own mark — a margin bar and a neutral wash — never the find
+   colour; it goes when the chip's × is pressed or the question is sent. */
+.pdf-page p.has-attach {
+  position: relative;
+}
+/* Page-theme values, like the find and highlight colours (proposed page tokens — tokens.test.ts should hold the
+   bar at 3:1 on each page colour): original 5.05:1, sepia ≈ 4.6:1, dark page ≈ 6:1. */
+.pdf-page {
+  --pg-attach-wash: oklch(0% 0 0 / 0.08); /* local: proposed page token */
+  --pg-attach-bar: oklch(53% 0.088 190); /* local: proposed page token (light accent ring) */
+}
+[data-page='sepia'] .pdf-page {
+  --pg-attach-wash: oklch(35% 0.04 70 / 0.1); /* local: proposed page token */
+  --pg-attach-bar: oklch(50% 0.088 190); /* local: proposed page token */
+}
+[data-page='dark'] .pdf-page {
+  --pg-attach-wash: oklch(100% 0 0 / 0.12); /* local: proposed page token */
+  --pg-attach-bar: oklch(72% 0.1 190); /* local: proposed page token */
+}
+.pdf-page .attach-bar {
+  /* Spans the attached lines: first line top + 3 to last line bottom − 3 (one line here). */
+  position: absolute;
+  left: -16px;
+  top: 3px;
+  width: 2px;
+  height: 18px; /* local: one 24 px line of the page's own type, less 3 above and below */
+  border-radius: 1px;
+  background: var(--pg-attach-bar);
+}
+.pdf-page .attached {
+  border-radius: 2px;
+  background: var(--pg-attach-wash);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* State 10: a narrow window on a simulated desktop. */
+.desktop {
+  position: absolute;
+  inset: 0;
+  background: light-dark(oklch(80% 0.025 235), oklch(27% 0.02 245)); /* local: simulated desktop behind a narrow window */
+}
+.desktop .window {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  width: var(--win-w);
+  height: var(--win-h);
+  border-radius: 10px; /* local: macOS window corner */
+  box-shadow: 0 0 0 0.5px light-dark(oklch(0% 0 0 / 0.22), oklch(100% 0 0 / 0.16)),
+    0 22px 70px 4px light-dark(oklch(0% 0 0 / 0.28), oklch(0% 0 0 / 0.6)); /* local: macOS window shadow */
+}
+.sim-note {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-24);
+  translate: -50% 0;
+  padding: var(--space-4) var(--space-12);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+  white-space: nowrap;
+}
+
+/* Components board, part 4 (tutor) */
+.board .tu-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.panel .state-row .lbl.wide {
+  width: 88px;
+}
+.panel .note {
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+}
+.tu-text.small,
+.dialog .d-text.small {
+  font: var(--type-footnote);
+}
+
+/* Round 1: the session's name under the head once the conversation has scrolled past its title. */
+.tu-sticky {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--row-height);
+  padding: 0 var(--space-16);
+  border-bottom: 1px solid var(--separator);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-sticky[hidden] {
+  display: none;
+}
+/* Learn's own line inside a conversation (not the agent's words). */
+.tu-learn-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tu-learn-note .icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--text-tertiary);
+}
+.dialog .d-title .badge-icon.danger {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+}
+.tu-searching {
+  padding: var(--space-8) 0;
+}
+.tu-title .t.ellipsis {
+  display: block;
+}
+
+.nobr {
+  white-space: nowrap;
 }

@@ -3,7 +3,8 @@
 // 1440×900 @2x into docs/design/renders/<name>.png (git-ignored) and writes the
 // contact sheets docs/design/contact-sheet-base.jpg / contact-sheet-variants.jpg.
 //
-//   pnpm mockups:render                 all (28 base + variants) and contact sheets
+//   pnpm mockups:render                 all (28 base + variants + tutor) and contact sheets
+//   pnpm mockups:render -- --only tutor          the tutor mockup and board part 4 (+ docs/design/contact-sheet-tutor.jpg)
 //   pnpm mockups:render -- --only reader-pdf      renders whose name contains the text
 //   pnpm mockups:render -- --base       only the 28 base renders
 //   pnpm mockups:render -- --scale 1    1× (faster, for quick checks)
@@ -15,7 +16,7 @@ import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ALL, BASE, LAYOUTS, SCREENS, THEMES, VARIANTS } from './mockups/manifest.mjs';
+import { ALL, BASE, LAYOUTS, SCREENS, THEMES, TUTOR, VARIANTS } from './mockups/manifest.mjs';
 import { ROOT, contactSheet, renderMockups } from './mockups/render.mjs';
 
 const self = fileURLToPath(import.meta.url);
@@ -35,7 +36,8 @@ const opt = (name) => {
 const only = opt('--only');
 const scale = Number(opt('--scale') ?? 2);
 let renders = args.includes('--base') ? BASE : ALL;
-if (only) renders = renders.filter((r) => r.name.includes(only));
+// `--only tutor` also takes the components board's tutor part (group 'tutor').
+if (only) renders = renders.filter((r) => r.name.includes(only) || r.group === only);
 const outDir = path.join(ROOT, 'docs/design/renders');
 
 console.log(`rendering ${renders.length} mockups at ${scale}× → ${path.relative(ROOT, outDir)}/`);
@@ -60,8 +62,20 @@ console.log(`copy lint: ${lint.length} renders with unbound Korean groups`);
 console.log(`milestones: ${catalogue.size} tagged elements (docs/design/renders/milestones.txt), ${uncovered.length} renders with untagged controls`);
 
 const complete = !only && renders === ALL;
+const file = (name) => path.join(outDir, `${name}.png`);
+// The tutor sheet (docs/design/contact-sheet-tutor.jpg) whenever every tutor render was made in this run.
+const tutorNames = new Set(results.map((r) => r.name));
+if (TUTOR.every((t) => tutorNames.has(t.name))) {
+  await contactSheet({
+    title: 'Learn 튜터 목업 (T1)',
+    subtitle: '§2의 상태 1–10(라이트 · 다크), 하위 상태, §4 결정의 대안, 라이브러리 보기, 가짜 백엔드, 마일스톤 표시, 부품 보드. 1440×900 @2x 렌더를 축소. Linux 렌더(Pretendard).',
+    items: TUTOR.map((v) => ({ file: file(v.name), label: v.label })),
+    columns: 4,
+    out: path.join(ROOT, 'docs/design/contact-sheet-tutor.jpg'),
+  });
+  console.log('contact sheet: docs/design/contact-sheet-tutor.jpg');
+}
 if (complete || args.includes('--sheets')) {
-  const file = (name) => path.join(outDir, `${name}.png`);
   const baseItems = SCREENS.flatMap(([screen, label]) =>
     THEMES.flatMap((theme) => LAYOUTS.map((layout) => ({ file: file(`${screen}-${theme}-${layout}`), label: `${label} · ${theme === 'light' ? '라이트' : '다크'} · 레이아웃 ${layout}` }))),
   );

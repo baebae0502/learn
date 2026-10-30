@@ -77,15 +77,18 @@ export function useColumnReorder(options: Options): {
     let line: number | null | undefined; // the last value given to React
     let frame = 0;
 
-    // Sideways only, from the pinned columns' right edge to the header's: the header's own coordinates, so a sideways scroll
-    // of the table moves it with the cells.
+    // Sideways only, from the pinned columns' right edge to the visible strip's: the header's own coordinates, so a sideways
+    // scroll of the table moves it with the cells. The header row is wider than the strip when the columns overflow, and the
+    // strip clips it, so the right bound is where the strip ends, not the row.
     const place = () => {
       const head = latest.current.head.current;
       const el = ghost.current;
       if (!head || !el) return;
+      const strip = latest.current.clip.current;
       const box = head.getBoundingClientRect();
+      const right = strip ? Math.min(box.width, strip.scrollLeft + strip.clientWidth) : box.width;
       const lead = head.querySelectorAll<HTMLElement>('[role="columnheader"]')[pinned - 1]?.getBoundingClientRect().right ?? box.left;
-      el.style.left = `${Math.max(lead - box.left, Math.min(x - grab - box.left, box.width - width))}px`;
+      el.style.left = `${Math.max(lead - box.left, Math.min(x - grab - box.left, right - width))}px`;
     };
     const update = () => {
       const head = latest.current.head.current;

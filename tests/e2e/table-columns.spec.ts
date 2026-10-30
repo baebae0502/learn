@@ -479,6 +479,60 @@ test('a dragged header cell is carried under the pointer as a raised ghost: side
   }
 });
 
+test('in a table scrolled sideways the ghost stays inside the visible strip: its right edge never passes the strip\'s, its left edge never the pinned columns\'', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await showItemPanel(app, page);
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollWidth - e.clientWidth)).toBeGreaterThan(0);
+    await scroller(page).evaluate((e) => {
+      e.scrollLeft = 40;
+    });
+    await headerFollows(page);
+    const clip = (await page.getByTestId('table-head-clip').boundingBox())!;
+    const cell = (await header(page, 'year').boundingBox())!;
+    const y = cell.y + cell.height / 2;
+    await page.mouse.move(cell.x + cell.width / 2, y);
+    await page.mouse.down();
+    // Held at the right edge the table scrolls on under the pointer: while it does, the ghost (a cell's width, its grab offset kept) would
+    // reach past the strip if only the header's full width bounded it, so the overshoot is sampled on every frame.
+    await page.evaluate(() => {
+      const w = window as unknown as { __over: number; __stop: boolean };
+      w.__over = -Infinity;
+      w.__stop = false;
+      const sample = () => {
+        const g = document.querySelector('[data-testid="column-drag-ghost"]')?.getBoundingClientRect();
+        const c = document.querySelector('[data-testid="table-head-clip"]')!.getBoundingClientRect();
+        if (g) w.__over = Math.max(w.__over, g.right - c.right);
+        if (!w.__stop) requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    await page.mouse.move(clip.x + clip.width - 10, y, { steps: 6 });
+    await expect(ghost(page)).toBeVisible();
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft - (e.scrollWidth - e.clientWidth)), { message: 'the autoscroll reaches the end' }).toBe(0);
+    await page.evaluate(() => {
+      (window as unknown as { __stop: boolean }).__stop = true;
+    });
+    expect(await page.evaluate(() => (window as unknown as { __over: number }).__over), 'the ghost\'s right edge never passed the strip\'s').toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    // Dragged back to the left: it stops at the title's right edge, wherever the table is scrolled.
+    const title = header(page, 'title');
+    await page.mouse.move(cell.x + cell.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(clip.x - 100, y, { steps: 8 });
+    await expect
+      .poll(async () => Math.abs((await ghost(page).boundingBox())!.x - (await title.boundingBox().then((b) => b!.x + b!.width))), { message: 'stopped at the title\'s right edge' })
+      .toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+  } finally {
+    await app.close();
+  }
+});
+
 test('a press that moves under 4 px is still a click that sorts; a longer one never sorts, and over its own cell it changes nothing', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {

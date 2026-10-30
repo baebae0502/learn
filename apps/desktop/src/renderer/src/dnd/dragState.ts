@@ -29,6 +29,8 @@ let dropped = false;
 let lateMoves = false;
 /** The drop whose late moves are awaited: an earlier drop's wait does not end a later one's. */
 let lateRun = 0;
+/** The change a drop handed over, drawn (`holdDropFor`), and the drop it belongs to. */
+let held: { run: number; drawn: Promise<void> } | null = null;
 /**
  * React Aria's wait after a drop (useDroppableCollection's onDrop): until its timer ends it, it moves the tree's cursor after each
  * render that changed the rows (updateFocusAfterDrop), and once more then.
@@ -77,8 +79,12 @@ function replace(next: DragSnapshot): void {
  *   and runs, in it, the effects that ask for them (useGridListItem's focus, through focusSafely), long before the timer below;
  * - the moves of React Aria's wait: its timer is set right after the drop is handed over, so this one with the same delay, set
  *   later, runs after it; the render it asks for then is the sidebar's next, whose effects run after its rows' (afterRender);
+ * - the moves the render of the drop's own change asks for (its rows' effects, as the moved collection or the added rows are
+ *   drawn): main may answer the move or the add after React Aria's wait is over, and the render that draws it comes after the
+ *   answer (`holdDropFor`) — the sidebar's render asked for once it has come is a later one;
  * - each of those waits for a frame, then for any running transition (runAfterTransition): this one asks for a frame after them,
  *   then joins the same queue of React Aria's, behind them.
+ * So the release follows the later of React Aria's wait and the drawing of the drop's change, then a render, a frame and the queue.
  * Then the whole guard goes, the dropped-on row's too: React Aria moves no focus after them (its wait is over), and VoiceOver moves the
  * focus with its cursor and sends the page no input — the dropped-on row, just above the viewed one after a drop, is where its user
  * goes next. A drag that is over a row by then keeps its own guard.
@@ -89,15 +95,17 @@ function awaitLateMoves(): void {
   const release = () => {
     if (run === lateRun && dropped) dragState.clearDropFocus();
   };
+  const lastMoves = () =>
+    afterRender(() => {
+      if (typeof window === 'undefined') return release(); // unit tests have no frames
+      window.requestAnimationFrame(() => runAfterTransition(release));
+    });
   queueMicrotask(() =>
-    setTimeout(
-      () =>
-        afterRender(() => {
-          if (typeof window === 'undefined') return release(); // unit tests have no frames
-          window.requestAnimationFrame(() => runAfterTransition(release));
-        }),
-      DROP_WAIT_MS,
-    ),
+    setTimeout(() => {
+      const drawn = held?.run === run ? held.drawn : null;
+      if (drawn) void drawn.then(lastMoves);
+      else lastMoves();
+    }, DROP_WAIT_MS),
   );
 }
 
@@ -149,6 +157,15 @@ export const dragState = {
     dropped = true;
     unpark();
     awaitLateMoves();
+  },
+  /**
+   * The change the drop just handed over (`armDropFocus`) makes — the collection moved, the rows added — settled and drawn: `drawn`
+   * resolves once the render that draws it has come, or fails. React Aria's focus moves come with that render, which follows main's
+   * answer and so may come after React Aria's own wait: the drop's guard holds until both have come (`awaitLateMoves`).
+   */
+  holdDropFor: (drawn: Promise<unknown>) => {
+    const settled = () => undefined;
+    held = { run: lateRun, drawn: drawn.then(settled, settled) };
   },
   /** The drag is over the row `key`: guarded as a drop will be, but only until the drag leaves the row or ends without dropping. */
   hoverDropFocus: (key: string) => {

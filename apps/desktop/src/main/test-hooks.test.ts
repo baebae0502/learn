@@ -59,6 +59,21 @@ describe('E2E seeding hook (P-22)', () => {
     expect(g.__learnIpcCalls).toEqual({});
     delete g.__learnIpcCalls;
   });
+  it('installs the table of held channels createHandle reads, empty; holdReplies fills it and 0 takes a channel out', () => {
+    const g = globalThis as { __learnIpcDelays?: Record<string, number>; __learnTest?: { holdReplies(input: { channels: string[]; ms: number }): void } };
+    installTestHooks({ repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+    try {
+      expect(g.__learnIpcDelays).toEqual({});
+      g.__learnTest!.holdReplies({ channels: ['collections:move', 'collections:addItems'], ms: 400 });
+      expect(g.__learnIpcDelays).toEqual({ 'collections:move': 400, 'collections:addItems': 400 });
+      g.__learnTest!.holdReplies({ channels: ['collections:move'], ms: 0 });
+      expect(g.__learnIpcDelays).toEqual({ 'collections:addItems': 400 });
+    } finally {
+      delete g.__learnIpcDelays;
+      delete g.__learnTest;
+      delete (globalThis as { __learnIpcCalls?: unknown }).__learnIpcCalls;
+    }
+  });
 });
 
 /** A library of `count` items that share one managed file, as seedItems makes them, in a real in-memory database. */

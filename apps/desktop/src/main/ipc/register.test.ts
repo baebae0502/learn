@@ -50,6 +50,29 @@ describe('createHandle (the single IPC entry point)', () => {
     createHandle(null)(Channels.app.info, z.object({}).optional(), () => ({ version: 'x' }) as never);
     expect(await call(Channels.app.info, undefined)).toMatchObject({ ok: true }); // without the hook nothing is kept and nothing throws
   });
+  it('holds a call of a channel the E2E table names before it runs — its change and its answer come that much later — and no other', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    const g = globalThis as { __learnIpcDelays?: Record<string, number> };
+    g.__learnIpcDelays = { [Channels.library.trash]: 400 };
+    try {
+      const handle = createHandle(null);
+      const ran: string[] = [];
+      handle(Channels.library.trash, z.object({ itemIds: z.array(z.string()).min(1) }), ({ itemIds }) => (ran.push('trash'), itemIds.length));
+      handle(Channels.reader.getPosition, itemIdInput, () => (ran.push('position'), null));
+      let answered = false;
+      const held = call(Channels.library.trash, { itemIds: [ITEM] }).then((r) => ((answered = true), r));
+      expect(await call(Channels.reader.getPosition, { itemId: ITEM }), 'another channel answers at once').toEqual({ ok: true, data: null });
+      await vi.advanceTimersByTimeAsync(399);
+      expect(ran, 'the held call has not run').toEqual(['position']);
+      expect(answered).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await held).toEqual({ ok: true, data: 1 });
+      expect(ran).toEqual(['position', 'trash']);
+    } finally {
+      delete g.__learnIpcDelays;
+      vi.useRealTimers();
+    }
+  });
   it('rejects a sender from a foreign URL (and asset documents) without running the handler, whatever its window', async () => {
     const fn = vi.fn(() => ({ version: 'x' }) as never);
     createHandle(null)(Channels.app.info, z.object({}).optional(), fn);

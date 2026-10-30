@@ -81,6 +81,37 @@
     pointer-events: none;
     z-index: 2; /* local: over the cells' dividers */
   }
+  /* A header drag (M5 spec 5.1): the dragged cell is lifted and carried sideways under the pointer, as a tab is dragged
+     (design-spec 6 탭: --bg-raised + e1, 1 px up). Its place keeps the pressed fill, and the insertion line stays above it. */
+  .library-table .col-drag-ghost {
+    position: absolute;
+    top: 0;
+    bottom: 1px; /* local: above the header's line */
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+    padding: 0 var(--space-8);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    translate: 0 -1px; /* local: the tab drag's lift */
+    pointer-events: none;
+    z-index: 1; /* local: under .col-drop-line (2) */
+  }
+  .library-table .col-drag-ghost.end {
+    justify-content: flex-end;
+  }
+  /* The sorted column's ghost reads as its cell: primary at 500, and the arrow. */
+  .library-table .col-drag-ghost[data-sorted] {
+    font-weight: var(--weight-medium);
+  }
+  .library-table .col-drag-ghost > .icon {
+    flex: none;
+    color: var(--text-secondary);
+  }
   /* The loading line (and a no-results state) takes the body's place under the header. */
   .library-table :is(.table-empty, .table-empty-cell) {
     flex: 1 1 auto;

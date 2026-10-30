@@ -379,6 +379,160 @@ test('a dragged header cell lands where the 2 px accent line showed, saved on re
   }
 });
 
+const ghost = (page: Page) => page.getByTestId('column-drag-ghost');
+const headRow = (page: Page) => page.locator('[data-testid="table-head-clip"] > [role="row"]');
+/** A token's computed value for `property`, read off a probe element. */
+const tokenValue = (page: Page, property: 'backgroundColor' | 'boxShadow', token: string) =>
+  page.evaluate(
+    ([property, token]) => {
+      const probe = document.createElement('div');
+      probe.style[property === 'backgroundColor' ? 'background' : 'boxShadow'] = `var(${token})`;
+      document.body.append(probe);
+      const value = getComputedStyle(probe)[property];
+      probe.remove();
+      return value;
+    },
+    [property, token] as const,
+  );
+/** Whether the insertion line is drawn over the ghost where both are: the topmost of the two at the line's middle. */
+const lineOverGhost = (page: Page) =>
+  page.evaluate(() => {
+    const line = document.querySelector<HTMLElement>('[data-testid="column-drop-line"]')!;
+    const carried = document.querySelector<HTMLElement>('[data-testid="column-drag-ghost"]')!;
+    const box = line.getBoundingClientRect();
+    const g = carried.getBoundingClientRect();
+    const x = box.left + box.width / 2;
+    const y = g.top + g.height / 2;
+    // Both let the pointer through; hit testing sees them only while they take it.
+    line.style.pointerEvents = carried.style.pointerEvents = 'auto';
+    const stack = document.elementsFromPoint(x, y);
+    line.style.pointerEvents = carried.style.pointerEvents = '';
+    return { overlap: x > g.left && x < g.right, lineFirst: stack.indexOf(line) >= 0 && stack.indexOf(line) < stack.indexOf(carried) };
+  });
+
+test('a dragged header cell is carried under the pointer as a raised ghost: sideways only, between the title and the header\'s right edge, under the insertion line, gone on drop, esc and a lost window', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    const title = (await header(page, 'title').boundingBox())!;
+    const type = (await header(page, 'type').boundingBox())!;
+    const head = (await headRow(page).boundingBox())!;
+    const { box, y } = await press(page, 'year');
+    const grab = box.width / 2; // pressed in the cell's middle
+    await page.mouse.move(box.x + grab + 2, y); // under the 4 px threshold: a press, not a drag
+    await expect(ghost(page)).toHaveCount(0);
+
+    // Past the threshold it follows the pointer sideways, the cell's own offset kept, whatever the pointer does up and down.
+    for (const [x, dy] of [[box.x + grab - 40, 0], [type.x + type.width, 6], [box.x + grab + 70, -6]] as const) {
+      await page.mouse.move(x, y + dy, { steps: 4 });
+      await expect.poll(async () => Math.abs((await ghost(page).boundingBox())!.x - (x - grab)), { message: `the ghost's left edge follows the pointer to ${x}` }).toBeLessThanOrEqual(1);
+      const g = (await ghost(page).boundingBox())!;
+      expect(g.width, 'as wide as the cell').toBeCloseTo(box.width, 0);
+      expect(g.y, 'lifted 1 px over the header, never moved up or down').toBeCloseTo(head.y - 1, 0);
+    }
+    await expect(ghost(page)).toHaveText('연도');
+    await expect(ghost(page)).toHaveAttribute('aria-hidden', 'true');
+    await expect(header(page, 'year'), 'the cell keeps its pressed fill: the place it left').toHaveAttribute('data-dragging', 'true');
+    expect(await ghost(page).evaluate((e) => getComputedStyle(e).backgroundColor)).toBe(await tokenValue(page, 'backgroundColor', '--bg-raised'));
+    expect(await ghost(page).evaluate((e) => getComputedStyle(e).boxShadow)).toBe(await tokenValue(page, 'boxShadow', '--shadow-e1'));
+    // Over 종류's right edge the line stands inside the ghost, and is drawn over it.
+    await page.mouse.move(type.x + type.width, y, { steps: 2 });
+    await expect(dropLine(page)).toBeVisible();
+    await expect.poll(() => lineOverGhost(page)).toEqual({ overlap: true, lineFirst: true });
+
+    // Clamped: never over the title, never past the header's right edge.
+    await page.mouse.move(title.x + 20, y, { steps: 4 });
+    await expect.poll(async () => Math.abs((await ghost(page).boundingBox())!.x - (title.x + title.width)), { message: 'stopped at the title\'s right edge' }).toBeLessThanOrEqual(1);
+    await page.mouse.move(head.x + head.width - 2, y, { steps: 6 });
+    await expect.poll(async () => {
+      const g = (await ghost(page).boundingBox())!;
+      return Math.abs(g.x + g.width - (head.x + head.width));
+    }, { message: 'stopped at the header\'s right edge' }).toBeLessThanOrEqual(1);
+
+    // The drop takes it away with the line.
+    await page.mouse.move(type.x + type.width, y, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '추가일']);
+    await expect(ghost(page)).toHaveCount(0);
+
+    // esc takes it away while the button is still down, and nothing brings it back.
+    const moved = (await header(page, 'year').boundingBox())!;
+    let held = await press(page, 'year');
+    await page.mouse.move(moved.x - 60, held.y, { steps: 6 });
+    await expect(ghost(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.move(moved.x - 90, held.y, { steps: 3 });
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+
+    // A window that loses the focus cancels the drag: the ghost goes too.
+    held = await press(page, 'year');
+    await page.mouse.move(moved.x - 60, held.y, { steps: 6 });
+    await expect(ghost(page)).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await expect(ghost(page)).toHaveCount(0);
+    await page.mouse.up();
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '추가일']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('in a table scrolled sideways the ghost stays inside the visible strip: its right edge never passes the strip\'s, its left edge never the pinned columns\'', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await importPaths(page, [PDF]);
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await showItemPanel(app, page);
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollWidth - e.clientWidth)).toBeGreaterThan(0);
+    await scroller(page).evaluate((e) => {
+      e.scrollLeft = 40;
+    });
+    await headerFollows(page);
+    const clip = (await page.getByTestId('table-head-clip').boundingBox())!;
+    const cell = (await header(page, 'year').boundingBox())!;
+    const y = cell.y + cell.height / 2;
+    await page.mouse.move(cell.x + cell.width / 2, y);
+    await page.mouse.down();
+    // Held at the right edge the table scrolls on under the pointer: while it does, the ghost (a cell's width, its grab offset kept) would
+    // reach past the strip if only the header's full width bounded it, so the overshoot is sampled on every frame.
+    await page.evaluate(() => {
+      const w = window as unknown as { __over: number; __stop: boolean };
+      w.__over = -Infinity;
+      w.__stop = false;
+      const sample = () => {
+        const g = document.querySelector('[data-testid="column-drag-ghost"]')?.getBoundingClientRect();
+        const c = document.querySelector('[data-testid="table-head-clip"]')!.getBoundingClientRect();
+        if (g) w.__over = Math.max(w.__over, g.right - c.right);
+        if (!w.__stop) requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    await page.mouse.move(clip.x + clip.width - 10, y, { steps: 6 });
+    await expect(ghost(page)).toBeVisible();
+    await expect.poll(() => scroller(page).evaluate((e) => e.scrollLeft - (e.scrollWidth - e.clientWidth)), { message: 'the autoscroll reaches the end' }).toBe(0);
+    await page.evaluate(() => {
+      (window as unknown as { __stop: boolean }).__stop = true;
+    });
+    expect(await page.evaluate(() => (window as unknown as { __over: number }).__over), 'the ghost\'s right edge never passed the strip\'s').toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    // Dragged back to the left: it stops at the title's right edge, wherever the table is scrolled.
+    const title = header(page, 'title');
+    await page.mouse.move(cell.x + cell.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(clip.x - 100, y, { steps: 8 });
+    await expect
+      .poll(async () => Math.abs((await ghost(page).boundingBox())!.x - (await title.boundingBox().then((b) => b!.x + b!.width))), { message: 'stopped at the title\'s right edge' })
+      .toBeLessThanOrEqual(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+  } finally {
+    await app.close();
+  }
+});
+
 test('a press that moves under 4 px is still a click that sorts; a longer one never sorts, and over its own cell it changes nothing', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {

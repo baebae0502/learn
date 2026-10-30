@@ -280,6 +280,7 @@ export function LibraryTable(props: LibraryTableProps) {
     view.scrollBy(step.x, step.y);
   }, []);
   const reorder = useColumnReorder({ head, clip: headClip, scroller, visible, forced, columns, onColumnsChange: props.onColumnsChange });
+  const dragged = reorder.drag ? visible.find((c) => c.id === reorder.drag?.id) : undefined;
 
   // The title takes what the other columns leave (at least its minimum): its width, for its edge, is computed.
   const viewWidth = Math.max(0, (virtualizer.scrollRect?.width ?? 0) - gutter);
@@ -593,6 +594,19 @@ export function LibraryTable(props: LibraryTableProps) {
                 </div>
               );
             })}
+            {dragged && reorder.drag && (
+              <div
+                ref={reorder.ghostRef}
+                className={cx('col-drag-ghost', dragged.align === 'end' && 'end')}
+                data-testid="column-drag-ghost"
+                data-sorted={sort.column === dragged.id || undefined}
+                aria-hidden="true"
+                style={{ width: reorder.drag.width }}
+              >
+                <span className="ellipsis">{dragged.label}</span>
+                {sort.column === dragged.id && <Icon icon={sort.direction === 'asc' ? ChevronUp : ChevronDown} size="xs" />}
+              </div>
+            )}
             {reorder.drag?.lineX != null && <div className="col-drop-line" data-testid="column-drop-line" aria-hidden="true" style={{ left: reorder.drag.lineX }} />}
           </div>
         </div>

@@ -124,6 +124,11 @@ export async function finderDrag(page: Page, file: string) {
   };
 }
 
+/** Main runs calls of these IPC channels `ms` late from now on — their change, its notice and the answer (test-hooks holdReplies); 0 puts it back. */
+export async function holdReplies(app: ElectronApplication, channels: string[], ms: number): Promise<void> {
+  await app.evaluate((_electron, input) => (globalThis as unknown as { __learnTest: { holdReplies(i: typeof input): void } }).__learnTest.holdReplies(input), { channels, ms });
+}
+
 /** The next call of an IPC channel is refused (an error answer); the calls after it go to the handler that was there. */
 export async function failOnce(app: ElectronApplication, channel: string): Promise<void> {
   await app.evaluate(({ ipcMain }, channel) => {

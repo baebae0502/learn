@@ -68,6 +68,15 @@ function countCall(channel: string): void {
 }
 
 /**
+ * E2E only (test-hooks.ts installs the table, holdReplies fills it): a channel's call waits this long before it runs, as in a
+ * main busy elsewhere, so its change, the notice of it and its answer all come that much later. Nothing is held otherwise.
+ */
+function heldBack(channel: string): Promise<void> | undefined {
+  const ms = (globalThis as { __learnIpcDelays?: Record<string, number> }).__learnIpcDelays?.[channel];
+  return ms ? new Promise((resolve) => setTimeout(resolve, ms)) : undefined;
+}
+
+/**
  * The single IPC entry point: sender URL check, window-kind check (CHANNEL_KINDS, by the sender's webContents), zod
  * validation, `Result` envelope, and error-code-only logging. A sender the channel does not allow is refused before
  * its input is read. The signature additionally ties each channel to the result type LearnApi declares for it.
@@ -75,7 +84,7 @@ function countCall(channel: string): void {
 export function createHandle(devOrigin: string | null): Handle {
   return function handle<S extends z.ZodType, T>(channel: Channel, schema: S, fn: Handler<S, T>): void {
     const kinds = CHANNEL_KINDS[channel];
-    ipcMain.handle(channel, async (event, raw: unknown): Promise<Result<T>> => {
+    const answer = async (event: IpcMainInvokeEvent, raw: unknown): Promise<Result<T>> => {
       try {
         const kind = windowKindOf(event.sender?.id);
         if (!isAllowedAppUrl(event.senderFrame?.url ?? '', devOrigin) || kind === undefined || !kinds.includes(kind)) {
@@ -90,6 +99,10 @@ export function createHandle(devOrigin: string | null): Handle {
         console.error(`[ipc] ${channel} failed: ${failure.code}`);
         return failure;
       }
+    };
+    ipcMain.handle(channel, async (event, raw: unknown): Promise<Result<T>> => {
+      await heldBack(channel);
+      return answer(event, raw);
     });
   } as Handle;
 }

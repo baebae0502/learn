@@ -325,6 +325,72 @@ describe('dragState', () => {
       state.end();
     });
 
+    it('main answers the drop\'s move after React Aria\'s wait: the guard holds until the move is drawn, and through the moves that render asks for', async () => {
+      let drawn!: () => void;
+      drop();
+      state.holdDropFor(new Promise<void>((resolve) => (drawn = resolve))); // onItemDrop: the move, its answer and its render to come
+      await vi.advanceTimersByTimeAsync(50); // React Aria's wait ends; the move has not been answered yet
+      commit();
+      for (let i = 0; i < 4; i++) frame();
+      expect(moves, 'the move React Aria\'s wait asked for').toEqual([{ pointer: false }]);
+      expect(state.dropGuarded(), 'held while the move is on its way').toBe(true);
+      rowsUpdate = true; // the answer comes: the render that draws the move, whose rows' effects ask for a focus move
+      commit();
+      drawn(); // the cache has drawn it
+      await vi.advanceTimersByTimeAsync(0);
+      commit(); // the sidebar's render asked for after it
+      frame();
+      frame();
+      expect(moves, 'the move the late render asked for — fails when the release does not wait for the drawing').toEqual([{ pointer: false }, { pointer: false }]);
+      expect(state.dropGuarded()).toBe(false);
+      expect(state.takeDropFocus('stat'), 'the dropped-on row\'s too').toBeNull();
+    });
+
+    it('a move that fails releases the guard too, after the same render, frame and queue', async () => {
+      let refuse!: (e: unknown) => void;
+      drop();
+      state.holdDropFor(new Promise<void>((_, reject) => (refuse = reject)));
+      await vi.advanceTimersByTimeAsync(50);
+      commit();
+      frame();
+      frame();
+      expect(state.dropGuarded()).toBe(true);
+      refuse(new Error('refused'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(state.dropGuarded(), 'a render and a frame still to come').toBe(true);
+      commit();
+      frame();
+      frame();
+      expect(state.dropGuarded()).toBe(false);
+    });
+
+    it('a move drawn inside React Aria\'s wait leaves the release where it was: after the wait', async () => {
+      drop();
+      state.holdDropFor(Promise.resolve());
+      await vi.advanceTimersByTimeAsync(49);
+      commit();
+      for (let i = 0; i < 4; i++) frame();
+      expect(state.dropGuarded()).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      commit();
+      frame();
+      frame();
+      expect(state.dropGuarded()).toBe(false);
+    });
+
+    it('an earlier drop\'s move still on its way does not hold a later drop', async () => {
+      state.armDropFocus('stat');
+      state.holdDropFor(new Promise<void>(() => {})); // never answered
+      state.clearDropFocus(); // the next input
+      drop(); // a second drop
+      state.holdDropFor(Promise.resolve());
+      await vi.advanceTimersByTimeAsync(50);
+      commit();
+      frame();
+      frame();
+      expect(state.dropGuarded()).toBe(false);
+    });
+
     it('a sidebar that goes before its render runs the release at once', async () => {
       state.setAfterRender(null);
       drop();

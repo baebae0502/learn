@@ -1,6 +1,7 @@
 import type { StorageMode } from '@learn/domain';
 import { useDragAndDrop, type DragTypes, type DropOperation, type DropTarget, type DroppableCollectionOnItemDropEvent } from 'react-aria-components';
 import { api } from '../api';
+import { cacheDrawn } from '../data/query-client';
 import { currentModel } from '../sidebar/actions';
 import { importTarget, type ImportTarget } from '../sidebar/importTarget';
 import { useSidebarEdit } from '../sidebar/sidebarEdit';
@@ -63,9 +64,18 @@ export function treeDropOperation(target: DropTarget, types: DragTypes, allowed:
   return 'cancel'; // a tag chip drops on table rows only
 }
 
-async function onItemDrop(e: DroppableCollectionOnItemDropEvent, onFiles: FilesDropHandler): Promise<void> {
+/**
+ * The drop on the row `key` is handed over: its guard is armed in the drop's own event, and holds until what the drop changes — the
+ * collection moved, the rows added, after main's answer — has been drawn (dragState.holdDropFor).
+ */
+function onItemDrop(e: DroppableCollectionOnItemDropEvent, onFiles: FilesDropHandler): void {
   const key = String(e.target.key);
   dragState.armDropFocus(key);
+  dragState.holdDropFor(handOver(e, key, onFiles).then(cacheDrawn));
+}
+
+/** What the drop carries goes where it was dropped: a collection moved under the row, rows added to it, Finder's files brought in. */
+async function handOver(e: DroppableCollectionOnItemDropEvent, key: string, onFiles: FilesDropHandler): Promise<void> {
   const alt = dragState.alt(); // read before any wait: the next event may change it
   const first = e.items[0];
   if (first?.kind === 'text') {
@@ -108,7 +118,7 @@ export function useSidebarDnd(onFiles: FilesDropHandler) {
       if (target.type === 'item') dragState.dropOperationAsked(); // a keyboard drop is recorded right after (SidebarTree)
       return treeDropOperation(target, types, allowed);
     },
-    onItemDrop: (e) => void onItemDrop(e, onFiles),
+    onItemDrop: (e) => onItemDrop(e, onFiles),
     onDropEnter: (e) => armOver(e.target),
     onDropExit: (e) => leaveOver(e.target),
   });

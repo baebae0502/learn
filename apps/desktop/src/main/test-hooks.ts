@@ -179,6 +179,8 @@ export interface LearnTestHooks {
   seedItems(input: SeedItemsInput): number;
   /** Seed-only: the organise fixture over items that exist (E2E, one transaction). */
   seedOrganize(input: SeedOrganizeInput): SeedOrganizeResult;
+  /** Calls of these IPC channels wait `ms` before they run from now on (ipc/register.ts heldBack); 0 runs them at once again. */
+  holdReplies(input: { channels: string[]; ms: number }): void;
 }
 
 /**
@@ -192,6 +194,9 @@ export function installTestHooks(deps: {
 }): void {
   // The IPC call counter (ipc/register.ts countCall): a test reads which channels a change called.
   (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls = {};
+  // How long each channel's calls are held back (ipc/register.ts heldBack): a test makes main slow.
+  const delays: Record<string, number> = {};
+  (globalThis as { __learnIpcDelays?: Record<string, number> }).__learnIpcDelays = delays;
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
@@ -202,6 +207,12 @@ export function installTestHooks(deps: {
       const out = seedOrganize(deps.organize(), input);
       deps.broadcast('libraryChanged', { reason: 'import' });
       return out;
+    },
+    holdReplies({ channels, ms }) {
+      for (const channel of channels) {
+        if (ms > 0) delays[channel] = ms;
+        else delete delays[channel];
+      }
     },
   };
 }

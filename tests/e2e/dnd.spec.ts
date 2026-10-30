@@ -9,7 +9,7 @@ import {
   organizeSnapshot, rowByTitle, runMenuCommand, seedLibrary, selectRows, showItemPanel, specialRow, tagChip, treeRow, type Session,
 } from './helpers';
 import {
-  MOVE_KEY, beginDrag, cancelDrag, dragTo, failOnce, finderDrag, frames, hover, marked, point, previews, recordPreviews, release, tableTitles,
+  MOVE_KEY, beginDrag, cancelDrag, dragTo, failOnce, finderDrag, frames, holdReplies, hover, marked, point, previews, recordPreviews, release, tableTitles,
 } from './dnd-helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -861,17 +861,26 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     expect(mark, `${how}: a collection row is the drop target`).toMatch(/^nav-collection-/);
     return { leaf, target: mark!.replace('nav-collection-', '') };
   };
+  /** Whether the viewed row `leaf` is drawn under `target`, the row it was dropped on: the drop's move is on screen. */
+  const drawnUnder = (page: Page, leaf: string, target: string) =>
+    page.evaluate(({ leaf, target }) => {
+      const row = (key: string) => document.querySelector<HTMLElement>(`.sidebar-tree [role="row"][data-key="${CSS.escape(key)}"]`);
+      const [l, t] = [row(leaf), row(target)];
+      return l !== null && t !== null && Number(l.getAttribute('aria-level')) === Number(t.getAttribute('aria-level')) + 1 && l.getBoundingClientRect().top > t.getBoundingClientRect().top;
+    }, { leaf, target });
   /** The drop: ↩, or VoiceOver's VO-Space on the drop target — a click with no pointer (detail 0), where React Aria drops as on ↩. */
   const keyboardDrop = async (page: Page, how: 'enter' | 'click') => {
     if (how === 'enter') await page.keyboard.press('Enter');
     else await page.evaluate(() => (document.activeElement as HTMLElement).click());
   };
 
-  test('(i) a keyboard drop far from the viewed row — by ↩, and by a screen reader\'s click (a click with no pointer) — leaves the cursor on the viewed row, and the view stays', async () => {
+  test('(i) a keyboard drop far from the viewed row — by ↩, and by a screen reader\'s click (a click with no pointer) — leaves the cursor on the viewed row, and the view stays, also when main is slow and the move is drawn late', async () => {
     const { page } = s;
     for (const how of ['enter', 'click'] as const) {
       const { leaf, target } = await dragLeafFar(page, how);
-      await stretchDropWait(page, 1500);
+      // Main is busy elsewhere: the move, its notice and its answer come 400 ms after the drop, long after React Aria's wait, so the
+      // drop's move is drawn after it. (A failure skips the tests after this one, which share the window: a hold left on harms none.)
+      await holdReplies(s.app, ['collections:move'], 400);
       await recordRowFocus(page);
       // A focus React Aria moves with no input of the user's onto another row is not a choice of view: after a screen reader's click
       // (the virtual modality) it moves the focus only after the next frame and any running transition, onto the element it found
@@ -916,20 +925,53 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
         });
         seen.observe(tree, { subtree: true, attributes: true, attributeFilter: ['inert'] });
       }, [leaf, target]);
+      // The drop's move drawn late brings React Aria's focus moves late too: its rows' effects ask for them in that render, and after
+      // a screen reader's click they wait for the next frame (focusSafely). Here rows take the focus when the viewed row is first drawn
+      // under the dropped-on one, in that render's task and a frame later.
+      await page.evaluate(({ leaf, target }) => {
+        const w = window as unknown as { __others: string[]; __late: string[] };
+        w.__late = [];
+        const tree = document.querySelector<HTMLElement>('.sidebar-tree')!;
+        const row = (key: string) => tree.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`);
+        const drawn = () => {
+          const [l, t] = [row(leaf), row(target)];
+          return l !== null && t !== null && Number(l.getAttribute('aria-level')) === Number(t.getAttribute('aria-level')) + 1 && l.getBoundingClientRect().top > t.getBoundingClientRect().top;
+        };
+        const focusLate = () => {
+          const box = tree.getBoundingClientRect();
+          const next = [...tree.querySelectorAll<HTMLElement>('[role="row"][data-testid^="nav-collection-"]')].find((r) => {
+            const b = r.getBoundingClientRect();
+            const key = r.dataset['key']!;
+            return ![leaf, target, ...w.__others, ...w.__late].includes(key) && b.top >= box.top && b.bottom <= box.bottom;
+          });
+          if (!next) return;
+          w.__late.push(next.dataset['key']!);
+          next.focus();
+        };
+        const moved = new MutationObserver(() => {
+          if (!drawn()) return;
+          moved.disconnect();
+          focusLate();
+          window.requestAnimationFrame(focusLate);
+        });
+        moved.observe(tree, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-level', 'style'] });
+      }, { leaf, target });
       await keyboardDrop(page, how);
       await expect.poll(() => page.evaluate(() => (window as unknown as { __transitioned?: boolean }).__transitioned), `${how}: the transition ran`).toBe(true);
       const others = await page.evaluate(() => (window as unknown as { __others: string[] }).__others);
       expect(others, `${how}: rows took the focus in the drop's own task, a frame later and after a transition`).toHaveLength(3);
       await expect.poll(() => parentOf(leaf), `${how}: the drop moved the viewed collection`).toBe(target);
       await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
-      // Past React Aria's (stretched) wait, its last move has come. No other row takes the view meanwhile: looked at all along,
-      // not once before React has drawn.
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __late: string[] }).__late.length), `${how}: the move was drawn, and rows took the focus in its render's task and a frame later`).toBe(2);
+      const late = await page.evaluate(() => (window as unknown as { __late: string[] }).__late);
+      // No other row takes the view meanwhile, nor in the while after the move was drawn: looked at all along, not once before
+      // React has drawn.
       let took: string | undefined;
       for (const until = Date.now() + 2000; Date.now() < until; await frames(page, 2))
-        for (const other of others) if (!took && (await treeRow(page, other).getAttribute('aria-selected')) === 'true') took = other;
-      expect(took, `${how}: a focus on another row in the drop's own task, a frame later or after a transition does not move the view`).toBeUndefined();
-      await relaxDropWait(page);
-      for (const other of others) expect(await rowFocus(page), `${how}: the other row ${other} did take the focus`).toContain(other);
+        for (const other of [...others, ...late]) if (!took && (await treeRow(page, other).getAttribute('aria-selected')) === 'true') took = other;
+      expect(took, `${how}: a focus on another row in the drop's own task, a frame later, after a transition, or as the late move is drawn does not move the view`).toBeUndefined();
+      await holdReplies(s.app, ['collections:move'], 0);
+      for (const other of [...others, ...late]) expect(await rowFocus(page), `${how}: the other row ${other} did take the focus`).toContain(other);
       // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
       expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
       await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
@@ -951,7 +993,9 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
       await keyboardDrop(page, how);
       await expect.poll(() => parentOf(leaf), `${how}: the drop moved the viewed collection`).toBe(target);
       await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
-      // React Aria's wait after a drop (50 ms), then its focus moves: the next frame and any running transition (focusSafely).
+      // React Aria's wait after a drop (50 ms) and the drawing of the move, whichever is later, then its focus moves: the next frame
+      // and any running transition (focusSafely).
+      await expect.poll(() => drawnUnder(page, leaf, target), `${how}: the move is drawn`).toBe(true);
       await page.waitForTimeout(200);
       await frames(page, 2);
       await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a instanceof CSSTransition).map((a) => a.finished)));

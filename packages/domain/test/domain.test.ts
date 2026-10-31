@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_COPY, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
-  VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
+  VIDEO_FORMATS, absolutePathSchema, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, titleSchema, toLearnError, updateMetadataInput,
 } from '../src/index';
 
 describe('ids', () => {
@@ -96,6 +96,21 @@ describe('ipc contract', () => {
   it('rejects empty path lists and unknown modes', () => {
     expect(importPathsInput.safeParse({ paths: [], mode: 'managed' }).success).toBe(false);
     expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'copy' }).success).toBe(false);
+  });
+  it('takes absolute paths only, without a NUL byte (R4: a page never names a file relative to main)', () => {
+    const accepts = (p: string) => importPathsInput.safeParse({ paths: [p], mode: 'managed' }).success;
+    for (const p of ['/a.pdf', '/Users/me/강의 자료/Lecture 1.pdf', '/tmp/x/../y.pdf']) expect(accepts(p), p).toBe(true);
+    for (const p of ['a.pdf', './a.pdf', '../a.pdf', '~/a.pdf', ' /a.pdf', 'C:\\Users\\a.pdf', 'file:///a.pdf', '/a\0.pdf', '']) {
+      expect(accepts(p), JSON.stringify(p)).toBe(false);
+    }
+    // One bad path refuses the whole call.
+    expect(importPathsInput.safeParse({ paths: ['/ok.pdf', 'relative.pdf'], mode: 'linked' }).success).toBe(false);
+    expect(absolutePathSchema.parse('/x/y')).toBe('/x/y');
+  });
+  it('stores titles NFC, as it does names (macOS can hand over decomposed Hangul)', () => {
+    const itemId = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(updateMetadataInput.parse({ itemId, title: ' 세포 신호 '.normalize('NFD') }).title).toBe('세포 신호');
+    expect(titleSchema.parse('가'.repeat(500).normalize('NFD'))).toBe('가'.repeat(500)); // the bound counts the NFC form
   });
   it('takes the collection an import files into: a uuid, null, or nothing', () => {
     const COLL = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';

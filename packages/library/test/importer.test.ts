@@ -59,6 +59,22 @@ describe('managed import', () => {
     const out = await importer.importOne(writePdf(dir, '신호 전달 #2 [최종].pdf', 'ko'), { mode: 'managed' });
     expect(out.status === 'imported' && out.item.title).toBe('신호 전달 #2 [최종]');
   });
+  it('stores the title and the original name in NFC (macOS hands names over in NFD); the path stays as the disk has it', async () => {
+    const { repo, importer } = setup();
+    const nfc = '신호 전달 정리';
+    for (const mode of ['managed', 'linked'] as const) {
+      const dir = tempDir('src');
+      const src = writePdf(dir, `${nfc.normalize('NFD')}.pdf`, `nfd ${mode}`);
+      expect(fs.readdirSync(dir)).toEqual([`${nfc.normalize('NFD')}.pdf`]); // the disk keeps the decomposed name
+      const out = await importer.importOne(src, { mode });
+      if (out.status !== 'imported') throw new Error(out.status);
+      expect(out.item.title, mode).toBe(nfc);
+      expect(out.item.originalName, mode).toBe(`${nfc}.pdf`);
+      const asset = repo.getAsset(out.item.assetId)!;
+      expect(asset.originalName, mode).toBe(`${nfc}.pdf`);
+      if (mode === 'linked') expect(asset.externalPath).toBe(src);
+    }
+  });
 });
 
 describe('duplicates (AC02)', () => {

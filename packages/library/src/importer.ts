@@ -72,14 +72,14 @@ export class Importer {
     } else {
       asset = {
         id: newId(), sha256, storageMode: opts.mode, relativePath: null, externalPath: null,
-        originalName: path.basename(src), mime: kind.mime, size: st.size, availability: 'available', createdAt: now, checkedAt: now,
+        originalName: displayFileName(src), mime: kind.mime, size: st.size, availability: 'available', createdAt: now, checkedAt: now,
       };
       if (opts.mode === 'managed') asset.relativePath = await this.place(src, sha256);
       else asset.externalPath = src;
     }
 
     await hooks?.beforeCommit?.();
-    const item = { id: newId(), type: kind.type, title: titleFromFile(src), createdAt: now };
+    const item = { id: newId(), type: kind.type, title: fileTitle(src), createdAt: now };
     const collectionId = opts.collectionId ?? null;
     const filed = repo.insertImported({
       item,
@@ -135,7 +135,14 @@ export class Importer {
   }
 }
 
-const titleFromFile = (p: string): string => path.basename(p, path.extname(p)) || path.basename(p);
+/** A file's name as the library stores and shows it: macOS hands over decomposed Hangul (NFD), the library keeps NFC. The path itself stays as the disk has it. */
+export const displayFileName = (filePath: string): string => path.basename(filePath).normalize('NFC');
+
+/** The title a file gets on import: its NFC name without the extension (the whole name when that leaves nothing). */
+export function fileTitle(filePath: string): string {
+  const name = displayFileName(filePath);
+  return path.basename(name, path.extname(name)) || name;
+}
 
 async function exists(p: string): Promise<boolean> {
   try {

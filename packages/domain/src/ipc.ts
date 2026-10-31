@@ -20,8 +20,13 @@ export const pickAndImportInput = z.object({
   allowDuplicate: z.boolean().default(false),
   collectionId: importCollectionSchema,
 }).strict();
+/**
+ * A file path a page sends (a drop): absolute, so main never resolves it against its own working folder (R4), and with no
+ * NUL byte. The app runs on macOS and Linux, where an absolute path starts with "/".
+ */
+export const absolutePathSchema = z.string().min(1).max(4096).refine((p) => p.startsWith('/') && !p.includes('\0'), 'absolute path');
 export const importPathsInput = z.object({
-  paths: z.array(z.string().min(1).max(4096)).min(1).max(500),
+  paths: z.array(absolutePathSchema).min(1).max(500),
   mode: storageModeSchema,
   allowDuplicate: z.boolean().default(false),
   collectionId: importCollectionSchema,
@@ -35,8 +40,8 @@ export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(500
 export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) }).strict();
 /** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
 export const nameSchema = z.string().normalize('NFC').trim().min(1).max(200);
-/** Item titles allow more than collection/tag names. */
-export const titleSchema = z.string().trim().min(1).max(500);
+/** Item titles allow more than collection/tag names; NFC first, like names. */
+export const titleSchema = z.string().normalize('NFC').trim().min(1).max(500);
 export const positionSchema = z.number().int().min(1).max(8);
 export const tagColorSchema = z.enum(TAG_COLORS.map((c) => c.id) as [TagColorId, ...TagColorId[]]);
 

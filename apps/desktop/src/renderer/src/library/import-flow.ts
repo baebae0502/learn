@@ -5,21 +5,29 @@ import type { ToastData } from '../ui/toasts';
 /**
  * The result toast of an import run (spec 3.3, 3.7), from main's report: the plain sentence; when every imported item went
  * into the collection the run asked for, the sentence naming it, with the existing items 건너뛰기 filed there as a line; a
- * run stopped by 취소 says how many of the files put in came in. Null when there is nothing to say.
+ * run stopped by 취소 says how many of the files put in came in and how many it left out. Null when there is nothing to say.
  */
 export function importToast(report: ImportReport, into: { name: string } | null): ToastData | null {
   const linked = report.mode === 'linked';
   const existing = into !== null && report.filedExisting > 0 ? t.toast.filedExisting(into.name, report.filedExisting) : null;
   let title: string | null = null;
-  if (report.cancelled) title = (linked ? t.toast.linkedOf : t.toast.importedOf)(report.requested, report.imported);
-  else if (report.imported > 0) {
+  let body: string | undefined;
+  if (report.cancelled) {
+    if (report.imported > 0) {
+      title = (linked ? t.toast.linkedOf : t.toast.importedOf)(report.requested, report.imported);
+      if (report.untouched > 0) body = (linked ? t.toast.cancelledRestLinked : t.toast.cancelledRest)(report.untouched);
+    } else {
+      title = t.toast.importCancelled;
+      if (report.untouched > 0) body = t.toast.cancelledNone(report.untouched);
+    }
+  } else if (report.imported > 0) {
     const filedInto = into !== null && report.filed === report.imported ? into : null;
     title = filedInto ? (linked ? t.toast.linkedInto : t.toast.importedInto)(filedInto.name, report.imported) : (linked ? t.toast.linked : t.toast.imported)(report.imported);
   }
   if (title === null && existing === null) return null;
   // Stopped with nothing in: said plainly, not as a success (Q-4j).
   const kind = report.cancelled && report.imported === 0 ? 'info' : 'success';
-  return { kind, title: title ?? existing!, ...(title !== null && existing !== null ? { lines: [existing] } : {}), testId: 'import-done' };
+  return { kind, title: title ?? existing!, ...(title !== null && existing !== null ? { lines: [existing] } : {}), ...(body !== undefined ? { body } : {}), testId: 'import-done' };
 }
 
 /** "원인. 다음 행동." → [cause, next step]; a message without a second sentence has no next step. */

@@ -9,26 +9,25 @@ afterEach(() => {
 
 describe('the progress toast in words (spec 3.3, mockup importToast)', () => {
   it('running: 가져오는 중 · done / total, the file under way, the hashed bytes as the bar', () => {
-    expect(describeJob('import', state({ done: 7, total: 12, bytesDone: 580, bytesTotal: 1000, current: '강의 08 · 효소 조절.mp4' }))).toEqual({
+    expect(describeJob('import', state({ done: 7, total: 12, bytesDone: 580, bytesTotal: 1000, percent: 58, current: '강의 08 · 효소 조절.mp4' }))).toEqual({
       state: 'running', waiting: false, title: '가져오는 중', count: ' · 7 / 12', file: '강의 08 · 효소 조절.mp4', note: null,
-      percent: 58, valueText: '파일 12개 중 7개, 58%', testId: 'import-progress', cancelTestId: 'import-cancel',
+      bar: true, percent: 58, valueText: '파일 12개 중 7개, 58%', testId: 'import-progress', cancelTestId: 'import-cancel',
     });
   });
   it('waiting for a choice: paused, 확인을 기다리는 중, the file asked about', () => {
-    expect(describeJob('import', state({ state: 'waiting-choice', done: 7, total: 12, bytesDone: 1000, bytesTotal: 1000, current: 'molbio_ch06_signaling.pdf' }))).toMatchObject({
-      waiting: true, title: '확인을 기다리는 중', count: ' · 7 / 12', file: 'molbio_ch06_signaling.pdf', note: null, percent: 100,
+    expect(describeJob('import', state({ state: 'waiting-choice', done: 7, total: 12, bytesDone: 900, bytesTotal: 1000, percent: 90, current: 'molbio_ch06_signaling.pdf' }))).toMatchObject({
+      waiting: true, title: '확인을 기다리는 중', count: ' · 7 / 12', file: 'molbio_ch06_signaling.pdf', note: null, bar: true, percent: 90,
     });
   });
   it('waiting for the work before it: paused, 앞의 작업을 기다리는 중 and what comes next, no file', () => {
     expect(describeJob('import', state({ state: 'waiting-job', done: 0, total: 12, bytesTotal: 5000 }))).toMatchObject({
-      waiting: true, title: '앞의 작업을 기다리는 중', count: ' · 0 / 12', file: null, note: '앞의 작업이 끝나면 가져오기를 시작합니다.', percent: 0,
+      waiting: true, title: '앞의 작업을 기다리는 중', count: ' · 12개', file: null, note: '앞의 작업이 끝나면 가져오기를 시작합니다.', bar: false, percent: 0,
     });
   });
-  it('a bar is never ahead of the bytes: floored, 0 before the sizes are known, 100 at most', () => {
-    expect(describeJob('import', state({ bytesDone: 999, bytesTotal: 1000 })).percent).toBe(99);
-    expect(describeJob('import', state({ bytesDone: 0, bytesTotal: 0 })).percent).toBe(0);
-    expect(describeJob('import', state({ bytesDone: 7, bytesTotal: 5 })).percent).toBe(100);
-    expect(describeJob('import', state({ bytesDone: 4_200_000, bytesTotal: 7_200_000 })).percent).toBe(58);
+  it('shows main\'s percent as it is, so the bar and the count measure the same progress (never 100 while waiting for a choice)', () => {
+    expect(describeJob('import', state({ state: 'waiting-choice', done: 0, total: 3, percent: 33 })).percent).toBe(33);
+    expect(describeJob('import', state({ state: 'waiting-choice', done: 0, total: 3, percent: 33 })).valueText).toBe('파일 3개 중 0개, 33%');
+    expect(describeJob('import', state({ percent: 0 })).percent).toBe(0);
   });
 });
 

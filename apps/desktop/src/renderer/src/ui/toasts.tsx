@@ -306,12 +306,14 @@ function JobProgressBody({ text, onCancel }: { text: JobToastText; onCancel: () 
           {t.jobs.cancel}
         </Button>
       </span>
-      <div className="t-progress">
-        <ProgressBar percent={text.percent} label={text.title} valueText={text.valueText} wide />
-        <span className="pct t-footnote c-secondary num" aria-hidden="true">
-          {t.jobs.percent(text.percent)}
-        </span>
-      </div>
+      {text.bar && (
+        <div className="t-progress">
+          <ProgressBar percent={text.percent} label={text.title} valueText={text.valueText} wide />
+          <span className="pct t-footnote c-secondary num" aria-hidden="true">
+            {t.jobs.percent(text.percent)}
+          </span>
+        </div>
+      )}
     </>
   );
 }

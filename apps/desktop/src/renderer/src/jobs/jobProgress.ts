@@ -18,10 +18,13 @@ export interface JobProgressState {
   quiet: boolean;
   /** Job toasts that stopped following their job, by toast key: their run's last state, then their result. */
   views: Readonly<Record<string, JobToastView>>;
+  /** How many times 취소 was asked for here: a drop still being handed over in chunks stops at the next one. */
+  cancels: number;
   setImport(state: ImportQueueState): void;
   addSending(delta: number): void;
   addSettling(delta: number): void;
   setQuiet(quiet: boolean): void;
+  noteCancel(): void;
   setView(key: string, view: JobToastView | undefined): void;
 }
 
@@ -32,6 +35,7 @@ export const useJobProgress = create<JobProgressState>()((set) => ({
   shownTotal: 0,
   quiet: false,
   views: {},
+  cancels: 0,
   setImport: (state) => set((s) => ({ import: state, shownTotal: state.state !== 'idle' ? state.total : s.shownTotal })),
   addSending: (delta) =>
     set((s) => {
@@ -40,6 +44,7 @@ export const useJobProgress = create<JobProgressState>()((set) => ({
     }),
   addSettling: (delta) => set((s) => ({ settling: Math.max(0, s.settling + delta) })),
   setQuiet: (quiet) => set({ quiet }),
+  noteCancel: () => set((s) => ({ cancels: s.cancels + 1 })),
   setView: (key, view) =>
     set((s) => {
       const views = { ...s.views };
@@ -72,7 +77,9 @@ export interface JobToastText {
   file: string | null;
   /** A sentence instead of a file name (waiting for the work before it). */
   note: string | null;
-  /** The hashed bytes of the files so far, floored: never 100 before the end. */
+  /** The bar is drawn: not while the job waits for the one before it (nothing to measure yet). */
+  bar: boolean;
+  /** Main's percent as it is (the same progress as the count, never 100 before the end). */
   percent: number;
   valueText: string;
   testId: string;
@@ -80,17 +87,17 @@ export interface JobToastText {
 }
 
 export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastText {
-  const percent = s.bytesTotal > 0 ? Math.min(100, Math.floor((s.bytesDone * 100) / s.bytesTotal)) : 0;
   const waitingJob = s.state === 'waiting-job';
   return {
     state: s.state,
     waiting: s.state === 'waiting-choice' || waitingJob,
     title: s.state === 'waiting-choice' ? t.jobs.waitingChoice : waitingJob ? t.jobs.waitingJob : t.jobs.importing,
-    count: t.jobs.count(s.done, s.total),
+    count: waitingJob ? t.jobs.countTotal(s.total) : t.jobs.count(s.done, s.total),
     file: waitingJob ? null : s.current,
     note: waitingJob ? t.jobs.waitingJobNote : null,
-    percent,
-    valueText: t.jobs.progressValue(s.done, s.total, percent),
+    bar: !waitingJob,
+    percent: s.percent,
+    valueText: t.jobs.progressValue(s.done, s.total, s.percent),
     testId: 'import-progress',
     cancelTestId: 'import-cancel',
   };
@@ -98,5 +105,6 @@ export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastTex
 
 /** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
 export function cancelJob(_job: ProgressJob): void {
+  useJobProgress.getState().noteCancel();
   void api().library.cancelImport();
 }

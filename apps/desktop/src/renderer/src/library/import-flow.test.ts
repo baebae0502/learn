@@ -4,7 +4,7 @@ import { LIST_REFRESH_WAIT_MS, failureLines, importToast, settledWithin } from '
 
 const UNSUPPORTED = '지원하지 않는 형식입니다. 지금은 PDF와 동영상(MP4 · MOV · WebM)을 가져올 수 있습니다.';
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
 });
 const into = { name: '학회 준비' };
 
@@ -26,9 +26,17 @@ describe('importToast: the result of a run, from main\'s report (spec 3.3, 3.7)'
     expect(importToast(report({ filedExisting: 1 }), into)).toEqual({ kind: 'success', title: '이미 있는 자료 1개를 ‘학회 준비’⁠에 넣었습니다', testId: 'import-done' });
   });
   it('a run stopped by 취소 says how many of the files put in came in; with none, plainly (info, not success)', () => {
-    expect(importToast(report({ imported: 7, requested: 12, cancelled: true }), null)).toEqual({ kind: 'success', title: '12개 중 7개를 가져왔습니다', testId: 'import-done' });
-    expect(importToast(report({ imported: 1, requested: 3, cancelled: true, mode: 'linked' }), null)?.title).toBe('3개 중 1개를 연결했습니다');
-    expect(importToast(report({ imported: 0, requested: 2, cancelled: true }), null)).toEqual({ kind: 'info', title: '2개 중 0개를 가져왔습니다', testId: 'import-done' });
+    expect(importToast(report({ imported: 7, requested: 12, cancelled: true, untouched: 5 }), null)).toEqual({
+      kind: 'success', title: '12개 중 7개를 가져왔습니다', body: '취소해서 남은 5개는 가져오지 않았습니다.', testId: 'import-done',
+    });
+    expect(importToast(report({ imported: 1, requested: 3, cancelled: true, untouched: 2, mode: 'linked' }), null)).toMatchObject({
+      title: '3개 중 1개를 연결했습니다', body: '취소해서 남은 2개는 연결하지 않았습니다.',
+    });
+    expect(importToast(report({ imported: 0, requested: 2, cancelled: true, untouched: 2 }), null)).toEqual({
+      kind: 'info', title: '가져오기를 취소했습니다', body: '파일 2개를 가져오지 않았습니다.', testId: 'import-done',
+    });
+    // 취소 at the very end left nothing out: no second line.
+    expect(importToast(report({ imported: 3, requested: 3, cancelled: true }), null)?.body).toBeUndefined();
   });
   it('says nothing for nothing (failures have their own toast)', () => {
     expect(importToast(report(), into)).toBeNull();

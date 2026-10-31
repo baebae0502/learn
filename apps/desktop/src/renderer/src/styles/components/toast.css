@@ -119,6 +119,11 @@
   .toast .t-progress .pct {
     font-variant-numeric: tabular-nums;
   }
+  /* A fixed width: the bar's length does not jump with the digits (9% to 10%, 99% to 100%). */
+  .toast .t-progress .pct {
+    min-width: 4ch;
+    text-align: right;
+  }
   /* The file under way (cut in the middle) or what comes next: footnote, secondary (mockup .t-body). */
   .toast .t-file {
     color: var(--text-secondary);

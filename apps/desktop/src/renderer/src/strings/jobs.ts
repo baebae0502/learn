@@ -7,6 +7,8 @@ export const jobs = {
   waitingJobNote: '앞의 작업이 끝나면 가져오기를 시작합니다.',
   /** After the title, on its line: " · 7 / 12" (files finished / put in). */
   count: (done: number, total: number) => ` · ${done} / ${total}`,
+  /** Under 앞의 작업을 기다리는 중: the files that will be imported, in place of a progress that has not begun. */
+  countTotal: (total: number) => ` · ${total}개`,
   percent: (pct: number) => `${pct}%`,
   /** The bar's value as read out (aria-valuetext). */
   progressValue: (done: number, total: number, pct: number) => `파일 ${total}개 중 ${done}개, ${pct}%`,

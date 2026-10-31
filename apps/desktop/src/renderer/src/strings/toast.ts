@@ -11,6 +11,12 @@ export const toast = {
   /** A run stopped by 취소 (spec 3.3): how many of the files put in came in. */
   importedOf: (requested: number, imported: number) => `${requested}개 중 ${imported}개를 가져왔습니다`,
   linkedOf: (requested: number, imported: number) => `${requested}개 중 ${imported}개를 연결했습니다`,
+  /** The second line of a stopped run's result: the files 취소 left out. */
+  cancelledRest: (n: number) => `취소해서 남은 ${n}개는 가져오지 않았습니다.`,
+  cancelledRestLinked: (n: number) => `취소해서 남은 ${n}개는 연결하지 않았습니다.`,
+  /** A run stopped before any file came in: said as what happened, not as a success. */
+  importCancelled: '가져오기를 취소했습니다',
+  cancelledNone: (n: number) => `파일 ${n}개를 가져오지 않았습니다.`,
   /** The verb on a result toast that can be taken back (collection deleted, items moved or taken out). */
   undo: '실행 취소',
   undoFailed: '되돌리지 못했습니다',

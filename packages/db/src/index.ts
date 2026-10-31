@@ -1,4 +1,5 @@
 export * from './connection';
+export * from './deletion-stamp';
 export * from './migrate';
 export * from './migrations/index';
 export * from './library-repository';

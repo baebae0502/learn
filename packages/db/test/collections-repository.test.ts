@@ -181,6 +181,18 @@ describe('CollectionsRepository: soft delete / restore', () => {
     expect(deletedAt(d)).toBe('2026-10-20T01:00:00.000Z');
   });
 
+  it('m-4: a child deleted on its own in the same millisecond as its parent stays in the trash when the parent is restored', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-20T01:00:00.000Z'));
+    const [a, b] = chain(2) as [string, string];
+    repo.softDelete(b); // b alone
+    repo.softDelete(a); // a, the same millisecond
+    expect([deletedAt(b), deletedAt(a)]).toEqual(['2026-10-20T01:00:00.000Z', '2026-10-20T01:00:00.001Z']);
+    expect(repo.restoreChanged(a)).toMatchObject({ changed: true, collection: { id: a } });
+    expect(ids(repo.list())).toEqual([a]);
+    expect(deletedAt(b)).toBe('2026-10-20T01:00:00.000Z');
+  });
+
   it('throws NOT_FOUND for unknown or already-deleted targets', () => {
     const a = repo.create({ name: 'a' }).id;
     repo.softDelete(a);

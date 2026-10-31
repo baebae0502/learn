@@ -1,5 +1,6 @@
 import { LearnError, newId, nowIso, type Collection } from '@learn/domain';
 import type { Db } from './connection';
+import { nextDeletionStamp } from './deletion-stamp';
 
 interface CollectionDbRow {
   id: string; name: string; parent_id: string | null; created_at: string; updated_at: string | null; item_count: number;
@@ -97,7 +98,7 @@ export class CollectionsRepository {
     this.db.transaction(() => {
       if (!this.isLive(id)) throw notFound();
       // Descendants deleted earlier keep their own deletion time.
-      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = @now WHERE id IN (SELECT id FROM sub) AND deleted_at IS NULL`).run({ id, now: nowIso() });
+      this.db.prepare(`${SUBTREE} UPDATE collections SET deleted_at = @now WHERE id IN (SELECT id FROM sub) AND deleted_at IS NULL`).run({ id, now: nextDeletionStamp(this.db) });
     })();
   }
 

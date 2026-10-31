@@ -3,6 +3,7 @@ import {
   type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
 } from '@learn/domain';
 import type { Db } from './connection';
+import { nextDeletionStamp } from './deletion-stamp';
 import { CollectionsRepository } from './collections-repository';
 import { TagsRepository } from './tags-repository';
 
@@ -327,8 +328,8 @@ export class LibraryRepository {
   trashChanged(itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       const stmt = this.db.prepare('UPDATE items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL');
-      const now = nowIso();
-      return itemIds.filter((id) => stmt.run(now, id).changes > 0);
+      const stamp = nextDeletionStamp(this.db);
+      return itemIds.filter((id) => stmt.run(stamp, id).changes > 0);
     })();
   }
 

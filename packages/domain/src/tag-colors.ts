@@ -10,3 +10,6 @@ export const TAG_COLORS = [
 ] as const;
 
 export type TagColorId = (typeof TAG_COLORS)[number]['id'];
+
+/** The eight colour slots (design-spec 4): colour N is slot N is key N. */
+export const COLOR_SLOTS = [1, 2, 3, 4, 5, 6, 7, 8] as const;

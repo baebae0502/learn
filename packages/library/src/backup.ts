@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { LearnError, newId, nowIso, type StorageMode } from '@learn/domain';
+import { LearnError, newId, nowIso, toLearnError, type StorageMode } from '@learn/domain';
 import { LATEST_SCHEMA_VERSION, LibraryRepository, currentVersion, migrate, openDatabase, snapshotDatabase, type Db, type LibraryCounts } from '@learn/db';
 import { sha256File } from './hash';
 import { ensureLayout, libraryLayout, managedRelativePath, type LibraryLayout } from './layout';
@@ -133,6 +133,13 @@ export async function createBackup(args: {
   }
 }
 
+/** The backup's own database cannot be read: the backup is what is broken, not the library the user has open. */
+function unreadableBackup(e: unknown): unknown {
+  return toLearnError(e).code === 'LIBRARY_UNAVAILABLE'
+    ? new LearnError('VALIDATION_FAILED', '백업의 라이브러리 데이터가 손상되었습니다. 다른\u00a0백업을 선택하세요.', { cause: e })
+    : e;
+}
+
 export async function restoreBackup(args: { backupDir: string; targetRoot: string }): Promise<RestoreResult> {
   let manifestText: string;
   try {
@@ -203,7 +210,12 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
       }
     }
 
-    const db = openDatabase(tempLayout.dbFile);
+    let db: Db;
+    try {
+      db = openDatabase(tempLayout.dbFile);
+    } catch (e) {
+      throw unreadableBackup(e);
+    }
     try {
       migrate(db, { dbFile: tempLayout.dbFile });
       const repo = new LibraryRepository(db);

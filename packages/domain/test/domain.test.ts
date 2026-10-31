@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_COPY, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
   VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
 } from '../src/index';
 
@@ -19,6 +19,41 @@ describe('errors and results', () => {
     expect(full.code).toBe('DISK_FULL');
     expect(full.retryable).toBe(true);
     expect(toLearnError(new Error('boom')).code).toBe('INTERNAL');
+  });
+  it.each([
+    ['ENOSPC', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['EDQUOT', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['SQLITE_FULL', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['EACCES', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['EPERM', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['EROFS', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['SQLITE_READONLY', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_READONLY_DBMOVED', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_CANTOPEN', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_CANTOPEN_ISDIR', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_NOTADB', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['SQLITE_CORRUPT', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['SQLITE_CORRUPT_INDEX', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['ENOENT', 'NOT_FOUND', ERROR_COPY.fileMissing],
+  ] as const)('maps %s to %s in the user\'s words (spec 10), keeping the engine error as the cause', (raw, code, message) => {
+    const engine = Object.assign(new Error('engine text that never reaches the screen'), { code: raw });
+    const le = toLearnError(engine, '대신 쓰는 문장입니다.');
+    expect(le).toMatchObject({ code, message });
+    expect(le.cause).toBe(engine);
+  });
+  it('keeps the fallback for every other code: a constraint, an I/O error, odd and non-string codes', () => {
+    for (const raw of ['SQLITE_CONSTRAINT_UNIQUE', 'SQLITE_IOERR_FSYNC', 'SQLITE_BUSY', 'SQLITE_', 'EIO', 'toString', 'constructor']) {
+      expect(toLearnError(Object.assign(new Error('x'), { code: raw }), '대신 쓰는 문장입니다.'), raw).toMatchObject({ code: 'INTERNAL', message: '대신 쓰는 문장입니다.' });
+    }
+    expect(toLearnError({ code: 28 })).toMatchObject({ code: 'INTERNAL', message: ERROR_COPY.unknown });
+    expect(toLearnError(null)).toMatchObject({ code: 'INTERNAL', message: ERROR_COPY.unknown });
+  });
+  it('lets a full disk and a refused write be retried, not a damaged library', () => {
+    const e = (code: string) => toLearnError(Object.assign(new Error('x'), { code }));
+    expect([e('SQLITE_FULL').retryable, e('SQLITE_READONLY').retryable, e('EROFS').retryable, e('SQLITE_NOTADB').retryable]).toEqual([true, true, true, false]);
+  });
+  it('says each mapped cause with its next step: two sentences (design-spec 9)', () => {
+    for (const key of ['fileDenied', 'diskFull', 'libraryDenied', 'libraryCorrupt'] as const) expect(ERROR_COPY[key], key).toMatch(/^[^.]+\. [^.]+\.$/);
   });
   it('keeps LearnError as-is', () => {
     const e = new LearnError('HASH_MISMATCH', '다름', { retryable: true });

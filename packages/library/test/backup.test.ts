@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, createBackup, ensureLayout, libraryLayout, resolveAssetPath, restoreBackup, sha256File } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
@@ -175,5 +175,26 @@ describe('backup and restore (AC15 — files part)', () => {
     const target = path.join(tempDir('restore'), 'Library-lost');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
     expect(result.missingAssets).toContain(managedAsset.id);
+  });
+  it('refuses a backup whose database is not a database: the handle it opened is closed and no folder is left', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-notadb');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    fs.writeFileSync(path.join(dest, 'library.sqlite'), 'not a database, '.repeat(64));
+    const probe = openDatabase(':memory:');
+    probe.close();
+    const close = vi.spyOn(Object.getPrototypeOf(probe) as { close(): unknown }, 'close');
+    const target = path.join(tempDir('restore'), 'Library');
+    try {
+      await expect(restoreBackup({ backupDir: dest, targetRoot: target })).rejects.toMatchObject({
+        code: 'VALIDATION_FAILED', message: '백업의 라이브러리 데이터가 손상되었습니다. 다른\u00a0백업을 선택하세요.',
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+      expect((close.mock.contexts[0] as { open: boolean }).open).toBe(false);
+      expect(fs.existsSync(target)).toBe(false);
+      expect(fs.readdirSync(path.dirname(target)).filter((e) => e.includes('.restoring-'))).toEqual([]);
+    } finally {
+      close.mockRestore();
+    }
   });
 });

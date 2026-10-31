@@ -7,8 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
+  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -41,6 +41,16 @@ const library = (dir: string) => [
   fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), dir, TOUR_VIDEO_BYTES.mpeg4),
 ];
 
+/** A file named `name` in `dir`: `src`'s bytes and a line of its own (new content every time), zero-extended to `bytes`. */
+function sizedCopy(src: string, dir: string, name: string, bytes: number): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const out = path.join(dir, name);
+  fs.writeFileSync(out, Buffer.concat([fs.readFileSync(src), Buffer.from(`\n% ${name}\n`)]));
+  if (fs.statSync(out).size > bytes) throw new Error(`${name} outgrew its tour size (${bytes} B)`);
+  fs.truncateSync(out, bytes);
+  return out;
+}
+
 /** What changes between runs in the item panel: its dates, a fixture's SHA-256 (pdf-lib writes the date), an outside file's path. */
 const panelMasks = (page: Page) => [
   page.locator('[data-testid="info-row"]:is([data-field="createdAt"], [data-field="updatedAt"]) dd'),
@@ -66,7 +76,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     // A linked file that went missing: the row shows the link mark and the 파일 없음 flag.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(LIBRARY[0]!, gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await s.page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -87,7 +97,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     // A duplicate opens the duplicate sheet (shot in its own test below): close it, which skips.
     const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [path.join(FIXTURES, 'sample.pdf')]));
     await closeSheet(dup, 'Escape');
-    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
+    await waitImportIdle(s.page);
     const txt = testInfo.outputPath('notes.txt');
     fs.writeFileSync(txt, 'x');
     await importFiles(s, [txt]);
@@ -221,7 +231,7 @@ test('item panel: nothing selected, one item, several, a missing original, folde
     // A linked original that went missing: 다시 연결… leads.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(LIBRARY[0]!, gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await s.page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -323,6 +333,27 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
       await shoot(keys, `sheet-shortcuts-${theme}`);
       await closeSheet(keys, 'Escape');
       await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.4): the duplicate question with its box for the rest, ticked as it opens; the existing station above is the
+// single duplicate, which has no box.
+test('sheets: duplicate with the box for the remaining duplicates', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    const dir = testInfo.outputPath('again');
+    const twice = ['molbio_ch06_signaling.pdf', 'molbio_ch07_receptors.pdf', 'molbio_ch08_kinases.pdf'].map((n) => sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, n, 1_000_000));
+    await importPaths(s.page, twice);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, twice));
+      await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
+      await shoot(sheet, `sheet-duplicate-rest-${theme}`, { mask: [sheet.getByTestId('dup-card').locator('.t-footnote')] });
+      await closeSheet(sheet, 'Escape'); // 건너뛰기 for all three: the box was ticked
+      await waitImportIdle(s.page);
     }
   } finally {
     await s.app.close();
@@ -589,7 +620,7 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
     const gone = path.join(home, 'Downloads', 'gone.pdf');
     fs.mkdirSync(path.dirname(gone), { recursive: true });
     fs.copyFileSync(path.join(FIXTURES, 'sample.pdf'), gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
@@ -825,7 +856,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('viewer-title')).toBeVisible();
     await runMenuCommand(s.app, 'nav.back');
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), path.join(FIXTURES, 'sample.pdf'));
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')], { allowDuplicate: true });
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
     await specialRow(s.page, 'unfiled').click();
     await shoot(s.page, 'sidebar-special-light', { mask: dates() });
@@ -1073,6 +1104,87 @@ test('drag and drop: a tree row and a table row as drop targets, then the board 
       expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
       await shoot(s.page, `gallery5-${theme}`);
     }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.3, mockup importToast and components part 2): the progress toast while a run goes, and the result that takes
+// it over after 취소. 4.2 MB of 7.2 MB hashed when the first file is held before its commit: 58%, as drawn.
+test('import progress toast: running, then the result in its place after 취소', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  try {
+    await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const dir = testInfo.outputPath('incoming');
+    const files = [
+      sizedCopy(path.join(FIXTURES, 'sample-h264-aac.mp4'), dir, '강의 08 · 효소 조절.mp4', 4_200_000),
+      sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 3장.pdf', 1_500_000),
+      sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 4장.pdf', 1_500_000),
+    ];
+    await importPause(s.app, 'beforeCommit');
+    await importFiles(s, files);
+    const progress = s.page.getByTestId('import-progress');
+    await expect(progress.locator('.pct')).toHaveText('58%');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `toast-import-running-${theme}`, { mask: dates() });
+    }
+    await setTheme(s.page, 'light');
+    await progress.getByTestId('import-cancel').click();
+    await importResume(s.app);
+    await expect(s.page.getByTestId('import-done')).toHaveText('3개 중 1개를 가져왔습니다');
+    await shoot(s.page, 'toast-import-cancelled-light', { mask: dates() });
+    await waitImportIdle(s.page);
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.4, mockup dialogs.html?scene=duplicate): three duplicates asked at the end — the toast waiting under the sheet; the palette opened during an import, held when the question comes; and an import waiting
+// behind another job (mockup dialogs.html?scene=jobs).
+test('import progress toast: waiting for a choice (and the sheet\'s box), the palette under it, waiting for the work before it', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const pdf = path.join(FIXTURES, 'sample.pdf');
+  try {
+    await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const dir = testInfo.outputPath('again');
+    const twice = ['molbio_ch06_signaling.pdf', 'molbio_ch07_receptors.pdf', 'molbio_ch08_kinases.pdf'].map((n) => sizedCopy(pdf, dir, n, 1_000_000));
+    await importPaths(s.page, twice);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, twice));
+      await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
+      await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+      await shoot(s.page, `toast-import-choice-${theme}`, { mask: dates() });
+      await closeSheet(sheet, 'Escape'); // 건너뛰기 for all three: the box was ticked
+      await waitImportIdle(s.page);
+    }
+    await setTheme(s.page, 'light');
+    await importPause(s.app, 'afterStage');
+    await importFiles(s, [sizedCopy(pdf, dir, 'molbio_ch09_cycle.pdf', 1_000_000), twice[0]!]);
+    await expect.poll(() => importWaiting(s.app)).toBe('afterStage');
+    await runMenuCommand(s.app, 'app.palette');
+    await expect(s.page.getByTestId('palette-input')).toBeFocused();
+    const sheet = await expectWindow(s.app, 'sheet', () => importResume(s.app));
+    await expect(s.page.getByTestId('palette-busy')).toBeVisible();
+    await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+    await shoot(s.page, 'palette-held-light', { mask: dates() });
+    await closeSheet(sheet, 'Escape');
+    await s.page.keyboard.press('Escape');
+    await waitImportIdle(s.page);
+    await expect(s.page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 }); // the run's result closes by itself, so it is not in the next shots
+    await holdJob(s.app, 'backup');
+    await importFiles(s, [sizedCopy(pdf, dir, 'molbio_ch10_mitosis.pdf', 1_000_000), sizedCopy(pdf, dir, 'molbio_ch11_meiosis.pdf', 1_000_000)]);
+    await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-job');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `toast-import-waiting-${theme}`, { mask: dates() });
+    }
+    await releaseJob(s.app);
+    await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
+    await waitImportIdle(s.page);
   } finally {
     await s.app.close();
   }

@@ -178,7 +178,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       }
       setRelinking(true);
       try {
-        await unwrap(api().library.pickAndRelink({ assetId: item.assetId }));
+        await unwrap(api().library.pickAndRelink({ itemId }));
       } finally {
         setRelinking(false);
       }

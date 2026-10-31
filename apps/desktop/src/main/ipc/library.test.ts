@@ -40,7 +40,16 @@ const sheetOwners: Array<{ owner: unknown; phase: 'shown' | 'closed' }> = [];
 registerLibraryIpc(
   createHandle(null),
   stubDeps({
-    getContext: () => ({ importer: { importMany }, repo: { searchTexts: () => [{ id: 'i1', abstract: '초록', extra: null }], getItems }, db }) as never,
+    getContext: () => ({
+      importer: { importMany },
+      repo: {
+        searchTexts: () => [{ id: 'i1', abstract: '초록', extra: null }],
+        getItems,
+        // 다시 연결… asks from an item now: a linked one whose file is missing.
+        getItem: (id: string) => ({ id, assetId: '00000000-0000-4000-8000-000000000001', storageMode: 'linked', availability: 'missing' }),
+      },
+      db,
+    }) as never,
     windows: {
       openSettings: () => {},
       asSheet: async (owner, show) => {
@@ -68,7 +77,7 @@ beforeEach(() => {
 describe('library open panels hang on the asking window as sheets (follow-up D)', () => {
   it('파일 가져오기 and 다시 연결… run their panel inside asSheet with the window as parent', async () => {
     expect(await invoke('library:pickAndImport', { mode: 'managed' })).toMatchObject({ ok: true, data: [] });
-    expect(await invoke('library:pickAndRelink', { assetId: '00000000-0000-4000-8000-000000000001' })).toMatchObject({ ok: true, data: null });
+    expect(await invoke('library:pickAndRelink', { itemId: '00000000-0000-4000-8000-000000000002' })).toMatchObject({ ok: true, data: null });
     expect(panels).toEqual([MAIN, MAIN]);
     expect(sheetOwners).toEqual([
       { owner: MAIN, phase: 'shown' },
@@ -81,7 +90,7 @@ describe('library open panels hang on the asking window as sheets (follow-up D)'
   it('each panel says what it is for: a message on the sheet and its own button (macOS shows no title on a sheet)', async () => {
     await invoke('library:pickAndImport', { mode: 'managed' });
     await invoke('library:pickAndImport', { mode: 'linked' });
-    await invoke('library:pickAndRelink', { assetId: '00000000-0000-4000-8000-000000000001' });
+    await invoke('library:pickAndRelink', { itemId: '00000000-0000-4000-8000-000000000002' });
     expect(options.map((o) => o.buttonLabel)).toEqual(['가져오기', '연결', '다시 연결']);
     expect(new Set(options.map((o) => o.message)).size).toBe(3);
     for (const o of options) expect(o.message).toMatch(/\S/);

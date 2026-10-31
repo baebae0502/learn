@@ -15,7 +15,7 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['library']['restore']>>().toEqualTypeOf<Ipc.ItemIdsInput>();
     expectTypeOf<P<LearnApi['library']['updateMetadata']>>().toEqualTypeOf<Ipc.UpdateMetadataInput>();
     expectTypeOf<P<LearnApi['library']['import']>>().toEqualTypeOf<Ipc.ImportPathsInput>();
-    expectTypeOf<P<LearnApi['library']['pickAndRelink']>>().toEqualTypeOf<Ipc.AssetIdInput>();
+    expectTypeOf<P<LearnApi['library']['pickAndRelink']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['collections']['create']>>().toEqualTypeOf<Ipc.CreateCollectionInput>();
     expectTypeOf<P<LearnApi['collections']['rename']>>().toEqualTypeOf<Ipc.RenameCollectionInput>();
     expectTypeOf<P<LearnApi['collections']['move']>>().toEqualTypeOf<Ipc.MoveCollectionInput>();

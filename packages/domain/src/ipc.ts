@@ -32,7 +32,6 @@ export const importPathsInput = z.object({
   collectionId: importCollectionSchema,
 }).strict();
 export const itemIdInput = z.object({ itemId: z.uuid() });
-export const assetIdInput = z.object({ assetId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
@@ -143,7 +142,6 @@ export type ImportPathsInput = z.input<typeof importPathsInput>;
 export type GetItemsInput = z.input<typeof getItemsInput>;
 
 export type ItemIdInput = z.input<typeof itemIdInput>;
-export type AssetIdInput = z.input<typeof assetIdInput>;
 export type ItemIdsInput = z.input<typeof itemIdsInput>;
 export type CollectionIdInput = z.input<typeof collectionIdInput>;
 export type RenameCollectionInput = z.input<typeof renameCollectionInput>;
@@ -179,7 +177,11 @@ export interface LearnApi {
     import(input: ImportPathsInput): Promise<Result<ImportOutcome[]>>;
     list(): Promise<Result<LibraryItem[]>>;
     get(input: ItemIdInput): Promise<Result<LibraryItem>>;
-    pickAndRelink(input: AssetIdInput): Promise<Result<LibraryItem | null>>;
+    /**
+     * 다시 연결… from one item: main shows the open panel, points that item's file at the picked one (every item on the
+     * file follows) and answers that item; null when the panel was cancelled.
+     */
+    pickAndRelink(input: ItemIdInput): Promise<Result<LibraryItem | null>>;
     recoveryReport(): Promise<Result<RecoveryReport>>;
     detail(input: ItemIdInput): Promise<Result<ItemDetail>>;
     updateMetadata(input: UpdateMetadataInput): Promise<Result<LibraryItem>>;

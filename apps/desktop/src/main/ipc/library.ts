@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import {
-  Channels, LearnError, assetIdInput, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  Channels, LearnError, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
   type ImportOutcome,
 } from '@learn/domain';
 import { readOrganizeSnapshot } from '@learn/db';
@@ -73,15 +73,17 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   // Re-checks the file; a changed availability is broadcast (libraryChanged{availability}).
   handle(Channels.library.get, itemIdInput, ({ itemId }) => refreshItemAvailability(deps.getContext(), itemId));
 
-  handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
+  // 다시 연결… from one item: its file is pointed at the picked one, every item on that file is announced, and the answer
+  // is the item asked from (not whichever item shares the file first).
+  handle(Channels.library.pickAndRelink, itemIdInput, async ({ itemId }, event) => {
     const ctx = deps.getContext();
+    const item = ctx.repo.getItem(itemId);
+    if (!item) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
     const [picked] = await showOpen(deps, event, { title: words.relink, message: words.relinkMessage, buttonLabel: words.relinkButton, properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
-    await relinkAsset(ctx.repo, assetId, picked);
-    const itemIds = ctx.repo.itemIdsForAsset(assetId);
-    broadcast('libraryChanged', { reason: 'relink', itemIds });
-    const itemId = itemIds[0];
-    return itemId ? ctx.repo.getItem(itemId) ?? null : null;
+    await relinkAsset(ctx.repo, item.assetId, picked);
+    broadcast('libraryChanged', { reason: 'relink', itemIds: ctx.repo.itemIdsForAsset(item.assetId) });
+    return ctx.repo.getItem(itemId) ?? null;
   });
 
   handle(Channels.library.recoveryReport, emptyInput, () => deps.getContext().recovery);

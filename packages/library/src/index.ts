@@ -1,5 +1,6 @@
 export * from './availability';
 export * from './backup';
+export * from './fsync';
 export * from './hash';
 export * from './importer';
 export * from './layout';

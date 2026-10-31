@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -54,6 +55,20 @@ describe('sha256File', () => {
     const p = path.join(d, 'a.txt');
     fs.writeFileSync(p, 'abc');
     expect(await sha256File(p)).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  });
+  it('reports the bytes it reads chunk by chunk and stops when its signal is aborted (the queue\'s progress and cancel)', async () => {
+    const d = tempDir();
+    const p = path.join(d, 'big.bin');
+    fs.writeFileSync(p, Buffer.alloc(1024 * 1024, 7));
+    const reads: number[] = [];
+    expect(await sha256File(p, { onBytes: (n) => reads.push(n) })).toBe(createHash('sha256').update(fs.readFileSync(p)).digest('hex'));
+    expect(reads.length).toBeGreaterThan(1);
+    expect(reads.reduce((a, b) => a + b, 0)).toBe(1024 * 1024);
+    await expect(sha256File(p, { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
+    const stop = new AbortController();
+    let seen = 0;
+    await expect(sha256File(p, { signal: stop.signal, onBytes: () => { seen += 1; stop.abort(); } })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(seen).toBe(1);
   });
 });
 

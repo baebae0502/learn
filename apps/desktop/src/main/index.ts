@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
+import { app, dialog, Menu, systemPreferences, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -19,6 +19,10 @@ import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { createHandle, type IpcDeps } from './ipc/register';
+import { createDuplicateAsker } from './jobs/duplicate-asker';
+import { createImportQueue } from './jobs/import-queue';
+import { createJobLane } from './jobs/lane';
+import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
 import { createMenuRebuilder } from './menu/rebuild';
@@ -82,6 +86,11 @@ const editFlush = createFlushGate({
     if (isE2E(app.isPackaged, process.env)) ((globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ??= []).push(entry);
   },
 });
+
+/** The work line (spec 3.1): imports, backups and restores run on it one at a time. */
+const jobs = createJobLane();
+/** Asked before the edit-flush gate on every quit; made with the import queue once the app is ready. */
+let quitGuard: QuitGuard | null = null;
 
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
@@ -351,11 +360,57 @@ if (!app.requestSingleInstanceLock()) {
 
     /** The ⌘/ sheet lists the registry's shortcuts: its height is kept per what it is drawn from. */
     const shortcutsSheetDigest = shortcutsDigest(COMMANDS, process.platform);
-    const deps: IpcDeps = {
-      getContext: () => {
-        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
-        return ctx;
+    const getContext = (): LibraryContext => {
+      if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
+      return ctx;
+    };
+    const sheets = createSheetHost({
+      preload: path.join(here, '../preload/sheet.cjs'),
+      url: () => windowUrl(rendererBase, 'sheet', urlOptions),
+      platform: process.platform,
+      onSheetShown,
+      onSheetClosed,
+      staticKey: (payload) =>
+        payload.kind === 'shortcuts'
+          ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
+          : null,
+    });
+    /** Every native dialog with a parent window goes through this (IpcDeps.windows.asSheet). */
+    const asSheet = async <T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T> => {
+      onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
+      try {
+        return await show();
+      } finally {
+        if (!owner.isDestroyed()) onSheetClosed(owner, { native: true });
+      }
+    };
+    const liveMainWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+    // Every window's imports, one file at a time on the work line; a duplicate question hangs on the window that asked.
+    const imports = createImportQueue({
+      lane: jobs,
+      importer: () => getContext().importer,
+      card: (itemId) => {
+        const item = ctx?.repo.getItem(itemId);
+        return item ? { title: item.title, type: item.type, size: item.size, createdAt: item.createdAt, storageMode: item.storageMode } : null;
       },
+      ask: createDuplicateAsker<BrowserWindow>({
+        windowOf: (id) => {
+          const win = liveMainWindow();
+          return win && win.webContents.id === id ? win : null;
+        },
+        anyMainWindow: liveMainWindow,
+        sheet: (parent, payload) => sheets.open(parent, payload),
+        messageBox: (options) => dialog.showMessageBox(options),
+      }),
+      fileExisting: (collectionId, itemIds) => {
+        const filed = getContext().collections.addItemsChanged(collectionId, itemIds);
+        if (filed.length > 0) broadcast('libraryChanged', { reason: 'collections', itemIds: filed });
+        return filed.length;
+      },
+      announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
+    });
+    const deps: IpcDeps = {
+      getContext,
       appInfo: (): AppInfo => ({
         version: app.getVersion(),
         libraryRoot,
@@ -379,28 +434,10 @@ if (!app.requestSingleInstanceLock()) {
       },
       isMainWindow,
       isSettingsWindow,
-      sheets: createSheetHost({
-        preload: path.join(here, '../preload/sheet.cjs'),
-        url: () => windowUrl(rendererBase, 'sheet', urlOptions),
-        platform: process.platform,
-        onSheetShown,
-        onSheetClosed,
-        staticKey: (payload) =>
-          payload.kind === 'shortcuts'
-            ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
-            : null,
-      }),
-      windows: {
-        openSettings: () => void settingsWindow.open(),
-        async asSheet(owner, show) {
-          onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
-          try {
-            return await show();
-          } finally {
-            if (!owner.isDestroyed()) onSheetClosed(owner, { native: true });
-          }
-        },
-      },
+      sheets,
+      jobs,
+      imports,
+      windows: { openSettings: () => void settingsWindow.open(), asSheet },
       theme: {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
@@ -419,7 +456,28 @@ if (!app.requestSingleInstanceLock()) {
       },
     };
     registerAllIpc(createHandle(devOrigin), deps);
-    // E2E only (LEARN_E2E=1, never packaged): the seeding hook a large-library test calls through app.evaluate.
+    // A running import, backup or restore is asked about before the edit-flush gate on every quit.
+    quitGuard = createQuitGuard<BrowserWindow>({
+      lane: jobs,
+      remaining: () => {
+        const s = imports.state();
+        return s.total - s.done;
+      },
+      owner: liveMainWindow,
+      ask: async (owner, question) => {
+        const options: MessageBoxOptions = { ...question, buttons: [...question.buttons], noLink: true };
+        const { response } = owner ? await asSheet(owner, () => dialog.showMessageBox(owner, options)) : await dialog.showMessageBox(options);
+        return response === 0;
+      },
+      quit: () => app.quit(),
+      // Linux/Windows quit when the last window closes: staying on without one would leave no way back into the app.
+      onStay: () => {
+        if (process.platform === 'darwin' || liveMainWindow() !== null) return;
+        mainWindow = openMainWindow();
+        refreshFullScreenItem();
+      },
+    });
+    // E2E only (LEARN_E2E=1, never packaged): the hooks tests call through app.evaluate (seeding, the import pause and queue).
     if (isE2E(app.isPackaged, process.env)) {
       installTestHooks({
         repo: () => deps.getContext().repo,
@@ -429,6 +487,7 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
+        imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null },
       });
     }
 
@@ -447,9 +506,13 @@ if (!app.requestSingleInstanceLock()) {
     setTimeout(resyncAllWindowStates, 50);
   });
 
-  // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
-  // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).
-  app.on('before-quit', (event) => editFlush.onBeforeQuit(event));
+  // Before anything closes: a running import, backup or restore is asked about first (it stops, or the quit is off),
+  // then an open 정보 편집 is saved, or keeps the app (marked fields). Any other before-quit cleanup registers after this
+  // one and must skip a quit this called off (event.defaultPrevented).
+  app.on('before-quit', (event) => {
+    if (quitGuard?.onBeforeQuit(event)) return;
+    editFlush.onBeforeQuit(event);
+  });
 
   // ⌘Q, the app menu's 종료, or a relaunch: a prepared settings window nobody opened is closed first — but only when the
   // quit goes ahead; the edit-flush gate above may call this attempt off and quit again after saving.

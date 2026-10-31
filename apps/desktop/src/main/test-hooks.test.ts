@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ERROR_COPY, itemMetadataSchema, newId, nowIso, toLearnError, type LibraryItem } from '@learn/domain';
+import { ERROR_COPY, IDLE_IMPORT_STATE, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
 import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
-import { installTestHooks, seedItems, seedOrganize, stageCommitFailures, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow } from './test-hooks';
+import {
+  createImportPause, installTestHooks, seedItems, seedOrganize, stageCommitFailures,
+  type LearnTestHooks, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow,
+} from './test-hooks';
 
 const FROM = { id: 'from-id', type: 'video', storageMode: 'managed', assetId: 'asset-1', revisionId: 'rev-1' } as LibraryItem;
 const ROWS: SeedRow[] = [
@@ -205,5 +208,70 @@ describe('staged import-commit failures (E2E: a full disk, spec 10)', () => {
       delete (globalThis as { __learnIpcCalls?: unknown }).__learnIpcCalls;
       delete (globalThis as { __learnIpcDelays?: unknown }).__learnIpcDelays;
     }
+  });
+});
+
+describe('the import pause and queue hooks (P-6)', () => {
+  it('holds the next file to reach the point until resume, says where it waits, then lets the next files run', async () => {
+    const pause = createImportPause();
+    pause.pause('afterStage');
+    await pause.hooks.beforeCommit!(); // another point: not held
+    expect(pause.waiting()).toBe(null);
+    let through = false;
+    const held = Promise.resolve(pause.hooks.afterStage!('/lib/staging/x.part')).then(() => {
+      through = true;
+    });
+    await Promise.resolve();
+    expect(pause.waiting()).toBe('afterStage');
+    expect(through).toBe(false);
+    pause.resume();
+    await held;
+    expect(through).toBe(true);
+    expect(pause.waiting()).toBe(null);
+    await pause.hooks.afterStage!('/lib/staging/y.part'); // one file only: the next one runs on
+  });
+
+  it('null calls a pause off before any file reaches it', async () => {
+    const pause = createImportPause();
+    pause.pause('afterPlace');
+    pause.pause(null);
+    await pause.hooks.afterPlace!('/lib/assets/ab/abc');
+    expect(pause.waiting()).toBe(null);
+  });
+
+  it('installTestHooks plugs the pause into the importer and puts files in for the main window', () => {
+    const setHooks = vi.fn();
+    const enqueue = vi.fn((_batch: { paths: string[] }) => 2);
+    const finished: Array<(report: ImportReport, openIn: number | null) => void> = [];
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      imports: {
+        importer: () => ({ setHooks }),
+        queue: {
+          enqueue,
+          state: () => ({ ...IDLE_IMPORT_STATE }),
+          onFinished: (cb) => {
+            finished.push(cb);
+            return () => {};
+          },
+        },
+        mainWindowId: () => 41,
+      },
+    });
+    const hooks = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    expect(setHooks).toHaveBeenCalledTimes(1);
+    expect(hooks.enqueueImport({ paths: ['/in/a.pdf', '/in/b.pdf'] })).toBe(2);
+    expect(enqueue).toHaveBeenCalledWith({ paths: ['/in/a.pdf', '/in/b.pdf'], mode: 'managed', collectionId: null, owner: 41 });
+    const report: ImportReport = { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null };
+    finished[0]!(report, null);
+    expect(hooks.importReports()).toEqual([report]);
+    expect(hooks.importQueueState()).toEqual(IDLE_IMPORT_STATE);
+    expect(hooks.importWaiting()).toBe(null);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });

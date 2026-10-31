@@ -1,4 +1,4 @@
-import { NO_LIBRARY_VIEW } from '@learn/domain';
+import { IDLE_IMPORT_STATE, NO_LIBRARY_VIEW } from '@learn/domain';
 import { registerWindowKind, type KindedContents, type WindowKind } from '../window-kinds';
 import type { IpcDeps } from './register';
 
@@ -17,6 +17,8 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
       current: () => ({ view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW }),
     },
     sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {} },
+    jobs: { run: (_kind, work) => work(new AbortController().signal), busy: () => null, cancelCurrent: () => {}, cancelAll: () => {}, idle: async () => {} },
+    imports: { enqueue: () => 0, cancel: () => {}, state: () => ({ ...IDLE_IMPORT_STATE }), onProgress: () => () => {}, onFinished: () => () => {} },
     isMainWindow: () => true,
     isSettingsWindow: () => true,
     windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },

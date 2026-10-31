@@ -18,8 +18,8 @@ export function sheetKey(e: { key: string; isComposing: boolean; metaKey: boolea
   return MODIFIERS.has(e.key) ? 'none' : 'interact';
 }
 
-/** Elements that keep their own focus behaviour on a mouse press inside a sheet. */
-const FOCUSABLE_ON_PRESS = 'button, input, textarea, select, [contenteditable]';
+/** Elements that keep their own behaviour on a mouse press inside a sheet (a check box's label toggles its box). */
+const FOCUSABLE_ON_PRESS = 'button, input, label, textarea, select, [contenteditable]';
 
 /**
  * Keys and root props of a sheet. A sheet window holds exactly one sheet, so ↩ and esc are taken by a window

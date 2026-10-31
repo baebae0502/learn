@@ -6,6 +6,8 @@ export const sheets = {
   openExisting: '기존 자료 열기',
   addAnyway: '새 자료로 추가',
   skip: '건너뛰기',
+  /** The check box under the card while more duplicates wait (spec 3.4, dialogs.html?scene=duplicate). */
+  applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
   shortcutsTitle: '단축키',
   groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', organize: '정리', dialogs: '팔레트·대화상자' },
   /** The one line for the eight colour keys (spec 4.2), under 정리: "1–8 · 색 태그 붙이기/떼기". */

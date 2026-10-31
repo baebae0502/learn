@@ -1,5 +1,6 @@
-import { useRef } from 'react';
-import { Clapperboard, Copy, FileText } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Checkbox } from 'react-aria-components';
+import { Check, Clapperboard, Copy, FileText } from 'lucide-react';
 import type { DuplicateChoice, SheetPayload } from '@learn/domain';
 import { formatDate, formatSize } from '../format';
 import { t } from '../strings';
@@ -9,9 +10,15 @@ import { resolveSheet } from './SheetApp';
 import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
-/** dialogs.html?scene=duplicate. ↩ = 건너뛰기 (the safe default), esc = 건너뛰기, 기존 자료 열기 on the left. */
+/**
+ * dialogs.html?scene=duplicate. ↩ = 건너뛰기 (the safe default), esc = 건너뛰기, 기존 자료 열기 on the left. While more
+ * duplicates of the import wait (`remaining`), a check box under the card answers them all at once; it opens ticked,
+ * as drawn, and ↩ / esc keep what it says.
+ */
 export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { kind: 'duplicate' }> }) {
-  const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice, applyToRest: false });
+  const offer = payload.remaining > 0;
+  const [applyToRest, setApplyToRest] = useState(offer);
+  const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice, applyToRest: offer && applyToRest });
   const keys = useSheetKeys(() => choose('skip'), () => choose('skip'));
   const body = useRef<HTMLDivElement>(null);
   const region = useScrollRegion(body, 'sheet-title');
@@ -52,6 +59,18 @@ export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { k
             <div className="t-footnote c-secondary ellipsis">{t.sheets.cardMeta(t.library.type[e.type], formatSize(e.size), formatDate(e.createdAt))}</div>
           </div>
         </div>
+        {offer && (
+          <Checkbox className="checkbox t-footnote" isSelected={applyToRest} onChange={setApplyToRest}>
+            {({ isSelected }) => (
+              <>
+                <span className="box" aria-hidden="true">
+                  {isSelected && <Icon icon={Check} size="xs" />}
+                </span>
+                {t.sheets.applyToRest(payload.remaining)}
+              </>
+            )}
+          </Checkbox>
+        )}
       </div>
       <div className="d-foot">
         <Button variant="plain-accent" leading testId="dup-open" onPress={() => choose('open')}>

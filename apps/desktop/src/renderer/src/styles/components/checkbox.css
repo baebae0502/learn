@@ -1,0 +1,36 @@
+@layer components {
+  /* A check box with its label (mockup .checkbox): React Aria's Checkbox, a <label> around a visually hidden input. Only
+     as wide as its box and words, so a press beside it on the row does nothing. */
+  .checkbox {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: var(--space-8);
+    color: var(--text-primary);
+    cursor: default;
+  }
+  .checkbox .box {
+    width: 14px;
+    height: 14px;
+    border-radius: var(--radius-xs);
+    box-shadow: inset 0 0 0 1px var(--border-strong);
+    background: var(--bg-control);
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .checkbox[data-selected] .box {
+    background: var(--accent);
+    box-shadow: none;
+    color: var(--text-on-accent);
+  }
+  .checkbox .box .icon {
+    width: 11px;
+    height: 11px;
+    stroke-width: 3;
+  }
+  .checkbox[data-focus-visible] .box {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+}

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
-import { newId, type LearnEventMap, type TagColorId } from '@learn/domain';
+import { newId, type ImportQueueState, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
+import type { ImportHooks, Importer } from '@learn/library';
+import type { ImportQueue } from './jobs/import-queue';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -195,6 +197,48 @@ export function stageCommitFailures(repo: Pick<LibraryRepository, 'insertImporte
   };
 }
 
+export type ImportPausePoint = 'afterStage' | 'afterPlace' | 'beforeCommit';
+
+export interface ImportPause {
+  hooks: ImportHooks;
+  /** The next file to reach `at` waits there until resume() — one file: the ones after it run on. null calls it off. */
+  pause(at: ImportPausePoint | null): void;
+  resume(): void;
+  /** Where a file waits now, or null. */
+  waiting(): ImportPausePoint | null;
+}
+
+/**
+ * E2E only: the importer's fault points as places a file can be held (afterStage: its verified copy is in staging/;
+ * afterPlace: its copy is in assets/, no row yet; beforeCommit). A test holds a file there, then kills the app.
+ */
+export function createImportPause(): ImportPause {
+  let armed: ImportPausePoint | null = null;
+  let waitingAt: ImportPausePoint | null = null;
+  let release: (() => void) | null = null;
+  const point = (at: ImportPausePoint) => async (): Promise<void> => {
+    if (armed !== at) return;
+    armed = null;
+    waitingAt = at;
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    waitingAt = null;
+  };
+  return {
+    hooks: { afterStage: point('afterStage'), afterPlace: point('afterPlace'), beforeCommit: point('beforeCommit') },
+    pause(at) {
+      armed = at;
+    },
+    resume() {
+      const go = release;
+      release = null;
+      go?.();
+    },
+    waiting: () => waitingAt,
+  };
+}
+
 export interface LearnTestHooks {
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
@@ -204,6 +248,15 @@ export interface LearnTestHooks {
   holdReplies(input: { channels: string[]; ms: number }): void;
   /** From now on every import commit fails as SQLite fails on a full disk or a read-only library; null ends it (stageCommitFailures). */
   failImportCommits(input: { code: StagedSqliteError | null }): void;
+  /** Holds the next file of an import at that point (createImportPause); null calls it off. */
+  importPause(input: { at: ImportPausePoint | null }): void;
+  importResume(): void;
+  importWaiting(): ImportPausePoint | null;
+  /** Puts files in the import queue as the main window's import does, before any page can. */
+  enqueueImport(input: { paths: string[]; mode?: StorageMode; collectionId?: string | null }): number;
+  importQueueState(): ImportQueueState;
+  /** Every import run's report since launch, oldest first. */
+  importReports(): ImportReport[];
 }
 
 /**
@@ -214,6 +267,13 @@ export function installTestHooks(deps: {
   repo(): SeedRepo;
   /** The repository whose import commit failImportCommits wraps (the live library's). */
   importCommits(): Pick<LibraryRepository, 'insertImported'>;
+  /** The import queue and the importer it runs (unit tests that do not need them leave this out). */
+  imports?: {
+    importer(): Pick<Importer, 'setHooks'>;
+    queue: Pick<ImportQueue, 'enqueue' | 'state' | 'onFinished'>;
+    /** The main window's webContents id, the owner of what a test puts in; null while it is not open. */
+    mainWindowId(): number | null;
+  };
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
@@ -223,6 +283,21 @@ export function installTestHooks(deps: {
   const delays: Record<string, number> = {};
   (globalThis as { __learnIpcDelays?: Record<string, number> }).__learnIpcDelays = delays;
   let stage: ((code: StagedSqliteError | null) => void) | null = null;
+  const pause = createImportPause();
+  const reports: ImportReport[] = [];
+  const imports = deps.imports;
+  if (imports) {
+    try {
+      imports.importer().setHooks(pause.hooks);
+    } catch {
+      // No library is open (the fatal screen): there is no import to hold.
+    }
+    imports.queue.onFinished((report) => reports.push(report));
+  }
+  const queue = () => {
+    if (!imports) throw new Error('installTestHooks: no import queue');
+    return imports;
+  };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
@@ -244,5 +319,16 @@ export function installTestHooks(deps: {
       stage ??= stageCommitFailures(deps.importCommits());
       stage(code);
     },
+    importPause: ({ at }) => pause.pause(at),
+    importResume: () => pause.resume(),
+    importWaiting: () => pause.waiting(),
+    enqueueImport({ paths, mode = 'managed', collectionId = null }) {
+      const q = queue();
+      const owner = q.mainWindowId();
+      if (owner === null) throw new Error('enqueueImport: no main window');
+      return q.queue.enqueue({ paths, mode, collectionId, owner });
+    },
+    importQueueState: () => queue().queue.state(),
+    importReports: () => [...reports],
   };
 }

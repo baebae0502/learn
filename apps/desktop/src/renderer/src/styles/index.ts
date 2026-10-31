@@ -11,6 +11,7 @@ import './components/field.css';
 import './components/kbd.css';
 import './components/menu.css';
 import './components/segmented.css';
+import './components/checkbox.css';
 import './components/tooltip.css';
 import './components/toast.css';
 import './components/notice.css';

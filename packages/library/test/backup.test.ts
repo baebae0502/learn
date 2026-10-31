@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { newId, nowIso } from '@learn/domain';
 import { LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
-import { Importer, createBackup, ensureLayout, libraryLayout, resolveAssetPath, restoreBackup, sha256File } from '../src/index';
+import { Importer, createBackup, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, restoreBackup, sha256File } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
 const dbs: Db[] = [];
@@ -36,7 +37,7 @@ describe('backup and restore (AC15 — files part)', () => {
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 }, countsMatch: true });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 }, countsMatch: true });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);
@@ -196,5 +197,66 @@ describe('backup and restore (AC15 — files part)', () => {
     } finally {
       close.mockRestore();
     }
+  });
+
+  it('copies each managed file from the path its hash names, not the path its row claims, and restore names the row', async () => {
+    const { layout, db, repo } = await populated();
+    // populated() imports the pdf before the mp4: assetsByMode orders by created_at, rowid.
+    const managed = repo.assetsByMode('managed');
+    const pdf = managed[0]!;
+    const mp4 = managed[1]!;
+    // The pdf's row now claims the mp4's file.
+    db.prepare('UPDATE assets SET relative_path = ? WHERE id = ?').run(mp4.relativePath, pdf.id);
+    const dest = path.join(tempDir('bk'), 'backup-derived');
+    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    expect(manifest.assets.find((a) => a.assetId === pdf.id)).toMatchObject({ included: true, relativePath: managedRelativePath(pdf.sha256) });
+    expect(await sha256File(path.join(dest, ...managedRelativePath(pdf.sha256).split('/')))).toBe(pdf.sha256);
+
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target });
+    expect(result).toMatchObject({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [pdf.id] });
+    const rdb = openDatabase(libraryLayout(target).dbFile);
+    dbs.push(rdb);
+    const restored = new LibraryRepository(rdb);
+    expect(restored.getAsset(pdf.id)!.availability).toBe('missing'); // its row points at another file
+    expect(restored.getAsset(mp4.id)!.availability).toBe('available');
+  });
+
+  it('does not copy a managed row whose hash is not a sha256: it is recorded as not included', async () => {
+    const { layout, db, repo } = await populated();
+    const [pdf] = repo.assetsByMode('managed');
+    const odd = 'g'.repeat(64);
+    db.prepare('UPDATE assets SET sha256 = ? WHERE id = ?').run(odd, pdf!.id);
+    const dest = path.join(tempDir('bk'), 'backup-odd-sha');
+    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    expect(manifest.assets.find((a) => a.assetId === pdf!.id)).toMatchObject({ included: false, sha256: odd });
+    expect(fs.existsSync(path.join(dest, 'assets', 'gg'))).toBe(false);
+  });
+
+  it('restore cross-checks the database against the manifest: a changed hash, a changed path, a row the manifest never listed', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-cross');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const [a, b] = repo.assetsByMode('managed');
+    const [linked] = repo.assetsByMode('linked');
+    // Edit the backup's database, not the live one.
+    const bdb = openDatabase(path.join(dest, 'library.sqlite'));
+    bdb.prepare('UPDATE assets SET sha256 = ? WHERE id = ?').run('e'.repeat(64), a!.id);
+    bdb.prepare('UPDATE assets SET relative_path = ? WHERE id = ?').run('assets/zz/elsewhere', b!.id);
+    const extra = newId();
+    const sha = 'd'.repeat(64);
+    bdb.prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+                 VALUES (?, ?, 'managed', ?, NULL, 'extra.pdf', 'application/pdf', 1, 'available', ?, ?)`).run(extra, sha, managedRelativePath(sha), nowIso(), nowIso());
+    bdb.close();
+
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target });
+    expect(result.recordMismatches).toEqual([a!.id, b!.id, extra].sort());
+    expect(result).toMatchObject({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], countsMatch: false }); // one asset more than the manifest counted
+    const rdb = openDatabase(libraryLayout(target).dbFile);
+    dbs.push(rdb);
+    const restored = new LibraryRepository(rdb);
+    for (const id of [a!.id, b!.id, extra]) expect(restored.getAsset(id)!.availability, id).toBe('missing');
+    expect(restored.getAsset(linked!.id)!.availability).toBe('available');
   });
 });

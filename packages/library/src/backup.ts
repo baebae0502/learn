@@ -4,8 +4,7 @@ import { z } from 'zod';
 import { LearnError, newId, nowIso, toLearnError, type StorageMode } from '@learn/domain';
 import { LATEST_SCHEMA_VERSION, LibraryRepository, currentVersion, migrate, openDatabase, snapshotDatabase, type Db, type LibraryCounts } from '@learn/db';
 import { sha256File } from './hash';
-import { ensureLayout, libraryLayout, managedRelativePath, type LibraryLayout } from './layout';
-import { resolveAssetPath } from './resolve';
+import { SHA256_HEX, ensureLayout, libraryLayout, managedRelativePath, type LibraryLayout } from './layout';
 
 export interface BackupAssetEntry {
   assetId: string;
@@ -31,6 +30,11 @@ export interface RestoreResult {
   verifiedAssets: number;
   missingAssets: string[];
   hashMismatches: string[];
+  /**
+   * Assets whose row in the restored database disagrees with the manifest (sha256, storage mode, relative path), or that
+   * only the database lists (spec 9.2). A managed one is marked missing: its row cannot be trusted to find the file.
+   */
+  recordMismatches: string[];
   counts: LibraryCounts;
   countsMatch: boolean;
 }
@@ -94,23 +98,24 @@ export async function createBackup(args: {
 
     const assets: BackupAssetEntry[] = [];
     for (const a of allAssets) {
+      // A managed copy is found from its hash, where the importer put it, never from the path its row claims (spec 8.1).
+      // The manifest says where the bytes for that hash are; restore checks the row against it (9.2).
+      const rel = a.storageMode === 'managed' && SHA256_HEX.test(a.sha256) ? managedRelativePath(a.sha256) : null;
       let included = false;
-      if (includeAssets && a.storageMode === 'managed' && a.relativePath) {
-        const dst = path.join(tempDir, ...a.relativePath.split('/'));
+      if (includeAssets && rel !== null) {
+        const dst = path.join(tempDir, ...rel.split('/'));
         try {
           await fs.mkdir(path.dirname(dst), { recursive: true });
-          await fs.copyFile(resolveAssetPath(layout, a), dst);
+          await fs.copyFile(path.join(layout.root, ...rel.split('/')), dst);
           included = true;
         } catch (e) {
-          if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
-            // File lost; continue without including it
-            included = false;
-          } else {
-            throw e;
-          }
+          // A copy already lost from the library is recorded as not included; restore marks it missing.
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
         }
       }
-      assets.push({ assetId: a.id, sha256: a.sha256, storageMode: a.storageMode, relativePath: a.relativePath, externalPath: a.externalPath, size: a.size, included });
+      assets.push({
+        assetId: a.id, sha256: a.sha256, storageMode: a.storageMode, relativePath: rel ?? a.relativePath, externalPath: a.externalPath, size: a.size, included,
+      });
     }
 
     const manifest: BackupManifest = {
@@ -190,7 +195,7 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
       }
 
       // Validate manifest paths to prevent traversal attacks
-      if (!/^[0-9a-f]{64}$/.test(entry.sha256)) {
+      if (!SHA256_HEX.test(entry.sha256)) {
         throw new LearnError('VALIDATION_FAILED', '백업 목록(manifest)이 손상되었습니다.');
       }
 
@@ -227,9 +232,18 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
         }
       }
 
-      for (const id of [...missingAssets, ...hashMismatches]) {
-        repo.setAvailability(id, 'missing', nowIso());
+      // The database and the manifest describe the same assets (spec 9.2). A row that disagrees with its entry, or one the
+      // manifest never listed, cannot be trusted to find its file: a managed one is shown as missing.
+      const entries = new Map(validatedManifest.assets.map((e) => [e.assetId, e]));
+      const recordMismatches: string[] = [];
+      const unfound = new Set<string>([...missingAssets, ...hashMismatches]);
+      for (const row of repo.allAssets()) {
+        const entry = entries.get(row.id);
+        if (entry && entry.sha256 === row.sha256 && entry.storageMode === row.storageMode && entry.relativePath === row.relativePath) continue;
+        recordMismatches.push(row.id);
+        if (row.storageMode === 'managed') unfound.add(row.id);
       }
+      for (const id of unfound) repo.setAvailability(id, 'missing', nowIso());
 
       const counts = repo.counts();
       // Only compare fields the manifest has (older manifests lack the newer ones; counts() always fills every field).
@@ -253,6 +267,7 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
         verifiedAssets,
         missingAssets: missingAssets.sort(),
         hashMismatches: hashMismatches.sort(),
+        recordMismatches: recordMismatches.sort(),
         counts,
         countsMatch,
       };

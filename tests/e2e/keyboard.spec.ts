@@ -236,7 +236,7 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
   try {
     await importPaths(page, [PDF, KO_PDF, MP4]);
     // A linked file that went missing; library.get notices it (as the visual tour does).
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -423,7 +423,7 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
 
     const [sample, ko, mp4] = await importPaths(page, [PDF, KO_PDF, MP4]);
     // The same PDF again: a duplicate group; and one opened item: the recent view.
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+    await importPaths(page, [PDF], { allowDuplicate: true });
     await expect(page.getByTestId('item-row')).toHaveCount(4);
     // Two rows carry the title now: the first import is opened by its id.
     await page.locator(`[data-testid="item-row"][data-item-id="${sample!.id}"]`).dblclick();
@@ -701,13 +701,13 @@ test('the palette, the drop overlay and the ⌘/ sheet keep the focus on F6 / �
   }
 });
 
-// Task 12 polish ruling: an import holds the window but F6 / ⇧F6 only move the focus, so they keep working; a modal
-// surface over the import still swallows them.
-test('during an import F6 still moves between panes; the palette over an import keeps the focus', async ({}, testInfo) => {
+// Task 12 polish ruling: a held window (here 파일 가져오기…'s open panel) still takes F6 / ⇧F6, which only move the focus.
+// The palette held under a duplicate question is import-queue.spec.ts (its real path, with the axe station).
+test('under 파일 가져오기…\'s open panel F6 still moves between panes', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await holdOpenDialog(app, []);
-    await runMenuCommand(app, 'file.importManaged'); // the import waits on its dialog: the window is held
+    await runMenuCommand(app, 'file.importManaged'); // the panel is up: the window is held
     await expect(page.getByTestId('import-managed')).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('sidebar');
@@ -717,28 +717,6 @@ test('during an import F6 still moves between panes; the palette over an import 
     expect(await inPane(page)).toBe('sidebar');
     await releaseOpenDialog(app); // cancelled
     await expect(page.getByTestId('import-managed')).not.toHaveAttribute('aria-disabled', 'true');
-
-    // No UI opens the palette over an import (⌘K is refused while held; a menu command or a file drag closes it first,
-    // Task 11 ruling D). A drop without its dragenter, which no real drag sends, starts one under the open palette.
-    await runMenuCommand(app, 'app.palette');
-    await expect(page.getByTestId('palette-input')).toBeFocused();
-    await app.evaluate(({ ipcMain }) => {
-      const g = globalThis as { __learnReleaseImport?: () => void };
-      ipcMain.removeHandler('library:import');
-      ipcMain.handle('library:import', () => new Promise((resolve) => (g.__learnReleaseImport = () => resolve({ ok: true, data: [] }))));
-    });
-    await dropSource(page, [PDF]);
-    await drag(page, 'drop', 'source', { repeat: false });
-    await expect(page.getByTestId('palette-busy')).toBeVisible(); // the held palette (defensive branch, Task 11)
-    await expectNoSeriousA11y(page, 'palette while an import holds the window');
-    for (const key of ['F6', 'Shift+F6']) {
-      await page.keyboard.press(key);
-      await expect(page.getByTestId('palette-input')).toBeFocused();
-    }
-    await app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
-    await expect(page.getByTestId('palette-busy')).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('palette')).toHaveCount(0);
   } finally {
     await app.close();
   }

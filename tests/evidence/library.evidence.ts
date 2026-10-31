@@ -248,9 +248,9 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
   const shellCalls = () => s.app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
   const fileItems = async () => [await menuItemEnabled(s.app, 'item.showInFolder'), await menuItemEnabled(s.app, 'item.openExternally')];
   // A row of its own, whatever the session already holds (same content: allowDuplicate).
-  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
-  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
-  check('selection: a row to select was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  const imported = await importPaths(s.page, [PDF], { allowDuplicate: true }).catch((e: unknown) => String(e));
+  const id = Array.isArray(imported) ? imported[0]!.id : null;
+  check('selection: a row to select was imported', id !== null, Array.isArray(imported) ? imported.length : imported);
   if (id === null) return void save();
   const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);
   const pid = s.app.process().pid!;
@@ -333,9 +333,9 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
   const v: Record<string, unknown> = {};
   results['search'] = v;
   const field = s.page.getByTestId('search-field').locator('input');
-  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
-  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
-  check('search: a row to find was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  const imported = await importPaths(s.page, [PDF], { allowDuplicate: true }).catch((e: unknown) => String(e));
+  const id = Array.isArray(imported) ? imported[0]!.id : null;
+  check('search: a row to find was imported', id !== null, Array.isArray(imported) ? imported.length : imported);
   if (id === null) return void save();
   await seedMetadata(s.page, id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
   const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);

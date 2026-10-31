@@ -4,7 +4,7 @@ import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
-import type { LibraryItem } from '../../packages/domain/src/library';
+import type { ImportQueueState, ImportReport, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
@@ -12,6 +12,8 @@ import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 declare global {
   interface Window {
     learn: LearnApi;
+    /** The renderer's E2E switch (library/useImportQueue.ts): importPaths' runs show no busy screen and no toast. */
+    __learnQuietImports?: number;
   }
 }
 
@@ -282,15 +284,77 @@ export async function holdCopies(app: ElectronApplication): Promise<void> {
 }
 export const releaseCopies = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
 
-/** Import files through `learn.library.import` (managed); every path must come back as a new item. */
-export async function importPaths(page: Page, paths: string[]): Promise<LibraryItem[]> {
-  const r = await page.evaluate((paths) => window.learn.library.import({ paths, mode: 'managed' }), paths);
-  if (!r.ok) throw new Error(`library.import failed: ${r.code}`);
-  return r.data.map((o) => {
-    if (o.status !== 'imported') throw new Error(`library.import: ${o.path} → ${o.status}`);
-    return o.item;
-  });
+/**
+ * Imports files through `learn.library.import` and waits for the queue's run to end (P-22): every path must come in as a
+ * new item; they come back in the order given. The run is quiet — no busy screen, no progress or result toast — as this
+ * helper was before the queue. `allowDuplicate`: the same content as an item already there comes in as a new item (no
+ * question). Call it while no other import runs: the run must be this call's alone.
+ */
+export async function importPaths(page: Page, paths: string[], opts: { mode?: StorageMode; allowDuplicate?: true } = {}): Promise<LibraryItem[]> {
+  const r = await page.evaluate(
+    async ({ paths, mode, allowDuplicate }) => {
+      const learn = window.learn;
+      const ids: string[] = [];
+      const offs: Array<() => void> = [];
+      const ended = new Promise<{ report: ImportReport } | { asked: true }>((resolve) => {
+        offs.push(learn.on('libraryChanged', (c) => void (c.reason === 'import' && ids.push(...(c.itemIds ?? [])))));
+        offs.push(learn.on('import:progress', (s) => void (s.state === 'waiting-choice' && resolve({ asked: true }))));
+        offs.push(learn.on('import:finished', ({ report }) => resolve({ report })));
+      });
+      window.__learnQuietImports = (window.__learnQuietImports ?? 0) + 1;
+      try {
+        const sent = await learn.library.import({ paths, mode, ...(allowDuplicate ? { allowDuplicate: true } : {}) });
+        if (!sent.ok) {
+          window.__learnQuietImports = Math.max(0, (window.__learnQuietImports ?? 1) - 1);
+          return { error: `library.import failed: ${sent.code}` };
+        }
+        const end = await ended;
+        if ('asked' in end) return { error: 'importPaths: a duplicate was asked (pass allowDuplicate, or answer the sheet in the test)' };
+        const got = ids.length > 0 ? await learn.library.getItems({ ids }) : { ok: true as const, data: [] as LibraryItem[] };
+        if (!got.ok) return { error: `library.getItems failed: ${got.code}` };
+        return { report: end.report, items: got.data };
+      } finally {
+        for (const off of offs) off();
+      }
+    },
+    { paths, mode: opts.mode ?? 'managed', allowDuplicate: opts.allowDuplicate === true },
+  );
+  if ('error' in r) throw new Error(r.error);
+  if (r.report.requested !== paths.length) throw new Error(`importPaths: the run had ${r.report.requested} files, not ${paths.length} (another import was running)`);
+  if (r.report.failed.length > 0 || r.items.length !== paths.length) {
+    throw new Error(`importPaths: ${r.report.failed.map((f) => `${f.name}: ${f.message}`).join('; ') || `${r.items.length} of ${paths.length} came in`}`);
+  }
+  return r.items;
 }
+
+/**
+ * Until the import has ended for this window: main's queue idle, nothing being handed over, no run's end being shown (its
+ * toasts are up). Call it after something showed that the run began (a toast, a sheet, a row).
+ */
+export async function waitImportIdle(page: Page): Promise<void> {
+  const marker = page.getByTestId('import-queue');
+  await expect.poll(() => marker.evaluate((e) => `${e.getAttribute('data-state')}|${e.getAttribute('data-sending')}|${e.getAttribute('data-settling') ?? ''}`), { message: 'the import ended' }).toBe('idle|0|');
+}
+
+/** Main's E2E import hooks (main/test-hooks.ts, P-6, Q-3c, Q-4i). */
+export type ImportPausePoint = 'afterStage' | 'afterPlace' | 'beforeCommit';
+interface QueueTestHooks {
+  importPause(input: { at: ImportPausePoint | null }): void;
+  importResume(): void;
+  importWaiting(): ImportPausePoint | null;
+  importQueueState(): ImportQueueState;
+  holdJob(input: { kind: 'backup' | 'restore' }): void;
+  releaseJob(): void;
+}
+type WithQueueHooks = { __learnTest: QueueTestHooks };
+/** The next file of an import waits at `at` until importResume; null calls it off. */
+export const importPause = (app: ElectronApplication, at: ImportPausePoint | null) => app.evaluate((_e, at) => (globalThis as unknown as WithQueueHooks).__learnTest.importPause({ at }), at);
+export const importResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importResume());
+export const importWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importWaiting());
+export const importQueueState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importQueueState());
+/** A job of another kind holds the work line until releaseJob: an import put in meanwhile waits behind it. */
+export const holdJob = (app: ElectronApplication, kind: 'backup' | 'restore' = 'backup') => app.evaluate((_e, kind) => (globalThis as unknown as WithQueueHooks).__learnTest.holdJob({ kind }), kind);
+export const releaseJob = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.releaseJob());
 
 /**
  * Metadata (and, when given, a title) for an item through `learn.library.updateMetadata` from the page. Main

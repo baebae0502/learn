@@ -553,9 +553,8 @@ test('table dots: the coloured tags only, by slot, after the title and the link 
   try {
     const linkedFile = testInfo.outputPath('linked.pdf');
     fs.copyFileSync(PDF, linkedFile);
-    const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), linkedFile);
-    if (!linked.ok || linked.data[0]?.status !== 'imported') throw new Error('linked import failed');
-    const both = [id('sample'), linked.data[0].item.id];
+    const [linked] = await importPaths(page, [linkedFile], { mode: 'linked', allowDuplicate: true });
+    const both = [id('sample'), linked!.id];
     const [important, exam] = await makeTags(page, [
       { name: '중요', slot: 3, items: both },
       { name: '시험 범위', slot: 1, items: both },

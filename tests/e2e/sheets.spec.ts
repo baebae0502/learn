@@ -34,7 +34,7 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
     // The default button has focus, marked by its accent fill alone (no ring) until the keyboard is used.
     await expect(sheet.getByTestId('dup-skip')).toBeFocused();
     expect(await ring(sheet.getByTestId('dup-skip'))).toBe('none');
-    expect(await menuItemEnabled(s.app, 'file.importManaged')).toBe(false); // the main window waits for the answer
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(false); // held from the queue's waiting-choice notice
     await sheet.keyboard.press('Shift+Tab');
     await expect(sheet.getByTestId('dup-add')).toBeFocused();
     expect(await ring(sheet.getByTestId('dup-add'))).toBe('solid');

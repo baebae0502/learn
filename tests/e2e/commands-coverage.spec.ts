@@ -77,6 +77,7 @@ const M5_COMMANDS: readonly CommandId[] = [
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
+  'file.cancelImport': 'import-queue.spec.ts › 가져오기 취소 from the palette stops the file at its checkpoint',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {
@@ -225,7 +226,7 @@ test('every registry command runs without a page error (library and reader menus
     fs.mkdirSync(src, { recursive: true });
     const linked = path.join(src, 'linked.pdf');
     fs.copyFileSync(PDF, linked);
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), linked);
+    await importPaths(page, [linked], { mode: 'linked', allowDuplicate: true });
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     const moved = path.join(src, 'moved.pdf');
     fs.renameSync(linked, moved);

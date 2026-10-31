@@ -344,7 +344,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
   fs.copyFileSync(PDF, file);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env });
   try {
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
+    await importPaths(s.page, [file], { mode: 'linked' });
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     const moved = path.join(src, 'moved.pdf');
     fs.renameSync(file, moved);
@@ -389,7 +389,7 @@ test('under 다시 연결…\'s open panel the window is held as under a sheet: 
   const html = s.page.locator('html');
   const busy = '진행 중인 작업이 끝나면 쓸 수 있습니다';
   try {
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
+    await importPaths(s.page, [file], { mode: 'linked' });
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     fs.renameSync(file, path.join(src, 'moved.pdf'));
     await openItem(s.page, 'linked');
@@ -438,7 +438,7 @@ test('reopening an item whose file vanished silently shows the missing notice, n
   fs.copyFileSync(PDF, file);
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), file);
+    await importPaths(s.page, [file], { mode: 'linked' });
     await openItem(s.page, 'linked');
     await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/); // cached as available
     await s.page.getByTestId('viewer-back').click();

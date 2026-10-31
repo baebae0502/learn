@@ -32,9 +32,8 @@ test('파일 › Finder에서 보기 (⇧⌘R) and 기본 앱으로 열기 follo
     // A linked copy whose file then goes: 파일 없음 once main has checked it again.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(PDF, gone);
-    const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
-    if (!linked.ok || linked.data[0]?.status !== 'imported') throw new Error('linked import failed');
-    const goneId = linked.data[0].item.id;
+    const [goneItem] = await importPaths(page, [gone], { mode: 'linked', allowDuplicate: true });
+    const goneId = goneItem!.id;
     fs.rmSync(gone);
     await page.evaluate((itemId) => window.learn.library.get({ itemId }), goneId);
     await expect(page.getByTestId('item-row')).toHaveCount(3);

@@ -86,9 +86,12 @@ test('queued duplicates are asked at the end in the sheet, with one answer for t
     await expect(sheet.getByTestId('dup-file')).toHaveText('distinct-02.pdf');
     await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 1개에도 같은 선택 적용' })).toBeChecked();
     await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
-    await expect.poll(async () => (await reports(s.app)).length).toBe(2);
+    await expect.poll(async () => (await reports(s.app)).length).toBe(3); // importPaths' own run is the first
     expect((await reports(s.app)).at(-1)).toMatchObject({ imported: 0, requested: 3, openItemId: first[1]!.id });
     expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]);
+    // The queue now sends item:openRequested: the window the question was answered on opens the existing item.
+    await expect(s.page.getByTestId('viewer-title')).toHaveText(first[1]!.title);
+    await s.page.getByTestId('viewer-back').click();
     await expect(rows).toHaveCount(7);
   } finally {
     await s.app.close();

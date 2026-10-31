@@ -27,7 +27,7 @@ import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
 import { inTableOrder, selectionCounts, selectionTagPositions } from '../library/selection';
 import { useImportQueue } from '../library/useImportQueue';
-import { importBusyTotal, useJobProgress } from '../jobs/jobProgress';
+import { importBusy, importBusyTotal, useJobProgress } from '../jobs/jobProgress';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { LibraryToolbar } from '../library/LibraryToolbar';
 import { useScopeView } from '../library/useScopeView';
@@ -381,16 +381,20 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
   // <body>: hand it to the table, whose grid passes it on to its first row; keyboard users keep their place. The
   // virtualizer draws the rows once it has measured its view, so the hand-over waits one frame (and does nothing if
-  // the focus went somewhere meanwhile).
+  // the focus went somewhere meanwhile). An import's rows arrive while it runs: the hand-over waits for its end, so the
+  // first row is the newest of them all and not the first one that came.
   const leftWithFocus = useRef(false);
+  const handOver = useRef(false);
+  const importActive = useJobProgress(importBusy);
   useLayoutEffect(() => {
-    const hadFocus = leftWithFocus.current;
+    if (leftWithFocus.current) handOver.current = true;
     leftWithFocus.current = false;
-    if (!hadFocus || view.kind !== 'library' || count === 0) return;
+    if (!handOver.current || view.kind !== 'library' || count === 0 || importActive) return;
+    handOver.current = false;
     requestAnimationFrame(() => {
       if (document.activeElement === null || document.activeElement === document.body) document.querySelector<HTMLElement>('[data-testid="library-table"]')?.focus();
     });
-  }, [view.kind, count]);
+  }, [view.kind, count, importActive]);
 
   // Every drag and drop of the window goes through one gate (spec 8.4: a held window ignores drops): the library shows and
   // nothing holds the window. The overlay, the rows, the chips and the sidebar all follow it.

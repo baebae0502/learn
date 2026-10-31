@@ -114,6 +114,11 @@
     flex: none;
     white-space: pre;
   }
+  /* Figures that change ten times a second keep their width: the title's font shorthand would reset the .num utility. */
+  .toast .t-count,
+  .toast .t-progress .pct {
+    font-variant-numeric: tabular-nums;
+  }
   /* The file under way (cut in the middle) or what comes next: footnote, secondary (mockup .t-body). */
   .toast .t-file {
     color: var(--text-secondary);

@@ -110,6 +110,13 @@ export const mainStrings = {
     skip: '건너뛰기',
     applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
   },
+  /** before-quit while the work line runs (jobs/quit-guard.ts, spec 3.6): what is lost if the app quits now. */
+  quitGuard: {
+    import: { message: '가져오는 중입니다', detail: (n: number) => `끝내면 남은 ${n}개는 가져오지 않습니다.` },
+    backup: { message: '백업을 만드는 중입니다', detail: '끝내면 만들던 백업은 남지 않습니다.' },
+    restore: { message: '복원하는 중입니다', detail: '끝내면 만들던 라이브러리는 남지 않습니다.' },
+    quit: '끝내기',
+  },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',
 } as const;

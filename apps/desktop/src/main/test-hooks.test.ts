@@ -267,7 +267,7 @@ describe('the import pause and queue hooks (P-6)', () => {
     expect(setHooks).toHaveBeenCalledTimes(1);
     expect(hooks.enqueueImport({ paths: ['/in/a.pdf', '/in/b.pdf'] })).toBe(2);
     expect(enqueue).toHaveBeenCalledWith({ paths: ['/in/a.pdf', '/in/b.pdf'], mode: 'managed', collectionId: null, owner: 41 });
-    const report: ImportReport = { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null };
+    const report: ImportReport = { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0 };
     finished[0]!(report, null);
     expect(hooks.importReports()).toEqual([report]);
     expect(hooks.importQueueState()).toEqual(IDLE_IMPORT_STATE);

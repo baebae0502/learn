@@ -130,7 +130,7 @@ function setup(over: {
 }
 const batch = (paths: string[], over: Partial<ImportBatch> = {}): ImportBatch => ({ paths, mode: 'managed', collectionId: null, owner: 1, ...over });
 const report = (over: Partial<ImportReport>): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 0, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
 });
 
 describe('order and batches (spec 3.1)', () => {
@@ -192,20 +192,45 @@ describe('order and batches (spec 3.1)', () => {
 });
 
 describe('progress (spec 3.3)', () => {
-  it('bytes: the total is the sizes when put in; a file counts its hashed bytes, then all of its size; only the file name shows', async () => {
+  it('bytes: the total is the sizes when put in; a file counts half its hashed bytes (the hash is the first half of its work), then all of its size once it is in; only the file name shows', async () => {
     const h = setup({ sizes: { '/in/folder/a.pdf': 100, '/in/folder/b.pdf': 300 } });
     const a = h.fake.hold('/in/folder/a.pdf', 40);
     const b = h.fake.hold('/in/folder/b.pdf', 120);
     const done = h.nextReport();
     h.queue.enqueue(batch(['/in/folder/a.pdf', '/in/folder/b.pdf']));
     await a.started;
-    await vi.waitFor(() => expect(h.queue.state()).toEqual({ state: 'running', done: 0, total: 2, bytesDone: 40, bytesTotal: 400, current: 'a.pdf' }));
+    await vi.waitFor(() => expect(h.queue.state()).toEqual({ state: 'running', done: 0, total: 2, bytesDone: 20, bytesTotal: 400, percent: 5, current: 'a.pdf' }));
     a.release();
     await b.started;
-    expect(h.queue.state()).toEqual({ state: 'running', done: 1, total: 2, bytesDone: 220, bytesTotal: 400, current: 'b.pdf' });
+    expect(h.queue.state()).toEqual({ state: 'running', done: 1, total: 2, bytesDone: 160, bytesTotal: 400, percent: 40, current: 'b.pdf' });
     b.release();
     await done;
     await vi.waitFor(() => expect(h.states.at(-1)).toEqual(IDLE_IMPORT_STATE));
+  });
+
+  it('the percent follows the files that are in, not the hashed bytes: a duplicate waiting for its answer stands at half, never 100', async () => {
+    const answer = deferred<DuplicateAnswer>();
+    const fake = fakeImporter((p, o) => (o.allowDuplicate || p !== '/in/d.pdf' ? imported(p) : duplicate(p, 'e-1')));
+    const h = setup({ importer: fake, sizes: { '/in/a.pdf': 100, '/in/d.pdf': 100 }, deps: { ask: () => answer.promise } });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/d.pdf', '/in/a.pdf']));
+    await vi.waitFor(() => expect(h.queue.state()).toMatchObject({ state: 'waiting-choice', done: 1, bytesDone: 150, bytesTotal: 200, percent: 75 }));
+    answer.resolve({ choice: 'add', applyToRest: false, askedOn: null });
+    await done;
+  });
+
+  it('tells of the question at once, before its sheet is asked for, even inside the rate window', async () => {
+    const answer = deferred<DuplicateAnswer>();
+    const fake = fakeImporter((p, o) => (o.allowDuplicate ? imported(p) : duplicate(p, 'e-1')));
+    let seen = '';
+    const h = setup({
+      importer: fake,
+      deps: { progressMs: 60_000, ask: () => { seen = h.states.at(-1)?.state ?? ''; return answer.promise; } },
+    });
+    h.queue.enqueue(batch(['/in/d.pdf']));
+    await vi.waitFor(() => expect(seen).not.toBe(''));
+    expect(seen).toBe('waiting-choice');
+    answer.resolve({ choice: 'skip', applyToRest: false, askedOn: null });
   });
 
   it('sends at most ten progress notices a second, however fast the bytes come', async () => {
@@ -350,7 +375,7 @@ describe('취소 (spec 3.5)', () => {
     h.queue.enqueue(batch(['/in/d1.pdf', '/in/a.pdf', '/in/b.pdf', '/in/c.pdf']));
     await held.started;
     h.queue.cancel();
-    expect(await done).toEqual(report({ imported: 1, requested: 4, cancelled: true }));
+    expect(await done).toEqual(report({ imported: 1, requested: 4, cancelled: true, untouched: 3 }));
     expect(fake.calls.map((c) => c.path)).toEqual(['/in/d1.pdf', '/in/a.pdf', '/in/b.pdf']);
     expect(fake.calls[2]!.opts.signal?.aborted).toBe(true);
     expect(h.questions).toEqual([]);
@@ -376,7 +401,7 @@ describe('취소 (spec 3.5)', () => {
     h.queue.cancel();
     expect(h.queue.state()).toMatchObject({ state: 'running', current: 'b.pdf' }); // still stopping
     release.resolve();
-    expect(await done).toEqual(report({ imported: 2, requested: 3, cancelled: true }));
+    expect(await done).toEqual(report({ imported: 2, requested: 3, cancelled: true, untouched: 1 }));
   });
 
   it('files put in after 취소 make a new run, while the stopped file is still stopping', async () => {
@@ -387,7 +412,7 @@ describe('취소 (spec 3.5)', () => {
     h.queue.cancel();
     expect(h.queue.enqueue(batch(['/in/b.pdf']))).toBe(1);
     await vi.waitFor(() => expect(h.reports).toHaveLength(2));
-    expect(h.reports.map((r) => r.report)).toEqual([report({ requested: 1, cancelled: true }), report({ imported: 1, requested: 1 })]);
+    expect(h.reports.map((r) => r.report)).toEqual([report({ requested: 1, cancelled: true, untouched: 1 }), report({ imported: 1, requested: 1 })]);
   });
 
   it('취소 during a question: the answer is not acted on and the rest are not asked', async () => {
@@ -401,7 +426,7 @@ describe('취소 (spec 3.5)', () => {
     h.queue.enqueue(batch(['/in/d1.pdf', '/in/d2.pdf']));
     await vi.waitFor(() => expect(h.queue.state().state).toBe('waiting-choice'));
     h.queue.cancel();
-    expect(await done).toEqual(report({ requested: 2, cancelled: true }));
+    expect(await done).toEqual(report({ requested: 2, cancelled: true, untouched: 2 }));
     answer.resolve({ choice: 'add', applyToRest: true, askedOn: 1 });
     await Promise.resolve();
     expect(fake.calls.some((c) => c.opts.allowDuplicate)).toBe(false);
@@ -454,7 +479,7 @@ describe('the work line (spec 3.1)', () => {
     const done = h.nextReport();
     h.queue.enqueue(batch(['/in/a.pdf', '/in/b.pdf']));
     h.queue.cancel();
-    expect(await done).toEqual(report({ requested: 2, cancelled: true }));
+    expect(await done).toEqual(report({ requested: 2, cancelled: true, untouched: 2 }));
     backup.resolve();
     await lane.idle();
     expect(h.fake.calls).toEqual([]);
@@ -467,7 +492,7 @@ describe('the work line (spec 3.1)', () => {
     h.queue.enqueue(batch(['/in/a.pdf', '/in/b.pdf']));
     await held.started;
     h.lane.cancelAll();
-    expect(await done).toEqual(report({ requested: 2, cancelled: true }));
+    expect(await done).toEqual(report({ requested: 2, cancelled: true, untouched: 2 }));
     await h.lane.idle();
     expect(h.fake.calls.map((c) => c.path)).toEqual(['/in/a.pdf']);
   });
@@ -480,7 +505,7 @@ describe('the work line (spec 3.1)', () => {
     const done = h.nextReport();
     h.queue.enqueue(batch(['/in/a.pdf']));
     lane.cancelAll();
-    expect(await done).toEqual(report({ requested: 1, cancelled: true }));
+    expect(await done).toEqual(report({ requested: 1, cancelled: true, untouched: 1 }));
     backup.resolve();
     await lane.idle();
     expect(h.fake.calls).toEqual([]);

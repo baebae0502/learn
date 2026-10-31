@@ -110,6 +110,8 @@ interface Entry {
   name: string;
   size: number;
   read: number;
+  /** Bytes of `size` already counted into the run's finished bytes. */
+  credited: number;
   sized: Promise<void>;
   batch: ImportBatch;
   run: Run;
@@ -123,6 +125,12 @@ interface PendingDuplicate {
 }
 
 const SKIP: DuplicateAnswer = { choice: 'skip', applyToRest: false, askedOn: null };
+/** Counts `bytes` of the file into its run's finished bytes (never less than it has already counted). */
+function credit(entry: Entry, bytes: number): void {
+  const to = Math.max(entry.credited, Math.min(entry.size, bytes));
+  entry.run.bytesFinished += to - entry.credited;
+  entry.credited = to;
+}
 const only = <T>(values: ReadonlySet<T>): T | null => (values.size === 1 ? (values.values().next().value as T) : null);
 const statSize = (file: string): Promise<number> => fs.stat(file).then((s) => (s.isFile() ? s.size : 0), () => 0);
 const newRun = (): Run => ({
@@ -156,12 +164,16 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     const run = active ?? stopping;
     if (run === null) return { ...IDLE_IMPORT_STATE };
     const mine = current !== null && current.run === run ? current : null;
+    // The file under way: its hash is the first half of its work, the copy and the commit the second.
+    const bytesDone = Math.min(run.bytesTotal, run.bytesFinished + Math.floor((mine?.read ?? 0) / 2));
+    const byBytes = run.bytesTotal > 0 ? bytesDone / run.bytesTotal : run.total > 0 ? run.done / run.total : 0;
     return {
       state: run === active ? phase : 'running',
       done: run.done,
       total: run.total,
-      bytesDone: Math.min(run.bytesTotal, run.bytesFinished + (mine?.read ?? 0)),
+      bytesDone,
       bytesTotal: run.bytesTotal,
+      percent: Math.min(99, Math.floor(byBytes * 100)),
       current: mine?.name ?? null,
     };
   }
@@ -210,7 +222,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     const resolvers: Array<() => void> = [];
     const entries = batch.paths.map(
       (p): Entry => ({
-        path: p, name: displayFileName(p), size: 0, read: 0, batch, run, retried: false,
+        path: p, name: displayFileName(p), size: 0, read: 0, credited: 0, batch, run, retried: false,
         sized: new Promise<void>((resolve) => resolvers.push(resolve)),
       }),
     );
@@ -312,10 +324,15 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
   async function settle(entry: Entry, outcome: ImportOutcome): Promise<void> {
     const { run } = entry;
     if (outcome.status === 'duplicate') {
+      // Hashed and compared, not yet in: half its work until the question is settled.
+      credit(entry, Math.floor(entry.size / 2));
       if (!run.cancelled) run.duplicates.push({ entry, existingItemId: outcome.existingItemId });
       return;
     }
     await take(entry, outcome);
+    // A file stopped by 취소 is left untouched, not finished.
+    if (outcome.status === 'failed' && outcome.code === 'CANCELLED') return;
+    credit(entry, entry.size);
     run.done++;
   }
 
@@ -331,7 +348,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
             progress.request();
           },
         });
-        run.bytesFinished += entry.size;
+        credit(entry, Math.floor(entry.size / 2));
         entry.read = 0;
         await settle(entry, outcome);
       }
@@ -360,6 +377,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       if (existing === null) {
         // The item it matched left the library meanwhile (the trash): the file is no longer its duplicate.
         if (entry.retried) {
+          credit(entry, entry.size);
           run.done++;
           return;
         }
@@ -371,9 +389,13 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       if (run.sticky !== null) choice = run.sticky;
       else {
         phase = 'waiting-choice';
+        // Not held back by the rate: the window must know of the question before its sheet shows.
         progress.request();
+        progress.flush();
         const answer = await ask(entry, existing, laneSignal);
         phase = 'running';
+        progress.request();
+        progress.flush();
         if (run.cancelled) return;
         choice = answer.choice;
         if (answer.applyToRest && run.duplicates.length > 0) run.sticky = choice === 'open' ? 'skip' : choice;
@@ -386,6 +408,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
         ids.push(dup.existingItemId);
         run.skipped.set(batch.collectionId, ids);
       }
+      credit(entry, entry.size);
       run.done++;
     } finally {
       current = null;
@@ -415,6 +438,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       cancelled: run.cancelled,
       mode: only(run.modes),
       collectionId: only(run.collections),
+      untouched: run.cancelled ? Math.max(0, run.total - run.done) : 0,
     };
     for (const cb of [...finishedListeners]) {
       try {

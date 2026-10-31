@@ -196,7 +196,7 @@ describe('ipc contract', () => {
     expect(new LearnError('CANCELLED', '가져오기를 취소했습니다.').retryable).toBe(false);
   });
   it('the idle import queue: nothing to show, frozen', () => {
-    expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: null });
+    expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null });
     expect(Object.isFrozen(IDLE_IMPORT_STATE)).toBe(true);
   });
   it('takes whether the import queue runs as an optional flag of the reported context (Q-4c)', () => {

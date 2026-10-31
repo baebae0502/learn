@@ -43,7 +43,7 @@ test('the E2E pause holds a queued file once its staging copy is verified; resum
     await resume(s.app);
     await idle(s.app);
     expect(await reports(s.app)).toEqual([
-      { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null },
+      { imported: 2, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0 },
     ]);
     expect(fs.readdirSync(path.join(lib, 'staging'))).toEqual([]);
     await expect(s.page.getByTestId('item-row')).toHaveCount(2);

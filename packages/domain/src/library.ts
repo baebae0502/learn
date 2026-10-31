@@ -115,6 +115,8 @@ export interface ImportReport {
   mode: StorageMode | null;
   /** The collection every batch asked for; null when none did or they differed. */
   collectionId: string | null;
+  /** Files 취소 left untouched: not started, gathered as duplicates and not asked, or the one stopped mid-way. 0 for a run that was not stopped. */
+  untouched: number;
 }
 
 /** The import queue as its progress toast shows it. `current` is a file name, never a path. */
@@ -125,13 +127,15 @@ export interface ImportQueueState {
   done: number;
   /** Files put in this run so far; it grows as more are put in. */
   total: number;
-  /** The hashed bytes of the files so far, out of the sum of their sizes when they were put in. */
+  /** The bytes of the files finished so far plus the part of the file under way that is done (hash, then copy and commit), out of the sum of their sizes. */
   bytesDone: number;
   bytesTotal: number;
+  /** 0–100 from the same progress as `done` and `bytesDone`: never 100 while the run is going. */
+  percent: number;
   current: string | null;
 }
 
-export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: null });
+export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null });
 
 export interface RecoveryReport {
   /** File names left in staging/ by an interrupted import. Never auto-deleted. */

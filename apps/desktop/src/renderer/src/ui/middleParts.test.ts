@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { middleParts } from './middleEllipsis';
+import { middleParts } from './middleParts';
 
 describe('a file name cut in the middle (spec 3.3)', () => {
   it('keeps the extension and the few characters before it whole; only the head gives way', () => {

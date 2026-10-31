@@ -1,5 +1,5 @@
 import { cx } from './cx';
-import { middleParts } from './middleEllipsis';
+import { middleParts } from './middleParts';
 
 /** A file name on one line, cut in the middle when it does not fit; the whole name is its tooltip. */
 export function MiddleEllipsis({ text, className }: { text: string; className?: string }) {

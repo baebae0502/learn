@@ -316,7 +316,10 @@ export function MainWindow(_props: { info: AppInfo }) {
       const into = collectionId === undefined ? intoRef.current : importTarget(modelRef.current, { kind: 'all' }, collectionId);
       void imports.pick(mode, into);
     },
-    cancelImport: () => void unwrap(api().library.cancelImport()).catch(actionFailed),
+    cancelImport: () => {
+      useJobProgress.getState().noteCancel();
+      void unwrap(api().library.cancelImport()).catch(actionFailed);
+    },
     newCollection: (opts) => collectionActions.startNew(opts),
     renameCollection: (id) => collectionActions.startRename(id),
     deleteCollection: (id) => void collectionActions.remove(id),
@@ -389,6 +392,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   useLayoutEffect(() => {
     if (leftWithFocus.current) handOver.current = true;
     leftWithFocus.current = false;
+    // Leaving the library drops the pending hand-over: coming back later must not pull the focus.
+    if (view.kind !== 'library') handOver.current = false;
     if (!handOver.current || view.kind !== 'library' || count === 0 || importActive) return;
     handOver.current = false;
     requestAnimationFrame(() => {

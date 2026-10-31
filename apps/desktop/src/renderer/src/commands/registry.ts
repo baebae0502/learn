@@ -56,9 +56,9 @@ export interface CommandEnv extends CommandContextState {
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
   setTextSize(update: TextSizeUpdate): void;
-  /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
   cancelImport(): void;
+  /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
   focusSearch(): void;

@@ -68,7 +68,7 @@ if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.comma
 /** Every window loads the same renderer; `?window=` picks what it shows (main, settings, sheet). */
 const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
 const vibrancy = shouldUseVibrancy(process.platform, process.env);
-const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: isDemoOverlay(app.isPackaged, process.env) };
+const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: isDemoOverlay(app.isPackaged, process.env), e2e: isE2E(app.isPackaged, process.env) };
 const chrome = (): ChromeOptions => ({ platform: process.platform, theme: currentTheme(), vibrancy });
 
 registerAppScheme();

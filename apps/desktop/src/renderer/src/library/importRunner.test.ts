@@ -7,7 +7,7 @@ import { IMPORT_CALL_PATHS, createImportRunner, inImportCalls, type ImportRunner
 const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 const running = (over: Partial<ImportQueueState> = {}): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', total: 2, ...over });
 const report = (over: Partial<ImportReport> = {}): ImportReport => ({
-  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, ...over,
+  imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: 2, cancelled: false, mode: 'managed', collectionId: null, untouched: 0, ...over,
 });
 
 function harness(over: Partial<ImportRunnerDeps> = {}) {
@@ -15,6 +15,7 @@ function harness(over: Partial<ImportRunnerDeps> = {}) {
   const toasts: ToastData[] = [];
   let sending = 0;
   let settling = 0;
+  let cancels = 0;
   const toast: ProgressToast = {
     begin: vi.fn((quiet: boolean) => void log.push(`begin:${quiet}`)),
     end: vi.fn(() => {
@@ -34,13 +35,14 @@ function harness(over: Partial<ImportRunnerDeps> = {}) {
     refreshList: vi.fn(async () => void log.push('list')),
     screenSettled: vi.fn(async () => void log.push('screen')),
     collectionName: (id) => (id === 'c1' ? '학회 준비' : null),
+    cancelCount: () => cancels,
     takeQuiet: () => false,
     toast,
     mark: (name) => void log.push(`mark:${name}`),
     clearMarks: vi.fn(),
     ...over,
   };
-  return { runner: createImportRunner(deps), deps, log, toasts, toast, sending: () => sending, settling: () => settling };
+  return { runner: createImportRunner(deps), deps, log, toasts, toast, cancel: () => void (cancels += 1), sending: () => sending, settling: () => settling };
 }
 
 describe('a drop goes into the queue (P-2)', () => {
@@ -65,6 +67,16 @@ describe('a drop goes into the queue (P-2)', () => {
     ready();
     await done;
     expect(vi.mocked(h.deps.importPaths).mock.calls[0]![0]).toEqual({ paths: ['/in/a.pdf', '/in/b.pdf'], mode: 'managed' });
+    expect(h.sending()).toBe(0);
+  });
+  it('취소 between the chunks of one drop ends the rest: no second run, nothing counted as still being handed over', async () => {
+    const h = harness();
+    vi.mocked(h.deps.importPaths).mockImplementationOnce(async (input) => {
+      h.cancel();
+      return ok({ queued: input.paths.length });
+    });
+    await h.runner.drop(Array.from({ length: 1200 }, (_, i) => `/in/${i}.pdf`), 'managed', null, Promise.resolve());
+    expect(h.deps.importPaths).toHaveBeenCalledTimes(1);
     expect(h.sending()).toBe(0);
   });
   it('a refused call is the import-failures toast with main\'s words, and nothing is left counted', async () => {

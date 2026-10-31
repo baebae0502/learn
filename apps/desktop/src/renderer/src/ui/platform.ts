@@ -5,6 +5,8 @@ export interface WindowParams {
   deterministic: boolean;
   vibrancy: boolean;
   demo: boolean;
+  /** Main sets it only for an unpackaged LEARN_E2E=1 run: the tests' switches are read only then. */
+  e2e: boolean;
   /** Gallery page: component board part 1 or 2 (visual tour), 3 = interactive fixture for behaviour tests, 4 = tag chips and colour dots, 5 = drag and drop at rest. */
   part: 1 | 2 | 3 | 4 | 5;
 }
@@ -19,6 +21,7 @@ export function readWindowParams(search: string): WindowParams {
     deterministic: p.get('det') === '1',
     vibrancy: p.get('vibrancy') === '1',
     demo: p.get('demo') === '1',
+    e2e: p.get('e2e') === '1',
     part: p.get('part') === '2' ? 2 : p.get('part') === '3' ? 3 : p.get('part') === '4' ? 4 : p.get('part') === '5' ? 5 : 1,
   };
 }

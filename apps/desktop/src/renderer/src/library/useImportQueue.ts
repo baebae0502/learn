@@ -7,6 +7,7 @@ import { afterEditing } from '../inspector/editGuard';
 import { useJobProgress } from '../jobs/jobProgress';
 import { createProgressToast } from '../jobs/progressToast';
 import { useShell } from '../state/shell-store';
+import { readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { closeToast, showJobToast, showToast } from '../ui/toasts';
@@ -23,6 +24,8 @@ declare global {
 
 /** Whether the run that begins now is one of importPaths' (a normal run never finds the counter). */
 function takeQuietImport(): boolean {
+  // Main puts e2e=1 in the page's address only for an unpackaged E2E run: a normal window has no such switch.
+  if (!readWindowParams(window.location.search).e2e) return false;
   const n = window.__learnQuietImports ?? 0;
   if (n <= 0) return false;
   window.__learnQuietImports = n - 1;
@@ -64,6 +67,7 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
           await settledWithin(busyScreenSettled(), BUSY_MIN_MS + 200);
         },
         collectionName: (id) => names.current(id),
+        cancelCount: () => useJobProgress.getState().cancels,
         takeQuiet: takeQuietImport,
         toast: importProgressToast,
         mark: perfMark,

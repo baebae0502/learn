@@ -34,6 +34,8 @@ export interface ImportRunnerDeps {
   screenSettled(): Promise<void>;
   /** A live collection's name, from the organize model; null once it is gone. */
   collectionName(id: string): string | null;
+  /** How many times 취소 was asked for in this window: a drop hands over no more chunks once it grows. */
+  cancelCount(): number;
   /** E2E only: whether the run that begins now was asked to be quiet (window.__learnQuietImports, Q-4b). */
   takeQuiet(): boolean;
   toast: ProgressToast;
@@ -83,7 +85,11 @@ export function createImportRunner(d: ImportRunnerDeps): ImportRunner {
       try {
         await ready;
         d.mark('import:sent');
+        // The chunks are one drop: 취소 pressed after the first took (its run is the one 취소 stops) ends the rest, which
+        // would otherwise start a second run with a second toast.
+        const cancels = d.cancelCount();
         for (const call of inImportCalls(paths)) {
+          if (d.cancelCount() !== cancels) break;
           await unwrap(d.importPaths({ paths: call, mode, ...(into ? { collectionId: into.id } : {}) }));
           left -= call.length;
           d.sending(-call.length);

@@ -211,10 +211,23 @@ window.Mockup = (() => {
     }
   }
 
+  /**
+   * A list drawn mid-scroll (`data-scroll="last-half"`, the capped library check): scrolled so its last row is half in
+   * view, which is how a list that scrolls looks (overlay scroll bars are not drawn).
+   */
+  function scrollLists() {
+    for (const el of document.querySelectorAll('[data-scroll="last-half"]')) {
+      const last = el.lastElementChild;
+      if (!last || el.scrollHeight <= el.clientHeight + 1) continue;
+      el.scrollTop = Math.max(0, last.offsetTop - el.offsetTop + last.offsetHeight / 2 - el.clientHeight);
+    }
+  }
+
   async function mount(html) {
     document.body.innerHTML = html;
     await document.fonts.ready;
     scrollToEnd();
+    scrollLists();
     placeMenus();
     milestones();
     copyLint();

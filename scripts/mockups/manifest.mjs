@@ -80,6 +80,7 @@ export const VARIANTS = [
     ['reader-pdf', { state: 'trashed' }, 'trashed', 'PDF 리더 · 휴지통에 있는 자료'],
     ['settings', { state: 'nobackup' }, 'nobackup', '설정 · 마지막 백업 없음'],
     ['dialogs', { scene: 'purge' }, 'purge', '영구 삭제 확인 시트'],
+    ['dialogs', { scene: 'empty-trash' }, 'empty-trash', '휴지통 비우기 확인 시트'],
     ['dialogs', { scene: 'restore' }, 'restore', '복원 결과 시트'],
     ['dialogs', { scene: 'restore-issues' }, 'restore-issues', '복원 결과 시트 · 문제 있음'],
     ['dialogs', { scene: 'recovery-full' }, 'recovery-full', '라이브러리 점검 · 모든 줄'],

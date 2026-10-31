@@ -175,9 +175,10 @@ window.MockupData = (() => {
   // M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13). The trash holds 2 collection rows and 7
   // items (sidebar count 9, spec 4.3); the first three went together, so they share one deleted time.
   const trash = {
+    // `count`: the items still in the library (a trashed collection's items stay there, spec 4.2).
     collections: [
-      { name: '지난 학기 통계 스터디' },
-      { name: '임시 모음' },
+      { name: '지난 학기 통계 스터디', count: 6, deleted: '2026. 10. 12.' },
+      { name: '임시 모음', count: 3, deleted: '2026. 10. 3.' },
     ],
     items: [
       { id: 101, kind: 'pdf', title: '세포 호흡 요약 (작년 판)', authors: '김하린', year: 2025, progress: null, added: '2026. 9. 1.', deleted: '오늘 오전 9:12', tags: [] },
@@ -195,6 +196,7 @@ window.MockupData = (() => {
       title: '세포 호흡 요약 (작년 판)',
       authors: '김하린',
       year: 2025,
+      deleted: '오늘 오전 9:12',
       info: [
         ['저자', '김하린'],
         ['연도', '2025'],
@@ -215,13 +217,14 @@ window.MockupData = (() => {
     },
   };
 
-  // 중복 항목 (M5): two groups of the same file — 3 + 2 items (sidebar count 5); the earliest import of each group stays.
+  // 중복 항목 (M5): two groups of the same file — 2 + 3 items (sidebar count 5). The view keeps a group's rows together
+  // whatever the sort (here 추가일, newest first, inside and between groups); `kept` = the earliest import, which stays.
   const duplicates = [
-    { id: 6, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: 100, added: '2026. 10. 16.', tags: [] },
-    { id: 201, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '2026. 10. 19.', tags: [] },
-    { id: 202, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '어제 오후 4:12', tags: [4] },
-    { id: 1, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: 62, added: '어제 오후 8:40', tags: [1, 2] },
     { id: 203, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: null, added: '오늘 오전 9:02', tags: [] },
+    { id: 1, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: 62, added: '어제 오후 8:40', tags: [1, 2], kept: true },
+    { id: 202, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '어제 오후 4:12', tags: [4], groupStart: true },
+    { id: 201, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '2026. 10. 19.', tags: [] },
+    { id: 6, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: 100, added: '2026. 10. 16.', tags: [], kept: true },
   ];
 
   // An item with one copy that another app changed (spec 6): `<제목> (수정본 YYYY-MM-DD HHmm).<확장자>`.
@@ -247,6 +250,7 @@ window.MockupData = (() => {
         ['크기', '6.3 MB'],
         ['원래 이름', 'cellbio_ch03.pdf'],
       ],
+      tags: [4],
       sha: 'd07a5e31…',
       shaFull: 'd07a5e3194c2b8f60e1a7d53c9b4f2e8a6d01c7395e4b2f8a0c6d1e93b7f5a24',
       plainTags: ['세포 주기'],

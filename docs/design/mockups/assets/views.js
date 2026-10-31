@@ -7,7 +7,7 @@
  *   reader-video   ?state=nosubs|nomatch
  *   palette        ?state=none
  *   settings       ?state=nobackup
- *   dialogs        ?scene=duplicate|recovery|recovery-full|recovery-ok|backup|backup-missing|restore|restore-issues|purge|jobs|fatal|codec
+ *   dialogs        ?scene=duplicate|recovery|recovery-full|recovery-ok|backup|backup-missing|restore|restore-issues|purge|empty-trash|jobs|fatal|codec
  *   components     ?part=1|2|3|4|5 (4–5 = tutor)
  *   tutor          ?state=1…10 and the variants listed at the top of tutor.html
  * Every interactive element carries (or sits inside) a `data-ms` milestone; `?ms=1` shows them.
@@ -39,6 +39,7 @@
 
   // ── Library: sidebar ───────────────────────────────────────────────────────
   function librarySidebar({ empty = false, selected = 'molbio', focused = false, extra = '', collapsed = false } = {}) {
+    const inTrash = selected === 'trash';
     // Special views appear only when they have content (design-spec 6, 트리).
     const specials = empty
       ? [{ id: 'all', label: '내 라이브러리', ic: 'library-big', tag: ['M4', '내 라이브러리'] }]
@@ -75,11 +76,14 @@
       ? ''
       : `<div class="tag-selector" ${ms('M5', '태그 선택기(표시 메뉴·필터)')}>
           <div class="head">태그<span class="spacer"></span><span class="icon-btn sm" title="태그 표시: 현재 보기의 태그만 · 모든 태그 · 이름순/많이 쓴 순">${icon('ellipsis', 'sm')}</span></div>
-          <div class="tag-cloud">
-            ${[1, 2, 4, 5].map((n) => tagChip(n)).join('')}
+          <div class="tag-cloud">${
+            // The trash view's "current view" is the items in the trash (시험 범위, 기말); every other tag is dim there.
+            inTrash
+              ? `${[1, 2, 4, 5].map((n) => tagChip(n, n === 2 ? '' : 'is-dim')).join('')}<span class="chip">기말</span>${[...D.plainTags, ...D.dimTags].map((t) => `<span class="chip is-dim">${esc(t)}</span>`).join('')}`
+              : `${[1, 2, 4, 5].map((n) => tagChip(n)).join('')}
             ${D.plainTags.map((t) => `<span class="chip">${esc(t)}</span>`).join('')}
-            ${D.dimTags.map((t) => `<span class="chip is-dim">${esc(t)}</span>`).join('')}
-          </div>
+            ${D.dimTags.map((t) => `<span class="chip is-dim">${esc(t)}</span>`).join('')}`
+          }</div>
           <div class="field small">${icon('search', 'sm')}<span class="placeholder">태그 필터</span></div>
         </div>`;
 
@@ -113,13 +117,15 @@
       ? `<span class="tag-dots" ${firstDots ? ms('M5', '표의 색 점') : ''}>${it.tags.map((n) => `<i style="background:${tagHex(n)}"></i>`).join('')}</span>`
       : '';
     const linked = it.linked ? `<span class="c-tertiary" title="외부 파일 연결">${icon('link', 'sm')}</span>` : '';
+    // 중복 항목: the row 모두 정리 keeps (the group's earliest import).
+    const kept = it.kept ? `<span class="c-tertiary t-footnote kept-mark" title="모두 정리하면 이 자료가 남습니다(가장 먼저 가져온 자료)">남김</span>` : '';
     const flag = it.missing
       ? `<span class="inline-flag c-warning" title="원본&nbsp;파일을 찾을 수 없습니다">${icon('triangle-alert', 'sm')}파일 없음</span>`
       : it.unplayable
         ? `<span class="inline-flag c-warning" title="이 동영상 형식은 재생할 수 없습니다">${icon('video-off', 'sm')}재생 불가</span>`
         : '';
     return `<div class="${cls}" role="row" aria-selected="${!!selected}">
-      <div class="td" role="gridcell">${icon(kindIcon(it.kind))}<span class="title ellipsis">${esc(it.title)}</span>${linked}${dots}${flag}</div>
+      <div class="td" role="gridcell">${icon(kindIcon(it.kind))}<span class="title ellipsis">${esc(it.title)}</span>${linked}${dots}${flag}${kept}</div>
       <div class="td" role="gridcell"><span class="ellipsis">${esc(it.authors)}</span></div>
       <div class="td num" role="gridcell">${it.year}</div>
       <div class="td" role="gridcell">${progressCell(it.progress)}</div>
@@ -128,11 +134,16 @@
     </div>`;
   }
 
-  /** A trashed collection (spec 4.3): folder icon and name in the title column, every other cell empty; always on top. */
+  /**
+   * A trashed collection (spec 4.3), always on top: folder icon and name in the title column, "자료 N개" (the items still
+   * in the library) where the author goes, and its deleted date (critique 1-5, a proposal for the owner).
+   */
   const trashCollectionRow = (c, first) =>
     `<div class="table-row is-collection" role="row" ${first ? ms('M6', '휴지통의 컬렉션 행') : ''}>
       <div class="td" role="gridcell">${icon('folder')}<span class="title ellipsis">${esc(c.name)}</span></div>
-      ${'<div class="td" role="gridcell"></div>'.repeat(5)}
+      <div class="td" role="gridcell"><span class="c-tertiary t-footnote num">자료 ${c.count}개</span></div>
+      ${'<div class="td" role="gridcell"></div>'.repeat(3)}
+      <div class="td num" role="gridcell"><span class="ellipsis">${esc(c.deleted)}</span></div>
     </div>`;
 
   /** `sorted`: the column that sorts the view (its arrow: `dir`); `extra`: columns after 추가일 (the trash's 삭제한 날짜). */
@@ -155,7 +166,9 @@
           .map((it) => {
             const firstDots = !firstDotsDone && it.tags.length > 0;
             if (firstDots) firstDotsDone = true;
-            return tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots });
+            // A group boundary in 중복 항목 (critique 1-6): a 1 px line between groups.
+            const sep = it.groupStart ? '<div class="table-group-sep" role="presentation"></div>' : '';
+            return sep + tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots });
           })
           .join('');
     return `<div class="table" role="grid" style="--cols:${cols}" ${ms('M4', '항목 표(정렬·열 구성·선택)')}>
@@ -167,8 +180,11 @@
   const importButton = () =>
     `<div class="btn has-icon has-menu" title="가져오기 — 파일 가져오기… ⌘O · 외부 파일 연결… ⌥⌘O" ${ms('M3', '가져오기 단추·메뉴')}>${icon('plus')}가져오기${icon('chevron-down', 'xs')}</div>`;
 
-  /** `action`: the view's own button, left of 가져오기 (the trash's 휴지통 비우기…, 중복 항목's 모두 정리). */
-  function libraryHeader({ title = '분자생물학', count = '48개', search = null, inspectorOn = true, toggleTitle = '항목 패널 가리기 ⌥⌘I', toggleMs = ['M4', '항목 패널 토글'], action = '' } = {}) {
+  /**
+   * `action`: the view's own button, left of 가져오기 (the trash's 휴지통 비우기…, 중복 항목's 모두 정리). `noImport`: the
+   * trash view has no 가져오기 (what is imported goes to 내 라이브러리; ⌘O, the menu bar and drops still work).
+   */
+  function libraryHeader({ title = '분자생물학', count = '48개', search = null, inspectorOn = true, toggleTitle = '항목 패널 가리기 ⌥⌘I', toggleMs = ['M4', '항목 패널 토글'], action = '', noImport = false } = {}) {
     const field = search
       ? `<div class="field is-focus" style="width:240px" ${ms('M4', '빠른 검색')}>${icon('search', 'sm')}<span class="value">${esc(search)}</span><span class="caret"></span><span class="spacer"></span><span title="검색어 지우기">${icon('circle-x', 'sm')}</span></div>`
       : `<div class="field" style="width:240px" ${ms('M4', '빠른 검색')}>${icon('search', 'sm')}<span class="placeholder ellipsis">제목, 저자, 태그 검색</span></div>`;
@@ -176,7 +192,7 @@
       <span class="title ellipsis">${esc(title)}</span>${count ? `<span class="count num">${count}</span>` : ''}
       <span class="spacer"></span>
       ${action}
-      ${importButton()}
+      ${noImport ? '' : importButton()}
       ${field}
       <div class="icon-btn ${inspectorOn ? 'is-on' : ''}" title="${toggleTitle}" ${ms(toggleMs[0], toggleMs[1])}>${icon('panel-right')}</div>
     </div>`;
@@ -186,9 +202,13 @@
   const sectionHead = (title, extra = '') =>
     `<div class="section-head">${icon('chevron-down', 'xs')}<span>${title}</span><span class="spacer"></span>${extra}</div>`;
 
-  /** The note that takes the place of 열기 · Finder에서 보기 for trashed items (M6 proposal: Zotero's "Restore to Library"). */
-  const trashNote = () =>
-    `<div class="card trash-note">${icon('trash-2', 'sm')}<span class="ellipsis">휴지통에 있습니다</span><span class="spacer"></span><div class="btn" title="복원">복원</div></div>`;
+  /**
+   * A trashed item's head (M6 proposal, Zotero's "Restore to Library"): the actions row keeps its grammar with 복원 in
+   * the place of 열기 (the default, as in the reader's notice), and under it where the item is and since when.
+   */
+  const trashActions = (deleted) =>
+    `<div class="actions"><div class="btn primary" title="복원">복원</div></div>
+        <div class="trash-note">${icon('trash-2', 'sm')}<span class="ellipsis">휴지통에 있습니다 · ${esc(deleted)}에 옮김</span></div>`;
 
   /** Edited copies another app saved next to the read-only copy (spec 6): one line, then each copy with its two buttons. */
   const editedCopies = (copies) =>
@@ -224,7 +244,7 @@
         <div class="authors">${esc(it.authors)} · ${it.year ?? 2024}</div>
         ${
           trashed
-            ? trashNote()
+            ? trashActions(it.deleted)
             : `<div class="actions">
           <div class="btn primary" title="열기 ↩">열기</div>
           <div class="btn has-icon" title="Finder에서 보기 ⇧⌘R">${icon('folder-search')}Finder에서 보기</div>
@@ -272,7 +292,7 @@
         <div class="kind">${icon('files', 'sm')}PDF 2개 · 동영상 1개 · 합계 386 MB</div>
         <h2>자료 ${items.length}개 선택</h2>
         <div class="multi-list">${items.map((it) => `<div class="collection-path">${icon(kindIcon(it.kind), 'sm')}<span class="ellipsis">${esc(it.title)}</span></div>`).join('')}</div>
-        ${trashNote()}
+        ${trashActions(items[0].deleted)}
       </div>
     </div>`;
   }
@@ -359,6 +379,7 @@
         title: '휴지통',
         count: '9개',
         action: `<div class="btn" title="휴지통 비우기… ⇧⌘⌫" ${ms('M6', '휴지통 비우기…')}>휴지통 비우기…</div>`,
+        noImport: true,
       });
       sidebar = librarySidebar({ selected: 'trash', focused: false });
       table = libraryTable({
@@ -371,14 +392,14 @@
       });
       insp = ids.length > 1 ? inspectorTrashMulti(ids) : inspectorItem(D.trash.selected, { trashed: true });
     } else if (st === 'duplicates') {
-      // M5 중복 항목 with M6's view action (spec 5): shown sorted by title so each group's rows sit together.
+      // M5 중복 항목 with M6's view action (spec 5): a group's rows stay together whatever the sort (critique 1-6).
       header = libraryHeader({
         title: '중복 항목',
         count: '5개',
         action: `<div class="btn" title="묶음마다 가장 먼저 가져온 자료를 남기고 나머지를 휴지통으로 옮깁니다" ${ms('M6', '중복 N묶음 모두 정리')}>중복 2묶음 모두 정리</div>`,
       });
       sidebar = librarySidebar({ selected: 'dupes', focused: false });
-      table = libraryTable({ items: D.duplicates, head: { sorted: '제목', dir: 'asc' }, selectedIds: [1] });
+      table = libraryTable({ items: D.duplicates, selectedIds: [1] });
       insp = inspectorItem();
     } else if (st === 'edited') {
       // M6 외부 수정본 (spec 6): the selected item has one copy another app changed (the 파일 section's last line).
@@ -387,7 +408,8 @@
       table = libraryTable({ items, selectedIds: [D.edited.row.id] });
       insp = inspectorItem(D.edited.selected);
     } else {
-      table = libraryTable(opts.table);
+      // `opts.items`: the rows a scene needs under its sheet (the library check's missing files, critique 1-21).
+      table = libraryTable({ ...opts.table, ...(opts.items ? { items: opts.items } : {}) });
       insp = inspectorItem();
     }
     return M.windowShell({
@@ -700,11 +722,11 @@
             <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리로 돌아가기</div></div>
           </div>`,
         // Neutral tile: the item is unavailable while it is in the trash; nothing is broken (design-spec 6 안내).
-        trashed: `<div class="notice" role="status" ${ms('M6', '리더 휴지통 안내(복원·뒤로)')}>
+        trashed: `<div class="notice" role="status" ${ms('M6', '리더 휴지통 안내(복원·라이브러리로 돌아가기)')}>
             <div class="glyph">${icon('trash-2', 'xl')}</div>
             <h2>이&nbsp;자료는 휴지통에 있습니다</h2>
-            <p>휴지통에 있는 자료는 열 수 없습니다. 복원하면 이&nbsp;자리에서 다시 엽니다.</p>
-            <div class="actions"><div class="btn primary" title="↩">복원</div><div class="btn">뒤로</div></div>
+            <p>복원하면 이&nbsp;자리에서 다시 엽니다.</p>
+            <div class="actions"><div class="btn primary" title="↩">복원</div><div class="btn">라이브러리로 돌아가기</div></div>
           </div>`,
       }[state];
       const main = `<div class="reader-toolbar"><span class="t-headline ellipsis media-title">${esc(doc.title)}</span><span class="c-tertiary t-footnote ellipsis">${doc.meta}</span></div>
@@ -947,11 +969,14 @@
     return `<div class="preview">${body}<span class="lights"><b></b><b></b><b></b></span></div>`;
   }
 
-  /** 마지막 백업 (spec 8.2): the date and a small Finder에서 보기 (the backup folder chosen), or 아직 없음 (?state=nobackup). */
+  /**
+   * 마지막 백업 (spec 8.2): the date and Finder에서 보기 (the backup folder chosen; 28 like the location row's), or 아직 없음
+   * with where a backup is made (?state=nobackup).
+   */
   const lastBackupRow = () =>
     state === 'nobackup'
-      ? `<div class="form-row" ${ms('M6', '마지막 백업(아직 없음)')}><span class="fr-label">마지막 백업</span><span class="c-secondary">아직 없음</span></div>`
-      : `<div class="form-row" ${ms('M6', '마지막 백업 · Finder에서 보기')}><span class="fr-label">마지막 백업</span><span class="c-secondary num" title="~/Documents/Learn 백업 2026-10-30 2141">2026. 10. 30. 오후 9:41</span><div class="btn small has-icon" title="그 백업 폴더를 고른 채 Finder를 엽니다">${icon('folder-search', 'sm')}Finder에서 보기</div></div>`;
+      ? `<div class="form-row" ${ms('M6', '마지막 백업(아직 없음)')}><span class="fr-label">마지막 백업<span class="hint">파일 › 백업 만들기에서 만들 수 있습니다.</span></span><span class="c-secondary">아직 없음</span></div>`
+      : `<div class="form-row" ${ms('M6', '마지막 백업 · Finder에서 보기')}><span class="fr-label">마지막 백업</span><span class="c-secondary num" title="~/Documents/Learn 백업 2026-10-30 2141">2026. 10. 30. 오후 9:41</span><div class="btn has-icon" title="그 백업 폴더를 고른 채 Finder를 엽니다">${icon('folder-search')}Finder에서 보기</div></div>`;
 
   /** A separate macOS window (Zotero/Things/Raycast convention): no Done/×, changes apply at once. */
   function settingsWindow() {
@@ -997,14 +1022,14 @@
   // ── Sheets and toasts ──────────────────────────────────────────────────────
   /**
    * A progress toast (design-spec 6 토스트): spinner, or the pause icon while it waits; title · count, one line under it,
-   * 취소, and the bar with its percent. `cls: 'static'` for the components board.
+   * 취소, and the bar with its percent (`bar: false` while waiting behind another job). `cls: 'static'` for the board.
    */
-  const progressToast = ({ waiting = false, title, count, body, pct, tag = null, cls = '' }) =>
+  const progressToast = ({ waiting = false, title, count, body, pct = 0, bar = true, tag = null, cls = '' }) =>
     `<div class="toast ${cls}" ${tag ? ms(tag[0], tag[1]) : ''}>
         ${waiting ? `<span class="c-secondary">${icon('circle-pause')}</span>` : `<span class="spinner" aria-hidden="true"></span>`}
         <div><div class="t-title">${title}${count ? ` · <span class="num">${count}</span>` : ''}</div><div class="t-body ellipsis">${body}</div></div>
         <div class="t-actions"><div class="btn small">취소</div></div>
-        <div class="t-progress"><span class="progress wide"><i style="width:${pct}%"></i></span><span class="pct t-footnote c-secondary">${pct}%</span></div>
+        ${bar ? `<div class="t-progress"><span class="progress wide"><i style="width:${pct}%"></i></span><span class="pct t-footnote c-secondary">${pct}%</span></div>` : ''}
       </div>`;
 
   /** A result toast: icon, title, an optional line, an optional action (실행 취소 is the plain accent button, as the app's undo toast). */
@@ -1024,11 +1049,12 @@
     </div>`;
   }
 
-  /** The work line runs one job at a time (spec 3.1): a backup is running, and the import put in meanwhile waits behind it. */
+  /** The work line runs one job at a time (spec 3.1): a backup is running, and the import put in meanwhile waits behind it
+   * — without a bar while it waits (nothing to measure yet; critique 1-27). */
   function jobToasts() {
     return `<div class="toasts" role="status">
-      ${progressToast({ title: '백업을 만드는 중', count: '56 / 121', body: 'Learn 백업 2026-10-30 2141', pct: 46, tag: ['M6', '백업 진행 토스트'] })}
-      ${progressToast({ waiting: true, title: '앞의 작업을 기다리는 중', count: '0 / 12', body: '백업이 끝나면 가져오기를 시작합니다.', pct: 0, tag: ['M6', '가져오기 진행 토스트(앞의 작업을 기다리는 중)'] })}
+      ${progressToast({ title: '백업을 만드는 중', count: '56 / 128', body: 'Learn 백업 2026-10-30 2141', pct: 46, tag: ['M6', '백업 진행 토스트'] })}
+      ${progressToast({ waiting: true, title: '앞의 작업을 기다리는 중', count: '12개', body: '백업이 끝나면 가져오기를 시작합니다.', bar: false, tag: ['M6', '가져오기 진행 토스트(앞의 작업을 기다리는 중)'] })}
     </div>`;
   }
 
@@ -1051,29 +1077,35 @@
   }
 
   /**
-   * Permanent delete (spec 4.5): a simple confirmation, `ui:confirm` → `dialog.showMessageBox` as a sheet. Drawn like the
-   * session delete sheet: warning badge, the destructive verb as a danger-text button on the left, 취소 the default (↩ · esc).
+   * Permanent delete and 휴지통 비우기 (spec 4.5) are an APP sheet window, like the duplicate sheet (a sheet kind 'purge',
+   * critique 1-14 (b)): a native message box cannot draw a destructive button nor keep 취소 the default. Warning badge,
+   * the destructive verb as a danger-text button on the left, 취소 the default on the right (↩ · esc).
    */
-  function purgeSheet() {
-    return `<div class="dialog" role="alertdialog" aria-label="영구 삭제" ${ms('M6', '영구 삭제 확인 시트')}>
+  const destructiveSheet = ({ label, title, text, verb }) =>
+    `<div class="dialog" role="alertdialog" aria-label="${label}" ${ms('M6', `${label} 확인 시트(앱 시트)`)}>
       <div class="d-body">
-        <div class="d-title"><span class="badge-icon warning">${icon('trash-2')}</span><div><h2>자료 3개를 영구히 삭제하겠습니까?</h2></div></div>
-        <p class="d-text">되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.</p>
+        <div class="d-title"><span class="badge-icon warning">${icon('trash-2')}</span><div><h2>${title}</h2></div></div>
+        <p class="d-text">${text}</p>
       </div>
-      <div class="d-foot"><div class="btn plain danger-text leading">영구 삭제</div><span class="spacer"></span><div class="btn primary" title="↩ · esc">취소</div></div>
+      <div class="d-foot"><div class="btn plain danger-text leading">${verb}</div><span class="spacer"></span><div class="btn primary" title="↩ · esc">취소</div></div>
     </div>`;
-  }
 
-  /** `missing`: the optional line for managed copies that were already gone (spec 8.2). */
+  const purgeSheet = () =>
+    destructiveSheet({ label: '영구 삭제', title: '자료 3개를 영구히 삭제하겠습니까?', text: '되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.', verb: '영구 삭제' });
+
+  const emptyTrashSheet = () =>
+    destructiveSheet({ label: '휴지통 비우기', title: '휴지통을 비우겠습니까?', text: '자료 7개와 컬렉션 2개를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.', verb: '휴지통 비우기' });
+
+  /** `missing`: the optional line for managed copies that were already gone (spec 8.2). The counts include the trash (8.1). */
   function backupSheet({ missing = false } = {}) {
-    const files = missing ? '<span class="num">119</span>개 · 2.3 GB · 손상 없음' : '<span class="num">121</span>개 · 2.4 GB · 손상 없음';
+    const files = missing ? '<span class="num">126</span>개 · 2.7 GB · 손상 없음' : '<span class="num">128</span>개 · 2.8 GB · 손상 없음';
     const note = (text) => `<div class="row gap-8 t-footnote c-secondary" style="align-items:flex-start">${icon('info', 'sm')}<span class="hint" style="display:block">${text}</span></div>`;
     return `<div class="dialog" role="dialog" aria-label="백업 완료" ${ms('M6', '백업 결과 시트')}>
       <div class="d-body">
         <div class="d-title"><span class="badge-icon success">${icon('circle-check')}</span><div><h2>백업을 만들었습니다</h2><div class="t-footnote c-secondary" style="margin-top:2px">2026. 10. 30. 오후 9:41 · 38초 걸림</div></div></div>
         <div class="card" style="padding:12px 16px">
           <dl class="kv" style="grid-template-columns:max-content minmax(0,1fr)">
-            <dt>자료</dt><dd><span class="num">128</span>개 · 컬렉션&#8288;·태그 포함</dd>
+            <dt>자료</dt><dd><span class="num">128</span>개 · 휴지통 <span class="num">7</span>개 · 컬렉션&#8288;·태그 포함</dd>
             <dt>파일</dt><dd>${files}</dd>
             <dt>위치</dt><dd class="ellipsis" style="font:var(--type-mono);color:var(--text-secondary)" title="/Users/seojin/Documents/Learn 백업 2026-10-30 2141">~/Documents/Learn 백업 2026-10-30 2141</dd>
           </dl>
@@ -1087,31 +1119,34 @@
 
   /**
    * Restore result (spec 9.3), built like the backup sheet; wide, because the location row carries its own small
-   * Finder에서 보기 and the path wraps only after a separator (as the app's notice file line). `issues`: files that are
-   * missing or whose contents differ — the restored library shows those items as 파일 없음.
+   * Finder에서 보기 and the path wraps only after a separator (as the app's notice file line). `issues`: files the backup
+   * lacks or whose contents are damaged, each with its items — the restored library shows those items as 파일 없음.
+   * Last, what happens to the library in use and how to switch later (critique 1-16).
    */
   function restoreSheet({ issues = false } = {}) {
     const path = ['~/Library/', 'Application Support/', 'Learn/', 'Learn 복원 2026-10-31 2141'];
-    const issue = (text) => `<div class="ri-line"><span class="c-warning">${icon('triangle-alert', 'sm')}</span><span>${text}</span></div>`;
+    const issue = (text, items) =>
+      `<div class="ri-line"><span class="c-warning">${icon('triangle-alert', 'sm')}</span><span>${text}</span></div><div class="ri-items">${items.map((t) => `<span class="ellipsis" title="${t}">${t}</span>`).join('')}</div>`;
     return `<div class="dialog wide" role="dialog" aria-label="복원 결과" ${ms('M6', issues ? '복원 결과 시트(문제 있음)' : '복원 결과 시트')}>
       <div class="d-body">
         <div class="d-title"><span class="badge-icon ${issues ? 'warning' : 'success'}">${icon(issues ? 'triangle-alert' : 'circle-check')}</span><div><h2>백업을 복원했습니다</h2><div class="t-footnote c-secondary" style="margin-top:2px">2026. 10. 30. 오후 9:41에 만든 백업</div></div></div>
         <div class="card" style="padding:12px 16px">
           <dl class="kv restore-kv">
-            <dt>자료</dt><dd><span class="num">128</span>개 · 컬렉션 <span class="num">9</span>개 · 태그 <span class="num">14</span>개</dd>
-            <dt>파일</dt><dd>${issues ? '<span class="num">121</span>개 중 <span class="num">118</span>개 확인' : '<span class="num">121</span>개 확인 · 손상 없음'}</dd>
+            <dt>자료</dt><dd><span class="num">128</span>개 · 휴지통 <span class="num">7</span>개 · 컬렉션 <span class="num">9</span>개 · 태그 <span class="num">14</span>개</dd>
+            <dt>파일</dt><dd>${issues ? '<span class="num">128</span>개 중 <span class="num">125</span>개 확인' : '<span class="num">128</span>개 확인 · 손상 없음'}</dd>
             <dt>위치</dt><dd class="loc-row"><span class="loc mono" title="/Users/seojin/Library/Application Support/Learn/Learn 복원 2026-10-31 2141">${path.map((p) => `<span class="part">${p}</span>`).join('<wbr>')}</span><div class="btn small has-icon" title="복원한 폴더를 Finder에서 엽니다">${icon('folder-search', 'sm')}Finder에서 보기</div></dd>
           </dl>
         </div>
         ${
           issues
             ? `<div class="restore-issues" ${ms('M6', '복원 결과의 문제 줄')}>
-          ${issue('없는 파일 <span class="num">2</span>개')}
-          ${issue('내용이 손상된 파일 <span class="num">1</span>개')}
-          <p class="d-text">이&nbsp;라이브러리로 전환해도 그&nbsp;자료는 ‘파일&nbsp;없음’&#8288;으로 보입니다.</p>
+          ${issue('백업에 없는 파일 <span class="num">2</span>개', ['분자생물학 5장 · 막 수송', '실험 2 · 단백질 정량'])}
+          ${issue('내용이 손상된 파일 <span class="num">1</span>개', ['Second Messengers at a Glance'])}
+          <p class="d-text">이&nbsp;라이브러리로 전환해도 그&nbsp;자료는 ‘파일&nbsp;없음’&#8288;으로 보입니다. 원래 파일이 있으면 전환한 뒤 다시 연결할 수 있습니다.</p>
         </div>`
             : ''
         }
+        <p class="d-text">지금 라이브러리는 그대로 남습니다. 나중에 전환하려면 설정의 ‘다른&nbsp;폴더 선택’&#8288;에서 이&nbsp;폴더를 고르세요.</p>
       </div>
       <div class="d-foot"><span class="spacer"></span><div class="btn">나중에</div><div class="btn primary" title="↩">이&nbsp;라이브러리로 전환하고 다시 시작</div></div>
     </div>`;
@@ -1119,7 +1154,8 @@
 
   /**
    * Library check (spec 7.2). `kind`: 'auto' (the sheet that opens by itself — the rows of the M1 mockup), 'full' (every
-   * row of the table, in its order), 'ok' (opened from the menu with nothing to fix: the ok row and 문제가 없습니다).
+   * row of the table), 'ok' (opened from the menu with nothing to fix: the ok row and 문제가 없습니다). Rows to act on
+   * come first and the ok row last; the sheet stops at the window's height − 120 and only the list scrolls (critique 1-19).
    */
   function recoverySheet(kind = 'auto') {
     // Meta line: footnote with tabular figures; paths only in mono (design-spec 4, 6). `entries`: one line per name or
@@ -1128,24 +1164,27 @@
       `<div class="check-item"><span class="status-dot ${cls}">${icon(ic)}</span><div><div class="ci-title">${title}</div><div class="ci-text">${text}</div>${meta ? `<div class="ci-meta ellipsis ${mono ? 'mono' : ''}" title="${metaTitle || meta}">${meta}</div>` : ''}</div><div class="ci-action ${stack ? 'stack' : ''}">${action}</div>${entries ? `<div class="ci-entries">${entries}</div>` : ''}</div>`;
     const entry = (label, button = '') =>
       `<div class="ci-entry"><span class="ellipsis" title="${label}">${label}</span>${button ? `<div class="btn small">${button}</div>` : ''}</div>`;
+    // A name list shows 2 names, then 외 N개 (which has no button: relinking one rechecks the row and the next name shows).
+    const more = (n) => `<div class="ci-entry more"><span>외&nbsp;<span class="num">${n}</span>개</span></div>`;
+    // An external link: its title, the path under it (mono, end ellipsis, the full path in the tooltip), 다시 연결….
+    const link = (title, path, full) =>
+      `<div class="ci-entry"><span class="ce-text"><span class="ce-title ellipsis">${title}</span><span class="ce-path ellipsis" title="${full}">${path}</span></span><div class="btn small">다시 연결…</div></div>`;
+    const links = [link('Calcium Signaling Revisited', '~/Downloads/papers/calcium-signaling.pdf', '/Users/seojin/Downloads/papers/calcium-signaling.pdf')];
+    if (kind === 'full') links.push(link('세미나 · 단일 세포 이미징', '/Volumes/LabDisk/seminars/single-cell-imaging.mp4', '/Volumes/LabDisk/seminars/single-cell-imaging.mp4'));
     const rows = {
-      ok: ci({ ic: 'circle-check', cls: 'c-success', title: '자료와&nbsp;필기', text: '모두 그대로입니다. 자료 128개를 확인했습니다.' }),
+      ok: ci({ ic: 'circle-check', cls: 'c-success', title: '자료 기록', text: '자료 128개의 정보&#8288;·컬렉션&#8288;·태그가 그대로입니다.' }),
       staging: ci({ ic: 'triangle-alert', cls: 'c-warning', title: '가져오다 멈춘 임시 파일 2개', text: '라이브러리에는 추가되지 않았습니다. 정리하면 디스크&nbsp;공간을 돌려받습니다.', meta: '412 MB', action: '<div class="btn small">임시 파일 정리</div>' }),
       orphans: ci({
-        ic: 'triangle-alert', cls: 'c-warning', title: '참조 없는 사본 3개',
+        ic: 'triangle-alert', cls: 'c-warning', title: '쓰이지 않는 사본 3개',
         text: '어느&nbsp;자료도 쓰지 않는 라이브러리 폴더의 파일입니다.',
         meta: '96 MB', stack: true, action: '<div class="btn small">자료로 되살리기</div><div class="btn small">정리…</div>',
       }),
       lost: ci({
         ic: 'triangle-alert', cls: 'c-warning', title: '사본이 사라진 자료 4개',
         text: '라이브러리 폴더에서 사본 파일이 없어졌습니다.',
-        entries:
-          entry('분자생물학 5장 · 막 수송', '다시 연결…') +
-          entry('Second Messengers at a Glance', '다시 연결…') +
-          entry('실험 2 · 단백질 정량', '다시 연결…') +
-          `<div class="ci-entry"><span>외&nbsp;<span class="num">1</span>개</span></div>`,
+        entries: entry('분자생물학 5장 · 막 수송', '다시 연결…') + entry('Second Messengers at a Glance', '다시 연결…') + more(2),
       }),
-      linked: ci({ ic: 'triangle-alert', cls: 'c-warning', title: '원본을 찾을 수 없는 외부 연결 1개', text: 'Calcium Signaling Revisited — 파일을 옮겼다면 새&nbsp;위치를 지정하세요.', meta: '~/Downloads/papers/calcium-signaling.pdf', metaTitle: '/Users/seojin/Downloads/papers/calcium-signaling.pdf', mono: true, action: '<div class="btn small">다시 연결…</div>' }),
+      linked: ci({ ic: 'triangle-alert', cls: 'c-warning', title: `원본을 찾을 수 없는 외부 연결 ${links.length}개`, text: '파일을 옮겼다면 새&nbsp;위치를 지정하세요.', entries: links.join('') }),
       damaged: ci({ ic: 'info', cls: 'c-secondary', title: '따로 보관한 손상된 사본 1개', text: '내용이 손상되어 라이브러리에서 뺀 사본입니다. 확인한 뒤 직접 지울 수 있습니다.', meta: '분자생물학 6장 · 신호 전달 · 4.2 MB', action: '<div class="btn small">Finder에서 보기</div>' }),
       edited: ci({
         ic: 'info', cls: 'c-secondary', title: '주인 없는 수정본 1개',
@@ -1154,21 +1193,21 @@
         action: '<div class="btn small">새&nbsp;자료로 가져오기</div><div class="btn small">Finder에서 보기</div>',
       }),
     };
-    const list = { auto: ['ok', 'staging', 'linked', 'damaged'], full: ['ok', 'staging', 'orphans', 'lost', 'linked', 'damaged', 'edited'], ok: ['ok'] }[kind];
+    const list = { auto: ['staging', 'linked', 'damaged', 'ok'], full: ['staging', 'orphans', 'lost', 'linked', 'damaged', 'edited', 'ok'], ok: ['ok'] }[kind];
     const fine = kind === 'ok';
-    // Automatic: what the app left behind, without naming a cause it did not record (spec 7.2). From the menu with
-    // nothing to fix: 문제가 없습니다, and no pointer back to the menu the user has just used.
-    const intro = fine ? '문제가 없습니다.' : '지난번 가져오기가 끝나지 않아 정리할&nbsp;것이 있습니다. 자동으로&nbsp;지운&nbsp;것은 없습니다.';
-    const label = { auto: '라이브러리 점검 시트', full: '라이브러리 점검 시트(모든 줄)', ok: '라이브러리 점검 시트(문제 없음)' }[kind];
-    return `<div class="dialog wide" role="dialog" aria-label="라이브러리 점검" ${ms('M6', label)}>
+    // Automatic: what was found, without naming a cause the app did not record (spec 7.2). From the menu with nothing to
+    // fix: 문제가 없습니다, and no pointer back to the menu the user has just used.
+    const intro = fine ? '문제가 없습니다.' : '라이브러리를 열 때 정리할&nbsp;것을 찾았습니다. 자동으로&nbsp;지운&nbsp;것은 없습니다.';
+    const label = { auto: '라이브러리 점검 시트', full: '라이브러리 점검 시트(모든 줄, 높이 상한 — 목록만 스크롤)', ok: '라이브러리 점검 시트(문제 없음)' }[kind];
+    return `<div class="dialog wide capped" role="dialog" aria-label="라이브러리 점검" ${ms('M6', label)}>
       <div class="d-body" style="padding-bottom:12px">
         <div class="d-title" style="align-items:flex-start"><span class="badge-icon ${fine ? 'success' : 'warning'}">${icon('stethoscope')}</span><div><h2 style="margin-top:5px">라이브러리 점검</h2>
           <p class="d-text" style="margin-top:4px">${intro}</p></div></div>
       </div>
-      <div class="card checklist" style="margin:0 20px">
+      <div class="card checklist" style="margin:0 20px" data-scroll="last-half">
         ${list.map((k) => rows[k]).join('')}
       </div>
-      <div class="d-foot" style="padding-top:16px">${fine ? '' : '<span class="t-footnote c-tertiary">언제든 메뉴 막대의 파일 › 라이브러리 점검에서 다시 할 수 있습니다.</span>'}<span class="spacer"></span><div class="btn primary" title="↩">완료</div></div>
+      <div class="d-foot" style="padding-top:16px">${fine ? '' : '<span class="t-footnote c-secondary">언제든 메뉴 막대의 파일 › 라이브러리 점검에서 다시 할 수 있습니다.</span>'}<span class="spacer"></span><div class="btn primary" title="↩">완료</div></div>
     </div>`;
   }
 
@@ -2083,6 +2122,14 @@
       if (scene === 'fatal') return fatalScreen();
       // The permanent-delete sheet sits on the trash view with the three items it names chosen (unfocused under the sheet).
       if (scene === 'purge') return libraryWindow({ state: 'trash', selection: [101, 102, 103], table: { focused: false }, overlays: purgeSheet() });
+      if (scene === 'empty-trash') return libraryWindow({ state: 'trash', table: { focused: false }, overlays: emptyTrashSheet() });
+      // The library under the check sheet agrees with it: nothing missing when it says 문제가 없습니다; the lost copies and
+      // the unplugged external link marked 파일 없음 when it lists them.
+      if (scene === 'recovery-ok') return libraryWindow({ state: 'item', table: { focused: false }, items: D.items.filter((x) => !x.missing && !x.unplayable), overlays: recoverySheet('ok') });
+      if (scene === 'recovery-full') {
+        const lost = [20, 15, 24, 34, 32];
+        return libraryWindow({ state: 'item', table: { focused: false }, items: D.items.map((x) => (lost.includes(x.id) ? { ...x, missing: true } : x)), overlays: recoverySheet('full') });
+      }
       // Toasts only: the library keeps its focus (the window is not held while the work line runs, spec 3.2).
       if (scene === 'jobs') return libraryWindow({ state: 'item', overlays: jobToasts() });
       const overlay = {
@@ -2090,8 +2137,6 @@
         backup: backupSheet(),
         'backup-missing': backupSheet({ missing: true }),
         recovery: recoverySheet('auto'),
-        'recovery-full': recoverySheet('full'),
-        'recovery-ok': recoverySheet('ok'),
         restore: restoreSheet(),
         'restore-issues': restoreSheet({ issues: true }),
       }[scene];

@@ -23,6 +23,8 @@ export interface ImportBatch {
   titles?: Record<string, string>;
   /** After each file of this batch is committed (an edited copy goes only then, once its hash is checked again). */
   afterCommit?: (outcome: ImportedOutcome) => Promise<void>;
+  /** The batch's files come in as new items even when the library holds the same content: nothing is asked (E2E setup). */
+  allowDuplicate?: boolean;
 }
 
 export interface DuplicateQuestion {
@@ -275,7 +277,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       collectionId: batch.collectionId,
       signal: signalFor(entry, laneSignal),
       ...(title !== undefined ? { title } : {}),
-      ...(extra.allowDuplicate ? { allowDuplicate: true } : {}),
+      ...(extra.allowDuplicate || batch.allowDuplicate ? { allowDuplicate: true } : {}),
       ...(extra.onBytes ? { onBytes: extra.onBytes } : {}),
     };
     try {

@@ -537,3 +537,15 @@ describe('results', () => {
     expect(h.announced).toEqual([['item:/in/1.pdf'], ['item:/in/2.pdf', 'item:/in/3.pdf', 'item:/in/4.pdf'], ['item:/in/5.pdf']]);
   });
 });
+
+describe('a batch that adds its duplicates as new items', () => {
+  it('asks the importer for every file of that batch with allowDuplicate, and for no other batch', async () => {
+    const h = setup();
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/again.pdf'], { allowDuplicate: true }));
+    h.queue.enqueue(batch(['/in/new.pdf']));
+    expect(await done).toEqual(report({ imported: 2, requested: 2 }));
+    expect(h.fake.calls.map((c) => [c.path, c.opts.allowDuplicate])).toEqual([['/in/again.pdf', true], ['/in/new.pdf', undefined]]);
+    expect(h.questions).toEqual([]);
+  });
+});

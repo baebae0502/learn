@@ -275,3 +275,45 @@ describe('the import pause and queue hooks (P-6)', () => {
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });
+
+describe('holding the work line (the progress toast that waits for the work before it)', () => {
+  it('holdJob runs a job of that kind on the line until releaseJob; a second hold waits for the first to be let go', async () => {
+    const runs: Array<{ kind: string; done: Promise<unknown> }> = [];
+    const lane = {
+      run: vi.fn((kind: string, work: (signal: AbortSignal) => Promise<unknown>) => {
+        const done = work(new AbortController().signal);
+        runs.push({ kind, done });
+        return done;
+      }),
+    };
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      imports: {
+        importer: () => ({ setHooks: vi.fn() }),
+        queue: { enqueue: vi.fn(() => 0), state: () => ({ ...IDLE_IMPORT_STATE }), onFinished: () => () => {} },
+        mainWindowId: () => 41,
+        lane: lane as never,
+      },
+    });
+    const hooks = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    hooks.holdJob({ kind: 'backup' });
+    expect(lane.run).toHaveBeenCalledWith('backup', expect.any(Function));
+    expect(() => hooks.holdJob({ kind: 'restore' })).toThrow(/held already/);
+    let ended = false;
+    void runs[0]!.done.then(() => (ended = true));
+    await Promise.resolve();
+    expect(ended).toBe(false);
+    hooks.releaseJob();
+    await runs[0]!.done;
+    expect(ended).toBe(true);
+    hooks.holdJob({ kind: 'restore' }); // let go: free again
+    expect(runs.map((r) => r.kind)).toEqual(['backup', 'restore']);
+    hooks.releaseJob();
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});

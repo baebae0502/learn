@@ -3,6 +3,7 @@ import { newId, type ImportQueueState, type ImportReport, type LearnEventMap, ty
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
 import type { ImportHooks, Importer } from '@learn/library';
 import type { ImportQueue } from './jobs/import-queue';
+import type { JobKind, JobLane } from './jobs/lane';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -257,6 +258,12 @@ export interface LearnTestHooks {
   importQueueState(): ImportQueueState;
   /** Every import run's report since launch, oldest first. */
   importReports(): ImportReport[];
+  /**
+   * Holds the work line with a job of this kind until releaseJob, so an import put in meanwhile waits behind it (its
+   * toast says 앞의 작업을 기다리는 중) before backups and restores exist. Quitting stops it like theirs.
+   */
+  holdJob(input: { kind: Exclude<JobKind, 'import'> }): void;
+  releaseJob(): void;
 }
 
 /**
@@ -273,6 +280,8 @@ export function installTestHooks(deps: {
     queue: Pick<ImportQueue, 'enqueue' | 'state' | 'onFinished'>;
     /** The main window's webContents id, the owner of what a test puts in; null while it is not open. */
     mainWindowId(): number | null;
+    /** The work line holdJob takes (unit tests that do not hold it leave it out). */
+    lane?: Pick<JobLane, 'run'>;
   };
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
@@ -298,6 +307,7 @@ export function installTestHooks(deps: {
     if (!imports) throw new Error('installTestHooks: no import queue');
     return imports;
   };
+  let heldJob: (() => void) | null = null;
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
@@ -330,5 +340,29 @@ export function installTestHooks(deps: {
     },
     importQueueState: () => queue().queue.state(),
     importReports: () => [...reports],
+    holdJob({ kind }) {
+      const lane = queue().lane;
+      if (!lane) throw new Error('holdJob: no work line');
+      if (heldJob) throw new Error('holdJob: a job is held already');
+      let release = (): void => {};
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      heldJob = release;
+      void lane
+        .run(kind, (signal) => {
+          signal.addEventListener('abort', () => release(), { once: true });
+          return held;
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (heldJob === release) heldJob = null;
+        });
+    },
+    releaseJob() {
+      const go = heldJob;
+      heldJob = null;
+      go?.();
+    },
   };
 }

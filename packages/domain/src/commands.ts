@@ -17,6 +17,7 @@ export { COLOR_SLOTS } from './tag-colors';
 export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
+  | 'file.cancelImport'
   | 'library.find'
   | 'library.findEverywhere'
   | 'nav.back'
@@ -174,6 +175,8 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O', menu: { menu: 'file', group: 1, order: 2 }, contexts: ['library'],
     keywords: ['연결', '외부', '링크', 'link'],
   },
+  // 가져오기 취소 (spec 11.1): the progress toast's 취소 from the palette, while the import queue has files to finish.
+  { id: 'file.cancelImport', label: '가져오기 취소', contexts: ['app'], palette: true, keywords: ['가져오기', '취소', '중지', '멈추기', 'import', 'cancel', 'stop'] },
   // 새 컬렉션 (spec 3.4): Finder's new folder — the sidebar makes the row and names it in place. 파일 group 1 after the
   // imports; the palette lists it too. Wherever the library shows, also while it is empty.
   {
@@ -398,6 +401,8 @@ export interface CommandContextState {
   sortDirection: 'asc' | 'desc';
   /** The columns drawn, forced ones included: a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
   columnsShown: number;
+  /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
+  importRunning?: boolean;
 }
 
 /** The view fields of a context with no library view yet: the first report, the fatal screen, a test's fixture. */
@@ -547,6 +552,7 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'tag.clearColor': (_c, t) => t.tags.length === 1 && t.tags[0]!.hasColor,
   'tag.delete': (_c, t) => t.tags.length === 1,
   'tags.clearFilter': (c) => c.tagFilterCount > 0,
+  'file.cancelImport': (c) => c.importRunning === true,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,

@@ -15,8 +15,8 @@ export interface DuplicateAskerDeps<W extends AskWindow> {
   windowOf(webContentsId: number): W | null;
   /** The main window there is now, or null. */
   anyMainWindow(): W | null;
-  /** The duplicate sheet over `parent` (SheetHost.open). */
-  sheet(parent: W, payload: SheetPayload): Promise<SheetResult | null>;
+  /** The duplicate sheet over `parent` (SheetHost.open); `signal` closes it when the import is stopped. */
+  sheet(parent: W, payload: SheetPayload, signal: AbortSignal): Promise<SheetResult | null>;
   /** A native message box with no window (dialog.showMessageBox(options)). */
   messageBox(options: MessageBoxOptions): Promise<{ response: number; checkboxChecked: boolean }>;
 }
@@ -31,7 +31,7 @@ const SKIP: DuplicateAnswer = { choice: 'skip', applyToRest: false, askedOn: nul
 export function createDuplicateAsker<W extends AskWindow>(deps: DuplicateAskerDeps<W>) {
   return async (owner: number, question: DuplicateQuestion, signal: AbortSignal): Promise<DuplicateAnswer> => {
     if (signal.aborted) return SKIP;
-    // A sheet left open by a stopped import closes with the app; nothing else ends it but its own answer.
+    // A sheet left open by a stopped import is closed by the sheet host through the same signal.
     const stopped = new Promise<null>((resolve) => signal.addEventListener('abort', () => resolve(null), { once: true }));
     const offer = question.remaining > 0;
     const parent = deps.windowOf(owner) ?? deps.anyMainWindow();
@@ -39,7 +39,7 @@ export function createDuplicateAsker<W extends AskWindow>(deps: DuplicateAskerDe
       // Files dropped from Finder leave Finder the active app: the question must not wait unseen on a background window.
       if (!parent.isFocused()) parent.focus();
       const payload: SheetPayload = { kind: 'duplicate', fileName: question.fileName, existing: question.existing, remaining: question.remaining };
-      const result = await Promise.race([deps.sheet(parent, payload), stopped]);
+      const result = await Promise.race([deps.sheet(parent, payload, signal), stopped]);
       if (result === null || result.kind !== 'duplicate') return SKIP;
       return { choice: result.choice, applyToRest: offer && result.applyToRest, askedOn: parent.webContents.id };
     }

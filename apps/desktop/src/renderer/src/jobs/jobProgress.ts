@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { IDLE_IMPORT_STATE, type ImportQueueState } from '@learn/domain';
+import { api } from '../api';
 import { t } from '../strings';
 import type { JobToastView, ProgressJob } from './progressToast';
 
@@ -93,4 +94,9 @@ export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastTex
     testId: 'import-progress',
     cancelTestId: 'import-cancel',
   };
+}
+
+/** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
+export function cancelJob(_job: ProgressJob): void {
+  void api().library.cancelImport();
 }

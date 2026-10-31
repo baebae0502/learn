@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, systemPreferences, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
+import { app, dialog, Menu, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -399,7 +399,7 @@ if (!app.requestSingleInstanceLock()) {
           return win && win.webContents.id === id ? win : null;
         },
         anyMainWindow: liveMainWindow,
-        sheet: (parent, payload) => sheets.open(parent, payload),
+        sheet: (parent, payload, signal) => sheets.open(parent, payload, signal),
         messageBox: (options) => dialog.showMessageBox(options),
       }),
       fileExisting: (collectionId, itemIds) => {
@@ -408,6 +408,15 @@ if (!app.requestSingleInstanceLock()) {
         return filed.length;
       },
       announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
+    });
+    // Every window hears the queue (the progress toast, the busy screen); 기존 자료 열기 opens in the window it was
+    // answered on, which may not be the one that put the file in (spec 3.4).
+    imports.onProgress((state) => broadcast('import:progress', state));
+    imports.onFinished((report, openIn) => {
+      broadcast('import:finished', { report });
+      if (report.openItemId === null || openIn === null) return;
+      const contents = webContents.fromId(openIn);
+      if (contents && !contents.isDestroyed()) sendEvent(contents, 'item:openRequested', { itemId: report.openItemId });
     });
     const deps: IpcDeps = {
       getContext,
@@ -487,7 +496,7 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
-        imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null },
+        imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
       });
     }
 

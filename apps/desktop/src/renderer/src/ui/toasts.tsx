@@ -1,15 +1,21 @@
 import { useEffect, type KeyboardEvent } from 'react';
-import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, CirclePause, Info, X } from 'lucide-react';
 import {
   Text,
   UNSTABLE_Toast as Toast,
   UNSTABLE_ToastContent as ToastContent,
   UNSTABLE_ToastQueue as ToastQueue,
   UNSTABLE_ToastRegion as ToastRegion,
+  type QueuedToast,
 } from 'react-aria-components';
+import { cancelJob, describeJob, useJobProgress, type JobToastText } from '../jobs/jobProgress';
+import type { ProgressJob } from '../jobs/progressToast';
 import { t } from '../strings';
 import { Button, IconButton } from './Button';
+import { cx } from './cx';
 import { Icon } from './Icon';
+import { MiddleEllipsis } from './MiddleEllipsis';
+import { ProgressBar } from './ProgressBar';
 import { Spinner } from './Spinner';
 import { afterPaintOr, type Pending } from './afterPaint';
 import { perfMark } from './perfMarks';
@@ -39,6 +45,16 @@ export interface ToastData {
   action?: ToastAction;
   testId?: string;
 }
+
+/**
+ * A job's toast in the queue: its content is which job, not words. It draws the job's live state (jobs/jobProgress.ts),
+ * then the view its controller gives it (jobs/progressToast.ts): the run's last state, then the result that took it over.
+ */
+export interface JobToastContent {
+  kind: 'job';
+  job: ProgressJob;
+}
+export type ToastContent = ToastData | JobToastContent;
 
 /** Description of a toast (shared with the state board): the lines, then the paragraph. */
 export function ToastLines({ data }: { data: Pick<ToastData, 'lines' | 'body'> }) {
@@ -108,7 +124,7 @@ export class LearnToastQueue<T = ToastData> extends ToastQueue<T> {
  * stands for ends (closeToast). Action buttons are verbs (보기·다시 시도). RAC's toast API is UNSTABLE_-prefixed in 1.22.1; it is pinned and used only through
  * this module.
  */
-export const toastQueue = new LearnToastQueue({ maxVisibleToasts: 3 });
+export const toastQueue = new LearnToastQueue<ToastContent>({ maxVisibleToasts: 3 });
 
 /** No RAC timeout: a toast that closes by itself does so through AutoClose, while it is on screen. */
 export function showToast(data: ToastData): string {
@@ -123,6 +139,13 @@ export function showActionFailed(e: unknown): void {
 /** Closes a toast by the key showToast returned: the only way a busy toast goes. */
 export function closeToast(key: string): void {
   toastQueue.close(key);
+}
+
+/** A job's toast: in the same region, Tab and F6 order as every toast; its view is forgotten when it closes. */
+export function showJobToast(job: ProgressJob): string {
+  let key = '';
+  key = toastQueue.add({ kind: 'job', job }, { onClose: () => useJobProgress.getState().setView(key, undefined) });
+  return key;
 }
 
 /**
@@ -234,29 +257,98 @@ function closeOnEscape(e: KeyboardEvent): void {
   toastQueue.close(toast.dataset['toastKey']!);
 }
 
+/** The inside of a plain toast; a job toast that its result took over draws the same. */
+function PlainToastBody({ toastKey, data }: { toastKey: string; data: ToastData }) {
+  return (
+    <>
+      <AutoClose toastKey={toastKey} kind={data.kind} testId={data.testId} />
+      <ToastIcon kind={data.kind} />
+      <ToastContent className="t-text">
+        <Text slot="title" className="t-title">
+          {data.title}
+        </Text>
+        {(data.lines?.length || data.body) && (
+          <Text slot="description" elementType="div" className="t-desc">
+            <ToastLines data={data} />
+          </Text>
+        )}
+      </ToastContent>
+      {data.action && <ToastActionButton action={data.action} onDone={() => toastQueue.close(toastKey)} />}
+      {data.kind === 'error' && <IconButton slot="close" icon={X} label={t.common.close} size="small" testId="toast-close" />}
+    </>
+  );
+}
+
+/**
+ * A job's progress (mockup importToast): spinner or pause, the title — the only announced part (RAC's role=alert): the
+ * count, the file name and the bar change ten times a second — then 취소, and the bar with its percent under them.
+ */
+function JobProgressBody({ text, onCancel }: { text: JobToastText; onCancel: () => void }) {
+  return (
+    <>
+      <span className={cx('t-icon', text.waiting && 'c-secondary')}>{text.waiting ? <Icon icon={CirclePause} size="md" /> : <Spinner />}</span>
+      <div className="t-text">
+        <div className="t-head">
+          <ToastContent className="t-live">
+            <Text slot="title" className="t-title">
+              {text.title}
+            </Text>
+          </ToastContent>
+          <span className="t-title t-count num" aria-hidden="true">
+            {text.count}
+          </span>
+        </div>
+        {text.file !== null && <MiddleEllipsis className="t-file" text={text.file} />}
+        {text.note !== null && <span className="t-file ui-prose">{text.note}</span>}
+      </div>
+      <span className="t-actions">
+        <Button size="small" testId={text.cancelTestId} onPress={onCancel}>
+          {t.jobs.cancel}
+        </Button>
+      </span>
+      <div className="t-progress">
+        <ProgressBar percent={text.percent} label={text.title} valueText={text.valueText} wide />
+        <span className="pct t-footnote c-secondary num" aria-hidden="true">
+          {t.jobs.percent(text.percent)}
+        </span>
+      </div>
+    </>
+  );
+}
+
+/** One job's toast: the same <Toast> from its first progress to its result, so it never closes and comes back. */
+function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: ProgressJob }) {
+  const view = useJobProgress((s) => s.views[toast.key]);
+  const live = useJobProgress((s) => s.import);
+  if (view?.kind === 'result') {
+    return (
+      <Toast toast={toast} className="toast" data-kind={view.data.kind} data-toast-key={toast.key} data-testid={view.data.testId ?? 'toast'}>
+        <PlainToastBody toastKey={toast.key} data={view.data} />
+      </Toast>
+    );
+  }
+  const text = describeJob(job, view?.state ?? live);
+  return (
+    <Toast toast={toast} className="toast" data-kind="progress" data-state={text.state} data-toast-key={toast.key} data-testid={text.testId}>
+      <JobProgressBody text={text} onCancel={() => cancelJob(job)} />
+    </Toast>
+  );
+}
+
 export function Toasts() {
   return (
     <div className="toast-keys" onKeyDown={closeOnEscape}>
       {/* The last F6 pane while a toast is visible (shell/panes.ts, R-1); RAC passes data-* through to the region. */}
       <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
-        {({ toast }) => (
-          <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
-            <AutoClose toastKey={toast.key} kind={toast.content.kind} testId={toast.content.testId} />
-            <ToastIcon kind={toast.content.kind} />
-            <ToastContent className="t-text">
-              <Text slot="title" className="t-title">
-                {toast.content.title}
-              </Text>
-              {(toast.content.lines?.length || toast.content.body) && (
-                <Text slot="description" elementType="div" className="t-desc">
-                  <ToastLines data={toast.content} />
-                </Text>
-              )}
-            </ToastContent>
-            {toast.content.action && <ToastActionButton action={toast.content.action} onDone={() => toastQueue.close(toast.key)} />}
-            {toast.content.kind === 'error' && <IconButton slot="close" icon={X} label={t.common.close} size="small" testId="toast-close" />}
-          </Toast>
-        )}
+        {({ toast }) =>
+          toast.content.kind === 'job' ? (
+            <JobToastItem toast={toast} job={toast.content.job} />
+          ) : (
+            <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
+              <PlainToastBody toastKey={toast.key} data={toast.content} />
+            </Toast>
+          )
+        }
       </ToastRegion>
     </div>
   );

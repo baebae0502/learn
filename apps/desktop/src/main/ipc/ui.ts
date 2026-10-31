@@ -1,8 +1,7 @@
 import { BrowserWindow, dialog, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
-import { displayFileName } from '@learn/library';
 import {
-  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmDuplicateInput, confirmInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
+  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
   type CommandTargetInfo,
 } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
@@ -86,23 +85,6 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (!deps.isMainWindow(sender)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     return BrowserWindow.fromWebContents(sender);
   };
-
-  handle(Channels.ui.confirmDuplicate, confirmDuplicateInput, async ({ path: file, existingItemId }, event) => {
-    const parent = mainWindowOf(event.sender);
-    const existing = deps.getContext().repo.getItem(existingItemId);
-    if (!parent || !existing) return { choice: 'skip' as const };
-    // Files dropped from Finder leave Finder the active app: the question must not wait unseen on a background window.
-    // A window already in front (the open panel's import, the next duplicate) is left to the system.
-    if (!parent.isFocused()) parent.focus();
-    const result = await deps.sheets.open(parent, {
-      kind: 'duplicate',
-      fileName: displayFileName(file),
-      existing: { title: existing.title, type: existing.type, size: existing.size, createdAt: existing.createdAt, storageMode: existing.storageMode },
-      // The renderer asks one file at a time on this path: there is no rest to answer for.
-      remaining: 0,
-    });
-    return { choice: result?.kind === 'duplicate' ? result.choice : ('skip' as const) };
-  });
 
   // A native question in the renderer's words (deleting a collection, merging or deleting a tag): a sheet on the main
   // window, the confirming button first and the default, 취소 after it (esc).

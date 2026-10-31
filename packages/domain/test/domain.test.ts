@@ -199,6 +199,12 @@ describe('ipc contract', () => {
     expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: null });
     expect(Object.isFrozen(IDLE_IMPORT_STATE)).toBe(true);
   });
+  it('takes whether the import queue runs as an optional flag of the reported context (Q-4c)', () => {
+    const ctx = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 1 };
+    expect(commandContextInput.parse({ ...ctx, importRunning: true })).toMatchObject({ importRunning: true });
+    expect(commandContextInput.parse(ctx)).not.toHaveProperty('importRunning');
+    expect(commandContextInput.safeParse({ ...ctx, importRunning: 'yes' }).success).toBe(false);
+  });
 });
 
 describe('copy shared across screens', () => {

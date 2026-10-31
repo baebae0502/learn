@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { showUndoToast, toastQueue, type ToastData } from './toasts';
 
 /** The queue lists the newest toast first. */
-const last = (): ToastData => toastQueue.visibleToasts[0]!.content;
+const last = (): ToastData => toastQueue.visibleToasts[0]!.content as ToastData;
 afterEach(() => {
   for (const toast of [...toastQueue.visibleToasts]) toastQueue.close(toast.key);
 });

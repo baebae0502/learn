@@ -376,3 +376,53 @@ describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
     expect(shortcutsDigest([...keyless, ...listed], 'darwin')).toBe(digest);
   });
 });
+
+describe('a sheet given up with the work that asked it (the duplicate question of a stopped import)', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+
+  it('aborting the signal closes the shown sheet window, answers null and gives the focus back', async () => {
+    const h = host();
+    const p = parent();
+    const stop = new AbortController();
+    const result = h.open(p, { kind: 'shortcuts' }, stop.signal);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    expect(w.shown).toBe(true);
+    stop.abort();
+    await expect(result).resolves.toBeNull();
+    expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('a signal already aborted opens nothing, and one aborted while the sheet waits behind another never opens it', async () => {
+    const h = host();
+    const p = parent();
+    const gone = new AbortController();
+    gone.abort();
+    await expect(h.open(p, { kind: 'shortcuts' }, gone.signal)).resolves.toBeNull();
+    expect(FakeWindow.all).toHaveLength(0);
+    const first = h.open(p, { kind: 'shortcuts' });
+    await tick();
+    const stop = new AbortController();
+    const second = h.open(p, { kind: 'shortcuts' }, stop.signal);
+    stop.abort();
+    h.resolve(contentsOf(FakeWindow.all[0]!), { kind: 'shortcuts' });
+    await first;
+    await expect(second).resolves.toBeNull();
+    await tick();
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('a sheet answered before the abort is not touched by it', async () => {
+    const h = host();
+    const stop = new AbortController();
+    const result = h.open(parent(), { kind: 'shortcuts' }, stop.signal);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    stop.abort();
+    expect(w.destroyed).toBe(true);
+  });
+});

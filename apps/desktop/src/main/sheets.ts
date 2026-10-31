@@ -49,9 +49,10 @@ export function shortcutsDigest(commands: readonly CommandSpec[], platform: stri
 export interface SheetHost {
   /**
    * A modal sheet over `parent`; resolves with the sheet's result, or null when it closed without one (or its page
-   * failed). One sheet at a time per window: a second request waits until the first has closed.
+   * failed). One sheet at a time per window: a second request waits until the first has closed. `signal`: the work that
+   * asked is over (an import stopped): the sheet closes unanswered, or is never opened if it is still waiting.
    */
-  open(parent: BrowserWindow, payload: SheetPayload): Promise<SheetResult | null>;
+  open(parent: BrowserWindow, payload: SheetPayload, signal?: AbortSignal): Promise<SheetResult | null>;
   payloadFor(contents: WebContents): SheetPayload;
   resolve(contents: WebContents, result: SheetResult): void;
 }
@@ -89,8 +90,12 @@ export function createSheetHost(opts: {
     return p;
   };
 
-  function show(parent: BrowserWindow, payload: SheetPayload): Promise<SheetResult | null> {
+  function show(parent: BrowserWindow, payload: SheetPayload, signal: AbortSignal | undefined): Promise<SheetResult | null> {
     return new Promise((resolve) => {
+      if (signal?.aborted) {
+        resolve(null);
+        return;
+      }
       const width = SHEET_WIDTH[payload.kind];
       const room = parent.getContentBounds();
       const maxHeight = sheetMaxHeight(room.height, opts.platform);
@@ -124,11 +129,13 @@ export function createSheetHost(opts: {
       registerWindowKind(win.webContents, 'sheet');
       const id = win.webContents.id;
       let done = false;
+      const giveUp = (): void => settle(null);
       let watchdog: ReturnType<typeof setTimeout> | undefined;
       let hung: ReturnType<typeof setTimeout> | undefined;
       const settle = (result: SheetResult | null) => {
         if (done) return;
         done = true;
+        signal?.removeEventListener('abort', giveUp);
         clearTimeout(watchdog);
         clearTimeout(hung);
         pending.delete(id);
@@ -138,6 +145,7 @@ export function createSheetHost(opts: {
         if (!parent.isDestroyed()) parent.focus();
       };
       pending.set(id, { payload, settle });
+      signal?.addEventListener('abort', giveUp, { once: true });
       /** onSheetShown ran for this sheet: only then does its closing tell the parent (shown and closed come in pairs). */
       let announced = false;
       const announce = () => {
@@ -202,11 +210,11 @@ export function createSheetHost(opts: {
   }
 
   return {
-    open(parent, payload) {
+    open(parent, payload, signal) {
       // One sheet at a time per window, as macOS attaches them: a second request waits for the first to close.
       const key = parent.id;
       const before = queues.get(key) ?? Promise.resolve(null);
-      const next = before.catch(() => null).then(() => (parent.isDestroyed() ? null : show(parent, payload)));
+      const next = before.catch(() => null).then(() => (parent.isDestroyed() ? null : show(parent, payload, signal)));
       queues.set(key, next);
       const forget = () => {
         if (queues.get(key) === next) queues.delete(key);

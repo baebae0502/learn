@@ -9,7 +9,7 @@ exposeSurface({
   requests: {
     app: ['info'],
     library: [
-      'pickAndImport', 'import', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'listTrash',
+      'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'listTrash',
       'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems',
     ],
     collections: ['list', 'create', 'rename', 'move', 'remove', 'restore', 'addItems', 'removeItems'],
@@ -17,8 +17,8 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
-    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirmDuplicate', 'confirm', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
+    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
-  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut'],
+  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested'],
   pathForFile: true,
 });

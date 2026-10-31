@@ -1,4 +1,5 @@
 import type { CommandArgs, CommandId } from './commands';
+import type { ImportQueueState, ImportReport } from './library';
 import type { Prefs } from './settings';
 
 /** The window's state as its renderer draws it: pushed on change (windowState event) and answered by `ui.windowState()`. */
@@ -46,4 +47,10 @@ export interface LearnEventMap {
    * 전체 화면, which send no menuCommand — ran, so the demo overlay can show its shortcut. Never sent otherwise.
    */
   demoShortcut: { accelerator: string; label: string };
+  /** The import queue (spec 3.3): at most 10 a second while it works, and once more when it is idle again. */
+  'import:progress': ImportQueueState;
+  /** One import run ended: done, or stopped by 취소 or quitting; what it did, for the result toasts. */
+  'import:finished': { report: ImportReport };
+  /** A duplicate was answered 기존 자료 열기 (spec 3.4): sent to the window it was answered on, which opens the item. */
+  'item:openRequested': { itemId: string };
 }

@@ -45,6 +45,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
+  cancelImport: vi.fn(),
   modal: false,
   ...over,
 });
@@ -390,5 +391,15 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     const e = env();
     expect(runPicked({ commandId: 'collection.addItems', args: { collectionId: 'c1' } }, e, { itemIds: [ID] })).toBe(true);
     expect(e.addToCollection).toHaveBeenCalledWith([ID], { collectionId: 'c1' });
+  });
+  it('가져오기 취소 runs while the import queue works and nothing holds the window; the flag is reported only then (Q-4c)', () => {
+    const idle = env();
+    expect(runCommand('file.cancelImport', idle)).toBe(false);
+    expect(contextOf(idle)).not.toHaveProperty('importRunning');
+    const running = env({ importRunning: true });
+    expect(contextOf(running)).toMatchObject({ importRunning: true });
+    expect(runCommand('file.cancelImport', running)).toBe(true);
+    expect(running.cancelImport).toHaveBeenCalledTimes(1);
+    expect(runCommand('file.cancelImport', env({ importRunning: true, blocked: true }))).toBe(false); // under the question's sheet
   });
 });

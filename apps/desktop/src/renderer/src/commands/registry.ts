@@ -57,6 +57,8 @@ export interface CommandEnv extends CommandContextState {
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
   setTextSize(update: TextSizeUpdate): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
+  /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
+  cancelImport(): void;
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
   focusSearch(): void;
@@ -75,6 +77,8 @@ export interface CommandEnv extends CommandContextState {
    * not grey before the sheet appears.
    */
   held?: boolean;
+  /** The import queue has files to finish (jobs/jobProgress.ts): 가져오기 취소 is available. */
+  importRunning?: boolean;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -105,6 +109,7 @@ const colorAt = (slot: number): Handler => (env, t) => env.toggleTagPosition(slo
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
+  'file.cancelImport': (env) => env.cancelImport(),
   'library.find': (env) => env.focusSearch(),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
@@ -174,6 +179,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
+    ...(env.importRunning ? { importRunning: true } : {}),
   };
 }
 

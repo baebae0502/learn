@@ -1,10 +1,11 @@
-import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
 export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'file.importManaged': FilePlus,
   'file.importLinked': Link,
+  'file.cancelImport': CircleX,
   'library.find': Search,
   'library.findEverywhere': LibraryBig,
   'nav.back': ArrowLeft,

@@ -18,12 +18,14 @@ function win(id: number, focused = true) {
 type W = ReturnType<typeof win>;
 function asker(opts: { windows?: W[]; current?: W | null; result?: SheetResult | null | Promise<SheetResult | null>; box?: { response: number; checkboxChecked: boolean } }) {
   const sheets: Array<{ parent: W; payload: SheetPayload }> = [];
+  const signals: AbortSignal[] = [];
   const boxes: unknown[] = [];
   const ask = createDuplicateAsker<W>({
     windowOf: (id) => opts.windows?.find((w) => w.webContents.id === id) ?? null,
     anyMainWindow: () => opts.current ?? null,
-    sheet: async (parent, payload) => {
+    sheet: async (parent, payload, signal) => {
       sheets.push({ parent, payload });
+      signals.push(signal);
       return opts.result === undefined ? { kind: 'duplicate', choice: 'add', applyToRest: true } : await opts.result;
     },
     messageBox: async (options) => {
@@ -31,7 +33,7 @@ function asker(opts: { windows?: W[]; current?: W | null; result?: SheetResult |
       return opts.box ?? { response: 1, checkboxChecked: false };
     },
   });
-  return { ask, sheets, boxes };
+  return { ask, sheets, boxes, signals };
 }
 const live = () => new AbortController().signal;
 
@@ -91,5 +93,16 @@ describe('the duplicate question (spec 3.4, P-1)', () => {
     late.abort();
     expect(await a.ask(7, question(2), late.signal)).toEqual({ choice: 'skip', applyToRest: false, askedOn: null });
     expect(a.sheets).toHaveLength(1);
+  });
+
+  it('hands the import\'s signal to the sheet host, which closes a sheet left open when the import is stopped', async () => {
+    const a = asker({ windows: [win(7)], result: new Promise<SheetResult | null>(() => {}) });
+    const stop = new AbortController();
+    void a.ask(7, question(2), stop.signal);
+    await Promise.resolve();
+    expect(a.signals).toHaveLength(1);
+    expect(a.signals[0]!.aborted).toBe(false);
+    stop.abort();
+    expect(a.signals[0]!.aborted).toBe(true);
   });
 });

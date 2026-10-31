@@ -6,14 +6,11 @@ type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
 const messageBox = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ response: 0, checkboxChecked: false })));
 const win = { fullscreen: false, focused: true, destroyed: false };
-/** What happened to the main window and its sheets, in order ('focus', 'sheet:<kind>'). */
-const events: string[] = [];
 const fakeWindow = {
   isDestroyed: () => win.destroyed,
   isFullScreen: () => win.fullscreen,
   isFocused: () => win.focused,
   focus: () => {
-    events.push('focus');
     win.focused = true;
   },
 };
@@ -37,8 +34,6 @@ const { popupColumnMenu } = await import('../menu/column-menu');
 const MAIN = fakeSender(1, 'main');
 const SHEET = fakeSender(2, 'sheet');
 const SETTINGS = fakeSender(3, 'settings');
-const ITEM_ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
-const item = { title: '분자생물학 6장', type: 'pdf', size: 4200, createdAt: '2026-10-20T11:40:00.000Z', storageMode: 'managed' };
 const opened: unknown[] = [];
 const openSettings = vi.fn();
 const themeShown = vi.fn();
@@ -46,14 +41,12 @@ const prepareSettings = vi.fn();
 registerUiIpc(
   createHandle(null),
   stubDeps({
-    getContext: () => ({ repo: { getItem: (id: string) => (id === ITEM_ID ? item : null) } }) as never,
     appInfo: () => ({}) as never,
     isMainWindow: (sender) => sender === (MAIN as never),
     sheets: {
       open: async (_parent, payload) => {
         opened.push(payload);
-        events.push(`sheet:${payload.kind}`);
-        return payload.kind === 'duplicate' ? { kind: 'duplicate', choice: 'add', applyToRest: false } : { kind: 'shortcuts' };
+        return { kind: 'shortcuts' };
       },
       payloadFor: () => ({ kind: 'shortcuts' }),
       resolve: () => {},
@@ -72,33 +65,20 @@ beforeEach(() => {
   Object.assign(win, { fullscreen: false, focused: true, destroyed: false });
   senderWindow = fakeWindow;
   opened.length = 0;
-  events.length = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
 
 describe('sheets are opened over the main window only', () => {
-  it('ui.confirmDuplicate shows the duplicate sheet with the existing item card and answers its choice', async () => {
-    expect(await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toEqual({ ok: true, data: { choice: 'add' } });
-    expect(opened).toEqual([{ kind: 'duplicate', fileName: 'molbio.pdf', existing: item, remaining: 0 }]);
+  it('ui.showShortcuts shows the ⌘/ sheet over the main window', async () => {
     expect(await invoke('ui:showShortcuts', MAIN)).toEqual({ ok: true, data: undefined });
-    expect(opened).toHaveLength(2);
-  });
-  it('a duplicate found after a drop on a background window brings the window forward before its sheet', async () => {
-    win.focused = false; // the files came from Finder, which is still the active app
-    await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID });
-    expect(events).toEqual(['focus', 'sheet:duplicate']);
-    // Already in front (an import from the open panel, a second duplicate): left to the system.
-    events.length = 0;
-    await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID });
-    await invoke('ui:showShortcuts', MAIN);
-    expect(events).toEqual(['sheet:duplicate', 'sheet:shortcuts']);
+    expect(opened).toEqual([{ kind: 'shortcuts' }]);
   });
   it('any other window (a sheet, the settings window) is PERMISSION_DENIED and opens nothing', async () => {
-    for (const from of [SHEET, SETTINGS]) {
-      expect(await invoke('ui:confirmDuplicate', from, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-      expect(await invoke('ui:showShortcuts', from)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
-    }
+    for (const from of [SHEET, SETTINGS]) expect(await invoke('ui:showShortcuts', from)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(opened).toEqual([]);
+  });
+  it('the duplicate question is no channel of the page any more: main\'s import queue asks it', () => {
+    expect(handlers.has('ui:confirmDuplicate')).toBe(false);
   });
 });
 

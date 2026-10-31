@@ -206,9 +206,9 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   // An import or a sheet holds the window (not "no match"). Alone when nothing is listed: nothing can run until it ends.
   // Above the commands that still run (설정…): a header — not an option, never under the cursor — that says the others
   // come back when the work ends.
-  // Defensive: nothing holds the window under an open palette in the app's own flows. ⌘K and the launcher are refused
-  // while it is held, every command closes the palette before it runs, and a file drag closes it before its drop starts
-  // an import (shell/DropOverlay.tsx). An import that does not start in this window would reach it.
+  // The import queue's duplicate question can hold the window under an open palette: an import runs behind the window,
+  // the palette is opened meanwhile, and the queue asks at the end (import-queue.spec.ts). ⌘K and the launcher are still
+  // refused while the window is held, and a file drag closes the palette before its drop.
   const busy = env.blocked && (
     <div className="p-empty" data-testid="palette-busy">
       <div className="pe-title">{commands.length > 0 ? t.palette.busyHeaderTitle : t.palette.busyTitle}</div>

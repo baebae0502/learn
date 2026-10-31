@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'file.cancelImport', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.showInFolder', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -394,6 +394,17 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(commandLabel(c, 'darwin')).toBe('파일 가져오기…');
     expect(commandLabel(c, 'linux')).toBe('다른 이름');
     expect(commandLabel(commandById('file.importManaged'), 'linux')).toBe('파일 가져오기…');
+  });
+  it('가져오기 취소 is a palette command only, while the import queue has files to finish, from any view (spec 11.1)', () => {
+    const c = commandById('file.cancelImport');
+    expect(c).toMatchObject({ label: '가져오기 취소', contexts: ['app'], palette: true });
+    expect([c.menu, c.contextMenu, c.accelerator, c.key]).toEqual([undefined, undefined, undefined, undefined]);
+    expect(inPalette(c)).toBe(true);
+    expect(isCommandAvailable('file.cancelImport', LIB)).toBe(false);
+    expect(isCommandAvailable('file.cancelImport', { ...LIB, importRunning: true })).toBe(true);
+    expect(isCommandAvailable('file.cancelImport', { ...VIEWER, importRunning: true })).toBe(true);
+    // Under the duplicate question's sheet the window is held: the sheet is answered first.
+    expect(isCommandAvailable('file.cancelImport', { ...LIB, importRunning: true, blocked: true })).toBe(false);
   });
 });
 

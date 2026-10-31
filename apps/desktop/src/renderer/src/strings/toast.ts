@@ -8,6 +8,9 @@ export const toast = {
   importedInto: (name: string, n: number) => `‘${name}’\u2060에 자료 ${n}개를 가져왔습니다`,
   linkedInto: (name: string, n: number) => `‘${name}’\u2060에 자료 ${n}개를 연결했습니다`,
   filedExisting: (name: string, n: number) => `이미 있는 자료 ${n}개를 ‘${name}’\u2060에 넣었습니다`,
+  /** A run stopped by 취소 (spec 3.3): how many of the files put in came in. */
+  importedOf: (requested: number, imported: number) => `${requested}개 중 ${imported}개를 가져왔습니다`,
+  linkedOf: (requested: number, imported: number) => `${requested}개 중 ${imported}개를 연결했습니다`,
   /** The verb on a result toast that can be taken back (collection deleted, items moved or taken out). */
   undo: '실행 취소',
   undoFailed: '되돌리지 못했습니다',

@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
-import type { AppInfo, Collection, DuplicateGroup, ImportOutcome, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
+import type { AppInfo, Collection, DuplicateGroup, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
-import type { DuplicateChoice, SheetPayload } from './sheets';
+import type { SheetPayload } from './sheets';
 import { prefsFields } from './settings';
 import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
@@ -105,16 +105,16 @@ export const commandContextInput = z
     sortDirection: z.enum(['asc', 'desc']),
     /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
     columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
+    /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
+    importRunning: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
 
-export const confirmDuplicateInput = z.object({ path: z.string().min(1).max(4096), existingItemId: z.uuid() });
 export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']), applyToRest: z.boolean() }),
   z.object({ kind: z.literal('shortcuts') }),
 ]);
-export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
 export type ConfirmInput = z.input<typeof confirmInput>;
@@ -173,8 +173,16 @@ export interface LearnApi {
     chooseLibraryFolder(): Promise<Result<{ relaunching: boolean }>>;
   };
   library: {
-    pickAndImport(input: PickAndImportInput): Promise<Result<ImportOutcome[]>>;
-    import(input: ImportPathsInput): Promise<Result<ImportOutcome[]>>;
+    /**
+     * 파일 가져오기… / 외부 파일 연결…: main's open panel on the calling window, then the files go into main's import
+     * queue (spec 3.7). Answered at once: `queued` is the run's total with them in, 0 when nothing was picked. What
+     * becomes of them comes as import:progress and import:finished.
+     */
+    pickAndImport(input: PickAndImportInput): Promise<Result<{ queued: number }>>;
+    /** Dropped files (absolute paths, 500 a call at most) into the import queue; answered as pickAndImport is. */
+    import(input: ImportPathsInput): Promise<Result<{ queued: number }>>;
+    /** 취소 on the progress toast, 가져오기 취소 in the palette: the file under way stops at its next checkpoint (spec 3.5). */
+    cancelImport(): Promise<Result<void>>;
     list(): Promise<Result<LibraryItem[]>>;
     get(input: ItemIdInput): Promise<Result<LibraryItem>>;
     /**
@@ -250,8 +258,6 @@ export interface LearnApi {
     windowState(): Promise<Result<WindowState>>;
     /** The main window's command context changed; main re-derives the menu bar from it (other windows are ignored). */
     reportContext(input: CommandContextInput): Promise<Result<void>>;
-    /** The duplicate sheet over the calling window; closing it without an answer is 'skip'. */
-    confirmDuplicate(input: ConfirmDuplicateInput): Promise<Result<{ choice: DuplicateChoice }>>;
     /** A sheet on the main window with the confirming button first (the default) and 취소: true when it was chosen. */
     confirm(input: ConfirmInput): Promise<Result<boolean>>;
     /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */

@@ -23,6 +23,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
 
   'library:pickAndImport': MAIN,
   'library:import': MAIN,
+  'library:cancelImport': MAIN,
   'library:list': MAIN,
   'library:get': MAIN,
   'library:pickAndRelink': MAIN,
@@ -72,7 +73,6 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'ui:showContextMenu': MAIN,
   'ui:windowState': MAIN_AND_SETTINGS,
   'ui:reportContext': MAIN,
-  'ui:confirmDuplicate': MAIN,
   'ui:confirm': MAIN,
   'ui:showShortcuts': MAIN,
   'ui:openSettings': MAIN,

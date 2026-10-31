@@ -118,7 +118,7 @@
       : '';
     const linked = it.linked ? `<span class="c-tertiary" title="외부 파일 연결">${icon('link', 'sm')}</span>` : '';
     // 중복 항목: the row 모두 정리 keeps (the group's earliest import).
-    const kept = it.kept ? `<span class="c-tertiary t-footnote kept-mark" title="모두 정리하면 이 자료가 남습니다(가장 먼저 가져온 자료)">남김</span>` : '';
+    const kept = it.kept ? `<span class="c-secondary t-footnote kept-mark" title="모두 정리하면 이 자료가 남습니다(가장 먼저 가져온 자료)">남김</span>` : '';
     const flag = it.missing
       ? `<span class="inline-flag c-warning" title="원본&nbsp;파일을 찾을 수 없습니다">${icon('triangle-alert', 'sm')}파일 없음</span>`
       : it.unplayable
@@ -1091,10 +1091,10 @@
     </div>`;
 
   const purgeSheet = () =>
-    destructiveSheet({ label: '영구 삭제', title: '자료 3개를 영구히 삭제하겠습니까?', text: '되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.', verb: '영구 삭제' });
+    destructiveSheet({ label: '영구 삭제', title: '자료 3개를 영구히 삭제하겠습니까?', text: '되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.', verb: '영구 삭제' });
 
   const emptyTrashSheet = () =>
-    destructiveSheet({ label: '휴지통 비우기', title: '휴지통을 비우겠습니까?', text: '자료 7개와 컬렉션 2개를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.', verb: '휴지통 비우기' });
+    destructiveSheet({ label: '휴지통 비우기', title: '휴지통을 비우겠습니까?', text: '자료 7개와 컬렉션 2개를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.', verb: '휴지통 비우기' });
 
   /** `missing`: the optional line for managed copies that were already gone (spec 8.2). The counts include the trash (8.1). */
   function backupSheet({ missing = false } = {}) {

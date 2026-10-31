@@ -967,6 +967,7 @@ h2,
 .table-row.is-selected.is-focused .td,
 .table-row.is-selected.is-focused .td > .icon,
 .table-row.is-selected.is-focused .c-tertiary,
+.table-row.is-selected.is-focused .c-secondary,
 .table-row.is-selected.is-focused .c-success,
 .table-row.is-selected.is-focused .c-warning {
   color: var(--text-on-accent);

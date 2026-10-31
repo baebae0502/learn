@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 
 export type Db = Database.Database;
+/** better-sqlite3's error class (`code` is SQLite's extended result code), for code that has to throw what SQLite throws. */
+export const SqliteError = Database.SqliteError;
 
 /** One connection per library, owned by the main process: it is the single write queue. */
 export function openDatabase(file: string): Db {

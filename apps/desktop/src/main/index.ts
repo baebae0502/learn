@@ -423,6 +423,7 @@ if (!app.requestSingleInstanceLock()) {
     if (isE2E(app.isPackaged, process.env)) {
       installTestHooks({
         repo: () => deps.getContext().repo,
+        importCommits: () => deps.getContext().repo,
         organize: () => {
           const ctx = deps.getContext();
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };

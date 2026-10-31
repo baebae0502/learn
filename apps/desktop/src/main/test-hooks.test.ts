@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { itemMetadataSchema, newId, nowIso, type LibraryItem } from '@learn/domain';
+import { ERROR_COPY, itemMetadataSchema, newId, nowIso, toLearnError, type LibraryItem } from '@learn/domain';
 import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
-import { installTestHooks, seedItems, seedOrganize, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow } from './test-hooks';
+import { installTestHooks, seedItems, seedOrganize, stageCommitFailures, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow } from './test-hooks';
 
 const FROM = { id: 'from-id', type: 'video', storageMode: 'managed', assetId: 'asset-1', revisionId: 'rev-1' } as LibraryItem;
 const ROWS: SeedRow[] = [
@@ -45,7 +45,7 @@ describe('E2E seeding hook (P-22)', () => {
   it('installs globalThis.__learnTest, whose seedItems inserts and then announces the change once', () => {
     const { repo, inserted } = fakeRepo(FROM);
     const broadcast = vi.fn();
-    installTestHooks({ repo: () => repo, organize: () => { throw new Error('not used'); }, broadcast });
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => repo, organize: () => { throw new Error('not used'); }, broadcast });
     const hooks = (globalThis as { __learnTest?: { seedItems(input: unknown): number } }).__learnTest!;
     expect(hooks.seedItems({ fromItemId: 'from-id', rows: ROWS })).toBe(2);
     expect(inserted).toHaveLength(1);
@@ -55,13 +55,13 @@ describe('E2E seeding hook (P-22)', () => {
   it('also installs the IPC call counter createHandle fills', () => {
     const g = globalThis as { __learnIpcCalls?: Record<string, number> };
     delete g.__learnIpcCalls;
-    installTestHooks({ repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
     expect(g.__learnIpcCalls).toEqual({});
     delete g.__learnIpcCalls;
   });
   it('installs the table of held channels createHandle reads, empty; holdReplies fills it and 0 takes a channel out', () => {
     const g = globalThis as { __learnIpcDelays?: Record<string, number>; __learnTest?: { holdReplies(input: { channels: string[]; ms: number }): void } };
-    installTestHooks({ repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
     try {
       expect(g.__learnIpcDelays).toEqual({});
       g.__learnTest!.holdReplies({ channels: ['collections:move', 'collections:addItems'], ms: 400 });
@@ -146,10 +146,64 @@ describe('E2E organise seeding hook', () => {
   it('announces the change once, as the item hook does, when installed', () => {
     const { deps, ids } = libraryOf(3);
     const broadcast = vi.fn();
-    installTestHooks({ repo: () => fakeRepo(FROM).repo, organize: () => deps, broadcast });
+    installTestHooks({ importCommits: () => ({}) as never, repo: () => fakeRepo(FROM).repo, organize: () => deps, broadcast });
     const hooks = (globalThis as { __learnTest?: { seedOrganize(input: unknown): { collectionIds: string[] } } }).__learnTest!;
     expect(hooks.seedOrganize({ ...SMALL, memberships: [[0, 0]], assignments: [[0, 0]], duplicates: [[0, 1]], items: ids }).collectionIds).toHaveLength(3);
     expect(broadcast.mock.calls).toEqual([['libraryChanged', { reason: 'import' }]]);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('staged import-commit failures (E2E: a full disk, spec 10)', () => {
+  function thrown(fn: () => unknown): unknown {
+    try {
+      fn();
+    } catch (e) {
+      return e;
+    }
+    return null;
+  }
+
+  it('throws what SQLite throws while a code is set; null lets commits through again', () => {
+    const committed: unknown[] = [];
+    const repo = {
+      insertImported: (rec: unknown) => {
+        committed.push(rec);
+        return true;
+      },
+    } as unknown as Pick<LibraryRepository, 'insertImported'>;
+    const stage = stageCommitFailures(repo);
+    stage('SQLITE_FULL');
+    const full = thrown(() => repo.insertImported({} as never));
+    expect(full).toMatchObject({ name: 'SqliteError', code: 'SQLITE_FULL', message: 'database or disk is full' });
+    expect(toLearnError(full)).toMatchObject({ code: 'DISK_FULL', message: ERROR_COPY.diskFull });
+    stage('SQLITE_READONLY');
+    expect(toLearnError(thrown(() => repo.insertImported({} as never)))).toMatchObject({ code: 'PERMISSION_DENIED', message: ERROR_COPY.libraryDenied });
+    expect(committed).toEqual([]);
+    stage(null);
+    expect(repo.insertImported({ n: 1 } as never)).toBe(true);
+    expect(committed).toEqual([{ n: 1 }]);
+  });
+
+  it('__learnTest.failImportCommits wraps the library repository once, however often it is called', () => {
+    const real = vi.fn(() => true);
+    const repo = { insertImported: real } as unknown as Pick<LibraryRepository, 'insertImported'>;
+    const importCommits = vi.fn(() => repo);
+    installTestHooks({ importCommits, repo: () => ({}) as never, organize: () => { throw new Error('not used'); }, broadcast: vi.fn() });
+    const hooks = (globalThis as { __learnTest?: { failImportCommits(input: { code: 'SQLITE_FULL' | null }): void } }).__learnTest!;
+    try {
+      hooks.failImportCommits({ code: 'SQLITE_FULL' });
+      hooks.failImportCommits({ code: null });
+      hooks.failImportCommits({ code: 'SQLITE_FULL' });
+      expect(importCommits).toHaveBeenCalledTimes(1);
+      expect(thrown(() => repo.insertImported({} as never))).toMatchObject({ code: 'SQLITE_FULL' });
+      hooks.failImportCommits({ code: null });
+      expect(repo.insertImported({} as never)).toBe(true);
+      expect(real).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (globalThis as { __learnTest?: unknown }).__learnTest;
+      delete (globalThis as { __learnIpcCalls?: unknown }).__learnIpcCalls;
+      delete (globalThis as { __learnIpcDelays?: unknown }).__learnIpcDelays;
+    }
   });
 });

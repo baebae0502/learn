@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { newId, type LearnEventMap, type TagColorId } from '@learn/domain';
-import type { CollectionsRepository, Db, LibraryRepository, TagsRepository } from '@learn/db';
+import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -174,6 +174,27 @@ export function seedOrganize(deps: OrganizeSeedDeps, input: SeedOrganizeInput): 
   })();
 }
 
+/** The import-commit failures an E2E can stage, with the sentence SQLite gives each (sqlite3_errstr). */
+const STAGED_SQLITE_ERRORS = { SQLITE_FULL: 'database or disk is full', SQLITE_READONLY: 'attempt to write a readonly database' } as const;
+export type StagedSqliteError = keyof typeof STAGED_SQLITE_ERRORS;
+
+/**
+ * Wraps the repository's import commit so that, while a code is set, it throws what SQLite throws on a full disk or a
+ * read-only library: the importer, toLearnError and the failure toast then run as for the real thing (no small insert
+ * fills a real database on cue). Returns the setter; null lets commits through again.
+ */
+export function stageCommitFailures(repo: Pick<LibraryRepository, 'insertImported'>): (code: StagedSqliteError | null) => void {
+  let failing: StagedSqliteError | null = null;
+  const commit = repo.insertImported.bind(repo);
+  repo.insertImported = (rec) => {
+    if (failing !== null) throw new SqliteError(STAGED_SQLITE_ERRORS[failing], failing);
+    return commit(rec);
+  };
+  return (code) => {
+    failing = code;
+  };
+}
+
 export interface LearnTestHooks {
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
@@ -181,6 +202,8 @@ export interface LearnTestHooks {
   seedOrganize(input: SeedOrganizeInput): SeedOrganizeResult;
   /** Calls of these IPC channels wait `ms` before they run from now on (ipc/register.ts heldBack); 0 runs them at once again. */
   holdReplies(input: { channels: string[]; ms: number }): void;
+  /** From now on every import commit fails as SQLite fails on a full disk or a read-only library; null ends it (stageCommitFailures). */
+  failImportCommits(input: { code: StagedSqliteError | null }): void;
 }
 
 /**
@@ -189,6 +212,8 @@ export interface LearnTestHooks {
  */
 export function installTestHooks(deps: {
   repo(): SeedRepo;
+  /** The repository whose import commit failImportCommits wraps (the live library's). */
+  importCommits(): Pick<LibraryRepository, 'insertImported'>;
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
@@ -197,6 +222,7 @@ export function installTestHooks(deps: {
   // How long each channel's calls are held back (ipc/register.ts heldBack): a test makes main slow.
   const delays: Record<string, number> = {};
   (globalThis as { __learnIpcDelays?: Record<string, number> }).__learnIpcDelays = delays;
+  let stage: ((code: StagedSqliteError | null) => void) | null = null;
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
@@ -213,6 +239,10 @@ export function installTestHooks(deps: {
         if (ms > 0) delays[channel] = ms;
         else delete delays[channel];
       }
+    },
+    failImportCommits({ code }) {
+      stage ??= stageCommitFailures(deps.importCommits());
+      stage(code);
     },
   };
 }

@@ -25,6 +25,23 @@ describe('createThrottle (spec 3.3: progress notices at most 10 a second)', () =
     expect(fire).toHaveBeenCalledTimes(3); // quiet for a period: at once again
   });
 
+  it('a timer that fires before the clock has reached the period waits out the rest: two notices are never closer than the period', () => {
+    vi.useFakeTimers();
+    let clock = 0;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const fire = vi.fn();
+    const t = createThrottle(fire, 100);
+    t.request();
+    t.request();
+    clock = 99.5; // the timer's own time is up, the clock's is not
+    vi.advanceTimersByTime(100);
+    expect(fire).toHaveBeenCalledTimes(1);
+    clock = 100;
+    vi.advanceTimersByTime(1);
+    expect(fire).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
   it('flush fires a pending call now, and nothing when none is pending', () => {
     vi.useFakeTimers();
     const fire = vi.fn();

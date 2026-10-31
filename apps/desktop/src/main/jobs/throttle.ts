@@ -7,20 +7,30 @@ export interface Throttle {
 
 /** Progress notices and list announcements stay under their rate however fast the work reports (spec 3.3: ≤ 10 a second). */
 export function createThrottle(fire: () => void, ms: number): Throttle {
+  // The monotonic clock with sub-millisecond precision: a timer that fires a millisecond early, or a wall-clock reading
+  // rounded down, would otherwise let an eleventh notice into a second.
+  const now = (): number => performance.now();
   let last = Number.NEGATIVE_INFINITY;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const run = (): void => {
     clearTimeout(timer);
     timer = undefined;
-    last = Date.now();
+    last = now();
     fire();
+  };
+  const arm = (wait: number): void => {
+    timer = setTimeout(() => {
+      const early = last + ms - now();
+      if (early > 0) arm(early);
+      else run();
+    }, wait);
   };
   return {
     request() {
       if (timer !== undefined) return;
-      const wait = last + ms - Date.now();
+      const wait = last + ms - now();
       if (wait <= 0) run();
-      else timer = setTimeout(run, wait);
+      else arm(wait);
     },
     flush() {
       if (timer !== undefined) run();

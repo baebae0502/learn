@@ -41,11 +41,11 @@ const library = (dir: string) => [
   fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), dir, TOUR_VIDEO_BYTES.mpeg4),
 ];
 
-/** A file named `name` in `dir`: `src`'s bytes and a line of its own (new content every time), zero-extended to `bytes`. */
-function sizedCopy(src: string, dir: string, name: string, bytes: number): string {
+/** A file named `name` in `dir`: `src`'s bytes and a line of its own (new content every time, and for every `salt`), zero-extended to `bytes`. */
+function sizedCopy(src: string, dir: string, name: string, bytes: number, salt = ''): string {
   fs.mkdirSync(dir, { recursive: true });
   const out = path.join(dir, name);
-  fs.writeFileSync(out, Buffer.concat([fs.readFileSync(src), Buffer.from(`\n% ${name}\n`)]));
+  fs.writeFileSync(out, Buffer.concat([fs.readFileSync(src), Buffer.from(`\n% ${name}${salt}\n`)]));
   if (fs.statSync(out).size > bytes) throw new Error(`${name} outgrew its tour size (${bytes} B)`);
   fs.truncateSync(out, bytes);
   return out;
@@ -352,6 +352,12 @@ test('sheets: duplicate with the box for the remaining duplicates', async ({}, t
       const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, twice));
       await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
       await shoot(sheet, `sheet-duplicate-rest-${theme}`, { mask: [sheet.getByTestId('dup-card').locator('.t-footnote')] });
+      if (theme === 'light') {
+        // Tab from 건너뛰기 round to the box: its ring is the keyboard's.
+        for (let i = 0; i < 6 && !(await sheet.locator('label.checkbox[data-focus-visible]').count()); i++) await sheet.keyboard.press('Tab');
+        await expect(sheet.locator('label.checkbox[data-focus-visible]')).toHaveCount(1);
+        await shoot(sheet, 'sheet-duplicate-rest-focus-light', { mask: [sheet.getByTestId('dup-card').locator('.t-footnote')], keepPointer: true });
+      }
       await closeSheet(sheet, 'Escape'); // 건너뛰기 for all three: the box was ticked
       await waitImportIdle(s.page);
     }
@@ -1109,33 +1115,49 @@ test('drag and drop: a tree row and a table row as drop targets, then the board 
   }
 });
 
-// M6 (spec 3.3, mockup importToast and components part 2): the progress toast while a run goes, and the result that takes
-// it over after 취소. 4.2 MB of 7.2 MB hashed when the first file is held before its commit: 58%, as drawn.
+// M6 (spec 3.3, mockup importToast and components part 2): the progress toast while a run goes — one file in, the next held
+// before its commit, so the count and the bar agree (1 / 3, half of the work) — and the result
+// that takes it over after 취소, in both themes (each theme is a run of its own: the result closes by itself after 5 s).
+const LONG_VIDEO = '분자생물학 강의 08 · 세포 신호 전달과 효소 조절 (2026 가을 학기 녹화본).mp4';
 test('import progress toast: running, then the result in its place after 취소', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
   try {
     await importPaths(s.page, library(testInfo.outputPath('videos')));
-    const dir = testInfo.outputPath('incoming');
-    const files = [
-      sizedCopy(path.join(FIXTURES, 'sample-h264-aac.mp4'), dir, '강의 08 · 효소 조절.mp4', 4_200_000),
-      sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 3장.pdf', 1_500_000),
-      sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 4장.pdf', 1_500_000),
-    ];
-    await importPause(s.app, 'beforeCommit');
-    await importFiles(s, files);
     const progress = s.page.getByTestId('import-progress');
-    await expect(progress.locator('.pct')).toHaveText('58%');
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
+      const dir = testInfo.outputPath(`incoming-${theme}`);
+      const files = [
+        sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 3장.pdf', 1_500_000, theme),
+        sizedCopy(path.join(FIXTURES, 'sample-h264-aac.mp4'), dir, LONG_VIDEO, 4_200_000, theme),
+        sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 4장.pdf', 1_500_000, theme),
+      ];
+      await importPause(s.app, 'beforeCommit');
+      await importFiles(s, files);
+      await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+      await importPause(s.app, 'beforeCommit'); // the next file is held too
+      await importResume(s.app);
+      await expect(progress).toContainText('가져오는 중 · 1 / 3');
+      await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+      await expect(progress.locator('.pct')).toHaveText('50%'); // 1.5 MB in, half of the 4.2 MB under way, of 7.2 MB
       await shoot(s.page, `toast-import-running-${theme}`, { mask: dates() });
+      if (theme === 'light') {
+        // The keyboard's ring on 취소 (a key first, so it is the keyboard's).
+        await s.page.keyboard.press('Shift');
+        await progress.getByTestId('import-cancel').focus();
+        await shoot(s.page, 'toast-import-focus-cancel-light', { mask: dates(), keepPointer: true });
+        await progress.getByTestId('import-cancel').blur(); // a focus the keyboard left in the toast would keep the result from closing by itself
+      }
+      // Not the button: pressing it takes the focus into the toast and leaves it there when the result replaces the button.
+      await s.page.evaluate(() => window.learn.library.cancelImport());
+      await importResume(s.app);
+      await expect(s.page.getByTestId('import-done')).toContainText('3개 중 2개를 가져왔습니다');
+      await expect(s.page.getByTestId('import-done')).toContainText('취소해서 남은 1개는 가져오지 않았습니다.');
+      await shoot(s.page, `toast-import-cancelled-${theme}`, { mask: dates() });
+      await waitImportIdle(s.page);
+      await expect(s.page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
     }
-    await setTheme(s.page, 'light');
-    await progress.getByTestId('import-cancel').click();
-    await importResume(s.app);
-    await expect(s.page.getByTestId('import-done')).toHaveText('3개 중 1개를 가져왔습니다');
-    await shoot(s.page, 'toast-import-cancelled-light', { mask: dates() });
-    await waitImportIdle(s.page);
   } finally {
     await s.app.close();
   }
@@ -1170,7 +1192,8 @@ test('import progress toast: waiting for a choice (and the sheet\'s box), the pa
     const sheet = await expectWindow(s.app, 'sheet', () => importResume(s.app));
     await expect(s.page.getByTestId('palette-busy')).toBeVisible();
     await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
-    await shoot(s.page, 'palette-held-light', { mask: dates() });
+    // Hidden, not masked: a mask paints over the palette that floats above the table.
+    await shoot(s.page, 'palette-held-light', { style: '[data-testid="item-row"] [data-col="createdAt"] { visibility: hidden !important; }' });
     await closeSheet(sheet, 'Escape');
     await s.page.keyboard.press('Escape');
     await waitImportIdle(s.page);

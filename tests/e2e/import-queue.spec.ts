@@ -47,9 +47,9 @@ test('the progress toast: none for a short run; past 1 s one toast, in place, it
     await expect(toast(s.page)).toContainText('가져오는 중 · 0 / 3');
     await expect(toast(s.page).locator('.t-file')).toHaveText('big-1.pdf');
     const bar = toast(s.page).getByRole('progressbar', { name: '가져오는 중' });
-    await expect(bar).toHaveAttribute('aria-valuenow', '60'); // 300 KB of 500 KB hashed
-    await expect(bar).toHaveAttribute('aria-valuetext', '파일 3개 중 0개, 60%');
-    await expect(toast(s.page).locator('.pct')).toHaveText('60%');
+    await expect(bar).toHaveAttribute('aria-valuenow', '30'); // 300 KB of 500 KB hashed is half of that file's work
+    await expect(bar).toHaveAttribute('aria-valuetext', '파일 3개 중 0개, 30%');
+    await expect(toast(s.page).locator('.pct')).toHaveText('30%');
     // Only the title is the announced part (RAC's role=alert): the count and the bar change ten times a second.
     await expect(toast(s.page).getByRole('alert')).toHaveText('가져오는 중');
     await importResume(s.app);
@@ -70,7 +70,8 @@ test('취소 from the toast: the file past its rename still comes in, the rest a
     await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
     await toast(s.page).getByTestId('import-cancel').click();
     await importResume(s.app);
-    await expect(s.page.getByTestId('import-done')).toHaveText('3개 중 1개를 가져왔습니다');
+    await expect(s.page.getByTestId('import-done')).toContainText('3개 중 1개를 가져왔습니다');
+    await expect(s.page.getByTestId('import-done')).toContainText('취소해서 남은 2개는 가져오지 않았습니다.');
     await expect(s.page.getByTestId('item-row')).toHaveCount(1);
     await waitImportIdle(s.page);
     expect(fs.readdirSync(path.join(lib, 'staging'))).toEqual([]);
@@ -79,7 +80,7 @@ test('취소 from the toast: the file past its rename still comes in, the rest a
   }
 });
 
-// 가져오기 취소 stops the file at its checkpoint: nothing of it is left, and the result reads "2개 중 0개를 가져왔습니다" (spec 11.1).
+// 가져오기 취소 stops the file at its checkpoint: nothing of it is left, and the result reads "가져오기를 취소했습니다" (spec 11.1).
 test('가져오기 취소 from the palette stops the file at its checkpoint', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');
   const s = await launch(lib, testInfo.outputPath('userdata'));
@@ -90,7 +91,8 @@ test('가져오기 취소 from the palette stops the file at its checkpoint', as
     await runPalette(s.page, s.app, '가져오기 취소', 'file.cancelImport');
     await importResume(s.app);
     const done = s.page.getByTestId('import-done');
-    await expect(done).toHaveText('2개 중 0개를 가져왔습니다');
+    await expect(done).toContainText('가져오기를 취소했습니다');
+    await expect(done).toContainText('파일 2개를 가져오지 않았습니다.');
     await expect(done).toHaveAttribute('data-kind', 'info');
     await waitImportIdle(s.page);
     expect(fs.readdirSync(path.join(lib, 'staging'))).toEqual([]);
@@ -123,7 +125,7 @@ test('the duplicates of a window\'s import are asked at the end: 확인을 기�
   }
 });
 
-test('취소 while the duplicate question is open closes its sheet and ends the run: "3개 중 0개를 가져왔습니다" (spec 3.5)', async ({}, testInfo) => {
+test('취소 while the duplicate question is open closes its sheet and ends the run: "가져오기를 취소했습니다" (spec 3.5)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     const files = distinctPdfs(testInfo.outputPath('src'), 3);
@@ -133,7 +135,8 @@ test('취소 while the duplicate question is open closes its sheet and ends the 
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(false); // the sheet holds the window
     await s.page.evaluate(() => window.learn.library.cancelImport());
     await expect.poll(() => sheet.isClosed()).toBe(true);
-    await expect(s.page.getByTestId('import-done')).toHaveText('3개 중 0개를 가져왔습니다');
+    await expect(s.page.getByTestId('import-done')).toContainText('가져오기를 취소했습니다');
+    await expect(s.page.getByTestId('import-done')).toContainText('파일 3개를 가져오지 않았습니다.');
     await waitImportIdle(s.page);
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true); // the window is let go
     expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]);
@@ -189,6 +192,13 @@ test('a drop of 600 files goes in 500 at a time: one run, one toast; main sends 
       };
     });
     const before = (await s.app.evaluate(() => (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls?.['library:import'])) ?? 0;
+    await s.page.evaluate(() => {
+      const w = window as unknown as { __toastNodes: number };
+      w.__toastNodes = 0;
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) if (n instanceof Element) w.__toastNodes += n.matches('.toast') ? 1 : n.querySelectorAll('.toast').length;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await dropSource(s.page, files);
     await drag(s.page, 'dragenter', 'source');
     await drag(s.page, 'drop', 'source', { repeat: false });
@@ -197,6 +207,7 @@ test('a drop of 600 files goes in 500 at a time: one run, one toast; main sends 
     const calls = (await s.app.evaluate(() => (globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls?.['library:import'])) ?? 0;
     expect(calls - before).toBe(2);
     await expect(s.page.getByTestId('import-done')).toHaveCount(1);
+    expect(await s.page.evaluate(() => (window as unknown as { __toastNodes: number }).__toastNodes)).toBe(1); // one toast, progress to result
     const sent = await s.app.evaluate(() => (globalThis as { __sentProgress?: number[] }).__sentProgress ?? []);
     const busiest = Math.max(...sent.map((t) => sent.filter((x) => x >= t && x < t + 1000).length));
     expect(sent.length).toBeGreaterThan(10);
@@ -213,9 +224,9 @@ test('waiting behind the work before it: 앞의 작업을 기다리는 중, then
     await holdJob(s.app, 'backup');
     await importFiles(s, distinctPdfs(testInfo.outputPath('src'), 2));
     await expect(toast(s.page)).toHaveAttribute('data-state', 'waiting-job');
-    await expect(toast(s.page)).toContainText('앞의 작업을 기다리는 중 · 0 / 2');
+    await expect(toast(s.page)).toContainText('앞의 작업을 기다리는 중 · 2개');
     await expect(toast(s.page)).toContainText('앞의 작업이 끝나면 가져오기를 시작합니다.');
-    await expect(toast(s.page).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    await expect(toast(s.page).getByRole('progressbar')).toHaveCount(0); // nothing to measure yet
     const node = await toast(s.page).elementHandle();
     await releaseJob(s.app);
     await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');

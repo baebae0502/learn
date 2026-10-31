@@ -90,7 +90,7 @@ test('M6 import: the progress toast runs in place — one toast, a 4 px bar on -
   await importPause(s.app, 'beforeCommit');
   await importFiles(s, [sized(MP4, '강의 08 · 효소 조절.mp4', 4_200_000), sized(PDF, '세포생물학 3장.pdf', 1_500_000), sized(PDF, '세포생물학 4장.pdf', 1_500_000)]);
   const toast = s.page.getByTestId('import-progress');
-  await expect(toast.locator('.pct')).toHaveText('58%');
+  await expect(toast.locator('.pct')).toHaveText('29%');
   await guard('progress toast: 360 wide, a 4 px bar with the --meter fill over --bg-track, the count in tabular figures', async () => {
     const v = await toast.evaluate((t) => {
       const bar = t.querySelector('.progress')!;
@@ -111,7 +111,7 @@ test('M6 import: the progress toast runs in place — one toast, a 4 px bar on -
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(theme);
     if (IS_MAC) await focusApp(s.app);
-    await shots(s.page, `m6-01-import-running-${theme}`, `the progress toast at 58%: 가져오는 중 · 0 / 3 (${theme})`);
+    await shots(s.page, `m6-01-import-running-${theme}`, `the progress toast at 29%: 가져오는 중 · 0 / 3 (${theme})`);
   }
   await setTheme('light');
   await importResume(s.app);
@@ -157,14 +157,14 @@ test('M6 import: waiting behind the work before it, then 취소 — the result i
   await importFiles(s, [sized(PDF, 'molbio_ch10_mitosis.pdf', 1_000_000), sized(PDF, 'molbio_ch11_meiosis.pdf', 1_000_000)]);
   const toast = s.page.getByTestId('import-progress');
   await expect(toast).toHaveAttribute('data-state', 'waiting-job');
-  await shots(s.page, 'm6-03-import-waiting-job', 'the toast behind another job: 앞의 작업을 기다리는 중 · 0 / 2');
+  await shots(s.page, 'm6-03-import-waiting-job', 'the toast behind another job: 앞의 작업을 기다리는 중 · 2개');
   await toast.getByTestId('import-cancel').click();
-  await expect(s.page.getByTestId('import-done')).toHaveText('2개 중 0개를 가져왔습니다');
-  await guard('취소 while waiting: "2개 중 0개를 가져왔습니다", an info toast in the progress toast\'s place', async () => {
+  await expect(s.page.getByTestId('import-done')).toContainText('가져오기를 취소했습니다');
+  await guard('취소 while waiting: "가져오기를 취소했습니다", an info toast in the progress toast\'s place', async () => {
     const kind = await s.page.getByTestId('import-done').getAttribute('data-kind');
-    check('취소 while waiting: "2개 중 0개를 가져왔습니다", an info toast in the progress toast\'s place', kind === 'info', { kind });
+    check('취소 while waiting: "가져오기를 취소했습니다", an info toast in the progress toast\'s place', kind === 'info', { kind });
   });
-  await shots(s.page, 'm6-04-import-cancelled', 'the result after 취소: 2개 중 0개를 가져왔습니다');
+  await shots(s.page, 'm6-04-import-cancelled', 'the result after 취소: 가져오기를 취소했습니다 · 파일 2개를 가져오지 않았습니다.');
   await releaseJob(s.app);
   await waitImportIdle(s.page);
   save();

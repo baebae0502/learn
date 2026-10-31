@@ -3741,3 +3741,105 @@ h2,
 .nobr {
   white-space: nowrap;
 }
+
+/* ── M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13) ─────── */
+/* A trashed item's panel (proposal): the note takes the place of 열기 · Finder에서 보기 (Zotero's "Restore to Library"). */
+.trash-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-12);
+  color: var(--text-secondary);
+}
+.trash-note > .icon {
+  color: var(--text-secondary);
+}
+/* 파일 section: copies another app changed (spec 6) — the line, then each copy's name, date and two buttons. */
+.edited-copies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+  padding: var(--space-12);
+}
+.edited-copies .ec-head {
+  font: var(--type-headline);
+}
+.edited-copies .ec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* local: name and date are one entry (the ci-text rhythm) */
+  min-width: 0;
+}
+.edited-copies .ec-meta {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.edited-copies .ec-actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+/* Library check: rows with a line per name or path (each with its own button), and rows with two actions. */
+.check-item .ci-action.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+.check-item .ci-entries {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+.check-item .ci-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  min-height: var(--control-height-small);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+/* Restore result: the location wraps only after a separator and carries its own small Finder에서 보기. */
+.restore-kv {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.restore-kv .loc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.restore-kv .loc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+.loc .part,
+.notice .file .part {
+  white-space: nowrap;
+}
+.restore-issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.restore-issues .ri-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.restore-issues .ri-line .icon {
+  display: block;
+}
+.restore-issues .d-text {
+  margin-top: var(--space-4);
+}
+/* Fatal screen (components/FatalScreen.tsx): no shell, the window background and the stage notice. */
+.window.fatal-window {
+  display: block;
+  background: var(--bg-window);
+}

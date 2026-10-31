@@ -181,7 +181,9 @@ window.Mockup = (() => {
    * User/document text (titles, subtitles, PDF pages) is out of scope.
    */
   const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files, ' +
-    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note';
+    '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note, ' +
+    // M6
+    '.trash-note, .ec-head, .restore-issues';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];

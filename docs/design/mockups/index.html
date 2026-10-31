@@ -36,6 +36,11 @@
         ['palette', '명령 팔레트', []],
         ['settings', '설정', []],
         ['dialogs', '대화상자', [['점검', 'scene=recovery'], ['백업', 'scene=backup'], ['코덱', 'scene=codec']]],
+        // M6 (spec 2026-10-31-m6-p1-gate-design.md §13): layout B only.
+        ['library', 'M6 라이브러리', [['휴지통', 'state=trash'], ['중복 항목', 'state=duplicates'], ['수정본', 'state=edited']], 'B'],
+        ['dialogs', 'M6 시트', [['영구 삭제', 'scene=purge'], ['복원', 'scene=restore'], ['복원 · 문제', 'scene=restore-issues'], ['점검 · 모든 줄', 'scene=recovery-full'], ['점검 · 문제 없음', 'scene=recovery-ok'], ['백업 · 사라진 사본', 'scene=backup-missing'], ['진행 토스트', 'scene=jobs'], ['치명 화면', 'scene=fatal']], 'B'],
+        ['reader-pdf', 'M6 리더', [['휴지통 안내', 'state=trashed']], 'B'],
+        ['settings', 'M6 설정', [['백업 없음', 'state=nobackup']], 'B'],
         // Tutor (T1 mockup): layout B only; states 1–10 and the owner's decisions (tutor-decisions.md).
         ['tutor', '튜터(T1)', [...Array.from({ length: 10 }, (_, i) => [String(i + 1), `state=${i + 1}`]), ['폭 340', 'width=340'], ['폭 440', 'width=440'], ['말풍선', 'msg=bubble'], ['p. 42', 'state=6&cite=p'], ['아이콘', 'state=6&cite=icon'], ['동의 시트', 'state=2&consent=sheet'], ['세션 패널', 'state=9&sessions=panel'], ['라이브러리', 'view=library'], ['정보 모드', 'state=1&mode=info'], ['부품', 'part=4'], ['부품 2', 'part=5']], 'B'],
       ];

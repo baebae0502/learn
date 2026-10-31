@@ -172,5 +172,88 @@ window.MockupData = (() => {
     ],
   };
 
-  return { tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor };
+  // M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13). The trash holds 2 collection rows and 7
+  // items (sidebar count 9, spec 4.3); the first three went together, so they share one deleted time.
+  const trash = {
+    collections: [
+      { name: '지난 학기 통계 스터디' },
+      { name: '임시 모음' },
+    ],
+    items: [
+      { id: 101, kind: 'pdf', title: '세포 호흡 요약 (작년 판)', authors: '김하린', year: 2025, progress: null, added: '2026. 9. 1.', deleted: '오늘 오전 9:12', tags: [] },
+      { id: 102, kind: 'video', title: '강의 03 · 막 단백질 (재업로드)', authors: '윤재하', year: 2025, progress: null, added: '2026. 10. 7.', deleted: '오늘 오전 9:12', tags: [] },
+      { id: 103, kind: 'pdf', title: 'Signal Transduction Problem Set (draft)', authors: 'Okafor', year: 2023, progress: 12, added: '2026. 9. 8.', deleted: '오늘 오전 9:12', tags: [] },
+      { id: 104, kind: 'pdf', title: '중간고사 대비 문제 풀이 (초안)', authors: '김하린', year: 2026, progress: 20, added: '2026. 10. 2.', deleted: '어제 오후 6:05', tags: [2] },
+      { id: 105, kind: 'pdf', title: '실험 1 · 시약 준비', authors: '연구실 공용', year: 2026, progress: 100, added: '2026. 9. 14.', deleted: '2026. 10. 18.', tags: [] },
+      { id: 106, kind: 'pdf', title: '통계 과제 2 풀이', authors: '배유나', year: 2026, progress: null, added: '2026. 9. 30.', deleted: '2026. 10. 15.', tags: [] },
+      { id: 107, kind: 'pdf', title: '학회 포스터 초안', authors: '정민호', year: 2026, progress: null, added: '2026. 9. 20.', deleted: '2026. 10. 9.', tags: [] },
+    ],
+    // The selected trashed item's panel (read-only).
+    selected: {
+      kind: 'PDF 문서',
+      pages: 24,
+      title: '세포 호흡 요약 (작년 판)',
+      authors: '김하린',
+      year: 2025,
+      info: [
+        ['저자', '김하린'],
+        ['연도', '2025'],
+        ['쪽수', '24쪽'],
+        ['언어', '한국어'],
+        ['추가일', '2026. 9. 1. 오후 3:20'],
+        ['수정일', '2026. 9. 1. 오후 3:20'],
+      ],
+      file: [
+        ['보관', '복사본 · 라이브러리 안'],
+        ['크기', '1.8 MB'],
+        ['원래 이름', 'cell-respiration-2025.pdf'],
+      ],
+      sha: '4be1c09d…',
+      shaFull: '4be1c09d73a2f5e86b0d14c9a7e3f2b58d61c0a94e7f3b2d5c8a1e6f09b4d7c2',
+      plainTags: ['기말'],
+      collections: [['분자생물학']],
+    },
+  };
+
+  // 중복 항목 (M5): two groups of the same file — 3 + 2 items (sidebar count 5); the earliest import of each group stays.
+  const duplicates = [
+    { id: 6, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: 100, added: '2026. 10. 16.', tags: [] },
+    { id: 201, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '2026. 10. 19.', tags: [] },
+    { id: 202, kind: 'pdf', title: 'Kinase Cascades: A Primer', authors: 'Marlowe', year: 2021, progress: null, added: '어제 오후 4:12', tags: [4] },
+    { id: 1, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: 62, added: '어제 오후 8:40', tags: [1, 2] },
+    { id: 203, kind: 'pdf', title: '분자생물학 6장 · 신호 전달', authors: '한서진 외', year: 2024, progress: null, added: '오늘 오전 9:02', tags: [] },
+  ];
+
+  // An item with one copy that another app changed (spec 6): `<제목> (수정본 YYYY-MM-DD HHmm).<확장자>`.
+  const edited = {
+    row: { id: 301, kind: 'pdf', title: '세포생물학 3장', authors: '배유나', year: 2023, progress: 64, added: '2026. 10. 13.', tags: [4] },
+    selected: {
+      kind: 'PDF 문서',
+      pages: 52,
+      title: '세포생물학 3장',
+      authors: '배유나',
+      year: 2023,
+      reading: { page: 33, pages: 52, percent: 64, opened: '어제 오후 2:05' },
+      info: [
+        ['저자', '배유나'],
+        ['연도', '2023'],
+        ['쪽수', '52쪽'],
+        ['언어', '한국어'],
+        ['추가일', '2026. 10. 13. 오전 10:48'],
+        ['수정일', '2026. 10. 13. 오전 10:48'],
+      ],
+      file: [
+        ['보관', '복사본 · 라이브러리 안'],
+        ['크기', '6.3 MB'],
+        ['원래 이름', 'cellbio_ch03.pdf'],
+      ],
+      sha: 'd07a5e31…',
+      shaFull: 'd07a5e3194c2b8f60e1a7d53c9b4f2e8a6d01c7395e4b2f8a0c6d1e93b7f5a24',
+      plainTags: ['세포 주기'],
+      collections: [['분자생물학', '7장 · 세포 주기']],
+      copies: [{ name: '세포생물학 3장 (수정본 2026-10-30 1412).pdf', at: '2026. 10. 30. 오후 2:12' }],
+    },
+  };
+
+  return { tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor, trash, duplicates, edited };
 })();

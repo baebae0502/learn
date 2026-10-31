@@ -1,7 +1,7 @@
 // Which mockup renders exist. Shared by scripts/render-mockups.mjs (Linux, xvfb) and
 // tests/evidence/mockups.evidence.ts (macOS runner, real SF fonts).
 
-/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor', label: string }} Render */
+/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6', label: string }} Render */
 
 export const SCREENS = [
   ['library', '라이브러리'],
@@ -68,10 +68,26 @@ export const VARIANTS = [
   variant('reader-video', 'light', 'B', { state: 'nosubs' }, 'nosubs', '동영상 자막 없음'),
   variant('reader-video', 'dark', 'A', { state: 'nomatch' }, 'nomatch', '대본 검색 결과 없음'),
   variant('palette', 'dark', 'A', { state: 'none' }, 'none', '팔레트 결과 없음'),
-  ...['recovery', 'backup', 'codec'].flatMap((scene) => [
-    variant('dialogs', 'light', 'A', { scene }, scene, `대화상자 ${scene}`),
-    variant('dialogs', 'dark', 'B', { scene }, scene, `대화상자 ${scene}`),
-  ]),
+  // Layout A is retired: the sheets M6 changed (recovery, backup) render in B in both themes.
+  ...['recovery', 'backup'].flatMap((scene) => THEMES.map((t) => variant('dialogs', t, 'B', { scene }, scene, `대화상자 ${scene}`))),
+  variant('dialogs', 'light', 'A', { scene: 'codec' }, 'codec', '대화상자 codec'),
+  variant('dialogs', 'dark', 'B', { scene: 'codec' }, 'codec', '대화상자 codec'),
+  // M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13): layout B, both themes. `--only m6` renders these.
+  ...[
+    ['library', { state: 'trash' }, 'trash', '휴지통 보기'],
+    ['library', { state: 'duplicates' }, 'duplicates', '중복 항목 보기 · 모두 정리'],
+    ['library', { state: 'edited' }, 'edited', '항목 패널 · 다른 앱에서 고친 수정본'],
+    ['reader-pdf', { state: 'trashed' }, 'trashed', 'PDF 리더 · 휴지통에 있는 자료'],
+    ['settings', { state: 'nobackup' }, 'nobackup', '설정 · 마지막 백업 없음'],
+    ['dialogs', { scene: 'purge' }, 'purge', '영구 삭제 확인 시트'],
+    ['dialogs', { scene: 'restore' }, 'restore', '복원 결과 시트'],
+    ['dialogs', { scene: 'restore-issues' }, 'restore-issues', '복원 결과 시트 · 문제 있음'],
+    ['dialogs', { scene: 'recovery-full' }, 'recovery-full', '라이브러리 점검 · 모든 줄'],
+    ['dialogs', { scene: 'recovery-ok' }, 'recovery-ok', '라이브러리 점검 · 문제 없음'],
+    ['dialogs', { scene: 'backup-missing' }, 'backup-missing', '백업 결과 시트 · 사라진 사본'],
+    ['dialogs', { scene: 'jobs' }, 'jobs', '진행 토스트 · 백업과 기다리는 가져오기'],
+    ['dialogs', { scene: 'fatal' }, 'fatal', '치명 화면 · Finder에서 보기'],
+  ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m6') }))),
 ];
 
 /**

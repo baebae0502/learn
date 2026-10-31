@@ -106,7 +106,9 @@ export function createImportRunner(d: ImportRunnerDeps): ImportRunner {
     },
     async finished(report) {
       const key = d.toast.end(last);
-      const quietRun = quiet;
+      // A run can be over before main's first notice reaches here (notices are throttled): it takes its flag now.
+      const quietRun = inRun ? quiet : d.takeQuiet();
+      if (!inRun) d.setQuiet(quietRun);
       inRun = false;
       quiet = false;
       last = null;

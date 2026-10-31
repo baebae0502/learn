@@ -130,6 +130,17 @@ describe('a run as this window shows it (spec 3.3)', () => {
     expect(h.toasts).toEqual([]);
     expect(h.deps.setQuiet).toHaveBeenLastCalledWith(false);
   });
+  it('a run that was over before main\'s first notice (the notices are throttled) is a run all the same: its quiet flag is taken at its end', async () => {
+    const quiet = harness({ takeQuiet: () => true });
+    await quiet.runner.finished(report({ imported: 1, requested: 1 }));
+    expect(quiet.deps.setQuiet).toHaveBeenCalledWith(true);
+    expect(quiet.deps.setQuiet).toHaveBeenLastCalledWith(false);
+    expect(quiet.toasts).toEqual([]);
+    expect(vi.mocked(quiet.toast.settle).mock.calls).toEqual([[ 'k1', null ]]);
+    const loud = harness();
+    await loud.runner.finished(report({ imported: 1, requested: 1 }));
+    expect(vi.mocked(loud.toast.settle).mock.calls[0]![1]?.title).toBe('자료 1개를 가져왔습니다');
+  });
   it('a run that begins while the last one\'s end is shown is a run of its own', async () => {
     let list!: () => void;
     const h = harness({ refreshList: () => new Promise<void>((r) => (list = r)) });

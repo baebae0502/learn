@@ -11,5 +11,11 @@ export interface DuplicateCard {
   storageMode: StorageMode;
 }
 
-export type SheetPayload = { kind: 'duplicate'; fileName: string; existing: DuplicateCard } | { kind: 'shortcuts' };
-export type SheetResult = { kind: 'duplicate'; choice: DuplicateChoice } | { kind: 'shortcuts' };
+export type SheetPayload =
+  /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
+  | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
+  | { kind: 'shortcuts' };
+export type SheetResult =
+  /** `applyToRest`: the same choice for the remaining duplicates (always false when `remaining` was 0). */
+  | { kind: 'duplicate'; choice: DuplicateChoice; applyToRest: boolean }
+  | { kind: 'shortcuts' };

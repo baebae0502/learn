@@ -53,7 +53,7 @@ registerUiIpc(
       open: async (_parent, payload) => {
         opened.push(payload);
         events.push(`sheet:${payload.kind}`);
-        return payload.kind === 'duplicate' ? { kind: 'duplicate', choice: 'add' } : { kind: 'shortcuts' };
+        return payload.kind === 'duplicate' ? { kind: 'duplicate', choice: 'add', applyToRest: false } : { kind: 'shortcuts' };
       },
       payloadFor: () => ({ kind: 'shortcuts' }),
       resolve: () => {},
@@ -79,7 +79,7 @@ beforeEach(() => {
 describe('sheets are opened over the main window only', () => {
   it('ui.confirmDuplicate shows the duplicate sheet with the existing item card and answers its choice', async () => {
     expect(await invoke('ui:confirmDuplicate', MAIN, { path: '/x/molbio.pdf', existingItemId: ITEM_ID })).toEqual({ ok: true, data: { choice: 'add' } });
-    expect(opened).toEqual([{ kind: 'duplicate', fileName: 'molbio.pdf', existing: item }]);
+    expect(opened).toEqual([{ kind: 'duplicate', fileName: 'molbio.pdf', existing: item, remaining: 0 }]);
     expect(await invoke('ui:showShortcuts', MAIN)).toEqual({ ok: true, data: undefined });
     expect(opened).toHaveLength(2);
   });

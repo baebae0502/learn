@@ -111,7 +111,7 @@ export type CommandContextInput = z.input<typeof commandContextInput>;
 
 export const confirmDuplicateInput = z.object({ path: z.string().min(1).max(4096), existingItemId: z.uuid() });
 export const sheetResultInput = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']) }),
+  z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']), applyToRest: z.boolean() }),
   z.object({ kind: z.literal('shortcuts') }),
 ]);
 export type ConfirmDuplicateInput = z.input<typeof confirmDuplicateInput>;

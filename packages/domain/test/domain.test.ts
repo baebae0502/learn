@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_COPY, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
-  VIDEO_FORMATS, absolutePathSchema, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, titleSchema, toLearnError, updateMetadataInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_CODES, ERROR_COPY, IDLE_IMPORT_STATE, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
+  VIDEO_FORMATS, absolutePathSchema, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sheetResultInput, sourceAnchor, titleSchema, toLearnError, updateMetadataInput,
 } from '../src/index';
 
 describe('ids', () => {
@@ -183,6 +183,21 @@ describe('ipc contract', () => {
     const long = '가'.repeat(200);
     expect(nameSchema.parse(long.normalize('NFD'))).toBe(long);
     expect(nameSchema.safeParse('가'.repeat(201).normalize('NFD')).success).toBe(false);
+  });
+  it('a duplicate sheet answers whether its choice is for the remaining duplicates too (P-1)', () => {
+    expect(sheetResultInput.parse({ kind: 'duplicate', choice: 'add', applyToRest: true })).toEqual({ kind: 'duplicate', choice: 'add', applyToRest: true });
+    expect(sheetResultInput.parse({ kind: 'duplicate', choice: 'open', applyToRest: false })).toEqual({ kind: 'duplicate', choice: 'open', applyToRest: false });
+    expect(sheetResultInput.safeParse({ kind: 'duplicate', choice: 'add' }).success).toBe(false);
+    expect(sheetResultInput.safeParse({ kind: 'duplicate', choice: 'add', applyToRest: 'yes' }).success).toBe(false);
+    expect(sheetResultInput.parse({ kind: 'shortcuts' })).toEqual({ kind: 'shortcuts' });
+  });
+  it('a stopped job is CANCELLED, which is not retryable (P-5)', () => {
+    expect(ERROR_CODES).toContain('CANCELLED');
+    expect(new LearnError('CANCELLED', '가져오기를 취소했습니다.').retryable).toBe(false);
+  });
+  it('the idle import queue: nothing to show, frozen', () => {
+    expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: null });
+    expect(Object.isFrozen(IDLE_IMPORT_STATE)).toBe(true);
   });
 });
 

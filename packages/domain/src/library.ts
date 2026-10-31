@@ -92,6 +92,47 @@ export type ImportOutcome =
   | { status: 'duplicate'; path: string; existingItemId: string }
   | { status: 'failed'; path: string; code: ErrorCode; message: string };
 
+/**
+ * One run of main's import queue, reported when it ends: the renderer words it and computes nothing. A run is every
+ * batch put in from the moment the queue was idle until it is idle again (or stopped).
+ */
+export interface ImportReport {
+  /** Items the run added: new files, and duplicates answered 새 자료로 추가. */
+  imported: number;
+  /** Of `imported`, the items filed into the collection their batch asked for. */
+  filed: number;
+  /** Existing items filed into their batch's collection because their duplicate was answered 건너뛰기 (only ones it did not hold yet). */
+  filedExisting: number;
+  /** Files that failed, by file name (never a path), with main's message (cause, then next step). Stopped files are not failures. */
+  failed: Array<{ name: string; message: string }>;
+  /** The existing item a duplicate was answered 기존 자료 열기 for (the last such answer wins). */
+  openItemId: string | null;
+  /** How many files were put in: a stopped run says "imported of requested". */
+  requested: number;
+  /** 취소 (or quitting) stopped the run: files not started were dropped, gathered duplicates were not asked. */
+  cancelled: boolean;
+  /** The storage mode every batch of the run used; null when they differed. */
+  mode: StorageMode | null;
+  /** The collection every batch asked for; null when none did or they differed. */
+  collectionId: string | null;
+}
+
+/** The import queue as its progress toast shows it. `current` is a file name, never a path. */
+export interface ImportQueueState {
+  /** waiting-choice: a duplicate question is open; waiting-job: a backup or restore runs first. */
+  state: 'running' | 'waiting-choice' | 'waiting-job' | 'idle';
+  /** Files finished in this run: imported, failed, or their duplicate settled. */
+  done: number;
+  /** Files put in this run so far; it grows as more are put in. */
+  total: number;
+  /** The hashed bytes of the files so far, out of the sum of their sizes when they were put in. */
+  bytesDone: number;
+  bytesTotal: number;
+  current: string | null;
+}
+
+export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, current: null });
+
 export interface RecoveryReport {
   /** File names left in staging/ by an interrupted import. Never auto-deleted. */
   stagingLeftovers: string[];

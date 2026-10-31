@@ -1,6 +1,8 @@
 export const ERROR_CODES = [
   'NOT_FOUND', 'UNSUPPORTED_TYPE', 'PERMISSION_DENIED', 'DISK_FULL', 'HASH_MISMATCH', 'DUPLICATE',
   'MIGRATION_FAILED', 'VALIDATION_FAILED', 'LIBRARY_UNAVAILABLE', 'PREFS_UNAVAILABLE', 'INTERNAL',
+  // A job the user (or quitting) stopped: an import's file, a backup, a restore. Never reported as a failure.
+  'CANCELLED',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

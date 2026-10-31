@@ -177,7 +177,7 @@ describe('sheet host', () => {
     const result = h.open(parent(), { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
     const w = FakeWindow.all[0]!;
-    expect(() => h.resolve(contentsOf(w), { kind: 'duplicate', choice: 'add' })).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+    expect(() => h.resolve(contentsOf(w), { kind: 'duplicate', choice: 'add', applyToRest: false })).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
     w.close();
     await expect(result).resolves.toBeNull();
     // Closed: its contents are a stranger now.

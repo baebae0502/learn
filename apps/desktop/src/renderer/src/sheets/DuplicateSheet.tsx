@@ -11,7 +11,7 @@ import { useSheetKeys } from './sheetKeys';
 
 /** dialogs.html?scene=duplicate. ↩ = 건너뛰기 (the safe default), esc = 건너뛰기, 기존 자료 열기 on the left. */
 export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { kind: 'duplicate' }> }) {
-  const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice });
+  const choose = (choice: DuplicateChoice) => resolveSheet({ kind: 'duplicate', choice, applyToRest: false });
   const keys = useSheetKeys(() => choose('skip'), () => choose('skip'));
   const body = useRef<HTMLDivElement>(null);
   const region = useScrollRegion(body, 'sheet-title');

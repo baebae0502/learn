@@ -1,6 +1,6 @@
-import path from 'node:path';
 import { BrowserWindow, dialog, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
+import { displayFileName } from '@learn/library';
 import {
   COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmDuplicateInput, confirmInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
   type CommandTargetInfo,
@@ -96,8 +96,10 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (!parent.isFocused()) parent.focus();
     const result = await deps.sheets.open(parent, {
       kind: 'duplicate',
-      fileName: path.basename(file),
+      fileName: displayFileName(file),
       existing: { title: existing.title, type: existing.type, size: existing.size, createdAt: existing.createdAt, storageMode: existing.storageMode },
+      // The renderer asks one file at a time on this path: there is no rest to answer for.
+      remaining: 0,
     });
     return { choice: result?.kind === 'duplicate' ? result.choice : ('skip' as const) };
   });

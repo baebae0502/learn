@@ -435,3 +435,148 @@ describe('durability: the staged copy reaches the disk before its name, the fold
     expect(repo.counts()).toMatchObject({ items: 0, assets: 0 });
   });
 });
+
+describe('stopping a file at its checkpoints (spec 3.5)', () => {
+  const MiB = 1024 * 1024;
+  /** A file that sniffs as PDF, `size` bytes, unique per `seed`: big enough that hashing it takes many reads. */
+  function bigPdf(dir: string, name: string, seed: string, size = 4 * MiB): string {
+    const p = path.join(dir, name);
+    const head = Buffer.from(`%PDF-1.4\n% ${seed}\n`);
+    fs.writeFileSync(p, Buffer.concat([head, Buffer.alloc(size - head.length, 0x20)]));
+    return p;
+  }
+  const filesUnder = (dir: string): string[] =>
+    fs.readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  /** A stopped file leaves no staging copy, nothing in assets/ and no row. */
+  function leftNothing(layout: LibraryLayout, repo: LibraryRepository): void {
+    expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
+    expect(filesUnder(layout.assetsDir)).toEqual([]);
+    expect(repo.counts()).toMatchObject({ items: 0, assets: 0, revisions: 0 });
+  }
+  const cancelled = (src: string) => ({ status: 'failed', path: src, code: 'CANCELLED', message: '가져오기를 취소했습니다.' });
+
+  it('during the source hash: nothing is copied and nothing recorded', async () => {
+    const { layout, repo, importer } = setup();
+    const src = bigPdf(tempDir('src'), 'big.pdf', 'source');
+    const copy = vi.spyOn(fsp, 'copyFile');
+    const stop = new AbortController();
+    expect(await importer.importOne(src, { mode: 'managed', signal: stop.signal, onBytes: () => stop.abort() })).toEqual(cancelled(src));
+    expect(copy).not.toHaveBeenCalled();
+    leftNothing(layout, repo);
+  });
+
+  it('right after the copy: the staging copy goes before it is checked (the copy itself is not cut short)', async () => {
+    const afterStage = vi.fn();
+    const { layout, repo, importer } = setup({ afterStage });
+    const src = bigPdf(tempDir('src'), 'big.pdf', 'copied');
+    const stop = new AbortController();
+    const copyFile = fsp.copyFile;
+    const copy = vi.spyOn(fsp, 'copyFile').mockImplementationOnce(async (from, to) => {
+      await copyFile(from, to);
+      stop.abort();
+    });
+    expect(await importer.importOne(src, { mode: 'managed', signal: stop.signal })).toEqual(cancelled(src));
+    expect(copy).toHaveBeenCalledTimes(1);
+    expect(afterStage).not.toHaveBeenCalled();
+    leftNothing(layout, repo);
+  });
+
+  it('during the staging copy\'s hash: it stops part-way, before the copy is verified', async () => {
+    const afterStage = vi.fn();
+    const { layout, repo, importer } = setup({ afterStage });
+    const src = bigPdf(tempDir('src'), 'big.pdf', 'verifying', 16 * MiB);
+    const stop = new AbortController();
+    const copyFile = fsp.copyFile;
+    vi.spyOn(fsp, 'copyFile').mockImplementationOnce(async (from, to) => {
+      await copyFile(from, to);
+      // After the copy's own checkpoint has passed: the stop lands while the staging copy is read (256 reads of 64 KiB).
+      setImmediate(() => stop.abort());
+    });
+    expect(await importer.importOne(src, { mode: 'managed', signal: stop.signal })).toEqual(cancelled(src));
+    expect(afterStage).not.toHaveBeenCalled();
+    leftNothing(layout, repo);
+  });
+
+  it('before the rename: the verified copy never reaches assets/', async () => {
+    const stop = new AbortController();
+    const afterPlace = vi.fn();
+    const { layout, repo, importer } = setup({ afterStage: () => stop.abort(), afterPlace });
+    const src = writePdf(tempDir('src'), 'a.pdf', 'renaming');
+    expect(await importer.importOne(src, { mode: 'managed', signal: stop.signal })).toEqual(cancelled(src));
+    expect(afterPlace).not.toHaveBeenCalled();
+    leftNothing(layout, repo);
+  });
+
+  it('past the rename it goes on: a copy in assets/ is committed, never left without its row', async () => {
+    const stop = new AbortController();
+    const { repo, importer } = setup({ afterPlace: () => stop.abort() });
+    const out = await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'placed'), { mode: 'managed', signal: stop.signal });
+    expect(out.status).toBe('imported');
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
+  });
+
+  it('a linked file stops during its hash, with no row', async () => {
+    const { layout, repo, importer } = setup();
+    const src = bigPdf(tempDir('src'), 'linked.pdf', 'linked');
+    const stop = new AbortController();
+    expect(await importer.importOne(src, { mode: 'linked', signal: stop.signal, onBytes: () => stop.abort() })).toEqual(cancelled(src));
+    leftNothing(layout, repo);
+  });
+
+  it('a file whose import was stopped before it began reads nothing past its first checkpoint', async () => {
+    const { layout, repo, importer } = setup();
+    const src = writePdf(tempDir('src'), 'a.pdf', 'early');
+    const copy = vi.spyOn(fsp, 'copyFile');
+    const stop = new AbortController();
+    stop.abort();
+    expect(await importer.importOne(src, { mode: 'managed', signal: stop.signal })).toEqual(cancelled(src));
+    expect(copy).not.toHaveBeenCalled();
+    leftNothing(layout, repo);
+  });
+
+  it('a reused copy stops before its rename and leaves the copy it shares as it was', async () => {
+    const stop = new AbortController();
+    let armed = false;
+    const { layout, repo, importer } = setup({ afterStage: () => { if (armed) stop.abort(); } });
+    const dir = tempDir('src');
+    const first = await importer.importOne(writePdf(dir, 'a.pdf', 'same'), { mode: 'managed' });
+    if (first.status !== 'imported') throw new Error(first.status);
+    const asset = repo.getAsset(first.item.assetId)!;
+    armed = true;
+    const again = writePdf(dir, 'b.pdf', 'same');
+    expect(await importer.importOne(again, { mode: 'managed', allowDuplicate: true, signal: stop.signal })).toEqual(cancelled(again));
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
+    expect(repo.getAsset(asset.id)?.availability).toBe('available');
+    expect(await sha256File(resolveAssetPath(layout, asset))).toBe(asset.sha256);
+    expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
+  });
+
+  it('reports the source bytes it hashes, once per file (the staging check is not counted again)', async () => {
+    const { importer } = setup();
+    const src = bigPdf(tempDir('src'), 'big.pdf', 'bytes', 2 * MiB);
+    let read = 0;
+    const out = await importer.importOne(src, { mode: 'managed', onBytes: (bytes) => { read += bytes; } });
+    expect(out.status).toBe('imported');
+    expect(read).toBe(2 * MiB);
+  });
+
+  it('names the item by the title asked for; a blank one falls back to the file name', async () => {
+    const { importer } = setup();
+    const dir = tempDir('src');
+    const named = await importer.importOne(writePdf(dir, 'scan 0042.pdf', 'one'), { mode: 'managed', title: '신호 전달 (수정본 2026-10-31 0930)' });
+    expect(named.status === 'imported' && named.item.title).toBe('신호 전달 (수정본 2026-10-31 0930)');
+    const blank = await importer.importOne(writePdf(dir, 'scan 0043.pdf', 'two'), { mode: 'managed', title: '  ' });
+    expect(blank.status === 'imported' && blank.item.title).toBe('scan 0043');
+  });
+
+  it('takes fault points after it was made (main\'s E2E pause), and lets them go again', async () => {
+    const { importer } = setup();
+    const beforeCommit = vi.fn();
+    importer.setHooks({ beforeCommit });
+    await importer.importOne(writePdf(tempDir('src'), 'a.pdf', 'hooked'), { mode: 'managed' });
+    expect(beforeCommit).toHaveBeenCalledTimes(1);
+    importer.setHooks(undefined);
+    await importer.importOne(writePdf(tempDir('src'), 'b.pdf', 'unhooked'), { mode: 'managed' });
+    expect(beforeCommit).toHaveBeenCalledTimes(1);
+  });
+});

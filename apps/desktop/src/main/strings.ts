@@ -100,6 +100,16 @@ export const mainStrings = {
       'React, react-resizable-panels, TanStack Query, TanStack Virtual, zustand, Zod, Electron, better-sqlite3 — MIT License',
     ],
   },
+  /** The work line (jobs/lane.ts): a job dropped before it ran, as the app quits. A stopped job reports nothing, so it is never shown. */
+  jobs: { cancelled: '작업을 멈췄습니다.' },
+  /** The duplicate question when no main window is left to hang the sheet on (jobs/duplicate-asker.ts, spec 3.4). */
+  duplicateQuestion: {
+    message: '이미 라이브러리에 있는 파일입니다',
+    detail: (file: string, title: string) => `${file}의 내용이 ‘${title}’ 자료와 완전히 같습니다. 어느\u00a0쪽을 골라도 원본\u00a0파일은 지우지 않습니다.`,
+    add: '새\u00a0자료로 추가',
+    skip: '건너뛰기',
+    applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
+  },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',
 } as const;

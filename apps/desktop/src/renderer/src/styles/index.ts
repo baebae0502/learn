@@ -14,6 +14,7 @@ import './components/segmented.css';
 import './components/checkbox.css';
 import './components/tooltip.css';
 import './components/toast.css';
+import './components/progress.css';
 import './components/notice.css';
 import './components/list.css';
 import './components/chip.css';

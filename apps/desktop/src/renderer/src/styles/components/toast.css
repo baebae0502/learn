@@ -98,6 +98,43 @@
     gap: var(--space-8);
     margin-top: var(--space-4);
   }
+  /* The progress toast's title line (P-3): the title — the only announced part — then " · 7 / 12" in tabular figures. */
+  .toast .t-head {
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .toast .t-live {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .toast .t-count {
+    flex: none;
+    white-space: pre;
+  }
+  /* The file under way (cut in the middle) or what comes next: footnote, secondary (mockup .t-body). */
+  .toast .t-file {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .middle-ellipsis {
+    display: flex;
+    min-width: 0;
+  }
+  .middle-ellipsis > span {
+    white-space: pre;
+  }
+  .middle-ellipsis > .me-head {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .middle-ellipsis > .me-tail {
+    flex: none;
+  }
   .spinner {
     display: inline-block;
     width: 16px;

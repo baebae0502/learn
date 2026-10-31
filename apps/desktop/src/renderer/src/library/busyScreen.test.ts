@@ -32,4 +32,11 @@ describe('the busy screen of a drop into the empty library (design-spec 6; Mac r
     const twice = run({ type: 'start', count: 2 }, { type: 'delayDone' }, { type: 'textPainted', at: 1000 }, { type: 'textPainted', at: 2000 });
     expect(twice?.textAt).toBe(1000);
   });
+  it('a count that changes while the screen is up (more files joined the queue) keeps its phase and its timing (spec 3.2)', () => {
+    const shown = run({ type: 'start', count: 2 }, { type: 'delayDone' }, { type: 'textPainted', at: 1000 });
+    const grown = busyReducer(shown, { type: 'count', count: 3 });
+    expect(busyScreen(grown)).toEqual({ count: 3, text: true, holding: true });
+    expect(grown?.textAt).toBe(1000);
+    expect(busyReducer(null, { type: 'count', count: 3 })).toBeNull();
+  });
 });

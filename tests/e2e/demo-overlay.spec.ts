@@ -54,6 +54,9 @@ async function journey(app: ElectronApplication, page: Page, dir: string): Promi
   await stubOpenDialog(app, [notes]);
   await runMenuCommand(app, 'file.importManaged');
   await expect(page.getByTestId('import-failures')).toBeVisible();
+  // The empty library's own button comes back once the finished run's refetch lands, which may be after the toast:
+  // wait for it, or F6 can find the content pane with or without it and the two journeys differ (CI 41279817774, 41292671579).
+  await expect(page.getByTestId('import-managed')).toBeVisible();
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const stops: string[] = [];
   for (const key of ['F6', 'F6', 'F6', 'F6', 'Shift+F6', 'Shift+F6', 'Shift+F6']) {

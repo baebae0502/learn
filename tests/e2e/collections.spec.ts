@@ -247,7 +247,8 @@ test('휴지통으로 이동 asks nothing, the view moves to the parent, and 실
     await expect.poll(() => names(page)).toEqual([]);
     await expect(title(page)).toHaveText('내 라이브러리');
 
-    await page.getByTestId('undo-toast').first().getByTestId('undo-action').click();
+    // the newest toast is the lowest: toasts stack oldest first
+    await page.getByTestId('undo-toast').last().getByTestId('undo-action').click();
     // 분자생물학 and 7장 are back; 6장 stays in the trash — it went by its own act, before its parent.
     await expect.poll(async () => (await names(page)).sort()).toEqual(['7장', '분자생물학']);
     await expect(treeRow(page, bio)).toBeVisible();

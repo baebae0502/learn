@@ -3,11 +3,11 @@ import { exposeSurface } from './surface';
 /**
  * The main window, and the gallery board tests load in it: all but the settings window's library location and the
  * sheets' own channels. Channels no page calls yet (collections, tags, trash, the library check) are this window's
- * (M5, M6). Equal to CHANNEL_KINDS' main entries (surfaces.test.ts).
+ * (M5, M6) — and the fatal screen's 업데이트 전 백업. Equal to CHANNEL_KINDS' main entries (surfaces.test.ts).
  */
 exposeSurface({
   requests: {
-    app: ['info'],
+    app: ['info', 'revealUpdateBackup'],
     library: [
       'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'detail', 'updateMetadata', 'trash', 'restore', 'trashView',
       'purge', 'emptyTrash', 'keepOneOfDuplicates', 'keepOneOfAllDuplicates', 'undoKeepOne',
@@ -18,7 +18,7 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
-    backup: ['create', 'cancel'],
+    backup: ['create', 'cancel', 'restore'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
   events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress'],

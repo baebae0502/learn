@@ -6,7 +6,7 @@ import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady
 import { mainStrings } from './strings';
 import { registerWindowKind } from './window-kinds';
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440 };
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
 /**
  * Off macOS: 8 px under the 52 px toolbar, centred across the window (design-spec 6 시트). macOS places a sheet itself:
  * centred over the parent window, which it dims (Big Sur and later — every macOS Electron 44 runs on).

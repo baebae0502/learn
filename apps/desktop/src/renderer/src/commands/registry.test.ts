@@ -18,6 +18,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
   backup: vi.fn(),
+  restoreBackup: vi.fn(),
   checkLibrary: vi.fn(),
   newCollection: vi.fn(),
   renameCollection: vi.fn(),
@@ -419,6 +420,14 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     expect(runCommand('file.cancelImport', running)).toBe(true);
     expect(running.cancelImport).toHaveBeenCalledTimes(1);
     expect(runCommand('file.cancelImport', env({ importRunning: true, blocked: true }))).toBe(false); // under the question's sheet
+  });
+  it('백업에서 복원… runs unless a restore is on the line — also in an empty library; the context says when one is (Task 10)', () => {
+    const e = env();
+    expect(runCommand('file.restore', e)).toBe(true);
+    expect(e.restoreBackup).toHaveBeenCalledTimes(1);
+    expect(runCommand('file.restore', env({ restoreRunning: true }))).toBe(false);
+    expect(contextOf(env({ restoreRunning: true }))).toMatchObject({ restoreRunning: true });
+    expect(contextOf(env())).not.toHaveProperty('restoreRunning');
   });
 });
 

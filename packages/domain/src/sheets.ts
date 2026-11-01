@@ -37,20 +37,58 @@ export interface BackupDoneSheet {
   homeDir: string;
 }
 
+/** A kind of problem on the restore result sheet (spec 9.3): how many files, and the first items they belong to. */
+export interface RestoreIssue {
+  count: number;
+  /** Two items' titles at most, live items first (the check sheet's rule, P-26). */
+  titles: string[];
+  /** Items past those: 외 N개. */
+  more: number;
+}
+
+/**
+ * 백업을 복원했습니다 (spec 9.3, dialogs.html?scene=restore, ?scene=restore-issues): what came back into the new folder and
+ * what did not. Main keeps this payload for the sheet's acts (Finder에서 보기, 전환): the page sends no path back.
+ */
+export interface RestoreDoneSheet {
+  kind: 'restoreDone';
+  /** When the backup was made (its manifest). */
+  backupAt: string;
+  /** Items outside the trash and in it, live collections, tags — as restored. */
+  items: number;
+  trashed: number;
+  collections: number;
+  tags: number;
+  /** Managed copies the backup lists, and those read back as it recorded them. */
+  files: number;
+  verified: number;
+  /** Files the backup lacks; files whose contents changed; records that disagree with its list (null: none). */
+  missing: RestoreIssue | null;
+  damaged: RestoreIssue | null;
+  records: RestoreIssue | null;
+  /** The counts the backup recorded are the counts restored. */
+  countsMatch: boolean;
+  /** The new library folder, and the home folder it is shown under as "~/…". */
+  location: string;
+  homeDir: string;
+}
+
 export type SheetPayload =
   /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
   | { kind: 'shortcuts' }
   | { kind: 'purge'; variant: PurgeVariant; items: number; collections: number }
   | LibraryCheckPayload
-  | BackupDoneSheet;
+  | BackupDoneSheet
+  | RestoreDoneSheet;
 export type SheetResult =
   /** `applyToRest`: the same choice for the remaining duplicates (always false when `remaining` was 0). */
   | { kind: 'duplicate'; choice: DuplicateChoice; applyToRest: boolean }
   | { kind: 'shortcuts' }
   | { kind: 'purge'; confirmed: boolean }
   | { kind: 'libraryCheck' }
-  | { kind: 'backupDone' };
+  | { kind: 'backupDone' }
+  | { kind: 'restoreDone'; switch: boolean };
 
 // ---- 라이브러리 점검 (M6 spec 7, P-16/P-17/P-26) ----
 
@@ -106,5 +144,7 @@ export type CheckAction =
   | { kind: 'libraryCheck'; act: 'cleanUnreferenced'; keys: string[] };
 /** The backup result sheet's own action: Finder에서 보기 on the folder it made (main has its path). */
 export type BackupAction = { kind: 'backupDone'; act: 'reveal' };
-/** What an open sheet asks main to do (sheet:act). The restore result sheet adds its own (Task 10). */
-export type SheetAction = CheckAction | BackupAction;
+/** The restore result sheet's own action: Finder에서 보기 on the folder it made (main has its path). */
+export type RestoreAction = { kind: 'restoreDone'; act: 'reveal' };
+/** What an open sheet asks main to do (sheet:act). */
+export type SheetAction = CheckAction | BackupAction | RestoreAction;

@@ -12,7 +12,8 @@ const SHEET: readonly WindowKind[] = ['sheet'];
  * exposes exactly its kind's channels (preload/surfaces.test.ts holds the two together).
  *
  * - main: the library window — all but the settings window's library location and the sheets' own channels. Channels
- *   no page calls yet (collections, tags, trash, the library check) are the main window's (M5, M6).
+ *   no page calls yet (collections, tags, trash, the library check) are the main window's (M5, M6) — and the fatal
+ *   screen's 업데이트 전 백업 (it is the main window's page).
  * - settings: what SettingsApp calls. Not ui.openSettings: its ⌘, is the menu's, which main runs itself.
  * - sheet: its payload and its answer.
  */
@@ -22,6 +23,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'app:chooseLibraryFolder': SETTINGS,
   'app:backupInfo': SETTINGS,
   'app:revealBackup': SETTINGS,
+  'app:revealUpdateBackup': MAIN,
 
   'library:pickAndImport': MAIN,
   'library:import': MAIN,
@@ -54,6 +56,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
 
   'backup:create': MAIN,
   'backup:cancel': MAIN,
+  'backup:restore': MAIN,
 
   'collections:list': MAIN,
   'collections:create': MAIN,

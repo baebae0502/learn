@@ -134,7 +134,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     expect(entries(topMenu(menu, '파일'))).toEqual([
       [null, '파일 가져오기…'], [null, '외부 파일 연결…'], [null, '새\u00a0컬렉션'], ['-', ''],
       [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], [null, '컬렉션에 추가'], [null, '이 컬렉션에서 빼기'], ['-', ''],
-      [null, '라이브러리 점검…'], [null, '백업 만들기…'], ['-', ''],
+      [null, '라이브러리 점검…'], [null, '백업 만들기…'], [null, '백업에서 복원…'], ['-', ''],
       [null, '휴지통 비우기…'], [null, '휴지통으로 이동'], ['-', ''],
       ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);

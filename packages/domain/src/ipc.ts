@@ -146,6 +146,8 @@ export const commandContextInput = z
     importRunning: z.boolean().optional(),
     /** A backup is on main's work line: 백업 만들기… is off. */
     backupRunning: z.boolean().optional(),
+    /** A restore is on main's work line: 백업에서 복원… is off. */
+    restoreRunning: z.boolean().optional(),
     /** Duplicate groups of two or more listed items: 중복 N묶음 모두 정리 needs two and names the count (spec 11.1). */
     duplicateGroups: contextCount.optional(),
   })
@@ -158,6 +160,7 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('purge'), confirmed: z.boolean() }),
   z.object({ kind: z.literal('libraryCheck') }),
   z.object({ kind: z.literal('backupDone') }),
+  z.object({ kind: z.literal('restoreDone'), switch: z.boolean() }),
 ]);
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
@@ -174,9 +177,13 @@ export const sheetActionSchema = z.union([
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('cleanUnreferenced'), keys: z.array(z.string().min(1).max(512)).max(100_000) }).strict(),
   z.object({ kind: z.literal('backupDone'), act: z.literal('reveal') }).strict(),
+  z.object({ kind: z.literal('restoreDone'), act: z.literal('reveal') }).strict(),
 ]) satisfies z.ZodType<SheetAction>;
 export const sheetActInput = z.object({ action: sheetActionSchema }).strict();
 export type SheetActInput = z.input<typeof sheetActInput>;
+/** The progress toast's 취소 (P-20 backup:cancel): which job stops — the backup when none is named. */
+export const jobCancelInput = z.object({ job: z.enum(['backup', 'restore']) }).strict().optional();
+export type JobCancelInput = z.input<typeof jobCancelInput>;
 
 /** 파일 › 라이브러리 점검… (a fresh check) or, after main's recovery:show, the automatic one (spec 7.1). */
 export const checkInput = z.object({ auto: z.boolean().optional() }).strict().optional();
@@ -243,6 +250,8 @@ export interface LearnApi {
     backupInfo(): Promise<Result<BackupInfo | null>>;
     /** Shows the last backup's folder in Finder; main has its path (the page never sends one). */
     revealBackup(): Promise<Result<void>>;
+    /** The fatal screen's Finder에서 보기 (spec 9.4): main shows the pre-update backup it found, selected; the page sends no path. */
+    revealUpdateBackup(): Promise<Result<void>>;
   };
   library: {
     /**
@@ -355,8 +364,13 @@ export interface LearnApi {
   backup: {
     /** 백업 만들기…: main asks for a folder over the calling window and puts the backup on its work line (spec 8.1). */
     create(): Promise<Result<{ started: boolean }>>;
-    /** The progress toast's 취소: the backup stops at its next checkpoint and leaves nothing. */
-    cancel(): Promise<Result<void>>;
+    /** The progress toast's 취소: the job named (the backup when none is) stops at its next checkpoint and leaves nothing. */
+    cancel(input?: JobCancelInput): Promise<Result<void>>;
+    /**
+     * 백업에서 복원… (spec 9.1): main asks for a backup over the calling window, checks it, asks where, and restores into a
+     * new folder there on its work line; answers once it is on the line, not when it ends.
+     */
+    restore(): Promise<Result<{ started: boolean }>>;
   };
   ui: {
     showContextMenu(input: ShowContextMenuInput): Promise<Result<PickedCommand | null>>;

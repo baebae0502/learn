@@ -3,6 +3,7 @@ import { newId, type ImportQueueState, type JobProgress, type LibraryCheck, type
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
 import type { ImportHooks, Importer } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
+import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
@@ -275,6 +276,15 @@ export interface LearnTestHooks {
   /** The held copy's path inside the backup being made, or null. */
   backupWaiting(): string | null;
   backupState(): JobProgress;
+  /**
+   * The next restore holds its first copy once written, before it is read back (spec 9.2), until restoreResume — so a
+   * test sees its toast, presses its 취소, or quits while it runs. `null` lifts it.
+   */
+  restorePause(input: { at: 'afterCopy' | null }): void;
+  restoreResume(): void;
+  /** The held copy's path inside the library being made, or null. */
+  restoreWaiting(): string | null;
+  restoreState(): JobProgress;
   /** The newest library check and what the startup check did about the automatic sheet ('pending' until it decided). */
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
@@ -300,6 +310,8 @@ export function installTestHooks(deps: {
   };
   /** The backup job (backupPause and its kin; tests that do not use them leave it out). */
   backup?: Pick<BackupJob<unknown>, 'setHooks' | 'state'>;
+  /** The restore job (restorePause and its kin; tests that do not use them leave it out). */
+  restore?: Pick<RestoreJob<unknown>, 'setHooks' | 'state'>;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
   organize(): OrganizeSeedDeps;
@@ -331,6 +343,11 @@ export function installTestHooks(deps: {
   const backupJob = (): NonNullable<typeof deps.backup> => {
     if (!deps.backup) throw new Error('backup hooks: no backup job');
     return deps.backup;
+  };
+  let restoreHeld: { file: string; go: () => void } | null = null;
+  const restoreJob = (): NonNullable<typeof deps.restore> => {
+    if (!deps.restore) throw new Error('restore hooks: no restore job');
+    return deps.restore;
   };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
@@ -411,6 +428,29 @@ export function installTestHooks(deps: {
     },
     backupWaiting: () => backupHeld?.file ?? null,
     backupState: () => backupJob().state(),
+    restorePause({ at }) {
+      if (at === null) {
+        restoreJob().setHooks(undefined);
+        return;
+      }
+      let armed = true;
+      restoreJob().setHooks({
+        afterCopy: (file) => {
+          if (!armed) return undefined;
+          armed = false; // once: the copies after it pass
+          return new Promise<void>((resolve) => {
+            restoreHeld = { file, go: resolve };
+          });
+        },
+      });
+    },
+    restoreResume() {
+      const held = restoreHeld;
+      restoreHeld = null;
+      held?.go();
+    },
+    restoreWaiting: () => restoreHeld?.file ?? null,
+    restoreState: () => restoreJob().state(),
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();

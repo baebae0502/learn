@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, shell, type WebContents } from 'electron';
-import { Channels, LearnError, emptyInput, type BackupInfo } from '@learn/domain';
+import { Channels, LearnError, emptyInput, jobCancelInput, type BackupInfo } from '@learn/domain';
 import type { SettingsRepository } from '@learn/db';
 import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
@@ -17,7 +17,13 @@ export function revealBackupFolder(folder: string): void {
   shell.showItemInFolder(folder);
 }
 
-/** 백업 만들기… and its 취소 (the main window), 마지막 백업 (the settings window). Restore is Task 10's. */
+/** Finder에서 보기 on a restored library (the result sheet's location row): shown selected in its parent; one that is gone says so. */
+export function revealRestoredFolder(folder: string): void {
+  if (!fs.existsSync(folder)) throw new LearnError('NOT_FOUND', mainStrings.restore.revealMissing);
+  shell.showItemInFolder(folder);
+}
+
+/** 백업 만들기…, 백업에서 복원… and their 취소 (the main window), 마지막 백업 (the settings window). */
 export function registerBackupIpc(handle: Handle, deps: IpcDeps): void {
   // Defence in depth, as app.ts does for the library location: CHANNEL_KINDS already admits the settings window only.
   const fromSettings = (sender: WebContents): void => {
@@ -25,7 +31,10 @@ export function registerBackupIpc(handle: Handle, deps: IpcDeps): void {
   };
   // R4: the page sends no path — main asks for the folder, over the window that asked.
   handle(Channels.backup.create, emptyInput, (_input, event) => deps.backup.start(BrowserWindow.fromWebContents(event.sender)));
-  handle(Channels.backup.cancel, emptyInput, () => deps.backup.cancel());
+  // The progress toast's 취소: the backup's, or the restore's when it names that job (both can be on the line at once).
+  handle(Channels.backup.cancel, jobCancelInput, (input) => (input?.job === 'restore' ? deps.restore.cancel() : deps.backup.cancel()));
+  // 백업에서 복원… (spec 9.1): main asks for the backup and the place over the window that asked; the page sends no path.
+  handle(Channels.backup.restore, emptyInput, (_input, event) => deps.restore.start(BrowserWindow.fromWebContents(event.sender)));
   handle(Channels.app.backupInfo, emptyInput, (_input, event): BackupInfo | null => {
     fromSettings(event.sender);
     let last: { at: string; folder: string } | null;

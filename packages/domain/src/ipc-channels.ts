@@ -3,7 +3,7 @@
  * Names only — kept free of zod so the sandboxed preload bundle stays tiny.
  */
 export const Channels = {
-  app: { info: 'app:info', showLibraryFolder: 'app:showLibraryFolder', chooseLibraryFolder: 'app:chooseLibraryFolder', backupInfo: 'app:backupInfo', revealBackup: 'app:revealBackup' },
+  app: { info: 'app:info', showLibraryFolder: 'app:showLibraryFolder', chooseLibraryFolder: 'app:chooseLibraryFolder', backupInfo: 'app:backupInfo', revealBackup: 'app:revealBackup', revealUpdateBackup: 'app:revealUpdateBackup' },
   library: {
     pickAndImport: 'library:pickAndImport', import: 'library:import', cancelImport: 'library:cancelImport', list: 'library:list', get: 'library:get',
     pickAndRelink: 'library:pickAndRelink', detail: 'library:detail',
@@ -26,7 +26,7 @@ export const Channels = {
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
-  backup: { create: 'backup:create', cancel: 'backup:cancel' },
+  backup: { create: 'backup:create', cancel: 'backup:cancel', restore: 'backup:restore' },
   ui: {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',

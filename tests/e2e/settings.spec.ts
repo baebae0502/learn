@@ -222,8 +222,8 @@ test('R4: the renderer cannot set the library path; main picks, checks, confirms
   try {
     expect(await page.evaluate(() => window.learn.prefs.set({ libraryRoot: '/tmp/x' } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     // Only the settings window asks for the library location: the main window's preload has no such invoker, and
-    // main refuses its kind on those channels (app.test.ts, register.test.ts).
-    expect(await page.evaluate(() => Object.keys(window.learn.app))).toEqual(['info']);
+    // main refuses its kind on those channels (app.test.ts, register.test.ts) — and the fatal screen's 업데이트 전 백업 (no path goes either way).
+    expect(await page.evaluate(() => Object.keys(window.learn.app))).toEqual(['info', 'revealUpdateBackup']);
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     // It takes no input at all: a path sent anyway is refused before any dialog.
     expect(await settings.evaluate(() => (window.learn.app.chooseLibraryFolder as (input: unknown) => Promise<unknown>)({ path: '/tmp/x' }))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });

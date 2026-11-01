@@ -4,6 +4,7 @@ import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandC
 import type { ImportQueue } from '../jobs/import-queue';
 import type { CheckSheets } from '../library-check';
 import type { BackupJob } from '../jobs/backup-job';
+import type { RestoreJob } from '../jobs/restore-job';
 import type { JobLane } from '../jobs/lane';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
@@ -27,6 +28,8 @@ export interface IpcDeps {
   imports: ImportQueue;
   /** 백업 만들기… on the same work line (jobs/backup-job.ts): one backup at a time. */
   backup: BackupJob<BrowserWindow>;
+  /** 백업에서 복원… on the same work line (jobs/restore-job.ts): one restore at a time. */
+  restore: RestoreJob<BrowserWindow>;
   /** 라이브러리 점검 (library-check.ts): library:check opens its sheet; the sheet host runs its actions (sheet:act). */
   checks: CheckSheets;
   /**

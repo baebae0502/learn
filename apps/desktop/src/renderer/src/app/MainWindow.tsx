@@ -33,6 +33,7 @@ import { ListFailed } from '../library/ListFailed';
 import { inTableOrder, selectionCounts, selectionTagPositions } from '../library/selection';
 import { useImportQueue } from '../library/useImportQueue';
 import { useBackupJob } from '../jobs/backupJob';
+import { restoreRefused, useRestoreJob } from '../jobs/restoreJob';
 import { importBusy, importBusyTotal, useJobProgress } from '../jobs/jobProgress';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { LibraryToolbar } from '../library/LibraryToolbar';
@@ -141,6 +142,22 @@ export function MainWindow(_props: { info: AppInfo }) {
       setBackupPanel(false);
     }
   }, []);
+  // main's restore on the work line (spec 9): its toast here; its result sheet comes from main.
+  useRestoreJob();
+  const restoreRunning = useJobProgress((s) => s.restore.state !== 'idle');
+  /** 백업에서 복원…'s two folder panels are up (sheets on this window), as 백업 만들기…'s: they hold the window. */
+  const [restorePanel, setRestorePanel] = useState(false);
+  const startRestore = useCallback(async () => {
+    setRestorePanel(true);
+    try {
+      await unwrap(api().backup.restore());
+    } catch (e) {
+      // Refused before it ran (not a backup, a newer one, a place it cannot use): the toast a failed restore shows.
+      showToast(restoreRefused(e));
+    } finally {
+      setRestorePanel(false);
+    }
+  }, []);
   /** 다시 연결…'s open panel is up: a sheet on this window (follow-up D), which holds it like ours do (blocked). */
   const [relinking, setRelinking] = useState(false);
   /** 사본 내보내기…'s save panel is up: a sheet on this window, which holds it like 다시 연결…'s panel (blocked). */
@@ -164,7 +181,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   // and the panels of 파일 가져오기…, 다시 연결… and 사본 내보내기…. The registry (env.blocked), main's menu and the
   // window's drop target follow this one value.
   // A sheet main opened by itself (the backup's result) holds the window as the ones this window asked for do.
-  const blocked = sheetOpen || questionOpen || importPanel || relinking || exportPanel || backupPanel || sheetShown;
+  const blocked = sheetOpen || questionOpen || importPanel || relinking || exportPanel || backupPanel || restorePanel || sheetShown;
   // The one modal predicate (Task 12 polish): a surface that owns the keyboard — a sheet (⌘/ or a duplicate question), the
   // palette, the drop overlay. The keymap's `active` and the registry's `duringWork` rule both read this value.
   const modal = sheetOpen || questionOpen || overlayOpen;
@@ -343,6 +360,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     blocked,
     importRunning,
     backupRunning,
+    restoreRunning,
     held,
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
@@ -380,6 +398,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       void unwrap(api().library.cancelImport()).catch(actionFailed);
     },
     backup: () => void startBackup(),
+    restoreBackup: () => void startRestore(),
     newCollection: (opts) => collectionActions.startNew(opts),
     renameCollection: (id) => collectionActions.startRename(id),
     deleteCollection: (id) => void collectionActions.remove(id),
@@ -421,7 +440,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

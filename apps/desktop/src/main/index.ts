@@ -18,14 +18,16 @@ import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic'
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
-import { revealBackupFolder } from './ipc/backup';
+import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { createBackupJob } from './jobs/backup-job';
+import { createRestoreJob } from './jobs/restore-job';
 import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
+import { switchLibrary } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
@@ -450,6 +452,17 @@ if (!app.requestSingleInstanceLock()) {
       },
     });
     sheets.onAct('libraryCheck', (action, sheet) => checks.act(action, sheet));
+    /** Restarts on the library folder saved last (설정, the restore's 전환). E2E only records the request: Playwright cannot follow a new process. */
+    const relaunch = (): void => {
+      if (isE2E(app.isPackaged, process.env)) {
+        (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
+        return;
+      }
+      setImmediate(() => {
+        app.relaunch();
+        app.quit();
+      });
+    };
     // 백업 만들기… on the same work line (spec 8.1): the folder panel hangs on the window that asked; the result sheet too.
     const backup = createBackupJob<BrowserWindow>({
       lane: jobs,
@@ -480,6 +493,43 @@ if (!app.requestSingleInstanceLock()) {
     // The result sheet's Finder에서 보기 (sheet:act): the folder that sheet names, kept in main; the sheet stays as it is.
     sheets.onAct('backupDone', async (action, sheet) => {
       if (action.kind === 'backupDone' && action.act === 'reveal' && sheet.payload.kind === 'backupDone') revealBackupFolder(sheet.payload.location);
+      return sheet.payload;
+    });
+    /** A folder panel over `owner` (a sheet on macOS), or on its own when there is no window. */
+    const pickFolderOver = async (owner: BrowserWindow | null, options: OpenDialogOptions): Promise<string | null> => {
+      const res = owner && !owner.isDestroyed() ? await asSheet(owner, () => dialog.showOpenDialog(owner, options)) : await dialog.showOpenDialog(options);
+      return res.canceled ? null : (res.filePaths[0] ?? null);
+    };
+    const restoreWords = mainStrings.restore;
+    // 백업에서 복원… on the same work line (spec 9): two folder panels over the window that asked, the result sheet after.
+    const restore = createRestoreJob<BrowserWindow>({
+      lane: jobs,
+      libraryRoot: () => libraryRoot,
+      pickBackup: (owner, { defaultPath }) =>
+        pickFolderOver(owner, { title: restoreWords.pickBackupTitle, message: restoreWords.pickBackupMessage, buttonLabel: restoreWords.pickBackupButton, defaultPath, properties: ['openDirectory'] }),
+      pickParent: (owner, { defaultPath }) =>
+        pickFolderOver(owner, {
+          title: restoreWords.pickParentTitle, message: restoreWords.pickParentMessage, buttonLabel: restoreWords.pickParentButton, defaultPath, properties: ['openDirectory', 'createDirectory'],
+        }),
+      backupDir: () => prefs.get().backupDir,
+      documentsDir: () => app.getPath('documents'),
+      homeDir: () => app.getPath('home'),
+      progress: (p) => broadcast('job:progress', p),
+      showResult: (owner, payload) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        // No window left (macOS): the folder is there all the same, and 설정's 다른 폴더 선택… can switch to it.
+        return parent ? sheets.open(parent, payload) : Promise.resolve(null);
+      },
+      switchTo: (root) => switchLibrary(root, { prefs, announce: (next) => broadcast('prefsChanged', { prefs: next }), relaunch }),
+      switchFailed: (owner, error) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        const box: MessageBoxOptions = { type: 'warning', message: restoreWords.switchFailed, detail: error.message, buttons: [restoreWords.ok], defaultId: 0, noLink: true };
+        void (parent ? asSheet(parent, () => dialog.showMessageBox(parent, box)) : dialog.showMessageBox(box));
+      },
+    });
+    // The result sheet's Finder에서 보기: the folder main made, from the payload main holds (the page sends no path).
+    sheets.onAct('restoreDone', async (action, sheet) => {
+      if (action.kind === 'restoreDone' && action.act === 'reveal' && sheet.payload.kind === 'restoreDone') revealRestoredFolder(sheet.payload.location);
       return sheet.payload;
     });
     /** recovery:show: the main window asks for the automatic sheet itself, held as under any sheet it asks for (Q-8d). */
@@ -516,6 +566,7 @@ if (!app.requestSingleInstanceLock()) {
       jobs,
       imports,
       backup,
+      restore,
       checks,
       windows: { openSettings: () => void settingsWindow.open(), asSheet },
       theme: {
@@ -527,17 +578,7 @@ if (!app.requestSingleInstanceLock()) {
         settingsWindow.prepare();
         firstScreenDrawn();
       },
-      relaunch() {
-        if (isE2E(app.isPackaged, process.env)) {
-          // Playwright cannot follow a relaunched process: E2E only records the request.
-          (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
-          return;
-        }
-        setImmediate(() => {
-          app.relaunch();
-          app.quit();
-        });
-      },
+      relaunch,
     };
     registerAllIpc(createHandle(devOrigin), deps);
     // A running import, backup or restore is asked about before the edit-flush gate on every quit.
@@ -573,6 +614,7 @@ if (!app.requestSingleInstanceLock()) {
         broadcast,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
         backup,
+        restore,
         check: {
           state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
           request: async () => {

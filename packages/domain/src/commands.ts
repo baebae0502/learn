@@ -18,6 +18,7 @@ export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
   | 'file.backup'
+  | 'file.restore'
   | 'file.checkLibrary'
   | 'file.cancelImport'
   | 'library.find'
@@ -212,6 +213,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'file.backup', label: '백업 만들기…', menu: { menu: 'file', group: 3, order: 2 }, contexts: ['app'],
     keywords: ['백업', '보관', '복사본', '저장', 'backup'],
+  },
+  // 백업에서 복원… (spec 9.1, 11): main asks for a backup and a place and restores into a new folder there, on its work line;
+  // the library in use is never touched. 파일 group 3 after 백업 만들기…, and the palette. Off while a restore is on the line.
+  {
+    id: 'file.restore', label: '백업에서 복원…', menu: { menu: 'file', group: 3, order: 3 }, contexts: ['app'],
+    keywords: ['복원', '백업', '되돌리기', '불러오기', 'restore'],
   },
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
@@ -477,6 +484,8 @@ export interface CommandContextState {
   importRunning?: boolean;
   /** A backup is on main's work line, running or waiting (job:progress): 백업 만들기… is off until it ends. */
   backupRunning?: boolean;
+  /** A restore is on main's work line, running or waiting (job:progress): 백업에서 복원… is off until it ends. */
+  restoreRunning?: boolean;
   /**
    * Duplicate groups with two or more items in the list (spec 11.1): 중복 N묶음 모두 정리 needs two, and its name says how
    * many. Absent where no library view reports it.
@@ -658,6 +667,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   // Something to back up — in the library or only in its trash — and no backup on the line already (one at a time; an
   // import running first only makes it wait, spec 3.1).
   'file.backup': (c) => (c.libraryCount > 0 || c.trashCount > 0) && c.backupRunning !== true,
+  // One restore at a time (a second click would otherwise be refused unseen); other work running first only makes it wait.
+  'file.restore': (c) => c.restoreRunning !== true,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,

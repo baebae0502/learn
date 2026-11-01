@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
-import { cancelJob, describeJob, importCancelsAskedHere, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
+import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, type ImportQueueState, type JobProgress } from '@learn/domain';
+import { cancelJob, describeJob, importCancelsAskedHere, importBusy, importBusyTotal, jobAhead, liveState, useJobProgress } from './jobProgress';
 
 const state = (over: Partial<ImportQueueState>): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', ...over });
 afterEach(() => {
-  useJobProgress.setState({ import: { ...IDLE_IMPORT_STATE }, backup: { ...IDLE_BACKUP_PROGRESS }, sending: 0, settling: 0, shownTotal: 0, quiet: false, views: {} });
+  useJobProgress.setState({ import: { ...IDLE_IMPORT_STATE }, backup: { ...IDLE_BACKUP_PROGRESS }, restore: { ...IDLE_RESTORE_PROGRESS }, sending: 0, settling: 0, shownTotal: 0, quiet: false, views: {} });
 });
 
 describe('the progress toast in words (spec 3.3, mockup importToast)', () => {
@@ -115,5 +115,38 @@ describe('the toast\'s 취소 reaches main and counts nothing here (the count is
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+const restore = (over: Partial<JobProgress>): JobProgress => ({ ...IDLE_RESTORE_PROGRESS, state: 'running', ...over });
+
+describe('the restore\'s progress toast (spec 9.1, P-3)', () => {
+  it('running: 복원하는 중 · files done / total, the new folder\'s name, the bytes written and read back as the bar', () => {
+    expect(describeJob('restore', restore({ done: 1, total: 3, bytesDone: 250, bytesTotal: 1000, name: 'Learn 복원 2026-10-31 2141' }))).toEqual({
+      state: 'running', waiting: false, title: '복원하는 중', count: ' · 1 / 3', file: 'Learn 복원 2026-10-31 2141', note: null, bar: true,
+      percent: 25, valueText: '파일 3개 중 1개, 25%', testId: 'restore-progress', cancelTestId: 'restore-cancel',
+    });
+  });
+
+  it('waiting: paused, no bar, saying what it waits for', () => {
+    expect(describeJob('restore', restore({ state: 'waiting-job' }), 'import')).toMatchObject({
+      waiting: true, title: '앞의 작업을 기다리는 중', count: '', file: null, note: '가져오기가 끝나면 복원을 시작합니다.', bar: false,
+    });
+    expect(describeJob('restore', restore({ state: 'waiting-job' }), 'backup').note).toBe('백업이 끝나면 복원을 시작합니다.');
+    expect(describeJob('restore', restore({ state: 'waiting-job' })).note).toBe('앞의 작업이 끝나면 복원을 시작합니다.');
+  });
+
+  it('a running restore is the job ahead of an import or a backup waiting behind it; each toast reads its own job', () => {
+    const s = useJobProgress.getState;
+    s().setRestore(restore({}));
+    expect(jobAhead(s(), 'import')).toBe('restore');
+    expect(jobAhead(s(), 'backup')).toBe('restore');
+    expect(jobAhead(s(), 'restore')).toBeNull();
+    expect(describeJob('import', state({ state: 'waiting-job', done: 0, total: 2 }), 'restore').note).toBe('복원이 끝나면 가져오기를 시작합니다.');
+    expect(describeJob('backup', { ...IDLE_BACKUP_PROGRESS, state: 'waiting-job' }, 'restore').note).toBe('복원이 끝나면 백업을 시작합니다.');
+    expect(liveState(s(), 'restore')).toBe(s().restore);
+    s().setRestore(restore({ state: 'waiting-job' }));
+    s().setImport(state({ total: 1 }));
+    expect(jobAhead(s(), 'restore')).toBe('import');
   });
 });

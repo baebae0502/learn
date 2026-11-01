@@ -4,8 +4,8 @@ import type { ToastData } from '../ui/toasts';
 /** design-spec 6 "1초를 넘는 작업은 진행 토스트", spec 3.3: a run that has not ended by then gets its toast. */
 export const JOB_TOAST_DELAY_MS = 1000;
 
-/** The jobs with a progress toast (P-3): the import queue's, the backup's. Task 10 adds the restore's. */
-export type ProgressJob = 'import' | 'backup';
+/** The jobs with a progress toast (P-3): the import queue's, the backup's, the restore's. */
+export type ProgressJob = 'import' | 'backup' | 'restore';
 /** What a job's toast draws live: the import queue's state, or a backup's (job:progress). */
 export type JobState = ImportQueueState | JobProgress;
 

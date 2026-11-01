@@ -61,6 +61,7 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     SEP,
     { id: 'file.checkLibrary', label: '라이브러리 점검…' },
     { id: 'file.backup', label: '백업 만들기…' },
+    { id: 'file.restore', label: '백업에서 복원…' },
     SEP,
     // The trash's own group (spec 11.2): 휴지통 비우기… before 휴지통으로 이동.
     { id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace' },
@@ -547,7 +548,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
         '이\u00a0컬렉션에서 빼기',
         { '색 태그': ['시험 범위', '중요'] },
-        'separator', '라이브러리 점검…', '백업 만들기…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
+        'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
       ]);
     });
     const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
@@ -585,7 +586,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     });
     it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
       expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '라이브러리 점검…', '백업 만들기…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
       ]);
       expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
     });

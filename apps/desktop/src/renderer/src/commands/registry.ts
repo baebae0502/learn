@@ -76,6 +76,8 @@ export interface CommandEnv extends CommandContextState {
   cancelImport(): void;
   /** 백업 만들기… (spec 8.1): main asks for a folder and puts the backup on its work line; the window stays in use. */
   backup(): void;
+  /** 백업에서 복원… (spec 9.1): main asks for a backup and a place and restores into a new folder on its work line. */
+  restoreBackup(): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
@@ -99,6 +101,8 @@ export interface CommandEnv extends CommandContextState {
   importRunning?: boolean;
   /** A backup is on main's work line (jobs/jobProgress.ts): 백업 만들기… is off until it ends. */
   backupRunning?: boolean;
+  /** A restore is on main's work line (jobs/jobProgress.ts): 백업에서 복원… is off until it ends. */
+  restoreRunning?: boolean;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -139,6 +143,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.checkLibrary': (env) => env.checkLibrary(),
   'file.cancelImport': (env) => env.cancelImport(),
   'file.backup': (env) => env.backup(),
+  'file.restore': (env) => env.restoreBackup(),
   'library.find': (env) => env.focusSearch(),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
@@ -217,6 +222,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
     ...(env.backupRunning ? { backupRunning: true } : {}),
+    ...(env.restoreRunning ? { restoreRunning: true } : {}),
     ...(env.duplicateGroups !== undefined ? { duplicateGroups: env.duplicateGroups } : {}),
   };
 }

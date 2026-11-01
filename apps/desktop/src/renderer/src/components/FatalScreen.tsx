@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { NO_LIBRARY_VIEW } from '@learn/domain';
-import { DatabaseZap, MonitorX } from 'lucide-react';
+import { DatabaseZap, FolderSearch, MonitorX } from 'lucide-react';
 import { api, unwrap } from '../api';
 import { useReportIdle } from '../app/useReportIdle';
 import { homeRelative } from '../format';
@@ -13,6 +13,12 @@ import { Toasts, showToast } from '../ui/toasts';
 /** 설정 열기 failed (main answered !ok): said in a toast like any other failed action; main's message is Korean. */
 const openSettings = () =>
   void unwrap(api().ui.openSettings()).catch((e: unknown) =>
+    showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' }),
+  );
+
+/** Finder에서 보기 (spec 9.4): main shows the pre-update backup it finds now, selected; one gone since says so in a toast. */
+const revealBackup = () =>
+  void unwrap(api().app.revealUpdateBackup()).catch((e: unknown) =>
     showToast({ kind: 'error', title: t.toast.actionFailed, body: (e as Error).message, testId: 'action-error' }),
   );
 
@@ -52,11 +58,19 @@ export function FatalScreen({ kind = 'library', code, libraryRoot = null, backup
             fileTitle={backup ? `${backup} (${code})` : undefined}
             testId="fatal-notice"
             actions={
-              // The library's location can still be changed: the settings window is main's (app.settings), not the
-              // library's. Secondary: the sentence's own next step (restore the backup, restart) is not this (T10-m3).
-              <Button testId="fatal-settings" onPress={openSettings}>
-                {t.fatal.openSettings}
-              </Button>
+              <>
+                {/* The backup file the line names, shown selected (dialogs.html?scene=fatal): first, as it acts on that line. */}
+                {backup && (
+                  <Button icon={FolderSearch} testId="fatal-reveal" onPress={revealBackup}>
+                    {currentPlatform() === 'darwin' ? t.fatal.reveal.darwin : t.fatal.reveal.other}
+                  </Button>
+                )}
+                {/* The library's location can still be changed: the settings window is main's (app.settings), not the
+                    library's. Secondary: the sentence's own next step (restore the backup, restart) is not this (T10-m3). */}
+                <Button testId="fatal-settings" onPress={openSettings}>
+                  {t.fatal.openSettings}
+                </Button>
+              </>
             }
           >
             {backup ? t.fatal.backupBody : t.fatal.restartBody}

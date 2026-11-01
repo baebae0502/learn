@@ -6,6 +6,7 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'file.importManaged': FilePlus,
   'file.importLinked': Link,
   'file.backup': DatabaseBackup,
+  'file.restore': ArchiveRestore,
   'file.checkLibrary': Stethoscope,
   'file.cancelImport': CircleX,
   'library.find': Search,

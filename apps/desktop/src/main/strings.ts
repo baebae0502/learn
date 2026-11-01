@@ -16,6 +16,8 @@ export const mainStrings = {
     notFolder: '폴더가 아닙니다. 다른 폴더를 고르세요.',
     notWritable: '이 폴더에는 쓸 수 없습니다. 쓰기 권한이 있는 폴더를 고르세요.',
     revealMissing: '라이브러리 폴더를 찾을 수 없습니다. 폴더가 있는 디스크가 연결되어 있는지 확인하세요.',
+    /** The fatal screen's Finder에서 보기 (spec 9.4) for a pre-update backup that is gone since the screen was drawn. */
+    updateBackupMissing: '업데이트 전 백업 파일을 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
   },
   /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
   importFilters: { media: 'PDF\u00a0·\u00a0동영상', all: '모든\u00a0파일' },
@@ -147,6 +149,26 @@ export const mainStrings = {
     /** Under 백업을 만들지 못했습니다 when nothing more is known. */
     failed: '잠시 뒤에 다시 만들어 보세요. 계속 안 되면 다른 폴더를 고르세요.',
     revealMissing: '백업 폴더를 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
+  },
+  /** 백업에서 복원… (jobs/restore-job.ts, ipc/backup.ts, index.ts; spec 9): its two folder panels, its folder's name, its refusals. */
+  restore: {
+    pickBackupTitle: '백업에서 복원',
+    /** macOS shows no title on a sheet: each panel's one line says what to pick. */
+    pickBackupMessage: '복원할 백업 폴더를 고르세요.',
+    pickBackupButton: '선택',
+    pickParentTitle: '복원할 위치',
+    pickParentMessage: '고른 폴더 안에 새 라이브러리 폴더를 만듭니다. 지금 라이브러리는 그대로 남습니다.',
+    pickParentButton: '여기에 복원',
+    /** The folder's name before its date and time: "Learn 복원 2026-10-31 2141". */
+    folderPrefix: 'Learn 복원',
+    inLibrary: '라이브러리 폴더 안에는 복원할 수 없습니다. 다른 폴더를 고르세요.',
+    inBackup: '백업 폴더 안에는 복원할 수 없습니다. 다른 폴더를 고르세요.',
+    /** Under 복원하지 못했습니다 when nothing more is known. */
+    failed: '잠시 뒤에 다시 복원해 보세요. 계속 안 되면 다른 폴더를 고르세요.',
+    revealMissing: '복원한 폴더를 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
+    /** 전환 after the result sheet closed and could not be made: a native box over the main window, the cause under it. */
+    switchFailed: '라이브러리를 전환하지 못했습니다',
+    ok: '확인',
   },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',

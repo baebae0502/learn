@@ -85,6 +85,7 @@ const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'file.cancelImport': 'import-queue.spec.ts › 가져오기 취소 from the palette stops the file at its checkpoint',
   'file.backup': 'backup.spec.ts › the palette runs it too; a name used this minute is never taken; a copy gone from the library is said, not copied; the next opens where the last was made',
+  'file.restore': 'restore.spec.ts › a backup restores into a new folder … (menu); its two folder panels need a stub',
   'item.trash': 'trash.spec.ts › ⌘⌫ moves the selection at once with 실행 취소, the trash row shows with its count, one item is named, and 파일 names the line by the view',
   'item.restore': 'trash.spec.ts › the trash rows’ menu (also by ⇧F10): 복원 · — · 영구 삭제…; 복원 brings a collection back with its child; an emptied trash closes its view',
   'trash.empty': 'trash.spec.ts › 영구 삭제… asks in the app sheet — ↩ and esc keep, the danger button on the left deletes; 휴지통 비우기… (⇧⌘⌫) empties and the view goes to 내 라이브러리',

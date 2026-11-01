@@ -1,0 +1,52 @@
+@layer screens {
+  /* 백업을 복원했습니다 (dialogs.html?scene=restore, ?scene=restore-issues): the card's location shrinks in the middle as the
+     backup sheet's does (sheet.css .path-head / .path-tail: the folders give way, the folder's name stays whole) and carries
+     its own small Finder에서 보기; under the card, each kind of problem with the items it touches. The card, the kv rows and
+     the badges are sheet.css's. */
+  .restore-sheet .loc-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    min-width: 0;
+  }
+  .restore-sheet .loc {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--type-mono);
+  }
+  .restore-sheet .loc-row .btn {
+    flex: none;
+  }
+  .restore-sheet .restore-issues {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .restore-sheet .ri-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    font: var(--type-body);
+  }
+  .restore-sheet .ri-line .icon {
+    flex: none;
+  }
+  /* The items behind a line: footnote, under the line's text. */
+  .restore-sheet .ri-items {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding-left: 22px; /* local: the icon column (14) + its gap (8), so the names line up with the text (mockup .ri-items) */
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* 외 N개 has no action: the restored library's check names the rest. */
+  .restore-sheet .ri-more {
+    color: var(--text-tertiary);
+  }
+  .restore-sheet .restore-issues .d-text {
+    margin-top: var(--space-4);
+  }
+}

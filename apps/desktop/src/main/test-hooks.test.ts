@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
+import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
 import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
 import type { BackupHooks } from '@learn/library';
 import {
@@ -365,6 +365,36 @@ describe('holding a backup copy (Task 9: the backup\'s toast, its 취소, a copy
     t.backupPause({ at: null });
     expect(hooks).toBeUndefined();
     expect(t.backupState()).toEqual(IDLE_BACKUP_PROGRESS);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('holding a restored copy (Task 10: the restore\'s toast, its 취소, quitting while it runs)', () => {
+  it('restorePause holds the first copy written until restoreResume, says which file, and lets the copies after it pass', async () => {
+    let hooks: BackupHooks | undefined;
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      restore: { setHooks: (h) => (hooks = h), state: () => ({ ...IDLE_RESTORE_PROGRESS }) },
+    });
+    const t = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    t.restorePause({ at: 'afterCopy' });
+    let first = false;
+    void Promise.resolve(hooks!.afterCopy!('/r/assets/aa/1')).then(() => (first = true));
+    await Promise.resolve();
+    expect(t.restoreWaiting()).toBe('/r/assets/aa/1');
+    expect(first).toBe(false);
+    expect(hooks!.afterCopy!('/r/assets/bb/2')).toBeUndefined();
+    t.restoreResume();
+    await vi.waitFor(() => expect(first).toBe(true));
+    expect(t.restoreWaiting()).toBeNull();
+    t.restorePause({ at: null });
+    expect(hooks).toBeUndefined();
+    expect(t.restoreState()).toEqual(IDLE_RESTORE_PROGRESS);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });

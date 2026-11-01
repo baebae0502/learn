@@ -3,7 +3,7 @@ import path from 'node:path';
 import { BrowserWindow, dialog, shell, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { Channels, LearnError, emptyInput } from '@learn/domain';
 import { broadcast } from '../events';
-import { checkLibraryFolder } from '../library-folder';
+import { checkLibraryFolder, switchLibrary } from '../library-folder';
 import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
@@ -50,9 +50,18 @@ export function registerAppIpc(handle: Handle, deps: IpcDeps): void {
     };
     const { response } = await onOwner(() => (owner ? dialog.showMessageBox(owner, ask) : dialog.showMessageBox(ask)));
     if (response !== 0) return { relaunching: false };
-    const prefs = deps.prefs.set({ libraryRoot: target });
-    broadcast('prefsChanged', { prefs });
-    deps.relaunch();
+    // Saved, every window told, then the restart — the restore's 전환 takes the same path (library-folder.ts).
+    switchLibrary(target, { prefs: deps.prefs, announce: (prefs) => broadcast('prefsChanged', { prefs }), relaunch: () => deps.relaunch() });
     return { relaunching: true };
+  });
+
+
+  // The fatal screen's Finder에서 보기 (spec 9.4): the pre-update backup main finds now, selected in the library folder. The
+  // page sends no path; CHANNEL_KINDS admits the main window only (the fatal screen is its page).
+  handle(Channels.app.revealUpdateBackup, emptyInput, () => {
+    const { libraryRoot, backupFile } = deps.appInfo();
+    const file = backupFile === null ? null : path.join(libraryRoot, backupFile);
+    if (file === null || !fs.existsSync(file)) throw new LearnError('NOT_FOUND', copy.updateBackupMissing);
+    shell.showItemInFolder(file);
   });
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
+import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, type ImportQueueState, type JobProgress } from '@learn/domain';
 import { api } from '../api';
 import { t } from '../strings';
 import type { JobState, JobToastView, ProgressJob } from './progressToast';
@@ -10,6 +10,8 @@ export interface JobProgressState {
   import: ImportQueueState;
   /** main's backup as last pushed (job:progress). */
   backup: JobProgress;
+  /** main's restore as last pushed (job:progress). */
+  restore: JobProgress;
   /** Files this window has handed to main and main has not answered for yet (a drop between its event and the reply). */
   sending: number;
   /** Runs whose end is being shown (the list read again, the result toast): the busy screen and waitImportIdle wait. */
@@ -22,6 +24,7 @@ export interface JobProgressState {
   views: Readonly<Record<string, JobToastView>>;
   setImport(state: ImportQueueState): void;
   setBackup(progress: JobProgress): void;
+  setRestore(progress: JobProgress): void;
   addSending(delta: number): void;
   addSettling(delta: number): void;
   setQuiet(quiet: boolean): void;
@@ -31,12 +34,14 @@ export interface JobProgressState {
 export const useJobProgress = create<JobProgressState>()((set) => ({
   import: { ...IDLE_IMPORT_STATE },
   backup: { ...IDLE_BACKUP_PROGRESS },
+  restore: { ...IDLE_RESTORE_PROGRESS },
   sending: 0,
   settling: 0,
   shownTotal: 0,
   quiet: false,
   views: {},
   setBackup: (backup) => set({ backup }),
+  setRestore: (restore) => set({ restore }),
   setImport: (state) => set((s) => ({ import: state, shownTotal: state.state !== 'idle' ? state.total : s.shownTotal })),
   addSending: (delta) =>
     set((s) => {
@@ -86,18 +91,21 @@ export interface JobToastText {
   cancelTestId: string;
 }
 
-/** The job ahead of a waiting one, when this window knows which (Q-4e): the backup's notices say it runs. */
-export type AheadJob = 'import' | 'backup' | null;
+/** The job ahead of a waiting one, when this window knows which (Q-4e): the one running now. */
+export type AheadJob = 'import' | 'backup' | 'restore' | null;
 
-/** What a job's toast draws live (Task 10 adds the restore's). */
+/** What a job's toast draws live. */
 export function liveState(s: JobProgressState, job: ProgressJob): JobState {
-  return job === 'import' ? s.import : s.backup;
+  return job === 'import' ? s.import : job === 'backup' ? s.backup : s.restore;
 }
 
-/** The job running ahead of `job` on main's work line, as this window knows it. */
+/** The job running ahead of `job` on main's work line, as this window knows it (one runs at a time). */
 export function jobAhead(s: JobProgressState, job: ProgressJob): AheadJob {
-  if (job === 'import') return s.backup.state === 'running' ? 'backup' : null;
-  return s.import.state !== 'idle' ? 'import' : null;
+  if (job !== 'backup' && s.backup.state === 'running') return 'backup';
+  if (job !== 'restore' && s.restore.state === 'running') return 'restore';
+  // The import queue is on the line in any state but idle (asking about a duplicate, or itself in front of the line).
+  if (job !== 'import' && s.import.state !== 'idle') return 'import';
+  return null;
 }
 
 /** Floored, so the bar never reads 100 before the work has ended; 0 before the sizes are known. */
@@ -105,7 +113,7 @@ const percentOf = (done: number, total: number): number => (total > 0 ? Math.min
 
 export function describeJob(job: ProgressJob, s: JobState, ahead: AheadJob = null): JobToastText {
   // Each job's toast is handed its own job's state (liveState, or the view its controller froze).
-  return job === 'import' ? describeImport(s as ImportQueueState, ahead) : describeBackup(s as JobProgress, ahead);
+  return job === 'import' ? describeImport(s as ImportQueueState, ahead) : describeLineJob(job, s as JobProgress, ahead);
 }
 
 function describeImport(s: ImportQueueState, ahead: AheadJob): JobToastText {
@@ -116,7 +124,7 @@ function describeImport(s: ImportQueueState, ahead: AheadJob): JobToastText {
     title: s.state === 'waiting-choice' ? t.jobs.waitingChoice : waitingJob ? t.jobs.waitingJob : t.jobs.importing,
     count: waitingJob ? t.jobs.countTotal(s.total) : t.jobs.count(s.done, s.total),
     file: waitingJob ? null : s.current,
-    note: waitingJob ? (ahead === 'backup' ? t.jobs.importAfter.backup : t.jobs.waitingJobNote) : null,
+    note: waitingJob ? (ahead === 'backup' ? t.jobs.importAfter.backup : ahead === 'restore' ? t.jobs.importAfter.restore : t.jobs.waitingJobNote) : null,
     bar: !waitingJob,
     percent: s.percent,
     valueText: t.jobs.progressValue(s.done, s.total, s.percent),
@@ -125,21 +133,31 @@ function describeImport(s: ImportQueueState, ahead: AheadJob): JobToastText {
   };
 }
 
-function describeBackup(s: JobProgress, ahead: AheadJob): JobToastText {
+/** A backup's or a restore's title, and the line it shows while it waits (Q-4e: the job ahead by name when known). */
+function lineWords(job: 'backup' | 'restore', ahead: AheadJob): { title: string; after: string } {
+  if (job === 'backup') {
+    return { title: t.jobs.backingUp, after: ahead === 'import' ? t.jobs.backupAfter.import : ahead === 'restore' ? t.jobs.backupAfter.restore : t.jobs.backupAfter.other };
+  }
+  return { title: t.jobs.restoring, after: ahead === 'import' ? t.jobs.restoreAfter.import : ahead === 'backup' ? t.jobs.restoreAfter.backup : t.jobs.restoreAfter.other };
+}
+
+/** A backup's or a restore's toast (job:progress): files done of total, the folder it makes, its bytes as the bar. */
+function describeLineJob(job: 'backup' | 'restore', s: JobProgress, ahead: AheadJob): JobToastText {
   const percent = percentOf(s.bytesDone, s.bytesTotal);
   const waitingJob = s.state === 'waiting-job';
+  const words = lineWords(job, ahead);
   return {
     state: s.state,
     waiting: waitingJob,
-    title: waitingJob ? t.jobs.waitingJob : t.jobs.backingUp,
+    title: waitingJob ? t.jobs.waitingJob : words.title,
     count: !waitingJob && s.total > 0 ? t.jobs.count(s.done, s.total) : '',
     file: waitingJob ? null : s.name,
-    note: waitingJob ? (ahead === 'import' ? t.jobs.backupAfter.import : t.jobs.backupAfter.other) : null,
+    note: waitingJob ? words.after : null,
     bar: !waitingJob,
     percent,
     valueText: t.jobs.progressValue(s.done, s.total, percent),
-    testId: 'backup-progress',
-    cancelTestId: 'backup-cancel',
+    testId: `${job}-progress`,
+    cancelTestId: `${job}-cancel`,
   };
 }
 
@@ -147,8 +165,8 @@ function describeBackup(s: JobProgress, ahead: AheadJob): JobToastText {
 let importCancelsHere = 0;
 export const importCancelsAskedHere = (): number => importCancelsHere;
 
-/** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
+/** The toast's 취소: the job stops (spec 3.5); the backup's and the restore's name their job (backup:cancel, Q-10b). A refused call changes nothing the user could act on, so it says nothing. */
 export function cancelJob(job: ProgressJob): void {
   if (job === 'import') importCancelsHere += 1;
-  void (job === 'import' ? api().library.cancelImport() : api().backup.cancel());
+  void (job === 'import' ? api().library.cancelImport() : api().backup.cancel({ job }));
 }

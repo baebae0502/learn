@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
+import { mainStrings } from '../strings';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -11,6 +12,7 @@ const handlers = new Map<string, Listener>();
 const calls: Array<{ kind: 'open' | 'confirm' | 'reveal'; parent: unknown; detail?: string }> = [];
 let picked: string[] = [];
 let answer = 0;
+let updateBackup: string | null = null;
 
 const SETTINGS = { id: 2, name: 'settings window' };
 let senderWindow: typeof SETTINGS | null = SETTINGS;
@@ -48,7 +50,7 @@ const sheetOwners: Array<{ owner: unknown; phase: 'shown' | 'closed' }> = [];
 registerAppIpc(
   createHandle(null),
   stubDeps({
-    appInfo: () => ({ libraryRoot: current }) as never,
+    appInfo: () => ({ libraryRoot: current, backupFile: updateBackup }) as never,
     prefs: { readOnly: false, get: () => ({}) as never, set: (patch) => (saved.push(patch), {} as never) },
     windows: {
       openSettings: () => {},
@@ -139,5 +141,30 @@ describe('app.showLibraryFolder', () => {
   it('reveals the library folder of this session', async () => {
     expect(await invoke('app:showLibraryFolder')).toEqual({ ok: true, data: undefined });
     expect(calls).toEqual([{ kind: 'reveal', parent: current }]);
+  });
+});
+
+describe('app.revealUpdateBackup (spec 9.4: the fatal screen\'s Finder에서 보기)', () => {
+  it('shows the pre-update backup main found, selected in the library folder; the main window\'s only; no path goes in', async () => {
+    const file = path.join(current, 'library.sqlite.pre-v2.bak');
+    fs.writeFileSync(file, '');
+    updateBackup = 'library.sqlite.pre-v2.bak';
+    try {
+      expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toEqual({ ok: true, data: undefined });
+      expect(calls).toEqual([{ kind: 'reveal', parent: file }]);
+      expect(await invokeFrom(SETTINGS_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+      expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup', { path: '/tmp/x' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+      expect(calls).toHaveLength(1);
+    } finally {
+      fs.rmSync(file, { force: true });
+      updateBackup = null;
+    }
+  });
+  it('a backup that is gone since the screen asked, or none at all, says so and shows nothing', async () => {
+    updateBackup = 'library.sqlite.pre-v2.bak';
+    expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'NOT_FOUND', message: mainStrings.libraryFolder.updateBackupMissing });
+    updateBackup = null;
+    expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(calls).toEqual([]);
   });
 });

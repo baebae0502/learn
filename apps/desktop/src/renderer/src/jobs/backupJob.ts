@@ -2,6 +2,7 @@ import type { JobProgress } from '@learn/domain';
 import { useLearnEvent } from '../events';
 import { t } from '../strings';
 import { closeToast, showJobToast, showToast, type ToastData } from '../ui/toasts';
+import { followJob } from './followJob';
 import { useJobProgress } from './jobProgress';
 import { createProgressToast, type ProgressToast } from './progressToast';
 
@@ -12,18 +13,9 @@ export function backupResult(p: JobProgress): ToastData | null {
   return null;
 }
 
-/**
- * The backup's notices into the store and its one toast (P-3): a run's first busy notice begins the toast, its end
- * freezes the toast at the last state it showed and settles it — the same <Toast> becomes the cancelled or failed one.
- */
+/** The backup's notices: followJob for kind 'backup'. */
 export function followBackup(toast: Pick<ProgressToast, 'begin' | 'end' | 'settle'>, get: () => JobProgress, set: (p: JobProgress) => void): (p: JobProgress) => void {
-  return (p) => {
-    if (p.kind !== 'backup') return;
-    const before = get();
-    set(p);
-    if (before.state === 'idle' && p.state !== 'idle') toast.begin(false);
-    else if (before.state !== 'idle' && p.state === 'idle') toast.settle(toast.end(before), backupResult(p));
-  };
+  return followJob('backup', backupResult, toast, get, set);
 }
 
 /** The backup's progress toast in this window: one controller, as there is one toast queue (as the import's). */

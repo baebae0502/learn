@@ -46,6 +46,18 @@ export const mainStrings = {
   editedCopy: {
     gone: '이\u00a0수정본을 찾을 수 없습니다. 이미 가져왔거나 다른\u00a0곳으로 옮겼는지 확인하세요.',
   },
+  /** 라이브러리 점검 (library-check.ts): the title main gives a copy brought back, its open panel's line, what an action could not finish. */
+  libraryCheck: {
+    /** A copy brought back from the library folder (spec 7.2): its own file name is only its hash. */
+    revivedTitle: '이름 없는 자료',
+    /** 다시 연결… of a managed copy that went missing (macOS shows no title on a sheet). */
+    restoreMessage: '사라진 사본과 내용이 같은 원본 파일을 고르세요. 라이브러리에 다시 복사합니다.',
+    stagingLeft: (n: number) => `임시 파일 ${n}개를 지우지 못했습니다. 다른 앱이 쓰고 있지 않은지 확인하고 다시 정리하세요.`,
+    unreferencedLeft: (n: number) => `사본 ${n}개를 지우지 못했습니다. 파일 권한을 확인하고 다시 정리하세요.`,
+    notRevived: (n: number) => `사본 ${n}개는 자료로 되살리지 못했습니다. 지원하지 않는 형식이면 정리할 수 있습니다.`,
+    notImported: (n: number) => `수정본 ${n}개는 가져오지 못했습니다. 가져오기 알림에서 까닭을 확인하세요.`,
+    gone: '이 파일을 찾을 수 없습니다. 이미 지웠는지 확인하고 다시 점검하세요.',
+  },
   /** 사본 내보내기… (ipc/library.ts exportCopy): the save panel's type filter and what the copy can fail with. */
   exportCopy: {
     filterName: { pdf: 'PDF', video: '동영상' },

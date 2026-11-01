@@ -1,8 +1,8 @@
 import {
   CollectionsRepository, LibraryRepository, ReadingRepository, SettingsRepository, TagsRepository, migrate, openDatabase, type Db,
 } from '@learn/db';
-import type { RecoveryReport } from '@learn/domain';
-import { Importer, ensureLayout, libraryLayout, refreshLinkedAvailability, scanRecovery, type LibraryLayout } from '@learn/library';
+import type { LibraryCheck } from '@learn/domain';
+import { Importer, ensureLayout, libraryLayout, type LibraryLayout } from '@learn/library';
 
 export interface LibraryContext {
   layout: LibraryLayout;
@@ -14,9 +14,11 @@ export interface LibraryContext {
   reading: ReadingRepository;
   importer: Importer;
   schemaVersion: number;
-  recovery: RecoveryReport;
+  /** The newest library check (library-check.ts), null until the first one — it runs once the window exists (P-18). */
+  check: LibraryCheck | null;
 }
 
+/** Opens and migrates only: the library check and the linked originals' stat run after the window is made (P-18). */
 export async function openLibraryContext(root: string): Promise<LibraryContext> {
   const layout = libraryLayout(root);
   ensureLayout(layout);
@@ -24,8 +26,6 @@ export async function openLibraryContext(root: string): Promise<LibraryContext> 
   try {
     const { to } = migrate(db, { dbFile: layout.dbFile });
     const repo = new LibraryRepository(db);
-    const recovery = await scanRecovery(layout, repo);
-    await refreshLinkedAvailability(layout, repo);
     return {
       layout,
       db,
@@ -36,7 +36,7 @@ export async function openLibraryContext(root: string): Promise<LibraryContext> 
       reading: new ReadingRepository(db),
       importer: new Importer({ layout, repo }),
       schemaVersion: to,
-      recovery,
+      check: null,
     };
   } catch (e) {
     db.close();

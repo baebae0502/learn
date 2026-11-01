@@ -193,17 +193,6 @@ export interface ImportQueueState {
 
 export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null });
 
-export interface RecoveryReport {
-  /** File names left in staging/ by an interrupted import. Never auto-deleted. */
-  stagingLeftovers: string[];
-  /** Library-relative paths under assets/ that no DB row references. Never auto-deleted. */
-  unreferencedAssets: string[];
-  /** Managed asset ids whose file is gone. */
-  missingManagedAssets: string[];
-  /** Jobs that were `running` at startup and are now `interrupted`. */
-  interruptedJobs: number;
-}
-
 /**
  * 라이브러리 점검 (M6 spec 7, P-16): what the library folder holds that the app left behind or lost. Keys inside the
  * library and ids only — no path outside it.

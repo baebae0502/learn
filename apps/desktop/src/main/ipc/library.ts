@@ -14,7 +14,8 @@ import type { ImportBatch } from '../jobs/import-queue';
 import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
-const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
+/** The open panels' type filters (import, relink, the library check's 다시 연결…). */
+export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
@@ -94,8 +95,6 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
     broadcast('libraryChanged', { reason: 'relink', itemIds: ctx.repo.itemIdsForAsset(item.assetId) });
     return ctx.repo.getItem(itemId) ?? null;
   });
-
-  handle(Channels.library.recoveryReport, emptyInput, () => deps.getContext().recovery);
 
   handle(Channels.library.detail, itemIdInput, ({ itemId }) => deps.getContext().repo.getItemDetail(itemId));
 

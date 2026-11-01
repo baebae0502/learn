@@ -10,6 +10,7 @@ export const EventChannels = {
   'import:progress': 'evt:import-progress',
   'import:finished': 'evt:import-finished',
   'item:openRequested': 'evt:item-open-requested',
+  'recovery:show': 'evt:recovery-show',
 } as const;
 
 export type EventChannel = (typeof EventChannels)[keyof typeof EventChannels];

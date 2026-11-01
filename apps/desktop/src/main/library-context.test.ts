@@ -48,4 +48,20 @@ describe('openLibraryContext', () => {
     expect(close).toHaveBeenCalledTimes(1);
     expect((close.mock.contexts[0] as { open: boolean }).open).toBe(false);
   });
+
+  it('opens and migrates only (P-18): a stopped import\'s .part and a running job wait for the check that runs once the window exists', async () => {
+    const root = tempRoot();
+    const first = await openLibraryContext(root);
+    first.db.exec(`INSERT INTO jobs (id, kind, dedupe_key, state, created_at, updated_at) VALUES ('j1', 'extract', 'k1', 'running', '2026-10-31T00:00:00.000Z', '2026-10-31T00:00:00.000Z')`);
+    first.db.close();
+    fs.writeFileSync(path.join(root, 'staging', 'dead.part'), 'partial');
+    const ctx = await openLibraryContext(root);
+    try {
+      expect(ctx.check).toBeNull();
+      expect(ctx.db.prepare(`SELECT state FROM jobs WHERE id = 'j1'`).pluck().get()).toBe('running');
+      expect(fs.existsSync(path.join(root, 'staging', 'dead.part'))).toBe(true);
+    } finally {
+      ctx.db.close();
+    }
+  });
 });

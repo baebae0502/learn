@@ -2,16 +2,16 @@ import { exposeSurface } from './surface';
 
 /**
  * The main window, and the gallery board tests load in it: all but the settings window's library location and the
- * sheets' own channels. Channels no page calls yet (collections, tags, trash, the recovery report) are this window's
+ * sheets' own channels. Channels no page calls yet (collections, tags, trash, the library check) are this window's
  * (M5, M6). Equal to CHANNEL_KINDS' main entries (surfaces.test.ts).
  */
 exposeSurface({
   requests: {
     app: ['info'],
     library: [
-      'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'trashView',
+      'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'detail', 'updateMetadata', 'trash', 'restore', 'trashView',
       'purge', 'emptyTrash', 'keepOneOfDuplicates', 'keepOneOfAllDuplicates', 'undoKeepOne',
-      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems', 'editedCopies', 'importEditedCopy', 'revealEditedCopy',
+      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems', 'editedCopies', 'importEditedCopy', 'revealEditedCopy', 'check',
     ],
     collections: ['list', 'create', 'rename', 'move', 'remove', 'restore', 'addItems', 'removeItems'],
     tags: ['list', 'create', 'rename', 'setColor', 'remove', 'assign', 'unassign', 'togglePosition'],
@@ -20,6 +20,6 @@ exposeSurface({
     reader: ['open', 'getPosition', 'savePosition'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
-  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested'],
+  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show'],
   pathForFile: true,
 });

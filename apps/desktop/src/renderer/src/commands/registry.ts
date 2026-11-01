@@ -13,6 +13,8 @@ export interface CommandEnv extends CommandContextState {
   selection(): readonly string[];
   /** `into`: undefined = the collection being viewed, if any (⌘O in a collection files there); null = none; an id = that collection. */
   importFiles(mode: StorageMode, into?: string | null): void;
+  /** 라이브러리 점검…: main checks again and shows its sheet over this window (held as any sheet it asks for). */
+  checkLibrary(): void;
   /** ⇧⌘N and 새 하위 컬렉션: a row for the new collection (at the top, or under `parentId`), named in place by the sidebar. */
   newCollection(opts?: { parentId?: string | null; onCreated?: (collectionId: string) => void }): void;
   /** 이름 바꾸기: the collection's row becomes its name field. */
@@ -130,6 +132,7 @@ const colorAt = (slot: number): Handler => (env, t) => env.toggleTagPosition(slo
 export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importManaged': (env) => env.importFiles('managed'),
   'file.importLinked': (env) => env.importFiles('linked'),
+  'file.checkLibrary': (env) => env.checkLibrary(),
   'file.cancelImport': (env) => env.cancelImport(),
   'library.find': (env) => env.focusSearch(),
   'library.findEverywhere': (env) => env.findEverywhere(),

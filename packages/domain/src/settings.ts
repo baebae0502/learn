@@ -38,10 +38,14 @@ export const SETTINGS = {
   'ui.lastOpenItemId': z.uuid().nullable(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
+  /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */
+  'recovery.lastShown': z.string().regex(/^[0-9a-f]{64}$/),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(SETTINGS, key);
+/** Keys main writes itself (Q-8e): settings.set refuses them from a page. Task 9 adds backup.last. */
+export const MAIN_WRITTEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>(['recovery.lastShown']);
 
 /**
  * What a write may carry beyond what a read accepts. A record has no length of its own: column ids stay open (a later

@@ -2,6 +2,7 @@ import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type WebContents 
 import type { z } from 'zod';
 import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Prefs, type Result } from '@learn/domain';
 import type { ImportQueue } from '../jobs/import-queue';
+import type { CheckSheets } from '../library-check';
 import type { JobLane } from '../jobs/lane';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
@@ -23,6 +24,8 @@ export interface IpcDeps {
   jobs: JobLane;
   /** The import queue on it (jobs/import-queue.ts): every window's imports go in here, and its reports come out. */
   imports: ImportQueue;
+  /** 라이브러리 점검 (library-check.ts): library:check opens its sheet; the sheet host runs its actions (sheet:act). */
+  checks: CheckSheets;
   /**
    * Whether `sender` is the current main window's renderer. createHandle has checked its kind already; this is the
    * window itself (a main window being closed still has the kind, and its last report must not drive the menu).

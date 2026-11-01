@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
+import { app, dialog, Menu, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -18,11 +18,13 @@ import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic'
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
+import { IMPORT_FILTERS } from './ipc/library';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
+import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
 import { createMenuRebuilder } from './menu/rebuild';
@@ -91,6 +93,10 @@ const editFlush = createFlushGate({
 const jobs = createJobLane();
 /** Asked before the edit-flush gate on every quit; made with the import queue once the app is ready. */
 let quitGuard: QuitGuard | null = null;
+/** The automatic check sheet stands down once a check sheet is shown or the app quits (library-check.ts AutoGate). */
+let checkStopped = false;
+/** What the startup check did about the automatic sheet (E2E reads it). */
+let autoCheck: AutoOutcome | 'pending' = 'pending';
 
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
@@ -418,6 +424,35 @@ if (!app.requestSingleInstanceLock()) {
       const contents = webContents.fromId(openIn);
       if (contents && !contents.isDestroyed()) sendEvent(contents, 'item:openRequested', { itemId: report.openItemId });
     });
+    /** The main window drew its first list and went idle (ui.reportIdle): the automatic check sheet may follow. */
+    let firstScreenDrawn = (): void => {};
+    const firstScreen = new Promise<void>((resolve) => {
+      firstScreenDrawn = resolve;
+    });
+    const announceAvailability = (itemIds: string[]) => broadcast('libraryChanged', { reason: 'availability', itemIds });
+    // 라이브러리 점검 (spec 7): the sheet and its actions. Its open panel hangs on the check sheet that asked (Q-8g).
+    const checks = createCheckSheets({
+      context: getContext,
+      sheets,
+      imports,
+      announce: announceAvailability,
+      relinked: (itemIds) => broadcast('libraryChanged', { reason: 'relink', itemIds }),
+      homeDir: app.getPath('home'),
+      pickFile: async (owner, words) => {
+        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters: IMPORT_FILTERS }));
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+      reveal: (file) => shell.showItemInFolder(file),
+      stopAuto: () => {
+        checkStopped = true;
+      },
+    });
+    sheets.onAct('libraryCheck', (action, sheet) => checks.act(action, sheet));
+    /** recovery:show: the main window asks for the automatic sheet itself, held as under any sheet it asks for (Q-8d). */
+    const requestAutoCheck = (): void => {
+      const win = liveMainWindow();
+          if (win) sendEvent(win.webContents, 'recovery:show', {});
+        };
     const deps: IpcDeps = {
       getContext,
       appInfo: (): AppInfo => ({
@@ -446,12 +481,17 @@ if (!app.requestSingleInstanceLock()) {
       sheets,
       jobs,
       imports,
+      checks,
       windows: { openSettings: () => void settingsWindow.open(), asSheet },
       theme: {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
-      prepareSettings: () => settingsWindow.prepare(),
+      // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
+      prepareSettings: () => {
+        settingsWindow.prepare();
+        firstScreenDrawn();
+      },
       relaunch() {
         if (isE2E(app.isPackaged, process.env)) {
           // Playwright cannot follow a relaunched process: E2E only records the request.
@@ -497,12 +537,41 @@ if (!app.requestSingleInstanceLock()) {
         },
         broadcast,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
+        check: {
+          state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
+          request: async () => {
+            await checks.recheck();
+            requestAutoCheck();
+          },
+        },
       });
     }
 
     activation.markReady();
     mainWindow = openMainWindow();
+    markPerf('windowCreated');
     refreshFullScreenItem();
+    // P-18: the library check runs once the window exists, in the background: the first paint never waits for the disk.
+    if (ctx) {
+      void startLibraryCheck(ctx, {
+        announce: announceAvailability,
+        requestAuto: requestAutoCheck,
+        gate: {
+          firstScreen,
+          busy: () => {
+            const win = liveMainWindow();
+            return win === null || isSheetOpen(win) || jobs.busy() !== null || imports.state().state !== 'idle';
+          },
+          stopped: () => checkStopped,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        },
+      }).then(
+        (outcome) => {
+          autoCheck = outcome;
+        },
+        (e: unknown) => console.error(`[check] the startup check failed: ${toLearnError(e).code}`),
+      );
+    }
   });
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
@@ -534,6 +603,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    checkStopped = true;
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });

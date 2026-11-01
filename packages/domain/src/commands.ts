@@ -17,6 +17,7 @@ export { COLOR_SLOTS } from './tag-colors';
 export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
+  | 'file.checkLibrary'
   | 'file.cancelImport'
   | 'library.find'
   | 'library.findEverywhere'
@@ -198,6 +199,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'collection.new', label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N', menu: { menu: 'file', group: 1, order: 3 }, contexts: ['library'],
     keywords: ['컬렉션', '폴더', '만들기', '새로 만들기', 'collection', 'folder', 'new'],
+  },
+  // 라이브러리 점검… (spec 7.1, 11.1, 11.2): checks again and opens the sheet, also when nothing is wrong. 파일's third group;
+  // 백업 만들기… and 백업에서 복원… join it (Task 9, 10).
+  {
+    id: 'file.checkLibrary', label: '라이브러리 점검…', menu: { menu: 'file', group: 3, order: 1 }, contexts: ['app'],
+    keywords: ['점검', '검사', '복구', '정리', '임시 파일', '사본', '수정본', 'check', 'repair', 'recovery'],
   },
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.

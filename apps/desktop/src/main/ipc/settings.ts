@@ -1,11 +1,14 @@
-import { Channels, emptyInput, prefsSetInput, settingGetInput, settingSetInput } from '@learn/domain';
+import { Channels, LearnError, MAIN_WRITTEN_SETTINGS, emptyInput, prefsSetInput, settingGetInput, settingSetInput, type SettingKey } from '@learn/domain';
 import { broadcast } from '../events';
+import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
 export function registerSettingsIpc(handle: Handle, deps: IpcDeps): void {
   // Library-scoped settings (library DB). Unset → null.
   handle(Channels.settings.get, settingGetInput, ({ key }) => deps.getContext().settings.get(key) ?? null);
   handle(Channels.settings.set, settingSetInput, ({ key, value }) => {
+    // A key main writes itself is not a page's to set (the library check's list shown last, Q-8e).
+    if (MAIN_WRITTEN_SETTINGS.has(key as SettingKey)) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
     deps.getContext().settings.set(key, value);
     broadcast('settingsChanged', { keys: [key] });
   });

@@ -317,3 +317,23 @@ describe('holding the work line (the progress toast that waits for the work befo
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });
+
+describe('the library check\'s hooks (Task 8)', () => {
+  it('libraryCheck reads the newest check and what the startup did about the automatic sheet; requestLibraryCheck asks again', async () => {
+    const request = vi.fn(async () => {});
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      check: { state: () => ({ check: null, auto: 'not-due' }), request },
+    });
+    const hooks = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    expect(hooks.libraryCheck()).toEqual({ check: null, auto: 'not-due' });
+    await hooks.requestLibraryCheck();
+    expect(request).toHaveBeenCalledTimes(1);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});

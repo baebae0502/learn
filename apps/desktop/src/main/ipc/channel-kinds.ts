@@ -12,7 +12,7 @@ const SHEET: readonly WindowKind[] = ['sheet'];
  * exposes exactly its kind's channels (preload/surfaces.test.ts holds the two together).
  *
  * - main: the library window — all but the settings window's library location and the sheets' own channels. Channels
- *   no page calls yet (collections, tags, trash, the recovery report) are the main window's (M5, M6).
+ *   no page calls yet (collections, tags, trash, the library check) are the main window's (M5, M6).
  * - settings: what SettingsApp calls. Not ui.openSettings: its ⌘, is the menu's, which main runs itself.
  * - sheet: its payload and its answer.
  */
@@ -27,7 +27,7 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'library:list': MAIN,
   'library:get': MAIN,
   'library:pickAndRelink': MAIN,
-  'library:recoveryReport': MAIN,
+  'library:check': MAIN,
   'library:detail': MAIN,
   'library:updateMetadata': MAIN,
   'library:trash': MAIN,

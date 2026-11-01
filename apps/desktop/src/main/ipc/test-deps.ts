@@ -19,6 +19,15 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     sheets: { open: async () => null, payloadFor: () => ({ kind: 'shortcuts' }), resolve: () => {}, act: async () => { throw new Error('sheets.act not stubbed'); }, onAct: () => {} },
     jobs: { run: (_kind, work) => work(new AbortController().signal), busy: () => null, cancelCurrent: () => {}, cancelAll: () => {}, idle: async () => {} },
     imports: { enqueue: () => 0, cancel: () => {}, state: () => ({ ...IDLE_IMPORT_STATE }), onProgress: () => () => {}, onFinished: () => () => {} },
+    checks: {
+      open: async () => {},
+      act: async () => {
+        throw new Error('checks.act not stubbed');
+      },
+      recheck: async () => {
+        throw new Error('checks.recheck not stubbed');
+      },
+    },
     isMainWindow: () => true,
     isSettingsWindow: () => true,
     windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },

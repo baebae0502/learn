@@ -6,13 +6,13 @@ export const Channels = {
   app: { info: 'app:info', showLibraryFolder: 'app:showLibraryFolder', chooseLibraryFolder: 'app:chooseLibraryFolder' },
   library: {
     pickAndImport: 'library:pickAndImport', import: 'library:import', cancelImport: 'library:cancelImport', list: 'library:list', get: 'library:get',
-    pickAndRelink: 'library:pickAndRelink', recoveryReport: 'library:recoveryReport', detail: 'library:detail',
+    pickAndRelink: 'library:pickAndRelink', detail: 'library:detail',
     updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', trashView: 'library:trashView',
     purge: 'library:purge', emptyTrash: 'library:emptyTrash', keepOneOfDuplicates: 'library:keepOneOfDuplicates',
     keepOneOfAllDuplicates: 'library:keepOneOfAllDuplicates', undoKeepOne: 'library:undoKeepOne',
     duplicateGroups: 'library:duplicateGroups', showInFolder: 'library:showInFolder', openExternally: 'library:openExternally',
     exportCopy: 'library:exportCopy', revealExport: 'library:revealExport',
-    searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems',
+    searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems', check: 'library:check',
     editedCopies: 'library:editedCopies', importEditedCopy: 'library:importEditedCopy', revealEditedCopy: 'library:revealEditedCopy',
   },
   collections: {

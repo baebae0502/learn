@@ -17,6 +17,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   selection: () => [],
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
+  checkLibrary: vi.fn(),
   newCollection: vi.fn(),
   renameCollection: vi.fn(),
   deleteCollection: vi.fn(),

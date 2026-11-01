@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type {
-  AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, RecoveryReport, SearchText, Tag, TrashView,
+  AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
 } from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
@@ -172,6 +172,10 @@ export const sheetActionSchema = z.union([
 export const sheetActInput = z.object({ action: sheetActionSchema }).strict();
 export type SheetActInput = z.input<typeof sheetActInput>;
 
+/** 파일 › 라이브러리 점검… (a fresh check) or, after main's recovery:show, the automatic one (spec 7.1). */
+export const checkInput = z.object({ auto: z.boolean().optional() }).strict().optional();
+export type CheckInput = z.input<typeof checkInput>;
+
 const point = { x: z.number().finite(), y: z.number().finite() };
 /** Native context menus by kind (ADR-0005 §4): the registry commands that list the kind fill it; a kind none lists answers null. */
 export const showContextMenuInput = z.discriminatedUnion('kind', [
@@ -248,7 +252,12 @@ export interface LearnApi {
      * file follows) and answers that item; null when the panel was cancelled.
      */
     pickAndRelink(input: ItemIdInput): Promise<Result<LibraryItem | null>>;
-    recoveryReport(): Promise<Result<RecoveryReport>>;
+    /**
+     * 라이브러리 점검 (spec 7.1): checks again and shows the sheet over the calling window — with 문제가 없습니다 when nothing
+     * is wrong; `{ auto: true }` (after recovery:show) shows the startup's list, or nothing when that has nothing to act
+     * on. Answers when the sheet has closed.
+     */
+    check(input?: CheckInput): Promise<Result<void>>;
     detail(input: ItemIdInput): Promise<Result<ItemDetail>>;
     updateMetadata(input: UpdateMetadataInput): Promise<Result<LibraryItem>>;
     trash(input: ItemIdsInput): Promise<Result<number>>;

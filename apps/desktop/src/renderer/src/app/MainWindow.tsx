@@ -39,6 +39,7 @@ import { useScopeView } from '../library/useScopeView';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
 import { useLearnEvent } from '../events';
+import { askInSheet } from '../ui/sheetAsk';
 import { useApplyTheme } from '../settings/theme';
 import { useApplyPrefs } from '../settings/useApplyPrefs';
 import { DemoOverlay } from '../shell/DemoOverlay';
@@ -160,6 +161,14 @@ export function MainWindow(_props: { info: AppInfo }) {
       setSheetRequested(false);
     }
   }, []);
+  /**
+   * 파일 › 라이브러리 점검…, and the automatic sheet main asks for (recovery:show, spec 7.1): main checks and shows the sheet
+   * over this window, held from the request to its close as any sheet this window asks for (Task 6 askInSheet).
+   */
+  const checkLibrary = useCallback((auto: boolean) => {
+    void askInSheet(() => unwrap(api().library.check(auto ? { auto: true } : undefined))).catch(actionFailed);
+  }, []);
+  useLearnEvent('recovery:show', () => checkLibrary(true));
 
   // ⌘+ / ⌘− / ⌘0 step from the newest size (also before prefsChanged has come back); applied through prefsChanged
   // (useApplyPrefs), like a change made in the settings window; a refused write is a toast.
@@ -373,6 +382,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     toggleSidebar,
     toggleInspector,
     showShortcuts: () => void showShortcuts(),
+    checkLibrary: () => checkLibrary(false),
     openPalette,
     showInFolder: (itemId) => fileAction('reveal', itemId, () => api().library.showInFolder({ itemId })),
     openExternally: (itemId) => fileAction('open', itemId, () => api().library.openExternally({ itemId })),
@@ -393,7 +403,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

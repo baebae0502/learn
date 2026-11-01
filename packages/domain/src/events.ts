@@ -55,4 +55,9 @@ export interface LearnEventMap {
   'import:finished': { report: ImportReport };
   /** A duplicate was answered 기존 자료 열기 (spec 3.4): sent to the window it was answered on, which opens the item. */
   'item:openRequested': { itemId: string };
+  /**
+   * Main found something the app left or lost at startup, not the list shown last (spec 7.1): the main window asks for the
+   * automatic check sheet itself (library.check({ auto: true })), so it is held as under any sheet it asks for (Q-8d).
+   */
+  'recovery:show': Record<string, never>;
 }

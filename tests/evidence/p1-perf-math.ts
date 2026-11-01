@@ -114,3 +114,57 @@ export function p1Limits(v: P1Values, platform: string = process.platform): Limi
   if (m5 !== undefined) add(v.coldStartMs, 'cold start → app-ready of an empty library, median (budget: the M5 value)', m5);
   return out;
 }
+
+/** Fewer timed toast updates than this say nothing about a p95: below 20 the nearest-rank p95 is the one worst frame. */
+export const MIN_PAINTS = 20;
+
+export interface PaintRun {
+  p95: number;
+  samples: number;
+}
+export interface PaintVerdict {
+  /** False: another run is needed first (`why`); true: `failure` is the verdict. */
+  done: boolean;
+  why: 'thin' | 'miss' | null;
+  /** The p95 judged and the samples behind it: both runs pooled, or the better run's. */
+  p95: number;
+  samples: number;
+  /** A thin first run was pooled with the second. */
+  pooled: boolean;
+  /** A first run of enough samples missed `limit` and was taken once more. */
+  retook: boolean;
+  failure: 'too few samples' | 'over limit' | null;
+  /** Every run, as taken (p95 of its own samples). */
+  runs: PaintRun[];
+}
+/**
+ * The toast paint verdict from the runs taken so far (each run's frame times, ms), at most two. One run with fewer than
+ * `min` samples is topped up by a second whose samples are pooled; one with enough samples and a p95 over `limit` is taken
+ * once more and the better p95 counts. Fewer than `min` samples at the end fail as too few.
+ */
+export function paintVerdict(runs: readonly (readonly number[])[], limit: number, min = MIN_PAINTS): PaintVerdict {
+  const p95Of = (xs: readonly number[]): number => (xs.length === 0 ? 0 : tenth(percentile(xs, 95)));
+  const taken: PaintRun[] = runs.map((r) => ({ p95: p95Of(r), samples: r.length }));
+  const first = runs[0] ?? [];
+  const out = (done: boolean, why: PaintVerdict['why'], p95: number, samples: number, pooled: boolean, retook: boolean): PaintVerdict => {
+    const failure = !done ? null : samples < min ? 'too few samples' : p95 > limit ? 'over limit' : null;
+    return { done, why, p95, samples, pooled, retook, failure, runs: taken };
+  };
+  if (first.length < min) {
+    if (runs.length < 2) return out(false, 'thin', taken[0]?.p95 ?? 0, first.length, false, false);
+    const pool = runs.flat();
+    return out(true, null, p95Of(pool), pool.length, true, false);
+  }
+  if (taken[0]!.p95 <= limit) return out(true, null, taken[0]!.p95, first.length, false, false);
+  if (runs.length < 2) return out(false, 'miss', taken[0]!.p95, first.length, false, false);
+  const enough = taken.filter((r) => r.samples >= min);
+  const best = enough.reduce((a, b) => (b.p95 < a.p95 ? b : a));
+  return out(true, null, best.p95, best.samples, false, true);
+}
+
+/** `end` − `start` of two epoch clocks (main's click, the page's frame): a span of zero or less is skew, never a sample. */
+export function twoClockSpan(start: number, end: number): number {
+  const ms = end - start;
+  if (ms <= 0) throw new Error(`clock skew: main click after page frame (${tenth(ms)} ms)`);
+  return ms;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { limitFailures } from './budget';
-import { M5_APP_READY_MS, P1_BUDGET, jobSpan, maxInWindow, mbPerSecond, meanRate, p1Limits, spread, summary, type JobNotice } from './p1-perf-math';
+import { M5_APP_READY_MS, P1_BUDGET, jobSpan, maxInWindow, mbPerSecond, meanRate, p1Limits, paintVerdict, twoClockSpan, spread, summary, type JobNotice } from './p1-perf-math';
 
 describe('p1-perf arithmetic (M6 spec 14)', () => {
   it('the most notices inside any one second, the window half-open', () => {
@@ -61,5 +61,41 @@ describe('p1-perf arithmetic (M6 spec 14)', () => {
     expect(limitFailures(p1Limits({ coldStartMs: 1351 }, 'linux'))).toEqual([
       'cold start → app-ready of an empty library, median (budget: the M5 value): 1351 ms against the Linux CI limit 1350 ms (budget 675 ms)',
     ]);
+  });
+
+  describe('the toast paint verdict (at least 20 timed paints, one retake on a miss)', () => {
+    const LIMIT = 2 * P1_BUDGET.toastPaintP95Ms;
+    const frames = (n: number, ms = 16.7) => Array.from({ length: n }, () => ms);
+    it('a thin first run asks for another, then pools both runs', () => {
+      expect(paintVerdict([frames(12)], LIMIT)).toMatchObject({ done: false, why: 'thin' });
+      const v = paintVerdict([frames(12), frames(12)], LIMIT);
+      expect(v).toMatchObject({ done: true, pooled: true, retook: false, samples: 24, p95: 16.7, failure: null });
+      expect(v.runs).toEqual([{ p95: 16.7, samples: 12 }, { p95: 16.7, samples: 12 }]);
+    });
+    it('a pool that is still thin fails as too few samples', () => {
+      expect(paintVerdict([frames(8), frames(9)], LIMIT)).toMatchObject({ done: true, pooled: true, samples: 17, failure: 'too few samples' });
+    });
+    it('a miss is taken once more and the better p95 counts', () => {
+      const slow = frames(25, 40);
+      expect(paintVerdict([slow], LIMIT)).toMatchObject({ done: false, why: 'miss' });
+      const v = paintVerdict([slow, frames(25)], LIMIT);
+      expect(v).toMatchObject({ done: true, retook: true, pooled: false, p95: 16.7, failure: null });
+      expect(v.runs.map((r) => r.p95)).toEqual([40, 16.7]);
+    });
+    it('a miss twice fails over the limit with the better p95', () => {
+      expect(paintVerdict([frames(25, 40), frames(25, 35)], LIMIT)).toMatchObject({ done: true, retook: true, p95: 35, failure: 'over limit' });
+    });
+    it('a single outlier among 20 does not set the p95', () => {
+      expect(paintVerdict([[...frames(19), 500]], LIMIT)).toMatchObject({ done: true, p95: 16.7, samples: 20, failure: null });
+    });
+    it('a retake that is itself thin does not replace a run of enough samples', () => {
+      expect(paintVerdict([frames(25, 40), frames(3)], LIMIT)).toMatchObject({ done: true, retook: true, p95: 40, failure: 'over limit' });
+    });
+  });
+
+  it('a span between two clocks of zero or less is skew, not a sample', () => {
+    expect(twoClockSpan(1000, 1012.5)).toBe(12.5);
+    expect(() => twoClockSpan(1000, 1000)).toThrow('clock skew: main click after page frame');
+    expect(() => twoClockSpan(1000, 990)).toThrow('clock skew: main click after page frame');
   });
 });

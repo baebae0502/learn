@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, KEY_CODE, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, rowByTitle, runMenuCommand, tokenColor, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
+import { FIXTURES, KEY_CODE, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, rowByTitle, runMenuCommand, tokenColor, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
 import { IS_MAC, allShots, focusApp, fullScreenShot, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
@@ -210,10 +210,16 @@ test('M6 trash: ⌘⌫ (a real key on macOS) moves the selection with 실행 취
 });
 
 test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭제… there, and the purge sheet (macOS: the real sheet) — light and dark', TAG, async () => {
+  // C-4c: one trashed collection row in the table, and the item panel open (the 1024 px Mac window folds it by default).
+  const conf = await createCollection(s.page, '학회 준비');
+  await s.page.evaluate((id) => window.learn.collections.remove({ collectionId: id }), conf);
   await s.page.getByTestId('nav-scope-trash').click();
   await expect(s.page.getByTestId('toolbar-title')).toHaveText('휴지통');
+  await expect(s.page.getByTestId('trash-collection-row')).toHaveCount(1);
   await s.page.locator('[data-testid="item-row"]').first().click();
   await expect(s.page.getByTestId('inspector-restore')).toBeVisible();
+  if ((await s.page.getByTestId('shell').getAttribute('data-inspector')) !== 'shown') await runMenuCommand(s.app, 'view.toggleInspector');
+  await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'shown');
   await guard('파일 › ⌘⌫ reads 영구 삭제… in the trash view (P-11)', async () => {
     const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
     const label = async () => flat(await menuSnapshot(s.app)).find((n) => n.id === 'item.trash')?.label ?? null;

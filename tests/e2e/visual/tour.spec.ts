@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
@@ -884,8 +884,9 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
 // reader-pdf.html?state=trashed (the stage notice) and components.html?part=1 (the undo toast).
 test('trash: the undo toast, the trash view and its read-only panel, the purge and empty-trash sheets, the reader notice', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  // The days in the table (added, trashed), the trash line's time, and what moves in the item panel.
-  const dates = () => [s.page.locator('[role="row"] :is([data-col="createdAt"], [data-col="deletedAt"])'), s.page.getByTestId('trash-note'), ...panelMasks(s.page)];
+  // The days in the table's body rows (not its header: the sort mark stays in the picture), the trash line's time alone
+  // (its icon and wording stay), and what moves in the item panel.
+  const dates = () => [s.page.locator('[data-row-id] :is([data-col="createdAt"], [data-col="deletedAt"])'), s.page.getByTestId('trash-note-when'), ...panelMasks(s.page)];
   try {
     const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
     const conf = await createCollection(s.page, '학회 준비');
@@ -920,6 +921,20 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
       await expect.poll(() => menuItemEnabled(s.app, 'item.trash')).toBe(true);
     }
 
+    // More than one row, and a collection row (C-5): a third item joins the trash; three rows chosen (no sheet), then the collection.
+    await trashItems(s.page, [items[3]!.id]);
+    await expect(rowByTitle(s.page, items[3]!.title)).toBeVisible();
+    await selectRows(s.page, [items[1]!.title, items[2]!.title, items[3]!.title]);
+    await expect(s.page.getByTestId('inspector-trash')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `trash-selection-${theme}`, { mask: dates() });
+    }
+    await setTheme(s.page, 'light');
+    await s.page.locator('[data-testid="trash-collection-row"]').first().click();
+    await expect(s.page.getByTestId('inspector-kind')).toContainText('컬렉션');
+    await shoot(s.page, 'trash-collection-light', { mask: dates() });
+
     // The reader: its item moved to the trash.
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'all').click();
@@ -932,8 +947,9 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
       await shoot(s.page, `reader-trashed-${theme}`);
     }
 
-    // ⌘⌫ on one row: the undo toast names it. Last, and shot at once: a success toast closes 5 s after it first paints, so no
-    // other shot of this station may have it on screen.
+    // The toasts, last (a success toast closes 5 s after it first paints, so none may be on screen in another shot): each is
+    // shot at once and waited out before the next. ⌘⌫ on one row: the undo toast names it.
+    const gone = (id: string) => expect(s.page.getByTestId(id)).toHaveCount(0, { timeout: 12_000 });
     await setTheme(s.page, 'light');
     await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
     await specialRow(s.page, 'all').click();
@@ -941,6 +957,29 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await runMenuCommand(s.app, 'item.trash');
     await expect(s.page.getByTestId('trash-undo')).toBeVisible();
     await shoot(s.page, 'toast-trash-undo-light', { mask: dates() });
+    await gone('trash-undo');
+    await setTheme(s.page, 'dark');
+    await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
+    await rowByTitle(s.page, items[0]!.title).click();
+    await runMenuCommand(s.app, 'item.trash');
+    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
+    await shoot(s.page, 'toast-trash-undo-dark', { mask: dates() });
+    await gone('trash-undo');
+    // 복원 and 영구 삭제… from the trash view: their result toasts.
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'trash').click();
+    await rowByTitle(s.page, items[1]!.title).click();
+    await expect.poll(() => menuItemEnabled(s.app, 'item.restore')).toBe(true);
+    await runMenuCommand(s.app, 'item.restore');
+    await expect(s.page.getByTestId('restore-done')).toBeVisible();
+    await shoot(s.page, 'toast-restore-done-light', { mask: dates() });
+    await gone('restore-done');
+    await rowByTitle(s.page, items[2]!.title).click();
+    await expect.poll(() => menuItemEnabled(s.app, 'item.trash')).toBe(true);
+    const purge = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
+    await clickToCloseSheet(purge, purge.getByTestId('purge-confirm'));
+    await expect(s.page.getByTestId('purge-done')).toBeVisible();
+    await shoot(s.page, 'toast-purge-done-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

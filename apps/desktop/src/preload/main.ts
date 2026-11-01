@@ -11,7 +11,7 @@ exposeSurface({
     library: [
       'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'trashView',
       'purge', 'emptyTrash', 'keepOneOfDuplicates', 'keepOneOfAllDuplicates', 'undoKeepOne',
-      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems',
+      'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems', 'editedCopies', 'importEditedCopy', 'revealEditedCopy',
     ],
     collections: ['list', 'create', 'rename', 'move', 'remove', 'restore', 'addItems', 'removeItems'],
     tags: ['list', 'create', 'rename', 'setColor', 'remove', 'assign', 'unassign', 'togglePosition'],

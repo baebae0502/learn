@@ -440,6 +440,11 @@ export interface CommandContextState {
   trashCount: number;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
+  /**
+   * Duplicate groups with two or more items in the list (spec 11.1): 중복 N묶음 모두 정리 needs two, and its name says how
+   * many. Absent where no library view reports it.
+   */
+  duplicateGroups?: number;
 }
 
 /** The view fields of a context with no library view yet: the first report, the fatal screen, a test's fixture. */

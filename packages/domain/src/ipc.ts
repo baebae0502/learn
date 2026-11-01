@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
 import type {
-  AppInfo, Collection, DuplicateGroup, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, RecoveryReport, SearchText, Tag, TrashView,
+  AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, RecoveryReport, SearchText, Tag, TrashView,
 } from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
@@ -37,6 +37,17 @@ export const itemIdInput = z.object({ itemId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
+/**
+ * An item's edited copy, by its bare file name in that item's folder (M6 spec 6): never a path (R4) — main finds the
+ * file itself (editedCopyFile). NFC like every name a page sends.
+ */
+const copyNameSchema = z
+  .string()
+  .normalize('NFC')
+  .min(1)
+  .max(255)
+  .refine((name) => !/[/\\\u0000]/.test(name) && name !== '.' && name !== '..');
+export const editedCopyInput = z.object({ itemId: z.uuid(), name: copyNameSchema }).strict();
 /**
  * library.purge (영구 삭제…): trashed items and collection rows of the trash view, at least one id. Live and unknown ids
  * are skipped by main. The item bound is the selection's (a trash view of a large library, all selected).
@@ -131,6 +142,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
+    /** Duplicate groups of two or more listed items: 중복 N묶음 모두 정리 needs two and names the count (spec 11.1). */
+    duplicateGroups: contextCount.optional(),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
@@ -178,6 +191,7 @@ export type ItemIdsInput = z.input<typeof itemIdsInput>;
 export type PurgeInput = z.input<typeof purgeInput>;
 export type KeepOneInput = z.input<typeof keepOneInput>;
 export type KeepOneUndoInput = z.input<typeof keepOneUndoInput>;
+export type EditedCopyInput = z.input<typeof editedCopyInput>;
 export type CollectionIdInput = z.input<typeof collectionIdInput>;
 export type RenameCollectionInput = z.input<typeof renameCollectionInput>;
 export type MoveCollectionInput = z.input<typeof moveCollectionInput>;
@@ -264,6 +278,15 @@ export interface LearnApi {
     organize(): Promise<Result<OrganizeSnapshot>>;
     /** The non-trashed items among `ids`, once each in the order asked; unknown and trashed ids are skipped. */
     getItems(input: GetItemsInput): Promise<Result<LibraryItem[]>>;
+    /** The copies another app saved beside the item's read-only copy, newest first (spec 6); [] when there are none. */
+    editedCopies(input: ItemIdInput): Promise<Result<EditedCopy[]>>;
+    /**
+     * 새 자료로 가져오기: the copy into the import queue as a new item (a managed copy, titled after the copy, in no
+     * collection). Once its import committed and its bytes were checked again, main removes the copy.
+     */
+    importEditedCopy(input: EditedCopyInput): Promise<Result<{ queued: number }>>;
+    /** Finder에서 보기 with the copy selected. */
+    revealEditedCopy(input: EditedCopyInput): Promise<Result<void>>;
   };
   collections: {
     list(): Promise<Result<Collection[]>>;

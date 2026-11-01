@@ -42,6 +42,10 @@ export const mainStrings = {
     noItem: '자료를 찾을 수 없습니다.',
     noApp: '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.',
   },
+  /** An edited copy the item panel named (ipc/edited-copies.ts) that is no longer there. */
+  editedCopy: {
+    gone: '이\u00a0수정본을 찾을 수 없습니다. 이미 가져왔거나 다른\u00a0곳으로 옮겼는지 확인하세요.',
+  },
   /** 사본 내보내기… (ipc/library.ts exportCopy): the save panel's type filter and what the copy can fail with. */
   exportCopy: {
     filterName: { pdf: 'PDF', video: '동영상' },

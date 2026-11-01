@@ -13,6 +13,7 @@ export const Channels = {
     duplicateGroups: 'library:duplicateGroups', showInFolder: 'library:showInFolder', openExternally: 'library:openExternally',
     exportCopy: 'library:exportCopy', revealExport: 'library:revealExport',
     searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems',
+    editedCopies: 'library:editedCopies', importEditedCopy: 'library:importEditedCopy', revealEditedCopy: 'library:revealEditedCopy',
   },
   collections: {
     list: 'collections:list', create: 'collections:create', rename: 'collections:rename', move: 'collections:move',

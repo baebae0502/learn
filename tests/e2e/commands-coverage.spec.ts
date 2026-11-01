@@ -71,6 +71,12 @@ const M5_COMMANDS: readonly CommandId[] = [
 ] as CommandId[];
 
 /**
+ * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
+ * (and the reader pass) needs: ⌘⌫ is 휴지통으로 이동. Their test is the COVERED_ELSEWHERE entry of the same id.
+ */
+const DESTRUCTIVE: ReadonlySet<CommandId> = new Set<CommandId>(['item.trash']);
+
+/**
  * Commands this test does not run, each with the test that does (`<spec file> › <test title>`): F6 / ⇧F6 are keys of
  * the renderer keymap, with no menu item to click.
  */
@@ -180,7 +186,7 @@ test('every registry command runs without a page error (library and reader menus
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {
-        if (COVERED_ELSEWHERE[id]) continue; // ⌘⌫ would move the sample to the trash: trash.spec.ts runs it
+        if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();

@@ -42,21 +42,25 @@ async function seed(page: Page, dir: string) {
 test('⌘⌫ moves the selection at once with 실행 취소, the trash row shows with its count, one item is named, and 파일 names the line by the view', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    const items = await importPaths(page, distinctPdfs(testInfo.outputPath('in'), 3));
+    const items = await importPaths(page, distinctPdfs(testInfo.outputPath('in'), 4));
     await expect(specialRow(page, 'trash')).toHaveCount(0); // an empty trash has no row (spec 4.3)
+    // R-2: an item trashed earlier (distinct-04) must stay in the trash through the undo below.
+    await trashItems(page, [items[3]!.id]);
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('1');
     await rowByTitle(page, 'distinct-01').click();
     await rowByTitle(page, 'distinct-02').click({ modifiers: [MOD] });
     expect(await menuLabel(app, 'item.trash')).toBe('휴지통으로 이동');
     await runMenuCommand(app, 'item.trash');
     await expect(page.getByTestId('trash-undo')).toContainText('자료 2개를 휴지통으로 옮겼습니다');
     await expect(rowByTitle(page, 'distinct-01')).toHaveCount(0);
-    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('2');
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('3');
     expect(await liveIds(page)).toEqual([items[2]!.id]);
-    // 실행 취소 brings back exactly those two, and the trash row goes with the trash.
+    // 실행 취소 brings back exactly those two: the older distinct-04 stays in the trash.
     await page.getByTestId('trash-undo').getByTestId('undo-action').click();
     await expect(rowByTitle(page, 'distinct-02')).toBeVisible();
-    await expect(specialRow(page, 'trash')).toHaveCount(0);
-    expect(await liveIds(page)).toEqual(items.map((i) => i.id).sort());
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('1');
+    expect(await liveIds(page)).toEqual(items.slice(0, 3).map((i) => i.id).sort());
+    expect(await trashed(page)).toEqual({ items: ['distinct-04'], collections: [] });
     // One item is named.
     await rowByTitle(page, 'distinct-03').click();
     await runMenuCommand(app, 'item.trash');
@@ -67,6 +71,13 @@ test('⌘⌫ moves the selection at once with 실행 취소, the trash row shows
     await expect.poll(() => menuLabel(app, 'item.trash')).toBe('영구 삭제…');
     await specialRow(page, 'all').click();
     await expect.poll(() => menuLabel(app, 'item.trash')).toBe('휴지통으로 이동');
+    // C-1: 영구 삭제 of the item the toast still offers to take back closes that toast (no 실행 취소 for what cannot come back).
+    await specialRow(page, 'trash').click();
+    await rowByTitle(page, 'distinct-03').click();
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await clickToCloseSheet(sheet, sheet.getByTestId('purge-confirm'));
+    await expect(page.getByTestId('purge-done')).toHaveText('자료 1개를 영구히 삭제했습니다');
+    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
   } finally {
     await app.close();
   }
@@ -103,6 +114,7 @@ test('the trash view: collection rows on top, 삭제한 날짜 last and newest f
     await expect(panel.getByTestId('inspector-restore')).toHaveText('복원');
     await expect(panel.getByTestId('trash-note')).toContainText(/^휴지통에 있습니다 · 오늘 /);
     await expect(panel.getByTestId('info-section')).toBeVisible();
+    await expect(panel.getByTestId('info-empty')).toHaveCount(0); // C-3: no hint to write what cannot be written here
     await expect(panel.getByTestId('info-edit')).toHaveCount(0);
     await expect(panel.getByTestId('tags-add')).toHaveCount(0);
     await expect(panel.getByTestId('tag-add-chip')).toHaveCount(0);

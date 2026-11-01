@@ -46,6 +46,12 @@ describe('the restore result sheet in words (spec 9.3, dialogs.html?scene=restor
     ]);
   });
 
+  it('a count of 0 after the first is left out, like the trash\'s: an empty library is just the item count', () => {
+    expect(restoreSheetText(payload({ trashed: 0, collections: 0, tags: 14 }), 'darwin').items).toBe('128개 · 태그 14개');
+    expect(restoreSheetText(payload({ trashed: 7, collections: 0, tags: 0 }), 'darwin').items).toBe('128개 · 휴지통 7개');
+    expect(restoreSheetText(payload({ items: 0, trashed: 0, collections: 0, tags: 0 }), 'darwin').items).toBe('0개');
+  });
+
   it('counts that differ are a line of their own, without the 파일 없음 sentence; an empty trash is left out; no copies at all is 없음', () => {
     const t = restoreSheetText(payload({ countsMatch: false, trashed: 0, files: 0, verified: 0 }), 'darwin');
     expect(t).toMatchObject({ tone: 'warning', items: '128개 · 컬렉션 9개 · 태그 14개', files: '없음', missingNote: null });

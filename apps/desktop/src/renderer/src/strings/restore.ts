@@ -6,9 +6,11 @@ export const restore = {
   /** Under the title: which backup ("2026. 10. 30. 오후 9:41에 만든 백업"). */
   madeAt: (at: string) => `${at}에 만든 백업`,
   labels: { items: '자료', files: '파일', location: '위치' },
-  /** Items outside the trash, the trash's when it holds any, live collections, tags. */
+  /** Items outside the trash first, then the trash's, the live collections' and the tags' counts — each only when it is not 0. */
   items: (items: number, trashed: number, collections: number, tags: number) =>
-    trashed > 0 ? `${items}개 · 휴지통 ${trashed}개 · 컬렉션 ${collections}개 · 태그 ${tags}개` : `${items}개 · 컬렉션 ${collections}개 · 태그 ${tags}개`,
+    [`${items}개`, trashed > 0 ? `휴지통 ${trashed}개` : null, collections > 0 ? `컬렉션 ${collections}개` : null, tags > 0 ? `태그 ${tags}개` : null]
+      .filter((cell) => cell !== null)
+      .join(' · '),
   /** Copies read back as the backup recorded them: all of them, or how many of all. */
   filesOk: (files: number) => `${files}개 확인 · 손상 없음`,
   filesSome: (files: number, verified: number) => `${files}개 중 ${verified}개 확인`,

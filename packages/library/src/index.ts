@@ -8,3 +8,5 @@ export * from './recovery';
 export * from './resolve';
 export * from './sniff';
 export * from './openable';
+export * from './asset-lock';
+export * from './purge';

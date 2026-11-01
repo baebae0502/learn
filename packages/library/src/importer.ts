@@ -1,11 +1,13 @@
+import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { LearnError, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
 import type { AssetRow, LibraryRepository } from '@learn/db';
+import { withManagedPath } from './asset-lock';
 import { fsyncDir, fsyncFile } from './fsync';
 import { sha256File } from './hash';
 import { managedRelativePath, type LibraryLayout } from './layout';
-import { sniffFile } from './sniff';
+import { sniffFile, type SniffResult } from './sniff';
 
 export const EXTRACTOR_VERSION = 'text-v0';
 /** A stopped file's outcome message. The queue leaves stopped files out of its report, so it is never shown. */
@@ -68,8 +70,6 @@ export class Importer {
   }
 
   private async run(src: string, opts: ImportOptions): Promise<ImportOutcome> {
-    const { repo } = this.deps;
-    const hooks = this.hooks;
     const st = await fs.stat(src);
     if (!st.isFile()) throw new LearnError('UNSUPPORTED_TYPE', '일반 파일만 가져올\u00a0수 있습니다.');
     const kind = await sniffFile(src);
@@ -77,7 +77,14 @@ export class Importer {
     const sha256 = await sha256File(src, { signal: opts.signal, onBytes: opts.onBytes });
     // First checkpoint: nothing has been written yet.
     opts.signal?.throwIfAborted();
+    // From the look-up of the file's assets to the commit, no purge removes this sha's managed copy (asset-lock.ts).
+    return withManagedPath(managedRelativePath(sha256), () => this.settle(src, opts, st, kind, sha256));
+  }
 
+  /** The import of a hashed file: duplicate check, the asset to use or place, and the commit. */
+  private async settle(src: string, opts: ImportOptions, st: Stats, kind: SniffResult, sha256: string): Promise<ImportOutcome> {
+    const { repo } = this.deps;
+    const hooks = this.hooks;
     const existing = repo.findAssetsBySha(sha256);
     const existingItemId = existing.map((a) => repo.itemIdsForAsset(a.id)[0]).find((id) => id !== undefined);
     if (existingItemId && !opts.allowDuplicate) return { status: 'duplicate', path: src, existingItemId };

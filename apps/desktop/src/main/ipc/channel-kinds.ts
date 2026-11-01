@@ -91,4 +91,5 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
 
   'sheet:payload': SHEET,
   'sheet:resolve': SHEET,
+  'sheet:act': SHEET,
 };

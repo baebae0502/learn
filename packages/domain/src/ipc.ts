@@ -9,7 +9,7 @@ import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
-import type { PurgeVariant, SheetPayload } from './sheets';
+import { CHECK_ACTS, type PurgeVariant, type SheetAction, type SheetPayload } from './sheets';
 import { prefsFields } from './settings';
 import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
@@ -153,6 +153,7 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']), applyToRest: z.boolean() }),
   z.object({ kind: z.literal('shortcuts') }),
   z.object({ kind: z.literal('purge'), confirmed: z.boolean() }),
+  z.object({ kind: z.literal('libraryCheck') }),
 ]);
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
@@ -163,6 +164,13 @@ export const confirmPurgeInput = z
   .strict();
 export type ConfirmPurgeInput = z.input<typeof confirmPurgeInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
+/** An open sheet's own action (P-17): the library check's, by row; 다시 연결… names the item, never a path. */
+export const sheetActionSchema = z.union([
+  z.object({ kind: z.literal('libraryCheck'), act: z.enum(CHECK_ACTS) }).strict(),
+  z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
+]) satisfies z.ZodType<SheetAction>;
+export const sheetActInput = z.object({ action: sheetActionSchema }).strict();
+export type SheetActInput = z.input<typeof sheetActInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
 /** Native context menus by kind (ADR-0005 §4): the registry commands that list the kind fill it; a kind none lists answers null. */
@@ -356,6 +364,8 @@ export interface LearnApi {
   sheet: {
     payload(): Promise<Result<SheetPayload>>;
     resolve(input: SheetResultInput): Promise<Result<void>>;
+    /** The open sheet's own action (P-17): main does it and answers what the sheet shows now (the check's rows). */
+    act(input: SheetActInput): Promise<Result<SheetPayload>>;
   };
   /** Subscribe to a main->renderer push event; returns an unsubscribe function. */
   on<K extends keyof LearnEventMap>(name: K, cb: (payload: LearnEventMap[K]) => void): () => void;

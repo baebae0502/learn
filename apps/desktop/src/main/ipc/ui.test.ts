@@ -50,6 +50,10 @@ registerUiIpc(
       },
       payloadFor: () => ({ kind: 'shortcuts' }),
       resolve: () => {},
+      act: async () => {
+        throw new Error('sheets.act not stubbed');
+      },
+      onAct: () => {},
     },
     windows: { openSettings, asSheet: (_owner, show) => show() },
     isSettingsWindow: (sender) => sender === (SETTINGS as never),

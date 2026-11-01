@@ -30,5 +30,5 @@ export const Channels = {
     showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
   },
-  sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve' },
+  sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve', act: 'sheet:act' },
 } as const;

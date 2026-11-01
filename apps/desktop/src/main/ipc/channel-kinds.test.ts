@@ -18,8 +18,8 @@ describe('CHANNEL_KINDS', () => {
     expect(Object.entries(CHANNEL_KINDS).filter(([, kinds]) => kinds.length === 0)).toEqual([]);
   });
 
-  it('a sheet: its payload and its answer, nothing else', () => {
-    expect(callableFrom('sheet')).toEqual(['sheet:payload', 'sheet:resolve']);
+  it('a sheet: its payload, its own actions and its answer, nothing else', () => {
+    expect(callableFrom('sheet')).toEqual(['sheet:act', 'sheet:payload', 'sheet:resolve']);
   });
 
   it('the settings window: what SettingsApp calls — app info and the library location, the device prefs, its window state and theme', () => {
@@ -29,7 +29,7 @@ describe('CHANNEL_KINDS', () => {
   });
 
   it("the main window: everything but the settings window's library location and the sheets' own channels", () => {
-    const elsewhere = ['app:chooseLibraryFolder', 'app:showLibraryFolder', 'sheet:payload', 'sheet:resolve'];
+    const elsewhere = ['app:chooseLibraryFolder', 'app:showLibraryFolder', 'sheet:act', 'sheet:payload', 'sheet:resolve'];
     expect(callableFrom('main')).toEqual(ALL.filter((c) => !elsewhere.includes(c)));
   });
 });

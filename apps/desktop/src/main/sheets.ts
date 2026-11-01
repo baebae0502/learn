@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
-import { LearnError, commandLabel, type CommandSpec, type SheetPayload, type SheetResult } from '@learn/domain';
+import { LearnError, commandLabel, type CommandSpec, type SheetAction, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
-import { REMEASURE_MS, contentHeight, fontsReady, markSized } from './measure';
+import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
 import { mainStrings } from './strings';
 import { registerWindowKind } from './window-kinds';
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440 };
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560 };
 /**
  * Off macOS: 8 px under the 52 px toolbar, centred across the window (design-spec 6 시트). macOS places a sheet itself:
  * centred over the parent window, which it dims (Big Sur and later — every macOS Electron 44 runs on).
@@ -24,6 +24,24 @@ export const SHEET_MARGIN = 16;
 export function sheetMaxHeight(roomHeight: number, platform: NodeJS.Platform): number {
   return Math.max(160, roomHeight - (platform === 'darwin' ? 2 * SHEET_MARGIN : SHEET_TOP + SHEET_MARGIN));
 }
+/** Room the library check keeps below its parent's height (P-26: at most the parent's height − 120, the list scrolls). */
+export const CHECK_SHEET_ROOM = 120;
+/** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap. */
+export const FOLLOWING_SHEETS: ReadonlySet<SheetPayload['kind']> = new Set<SheetPayload['kind']>(['libraryCheck']);
+
+/** The tallest a sheet of `kind` may be over a parent `roomHeight` tall. */
+export function sheetHeightCap(kind: SheetPayload['kind'], roomHeight: number, platform: NodeJS.Platform): number {
+  return kind === 'libraryCheck' ? Math.max(160, roomHeight - CHECK_SHEET_ROOM) : sheetMaxHeight(roomHeight, platform);
+}
+
+/** The sheet an action runs for: its window (where its own open panel hangs), its parent, and what it shows now. */
+export interface ActingSheet {
+  window: BrowserWindow;
+  parent: BrowserWindow;
+  payload: SheetPayload;
+}
+export type SheetActHandler = (action: SheetAction, sheet: ActingSheet) => Promise<SheetPayload>;
+
 /** A sheet not shown this long after its page began loading is given up (null), so the parent never stays blocked. */
 export const SHEET_SHOW_TIMEOUT_MS = 10_000;
 /** An unresponsive sheet is given up only if it does not answer again within this grace period (a long task is fine). */
@@ -55,11 +73,22 @@ export interface SheetHost {
   open(parent: BrowserWindow, payload: SheetPayload, signal?: AbortSignal): Promise<SheetResult | null>;
   payloadFor(contents: WebContents): SheetPayload;
   resolve(contents: WebContents, result: SheetResult): void;
+  /**
+   * sheet:act (P-17): the open sheet's own action, run by its kind's handler; the sheet shows the payload answered, and a
+   * reload of its page reads that one. One action at a time per sheet: a second waits for the first.
+   */
+  act(contents: WebContents, action: SheetAction): Promise<SheetPayload>;
+  /** The handler of a kind's actions; a kind with none refuses every action. */
+  onAct(kind: SheetPayload['kind'], handler: SheetActHandler): void;
 }
 
 interface Pending {
   payload: SheetPayload;
   settle(result: SheetResult | null): void;
+  window: BrowserWindow;
+  parent: BrowserWindow;
+  /** The action under way (sheet:act), which the next one waits for. */
+  acting: Promise<void>;
 }
 
 export function createSheetHost(opts: {
@@ -84,6 +113,7 @@ export function createSheetHost(opts: {
   /** Per parent window: the sheet showing now (and any queued behind it). */
   const queues = new Map<number, Promise<unknown>>();
   const heights = new Map<string, number>(); // a static sheet's natural height, measured in its own font
+  const handlers = new Map<SheetPayload['kind'], SheetActHandler>();
   const find = (contents: WebContents): Pending => {
     const p = pending.get(contents.id);
     if (!p) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
@@ -98,7 +128,8 @@ export function createSheetHost(opts: {
       }
       const width = SHEET_WIDTH[payload.kind];
       const room = parent.getContentBounds();
-      const maxHeight = sheetMaxHeight(room.height, opts.platform);
+      const follows = FOLLOWING_SHEETS.has(payload.kind);
+      const maxHeight = sheetHeightCap(payload.kind, room.height, opts.platform);
       const key = opts.staticKey?.(payload) ?? null;
       const known = key === null ? undefined : heights.get(key);
       const win = new BrowserWindow({
@@ -144,7 +175,7 @@ export function createSheetHost(opts: {
         // Keyboard focus goes back to the window the sheet hung over (Linux/Windows do not always hand it back).
         if (!parent.isDestroyed()) parent.focus();
       };
-      pending.set(id, { payload, settle });
+      pending.set(id, { payload, settle, window: win, parent, acting: Promise.resolve() });
       signal?.addEventListener('abort', giveUp, { once: true });
       /** onSheetShown ran for this sheet: only then does its closing tell the parent (shown and closed come in pairs). */
       let announced = false;
@@ -192,6 +223,7 @@ export function createSheetHost(opts: {
           try {
             win.setContentSize(width, h);
             if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
+            if (follows) await capHeight(win.webContents, maxHeight);
             await markSized(win.webContents);
           } catch {
             // Closed or gone mid-way: shown as it is, below, if it is still there.
@@ -201,6 +233,12 @@ export function createSheetHost(opts: {
         clearTimeout(watchdog);
         announce();
         win.show();
+        // The library check changes while it is open (sheet:act): the window follows its content, up to the cap.
+        if (follows && h !== null) {
+          followContentHeight(win.webContents, '[data-sheet-root]', h, (next) => {
+            if (!win.isDestroyed()) win.setContentSize(width, Math.min(next, maxHeight));
+          });
+        }
       });
       watchdog = setTimeout(() => {
         if (!win.isDestroyed() && !win.isVisible()) settle(null);
@@ -227,6 +265,22 @@ export function createSheetHost(opts: {
       const p = find(contents);
       if (p.payload.kind !== result.kind) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
       p.settle(result);
+    },
+    async act(contents, action) {
+      const p = find(contents);
+      const handler = handlers.get(p.payload.kind);
+      if (action.kind !== p.payload.kind || !handler) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
+      const run = p.acting.then(() => handler(action, { window: p.window, parent: p.parent, payload: p.payload }));
+      p.acting = run.then(
+        () => undefined,
+        () => undefined,
+      );
+      const next = await run;
+      if (pending.get(contents.id) === p) p.payload = next;
+      return next;
+    },
+    onAct(kind, handler) {
+      handlers.set(kind, handler);
     },
   };
 }

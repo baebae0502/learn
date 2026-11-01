@@ -92,3 +92,8 @@ export function followContentHeight(contents: WebContents, selector: string, kno
     () => {}, // the page went away mid-call
   );
 }
+
+/** A sheet that follows its content (sheets.ts FOLLOWING_SHEETS): the tallest its root may grow, as `--sheet-max-height`. */
+export async function capHeight(contents: WebContents, px: number): Promise<void> {
+  await contents.executeJavaScript(`document.documentElement.style.setProperty('--sheet-max-height', '${Math.round(px)}px')`, false);
+}

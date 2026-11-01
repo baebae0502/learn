@@ -44,6 +44,10 @@ registerUiIpc(
       },
       payloadFor: () => ({ kind: 'shortcuts' }),
       resolve: () => {},
+      act: async () => {
+        throw new Error('sheets.act not stubbed');
+      },
+      onAct: () => {},
     },
   }),
 );

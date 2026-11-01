@@ -394,12 +394,6 @@ export class LibraryRepository {
     return row !== undefined;
   }
 
-  /** Trashed items, most recently deleted first. */
-  listTrash(): LibraryItem[] {
-    const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
-    return rows.map((r) => toItem(r));
-  }
-
   /** Non-trashed items whose original files have identical content (same sha256, any storage mode), 2+ per group. */
   duplicateGroups(): DuplicateGroup[] {
     const rows = this.db

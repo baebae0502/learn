@@ -119,8 +119,6 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
     return changed.length;
   });
 
-  handle(Channels.library.listTrash, emptyInput, () => deps.getContext().repo.listTrash());
-
   handle(Channels.library.duplicateGroups, emptyInput, () => deps.getContext().repo.duplicateGroups());
 
   /**

@@ -9,7 +9,8 @@ exposeSurface({
   requests: {
     app: ['info'],
     library: [
-      'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'listTrash',
+      'pickAndImport', 'import', 'cancelImport', 'list', 'get', 'pickAndRelink', 'recoveryReport', 'detail', 'updateMetadata', 'trash', 'restore', 'trashView',
+      'purge', 'emptyTrash', 'keepOneOfDuplicates', 'keepOneOfAllDuplicates', 'undoKeepOne',
       'duplicateGroups', 'showInFolder', 'openExternally', 'searchTexts', 'exportCopy', 'revealExport', 'organize', 'getItems',
     ],
     collections: ['list', 'create', 'rename', 'move', 'remove', 'restore', 'addItems', 'removeItems'],

@@ -7,7 +7,9 @@ export const Channels = {
   library: {
     pickAndImport: 'library:pickAndImport', import: 'library:import', cancelImport: 'library:cancelImport', list: 'library:list', get: 'library:get',
     pickAndRelink: 'library:pickAndRelink', recoveryReport: 'library:recoveryReport', detail: 'library:detail',
-    updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', listTrash: 'library:listTrash',
+    updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', trashView: 'library:trashView',
+    purge: 'library:purge', emptyTrash: 'library:emptyTrash', keepOneOfDuplicates: 'library:keepOneOfDuplicates',
+    keepOneOfAllDuplicates: 'library:keepOneOfAllDuplicates', undoKeepOne: 'library:undoKeepOne',
     duplicateGroups: 'library:duplicateGroups', showInFolder: 'library:showInFolder', openExternally: 'library:openExternally',
     exportCopy: 'library:exportCopy', revealExport: 'library:revealExport',
     searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems',

@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
 import type { LearnEventMap, WindowState } from './events';
-import type { AppInfo, Collection, DuplicateGroup, ItemDetail, LibraryItem, RecoveryReport, SearchText, Tag } from './library';
+import type {
+  AppInfo, Collection, DuplicateGroup, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, RecoveryReport, SearchText, Tag, TrashView,
+} from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
@@ -35,6 +37,26 @@ export const itemIdInput = z.object({ itemId: z.uuid() });
 export const emptyInput = z.object({}).strict().optional();
 
 export const itemIdsInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(5000) });
+/**
+ * library.purge (영구 삭제…): trashed items and collection rows of the trash view, at least one id. Live and unknown ids
+ * are skipped by main. The item bound is the selection's (a trash view of a large library, all selected).
+ */
+export const purgeInput = z
+  .object({ itemIds: z.array(z.uuid()).max(1_000_000), collectionIds: z.array(z.uuid()).max(5000) })
+  .strict()
+  .refine((input) => input.itemIds.length + input.collectionIds.length > 0);
+/** library.keepOneOfDuplicates: rows chosen in the duplicates view; each one's group is cleaned once. */
+export const keepOneInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(1_000_000) }).strict();
+const idPairSchema = z.tuple([z.uuid(), z.uuid()]);
+/** library.undoKeepOne: the token keepOne handed out. Only items still in the trash under its stamp come back. */
+export const keepOneUndoInput = z
+  .object({
+    trashed: z.array(z.uuid()).max(1_000_000),
+    stamp: z.iso.datetime(),
+    memberships: z.array(idPairSchema).max(1_000_000),
+    tags: z.array(idPairSchema).max(1_000_000),
+  })
+  .strict();
 /** library.getItems: items by id. 5,000 like the other id lists; main asks the database 500 at a time. */
 export const getItemsInput = z.object({ ids: z.array(z.uuid()).min(1).max(5000) }).strict();
 /** Collection/tag names: NFC first (macOS can hand over decomposed Hangul), so equal-looking names compare equal. */
@@ -143,6 +165,9 @@ export type GetItemsInput = z.input<typeof getItemsInput>;
 
 export type ItemIdInput = z.input<typeof itemIdInput>;
 export type ItemIdsInput = z.input<typeof itemIdsInput>;
+export type PurgeInput = z.input<typeof purgeInput>;
+export type KeepOneInput = z.input<typeof keepOneInput>;
+export type KeepOneUndoInput = z.input<typeof keepOneUndoInput>;
 export type CollectionIdInput = z.input<typeof collectionIdInput>;
 export type RenameCollectionInput = z.input<typeof renameCollectionInput>;
 export type MoveCollectionInput = z.input<typeof moveCollectionInput>;
@@ -195,7 +220,21 @@ export interface LearnApi {
     updateMetadata(input: UpdateMetadataInput): Promise<Result<LibraryItem>>;
     trash(input: ItemIdsInput): Promise<Result<number>>;
     restore(input: ItemIdsInput): Promise<Result<number>>;
-    listTrash(): Promise<Result<LibraryItem[]>>;
+    /** The trash view (spec 4.3): its collection rows and items, most recently trashed first. */
+    trashView(): Promise<Result<TrashView>>;
+    /**
+     * 영구 삭제: the trashed ones among these, in one transaction; their files go after it (ADR-0006). Answers what was
+     * removed (nothing for live or unknown ids). Announced as libraryChanged{purge}.
+     */
+    purge(input: PurgeInput): Promise<Result<PurgedRows>>;
+    /** 휴지통 비우기: everything in the trash, as purge does. */
+    emptyTrash(): Promise<Result<PurgedRows>>;
+    /** 하나만 남기고 휴지통으로 (spec 5) for the duplicate groups of these items; the answer carries its undo. */
+    keepOneOfDuplicates(input: KeepOneInput): Promise<Result<KeepOneResult>>;
+    /** 중복 N묶음 모두 정리: every duplicate group. */
+    keepOneOfAllDuplicates(): Promise<Result<KeepOneResult>>;
+    /** The undo of either: how many items came back. */
+    undoKeepOne(input: KeepOneUndoInput): Promise<Result<number>>;
     duplicateGroups(): Promise<Result<DuplicateGroup[]>>;
     /** Reveal the item's file in Finder / the file manager. */
     showInFolder(input: ItemIdInput): Promise<Result<void>>;

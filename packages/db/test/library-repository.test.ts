@@ -315,15 +315,15 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
 
     expect(repo.listItems().map((i) => i.id)).toEqual([c]);
     expect(repo.getItem(a)).toBeUndefined();
-    const trash = repo.listTrash();
-    expect(trash.map((i) => i.id)).toEqual([b, a]);
+    const trash = repo.trashView().items;
+    expect(trash.map((i) => [i.id, i.deletedAt])).toEqual([[b, '2026-10-20T03:00:00.000Z'], [a, '2026-10-20T02:00:00.000Z']]);
     expect(trash[1]).toMatchObject({ id: a });
     expect(trash[1]).not.toHaveProperty('tagIds');
     expect((db.prepare('SELECT deleted_at FROM items WHERE id = ?').get(a) as { deleted_at: string }).deleted_at).toBe('2026-10-20T02:00:00.000Z');
     expect(repo.counts().items).toBe(1);
 
     expect(repo.restore([a, c, newId()])).toBe(1); // only a was in the trash
-    expect(repo.listTrash().map((i) => i.id)).toEqual([b]);
+    expect(repo.trashView().items.map((i) => i.id)).toEqual([b]);
     expect(repo.getItem(a)).toMatchObject({ id: a });
     expect(repo.listItems().map((i) => i.id).sort()).toEqual([a, c].sort());
   });

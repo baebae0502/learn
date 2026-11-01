@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { formatDate } from '../format';
-import { hasInfo, infoRows, partialDate } from './infoRows';
+import { hasInfo, infoRows, partialDate, showsInfoHint } from './infoRows';
 
 const times = { createdAt: '2026-10-20T11:40:00.000Z', updatedAt: '2026-10-21T00:30:00.000Z' };
 const now = new Date(2026, 9, 23, 12, 0);
@@ -34,5 +34,13 @@ describe('정보 rows (spec §5.3)', () => {
     expect(hasInfo({ creators: [], language: 'ko' })).toBe(true);
     expect(hasInfo({ creators: [{ name: '김하린', role: 'other' }] })).toBe(true);
     expect(infoRows({ creators: [] }, times, now).map((r) => r.field)).toEqual(['createdAt', 'updatedAt']);
+  });
+});
+
+describe('the empty-info hint (critique C-3)', () => {
+  it('is shown where the panel can edit, and never in a read-only panel (a trashed row has no pencil)', () => {
+    expect(showsInfoHint({ creators: [] }, false)).toBe(true);
+    expect(showsInfoHint({ creators: [] }, true)).toBe(false);
+    expect(showsInfoHint({ creators: [{ name: 'A' }] } as never, false)).toBe(false);
   });
 });

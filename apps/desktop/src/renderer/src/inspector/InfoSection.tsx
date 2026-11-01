@@ -10,7 +10,7 @@ import { cx } from '../ui/cx';
 import { currentPlatform } from '../ui/platform';
 import { useNow } from '../useNow';
 import { InfoEditor } from './InfoEditor';
-import { hasInfo, infoRows, type InfoRow } from './infoRows';
+import { infoRows, showsInfoHint, type InfoRow } from './infoRows';
 import { Section } from './Section';
 
 /**
@@ -40,7 +40,7 @@ export function InfoSection({ item, detail, readOnly = false }: { item: LibraryI
         <InfoEditor item={item} detail={detail} />
       ) : (
         <>
-          {!hasInfo(detail.metadata) && (
+          {showsInfoHint(detail.metadata, readOnly) && (
             <p className="info-hint" data-testid="info-empty">
               {t.inspector.noInfo}
             </p>

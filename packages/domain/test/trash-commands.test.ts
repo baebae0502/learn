@@ -91,7 +91,7 @@ describe('the trash view in the domain (P-7, spec 4.3)', () => {
   });
   it('삭제한 날짜: the last catalogue column, sortable, drawn only by the trash view, with a sort of its own', () => {
     expect(LIBRARY_COLUMN_IDS.at(-1)).toBe('deletedAt');
-    expect(LIBRARY_COLUMNS.find((c) => c.id === 'deletedAt')).toEqual({ id: 'deletedAt', label: '삭제한 날짜', defaultVisible: false, defaultWidth: 132, minWidth: 112, align: 'start', trashOnly: true });
+    expect(LIBRARY_COLUMNS.find((c) => c.id === 'deletedAt')).toEqual({ id: 'deletedAt', label: '삭제한 날짜', defaultVisible: false, defaultWidth: 112, minWidth: 112, align: 'start', trashOnly: true });
     expect(LIBRARY_COLUMNS.filter((c) => c.trashOnly).map((c) => c.id)).toEqual(['deletedAt']);
     expect(TRASH_COLUMNS).toEqual(['deletedAt']);
     expect(Object.hasOwn(SETTINGS, 'library.sort.trash')).toBe(true);

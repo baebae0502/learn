@@ -169,4 +169,9 @@ describe('the trash view\'s 삭제한 날짜 (M6 spec 4.3)', () => {
     expect(moveColumn(cfg, forced, 'creators', 6)).toBe(cfg);
     expect(visibleColumns(moveColumn(cfg, forced, 'creators', 5), forced).map((c) => c.id)).toEqual(['title', 'year', 'type', 'createdAt', 'creators', 'deletedAt']);
   });
+  it('the default trash columns fit a 1024 window with the panel closed (critique C-2: 776 of 784 + 8)', () => {
+    const cfg = defaultColumns();
+    const shown = visibleColumns(cfg, forced);
+    expect(columnTemplates(shown, fixedWidths(cfg, shown)).minWidth).toBeLessThanOrEqual(776);
+  });
 });

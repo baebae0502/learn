@@ -323,8 +323,11 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
 
 /** The backup's own database cannot be read: the backup is what is broken, not the library the user has open. */
 function unreadableBackup(e: unknown): unknown {
-  return toLearnError(e).code === 'LIBRARY_UNAVAILABLE' ? new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase, { cause: e }) : e;
+  // Only SQLite's own corruption codes: a full disk or a denied write says something else, and keeps its own copy.
+  const code = (e as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && SQLITE_DAMAGED.test(code) ? new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase, { cause: e }) : e;
 }
+const SQLITE_DAMAGED = /^SQLITE_(CORRUPT|NOTADB)/;
 
 /** The manifest as checked (zod's output: counts written before a version are absent). */
 export type BackupManifestRead = z.output<typeof BackupManifestSchema>;
@@ -366,7 +369,8 @@ async function restoreCopy(
 ): Promise<CopyOutcome> {
   const src = path.join(backupDir, ...rel.split('/'));
   try {
-    await fs.stat(src);
+    // Anything but a file (a folder put there by hand) is not the copy the backup lists.
+    if (!(await fs.stat(src)).isFile()) return 'missing';
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
     throw e;
@@ -453,6 +457,8 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
     try {
       // The backup's database can open and still be broken: what migrate or the reads hit is the backup's fault too.
       migrate(db, { dbFile: temp.dbFile });
+      // Pages that no read below touches can be broken too: SQLite's own quick check, anything but "ok" refuses.
+      if (db.pragma('quick_check', { simple: true }) !== 'ok') throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase);
       const repo = new LibraryRepository(db);
       // Every asset the manifest lists is in the database it came with: one that is not means this is not that backup.
       for (const entry of manifest.assets) {

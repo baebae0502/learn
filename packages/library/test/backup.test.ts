@@ -238,13 +238,46 @@ describe('backup and restore (AC15 — files part)', () => {
         () => 'restored',
         (e: unknown) => e,
       );
-      if (outcome === 'restored') continue;
       expect(outcome, `page ${page}`).toMatchObject({ code: 'VALIDATION_FAILED', message: RESTORE_COPY.damagedDatabase });
       expect(fs.existsSync(target), `page ${page}`).toBe(false);
       expect(fs.readdirSync(path.dirname(target)).filter((e) => e.includes('.restoring-')), `page ${page}`).toEqual([]);
       refused.push(page);
     }
     expect(refused.length).toBeGreaterThan(0);
+  });
+
+  it('a disk that fills up while the restored database is read is not reported as a damaged backup', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-full');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const full = Object.assign(new Error('database or disk is full'), { code: 'SQLITE_FULL' });
+    vi.spyOn(LibraryRepository.prototype, 'counts').mockImplementation(() => {
+      throw full;
+    });
+    const target = path.join(tempDir('restore'), 'Library');
+    const outcome = await restoreBackup({ backupDir: dest, targetRoot: target }).then(
+      () => 'restored',
+      (e: unknown) => e,
+    );
+    expect(outcome).toBe(full);
+    expect(outcome).not.toMatchObject({ message: RESTORE_COPY.damagedDatabase });
+    expect(fs.existsSync(target)).toBe(false);
+    expect(fs.readdirSync(path.dirname(target)).filter((e) => e.includes('.restoring-'))).toEqual([]);
+  });
+
+  it('a folder where a managed copy should be counts as missing, like an absent file, and does not fail the restore', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-dir-for-file');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const victim = manifest.assets.find((a) => a.included)!;
+    const file = path.join(dest, ...victim.relativePath!.split('/'));
+    fs.rmSync(file);
+    fs.mkdirSync(file);
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target });
+    expect(result).toMatchObject({ verifiedAssets: 1, missingAssets: [victim.assetId], hashMismatches: [] });
+    expect(fs.existsSync(target)).toBe(true);
+    expect(fs.readdirSync(path.dirname(target)).filter((e) => e.includes('.restoring-'))).toEqual([]);
   });
 
   it('copies each managed file from the path its hash names, not the path its row claims, and restore names the row', async () => {

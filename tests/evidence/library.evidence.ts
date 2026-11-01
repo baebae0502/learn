@@ -221,7 +221,7 @@ test('M4 table: the column header menu — every column, the shown ones checked,
     await expect.poll(async () => (await recordedPopups(s.app)).length).toBe(1);
     const items = (await recordedPopups(s.app))[0]!.map((i) => [i.type === 'separator' ? '-' : i.label, i.checked, i.enabled]);
     const want = [
-      ...LIBRARY_COLUMNS.map((c) => [c.label, c.defaultVisible, c.required !== true]),
+      ...LIBRARY_COLUMNS.filter((c) => c.trashOnly !== true).map((c) => [c.label, c.defaultVisible, c.required !== true]), // 삭제한 날짜 is the trash view's only
       ['-', false, true],
       ['열 구성 되돌리기', false, true],
     ];
@@ -312,7 +312,7 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
     const rows = await sheet.locator('section[aria-label="자료"] [data-testid="shortcut-row"]').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
     v['sheetItemGroup'] = rows;
-    check('selection: ⌘/ lists ⇧⌘R under 자료', rows.length === 1 && rows[0]!.startsWith(IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'), rows);
+    check('selection: ⌘/ lists ⇧⌘R under 자료', rows.length === 2 && rows[0]!.startsWith(IS_MAC ? 'Finder에서 보기' : '폴더에서 보기') && rows[1]!.startsWith('휴지통으로 이동'), rows); // then ⌘⌫ (M6)
     // Two columns, groups whole, and a natural height that fits a 1440 × 900 Mac's ≈ 806 pt parent (room 774).
     const layout = await sheet.evaluate(() => ({
       columns: [...document.querySelectorAll('.shortcut-column')].map((c) => [...c.querySelectorAll('section')].map((g) => g.getAttribute('aria-label'))),

@@ -1,4 +1,4 @@
-import { SETTINGS, type CommandArgs, type ItemType, type LibraryItem, type LibrarySortColumn, type StorageMode } from '@learn/domain';
+import { SETTINGS, type CommandArgs, type ItemType, type LibraryItem, type LibrarySortColumn, type StorageMode, type TrashedItem } from '@learn/domain';
 
 export type { LibrarySortColumn };
 export type LibrarySort = { column: LibrarySortColumn; direction: 'asc' | 'desc' };
@@ -9,13 +9,16 @@ export const DEFAULT_SORT: LibrarySort = { column: 'createdAt', direction: 'desc
 /** The recent view sorts by when the item was opened, newest first (spec 3.2). */
 export const DEFAULT_SORT_RECENT: LibrarySort = { column: 'openedAt', direction: 'desc' };
 
+/** The trash view sorts by when each row was trashed, newest first (spec 4.3). */
+export const DEFAULT_SORT_TRASH: LibrarySort = { column: 'deletedAt', direction: 'desc' };
+
 /** library.sort (or library.sort.recent, with its own fallback) as stored, else the fallback. */
 export function parseSort(raw: unknown, fallback: LibrarySort = DEFAULT_SORT): LibrarySort {
   const r = SETTINGS['library.sort'].safeParse(raw);
   return r.success ? r.data : fallback;
 }
 
-const NEWEST_FIRST: ReadonlySet<LibrarySortColumn> = new Set<LibrarySortColumn>(['createdAt', 'updatedAt', 'openedAt', 'size', 'progress']);
+const NEWEST_FIRST: ReadonlySet<LibrarySortColumn> = new Set<LibrarySortColumn>(['createdAt', 'updatedAt', 'openedAt', 'size', 'progress', 'deletedAt']);
 /** The direction a first press on a column sorts in (as Finder): dates and sizes newest or largest first. */
 export const firstDirection = (column: LibrarySortColumn): 'asc' | 'desc' => (NEWEST_FIRST.has(column) ? 'desc' : 'asc');
 
@@ -52,6 +55,7 @@ const KEY: Readonly<Record<LibrarySortColumn, (i: LibraryItem) => SortKey>> = {
   storageMode: (i) => STORAGE_ORDER[i.storageMode],
   size: (i) => i.size,
   originalName: (i) => text(i.originalName),
+  deletedAt: (i) => time((i as Partial<TrashedItem>).deletedAt ?? null), // a live item has none: last
 };
 
 /**
@@ -60,7 +64,7 @@ const KEY: Readonly<Record<LibrarySortColumn, (i: LibraryItem) => SortKey>> = {
  * then in the list's own order (the repository's created_at DESC, rowid DESC: two files of one import can share a
  * millisecond). Returns a new array.
  */
-export function sortItems(items: readonly LibraryItem[], sort: LibrarySort): LibraryItem[] {
+export function sortItems<T extends LibraryItem>(items: readonly T[], sort: LibrarySort): T[] {
   const keyOf = KEY[sort.column];
   const dir = sort.direction === 'asc' ? 1 : -1;
   const rows = items.map((item, at) => ({ item, at, key: keyOf(item), added: time(item.createdAt) ?? 0 }));

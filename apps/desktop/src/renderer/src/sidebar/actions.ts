@@ -52,7 +52,6 @@ export const collectionActions = createCollectionActions({
     remove: (input) => unwrap(api().collections.remove(input)),
     restore: (input) => unwrap(api().collections.restore(input)),
   },
-  confirm: (input) => unwrap(api().ui.confirm(input)),
   model: currentModel,
   scope: () => useLibrary.getState().scope,
   setScope: (scope) => useLibrary.getState().setScope(scope),

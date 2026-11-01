@@ -9,7 +9,7 @@ import type { OrganizeSnapshot } from './organize';
 import { readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
-import type { SheetPayload } from './sheets';
+import type { PurgeVariant, SheetPayload } from './sheets';
 import { prefsFields } from './settings';
 import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
@@ -117,7 +117,7 @@ export const commandContextInput = z
     selectionRelinkable: contextCount,
     /** The colour slots 1–8 whose tag every selected item has, as a bitmask (bit n−1 = slot n). */
     selectionTagPositions: z.number().int().min(0).max(255),
-    scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'collection']),
+    scope: z.enum(['all', 'recent', 'unfiled', 'duplicates', 'trash', 'collection']),
     collectionCount: contextCount,
     /** The colour slots 1–8 in use as a bitmask (bit n−1 = slot n). */
     tagPositions: z.number().int().min(0).max(255),
@@ -127,6 +127,8 @@ export const commandContextInput = z
     sortDirection: z.enum(['asc', 'desc']),
     /** The columns drawn as a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
     columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
+    /** Trashed items and collection rows (OrganizeSnapshot.trashCount): 휴지통 비우기 needs one (P-10). */
+    trashCount: contextCount,
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
   })
@@ -136,10 +138,16 @@ export type CommandContextInput = z.input<typeof commandContextInput>;
 export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('duplicate'), choice: z.enum(['open', 'add', 'skip']), applyToRest: z.boolean() }),
   z.object({ kind: z.literal('shortcuts') }),
+  z.object({ kind: z.literal('purge'), confirmed: z.boolean() }),
 ]);
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
 export type ConfirmInput = z.input<typeof confirmInput>;
+/** 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. */
+export const confirmPurgeInput = z
+  .object({ variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount })
+  .strict();
+export type ConfirmPurgeInput = z.input<typeof confirmPurgeInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;
 
 const point = { x: z.number().finite(), y: z.number().finite() };
@@ -149,6 +157,8 @@ export const showContextMenuInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('item'), itemIds: z.array(z.uuid()).min(1).max(1_000_000), ...point }),
   z.object({ kind: z.literal('collection'), collectionIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
+  // The trash view's rows (P-10): trashed items and collection rows together; either list may be empty, main answers null when none is in the trash.
+  z.object({ kind: z.literal('trash'), itemIds: z.array(z.uuid()).max(1_000_000), collectionIds: z.array(z.uuid()).max(5000), ...point }),
 ]);
 /** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z
@@ -299,6 +309,8 @@ export interface LearnApi {
     reportContext(input: CommandContextInput): Promise<Result<void>>;
     /** A sheet on the main window with the confirming button first (the default) and 취소: true when it was chosen. */
     confirm(input: ConfirmInput): Promise<Result<boolean>>;
+    /** The purge sheet (P-25): true when its destructive button was pressed; 취소, esc, ↩ and a sheet that went away are false. */
+    confirmPurge(input: ConfirmPurgeInput): Promise<Result<boolean>>;
     /** The ⌘/ shortcut sheet over the calling window; resolves when it closes. */
     showShortcuts(): Promise<Result<void>>;
     /** ⌘, : opens the settings window, or brings it to the front (the main-owned app.settings command). */

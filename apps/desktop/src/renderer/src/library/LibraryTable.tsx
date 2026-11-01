@@ -1,10 +1,10 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { ChevronDown, ChevronUp, Clapperboard, FileText } from 'lucide-react';
+import { ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
 } from 'react';
-import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem, type OrganizeTag } from '@learn/domain';
+import { COLUMN_WIDTH_MAX, type ColumnConfig, type LibraryColumnId, type LibraryColumnSpec, type LibraryItem, type OrganizeTag, type TrashedCollection, type TrashedItem } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { usePrefs } from '../data/queries';
 import { defaultDensity, density as ROW_HEIGHT } from '../design/tokens';
@@ -19,6 +19,7 @@ import { isNavigationKey, lastInput } from '../ui/inputModality';
 import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
+import { collectionMatch } from '../trash/trashRows';
 import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
@@ -34,6 +35,12 @@ import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort
 
 export interface LibraryTableProps {
   rows: readonly LibraryItem[];
+  /** The trash view's collection rows (spec 4.3, P-9): drawn above `rows`, in the same selection and keys; no other view has them. */
+  collectionRows?: readonly TrashedCollection[];
+  /** The quick search's (deferred) query, for the collection rows' <mark>. */
+  collectionQuery?: string;
+  /** Rows are dragged and take tag drops; the trash view's are not live items and do neither. Default true. */
+  draggable?: boolean;
   columns: ColumnConfig;
   /** Columns the view shows whatever `columns` says (the recent view's 마지막으로 연 날): drawn after the title, locked in the header menu. */
   forced?: readonly LibraryColumnId[];
@@ -62,12 +69,14 @@ const OVERSCAN = 8;
 const RESIZE_STEP = 8;
 const NO_COLUMNS: readonly LibraryColumnId[] = [];
 /** Tabular figures (design-spec 6 표: 숫자는 tabular). */
-const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size']);
-const ROW = '[data-testid="item-row"]';
+const NUMERIC: ReadonlySet<LibraryColumnId> = new Set<LibraryColumnId>(['year', 'createdAt', 'updatedAt', 'openedAt', 'size', 'deletedAt']);
+/** Every body row, an item's or (in the trash) a collection's: the selection, the keys and the focus go by its `data-row-id`. */
+const ROW = '[role="row"][data-row-id]';
+const NO_COLLECTIONS: readonly TrashedCollection[] = [];
 const NO_TAGS: readonly OrganizeTag[] = [];
 const tagsDescriptionId = (itemId: string) => `row-tags-${itemId}`;
 const rowIdOf = (target: EventTarget): string | null =>
-  target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['itemId'] ?? null) : null;
+  target instanceof Element ? (target.closest<HTMLElement>(ROW)?.dataset['rowId'] ?? null) : null;
 const isMac = () => currentPlatform() === 'darwin';
 const snapshot = (s: SelectionState): SelectionState => ({ selected: s.selected, anchorId: s.anchorId, cursorId: s.cursorId });
 
@@ -94,6 +103,8 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
       return formatSize(item.size);
     case 'originalName':
       return item.originalName;
+    case 'deletedAt':
+      return 'deletedAt' in item ? formatDate((item as TrashedItem).deletedAt, now) : '';
   }
 }
 
@@ -131,6 +142,8 @@ interface ItemRowProps {
   tags: readonly OrganizeTag[];
   /** The rows a drag of this row takes (spec 8.2): the selection in table order when the row is in it, else the row alone. */
   dragIdsOf: (rowId: string) => string[];
+  /** Dragged and a tag-drop target (false in the trash view). */
+  draggable: boolean;
 }
 
 /**
@@ -138,10 +151,10 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf, draggable }: ItemRowProps) {
   const last = columns.length - 1;
   const rowRef = useRef<HTMLDivElement>(null);
-  const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf);
+  const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf, draggable);
   // The names of the coloured tags are the row's description; they sit beside the cells, not in the title, so the row's name stays the title.
   const description = tagsDescription(tags);
   return (
@@ -156,6 +169,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       className="table-row"
       style={{ transform: `translateY(${top}px)` }}
       data-testid="item-row"
+      data-row-id={item.id}
       data-item-id={item.id}
       data-title={item.title}
       data-index={index}
@@ -190,6 +204,66 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
   );
 });
 
+interface CollectionRowProps {
+  collection: TrashedCollection;
+  index: number;
+  top: number;
+  selected: boolean;
+  tabStop: boolean;
+  ring: boolean;
+  columns: readonly LibraryColumnSpec[];
+  now: Date;
+  match: Match | null;
+}
+
+/**
+ * A collection row of the trash view (spec 4.3, library.html?state=trash): the folder and the name, the items it still has
+ * where the author goes, the day it was trashed; the other cells empty. Not dragged; takes no drop.
+ */
+const CollectionRow = memo(function CollectionRow({ collection, index, top, selected, tabStop, ring, columns, now, match }: CollectionRowProps) {
+  const last = columns.length - 1;
+  return (
+    <div
+      role="row"
+      aria-rowindex={index + 2}
+      aria-selected={selected}
+      tabIndex={tabStop ? 0 : -1}
+      className="table-row is-collection"
+      style={{ transform: `translateY(${top}px)` }}
+      data-testid="trash-collection-row"
+      data-row-id={collection.id}
+      data-collection-id={collection.id}
+      data-title={collection.name}
+      data-index={index}
+      data-selected={selected || undefined}
+      data-focus-visible={ring || undefined}
+    >
+      {columns.map((c, i) => (
+        <div
+          key={c.id}
+          role={c.id === 'title' ? 'rowheader' : 'gridcell'}
+          aria-colindex={i + 1}
+          className={cx('td', c.align === 'end' && 'end', NUMERIC.has(c.id) && 'num', i === 0 && 'is-first', i === last && 'is-last')}
+          data-col={c.id}
+        >
+          {c.id === 'title' ? (
+            <>
+              <Icon icon={Folder} />
+              <span className="item-title ellipsis" title={collection.name}>
+                {highlight(collection.name, match)}
+              </span>
+            </>
+          ) : c.id === 'creators' ? (
+            <span className="row-meta num ellipsis">{t.trash.collectionItems(collection.itemCount)}</span>
+          ) : c.id === 'deletedAt' ? (
+            <span className="ellipsis">{formatDate(collection.deletedAt, now)}</span>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+});
+
 /**
  * The library table (M4 spec 3; ADR-0004 "M4 표": TanStack Virtual + our own grid): a `role="grid"` whose rows the
  * virtualizer places, columns from the catalogue on one CSS grid template, header sort, column edges that trade width
@@ -199,6 +273,11 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
  */
 export function LibraryTable(props: LibraryTableProps) {
   const { rows, columns, sort } = props;
+  const groups = props.collectionRows ?? NO_COLLECTIONS;
+  const draggable = props.draggable ?? true;
+  /** Collection rows first (trash only), then the items: index i < nc is groups[i], else rows[i − nc]. */
+  const nc = groups.length;
+  const count = nc + rows.length;
   useRevealRow(rows, props.revealId);
   const now = useNow(); // 오늘/어제 move on at midnight
   const selected = useLibrary((s) => s.selected);
@@ -207,16 +286,16 @@ export function LibraryTable(props: LibraryTableProps) {
   const forced = props.forced ?? NO_COLUMNS;
   const visible = useMemo(() => visibleColumns(columns, forced), [columns, forced]);
   const last = visible.length - 1;
-  const order = useMemo(() => rowOrder(rows.map((r) => r.id)), [rows]);
+  const order = useMemo(() => rowOrder([...groups.map((c) => c.id), ...rows.map((r) => r.id)]), [groups, rows]);
   const cursorIndex = order.indexOf(cursorId);
   // The one stop: the cursor row; before there is one, the first selected row, else the first row.
-  const stop = cursorIndex >= 0 ? cursorIndex : Math.max(0, rows.findIndex((r) => selected.has(r.id)));
+  const stop = cursorIndex >= 0 ? cursorIndex : Math.max(0, order.ids.findIndex((id) => selected.has(id)));
 
   const grid = useRef<HTMLDivElement>(null);
   const head = useRef<HTMLDivElement>(null);
   const headClip = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const getItemKey = useCallback((i: number) => rows[i]!.id, [rows]);
+  const getItemKey = useCallback((i: number) => order.ids[i]!, [order]);
   // The stop row is always drawn, however far the view scrolled from it: a focused row that left the DOM would drop
   // the focus to <body>.
   const rangeExtractor = useCallback(
@@ -228,7 +307,7 @@ export function LibraryTable(props: LibraryTableProps) {
     [stop],
   );
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count,
     getScrollElement: () => scroller.current,
     estimateSize: () => rowHeight,
     overscan: OVERSCAN,
@@ -267,7 +346,7 @@ export function LibraryTable(props: LibraryTableProps) {
   }, []);
   // Rows added or removed bring the bar or take it away in the commit that draws them; the observer would only report it at the
   // next frame, and a read in between (a test's, a handler's) would find the header over the bar's column.
-  useLayoutEffect(() => measureGutter.current?.(), [rows.length, rowHeight]);
+  useLayoutEffect(() => measureGutter.current?.(), [count, rowHeight]);
   // The header follows the body sideways (the body's scroll event comes before the frame that paints it).
   const onScrollerScroll = useCallback(() => {
     if (headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
@@ -358,7 +437,7 @@ export function LibraryTable(props: LibraryTableProps) {
   // The grid can hold the focus itself (the window's hand-over, a press on the empty body): the stop row takes it as
   // soon as there is one.
   useLayoutEffect(() => {
-    if (rows.length > 0 && document.activeElement === grid.current) focusStop();
+    if (count > 0 && document.activeElement === grid.current) focusStop();
   });
 
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
@@ -528,7 +607,7 @@ export function LibraryTable(props: LibraryTableProps) {
   }, [currentWidths, saveWidths]);
 
   const items = virtualizer.getVirtualItems();
-  const showEmpty = rows.length === 0 && props.empty !== undefined && props.empty !== null;
+  const showEmpty = count === 0 && props.empty !== undefined && props.empty !== null;
   const vars = { '--head-cols': tracks.head, '--row-cols': tracks.row, '--table-min-width': `${tracks.minWidth}px` } as CSSProperties;
   return (
     <div
@@ -536,7 +615,7 @@ export function LibraryTable(props: LibraryTableProps) {
       role="grid"
       aria-label={t.library.table}
       aria-multiselectable="true"
-      aria-rowcount={rows.length + (showEmpty ? 2 : 1)}
+      aria-rowcount={count + (showEmpty ? 2 : 1)}
       aria-colcount={visible.length}
       tabIndex={-1}
       className="library-table"
@@ -629,7 +708,24 @@ export function LibraryTable(props: LibraryTableProps) {
             onContextMenu={onBodyContextMenu}
           >
             {items.map((v) => {
-              const item = rows[v.index]!;
+              if (v.index < nc) {
+                const c = groups[v.index]!;
+                return (
+                  <CollectionRow
+                    key={v.key}
+                    collection={c}
+                    index={v.index}
+                    top={v.start}
+                    selected={selected.has(c.id)}
+                    tabStop={v.index === stop}
+                    ring={ring && focusedId === c.id}
+                    columns={visible}
+                    now={now}
+                    match={collectionMatch(c.name, props.collectionQuery ?? '')}
+                  />
+                );
+              }
+              const item = rows[v.index - nc]!;
               return (
                 <ItemRow
                   key={v.key}
@@ -644,6 +740,7 @@ export function LibraryTable(props: LibraryTableProps) {
                   match={props.titleMatches?.get(item.id) ?? null}
                   tags={props.tagsOf?.(item.id) ?? NO_TAGS}
                   dragIdsOf={dragIdsOf}
+                  draggable={draggable}
                 />
               );
             })}

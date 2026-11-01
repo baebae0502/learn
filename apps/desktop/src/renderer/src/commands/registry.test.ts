@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, type CommandId, type CommandTargetInfo } from '@learn/domain';
-import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, type CommandEnv, type CommandTarget } from './registry';
+import { COMMAND_HANDLERS, contextOf, isCommandEnabled, menuTarget, reportedContext, runCommand, runPicked, yieldsToText, type CommandEnv, type CommandTarget } from './registry';
 
 const ID = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const OTHER = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';
@@ -38,6 +38,11 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   exportCopy: vi.fn(),
   editInfo: vi.fn(),
   addToCollection: vi.fn(),
+  trashSelection: () => ({ itemIds: [], collectionIds: [] }),
+  trashItems: vi.fn(),
+  restore: vi.fn(),
+  purge: vi.fn(),
+  emptyTrash: vi.fn(),
   removeFromCollection: vi.fn(),
   focusSearch: vi.fn(),
   findEverywhere: vi.fn(),
@@ -364,7 +369,7 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     const e = env({ scope: 'collection', collectionCount: 2, tagPositions: 0b101, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b111 });
     expect(contextOf(e)).toMatchObject({ scope: 'collection', collectionCount: 2, tagPositions: 5, tagFilterCount: 1, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 7 });
     expect(Object.keys(contextOf(e)).sort()).toEqual(
-      ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'selectionTagPositions', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'view'].sort(),
+      ['blocked', 'collectionCount', 'columnsShown', 'libraryCount', 'scope', 'searchActive', 'selectionAvailable', 'selectionCount', 'selectionRelinkable', 'selectionTagPositions', 'sortColumn', 'sortDirection', 'tagFilterCount', 'tagPositions', 'textSize', 'trashCount', 'view'].sort(),
     );
   });
   it('컬렉션에 추가 passes the target items and the row\'s value to the env, in the library, for any file state', () => {
@@ -401,5 +406,43 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
     expect(runCommand('file.cancelImport', running)).toBe(true);
     expect(running.cancelImport).toHaveBeenCalledTimes(1);
     expect(runCommand('file.cancelImport', env({ importRunning: true, blocked: true }))).toBe(false); // under the question's sheet
+  });
+});
+
+describe('the trash commands (P-10, P-11)', () => {
+  const TRASH: CommandTargetInfo = { kind: 'trash' };
+  const asTrash = (target: CommandTarget): CommandTargetInfo[] => [...(target.itemIds ?? []), ...(target.collectionIds ?? [])].map(() => TRASH);
+  it('⌘⌫ moves the live selection to the trash; in the trash view it asks to purge the trash rows; 복원 restores them', () => {
+    const e = env({ libraryCount: 3, selectionCount: 2, targetsOf: available, selection: () => [ID, OTHER] });
+    expect(runCommand('item.trash', e, menuTarget('item.trash', e))).toBe(true);
+    expect(e.trashItems).toHaveBeenCalledExactlyOnceWith([ID, OTHER]);
+    expect(runCommand('item.restore', e, menuTarget('item.restore', e))).toBe(false);
+    const rows = { itemIds: [ID], collectionIds: [OTHER] };
+    const t = env({ libraryCount: 3, scope: 'trash', trashCount: 2, selectionCount: 2, targetsOf: asTrash, trashSelection: () => rows });
+    expect(menuTarget('item.trash', t)).toEqual(rows);
+    expect(runCommand('item.trash', t, menuTarget('item.trash', t))).toBe(true);
+    expect(t.purge).toHaveBeenCalledExactlyOnceWith(rows);
+    expect(t.trashItems).not.toHaveBeenCalled();
+    expect(runCommand('item.restore', t, menuTarget('item.restore', t))).toBe(true);
+    expect(t.restore).toHaveBeenCalledExactlyOnceWith(rows);
+    // A trash row's menu pick runs on the rows the menu was opened for.
+    expect(runPicked({ commandId: 'item.restore' }, t, { itemIds: [OTHER], collectionIds: [] })).toBe(true);
+    expect(t.restore).toHaveBeenLastCalledWith({ itemIds: [OTHER], collectionIds: [] });
+    // The reader: no ⌘⌫ (spec 4.1: the item commands are off there).
+    const reader = env({ view: 'viewer', selectionCount: 1, targetsOf: available, selection: () => [ID] });
+    expect(runCommand('item.trash', reader, menuTarget('item.trash', reader))).toBe(false);
+  });
+  it('휴지통 비우기… runs while the trash has something; the reported context carries the count', () => {
+    expect(runCommand('trash.empty', env({ trashCount: 0 }))).toBe(false);
+    const full = env({ trashCount: 5 });
+    expect(runCommand('trash.empty', full)).toBe(true);
+    expect(full.emptyTrash).toHaveBeenCalledTimes(1);
+    expect(contextOf(full).trashCount).toBe(5);
+  });
+  it('⌘⌫ and ⇧⌘⌫ are the keys a text field keeps (Q-6e)', () => {
+    expect(yieldsToText('item.trash')).toBe(true);
+    expect(yieldsToText('trash.empty')).toBe(true);
+    expect(yieldsToText('library.find')).toBe(false);
+    expect(yieldsToText('item.restore')).toBe(false);
   });
 });

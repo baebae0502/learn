@@ -16,4 +16,20 @@ export const sheets = {
   dialogKeys: { move: '이동', run: '실행', close: '닫기' },
   /** 보기's 전체 화면, built by main outside the registry (main/menu/app-menu.ts FULL_SCREEN): the menu's neutral name. */
   fullScreen: '전체 화면',
+  /** 영구 삭제… / 휴지통 비우기… (P-25; dialogs.html?scene=purge, ?scene=empty-trash): "외부 연결 원본" kept on one line (U+00A0). */
+  purge: {
+    titleItems: (n: number) => `자료 ${n}개를 영구히 삭제하겠습니까?`,
+    titleCollections: (n: number) => `컬렉션 ${n}개를 영구히 삭제하겠습니까?`,
+    titleMixed: (items: number, collections: number) => `자료 ${items}개와 컬렉션 ${collections}개를 영구히 삭제하겠습니까?`,
+    titleEmpty: '휴지통을 비우겠습니까?',
+    bodyItems: '되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.',
+    bodyCollections: '그 안의 자료는 라이브러리에 남습니다. 되돌릴 수 없습니다.',
+    bodyMixed: '되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 컬렉션 안의 다른 자료는 라이브러리에 남습니다. 외부 연결 원본은 지우지 않습니다.',
+    /** `what`: "자료 7개와 컬렉션 2개" — it ends in 개, so 를. */
+    bodyEmpty: (what: string) => `${what}를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.`,
+    what: (items: number, collections: number) => (items > 0 && collections > 0 ? `자료 ${items}개와 컬렉션 ${collections}개` : collections > 0 ? `컬렉션 ${collections}개` : `자료 ${items}개`),
+    purge: '영구 삭제',
+    empty: '휴지통 비우기',
+    cancel: '취소',
+  },
 } as const;

@@ -17,7 +17,7 @@ export interface CommandEnv extends CommandContextState {
   newCollection(opts?: { parentId?: string | null; onCreated?: (collectionId: string) => void }): void;
   /** 이름 바꾸기: the collection's row becomes its name field. */
   renameCollection(collectionId: string): void;
-  /** 컬렉션 삭제…: the sheet, then the delete with its 실행 취소. */
+  /** 휴지통으로 이동 on a collection (spec 4.2): at once, with 실행 취소. */
   deleteCollection(collectionId: string): void;
   /** 1–8 (spec 4.2): the tag at the slot goes on the items, or off them when every one has it; a slot with no tag says so. */
   toggleTagPosition(position: number, itemIds: readonly string[]): void;
@@ -52,6 +52,16 @@ export interface CommandEnv extends CommandContextState {
   addToCollection(itemIds: readonly string[], args: CommandArgs): void;
   /** 이 컬렉션에서 빼기: out of the collection viewed and below it; the toast offers 실행 취소. */
   removeFromCollection(itemIds: readonly string[]): void;
+  /** The trash view's selected rows, items and collections apart (P-10): what 복원 and 영구 삭제… act on from a menu or the palette. */
+  trashSelection(): TrashRows;
+  /** 휴지통으로 이동 ⌘⌫ (spec 4.1): at once, with 실행 취소. */
+  trashItems(itemIds: readonly string[]): void;
+  /** 복원 (spec 4.4). */
+  restore(rows: TrashRows): void;
+  /** 영구 삭제… (spec 4.5, P-25): the sheet, then the delete. */
+  purge(rows: TrashRows): void;
+  /** 휴지통 비우기… (spec 4.5): the sheet, then the delete. */
+  emptyTrash(): void;
   /** ⌘, (Task 10; main-owned: main opens the window, also from the palette). */
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
@@ -94,6 +104,13 @@ export interface CommandTarget {
   args?: CommandArgs;
 }
 
+/** Rows of the trash view (P-10): trashed items and collection rows. */
+export interface TrashRows {
+  itemIds: string[];
+  collectionIds: string[];
+}
+const trashRowsOf = (t: CommandTarget): TrashRows => ({ itemIds: [...(t.itemIds ?? [])], collectionIds: [...(t.collectionIds ?? [])] });
+
 type Handler = (env: CommandEnv, target: CommandTarget) => void;
 
 /** The one item an item command acts on (its availability rule asks for exactly one). */
@@ -120,6 +137,9 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'item.editInfo': (env, t) => env.editInfo(itemOf(t)),
   'collection.addItems': (env, target) => env.addToCollection(target.itemIds ?? [], target.args ?? {}),
   'collection.removeItems': (env, target) => env.removeFromCollection(target.itemIds ?? []),
+  // ⌘⌫: the trash view's rows are purged after the sheet (P-11); anywhere else the items go to the trash.
+  'item.trash': (env, t) => (env.scope === 'trash' ? env.purge(trashRowsOf(t)) : env.trashItems(t.itemIds ?? [])),
+  'item.restore': (env, t) => env.restore(trashRowsOf(t)),
   'item.relink': (env, t) => env.relink(itemOf(t)),
   'collection.new': (env) => env.newCollection(),
   'collection.newChild': (env, t) => env.newCollection({ parentId: collectionOf(t) }),
@@ -150,6 +170,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'view.textBigger': (env) => env.setTextSize((size) => clampTextSize(size + 1)),
   'view.textSmaller': (env) => env.setTextSize((size) => clampTextSize(size - 1)),
   'view.textReset': (env) => env.setTextSize(() => 13),
+  'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
   // A value submenu's head is not a row: with no value there is nothing to sort by.
@@ -177,6 +198,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     sortColumn: env.sortColumn,
     sortDirection: env.sortDirection,
     columnsShown: env.columnsShown,
+    trashCount: env.trashCount,
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
@@ -184,12 +206,20 @@ export function contextOf(env: CommandEnv): CommandContextState {
 }
 
 /**
- * The targets of a command from the menu bar (its accelerator or a click): an item command acts on the table's
- * selection, which only the library view shows (spec 6: off in the reader, as main's availableMenuCommands judges it).
+ * The targets of a command from the menu bar (its accelerator or a click) and the palette: a trash command takes the trash
+ * view's selected rows there (P-10); an item command the table's selection, which only the library view shows (spec 6: off
+ * in the reader, as main's availableMenuCommands judges it).
  */
 export function menuTarget(id: CommandId, env: CommandEnv): CommandTarget {
-  if (!COMMANDS.find((c) => c.id === id)?.contexts.includes('item')) return {};
+  const contexts = COMMANDS.find((c) => c.id === id)?.contexts ?? [];
+  if (contexts.includes('trash') && env.scope === 'trash' && env.view === 'library') return env.trashSelection();
+  if (!contexts.includes('item')) return {};
   return { itemIds: env.view === 'library' ? env.selection() : [] };
+}
+
+/** The keys a text field edits with (⌘⌫, ⇧⌘⌫ — delete to the line's start): a menu that took one from a field gives it back (Q-6e). */
+export function yieldsToText(id: CommandId): boolean {
+  return /\+(Backspace|Delete)$/.test(COMMANDS.find((c) => c.id === id)?.accelerator ?? '');
 }
 
 /** The window a command is judged in: a held one counts as the blocked, modal window it is about to be. */

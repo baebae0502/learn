@@ -14,7 +14,7 @@ const ICONS = { recent: Clock, unfiled: Inbox, duplicates: Copy } as const;
  */
 export function ScopeEmpty({ scope, name }: { scope: LibraryScope; name: string }) {
   const { run, isEnabled } = useCommands();
-  if (scope.kind === 'all') return null;
+  if (scope.kind === 'all' || scope.kind === 'trash') return null; // an empty trash has no view (spec 4.3)
   if (scope.kind === 'collection') {
     const target = { collectionIds: [scope.id] };
     return (

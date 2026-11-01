@@ -261,6 +261,8 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
       'separator',
       { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
+      'separator',
+      { id: 'item.trash', label: '휴지통으로 이동', enabled: true },
     ]);
     expect(sent).toEqual([[CHANGED, { reason: 'availability', itemIds: [ITEM] }]]);
   });
@@ -283,6 +285,8 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: true },
       'separator',
       { label: '컬렉션에 추가', enabled: true, submenu: [{ id: 'collection.addItems', label: mainStrings.menu.newCollection, enabled: true, args: { addSelection: true } }] },
+      'separator',
+      { id: 'item.trash', label: '휴지통으로 이동', enabled: true },
     ]);
     expect(sent).toEqual([]);
   });

@@ -277,7 +277,7 @@ const isSettingsWindow = (sender: WebContents): boolean => {
  * Menu clicks and accelerators act on the main window (also when a settings or sheet window is focused), except the
  * main-owned 설정…, which main runs itself: it works even when the library failed to open or no main window exists.
  */
-function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs): void {
+function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs, byKey?: true): void {
   if (commandId === 'app.settings') {
     const c = commandById('app.settings');
     demoShortcut(c.accelerator!, commandLabel(c, process.platform));
@@ -287,7 +287,7 @@ function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs): void {
   const target = mainWindow;
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
-  sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}) });
+  sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}), ...(byKey ? { byKey } : {}) });
 }
 
 if (!app.requestSingleInstanceLock()) {

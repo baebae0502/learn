@@ -3,7 +3,9 @@ import type { LibraryItem } from '@learn/domain';
 import { Toolbar } from '../shell/Toolbar';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
+import { useTrashCollectionRows } from '../trash/useTrashSource';
 import { countRender } from '../ui/renderCount';
+import { useLibrarySettings } from './useLibrarySettings';
 import { useSearch } from './useSearch';
 
 /**
@@ -26,7 +28,14 @@ export function LibraryToolbar(props: {
   countRender('LibraryToolbar');
   const found = useSearch(props.items);
   const tagCount = useLibrary((s) => s.tagFilter.size);
-  const shown = useMemo(() => (found ? props.filtered.reduce((n, i) => n + (found.ids.has(i.id) ? 1 : 0), 0) : props.filtered.length), [found, props.filtered]);
-  const count = props.items.length === 0 ? undefined : found || tagCount > 0 ? t.shell.countOf(shown, props.scoped) : t.shell.count(props.scoped);
+  const { sort } = useLibrarySettings();
+  // The trash view counts its collection rows with its items (library.html?state=trash: 휴지통 9개 = 자료 7 + 컬렉션 2).
+  const collections = useTrashCollectionRows(sort);
+  const shown = useMemo(
+    () => (found ? props.filtered.reduce((n, i) => n + (found.ids.has(i.id) ? 1 : 0), 0) : props.filtered.length) + collections.shown.length,
+    [found, props.filtered, collections.shown],
+  );
+  const total = props.scoped + collections.all.length;
+  const count = props.items.length + collections.all.length === 0 ? undefined : found || tagCount > 0 ? t.shell.countOf(shown, total) : t.shell.count(total);
   return <Toolbar title={props.title} titleTip={props.titleTip} count={count} actions={props.actions} trailing={props.trailing} />;
 }

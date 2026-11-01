@@ -58,7 +58,7 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<ReturnType<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<Promise<Result<{ relaunching: boolean }>>>();
   });
   it('context menus are typed by kind; the column header has its own menu (P-9)', () => {
-    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag'>();
+    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag' | 'trash'>();
     expectTypeOf<ReturnType<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>>();
   });
   it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {

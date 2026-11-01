@@ -16,13 +16,14 @@ import { Section } from './Section';
 /**
  * 정보 (spec §5.3): the rows that have a value, then 추가일 · 수정일; with no info yet, what writing it gives. The pencil
  * (정보 편집, the registry command) turns the section into the form in place; while it is open the pencil is not drawn.
+ * Read-only (a trashed item): no pencil.
  */
-export function InfoSection({ item, detail }: { item: LibraryItem; detail: ItemDetail }) {
+export function InfoSection({ item, detail, readOnly = false }: { item: LibraryItem; detail: ItemDetail; readOnly?: boolean }) {
   const now = useNow();
   const editing = useLibrary((s) => s.editingId === item.id);
   const { run, isEnabled } = useCommands();
   const target = { itemIds: [item.id] };
-  const pencil = editing ? undefined : (
+  const pencil = editing || readOnly ? undefined : (
     <IconButton
       icon={Pencil}
       size="small"

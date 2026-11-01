@@ -39,16 +39,17 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists ⌘+ / ⌘− / ⌘0 under 라이브러리 (design-spec 7.4), after the import commands', () => {
     const library = shortcutGroups('darwin')[1]!;
-    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '빠른 검색', '항목 패널 보기/가리기', '글자 크게', '글자 작게', '기본 글자 크기']);
+    expect(library.rows.map((r) => r.label)).toEqual(['파일 가져오기…', '외부 파일 연결…', '빠른 검색', '항목 패널 보기/가리기', '글자 크게', '글자 작게', '기본 글자 크기', '휴지통 비우기…']);
     // ⌥⌘I under its neutral name: the sheet shows no pane state (design-spec 7.4).
     expect(library.rows[3]).toEqual({ label: '항목 패널 보기/가리기', keys: ['⌥', '⌘', 'I'], spoken: '⌥⌘I' });
     expect(shortcutGroups('linux')[1]!.rows[3]).toEqual({ label: '항목 패널 보기/가리기', keys: ['Ctrl', 'Alt', 'I'], spoken: 'Ctrl+Alt+I' });
-    expect(library.rows.slice(4).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
+    expect(library.rows.slice(4, 7).map((r) => r.keys)).toEqual([['⌘', '+'], ['⌘', '−'], ['⌘', '0']]); // U+2212 on the keycap, as in the menu
+    expect(library.rows.at(-1)).toEqual({ label: '휴지통 비우기…', keys: ['⇧', '⌘', '⌫'], spoken: '⇧⌘⌫' });
   });
-  it('lists the selected item\'s shortcut (⇧⌘R) in its own 자료 group, after 라이브러리 (design-spec 7.4)', () => {
+  it('lists the selected item\'s shortcuts (⇧⌘R, ⌘⌫) in their own 자료 group, after 라이브러리 (design-spec 7.4)', () => {
     const item = (platform: string) => shortcutGroups(platform).find((g) => g.title === '자료')!.rows;
-    expect(item('darwin')).toEqual([{ label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }]);
-    expect(item('linux')).toEqual([{ label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }]);
+    expect(item('darwin')).toEqual([{ label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }, { label: '휴지통으로 이동', keys: ['⌘', '⌫'], spoken: '⌘⌫' }]);
+    expect(item('linux')).toEqual([{ label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }, { label: '휴지통으로 이동', keys: ['Ctrl', 'Backspace'], spoken: 'Ctrl+Backspace' }]);
   });
   it('lists 새 컬렉션 and folds the eight colour keys into one line, 1–8, under 정리 after 자료 (M5 spec 9.3, spec 4.2)', () => {
     const organize = (platform: string) => shortcutGroups(platform).find((g) => g.title === '정리')!.rows;

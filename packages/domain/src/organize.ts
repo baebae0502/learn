@@ -45,6 +45,8 @@ export type LibraryScope =
   | { kind: 'recent' }
   | { kind: 'unfiled' }
   | { kind: 'duplicates' }
+  /** 휴지통 (M6 spec 4.3): the trashed collection rows and items; shown only while the trash has something. */
+  | { kind: 'trash' }
   | { kind: 'collection'; id: string };
 
 /** library.view as stored. Strict: a value with keys this build does not know reads as unusable and the view opens at `all`. */
@@ -53,5 +55,6 @@ export const libraryScopeSchema: z.ZodType<LibraryScope> = z.discriminatedUnion(
   z.strictObject({ kind: z.literal('recent') }),
   z.strictObject({ kind: z.literal('unfiled') }),
   z.strictObject({ kind: z.literal('duplicates') }),
+  z.strictObject({ kind: z.literal('trash') }),
   z.strictObject({ kind: z.literal('collection'), id: z.uuid() }),
 ]);

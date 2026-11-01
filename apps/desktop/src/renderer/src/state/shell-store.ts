@@ -14,6 +14,9 @@ export interface ShellState {
   paletteOpener: Element | null;
   /** Files are being dragged over the window and the drop overlay covers it (shell/DropOverlay.tsx). */
   dropOverlay: boolean;
+  /** Questions main is asking in one of our sheets (the purge sheet): the window is held as for ⌘/ (ui/sheetAsk.ts). */
+  sheetAsks: number;
+  countSheetAsk(delta: 1 | -1): void;
   setView(view: View): void;
   setSidebar(sidebar: PaneState): void;
   setInspector(inspector: PaneState): void;
@@ -29,6 +32,8 @@ export const useShell = create<ShellState>()((set) => ({
   paletteOpen: false,
   paletteOpener: null,
   dropOverlay: false,
+  sheetAsks: 0,
+  countSheetAsk: (delta) => set((s) => ({ sheetAsks: Math.max(0, s.sheetAsks + delta) })),
   setView: (view) => set({ view }),
   setSidebar: (sidebar) => set({ sidebar }),
   setInspector: (inspector) => set({ inspector }),

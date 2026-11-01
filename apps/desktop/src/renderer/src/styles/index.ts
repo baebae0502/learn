@@ -26,6 +26,7 @@ import './screens/sidebar.css';
 import './screens/tags.css';
 import './screens/inspector.css';
 import './screens/inspector-organize.css';
+import './screens/trash.css';
 import './screens/sheet.css';
 import './screens/reader.css';
 import './screens/palette.css';

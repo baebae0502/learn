@@ -1,6 +1,6 @@
 import { currentModel, collectionActions } from '../sidebar/actions';
 import { useLibrary } from '../state/library-store';
-import { showActionFailed, showUndoToast } from '../ui/toasts';
+import { showActionFailed, showUndoToast, showUndoableError } from '../ui/toasts';
 import { addItemsTo, removeFromScope, undoRemovals } from './membership';
 import { createMembershipCommands } from './membershipCommands';
 
@@ -14,4 +14,5 @@ export const membershipCommands = createMembershipCommands({
   startNew: (opts) => collectionActions.startNew(opts),
   undoToast: showUndoToast,
   failed: showActionFailed,
+  failedWithUndo: showUndoableError,
 });

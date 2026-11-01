@@ -196,3 +196,30 @@ export function emptyTrash(db: Db): PurgeResult {
     return purgeTrash(db, { itemIds, collectionIds });
   })();
 }
+
+/**
+ * Where the trashed items are and what tags they have (Task 6, Q-6a): live collection -> the trashed items directly in it, and
+ * tag -> the trashed items that have it, non-empty keys only (as the organize snapshot keeps them for live items). A trashed
+ * collection's places are left out: they show again when it is restored.
+ */
+export function trashPlaces(db: Db): { members: Record<string, string[]>; tagged: Record<string, string[]> } {
+  const group = (rows: Array<[string, string]>): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const [key, id] of rows) (out[key] ??= []).push(id);
+    return out;
+  };
+  const members = db
+    .prepare(`SELECT ci.collection_id, ci.item_id FROM collection_items ci
+              JOIN collections c ON c.id = ci.collection_id AND c.deleted_at IS NULL
+              JOIN items i ON i.id = ci.item_id AND i.deleted_at IS NOT NULL
+              ORDER BY ci.collection_id, i.deleted_at DESC, i.rowid DESC`)
+    .raw()
+    .all() as Array<[string, string]>;
+  const tagged = db
+    .prepare(`SELECT it.tag_id, it.item_id FROM item_tags it
+              JOIN items i ON i.id = it.item_id AND i.deleted_at IS NOT NULL
+              ORDER BY it.tag_id, i.deleted_at DESC, i.rowid DESC`)
+    .raw()
+    .all() as Array<[string, string]>;
+  return { members: group(members), tagged: group(tagged) };
+}

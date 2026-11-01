@@ -1,0 +1,23 @@
+@layer screens {
+  /* A trashed collection row (library.html?state=trash): "자료 N개" where the author goes, tertiary footnote. */
+  .library-table .table-row .row-meta {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  /* On the accent selection (the table focused, the key window) it is the row's own white text, as a matched title is. */
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] .row-meta {
+    color: inherit;
+  }
+  /* A trashed item's panel head (approved M6 mockup): one footnote line under 복원 — where the item is and since when. */
+  .inspector .trash-note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .inspector .trash-note > .icon {
+    flex: none;
+  }
+}

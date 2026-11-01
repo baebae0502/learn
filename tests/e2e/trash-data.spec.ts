@@ -63,7 +63,7 @@ test('the trash view and its count; 영구 삭제 removes the copy after the com
     await trashItems(s.page, [b!.id]);
     const emptied = await learn<PurgedRows>(s.page, () => window.learn.library.emptyTrash());
     expect(emptied).toEqual({ itemIds: [b!.id], collectionIds: [lecture] });
-    expect(await trashView(s.page)).toEqual({ collections: [], items: [] });
+    expect(await trashView(s.page)).toEqual({ collections: [], items: [], members: {}, tagged: {} });
     expect((await organizeSnapshot(s.page)).trashCount).toBe(0);
     expect(fs.readFileSync(original)).toEqual(before);
   } finally {

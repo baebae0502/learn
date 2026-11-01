@@ -59,6 +59,10 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     // 컬렉션에 추가 ▸ has no row without the library read for the menu bar (those tests build without it).
     { id: 'collection.removeItems', label: '이\u00a0컬렉션에서 빼기' },
     SEP,
+    // The trash's own group (spec 11.2): 휴지통 비우기… before 휴지통으로 이동.
+    { id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace' },
+    { id: 'item.trash', label: '휴지통으로 이동', accelerator: 'CmdOrCtrl+Backspace' },
+    SEP,
     ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
     { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },
@@ -331,14 +335,15 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
   const next = (over: Partial<CommandContextState>): CommandContextState => ({ ...base, ...over });
 
   it('keeps the pane states a report names, and only those', () => {
-    expect(menuLabelState(base)).toEqual({ sidebar: 'shown', inspector: 'shown' });
-    expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown' }); // the reader has no item panel
-    expect(menuLabelState(next({ sidebar: undefined, inspector: undefined }))).toEqual({}); // the fatal screen
+    expect(menuLabelState(base)).toEqual({ sidebar: 'shown', inspector: 'shown', scope: 'all' });
+    expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown', scope: 'all' }); // the reader has no item panel
+    expect(menuLabelState(next({ sidebar: undefined, inspector: undefined, scope: undefined as never }))).toEqual({}); // the fatal screen
   });
   it('relabels when the sidebar or the item panel changed, never for a change of counts', () => {
     expect(menuLabelsChanged(base, next({ sidebar: 'hidden' }))).toBe(true);
     expect(menuLabelsChanged(base, next({ inspector: 'hidden' }))).toBe(true);
     expect(menuLabelsChanged(base, next({ inspector: undefined }))).toBe(true);
+    expect(menuLabelsChanged(base, next({ scope: 'trash' }))).toBe(true); // ⌘⌫ is 영구 삭제… there (P-11)
     expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, selectionRelinkable: 0 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ view: 'viewer', blocked: true, textSize: 15 }))).toBe(false);
   });
@@ -539,7 +544,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
         '이\u00a0컬렉션에서 빼기',
         { '색 태그': ['시험 범위', '중요'] },
-        'separator', '윈도우 닫기',
+        'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
       ]);
     });
     const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
@@ -577,7 +582,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     });
     it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
       expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '윈도우 닫기',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
       ]);
       expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
     });

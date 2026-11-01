@@ -168,6 +168,25 @@ export function showUndoToast(title: string, undo: () => Promise<void>, opts: { 
   });
 }
 
+/**
+ * An action refused part-way (m-6): an error toast that names what was done, gives main's cause, and offers 실행 취소 for
+ * that part. It stays until closed, as errors do; a refused undo is told like showUndoToast's.
+ */
+export function showUndoableError(e: unknown, title: string, undo: () => Promise<void>): string {
+  return showToast({
+    kind: 'error',
+    title,
+    body: e instanceof Error ? e.message : undefined,
+    testId: 'partial-failure',
+    action: {
+      label: t.toast.undo,
+      testId: 'undo-action',
+      onAction: () =>
+        void undo().catch((err: unknown) => showToast({ kind: 'error', title: t.toast.undoFailed, body: err instanceof Error ? err.message : undefined, testId: 'undo-failed' })),
+    },
+  });
+}
+
 /** Where no frames come (a hidden or minimised window), a toast counts from this long after it mounted. */
 const UNPAINTED_START_MS = 1000;
 

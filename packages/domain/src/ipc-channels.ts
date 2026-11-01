@@ -26,7 +26,7 @@ export const Channels = {
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
   ui: {
-    showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm',
+    showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
   },
   sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve' },

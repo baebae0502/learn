@@ -9,14 +9,16 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { currentPlatform } from '../ui/platform';
 import { useFileFacts } from './useFileFacts';
+import { RestoreButton, TrashNote } from './TrashInfo';
 
 /**
  * The panel's head (library.html inspectorItem): kind · pages or length, the title (title3, never above the content's
  * title; user text, so no text-wrap: pretty), "저자 · 연도" when known, and the item's actions through the registry.
  * A missing file: a linked one leads with 다시 연결… and keeps 열기 (it reaches the notice); a managed one leads
  * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
+ * A trashed item (the trash view, read-only): 복원 is the head's one action, the trash line under it.
  */
-export function InfoHead({ item, probe = true }: { item: LibraryItem; probe?: boolean }) {
+export function InfoHead({ item, probe = true, trashedAt }: { item: LibraryItem; probe?: boolean; trashedAt?: string }) {
   const { env, run, isEnabled } = useCommands();
   const facts = useFileFacts(item, probe);
   const platform = currentPlatform();
@@ -44,24 +46,31 @@ export function InfoHead({ item, probe = true }: { item: LibraryItem; probe?: bo
       </h2>
       {byline && <div className="authors">{byline}</div>}
       <div className="actions">
-        {relinkFirst && (
-          <Button variant={editing ? 'secondary' : 'primary'} testId="inspector-relink" onPress={() => run('item.relink', target)} isDisabled={!isEnabled('item.relink', target)} disabledReason={t.common.busy}>
-            {label('item.relink')}
+        {trashedAt !== undefined ? (
+          <RestoreButton target={target} />
+        ) : (
+          <>
+          {relinkFirst && (
+            <Button variant={editing ? 'secondary' : 'primary'} testId="inspector-relink" onPress={() => run('item.relink', target)} isDisabled={!isEnabled('item.relink', target)} disabledReason={t.common.busy}>
+              {label('item.relink')}
+            </Button>
+          )}
+          <Button variant={relinkFirst || editing ? 'secondary' : 'primary'} testId="inspector-open" onPress={() => run('item.open', target)} isDisabled={!isEnabled('item.open', target)} disabledReason={t.common.busy}>
+            {label('item.open')}
           </Button>
+          <Button
+            icon={FolderSearch}
+            testId="inspector-reveal"
+            onPress={() => run('item.showInFolder', target)}
+            isDisabled={!isEnabled('item.showInFolder', target)}
+            disabledReason={env.blocked ? t.common.busy : t.reader.needsFile}
+          >
+            {label('item.showInFolder')}
+          </Button>
+          </>
         )}
-        <Button variant={relinkFirst || editing ? 'secondary' : 'primary'} testId="inspector-open" onPress={() => run('item.open', target)} isDisabled={!isEnabled('item.open', target)} disabledReason={t.common.busy}>
-          {label('item.open')}
-        </Button>
-        <Button
-          icon={FolderSearch}
-          testId="inspector-reveal"
-          onPress={() => run('item.showInFolder', target)}
-          isDisabled={!isEnabled('item.showInFolder', target)}
-          disabledReason={env.blocked ? t.common.busy : t.reader.needsFile}
-        >
-          {label('item.showInFolder')}
-        </Button>
       </div>
+      {trashedAt !== undefined && <TrashNote at={trashedAt} />}
     </header>
   );
 }

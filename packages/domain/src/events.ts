@@ -25,7 +25,8 @@ export type LibraryChangeReason =
 
 export interface LearnEventMap {
   /** A menu-bar click or accelerator; `args` is the value of a submenu row (정렬 기준 › 연도). */
-  menuCommand: { commandId: CommandId; args?: CommandArgs };
+  /** `byKey`: the item was reached by its key, not a click (Q-6e: ⌘⌫ typed in a text field is the field's). */
+  menuCommand: { commandId: CommandId; args?: CommandArgs; byKey?: true };
   /**
    * Sent only when something changed. `itemIds`: the items that actually changed (absent when the change is not
    * per item, e.g. a collection or tag was created, renamed or removed).

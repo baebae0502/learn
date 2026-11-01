@@ -2,7 +2,7 @@ import type { LibraryScope } from '@learn/domain';
 import type { CollectionNode, OrganizeModel } from '../organize/model';
 
 /** The keys of the special views in the tree: a prefix no collection id (a uuid) has. */
-export const SCOPE_KEYS = { all: 'scope:all', recent: 'scope:recent', unfiled: 'scope:unfiled', duplicates: 'scope:duplicates' } as const;
+export const SCOPE_KEYS = { all: 'scope:all', recent: 'scope:recent', unfiled: 'scope:unfiled', duplicates: 'scope:duplicates', trash: 'scope:trash' } as const;
 export type SpecialKind = keyof typeof SCOPE_KEYS;
 /** The key of the row being created (it is not a collection yet). */
 export const DRAFT_KEY = 'draft:new';
@@ -32,6 +32,9 @@ export function visibleSpecials(input: { itemCount: number; hasRecent: boolean; 
   if (input.hasRecent || current === 'recent') rows.push({ kind: 'recent', count: null });
   if ((model !== undefined && model.collectionCount > 0 && unfiled > 0) || current === 'unfiled') rows.push({ kind: 'unfiled', count: unfiled > 0 ? unfiled : null });
   if (duplicates > 0 || current === 'duplicates') rows.push({ kind: 'duplicates', count: duplicates > 0 ? duplicates : null });
+  // 휴지통 (spec 4.3): last, while the trash has something; an emptied trash closes its view (useLeaveEmptyTrash).
+  const trash = model?.trashCount ?? 0;
+  if (trash > 0) rows.push({ kind: 'trash', count: trash });
   return rows;
 }
 

@@ -51,6 +51,8 @@ function setup(over: Partial<DropDeps> = {}) {
     undoToast: vi.fn(),
     failed: vi.fn(),
     mark: vi.fn(),
+    trashItems: vi.fn(async () => {}),
+    trashCollection: vi.fn(async () => {}),
     ...over,
   };
   return { deps, calls, actions: createDropActions(deps) };

@@ -1,7 +1,7 @@
 import { BrowserWindow, dialog, type MessageBoxOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
-  COMMANDS, Channels, LearnError, SUBMENUS, commandContextInput, confirmInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
+  COMMANDS, Channels, LearnError, SUBMENUS, TRASH_TARGET, commandContextInput, confirmInput, confirmPurgeInput, emptyInput, itemTarget, showColumnMenuInput, showContextMenuInput, themeShownInput, toLearnError,
   type CommandTargetInfo,
 } from '@learn/domain';
 import { refreshItemAvailability } from '../item-availability';
@@ -21,7 +21,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     if (!kindHasMenu(input.kind, COMMANDS, SUBMENUS)) return null;
     const ctx = deps.getContext();
     // Collections, tags and who has what: one read, and only when this menu has a submenu built from them or needs its targets.
-    const organize = input.kind !== 'item' || menuNeedsOrganize(COMMANDS, SUBMENUS, 'item') ? readOrganizeSnapshot(ctx.db) : null;
+    const organize = input.kind === 'collection' || input.kind === 'tag' || (input.kind === 'item' && menuNeedsOrganize(COMMANDS, SUBMENUS, 'item')) ? readOrganizeSnapshot(ctx.db) : null;
     let targets: CommandTargetInfo[];
     let itemIds: string[] = [];
     let tagId: string | undefined;
@@ -41,6 +41,13 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
       }
       targets = facts.map((f) => itemTarget(f));
       itemIds = facts.map((f) => f.id);
+    } else if (input.kind === 'trash') {
+      // The rows the trash still holds (P-10): one restored or purged since the right-click has no menu.
+      const view = ctx.repo.trashView();
+      const items = new Set(view.items.map((i) => i.id));
+      const collections = new Set(view.collections.map((c) => c.id));
+      const rows = input.itemIds.filter((id) => items.has(id)).length + input.collectionIds.filter((id) => collections.has(id)).length;
+      targets = Array.from({ length: rows }, (): CommandTargetInfo => TRASH_TARGET);
     } else if (input.kind === 'collection') {
       const live = new Set(organize!.collections.map((c) => c.id));
       targets = input.collectionIds.filter((id) => live.has(id)).map((id) => ({ kind: 'collection', id }));
@@ -103,6 +110,15 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
     };
     const { response } = await deps.windows.asSheet(parent, () => dialog.showMessageBox(parent, ask));
     return response === 0;
+  });
+
+  // 영구 삭제… / 휴지통 비우기… (P-25): the app sheet, not a native message box — that can neither draw a destructive button nor
+  // keep 취소 the default. A sheet that went away unanswered is a no.
+  handle(Channels.ui.confirmPurge, confirmPurgeInput, async (input, event) => {
+    const parent = mainWindowOf(event.sender);
+    if (!parent) return false;
+    const result = await deps.sheets.open(parent, { kind: 'purge', ...input });
+    return result?.kind === 'purge' && result.confirmed;
   });
 
   handle(Channels.ui.showShortcuts, emptyInput, async (_input, event) => {

@@ -1,11 +1,12 @@
 // The organize screens' copy (spec 3, 4). 합니다체; the scope names are design-spec 6 "트리" (특수 보기).
-import { eulReul, euroRo, iGa } from './josa';
+import { euroRo, iGa } from './josa';
 
 export const organize = {
   scopes: {
     recent: '최근 연 자료',
     unfiled: '미분류',
     duplicates: '중복 항목',
+    trash: '휴지통',
   },
   /** Between the names of a collection's path, in the toolbar title's tooltip: "분자생물학 › 6장 · 신호 전달". */
   pathSeparator: ' › ',
@@ -30,13 +31,6 @@ export const organize = {
     recent: '최근 30일 안에 연 자료가 없습니다',
     unfiled: '모든\u00a0자료가 컬렉션에 들어 있습니다',
     duplicates: '중복된 자료가 없습니다',
-  },
-  /** 컬렉션 삭제… (spec 3.4): the sheet and the toast. */
-  remove: {
-    message: (name: string) => `‘${name}’\u2060${eulReul(name)} 삭제하겠습니까?`,
-    detail: (children: number) => `${children > 0 ? `하위 컬렉션 ${children}개도 함께 삭제합니다.\n` : ''}자료는 내 라이브러리에 남습니다.`,
-    confirm: '삭제',
-    done: (name: string) => `‘${name}’\u2060${eulReul(name)} 삭제했습니다`,
   },
   /** The tag selector and what comes of tags (spec 4, 5.1). 합니다체; "이 보기", "모든 태그" bound with U+00A0. */
   tags: {
@@ -111,6 +105,8 @@ export const organize = {
     newCollection: '새 컬렉션',
     /** The undo toast of 이 컬렉션에서 빼기 (spec 9.2): `n` items, however many memberships went. */
     removed: (collection: string, n: number) => `‘${collection}’\u2060에서 자료 ${n}개를 뺐습니다.`,
+    /** m-6: a 이 컬렉션에서 빼기 refused part-way — what went before it, with 실행 취소 in the error toast. */
+    removedPart: (collection: string, n: number) => `‘${collection}’\u2060에서 자료 ${n}개만 뺐습니다.`,
   },
   /** Drag and drop (spec 8.2): the badge on the drag image, its plain-text form for other apps, and the move toast (sentence as the spec has it). */
   dnd: {

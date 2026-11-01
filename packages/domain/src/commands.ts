@@ -26,6 +26,8 @@ export type CommandId =
   | 'item.openExternally'
   | 'item.editInfo'
   | 'item.exportCopy'
+  | 'item.trash'
+  | 'item.restore'
   | 'collection.addItems'
   | 'collection.removeItems'
   | 'item.relink'
@@ -55,17 +57,19 @@ export type CommandId =
   | 'view.textBigger'
   | 'view.textSmaller'
   | 'view.textReset'
+  | 'trash.empty'
   | 'view.nextPane'
   | 'view.previousPane'
   | 'library.sortBy';
 /**
- * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag`: needs a
- * target of that kind (judged on the targets handed in; the first of these a command lists decides).
+ * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag` / `trash`: needs a
+ * target of that kind (judged on the targets handed in; the first of these a command lists decides). `trash` is the trash
+ * view's rows (P-10): a command that lists it takes trash rows in the trash view, and its other kind elsewhere (⌘⌫).
  */
-export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag';
+export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
 export type MenuName = 'app' | 'file' | 'edit' | 'view' | 'go' | 'window' | 'help';
-export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column'] as const;
+export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash'] as const;
 /** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
@@ -120,7 +124,12 @@ export interface CommandSpec {
    * "사이드바 가리기" while the sidebar is shown, "사이드바 보기" while it is hidden. One command, one id, one shortcut.
    * Exactly one key: the reported pane state the label follows.
    */
-  stateLabels?: { sidebar?: Readonly<Record<PaneShown, string>>; inspector?: Readonly<Record<PaneShown, string>> };
+  stateLabels?: {
+    sidebar?: Readonly<Record<PaneShown, string>>;
+    inspector?: Readonly<Record<PaneShown, string>>;
+    /** By the view shown (P-11): ⌘⌫ is 영구 삭제… in the trash; a view without an entry keeps `label`. */
+    scope?: Readonly<Partial<Record<LibraryScope['kind'], string>>>;
+  };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
   /**
@@ -239,6 +248,19 @@ export const COMMANDS: readonly CommandSpec[] = [
     menu: { menu: 'file', group: 2, order: 5 }, contextMenu: { kinds: ['item'], group: 3, order: 2, onlyWhenAvailable: true },
     keywords: ['컬렉션', '빼기', '제거', '꺼내기', 'remove'],
   },
+  // 휴지통으로 이동 ⌘⌫ (spec 4.1, 11.1): at once, with 실행 취소 in the toast. In the trash view the same line is 영구 삭제…
+  // (P-11): one key, one id, named by the view — the registry allows no second ⌘⌫ in one context. 파일's last group, the
+  // item menu's last line; the trash rows' menu after 복원.
+  {
+    id: 'item.trash', label: '휴지통으로 이동', stateLabels: { scope: { trash: '영구 삭제…' } }, accelerator: 'CmdOrCtrl+Backspace',
+    menu: { menu: 'file', group: 4, order: 2 }, contexts: ['item', 'trash'], contextMenu: { kinds: ['item', 'trash'], group: 4, order: 1 }, palette: true,
+    keywords: ['휴지통', '삭제', '지우기', '버리기', '영구 삭제', 'trash', 'delete', 'remove'],
+  },
+  // 복원 (spec 4.4): the trash rows' menu and the palette; the item panel and the reader's notice have its button.
+  {
+    id: 'item.restore', label: '복원', contexts: ['trash'], contextMenu: { kinds: ['trash'], group: 1, order: 1 }, palette: true,
+    keywords: ['복원', '되살리기', '되돌리기', '휴지통', 'restore', 'put back'],
+  },
   // The collection commands act on one collection: the one a sidebar row's menu was opened on (a right click selects it
   // first), and from the palette the one being viewed (spec 9.3). None is on the menu bar; the keyboard reaches them
   // through the palette and the tree's own keys (↩ renames).
@@ -254,9 +276,12 @@ export const COMMANDS: readonly CommandSpec[] = [
     id: 'collection.importInto', label: '이\u00a0컬렉션으로 가져오기…', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 2, order: 1 },
     keywords: ['가져오기', '컬렉션', '추가', '사본', 'import'],
   },
+  // 휴지통으로 이동 (spec 4.2, 11.1): no sheet — the toast's 실행 취소 brings it back. The id stays (nothing stores it, and a new
+  // one would gain nothing). The palette names the collection: the items' ⌘⌫ has the same verb.
   {
-    id: 'collection.delete', label: '컬렉션 삭제…', contexts: ['collection'], palette: true, contextMenu: { kinds: ['collection'], group: 3, order: 1 },
-    keywords: ['삭제', '지우기', '컬렉션', 'delete', 'remove'],
+    id: 'collection.delete', label: '휴지통으로 이동', paletteLabel: '컬렉션을 휴지통으로 이동', contexts: ['collection'], palette: true,
+    contextMenu: { kinds: ['collection'], group: 3, order: 1 },
+    keywords: ['휴지통', '삭제', '지우기', '컬렉션', 'trash', 'delete', 'remove'],
   },
   // 1–8 (spec 4.2): the key puts the tag at that slot on the selected items, or takes it off when every one has it. A
   // member has no placement of its own — 색 태그 ▸ is the group in SUBMENUS, which lists the slots that have a tag. The
@@ -299,6 +324,11 @@ export const COMMANDS: readonly CommandSpec[] = [
   { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'], keywords: ['글자', '크게', '확대', 'font', 'bigger'] },
   { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'], keywords: ['글자', '작게', '축소', 'font', 'smaller'] },
   { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'], keywords: ['글자', '기본', 'font', 'reset'] },
+  // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
+  {
+    id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
+    keywords: ['휴지통', '비우기', '영구 삭제', 'empty trash'],
+  },
   // F6 / ⇧F6 (design-spec 8.3): the renderer keymap moves the focus between panes, also out of a text field. No menu
   // item and not in the palette; the ⌘/ sheet lists them under 앱.
   { id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true },
@@ -317,7 +347,7 @@ export function commandById(id: CommandId): CommandSpec {
 }
 
 /** A command that acts on targets (items, collections, tags) is not listed by default: the palette has none to give it. */
-const needsTargets = (c: CommandSpec): boolean => c.contexts.some((x) => x === 'item' || x === 'collection' || x === 'tag');
+const needsTargets = (c: CommandSpec): boolean => c.contexts.some((x) => x === 'item' || x === 'collection' || x === 'tag' || x === 'trash');
 export const inPalette = (c: CommandSpec): boolean => c.palette ?? !needsTargets(c);
 
 /** The slot (1–8) a colour key stands for, or null for any other command. */
@@ -334,19 +364,24 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   const slot = tagSlot(spec.id);
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
+/** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope'>>;
+
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
  * is the reported context), else the platform label.
  */
-export function commandLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+export function commandLabel(c: CommandSpec, platform: string, state: LabelState = {}): string {
   const labels = c.stateLabels;
   if (labels?.sidebar && state.sidebar) return labels.sidebar[state.sidebar];
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
+  const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
+  if (scoped !== undefined) return scoped;
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
 /** The name the palette shows: `paletteLabel` where the command has one, else what the menus call it. */
-export function paletteLabel(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+export function paletteLabel(c: CommandSpec, platform: string, state: LabelState = {}): string {
   return c.paletteLabel ?? commandLabel(c, platform, state);
 }
 
@@ -355,7 +390,7 @@ export function paletteLabel(c: CommandSpec, platform: string, state: Pick<Comma
  * ellipsis where the command asks for more input (macOS HIG), in menus, buttons, the palette and the ⌘/ sheet; prose
  * that only names the command drops it (Apple Style Guide), and is built from the label so the two cannot drift.
  */
-export function commandMention(c: CommandSpec, platform: string, state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {}): string {
+export function commandMention(c: CommandSpec, platform: string, state: LabelState = {}): string {
   return commandLabel(c, platform, state).replace(/…$/, '');
 }
 
@@ -401,6 +436,8 @@ export interface CommandContextState {
   sortDirection: 'asc' | 'desc';
   /** The columns drawn, forced ones included: a bitmask over LIBRARY_COLUMN_IDS (columnsMask). */
   columnsShown: number;
+  /** Trashed items and collection rows (OrganizeSnapshot.trashCount): 휴지통 비우기 needs one (P-10). */
+  trashCount: number;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
 }
@@ -416,7 +453,8 @@ export const NO_LIBRARY_VIEW = Object.freeze({
   sortColumn: 'createdAt',
   sortDirection: 'desc',
   columnsShown: columnsMask(DEFAULT_COLUMN_CONFIG.visible),
-} as const satisfies Pick<CommandContextState, 'selectionTagPositions' | 'scope' | 'collectionCount' | 'tagPositions' | 'tagFilterCount' | 'searchActive' | 'sortColumn' | 'sortDirection' | 'columnsShown'>);
+  trashCount: 0,
+} as const satisfies Pick<CommandContextState, 'selectionTagPositions' | 'scope' | 'collectionCount' | 'tagPositions' | 'tagFilterCount' | 'searchActive' | 'sortColumn' | 'sortDirection' | 'columnsShown' | 'trashCount'>);
 
 /** The colour slots with a tag as a bitmask (bit n−1 = slot n); `null` and slots outside 1–8 count for nothing. */
 export function tagPositionsMask(positions: Iterable<number | null>): number {
@@ -448,8 +486,13 @@ export interface TagTargetInfo {
   id: string;
   hasColor: boolean;
 }
+/** A row of the trash view (P-10): what 복원 and 영구 삭제… act on. Its kind (item or collection) is the handler's, not availability's. */
+export interface TrashTargetInfo {
+  kind: 'trash';
+}
+export const TRASH_TARGET: TrashTargetInfo = Object.freeze({ kind: 'trash' });
 /** What a command acts on, by kind: the item rules read the item ones only. */
-export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo;
+export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo | TrashTargetInfo;
 
 /** The availability facts of an item (a list row, a freshly read item) as a target. */
 export const itemTarget = (item: { storageMode: StorageMode; availability: Availability }): ItemTargetInfo => ({
@@ -476,8 +519,9 @@ export interface Targets {
   items: readonly ItemTargetInfo[];
   collections: readonly CollectionTargetInfo[];
   tags: readonly TagTargetInfo[];
+  trash: readonly TrashTargetInfo[];
 }
-const NO_TARGETS: Targets = Object.freeze({ items: [], collections: [], tags: [] });
+const NO_TARGETS: Targets = Object.freeze({ items: [], collections: [], tags: [], trash: [] });
 /** One split per array: the menu bar judges every command on the same selection array. */
 const split = new WeakMap<readonly CommandTargetInfo[], Targets>();
 function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
@@ -487,12 +531,14 @@ function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
     const items: ItemTargetInfo[] = [];
     const collections: CollectionTargetInfo[] = [];
     const tags: TagTargetInfo[] = [];
+    const trash: TrashTargetInfo[] = [];
     for (const t of targets) {
       if (t.kind === 'item') items.push(t);
       else if (t.kind === 'collection') collections.push(t);
-      else tags.push(t);
+      else if (t.kind === 'tag') tags.push(t);
+      else trash.push(t);
     }
-    found = { items, collections, tags };
+    found = { items, collections, tags, trash };
     split.set(targets, found);
   }
   return found;
@@ -500,14 +546,19 @@ function targetsByKind(targets: readonly CommandTargetInfo[]): Targets {
 
 /**
  * Synthetic targets for the menu bar: `selectionAvailable` available, then `selectionRelinkable` linked+missing, the
- * rest managed+missing. Main has only the reported counts; no rule reads the storage mode of an available target.
- * Counts that do not add up are clamped to `selectionCount`.
+ * rest managed+missing. In the trash view the selection is trash rows (P-10). Main has only the reported counts; no rule
+ * reads the storage mode of an available target. Counts that do not add up are clamped to `selectionCount`.
  */
-export function selectionTargets(ctx: CommandContextState): ItemTargetInfo[] {
+export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] {
+  if (ctx.scope === 'trash') {
+    const rows = Array.from({ length: ctx.selectionCount }, (): TrashTargetInfo => TRASH_TARGET);
+    split.set(rows, { items: [], collections: [], tags: [], trash: rows });
+    return rows;
+  }
   const available = Math.min(ctx.selectionAvailable, ctx.selectionCount);
   const relinkable = Math.min(ctx.selectionRelinkable, ctx.selectionCount - available);
   const targets = Array.from({ length: ctx.selectionCount }, (_, i) => (i < available ? AVAILABLE : i < available + relinkable ? RELINKABLE : MISSING));
-  split.set(targets, { items: targets, collections: [], tags: [] }); // items only: no pass over a selection of the whole library
+  split.set(targets, { items: targets, collections: [], tags: [], trash: [] }); // items only: no pass over a selection of the whole library
   return targets;
 }
 
@@ -533,6 +584,12 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'collection.addItems': (c) => c.view === 'library',
   // Takes the selection out of the collection viewed and what is below it: nothing to take out of anywhere else.
   'collection.removeItems': (c) => c.view === 'library' && c.scope === 'collection',
+  // ⌘⌫ (P-11): the library view's selection — live items, or the trash view's rows there (neededTargets).
+  'item.trash': (c) => c.view === 'library',
+  // 복원: the trash view's rows only.
+  'item.restore': (c) => c.view === 'library' && c.scope === 'trash',
+  // 휴지통 비우기…: while the trash has something.
+  'trash.empty': (c) => c.trashCount > 0,
   // One collection; the open panel needs the library the files come into.
   'collection.newChild': (_c, t) => t.collections.length === 1,
   'collection.rename': (_c, t) => t.collections.length === 1,
@@ -559,6 +616,20 @@ const RULES: Partial<Record<CommandId, Rule>> = {
 };
 
 /**
+ * The targets a command needs, by the first kind it lists — except that a command of the trash rows takes those in the trash
+ * view (⌘⌫ is 영구 삭제… there, P-11) and its other kind elsewhere. Null: it needs none (app or view context).
+ */
+function neededTargets(spec: CommandSpec, ctx: CommandContextState, t: Targets): readonly CommandTargetInfo[] | null {
+  const c = spec.contexts;
+  if (c.includes('trash') && ctx.scope === 'trash') return t.trash;
+  if (c.includes('item')) return t.items;
+  if (c.includes('collection')) return t.collections;
+  if (c.includes('tag')) return t.tags;
+  if (c.includes('trash')) return t.trash;
+  return null;
+}
+
+/**
  * The single availability predicate, for a spec: main (menu bar, context menus) and the renderer (palette, toolbar, keymap).
  * `surface` is the renderer's: with it, a `duringWork` command is stopped by a modal surface only; without it (main),
  * by `blocked` like every other command. A command that lists `item`, `collection` or `tag` needs a target of that kind.
@@ -567,7 +638,7 @@ export function commandAvailable(spec: CommandSpec, ctx: CommandContextState, ta
   if (MAIN_OWNED_COMMANDS.has(spec.id)) return true;
   if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
   const t = targetsByKind(targets);
-  const needed = spec.contexts.includes('item') ? t.items : spec.contexts.includes('collection') ? t.collections : spec.contexts.includes('tag') ? t.tags : null;
+  const needed = neededTargets(spec, ctx, t);
   const inContext = needed ? needed.length > 0 : spec.contexts.includes('app') || spec.contexts.includes(ctx.view);
   return inContext && (RULES[spec.id]?.(ctx, t) ?? true);
 }

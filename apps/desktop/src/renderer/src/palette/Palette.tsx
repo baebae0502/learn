@@ -118,8 +118,8 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   usePaintMark('palette:painted', query);
   /** 설정 as the hints name it: ㅅㅈ → 설정, when no title gives an example. */
   const settingsName = commandMention(commandById('app.settings'), platform);
-  // The pane states the toggles' names follow (사이드바 가리기 / 사이드바 보기), as the menu bar has them.
-  const state = { sidebar: env.sidebar, inspector: env.inspector };
+  // The labels follow the pane states and the view (사이드바 가리기 / 사이드바 보기; ⌘⌫ is 영구 삭제… in the trash), as the menu bar's.
+  const state = { sidebar: env.sidebar, inspector: env.inspector, scope: env.scope };
   // Item commands (Finder에서 보기, 기본 앱으로 열기, 사본 내보내기… and 정보 편집) are judged and run on the table
   // selection, which only the library view shows. Judged once per env rather than on every keystroke: a selection can
   // hold every row (⌘A).
@@ -129,11 +129,14 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   const scope = useLibrary((s) => s.scope);
   const { model } = useOrganize();
   const collectionTarget = useMemo(() => (scope.kind === 'collection' && model?.node(scope.id) ? { collectionIds: [scope.id] } : {}), [scope, model]);
-  const targetFor = (c: CommandSpec): CommandTarget => (c.contexts.includes('item') ? itemTarget : c.contexts.includes('collection') ? collectionTarget : {});
-  const needsTarget = (c: CommandSpec) => c.contexts.includes('item') || c.contexts.includes('collection');
+  // The trash view's rows (P-10): what 복원 and 영구 삭제… act on there.
+  const trashTarget = useMemo(() => (env.view === 'library' && env.scope === 'trash' ? env.trashSelection() : {}), [env]);
+  const targetFor = (c: CommandSpec): CommandTarget =>
+    c.contexts.includes('trash') && env.scope === 'trash' ? trashTarget : c.contexts.includes('item') ? itemTarget : c.contexts.includes('collection') ? collectionTarget : {};
+  const needsTarget = (c: CommandSpec) => c.contexts.includes('item') || c.contexts.includes('collection') || c.contexts.includes('trash');
   const targeted = useMemo(
     () => new Set(COMMANDS.filter((c) => needsTarget(c) && inPalette(c) && isEnabled(c.id, targetFor(c))).map((c) => c.id)),
-    [isEnabled, itemTarget, collectionTarget], // targetFor reads exactly these two
+    [isEnabled, itemTarget, collectionTarget, trashTarget], // targetFor reads exactly these three
   );
   const targetOf = (id: CommandId) => targetFor(commandById(id));
   // Only what can run now (no fake commands), exactly as the registry says, re-read on every render: the list follows

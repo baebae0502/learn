@@ -54,7 +54,7 @@ export function contextMenuEntries(
     if (!at?.kinds.includes(kind)) return [];
     const enabled = commandAvailable(c, ctx, targets);
     if (!enabled && at.onlyWhenAvailable) return [];
-    const label = commandLabel(c, platform);
+    const label = commandLabel(c, platform, ctx); // ⌘⌫ is 영구 삭제… on a trash row (P-11)
     if (c.submenu === undefined) return [{ group: at.group, order: at.order, entry: { id: c.id, label, enabled } }];
     const rows = valueRows(c, input, enabled);
     return [{ group: at.group, order: at.order, entry: rows.length === 0 ? null : { label, enabled, submenu: rows } }];

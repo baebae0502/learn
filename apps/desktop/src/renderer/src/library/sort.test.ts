@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LibraryItem } from '@learn/domain';
-import { DEFAULT_SORT, DEFAULT_SORT_RECENT, firstDirection, parseSort, sortFromArgs, sortItems } from './sort';
+import { DEFAULT_SORT, DEFAULT_SORT_RECENT, DEFAULT_SORT_TRASH, firstDirection, parseSort, sortFromArgs, sortItems } from './sort';
 
 let n = 0;
 const item = (over: Partial<LibraryItem>): LibraryItem => ({
@@ -81,5 +81,16 @@ describe('sortFromArgs (보기 › 정렬 기준: a column and/or a direction)',
     expect(sortFromArgs(current, {})).toBeNull();
     expect(sortFromArgs(current, { column: 'createdAt' })).toBeNull();
     expect(sortFromArgs(current, { column: 'createdAt', direction: 'desc' })).toBeNull();
+  });
+});
+
+describe('삭제한 날짜 (M6 spec 4.3)', () => {
+  it('sorts trash rows by when they were trashed, newest first on a first press and by default; a row without one goes last', () => {
+    const a = { ...item({ title: 'a' }), deletedAt: '2026-10-31T00:01:00.000Z' };
+    const b = { ...item({ title: 'b' }), deletedAt: '2026-10-31T00:03:00.000Z' };
+    const live = item({ title: 'live' });
+    expect(titles(sortItems([a, live, b], DEFAULT_SORT_TRASH))).toEqual(['b', 'a', 'live']);
+    expect(firstDirection('deletedAt')).toBe('desc');
+    expect(DEFAULT_SORT_TRASH).toEqual({ column: 'deletedAt', direction: 'desc' });
   });
 });

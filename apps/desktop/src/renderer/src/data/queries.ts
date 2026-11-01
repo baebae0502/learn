@@ -22,6 +22,7 @@ export const keys = {
   /** The tag selector's 표시·정렬 (tags.selector): read once, written optimistically (tags/useTagsSelector.ts). */
   tagsSelector: ['settings', 'tags.selector'] as const,
   sortRecent: ['settings', 'library.sort.recent'] as const,
+  sortTrash: ['settings', 'library.sort.trash'] as const,
   /** The stored view (read once at start, then written by the store: useRestoreView, library-store). */
   view: ['settings', 'library.view'] as const,
   /** The organize snapshot (spec 10.1): collections, tags, memberships, assignments, duplicate groups. */

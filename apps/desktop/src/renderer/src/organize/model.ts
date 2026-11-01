@@ -27,6 +27,8 @@ export interface OrganizeModel {
   duplicates: ReadonlySet<string>;
   tags: readonly OrganizeTag[];
   tagByPosition(position: number): OrganizeTag | undefined;
+  /** Trashed items and collection rows (the snapshot's): the trash view shows while it is above 0. */
+  trashCount: number;
 }
 
 const NO_IDS: readonly string[] = Object.freeze([]);
@@ -121,6 +123,7 @@ export function buildOrganizeModel(snapshot: OrganizeSnapshot, items: readonly L
     duplicates,
     tags: snapshot.tags,
     tagByPosition: (position) => byPosition.get(position),
+    trashCount: snapshot.trashCount,
   };
 }
 

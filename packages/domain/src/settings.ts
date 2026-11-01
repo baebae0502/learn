@@ -25,6 +25,8 @@ export const SETTINGS = {
   'library.sort': sortSchema,
   /** The recent view's own sort (spec 3.2): the other views share `library.sort`. */
   'library.sort.recent': sortSchema,
+  /** The trash view's own sort (M6 spec 4.3: 삭제한 날짜, newest first, by default). */
+  'library.sort.trash': sortSchema,
   /** The scope the table showed last (spec 3.1). A collection that is gone is dropped by the renderer on read, not here. */
   'library.view': libraryScopeSchema,
   /** The collections the sidebar tree shows open. Ids of collections that no longer exist are dropped on read (the renderer). */

@@ -1,16 +1,19 @@
 import { useLearnEvent } from '../events';
 import { closePalette } from '../palette/Palette';
 import { useShell } from '../state/shell-store';
-import { menuTarget, runCommand, type CommandEnv } from './registry';
+import { isEditing } from './keymap';
+import { menuTarget, runCommand, yieldsToText, type CommandEnv } from './registry';
 
 /**
  * Application-menu clicks and accelerators arrive as menuCommand; the registry decides whether they apply now. A menu
  * command while the palette is open closes it first, then runs from where the focus was (ADR-0005 §5); ⌘K itself
  * keeps it open and selects its field. An item command runs on the table's selection (menuTarget), read as it runs.
- * A submenu row's value (`args`) joins the target.
+ * A submenu row's value (`args`) joins the target. ⌘⌫ and ⇧⌘⌫ that reached the menu from a focused text field are the
+ * field's (delete to the line's start), never the trash's (Q-6e); a click on the item still runs it.
  */
 export function useMenuCommands(env: CommandEnv): void {
-  useLearnEvent('menuCommand', ({ commandId, args }) => {
+  useLearnEvent('menuCommand', ({ commandId, args, byKey }) => {
+    if (byKey && yieldsToText(commandId) && isEditing(document.activeElement)) return;
     const run = () => runCommand(commandId, env, { ...menuTarget(commandId, env), ...(args ? { args } : {}) });
     if (commandId !== 'app.palette' && useShell.getState().paletteOpen) closePalette(run);
     else run();

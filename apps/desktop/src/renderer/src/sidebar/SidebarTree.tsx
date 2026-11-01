@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
-import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, type LucideIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Copy, Folder, FolderOpen, GripVertical, Inbox, LibraryBig, Trash2, type LucideIcon } from 'lucide-react';
 import {
   Button, Tree, TreeHeader, TreeItem, TreeItemContent, TreeSection, Virtualizer, type Key, type Selection, type TreeProps, type TreeState,
 } from 'react-aria-components';
@@ -33,6 +33,7 @@ const SPECIAL: Record<SpecialKind, { icon: LucideIcon; label: string }> = {
   recent: { icon: Clock, label: t.organize.scopes.recent },
   unfiled: { icon: Inbox, label: t.organize.scopes.unfiled },
   duplicates: { icon: Copy, label: t.organize.scopes.duplicates },
+  trash: { icon: Trash2, label: t.organize.scopes.trash },
 };
 
 export interface SidebarTreeProps {

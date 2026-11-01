@@ -1,14 +1,15 @@
 import { useEffect, useMemo } from 'react';
 import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
-import type { LibraryItem } from '@learn/domain';
+import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
-import { useItemDetail, useItems } from '../data/queries';
+import { useItemDetail } from '../data/queries';
 import { sortItems } from '../library/sort';
 import { useScopeView } from '../library/useScopeView';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { EmptyCollectionPanel } from '../sidebar/EmptyCollectionPanel';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
+import { useTrash, useViewItems } from '../trash/useTrashSource';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { PaneEmpty } from '../ui/PaneEmpty';
@@ -19,6 +20,7 @@ import { FileSection } from './FileSection';
 import { InfoHead } from './InfoHead';
 import { InfoSection } from './InfoSection';
 import { TagsSection } from './TagsSection';
+import { TrashSelection } from './TrashInfo';
 import { libraryStats, multiSummary } from './summary';
 import { useShownAfter } from './useShownAfter';
 
@@ -30,7 +32,8 @@ const LOADING_DELAY_MS = 300;
 
 /** Info mode (spec §5.3–5.4), from the table's selection; an open edit keeps its item on show until it lets go. */
 export function InfoPane() {
-  const list = useItems().data;
+  const list = useViewItems();
+  const trash = useTrash().data;
   const items = list ?? NO_ITEMS;
   const { scope, model, scoped, label } = useScopeView(items);
   const selected = useLibrary((s) => s.selected);
@@ -42,6 +45,14 @@ export function InfoPane() {
   useEffect(() => {
     if (editingId !== null && !byId.has(editingId)) useLibrary.getState().setEditing(null); // the item left the library
   }, [editingId, byId]);
+  // The trash view (spec 4.3): its rows read-only — one item's panel with 복원, or the rows' summary.
+  if (scope.kind === 'trash') {
+    const trashed = chosen as readonly TrashedItem[];
+    const collections = trash ? trash.collections.filter((c) => selected.has(c.id)) : [];
+    if (trashed.length + collections.length === 0) return <NoSelection label={label} items={scoped} stats={list !== undefined} />;
+    if (trashed.length === 1 && collections.length === 0) return <ItemInfo key={trashed[0]!.id} item={trashed[0]!} trashedAt={trashed[0]!.deletedAt} />;
+    return <TrashSelection items={trashed} collections={collections} />;
+  }
   if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} />;
   // An empty collection: its name and the day it was made instead of numbers that would all be zero (spec 3.6). Items only in a
   // sub-collection make it non-empty (scoped counts them).
@@ -112,7 +123,7 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
 }
 
 /** One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile). */
-export function ItemInfo({ item, probe = true }: { item: LibraryItem; probe?: boolean }) {
+export function ItemInfo({ item, probe = true, trashedAt }: { item: LibraryItem; probe?: boolean; trashedAt?: string }) {
   const detail = useItemDetail(item.id);
   const ids = useMemo(() => [item.id], [item.id]);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
@@ -121,11 +132,11 @@ export function ItemInfo({ item, probe = true }: { item: LibraryItem; probe?: bo
   }, [detail.isError, detail.error]);
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
-      <InfoHead item={item} probe={probe} />
+      <InfoHead item={item} probe={probe} trashedAt={trashedAt} />
       {detail.data ? (
         <>
-          <InfoSection item={item} detail={detail.data} />
-          <TagsSection ids={ids} />
+          <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />
+          <TagsSection ids={ids} readOnly={trashedAt !== undefined} />
           <CollectionsSection ids={ids} />
           <FileSection detail={detail.data} />
         </>

@@ -298,7 +298,8 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
 
     expectLearnError(() => repo.getItemDetail(newId()), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
     repo.trash([itemId]);
-    expectLearnError(() => repo.getItemDetail(itemId), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    // The trash view's read-only panel reads it too (M6 Task 6, Q-6b).
+    expect(repo.getItemDetail(itemId).item.id).toBe(itemId);
   });
 
   it('trashes and restores items, listing the trash most recently deleted first', () => {

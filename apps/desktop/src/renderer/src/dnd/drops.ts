@@ -25,6 +25,10 @@ export interface DropDeps {
   undoToast(title: string, undo: () => Promise<void>): void;
   failed(e: unknown): void;
   mark(name: Extract<PerfMark, `dnd:${string}`>): void;
+  /** Rows to the trash (trash/actions.ts: at once, with 실행 취소). */
+  trashItems(itemIds: readonly string[]): Promise<void>;
+  /** A collection to the trash (collectionActions.remove: no sheet, 실행 취소). */
+  trashCollection(collectionId: string): Promise<void>;
 }
 
 export interface DropActions {
@@ -38,6 +42,10 @@ export interface DropActions {
   collectionOn(collectionId: string, parentId: string | null): Promise<void>;
   /** A tag dropped on the table row `rowId`: on the selection when the row is in it, else on the row. */
   tagOn(tagId: string, rowId: string): Promise<void>;
+  /** Rows dropped on the sidebar's 휴지통. */
+  itemsOnTrash(itemIds: readonly string[]): Promise<void>;
+  /** A collection row dropped on the sidebar's 휴지통. */
+  collectionOnTrash(collectionId: string): Promise<void>;
 }
 
 export function createDropActions(deps: DropDeps): DropActions {
@@ -113,6 +121,18 @@ export function createDropActions(deps: DropDeps): DropActions {
       } catch (e) {
         deps.failed(e);
       }
+    },
+
+    async itemsOnTrash(itemIds) {
+      if (itemIds.length === 0) return;
+      deps.mark('dnd:drop');
+      await deps.trashItems(itemIds);
+      deps.mark('dnd:filed');
+    },
+
+    async collectionOnTrash(collectionId) {
+      if (!deps.model()?.node(collectionId)) return;
+      await deps.trashCollection(collectionId);
     },
   };
 }

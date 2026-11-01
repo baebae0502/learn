@@ -4,10 +4,9 @@ import type { LibraryItem, OrganizeTag } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { runPicked } from '../commands/registry';
-import { useItems } from '../data/queries';
 import { useScopeView } from '../library/useScopeView';
 import type { TagsSelector } from '../organize/viewSettings';
-import { useOrganize } from '../organize/useOrganize';
+import { useViewItems, useViewModel } from '../trash/useTrashSource';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { MenuIconButton } from '../ui/MenuButton';
@@ -35,8 +34,8 @@ export function focusTagStop(): void {
  * every chosen tag — ↩ renames it in place, the menu key or a right click opens its native menu.
  */
 export function TagSelector() {
-  const { model } = useOrganize();
-  const list = useItems().data ?? NO_ITEMS;
+  const model = useViewModel();
+  const list = useViewItems() ?? NO_ITEMS;
   const { scoped } = useScopeView(list);
   const filter = useLibrary((s) => s.tagFilter);
   const toggleTag = useLibrary((s) => s.toggleTagFilter);

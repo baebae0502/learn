@@ -135,16 +135,16 @@ describe('ipc contract', () => {
     expect(getItemsInput.safeParse({}).success).toBe(false);
   });
   it('takes the reported command context strictly, with the library and selection counts and the view (P-2, spec 9.4)', () => {
-    const view = { selectionTagPositions: 0b11, scope: 'collection', collectionCount: 4, tagPositions: 0b101, tagFilterCount: 2, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b1111 };
+    const view = { selectionTagPositions: 0b11, scope: 'collection', collectionCount: 4, tagPositions: 0b101, tagFilterCount: 2, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b1111, trashCount: 0 };
     const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1, ...view };
     expect(commandContextInput.parse(ctx)).toEqual(ctx);
     // The fatal screen reports neither pane.
-    const fatal = { view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 0b11111 };
+    const fatal = { view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 0b11111, trashCount: 0 };
     expect(commandContextInput.safeParse(fatal).success).toBe(true);
     for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable', 'collectionCount', 'tagFilterCount'] as const) {
       for (const bad of [-1, 1.5, 1_000_001, '1']) expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
     }
-    for (const [k, bad] of [['scope', 'trash'], ['tagPositions', 256], ['tagPositions', -1], ['selectionTagPositions', 256], ['selectionTagPositions', -1], ['searchActive', 'yes'], ['sortColumn', 'tags'], ['sortDirection', 'up'], ['columnsShown', 2 ** LIBRARY_COLUMN_IDS.length], ['columnsShown', 1.5]] as const) {
+    for (const [k, bad] of [['tagPositions', 256], ['tagPositions', -1], ['selectionTagPositions', 256], ['selectionTagPositions', -1], ['searchActive', 'yes'], ['sortColumn', 'tags'], ['sortDirection', 'up'], ['columnsShown', 2 ** LIBRARY_COLUMN_IDS.length], ['columnsShown', 1.5]] as const) {
       expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
     }
     // Every field is required: a report from before a field existed is refused, not guessed.
@@ -200,7 +200,7 @@ describe('ipc contract', () => {
     expect(Object.isFrozen(IDLE_IMPORT_STATE)).toBe(true);
   });
   it('takes whether the import queue runs as an optional flag of the reported context (Q-4c)', () => {
-    const ctx = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 1 };
+    const ctx = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 1, trashCount: 0 };
     expect(commandContextInput.parse({ ...ctx, importRunning: true })).toMatchObject({ importRunning: true });
     expect(commandContextInput.parse(ctx)).not.toHaveProperty('importRunning');
     expect(commandContextInput.safeParse({ ...ctx, importRunning: 'yes' }).success).toBe(false);

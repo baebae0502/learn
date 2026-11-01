@@ -4,10 +4,11 @@ import { Button as AriaButton } from 'react-aria-components';
 import type { OrganizeTag } from '@learn/domain';
 import { commonTags } from '../organize/common';
 import { attachTag, detachTag, type TagPick } from '../organize/itemTags';
-import { useOrganize } from '../organize/useOrganize';
+import { useViewModel } from '../trash/useTrashSource';
 import { t } from '../strings';
 import { ChipGroup } from '../tags/ChipGroup';
 import { TagAddField } from '../tags/TagAddField';
+import { TagChip } from '../tags/TagChip';
 import { DraggableTagChip } from '../dnd/DraggableTagChip';
 import { IconButton } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -28,8 +29,8 @@ function focusAfterRemoval(root: HTMLElement | null, tagId: string | null): void
  * take one off (from all of a selection), and the trailing outlined chip — or the plus beside the title, for one item —
  * opens the add field. Reads the snapshot only; a change is patched into it at once (organize/itemTags).
  */
-export function TagsSection({ ids }: { ids: readonly string[] }) {
-  const { model } = useOrganize();
+export function TagsSection({ ids, readOnly = false }: { ids: readonly string[]; readOnly?: boolean }) {
+  const model = useViewModel();
   const [adding, setAdding] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const multi = ids.length > 1;
@@ -37,6 +38,21 @@ export function TagsSection({ ids }: { ids: readonly string[] }) {
   const have = useMemo(() => new Set(tags.map((tag) => tag.id)), [tags]);
   // Without a snapshot (the read failed) there is nothing true to draw, and no control that cannot work.
   if (!model) return null;
+  // Read-only (a trashed item, spec 4.3): its chips as they are and nothing that would change them; no section when it has none.
+  if (readOnly) {
+    if (tags.length === 0) return null;
+    return (
+      <Section id="tags" title={t.organize.panel.tags.title} testId="tags-section">
+        <div className="tag-line">
+          <ChipGroup role="list" label={t.organize.panel.tags.group}>
+            {tags.map((tag) => (
+              <TagChip key={tag.id} tag={tag} role="assigned" readOnly />
+            ))}
+          </ChipGroup>
+        </div>
+      </Section>
+    );
+  }
 
   const open = () => {
     useSections.getState().setOpen('tags', true);

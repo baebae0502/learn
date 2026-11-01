@@ -110,6 +110,10 @@ export interface TrashView {
   collections: TrashedCollection[];
   /** Most recently trashed first. */
   items: TrashedItem[];
+  /** Live collection → the trashed items directly in it (non-empty keys only): the read-only item panel's 컬렉션. */
+  members: Record<string, string[]>;
+  /** Tag → the trashed items that have it (non-empty keys only): the panel's 태그, the tag selector and filter in the trash view. */
+  tagged: Record<string, string[]>;
 }
 
 /** What a permanent delete removed (영구 삭제, 휴지통 비우기): its items, and every collection — sub-collections included. */

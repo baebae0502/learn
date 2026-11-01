@@ -79,7 +79,7 @@ describe('the trash view (spec 4.3)', () => {
     expect(repo.trashView().collections.map((c) => [c.id, c.parentId])).toEqual([[ch6, bio]]);
     expect(trashCount(db)).toBe(1);
     collections.restore(ch6);
-    expect(repo.trashView()).toEqual({ collections: [], items: [] });
+    expect(repo.trashView()).toEqual({ collections: [], items: [], members: {}, tagged: {} });
     expect(readOrganizeSnapshot(db).trashCount).toBe(0);
   });
 });
@@ -235,7 +235,7 @@ describe('emptyTrash', () => {
     expect(result.itemIds.sort()).toEqual([a.itemId, b.itemId].sort());
     expect(result.collectionIds.sort()).toEqual([bio, notes].sort());
     expect(result.assets.map((x) => x.id)).toEqual([a.asset.id]); // b shared the live item's asset
-    expect(repo.trashView()).toEqual({ collections: [], items: [] });
+    expect(repo.trashView()).toEqual({ collections: [], items: [], members: {}, tagged: {} });
     expect(repo.listItems().map((i) => i.id)).toEqual([live.itemId]);
     expect(collections.list().map((c) => c.id)).toEqual([keep]);
     expect(repo.emptyTrash()).toEqual({ itemIds: [], collectionIds: [], assets: [] });

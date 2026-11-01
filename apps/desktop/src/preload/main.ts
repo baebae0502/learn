@@ -18,7 +18,7 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
-    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
+    ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
   events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested'],
   pathForFile: true,

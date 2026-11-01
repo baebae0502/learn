@@ -4,7 +4,7 @@ import { showColumnMenuInput, showContextMenuInput } from '../src/ipc';
 import { COLUMN_WIDTH_MAX, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, columnSpec, columnsMask, columnsOfMask } from '../src/library-columns';
 
 describe('library table columns (M4 spec 3.1)', () => {
-  it('lists the ten columns in catalogue order with the spec labels, widths and alignment', () => {
+  it('lists the eleven columns in catalogue order with the spec labels, widths and alignment', () => {
     expect(LIBRARY_COLUMNS.map((c) => c.id)).toEqual([...LIBRARY_COLUMN_IDS]);
     expect(LIBRARY_COLUMNS.map((c) => [c.id, c.label, c.defaultWidth, c.minWidth, c.align, c.defaultVisible])).toEqual([
       ['title', '제목', null, 200, 'start', true],
@@ -17,6 +17,7 @@ describe('library table columns (M4 spec 3.1)', () => {
       ['storageMode', '보관', 96, 80, 'start', false],
       ['size', '크기', 80, 64, 'end', false],
       ['originalName', '원래 이름', 200, 120, 'start', false],
+      ['deletedAt', '삭제한 날짜', 132, 112, 'start', false],
     ]);
   });
   it('only the title is required, and only the title takes the remaining width', () => {

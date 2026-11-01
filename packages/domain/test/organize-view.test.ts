@@ -22,7 +22,7 @@ describe('the library view (spec 3.1)', () => {
     expect(libraryScopeSchema.parse({ kind: 'collection', id })).toEqual({ kind: 'collection', id });
   });
   it('refuses what is not a scope: another kind, a collection without a uuid, extra keys', () => {
-    for (const bad of [null, 'all', {}, { kind: 'trash' }, { kind: 'collection' }, { kind: 'collection', id: 'x' }, { kind: 'all', id: newId() }, { kind: 'recent', extra: 1 }]) {
+    for (const bad of [null, 'all', {}, { kind: 'collection' }, { kind: 'collection', id: 'x' }, { kind: 'all', id: newId() }, { kind: 'recent', extra: 1 }]) {
       expect(libraryScopeSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });

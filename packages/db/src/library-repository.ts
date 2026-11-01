@@ -8,7 +8,7 @@ import { nextDeletionStamp } from './deletion-stamp';
 import { keepOneOf, undoKeepOne } from './duplicates';
 import { CollectionsRepository } from './collections-repository';
 import { TagsRepository } from './tags-repository';
-import { emptyTrash, purgeTrash, trashedCollections, type PurgeResult } from './trash';
+import { emptyTrash, purgeTrash, trashedCollections, trashPlaces, type PurgeResult } from './trash';
 
 export interface AssetRow {
   id: string;
@@ -276,9 +276,9 @@ export class LibraryRepository {
     return row && toItem(row);
   }
 
-  /** Detail pane data for a non-trashed item. */
+  /** Detail pane data for an item, also one in the trash (its panel is read-only: Task 6, Q-6b). */
   getItemDetail(id: string): ItemDetail {
-    const row = this.db.prepare(`${ITEM_SELECT} AND i.id = ?`).get(id) as ItemDbRow | undefined;
+    const row = this.db.prepare(`${ITEM_FROM} WHERE i.id = ?`).get(id) as ItemDbRow | undefined;
     if (!row) throw itemNotFound();
     const metadata = parseItemMetadata(row.metadata_json);
     return {
@@ -353,7 +353,7 @@ export class LibraryRepository {
   trashView(): TrashView {
     return this.db.transaction((): TrashView => {
       const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
-      return { collections: trashedCollections(this.db), items: rows.map((r) => ({ ...toItem(r), deletedAt: r.deleted_at! })) };
+      return { collections: trashedCollections(this.db), items: rows.map((r) => ({ ...toItem(r), deletedAt: r.deleted_at! })), ...trashPlaces(this.db) };
     })();
   }
 

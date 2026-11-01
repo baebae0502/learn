@@ -3,9 +3,10 @@ import { api, unwrap } from '../api';
 import { attachTag } from '../organize/itemTags';
 import { addItemsTo, removeFromScope, undoAdds, undoRemovals } from '../organize/membership';
 import { resolveScope } from '../organize/scope';
-import { addExpanded, currentModel, patchOrganize } from '../sidebar/actions';
+import { addExpanded, collectionActions, currentModel, patchOrganize } from '../sidebar/actions';
 import { ancestorIds } from '../sidebar/rows';
 import { useLibrary } from '../state/library-store';
+import { trashActions } from '../trash/actions';
 import { perfMark } from '../ui/perfMarks';
 import { showActionFailed, showUndoToast } from '../ui/toasts';
 import { dragState } from './dragState';
@@ -34,6 +35,8 @@ export const dropActions = createDropActions({
   undoToast: showUndoToast,
   failed: showActionFailed,
   mark: perfMark,
+  trashItems: (itemIds) => trashActions.trashItems(itemIds),
+  trashCollection: (collectionId) => collectionActions.remove(collectionId),
 });
 
 /** The items a tag being dragged would go on if dropped on this row, or null: the row's marker asks this. */

@@ -57,6 +57,11 @@
     background: var(--accent-soft);
     color: var(--accent-text);
   }
+  /* What cannot be undone (P-25: 영구 삭제, 휴지통 비우기): the warning tint, as the mockup's destructive sheet. */
+  .sheet .badge-icon.warning {
+    background: var(--warning-soft);
+    color: var(--warning-text);
+  }
   .sheet .d-text {
     font: var(--type-paragraph);
     color: var(--text-secondary);

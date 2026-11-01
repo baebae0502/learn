@@ -1,4 +1,4 @@
-import { paletteLabel, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { paletteLabel, type CommandId, type CommandSpec, type LabelState } from '@learn/domain';
 import { MATCH_RANK, matchKorean, type Match } from './hangul';
 
 export interface RankedCommand {
@@ -20,7 +20,7 @@ export function rankCommands(
   commands: readonly CommandSpec[],
   query: string,
   platform: string,
-  state: Pick<CommandContextState, 'sidebar' | 'inspector'> = {},
+  state: LabelState = {},
   recent: readonly CommandId[] = [],
 ): RankedCommand[] {
   if (query.trim() === '') {

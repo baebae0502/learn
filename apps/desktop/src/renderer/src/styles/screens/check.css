@@ -28,13 +28,39 @@
   .check-sheet .d-foot {
     padding-top: calc(var(--space-16) - 1px);
   }
-  .check-sheet .checklist {
+  /* The card: the ring and the radius. The list scrolls in the box inside it, so an always-visible (legacy) scrollbar is
+     cut at the rounded corners and the ring, drawn above it, is one line all round (critique 3). */
+  .check-sheet .card.checklist {
+    position: relative;
+    display: flex;
+    flex-direction: column;
     flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    box-shadow: none;
+  }
+  .check-sheet .checklist::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+    pointer-events: none;
+  }
+  .check-sheet .check-scroll {
     min-height: 0;
     overflow-y: auto;
   }
-  .check-sheet .checklist[data-scrolls]:focus-visible {
+  .check-sheet .check-scroll[data-scrolls]:focus-visible {
     outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+  /* macOS: the window never shrinks while the sheet is open (sheets.ts followedHeight), so the spare height lies under
+     the list card, above the foot (critique 4). */
+  :root[data-holds] .sheet[data-follows] {
+    min-height: 100vh;
+  }
+  :root[data-holds] .check-sheet .check-body {
+    flex: 1 1 auto;
   }
   .check-sheet .check-row {
     display: grid;

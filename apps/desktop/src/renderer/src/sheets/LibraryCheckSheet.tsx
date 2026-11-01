@@ -102,30 +102,32 @@ export function LibraryCheckSheet({ payload }: { payload: LibraryCheckPayload })
         </div>
       </div>
       <div className="d-body check-body">
-        <div className="card checklist" ref={list} {...region} data-testid="check-list" aria-busy={working !== null ? true : undefined}>
-          <div role="list" aria-labelledby="sheet-title">
-            {rows.map((view) => (
-              <CheckRowItem
-                key={view.kind}
-                view={view}
-                working={working === view.kind}
-                asking={asking && view.kind === 'unreferenced' && view.state === 'todo'}
-                failure={failure(view.kind)}
-                onAct={(key) => (key === 'askClean' ? setAsking(true) : void act(view.kind, ACTIONS[key]))}
-                onRelink={(itemId) => void act(view.kind, { kind: 'libraryCheck', act: 'relink', itemId })}
-                onConfirm={() => void act('unreferenced', { kind: 'libraryCheck', act: 'cleanUnreferenced' })}
-                onKeep={keepCopies}
-              />
-            ))}
-            <div className="check-row" role="listitem" data-testid="check-row" data-kind="records" data-state="done" data-tone="success">
-              <span className="ci-status c-success">
-                <Icon icon={CircleCheck} label={t.check.status.success} />
-              </span>
-              <div className="ci-main">
-                <div className="ci-title">{t.check.records.title}</div>
-                <div className="ci-text">{t.check.records.text(payload.items)}</div>
+        <div className="card checklist" data-testid="check-list">
+          <div className="check-scroll" ref={list} {...region} data-testid="check-scroll" aria-busy={working !== null ? true : undefined}>
+            <div role="list" aria-labelledby="sheet-title">
+              {rows.map((view) => (
+                <CheckRowItem
+                  key={view.kind}
+                  view={view}
+                  working={working === view.kind}
+                  asking={asking && view.kind === 'unreferenced' && view.state === 'todo'}
+                  failure={failure(view.kind)}
+                  onAct={(key) => (key === 'askClean' ? setAsking(true) : void act(view.kind, ACTIONS[key]))}
+                  onRelink={(itemId) => void act(view.kind, { kind: 'libraryCheck', act: 'relink', itemId })}
+                  onConfirm={() => void act('unreferenced', { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: payload.rows.find((r) => r.kind === 'unreferenced')?.keys ?? [] })}
+                  onKeep={keepCopies}
+                />
+              ))}
+              <div className="check-row" role="listitem" data-testid="check-row" data-kind="records" data-state="done" data-tone="success">
+                <span className="ci-status c-success">
+                  <Icon icon={CircleCheck} label={t.check.status.success} />
+                </span>
+                <div className="ci-main">
+                  <div className="ci-title">{t.check.records.title}</div>
+                  <div className="ci-text">{t.check.records.text(payload.items)}</div>
+                </div>
+                <div className="ci-action" />
               </div>
-              <div className="ci-action" />
             </div>
           </div>
         </div>

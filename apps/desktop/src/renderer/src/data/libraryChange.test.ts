@@ -10,7 +10,7 @@ const item = (id: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
 const LIST = [item('a'), item('b'), item('c')];
 
 function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; fresh?: (ids: string[]) => Promise<LibraryItem[]> } = {}) {
-  const calls = { all: 0, organize: 0, texts: 0, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
+  const calls = { all: 0, organize: 0, trash: 0, texts: 0, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
   let list: readonly LibraryItem[] | undefined = 'list' in over ? over.list : LIST;
   const deps: ChangeDeps = {
     cached: () => list,
@@ -25,6 +25,7 @@ function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; f
     },
     invalidateAll: () => void (calls.all += 1),
     invalidateOrganize: () => void (calls.organize += 1),
+    invalidateTrash: () => void (calls.trash += 1),
     invalidateItem: (id) => void calls.items.push(id),
     invalidateTexts: () => void (calls.texts += 1),
   };
@@ -33,12 +34,12 @@ function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; f
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 describe('the library list after a change notice (spec 10.3)', () => {
-  it('collections and tags read only the organize snapshot, whatever items they name', async () => {
+  it('collections and tags read only the organize snapshot, whatever items they name; collections the trash view too', async () => {
     const { handle, calls } = setup();
     handle({ reason: 'tags', itemIds: ['a'] });
     handle({ reason: 'collections' });
     await settle();
-    expect(calls).toMatchObject({ organize: 2, all: 0, getItems: [], put: [] });
+    expect(calls).toMatchObject({ organize: 2, trash: 1, all: 0, getItems: [], put: [] });
   });
 
   it('an opened notice reads those items only and patches them into the list, in place', async () => {
@@ -67,10 +68,11 @@ describe('the library list after a change notice (spec 10.3)', () => {
     }
   });
 
-  it('reads the whole list for import, trash and restore, and when no ids came or more than 500', async () => {
+  it('reads the whole list for import, trash, restore and purge, and when no ids came or more than 500', async () => {
     const many = Array.from({ length: NARROW_LIMIT + 1 }, (_, k) => `x${k}`);
     for (const change of [
       { reason: 'import' as const, itemIds: ['a'] }, { reason: 'trash' as const, itemIds: ['a'] }, { reason: 'restore' as const, itemIds: ['a'] },
+      { reason: 'purge' as const, itemIds: ['a'] }, { reason: 'purge' as const },
       { reason: 'metadata' as const }, { reason: 'opened' as const, itemIds: [] }, { reason: 'metadata' as const, itemIds: many },
     ]) {
       const { handle, calls } = setup();

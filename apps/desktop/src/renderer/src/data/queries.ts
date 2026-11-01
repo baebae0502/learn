@@ -26,6 +26,8 @@ export const keys = {
   view: ['settings', 'library.view'] as const,
   /** The organize snapshot (spec 10.1): collections, tags, memberships, assignments, duplicate groups. */
   organize: ['library', 'organize'] as const,
+  /** The trash view's rows (spec 4.3): read while the trash view shows; under ['library'], so trash, restore and purge notices mark it stale. */
+  trash: ['library', 'trash'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -54,6 +56,9 @@ export const usePanes = () => useQuery({ queryKey: keys.panes, queryFn: () => un
 /** The item panel's facts (metadata, file, SHA-256): the same cache entry as the reader's missing notice (ViewerHost). */
 export const useItemDetail = (itemId: string) => useQuery({ queryKey: keys.detail(itemId), queryFn: () => unwrap(api().library.detail({ itemId })) });
 
+/** The trash view (spec 4.3): its collection rows and items. `enabled` while the trash view is what the library shows. */
+export const useTrashView = (enabled = true) => useQuery({ queryKey: keys.trash, queryFn: () => unwrap(api().library.trashView()), enabled });
+
 /**
  * Every change made through main pushes libraryChanged. Collections and tags read the snapshot only; a change to some
  * items' own rows reads those items and patches the list; the rest drops all cached library data (libraryChange.ts).
@@ -75,6 +80,7 @@ const onLibraryChanged = createChangeHandler({
   getItems: (ids) => unwrap(api().library.getItems({ ids })),
   invalidateAll: () => void queryClient.invalidateQueries({ queryKey: ['library'] }),
   invalidateOrganize: () => void queryClient.invalidateQueries({ queryKey: keys.organize }),
+  invalidateTrash: () => void queryClient.invalidateQueries({ queryKey: keys.trash }),
   invalidateItem: (itemId) => {
     void queryClient.invalidateQueries({ queryKey: keys.item(itemId) });
     void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) });

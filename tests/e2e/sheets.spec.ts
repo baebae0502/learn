@@ -135,7 +135,7 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     // A sheet's preload has its own namespace only: it cannot ask for another sheet, the settings window or the
     // library at all, and main refuses its kind on those channels too (register.test.ts).
     expect(await sheet.evaluate(() => Object.keys(window.learn))).toEqual(['sheet']);
-    expect(await sheet.evaluate(() => Object.keys(window.learn.sheet).sort())).toEqual(['payload', 'resolve']);
+    expect(await sheet.evaluate(() => Object.keys(window.learn.sheet).sort())).toEqual(['act', 'payload', 'resolve']);
     expect(await windowKinds(s.app)).toEqual(['main', 'settings (hidden)', 'sheet']);
     // A click on a row (static text) leaves ↩ working.
     await sheet.getByTestId('shortcut-row').first().click();

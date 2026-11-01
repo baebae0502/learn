@@ -113,7 +113,7 @@ test('a long parent path gives way in the middle of the result sheet\'s 위치; 
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
     const [folder] = fs.readdirSync(parent);
     const where = sheet.getByTestId('backup-location');
-    await expect(where.locator('.path-tail')).toHaveText(folder!);
+    await expect(where.locator('.path-tail')).toHaveText(`${path.sep}${folder!}`);
     const box = await where.evaluate((dd) => {
       const head = dd.querySelector('.path-head') as HTMLElement;
       const tail = dd.querySelector('.path-tail') as HTMLElement;

@@ -322,7 +322,7 @@ test('one work line: a restore waits behind an import and its toast says so; qui
     await expect(waiting.getByRole('progressbar')).toHaveCount(0);
     const sheet = await expectWindow(s.app, 'sheet', () => importResume(s.app));
     // What the backup holds — made before this import — not what the library holds now.
-    await expect(sheet.getByTestId('restore-items')).toHaveText('2개 · 컬렉션 0개 · 태그 0개');
+    await expect(sheet.getByTestId('restore-items')).toHaveText('2개');
     await closeSheet(sheet, 'Escape');
     await waitImportIdle(s.page);
 

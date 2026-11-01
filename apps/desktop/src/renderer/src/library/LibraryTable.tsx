@@ -28,7 +28,8 @@ import { wheelSteps } from './columnDrag';
 import { useColumnReorder } from './useColumnReorder';
 import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
-import { LinkMark, StatusFlags } from './ItemMarks';
+import { KeptMark, LinkMark, StatusFlags } from './ItemMarks';
+import type { DuplicateMarks } from '../organize/duplicates';
 import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
@@ -58,11 +59,16 @@ export interface LibraryTableProps {
   revealId?: string | null;
   /** What the body shows while there are no rows (the loading line, a no-results state). The header stays. */
   empty?: ReactNode;
+  /** 중복 항목 (M6 spec 5): the rows that stay (남김) and the first row of each group after the first (a line above it). */
+  duplicateMarks?: DuplicateMarks | null;
 }
 
 /** design-spec 6 표 (M3 .table-body): the first row starts 4 px under the header; the scroll ends 8 px past the last. */
 const BODY_TOP = 4;
 const BODY_BOTTOM = 8;
+/** 중복 항목: the space above a group's first row — the mockup's 1 px line with 4 px above and below it (.table-group-sep). */
+const GROUP_GAP = 9;
+const NO_IDS: ReadonlySet<string> = new Set();
 /** Rows drawn beyond each edge of the view, so a fast scroll does not show empty slots. */
 const OVERSCAN = 8;
 /** ← / → on a focused column edge. */
@@ -109,17 +115,18 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
 }
 
 /** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks and the colour dots. */
-function TitleCell({ item, match, tags }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[] }) {
+function TitleCell({ item, match, tags, kept }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[]; kept: boolean }) {
   return (
     <>
       <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>
-      {/* The mockup's order: title, link mark, dots, status flags. */}
+      {/* The mockup's order: title, link mark, dots, status flags, 남김 (중복 항목). */}
       <LinkMark item={item} />
       <TagDots tags={tags} />
       <StatusFlags item={item} flagTestId="missing-flag" />
+      {kept && <KeptMark />}
     </>
   );
 }
@@ -144,6 +151,10 @@ interface ItemRowProps {
   dragIdsOf: (rowId: string) => string[];
   /** Dragged and a tag-drop target (false in the trash view). */
   draggable: boolean;
+  /** 중복 항목: this row stays when its group is cleaned up (남김). */
+  kept: boolean;
+  /** 중복 항목: the first row of a group after another group (the line in the gap above it). */
+  groupStart: boolean;
 }
 
 /**
@@ -151,7 +162,7 @@ interface ItemRowProps {
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
-const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf, draggable }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf, draggable, kept, groupStart }: ItemRowProps) {
   const last = columns.length - 1;
   const rowRef = useRef<HTMLDivElement>(null);
   const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf, draggable);
@@ -177,6 +188,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       data-focus-visible={ring || undefined}
       data-missing={item.availability === 'missing' || undefined}
       data-drop-target={isDropTarget || undefined}
+      data-group-start={groupStart || undefined}
     >
       {columns.map((c, i) => (
         <div
@@ -187,7 +199,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
           data-col={c.id}
         >
           {c.id === 'title' ? (
-            <TitleCell item={item} match={match} tags={tags} />
+            <TitleCell item={item} match={match} tags={tags} kept={kept} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}
@@ -283,6 +295,8 @@ export function LibraryTable(props: LibraryTableProps) {
   const selected = useLibrary((s) => s.selected);
   const cursorId = useLibrary((s) => s.cursorId);
   const rowHeight = ROW_HEIGHT[usePrefs().data?.density ?? defaultDensity];
+  const kept = props.duplicateMarks?.kept ?? NO_IDS;
+  const starts = props.duplicateMarks?.starts ?? NO_IDS;
   const forced = props.forced ?? NO_COLUMNS;
   const visible = useMemo(() => visibleColumns(columns, forced), [columns, forced]);
   const last = visible.length - 1;
@@ -309,7 +323,7 @@ export function LibraryTable(props: LibraryTableProps) {
   const virtualizer = useVirtualizer({
     count,
     getScrollElement: () => scroller.current,
-    estimateSize: () => rowHeight,
+    estimateSize: (i) => rowHeight + (starts.has(rows[i - nc]?.id ?? '') ? GROUP_GAP : 0),
     overscan: OVERSCAN,
     getItemKey,
     rangeExtractor,
@@ -319,8 +333,9 @@ export function LibraryTable(props: LibraryTableProps) {
     scrollPaddingStart: BODY_TOP,
     scrollPaddingEnd: BODY_BOTTOM,
   });
-  // Rows have one height, the density's: a new density measures every row again (spec §3.4).
-  useLayoutEffect(() => virtualizer.measure(), [virtualizer, rowHeight]);
+  // Rows have one height, the density's, and a group's first row in 중복 항목 the gap above it: a new density or new
+  // groups measure every row again (spec §3.4).
+  useLayoutEffect(() => virtualizer.measure(), [virtualizer, rowHeight, starts]);
 
   // A classic scroll bar takes a column from the scroller; the header band keeps that column free. The width goes onto
   // the grid at once (no frame with a header wider than the rows) and into state for the title edge's size below.
@@ -731,7 +746,7 @@ export function LibraryTable(props: LibraryTableProps) {
                   key={v.key}
                   item={item}
                   index={v.index}
-                  top={v.start}
+                  top={v.start + (starts.has(item.id) ? GROUP_GAP : 0)}
                   selected={selected.has(item.id)}
                   tabStop={v.index === stop}
                   ring={ring && focusedId === item.id}
@@ -741,6 +756,8 @@ export function LibraryTable(props: LibraryTableProps) {
                   tags={props.tagsOf?.(item.id) ?? NO_TAGS}
                   dragIdsOf={dragIdsOf}
                   draggable={draggable}
+                  kept={kept.has(item.id)}
+                  groupStart={starts.has(item.id)}
                 />
               );
             })}

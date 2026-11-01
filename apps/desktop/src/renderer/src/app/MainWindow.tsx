@@ -24,6 +24,7 @@ import { afterEditing } from '../inspector/editGuard';
 import { Inspector } from '../inspector/Inspector';
 import { InspectorToggle } from '../inspector/InspectorToggle';
 import { startEditing } from '../inspector/startEditing';
+import { KeepAllDuplicatesButton } from '../library/KeepAllDuplicatesButton';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
 import { LibraryLoading } from '../library/LibraryLoading';
@@ -466,6 +467,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         filtered={scopeView.filtered}
         actions={
           <>
+            <KeepAllDuplicatesButton />
             {/* The trash view's head (approved mockup): 휴지통 비우기… in 가져오기's place — what is imported goes to 내 라이브러리. */}
             {inTrash ? <EmptyTrashButton /> : <ImportMenuButton />}
             {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}

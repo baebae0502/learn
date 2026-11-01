@@ -36,3 +36,12 @@ export function ItemMarks({ item, flagTestId }: { item: LibraryItem; flagTestId?
     </>
   );
 }
+
+/** 남김 (M6 spec 5): in 중복 항목, the row that stays when its group is cleaned up — the earliest import. */
+export function KeptMark() {
+  return (
+    <span className="kept-mark" title={t.organize.duplicates.keptTitle} data-testid="kept-mark">
+      {t.organize.duplicates.kept}
+    </span>
+  );
+}

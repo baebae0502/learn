@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo } from 'react';
+import { duplicateMarks } from '../organize/duplicates';
 import type { LibraryItem } from '@learn/domain';
 import { resolveScope } from '../organize/scope';
 import { ScopeEmpty } from '../sidebar/ScopeEmpty';
@@ -43,6 +44,8 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   const model = useViewModel();
   const scope = useMemo(() => resolveScope(model, chosen), [model, chosen]);
   const trash = scope.kind === 'trash';
+  // 중복 항목: the rows that stay (남김) and the line above each group after the first.
+  const marks = useMemo(() => (scope.kind === 'duplicates' && model ? duplicateMarks(rows, model) : null), [scope.kind, model, rows]);
   // A view with nothing in it and nothing that would explain it (spec 3.6). The trash has none: emptied, it closes.
   const scopeEmpty = rows.length === 0 && query === '' && tagFilterSize === 0 && scope.kind !== 'all' && !trash;
   // The chosen tags leave no item and the search says nothing else: the filter's own empty state (spec 3.6).
@@ -65,6 +68,7 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
       revealId={revealId}
       titleMatches={titleMatches}
       tagsOf={model?.tagsOfItem}
+      duplicateMarks={marks}
       empty={noResults ? <SearchEmpty query={query} view={view.scope.kind === 'all' ? null : view.label} tagCount={tagFilterSize} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
     />
   );

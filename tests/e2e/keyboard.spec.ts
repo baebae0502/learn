@@ -6,9 +6,9 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
+  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
-  specialRow, stubContextMenu, stubFolderPicker, stubOpenDialog, tagChip, treeRow, waitImportIdle,
+  specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, treeRow, waitImportIdle,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -496,6 +496,94 @@ test('M6 keyboard only: ⌘O → toast ends → F6 table → ↓ → ⌘⌫ → 
     await expectNoSeriousA11y(sheet, 'm6-backup-sheet');
     await closeSheet(sheet, 'Enter');
     expect(fs.readdirSync(backups)).toHaveLength(1);
+  } finally {
+    await app.close();
+  }
+});
+
+// Spec 13 "axe(심각 이상 0)": the screens M6 adds beyond the keyboard journey's stops. The duplicates view, the library check
+// sheet (automatic and nothing wrong) and the item panel with an edited copy have their stops in duplicates, recovery and
+// edited-copy.spec.ts; the undo toast, the trash view and the backup sheet are the journey's.
+test('axe at every M6 state: the import toast running and waiting for the answer, the duplicate question, the permanent-delete and empty-trash sheets, the restore sheet (clean and with problems), the reader\'s trash notice, the settings window\'s last backup', async ({}, testInfo) => {
+  const backups = testInfo.outputPath('backups');
+  const restores = testInfo.outputPath('restores');
+  for (const dir of [backups, restores]) fs.mkdirSync(dir, { recursive: true });
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const { app, page } = s;
+  try {
+    const [a, b, c] = distinctPdfs(testInfo.outputPath('src'), 3);
+    const [first, second] = await importPaths(page, [a!, b!]);
+
+    // The import toast, running: held before its commit past the 1 s the toast waits for.
+    await importPause(app, 'beforeCommit');
+    await importFiles(s, [c!]);
+    await expect.poll(() => importWaiting(app)).toBe('beforeCommit');
+    await expect(page.getByTestId('import-progress')).toHaveAttribute('data-state', 'running');
+    await expectNoSeriousA11y(page, 'the import toast, running');
+    await importResume(app);
+    await waitImportIdle(page);
+
+    // The same files again: the duplicate question holds the window, the toast waits for the answer.
+    const question = await expectWindow(app, 'sheet', () => importFiles(s, [a!, b!]));
+    await expect(page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+    await expectNoSeriousA11y(page, 'the import toast, waiting for the answer');
+    await expectNoSeriousA11y(question, 'the duplicate question');
+    await closeSheet(question, 'Escape');
+    await waitImportIdle(page);
+
+    // Both sheets of the trash view: 영구 삭제… of one item, 휴지통 비우기….
+    await trashItems(page, [first!.id, second!.id]);
+    await specialRow(page, 'trash').click();
+    await rowByTitle(page, 'distinct-01').click();
+    const purge = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await expect(purge.getByTestId('purge-cancel')).toBeFocused();
+    await expectNoSeriousA11y(purge, 'the permanent-delete sheet');
+    await closeSheet(purge, 'Escape');
+    const empty = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'trash.empty'));
+    await expectNoSeriousA11y(empty, 'the empty-trash sheet');
+    await closeSheet(empty, 'Escape');
+    await stubContextMenu(app, '복원');
+    await rowByTitle(page, 'distinct-01').click({ button: 'right' });
+    await rowByTitle(page, 'distinct-02').click({ button: 'right' });
+    await expect(specialRow(page, 'trash')).toHaveCount(0);
+
+    // The reader, its item moved to the trash.
+    await rowByTitle(page, 'distinct-03').dblclick();
+    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    const open = (await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? r.data.find((i) => i.title === 'distinct-03')?.id : null;
+    }))!;
+    await trashItems(page, [open]);
+    await expect(page.getByTestId('reader-trashed')).toBeVisible();
+    await expectNoSeriousA11y(page, 'the reader\'s trash notice');
+    await page.getByTestId('reader-trashed-restore').click();
+    await expect(page.getByTestId('reader-trashed')).toHaveCount(0);
+    await runMenuCommand(app, 'nav.back');
+
+    // A backup, the settings window's 마지막 백업, and the restore sheet: clean, then with a file lost and another changed.
+    await stubFolderPicker(app, backups);
+    await closeSheet(await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.backup')), 'Enter');
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect(settings.getByTestId('last-backup-date')).toBeVisible();
+    await expectNoSeriousA11y(settings, 'the settings window, 마지막 백업');
+    const [name] = fs.readdirSync(backups);
+    const backup = path.join(backups, name!);
+    await stubFolderPicks(app, [backup, restores]);
+    await expect.poll(() => enabledMenuCommands(app)).toContain('file.restore');
+    const clean = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.restore'));
+    await expect(clean.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'success');
+    await expectNoSeriousA11y(clean, 'the restore sheet, nothing wrong');
+    await closeSheet(clean, 'Escape');
+    const manifest = JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { assets: Array<{ included: boolean; relativePath: string | null }> };
+    const [lost, changed] = manifest.assets.filter((x) => x.included);
+    fs.rmSync(path.join(backup, ...lost!.relativePath!.split('/')));
+    fs.appendFileSync(path.join(backup, ...changed!.relativePath!.split('/')), 'changed on the way');
+    await stubFolderPicks(app, [backup, restores]);
+    const problems = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.restore'));
+    await expect(problems.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'warning');
+    await expectNoSeriousA11y(problems, 'the restore sheet, with problems');
+    await closeSheet(problems, 'Escape');
   } finally {
     await app.close();
   }

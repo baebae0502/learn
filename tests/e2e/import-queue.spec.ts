@@ -80,6 +80,38 @@ test('취소 from the toast: the file past its rename still comes in, the rest a
   }
 });
 
+test('취소 pressed with the keyboard: the focus goes back to the table, and the result toast closes by itself after 5 s (M6 task 4 fix 2)', async ({}, testInfo) => {
+  const src = testInfo.outputPath('src');
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, distinctPdfs(path.join(src, 'first'), 1));
+    await waitImportIdle(s.page);
+    await importPause(s.app, 'beforeCommit');
+    await importFiles(s, distinctPdfs(path.join(src, 'more'), 3));
+    await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+    await expect(toast(s.page)).toBeVisible();
+    await s.page.getByTestId('item-row').first().focus();
+    await expect.poll(() => s.page.evaluate(() => document.querySelector('[data-pane="content"]')?.contains(document.activeElement) ?? false)).toBe(true);
+    // F6 from the table would pass the item panel first, so the toast region is entered straight from the table.
+    await s.page.evaluate(() => document.querySelector<HTMLElement>('[data-pane="toasts"] .toast')!.focus());
+    for (let i = 0; i < 3 && !(await s.page.getByTestId('import-cancel').evaluate((b) => b === document.activeElement)); i++) {
+      await s.page.keyboard.press('Tab'); // F6 lands on the toast itself; Tab reaches 취소
+    }
+    await expect(s.page.getByTestId('import-cancel')).toBeFocused();
+    await s.page.keyboard.press('Space');
+    await importResume(s.app);
+    await expect(s.page.getByTestId('import-done')).toBeVisible();
+    const where = await s.page.evaluate(() => ({
+      inContent: document.querySelector('[data-pane="content"]')?.contains(document.activeElement) ?? false,
+      body: document.activeElement === document.body,
+    }));
+    expect(where).toEqual({ inContent: true, body: false });
+    await expect(s.page.getByTestId('import-done')).toHaveCount(0, { timeout: 7000 });
+  } finally {
+    await s.app.close();
+  }
+});
+
 // 가져오기 취소 stops the file at its checkpoint: nothing of it is left, and the result reads "가져오기를 취소했습니다" (spec 11.1).
 test('가져오기 취소 from the palette stops the file at its checkpoint', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');

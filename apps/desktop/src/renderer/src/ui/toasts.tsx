@@ -1,4 +1,4 @@
-import { useEffect, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, type KeyboardEvent } from 'react';
 import { CircleAlert, CircleCheck, CirclePause, Info, X } from 'lucide-react';
 import {
   Text,
@@ -19,6 +19,8 @@ import { ProgressBar } from './ProgressBar';
 import { Spinner } from './Spinner';
 import { afterPaintOr, type Pending } from './afterPaint';
 import { perfMark } from './perfMarks';
+import { focusPaneNamed } from '../shell/panes';
+import { toastFocusReturn } from './toastFocus';
 import { DismissTimer } from './toastTimer';
 
 export type ToastKind = 'success' | 'error' | 'info' | 'busy';
@@ -257,8 +259,14 @@ function closeOnEscape(e: KeyboardEvent): void {
   toastQueue.close(toast.dataset['toastKey']!);
 }
 
+const focusReturn = toastFocusReturn(() => void focusPaneNamed('content'));
+
 /** The inside of a plain toast; a job toast that its result took over draws the same. */
-function PlainToastBody({ toastKey, data }: { toastKey: string; data: ToastData }) {
+function PlainToastBody({ toastKey, data, tookOver }: { toastKey: string; data: ToastData; tookOver?: boolean }) {
+  // A job's result replaces its progress in place: the focus on 취소 goes with the button, so it is given back here.
+  useLayoutEffect(() => {
+    if (tookOver) focusReturn.settled();
+  }, [tookOver]);
   return (
     <>
       <AutoClose toastKey={toastKey} kind={data.kind} testId={data.testId} />
@@ -325,7 +333,7 @@ function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: P
   if (view?.kind === 'result') {
     return (
       <Toast toast={toast} className="toast" data-kind={view.data.kind} data-toast-key={toast.key} data-testid={view.data.testId ?? 'toast'}>
-        <PlainToastBody toastKey={toast.key} data={view.data} />
+        <PlainToastBody toastKey={toast.key} data={view.data} tookOver />
       </Toast>
     );
   }
@@ -339,9 +347,19 @@ function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: P
 
 export function Toasts() {
   return (
-    <div className="toast-keys" onKeyDown={closeOnEscape}>
+    <div
+      className="toast-keys"
+      onKeyDown={closeOnEscape}
+      onFocus={(e) => focusReturn.entered(e.relatedTarget as Element | null)}
+      onBlur={(e) => focusReturn.left(e.relatedTarget as Element | null)}
+    >
       {/* The last F6 pane while a toast is visible (shell/panes.ts, R-1); RAC passes data-* through to the region. */}
-      <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
+      <ToastRegion
+        queue={toastQueue}
+        className="toasts"
+        aria-label={t.common.notifications}
+        data-pane="toasts"
+      >
         {({ toast }) =>
           toast.content.kind === 'job' ? (
             <JobToastItem toast={toast} job={toast.content.job} />

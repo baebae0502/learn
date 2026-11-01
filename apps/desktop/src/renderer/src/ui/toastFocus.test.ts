@@ -1,0 +1,57 @@
+import { describe, expect, it } from 'vitest';
+import { createToastFocusReturn } from './toastFocus';
+
+function setup() {
+  const region = new Set<string>(['cancel', 'region']);
+  const log: string[] = [];
+  const state = { active: 'body', connected: new Set(['table']) };
+  const ret = createToastFocusReturn({
+    active: () => state.active as unknown as Element,
+    inRegion: (el) => el !== null && region.has(el as unknown as string),
+    connected: (el) => state.connected.has(el as unknown as string),
+    focus: (el) => {
+      state.active = el as unknown as string;
+      log.push(`focus ${el as unknown as string}`);
+    },
+    fallback: () => {
+      state.active = 'content';
+      log.push('fallback');
+    },
+    release: (to) => log.push(`release ${to as unknown as string}`),
+  });
+  const el = (n: string | null) => n as unknown as Element | null;
+  return { ret, state, log, el };
+}
+
+describe('the focus a job toast takes with it when it turns into its result', () => {
+  it('goes back to where it was before it entered the region, and the hold ends', () => {
+    const { ret, state, log, el } = setup();
+    ret.entered(el('table'));
+    ret.entered(el('cancel')); // inside the region already: the origin stays
+    state.active = 'body'; // the button was replaced: no blur
+    ret.settled();
+    expect(log).toEqual(['focus table', 'release table']);
+  });
+  it('goes to the main content when the place it came from is gone', () => {
+    const { ret, state, log, el } = setup();
+    ret.entered(el('table'));
+    state.connected.clear();
+    state.active = 'body';
+    ret.settled();
+    expect(log).toEqual(['fallback', 'release content']);
+  });
+  it('does nothing when the focus is still in the region, or was never in it, or left by itself', () => {
+    const a = setup();
+    a.ret.entered(a.el('table'));
+    a.state.active = 'cancel';
+    a.ret.settled();
+    const b = setup();
+    b.ret.settled();
+    const c = setup();
+    c.ret.entered(c.el('table'));
+    c.ret.left(c.el('table'));
+    c.state.active = 'body';
+    c.ret.settled();
+    expect([a.log, b.log, c.log]).toEqual([[], [], []]);
+  });
+});

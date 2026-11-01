@@ -56,7 +56,7 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
+const { createSheetHost, FOLLOWING_SHEETS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn>; height: number };
 /** A parent window whose height a test may change (then emit 'resize'). */
@@ -438,6 +438,28 @@ describe('a sheet given up with the work that asked it (the duplicate question o
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
     stop.abort();
     expect(w.destroyed).toBe(true);
+  });
+});
+
+describe('the result sheets that grow by a reveal error line', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+  const RESTORE = { kind: 'restoreDone', backupAt: '2026-10-30T12:41:00.000Z', items: 3, trashed: 0, collections: 0, tags: 0, files: 2, verified: 2, missing: null, damaged: null, records: null, countsMatch: true, location: '/home/u/Learn 복원', homeDir: '/home/u' } as const;
+
+  it('FOLLOWING_SHEETS names the backup and the restore result sheets', () => {
+    expect([...FOLLOWING_SHEETS].sort()).toEqual(['backupDone', 'libraryCheck', 'restoreDone']);
+  });
+
+  it('the restore sheet follows its content up to the cap, so the error line of a failed reveal fits', async () => {
+    FakeWindow.pageHeight = 400;
+    void host().open(parent(1, 900), RESTORE);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(w.contentSize).toEqual([560, 400]);
+    FakeWindow.followers.shift()!(436);
+    await tick();
+    expect(w.contentSize).toEqual([560, 436]);
   });
 });
 

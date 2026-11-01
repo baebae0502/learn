@@ -3,8 +3,8 @@ import type { CheckRow, LibraryCheckPayload } from '@learn/domain';
 import { checkBadge, checkHintShown, checkIntro, checkRowView } from './checkView';
 
 const HOME = '/Users/seojin';
-const todo = (over: Partial<CheckRow> & Pick<CheckRow, 'kind'>): CheckRow => ({ state: 'todo', count: 1, bytes: 0, entries: [], fix: null, ...over });
-const done = (kind: CheckRow['kind'], fix: CheckRow['fix']): CheckRow => ({ kind, state: 'done', count: 0, bytes: 0, entries: [], fix });
+const todo = (over: Partial<CheckRow> & Pick<CheckRow, 'kind'>): CheckRow => ({ state: 'todo', count: 1, bytes: 0, entries: [], fix: null, keys: [], ...over });
+const done = (kind: CheckRow['kind'], fix: CheckRow['fix']): CheckRow => ({ kind, state: 'done', count: 0, bytes: 0, entries: [], fix, keys: [] });
 const payload = (over: Partial<LibraryCheckPayload> = {}): LibraryCheckPayload => ({ kind: 'libraryCheck', mode: 'auto', items: 128, rows: [], homeDir: HOME, failed: null, ...over });
 const A = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const B = '0f1e2d3c-4b5a-4968-8776-a5b4c3d2e1f0';

@@ -13,7 +13,10 @@ export interface DuplicateActionDeps {
   setScope(scope: LibraryScope): void;
   /** The list read again (waited for a while at most): the view moves once the trashed rows have left it. */
   settled(): Promise<void>;
-  undoToast(title: string, undo: () => Promise<void>): void;
+  /** The toast's key, for trackUndo. */
+  undoToast(title: string, undo: () => Promise<void>): string;
+  /** The toast stands for these trashed items: a purge of them closes it (trashActions.trackUndo). */
+  trackUndo(toastKey: string, itemIds: readonly string[]): void;
   failed(e: unknown): void;
 }
 
@@ -43,9 +46,10 @@ export function createDuplicateActions(deps: DuplicateActionDeps): DuplicateActi
       await deps.settled();
       deps.setScope(SCOPE_ALL);
     }
-    deps.undoToast(t.organize.duplicates.done(result.trashed.length), async () => {
+    const key = deps.undoToast(t.organize.duplicates.done(result.trashed.length), async () => {
       await deps.undo(result.undo);
     });
+    deps.trackUndo(key, result.trashed);
   }
   return {
     keepOne: (itemIds) => clean(() => deps.keepOne(itemIds), groupsLeftAfter(deps.model()?.duplicateGroups ?? [], itemIds)),

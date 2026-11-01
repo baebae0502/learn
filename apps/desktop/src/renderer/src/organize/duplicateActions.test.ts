@@ -6,7 +6,7 @@ import { item } from './testing';
 
 const SNAPSHOT: OrganizeSnapshot = { collections: [], tags: [], members: {}, tagged: {}, duplicates: [['p1', 'p2', 'p3'], ['q1', 'q2']], trashCount: 0 };
 const model = buildOrganizeModel(SNAPSHOT, ['p1', 'p2', 'p3', 'q1', 'q2'].map((id) => item(id)));
-const answer = (trashed: string[], kept: string[]): KeepOneResult => ({ kept, trashed, undo: { trashed, stamp: '2026-10-31T02:00:00.000Z', memberships: [], tags: [] } });
+const answer = (trashed: string[], kept: string[]): KeepOneResult => ({ kept, trashed, undo: { trashed, stamp: '2026-10-31T02:00:00.000Z', kept, memberships: [], tags: [] } });
 
 function harness(start: LibraryScope, over: Partial<DuplicateActionDeps> = {}) {
   const log: string[] = [];
@@ -32,7 +32,11 @@ function harness(start: LibraryScope, over: Partial<DuplicateActionDeps> = {}) {
       scope = next;
     },
     settled: async () => void log.push('list read'),
-    undoToast: (title, undo) => void toasts.push({ title, undo }),
+    undoToast: (title, undo) => {
+      toasts.push({ title, undo });
+      return `toast-${toasts.length}`;
+    },
+    trackUndo: vi.fn(),
     failed: vi.fn(),
     ...over,
   };
@@ -67,6 +71,17 @@ describe('하나만 남기고 휴지통으로 (M6 spec 5)', () => {
     await failing.actions.keepOne(['p2']);
     expect(failing.deps.failed).toHaveBeenCalledWith(refused);
     expect(failing.toasts).toEqual([]);
+  });
+});
+
+describe('the 실행 취소 toast of a clean-up stands for what it trashed (the purge closes it, as the ⌘⌫ toast)', () => {
+  it('hands the toast key and the trashed ids to the trash actions; nothing when nothing went', async () => {
+    const h = harness({ kind: 'duplicates' });
+    await h.actions.keepOne(['p2']);
+    expect(h.deps.trackUndo).toHaveBeenCalledExactlyOnceWith('toast-1', ['p2', 'p3']);
+    const quiet = harness({ kind: 'duplicates' }, { keepOne: vi.fn(async () => answer([], [])) });
+    await quiet.actions.keepOne(['p2']);
+    expect(quiet.deps.trackUndo).not.toHaveBeenCalled();
   });
 });
 

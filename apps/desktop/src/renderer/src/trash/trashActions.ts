@@ -38,6 +38,11 @@ export interface TrashActions {
   purge(rows: TrashRows): Promise<void>;
   /** 휴지통 비우기… (spec 4.5). */
   emptyTrash(): Promise<void>;
+  /**
+   * An 실행 취소 toast of another action that trashed these items (하나만 남기고 휴지통으로): a purge or an emptied trash
+   * closes it once none of them can come back, as the ⌘⌫ toast's own.
+   */
+  trackUndo(toastKey: string, itemIds: readonly string[]): void;
 }
 
 /** What a purge sheet asks about. */
@@ -96,6 +101,10 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
         undoable.delete(key);
       });
       undoable.set(key, new Set(ids));
+    },
+
+    trackUndo(toastKey, itemIds) {
+      undoable.set(toastKey, new Set(itemIds));
     },
 
     async restore({ itemIds, collectionIds }, opts = {}) {

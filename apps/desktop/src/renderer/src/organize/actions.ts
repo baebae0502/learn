@@ -5,6 +5,7 @@ import { LIST_REFRESH_WAIT_MS, settledWithin } from '../library/import-flow';
 import { currentModel, collectionActions } from '../sidebar/actions';
 import { useLibrary } from '../state/library-store';
 import { showActionFailed, showUndoToast, showUndoableError } from '../ui/toasts';
+import { trashActions } from '../trash/actions';
 import { createDuplicateActions } from './duplicateActions';
 import { addItemsTo, removeFromScope, undoRemovals } from './membership';
 import { createMembershipCommands } from './membershipCommands';
@@ -31,6 +32,7 @@ export const duplicateActions = createDuplicateActions({
   scope: () => useLibrary.getState().scope,
   setScope: (scope) => useLibrary.getState().setScope(scope),
   settled: () => settledWithin(queryClient.refetchQueries({ queryKey: keys.items, type: 'active' }, { cancelRefetch: false }), LIST_REFRESH_WAIT_MS),
-  undoToast: (title, undo) => void showUndoToast(title, undo),
+  undoToast: (title, undo) => showUndoToast(title, undo),
+  trackUndo: trashActions.trackUndo,
   failed: showActionFailed,
 });

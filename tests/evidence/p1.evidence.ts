@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, releaseJob, tokenColor, waitImportIdle, closeSheet, type Session } from '../e2e/helpers';
+import { FIXTURES, KEY_CODE, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, rowByTitle, runMenuCommand, tokenColor, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
 import { IS_MAC, allShots, focusApp, fullScreenShot, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
@@ -167,6 +167,75 @@ test('M6 import: waiting behind the work before it, then 취소 — the result i
   await shots(s.page, 'm6-04-import-cancelled', 'the result after 취소: 가져오기를 취소했습니다 · 파일 2개를 가져오지 않았습니다.');
   await releaseJob(s.app);
   await waitImportIdle(s.page);
+  save();
+});
+
+test('M6 trash: ⌘⌫ (a real key on macOS) moves the selection with 실행 취소; typed in the quick search it is the field\'s', TAG, async () => {
+  const [a, b] = await importPaths(s.page, distinctPdfs(path.join(tmp, 'trash'), 2));
+  await s.page.getByTestId('nav-scope-all').click();
+  await rowByTitle(s.page, a!.title).click();
+  if (!IS_MAC) {
+    // Linux: the menu item, so the next test has a trash; the real keys are macOS's.
+    await runMenuCommand(s.app, 'item.trash');
+    check('⌘⌫ (a real key): the selected row goes to the trash, with 실행 취소', null, 'macOS only');
+    check('⌘⌫ typed in the quick search deletes its text and moves nothing (Q-6e)', null, 'macOS only');
+    save();
+    return;
+  }
+  await guard('⌘⌫ (a real key): the selected row goes to the trash, with 실행 취소', async () => {
+    await nativeKeyCode(s.app, KEY_CODE.delete, ['command']);
+    const toast = s.page.getByTestId('trash-undo');
+    await expect(toast).toBeVisible();
+    const v = { toast: await toast.textContent(), gone: (await rowByTitle(s.page, a!.title).count()) === 0 };
+    results['trashKey'] = v;
+    check('⌘⌫ (a real key): the selected row goes to the trash, with 실행 취소', v.gone && (v.toast ?? '').includes('휴지통으로 옮겼습니다'), v);
+  });
+  await guard('⌘⌫ typed in the quick search deletes its text and moves nothing (Q-6e)', async () => {
+    await rowByTitle(s.page, b!.title).click();
+    const field = s.page.getByTestId('search-field').getByRole('searchbox');
+    await field.fill('distinct');
+    await nativeKeyCode(s.app, KEY_CODE.delete, ['command']);
+    await s.page.waitForTimeout(500);
+    const live = await s.page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? r.data.map((i) => i.id) : [];
+    });
+    // `value` says whether AppKit gave the key to the field before the menu (empty) or the menu took it (the guard kept the items).
+    const v = { value: await field.inputValue(), kept: live.includes(b!.id) };
+    results['trashKeyInField'] = v;
+    check('⌘⌫ typed in the quick search deletes its text and moves nothing (Q-6e)', v.kept && v.value === '', v);
+    await field.fill('');
+  });
+  save();
+});
+
+test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭제… there, and the purge sheet (macOS: the real sheet) — light and dark', TAG, async () => {
+  await s.page.getByTestId('nav-scope-trash').click();
+  await expect(s.page.getByTestId('toolbar-title')).toHaveText('휴지통');
+  await s.page.locator('[data-testid="item-row"]').first().click();
+  await expect(s.page.getByTestId('inspector-restore')).toBeVisible();
+  await guard('파일 › ⌘⌫ reads 영구 삭제… in the trash view (P-11)', async () => {
+    const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
+    const label = async () => flat(await menuSnapshot(s.app)).find((n) => n.id === 'item.trash')?.label ?? null;
+    await expect.poll(label).toBe('영구 삭제…');
+    check('파일 › ⌘⌫ reads 영구 삭제… in the trash view (P-11)', true, { label: await label() });
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme);
+    if (IS_MAC) await focusApp(s.app);
+    await shots(s.page, `m6-10-trash-view-${theme}`, `the trash view, a row's read-only panel (${theme})`);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
+    await guard(`purge sheet (${theme}): 취소 has the focus, the danger verb on its left`, async () => {
+      const [danger, cancel] = await Promise.all([sheet.getByTestId('purge-confirm').boundingBox(), sheet.getByTestId('purge-cancel').boundingBox()]);
+      const v = { focused: await sheet.getByTestId('purge-cancel').evaluate((e) => e === document.activeElement), dangerLeft: (danger?.x ?? 0) < (cancel?.x ?? 0), title: await sheet.getByTestId('purge-title').textContent() };
+      results[`purgeSheet-${theme}`] = v;
+      check(`purge sheet (${theme}): 취소 has the focus, the danger verb on its left`, v.focused && v.dangerLeft, v);
+    });
+    await s.page.waitForTimeout(600);
+    if (IS_MAC) await fullScreenShot(`m6-11-purge-sheet-${theme}`, `the purge sheet over the trash view (${theme})`);
+    await closeSheet(sheet, 'Escape');
+  }
+  await setTheme('light');
   save();
 });
 

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import { LearnError, commandLabel, type CommandSpec, type SheetAction, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
-import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
+import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady, holdHeight, markSized } from './measure';
 import { mainStrings } from './strings';
 import { registerWindowKind } from './window-kinds';
 
@@ -32,6 +32,17 @@ export const FOLLOWING_SHEETS: ReadonlySet<SheetPayload['kind']> = new Set<Sheet
 /** The tallest a sheet of `kind` may be over a parent `roomHeight` tall. */
 export function sheetHeightCap(kind: SheetPayload['kind'], roomHeight: number, platform: NodeJS.Platform): number {
   return kind === 'libraryCheck' ? Math.max(160, roomHeight - CHECK_SHEET_ROOM) : sheetMaxHeight(roomHeight, platform);
+}
+
+/**
+ * The height a following sheet takes when its content is `next` tall, in a window `current` tall, under `cap`. macOS
+ * centres a sheet itself, so a window that shrank would move the head and the row just fixed (Q-8l): there it only
+ * grows, and the spare height stays under the list; the next open starts from the content height. Elsewhere the sheet
+ * hangs from a fixed top and follows its content both ways.
+ */
+export function followedHeight(next: number, current: number, cap: number, platform: NodeJS.Platform): number {
+  const wanted = Math.min(next, cap);
+  return platform === 'darwin' ? Math.min(Math.max(current, wanted), cap) : wanted;
 }
 
 /** The sheet an action runs for: its window (where its own open panel hangs), its parent, and what it shows now. */
@@ -129,7 +140,10 @@ export function createSheetHost(opts: {
       const width = SHEET_WIDTH[payload.kind];
       const room = parent.getContentBounds();
       const follows = FOLLOWING_SHEETS.has(payload.kind);
-      const maxHeight = sheetHeightCap(payload.kind, room.height, opts.platform);
+      /** A following sheet's cap moves with its parent's height (P-26: the parent − 120). */
+      let maxHeight = sheetHeightCap(payload.kind, room.height, opts.platform);
+      /** The window's content height now, for the sheets that follow their content. */
+      let current = 0;
       const key = opts.staticKey?.(payload) ?? null;
       const known = key === null ? undefined : heights.get(key);
       const win = new BrowserWindow({
@@ -163,9 +177,19 @@ export function createSheetHost(opts: {
       const giveUp = (): void => settle(null);
       let watchdog: ReturnType<typeof setTimeout> | undefined;
       let hung: ReturnType<typeof setTimeout> | undefined;
+      const onParentResize = (): void => {
+        if (win.isDestroyed() || parent.isDestroyed() || current === 0) return;
+        maxHeight = sheetHeightCap(payload.kind, parent.getContentBounds().height, opts.platform);
+        capHeight(win.webContents, maxHeight).catch(() => {});
+        if (current > maxHeight) {
+          current = maxHeight;
+          win.setContentSize(width, current);
+        }
+      };
       const settle = (result: SheetResult | null) => {
         if (done) return;
         done = true;
+        if (follows) parent.off('resize', onParentResize);
         signal?.removeEventListener('abort', giveUp);
         clearTimeout(watchdog);
         clearTimeout(hung);
@@ -222,9 +246,11 @@ export function createSheetHost(opts: {
         if (h !== null) {
           try {
             win.setContentSize(width, h);
+            current = h;
             if (opts.platform !== 'darwin') win.setPosition(Math.round(room.x + (room.width - width) / 2), room.y + SHEET_TOP);
             if (follows) await capHeight(win.webContents, maxHeight);
             await markSized(win.webContents);
+            if (follows && opts.platform === 'darwin') await holdHeight(win.webContents);
           } catch {
             // Closed or gone mid-way: shown as it is, below, if it is still there.
           }
@@ -235,8 +261,11 @@ export function createSheetHost(opts: {
         win.show();
         // The library check changes while it is open (sheet:act): the window follows its content, up to the cap.
         if (follows && h !== null) {
+          parent.on('resize', onParentResize);
           followContentHeight(win.webContents, '[data-sheet-root]', h, (next) => {
-            if (!win.isDestroyed()) win.setContentSize(width, Math.min(next, maxHeight));
+            if (win.isDestroyed()) return;
+            current = followedHeight(next, current, maxHeight, opts.platform);
+            win.setContentSize(width, current);
           });
         }
       });

@@ -56,11 +56,14 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
+const { createSheetHost, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
-type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
-const parent = (id = 1, height = 900): FakeParent =>
-  ({ id, isDestroyed: () => false, focus: vi.fn(), getContentBounds: () => ({ x: 100, y: 50, width: 1440, height }) }) as unknown as FakeParent;
+type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn>; height: number };
+/** A parent window whose height a test may change (then emit 'resize'). */
+const parent = (id = 1, height = 900): FakeParent => {
+  const p = Object.assign(new EventEmitter(), { id, height, isDestroyed: () => false, focus: vi.fn() });
+  return Object.assign(p, { getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: p.height }) }) as unknown as FakeParent;
+};
 const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
@@ -470,6 +473,66 @@ describe('the library check sheet: acts while open (P-17), capped at the parent 
     FakeWindow.followers.shift()!(1200);
     await tick();
     expect(w.contentSize).toEqual([560, 780]);
+  });
+
+  it('re-caps at the parent − 120 when the parent resizes while it is open, and clamps the window to it', async () => {
+    FakeWindow.pageHeight = 700;
+    const p = parent(1, 900);
+    void host().open(p, CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(w.contentSize).toEqual([560, 700]);
+    p.height = 700;
+    p.emit('resize');
+    await tick();
+    expect(FakeWindow.scripts.some((s) => s.includes("'--sheet-max-height', '580px'"))).toBe(true);
+    expect(w.contentSize).toEqual([560, 580]);
+    // The content then follows under the new cap.
+    FakeWindow.followers.shift()!(900);
+    await tick();
+    expect(w.contentSize).toEqual([560, 580]);
+    // Closed: the parent is no longer listened to.
+    w.close();
+    await tick();
+    expect(p.listenerCount('resize')).toBe(0);
+  });
+
+  it('macOS: the window grows with the content up to the cap and never shrinks; Linux follows both ways', async () => {
+    const mac = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'darwin' });
+    FakeWindow.pageHeight = 400;
+    void mac.open(parent(1, 900), CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(FakeWindow.scripts.some((s) => s.includes('dataset.holds'))).toBe(true);
+    FakeWindow.followers.shift()!(650);
+    await tick();
+    expect(w.contentSize).toEqual([560, 650]);
+    await tick();
+    FakeWindow.followers.shift()!(300);
+    await tick();
+    expect(w.contentSize).toEqual([560, 650]);
+    await tick();
+    FakeWindow.followers.shift()!(1200);
+    await tick();
+    expect(w.contentSize).toEqual([560, 780]);
+    // Off macOS the page is not told to hold its height.
+    void host().open(parent(2, 900), CHECK);
+    await tick();
+    const l = FakeWindow.all[1]!;
+    await ready(l);
+    expect(FakeWindow.scripts.filter((s) => s.includes('dataset.holds'))).toHaveLength(1);
+  });
+
+  it('followedHeight: the platform branch', () => {
+    expect(followedHeight(300, 650, 780, 'darwin')).toBe(650);
+    expect(followedHeight(700, 650, 780, 'darwin')).toBe(700);
+    expect(followedHeight(900, 650, 780, 'darwin')).toBe(780);
+    expect(followedHeight(300, 650, 780, 'linux')).toBe(300);
+    expect(followedHeight(900, 650, 780, 'win32')).toBe(780);
   });
 
   it('the other sheets keep their own cap and do not follow', async () => {

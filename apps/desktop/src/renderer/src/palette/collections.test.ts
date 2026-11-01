@@ -24,6 +24,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { c6: ['i1'], stat: ['i2'] },
   tagged: {},
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, [item('i1'), item('i2')]);
 const ids = (query: string, max?: number) => rankCollections(model, query, max).map((r) => r.node.id);

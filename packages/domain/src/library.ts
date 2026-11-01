@@ -85,6 +85,56 @@ export interface DuplicateGroup {
   sha256: string;
   itemIds: string[];
 }
+/** A trashed item as the trash view lists it (spec 4.3): the list row and when it went to the trash. */
+export type TrashedItem = LibraryItem & { deletedAt: string };
+
+/**
+ * A collection row of the trash view (spec 4.3): a trashed collection whose parent is live, at the top level, or was
+ * trashed at another time. The sub-collections trashed with it (the same `deletedAt`) belong to its row, not rows of
+ * their own; one trashed later or earlier on its own is a row of its own.
+ */
+export interface TrashedCollection {
+  id: string;
+  name: string;
+  /** Where it sat in the tree: a live collection, a collection trashed at another time, or null for the top level. */
+  parentId: string | null;
+  deletedAt: string;
+  /** The sub-collections its row holds (trashed with it), at any depth. */
+  childCount: number;
+  /** The non-trashed items directly in the collections of its row, each once. */
+  itemCount: number;
+}
+
+export interface TrashView {
+  /** Most recently trashed first. */
+  collections: TrashedCollection[];
+  /** Most recently trashed first. */
+  items: TrashedItem[];
+}
+
+/** What a permanent delete removed (영구 삭제, 휴지통 비우기): its items, and every collection — sub-collections included. */
+export interface PurgedRows {
+  itemIds: string[];
+  collectionIds: string[];
+}
+
+/** The undo of 하나만 남기고 휴지통으로 (spec 5): what it did, and nothing that was there before it. */
+export interface KeepOneUndo {
+  /** The items it moved to the trash, all with `stamp`. */
+  trashed: string[];
+  stamp: string;
+  /** [collectionId, itemId]: the memberships it gave the items kept. */
+  memberships: Array<[string, string]>;
+  /** [tagId, itemId]: the tags it gave the items kept. */
+  tags: Array<[string, string]>;
+}
+
+export interface KeepOneResult {
+  /** One per group it cleaned: the item imported first (`createdAt`, then id). */
+  kept: string[];
+  trashed: string[];
+  undo: KeepOneUndo;
+}
 
 export type ImportOutcome =
   /** `collectionId`: the collection the item was filed into — present only when that really happened (it is absent if the import asked for none, or the collection was gone by then). */

@@ -1,11 +1,14 @@
 import {
   LearnError, clipSearchText, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
-  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
+  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type KeepOneResult, type KeepOneUndo, type LibraryItem,
+  type SearchText, type StorageMode, type TrashView,
 } from '@learn/domain';
 import type { Db } from './connection';
 import { nextDeletionStamp } from './deletion-stamp';
+import { keepOneOf, undoKeepOne } from './duplicates';
 import { CollectionsRepository } from './collections-repository';
 import { TagsRepository } from './tags-repository';
+import { emptyTrash, purgeTrash, trashedCollections, type PurgeResult } from './trash';
 
 export interface AssetRow {
   id: string;
@@ -55,12 +58,12 @@ interface AssetDbRow {
 interface ItemDbRow {
   id: string; title: string; type: ItemType; created_at: string; updated_at: string; metadata_json: string;
   asset_id: string; mime: string; size: number; storage_mode: StorageMode; availability: Availability; original_name: string;
-  sha256: string; external_path: string | null; revision_id: string; progress: number | null; opened_at: string | null;
+  sha256: string; external_path: string | null; revision_id: string; progress: number | null; opened_at: string | null; deleted_at: string | null;
 }
 
 /** Item + original asset + latest revision + reading position. Callers add the deleted_at filter (ITEM_SELECT / TRASH_SELECT). */
 const ITEM_FROM = `
-SELECT i.id, i.title, i.type, i.created_at, i.updated_at, i.metadata_json,
+SELECT i.id, i.title, i.type, i.created_at, i.updated_at, i.metadata_json, i.deleted_at,
        a.id AS asset_id, a.mime, a.size, a.storage_mode, a.availability, a.original_name, a.sha256, a.external_path,
        (SELECT r.id FROM source_revisions r WHERE r.asset_id = a.id
          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS revision_id,
@@ -344,6 +347,51 @@ export class LibraryRepository {
       const stmt = this.db.prepare('UPDATE items SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL');
       return itemIds.filter((id) => stmt.run(id).changes > 0);
     })();
+  }
+
+  /** The trash view (spec 4.3): its collection rows and the trashed items, most recently trashed first, in one read. */
+  trashView(): TrashView {
+    return this.db.transaction((): TrashView => {
+      const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
+      return { collections: trashedCollections(this.db), items: rows.map((r) => ({ ...toItem(r), deletedAt: r.deleted_at! })) };
+    })();
+  }
+
+  /** 영구 삭제 of trashed items and collection rows (live and unknown ids are skipped): trash.ts. The files are the caller's, after this returns. */
+  purge(asked: { itemIds: readonly string[]; collectionIds: readonly string[] }): PurgeResult {
+    return purgeTrash(this.db, asked);
+  }
+
+  /** 휴지통 비우기: trash.ts. */
+  emptyTrash(): PurgeResult {
+    return emptyTrash(this.db);
+  }
+
+  /** 하나만 남기고 휴지통으로 for the duplicate groups of these items (duplicates.ts). */
+  keepOneOfDuplicates(itemIds: readonly string[]): KeepOneResult {
+    return keepOneOf(this.db, itemIds);
+  }
+
+  /** 중복 N묶음 모두 정리: every duplicate group (duplicates.ts). */
+  keepOneOfAllDuplicates(): KeepOneResult {
+    return keepOneOf(this.db, null);
+  }
+
+  /** The undo of either; returns the items restored (duplicates.ts). */
+  undoKeepOne(undo: KeepOneUndo): string[] {
+    return undoKeepOne(this.db, undo);
+  }
+
+  /**
+   * Whether an asset row holds this managed path now. Asked again right before a purged copy goes: an import may have
+   * placed the same file since the purge committed. Imports write `assets/<xx>/<sha256>`, found through the sha index.
+   */
+  managedPathInUse(relativePath: string): boolean {
+    const sha = relativePath.slice(relativePath.lastIndexOf('/') + 1);
+    const row = /^[0-9a-f]{64}$/.test(sha)
+      ? this.db.prepare('SELECT 1 FROM assets WHERE sha256 = ? AND relative_path = ?').get(sha, relativePath)
+      : this.db.prepare('SELECT 1 FROM assets WHERE relative_path = ?').get(relativePath);
+    return row !== undefined;
   }
 
   /** Trashed items, most recently deleted first. */

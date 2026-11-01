@@ -15,7 +15,7 @@ beforeEach(() => {
 
 describe('readOrganizeSnapshot', () => {
   it('is empty for an empty library', () => {
-    expect(readOrganizeSnapshot(db)).toEqual({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [] });
+    expect(readOrganizeSnapshot(db)).toEqual({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 });
   });
 
   it('lists live collections in creation order with the fields the tree needs, and none of the deleted subtree', () => {

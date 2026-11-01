@@ -23,6 +23,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['i1', 'i2'], c6: ['i2', 'i3', 'ghost'], c10: ['i4'], stat: ['i5'] },
   tagged: { 't-imp': ['i1', 'i3', 'ghost'], 't-exam': ['i3'], 't-a': ['i3'], 't-b': ['i1'] },
   duplicates: [['i1', 'i5'], ['i3', 'ghost']],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ITEMS);
 const ids = (s: ReadonlySet<string>) => [...s].sort();

@@ -15,6 +15,7 @@ const snapshot = (over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot => ({
   members: {},
   tagged: { t1: ['i1', 'i2', 'ghost'], t2: ['i1'] },
   duplicates: [],
+  trashCount: 0,
   ...over,
 });
 

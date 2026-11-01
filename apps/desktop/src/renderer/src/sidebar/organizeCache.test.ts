@@ -13,6 +13,7 @@ const BASE: OrganizeSnapshot = {
   members: { a: ['i1'], b: ['i2'], c: ['i3'] },
   tagged: { t: ['i1'] },
   duplicates: [['i1', 'i2']],
+  trashCount: 0,
 };
 
 describe('patching the organize snapshot before the notice brings the real one', () => {
@@ -52,6 +53,7 @@ describe('withMoved (a collection dropped onto another, until the notice brings 
     members: { b: ['i1'] },
     tagged: {},
     duplicates: [],
+    trashCount: 0,
   };
   it('gives the collection its new parent and leaves the rest as it was', () => {
     const next = withMoved(BASE, 'b', 'c');

@@ -20,6 +20,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['a', 'b'], c6: ['a'] },
   tagged: { exam: ['a', 'b'] },
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ['a', 'b', 'c'].map((id) => item(id)));
 const ALL: LibraryScope = { kind: 'all' };

@@ -142,7 +142,7 @@ describe('E2E organise seeding hook', () => {
   it('writes nothing when any part is wrong (one transaction)', () => {
     const { db, deps, ids } = libraryOf(3);
     expect(() => seedOrganize(deps, { ...SMALL, memberships: [[0, 0], [0, 99]], assignments: [], duplicates: undefined as never, items: ids })).toThrow(/item 99/);
-    expect(readOrganizeSnapshot(db)).toEqual({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [expect.any(Array)] });
+    expect(readOrganizeSnapshot(db)).toEqual({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [expect.any(Array)], trashCount: 0 });
     expect(() => seedOrganize(deps, { ...SMALL, collections: [{ name: 'a', parent: 1 }, { name: 'b', parent: null }], memberships: [], assignments: [], items: ids })).toThrow(/earlier/);
     expect(readOrganizeSnapshot(db).collections).toEqual([]);
   });

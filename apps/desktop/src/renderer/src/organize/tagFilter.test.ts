@@ -15,6 +15,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: {},
   tagged: { imp: ['a', 'b', 'c'], exam: ['b', 'c', 'd'] },
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ITEMS);
 const ids = (xs: readonly { id: string }[]) => xs.map((i) => i.id);

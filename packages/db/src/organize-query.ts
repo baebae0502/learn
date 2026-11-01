@@ -2,6 +2,7 @@ import type { OrganizeCollection, OrganizeSnapshot, OrganizeTag } from '@learn/d
 import type { Db } from './connection';
 import { LibraryRepository } from './library-repository';
 import { TAG_ORDER, isTagColor } from './tags-repository';
+import { trashCount } from './trash';
 
 interface CollectionRow { id: string; name: string; parent_id: string | null; created_at: string }
 interface TagRow { id: string; name: string; color: string | null; position: number | null }
@@ -21,8 +22,9 @@ function groupItems(rows: ReadonlyArray<readonly [string, string]>): Record<stri
 
 /**
  * The sidebar's data in one read: live collections, every tag, the direct memberships and the tag assignments of
- * non-trashed items, and the groups of non-trashed items that share a file. One transaction, so the five parts
- * describe the same moment even while main writes between two statements of a lazier version.
+ * non-trashed items, the groups of non-trashed items that share a file, and the trash view's row count. One
+ * transaction, so the six parts describe the same moment even while main writes between two statements of a lazier
+ * version.
  */
 export function readOrganizeSnapshot(db: Db): OrganizeSnapshot {
   return db.transaction((): OrganizeSnapshot => {
@@ -56,6 +58,6 @@ export function readOrganizeSnapshot(db: Db): OrganizeSnapshot {
     );
 
     const duplicates = new LibraryRepository(db).duplicateGroups().map((g) => g.itemIds);
-    return { collections, tags, members, tagged, duplicates };
+    return { collections, tags, members, tagged, duplicates, trashCount: trashCount(db) };
   })();
 }

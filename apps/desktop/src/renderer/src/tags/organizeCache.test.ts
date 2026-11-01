@@ -9,6 +9,7 @@ const BASE: OrganizeSnapshot = {
   members: {},
   tagged: { a: ['i1', 'i2'], b: ['i2', 'i3'] },
   duplicates: [],
+  trashCount: 0,
 };
 const frozen = JSON.stringify(BASE);
 const byId = (s: OrganizeSnapshot, id: string) => s.tags.find((x) => x.id === id);

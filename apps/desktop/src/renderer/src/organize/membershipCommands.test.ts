@@ -14,6 +14,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['a'], c6: ['a', 'b'] },
   tagged: {},
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ['a', 'b', 'c'].map((id) => item(id)));
 

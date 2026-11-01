@@ -32,7 +32,7 @@ describe('the colour tags every selected item has, as the command context carrie
   const tag = (id: string, position: number | null) => ({ id, name: id, color: null, position });
   const model = buildOrganizeModel(
     {
-      collections: [], members: {}, duplicates: [],
+      collections: [], members: {}, duplicates: [], trashCount: 0,
       tags: [tag('red', 1), tag('blue', 3), tag('plain', null)],
       tagged: { red: ['a', 'b', 'c', 'gone'], blue: ['b', 'c'], plain: ['a', 'b', 'c', 'd'] },
     },

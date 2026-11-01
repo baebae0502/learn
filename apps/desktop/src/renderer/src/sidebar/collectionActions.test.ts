@@ -14,7 +14,7 @@ const BASE: OrganizeSnapshot = {
     { id: 'c7', name: '7장', parentId: 'bio', createdAt: AT },
     { id: 'stats', name: '통계', parentId: null, createdAt: AT },
   ],
-  tags: [], members: {}, tagged: {}, duplicates: [],
+  tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0,
 };
 const NEW = '새\u00a0컬렉션';
 

@@ -39,7 +39,7 @@ vi.mock('@learn/library', () => ({
 // The item menu reads the tags for 색 태그 ▸ (the fake database has no tables): none has a slot here, so the group is left out.
 vi.mock('@learn/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@learn/db')>()),
-  readOrganizeSnapshot: () => ({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [] }),
+  readOrganizeSnapshot: () => ({ collections: [], tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 }),
 }));
 vi.mock('../menu/context-menu', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../menu/context-menu')>()),

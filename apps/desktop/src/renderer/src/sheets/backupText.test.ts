@@ -30,10 +30,11 @@ describe('the backup result sheet in words (spec 8.2, dialogs.html?scene=backup)
 });
 
 describe('a location in two pieces (the folders may shrink, the last name stays)', () => {
-  it('splits after the last separator, either kind, and leaves a bare name whole', () => {
-    expect(splitLocation('~/Documents/Learn 백업 2026-10-30 2141')).toEqual({ parent: '~/Documents/', name: 'Learn 백업 2026-10-30 2141' });
-    expect(splitLocation('C:\\Users\\a\\Learn 백업')).toEqual({ parent: 'C:\\Users\\a\\', name: 'Learn 백업' });
+  it('splits at the last separator, which stays with the name, either kind, and leaves a bare name whole', () => {
+    expect(splitLocation('~/Documents/Learn 백업 2026-10-30 2141')).toEqual({ parent: '~/Documents', name: '/Learn 백업 2026-10-30 2141' });
+    expect(splitLocation('C:\\Users\\a\\Learn 백업')).toEqual({ parent: 'C:\\Users\\a', name: '\\Learn 백업' });
     expect(splitLocation('Learn 백업')).toEqual({ parent: '', name: 'Learn 백업' });
+    expect(splitLocation('/Learn')).toEqual({ parent: '', name: '/Learn' });
     expect(splitLocation('/')).toEqual({ parent: '', name: '/' });
   });
 });

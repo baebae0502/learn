@@ -29,8 +29,11 @@ export function backupSheetText(p: BackupDoneSheet, platform: string): BackupShe
   };
 }
 
-/** A path in two pieces for a line that must shrink: the folders before the last name (ending in its separator), and the name that stays whole. */
+/**
+ * A path in two pieces for a line that must shrink: the folders before the last name (without the separator), and the
+ * name with its separator in front — the ellipsis cuts the folders, never the mark that this name is the last step.
+ */
 export function splitLocation(location: string): { parent: string; name: string } {
   const at = Math.max(location.lastIndexOf('/'), location.lastIndexOf('\\'));
-  return at < 0 || at === location.length - 1 ? { parent: '', name: location } : { parent: location.slice(0, at + 1), name: location.slice(at + 1) };
+  return at < 0 || at === location.length - 1 ? { parent: '', name: location } : { parent: location.slice(0, at), name: location.slice(at) };
 }

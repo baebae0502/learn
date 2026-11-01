@@ -4,8 +4,8 @@ import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
-import { LearnError, newId, nowIso, toLearnError, type StorageMode } from '@learn/domain';
-import { LATEST_SCHEMA_VERSION, LibraryRepository, currentVersion, migrate, openDatabase, snapshotDatabase, type Db, type LibraryCounts } from '@learn/db';
+import { LearnError, RESTORE_COPY, newId, nowIso, toLearnError, type StorageMode } from '@learn/domain';
+import { LATEST_SCHEMA_VERSION, LibraryRepository, currentVersion, migrate, openDatabase, snapshotDatabase, type AssetItem, type Db, type LibraryCounts } from '@learn/db';
 import { withManagedPath } from './asset-lock';
 import { fsyncDir, fsyncFile } from './fsync';
 import { sha256File } from './hash';
@@ -42,6 +42,33 @@ export interface RestoreResult {
   recordMismatches: string[];
   counts: LibraryCounts;
   countsMatch: boolean;
+  /** When the backup was made (its manifest's createdAt): the result sheet says which backup it was. */
+  backupCreatedAt: string;
+  /** Managed copies the manifest lists, included or not: the sheet's "N개 중 M개 확인" (spec 9.3). */
+  managedFiles: number;
+  /** The items, the trash's too, whose file a problem above touches — live ones first (the sheet names them). */
+  problemItems: AssetItem[];
+}
+
+/** How far a restore is: every copy is written, then read back, so its bytes count twice (as a backup's). */
+export interface RestoreProgress {
+  bytesDone: number;
+  bytesTotal: number;
+  filesDone: number;
+  filesTotal: number;
+}
+
+/** The backup's fault points serve the restore too (E2E: main/test-hooks.ts restorePause). Production passes none. */
+export type RestoreHooks = BackupHooks;
+
+export interface RestoreArgs {
+  backupDir: string;
+  /** A folder that does not exist yet (or is empty): the restore never writes into a library in use. */
+  targetRoot: string;
+  /** The work line's stop (취소, quitting): the restore ends at its next checkpoint and leaves nothing. */
+  signal?: AbortSignal;
+  onProgress?(progress: RestoreProgress): void;
+  hooks?: RestoreHooks;
 }
 
 /** How far a backup is (spec 8.1): every copy is written, then read back, so its bytes count twice. */
@@ -296,101 +323,144 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
 
 /** The backup's own database cannot be read: the backup is what is broken, not the library the user has open. */
 function unreadableBackup(e: unknown): unknown {
-  return toLearnError(e).code === 'LIBRARY_UNAVAILABLE'
-    ? new LearnError('VALIDATION_FAILED', '백업의 라이브러리 데이터가 손상되었습니다. 다른\u00a0백업을 선택하세요.', { cause: e })
-    : e;
+  return toLearnError(e).code === 'LIBRARY_UNAVAILABLE' ? new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase, { cause: e }) : e;
 }
 
-export async function restoreBackup(args: { backupDir: string; targetRoot: string }): Promise<RestoreResult> {
-  let manifestText: string;
+/** The manifest as checked (zod's output: counts written before a version are absent). */
+export type BackupManifestRead = z.output<typeof BackupManifestSchema>;
+
+/**
+ * A backup folder's manifest, checked before anything is restored (spec 9.1): its format, a version this app reads, a
+ * schema no newer than this app's, and the database beside it. Each refusal says why and what to do (RESTORE_COPY).
+ */
+export async function readBackupManifest(backupDir: string): Promise<BackupManifestRead> {
+  let raw: unknown;
   try {
-    manifestText = await fs.readFile(path.join(args.backupDir, 'manifest.json'), 'utf8');
-  } catch (e) {
-    throw new LearnError('VALIDATION_FAILED', '알 수 없는 백업 형식입니다.');
+    raw = JSON.parse(await fs.readFile(path.join(backupDir, 'manifest.json'), 'utf8'));
+  } catch {
+    throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.unknownFormat);
   }
+  const parsed = BackupManifestSchema.safeParse(raw);
+  if (!parsed.success) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.unknownFormat);
+  if (parsed.data.schemaVersion > LATEST_SCHEMA_VERSION) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.newerVersion);
+  const database = await fs.stat(path.join(backupDir, 'library.sqlite')).catch(() => null);
+  if (!database?.isFile()) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.unknownFormat);
+  return parsed.data;
+}
 
-  let manifest: unknown;
+/** What became of one managed copy the backup lists. */
+type CopyOutcome = 'verified' | 'damaged' | 'missing';
+
+/**
+ * One managed copy back from the backup (spec 9.2): a real copy, flushed, then read back. A copy that reads back
+ * different is set aside in staging as `corrupt-<sha>-<id>` (the library check shows it): left where its hash says, the
+ * check would take it for the file come back. 'missing': the backup lists it but no longer holds it.
+ */
+async function restoreCopy(
+  backupDir: string,
+  layout: LibraryLayout,
+  rel: string,
+  sha256: string,
+  shards: Set<string>,
+  opts: { signal: AbortSignal | undefined; onBytes: (n: number) => void; hooks: RestoreHooks | undefined },
+): Promise<CopyOutcome> {
+  const src = path.join(backupDir, ...rel.split('/'));
   try {
-    manifest = JSON.parse(manifestText);
+    await fs.stat(src);
   } catch (e) {
-    throw new LearnError('VALIDATION_FAILED', '알 수 없는 백업 형식입니다.');
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return 'missing';
+    throw e;
   }
+  const dst = path.join(layout.root, ...rel.split('/'));
+  const shard = path.dirname(dst);
+  await fs.mkdir(shard, { recursive: true });
+  shards.add(shard);
+  await copyCounting(src, dst, opts.signal, opts.onBytes);
+  await fsyncFile(dst);
+  await opts.hooks?.afterCopy?.(dst);
+  if ((await sha256File(dst, { signal: opts.signal, onBytes: opts.onBytes })) === sha256) return 'verified';
+  await fs.rename(dst, path.join(layout.stagingDir, `corrupt-${sha256}-${newId()}`));
+  return 'damaged';
+}
 
-  const parseResult = BackupManifestSchema.safeParse(manifest);
-  if (!parseResult.success) {
-    throw new LearnError('VALIDATION_FAILED', '알 수 없는 백업 형식입니다.');
-  }
-
-  // Schema-inferred type: counts added in schema v2 stay optional for manifests written before them.
-  const validatedManifest = parseResult.data;
-
-  if (validatedManifest.schemaVersion > LATEST_SCHEMA_VERSION) {
-    throw new LearnError('VALIDATION_FAILED', '이\u00a0백업은 더 새로운 버전의 앱에서 만들어졌습니다.');
-  }
-
-  await assertEmptyDir(args.targetRoot, '복원 대상 폴더가 비어 있지 않습니다. 빈 폴더를 선택하세요.');
-
-  const tempDir = `${path.resolve(args.targetRoot)}.restoring-${newId()}`;
+/**
+ * A backup restored into a new folder (spec 9): the database, every managed copy read back, the database checked against
+ * the manifest, in a sibling `.restoring-<id>` folder that takes `targetRoot`'s name only when all of it is on the disk.
+ * Missing, damaged and disagreeing files are marked missing and named in the result; nothing else fails the restore.
+ */
+export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
+  const { backupDir, signal, onProgress, hooks } = args;
+  signal?.throwIfAborted();
+  const manifest = await readBackupManifest(backupDir);
+  await assertEmptyDir(args.targetRoot, RESTORE_COPY.notEmpty);
+  const target = path.resolve(args.targetRoot);
+  const parent = path.dirname(target);
+  const tempDir = `${target}.restoring-${newId()}`;
   await fs.mkdir(tempDir, { recursive: true });
 
   try {
-    const tempLayout = libraryLayout(tempDir);
-    ensureLayout(tempLayout);
-    await fs.copyFile(path.join(args.backupDir, 'library.sqlite'), tempLayout.dbFile);
+    const temp = libraryLayout(tempDir);
+    ensureLayout(temp);
+    await fs.copyFile(path.join(backupDir, 'library.sqlite'), temp.dbFile);
+    await fsyncFile(temp.dbFile);
+
+    // Every included copy's path is the one its hash names — anything else is a damaged list, and a way out of the
+    // folder — checked before a byte is copied.
+    const managed = manifest.assets.filter((e) => e.storageMode === 'managed' && e.relativePath !== null);
+    const included = managed.filter((e) => e.included);
+    for (const e of included) {
+      if (!SHA256_HEX.test(e.sha256) || e.relativePath !== managedRelativePath(e.sha256)) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedList);
+    }
+    const progress: RestoreProgress = { bytesDone: 0, bytesTotal: included.reduce((n, e) => n + 2 * e.size, 0), filesDone: 0, filesTotal: included.length };
+    const report = (): void => onProgress?.({ ...progress });
+    report();
 
     let verifiedAssets = 0;
-    const missingAssets: string[] = [];
+    const missingAssets = managed.filter((e) => !e.included).map((e) => e.assetId);
     const hashMismatches: string[] = [];
-
-    for (const entry of validatedManifest.assets) {
-      if (entry.storageMode !== 'managed' || !entry.relativePath) continue;
-
-      if (!entry.included) {
-        missingAssets.push(entry.assetId);
-        continue;
-      }
-
-      // Validate manifest paths to prevent traversal attacks
-      if (!SHA256_HEX.test(entry.sha256)) {
-        throw new LearnError('VALIDATION_FAILED', '백업 목록(manifest)이 손상되었습니다.');
-      }
-
-      const expectedPath = managedRelativePath(entry.sha256);
-      if (entry.relativePath !== expectedPath) {
-        throw new LearnError('VALIDATION_FAILED', '백업 목록(manifest)이 손상되었습니다.');
-      }
-
-      const dst = path.join(tempLayout.root, expectedPath);
-      await fs.mkdir(path.dirname(dst), { recursive: true });
-      await fs.copyFile(path.join(args.backupDir, ...expectedPath.split('/')), dst);
-
-      if ((await sha256File(dst)) === entry.sha256) {
-        verifiedAssets++;
-      } else {
-        hashMismatches.push(entry.assetId);
-      }
+    const shards = new Set<string>();
+    for (const e of included) {
+      signal?.throwIfAborted();
+      const share = 2 * e.size;
+      const before = progress.bytesDone;
+      let moved = 0;
+      const onBytes = (n: number): void => {
+        moved += n;
+        progress.bytesDone = before + Math.min(share, moved);
+        report();
+      };
+      const outcome = await restoreCopy(backupDir, temp, managedRelativePath(e.sha256), e.sha256, shards, { signal, onBytes, hooks });
+      if (outcome === 'verified') verifiedAssets++;
+      else if (outcome === 'damaged') hashMismatches.push(e.assetId);
+      else missingAssets.push(e.assetId);
+      progress.bytesDone = before + share;
+      progress.filesDone += 1;
+      report();
     }
+    // The folders after the files in them; staging too when a damaged copy was set aside there.
+    for (const shard of shards) await fsyncDir(shard);
+    if (shards.size > 0) await fsyncDir(temp.assetsDir);
+    if (hashMismatches.length > 0) await fsyncDir(temp.stagingDir);
+    signal?.throwIfAborted();
 
     let db: Db;
     try {
-      db = openDatabase(tempLayout.dbFile);
+      db = openDatabase(temp.dbFile);
     } catch (e) {
       throw unreadableBackup(e);
     }
+    let result: RestoreResult;
     try {
-      migrate(db, { dbFile: tempLayout.dbFile });
+      // The backup's database can open and still be broken: what migrate or the reads hit is the backup's fault too.
+      migrate(db, { dbFile: temp.dbFile });
       const repo = new LibraryRepository(db);
-
-      // Check that all entries in the manifest exist in the restored DB
-      for (const entry of validatedManifest.assets) {
-        if (!repo.getAsset(entry.assetId)) {
-          throw new LearnError('VALIDATION_FAILED', '알 수 없는 백업 형식입니다.');
-        }
+      // Every asset the manifest lists is in the database it came with: one that is not means this is not that backup.
+      for (const entry of manifest.assets) {
+        if (!repo.getAsset(entry.assetId)) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.unknownFormat);
       }
-
       // The database and the manifest describe the same assets (spec 9.2). A row that disagrees with its entry, or one the
       // manifest never listed, cannot be trusted to find its file: a managed one is shown as missing.
-      const entries = new Map(validatedManifest.assets.map((e) => [e.assetId, e]));
+      const entries = new Map(manifest.assets.map((e) => [e.assetId, e]));
       const recordMismatches: string[] = [];
       const unfound = new Set<string>([...missingAssets, ...hashMismatches]);
       for (const row of repo.allAssets()) {
@@ -400,37 +470,46 @@ export async function restoreBackup(args: { backupDir: string; targetRoot: strin
         if (row.storageMode === 'managed') unfound.add(row.id);
       }
       for (const id of unfound) repo.setAvailability(id, 'missing', nowIso());
-
       const counts = repo.counts();
       // Only compare fields the manifest has (older manifests lack the newer ones; counts() always fills every field).
-      const expected = validatedManifest.counts;
+      const expected = manifest.counts;
       const countsMatch = (Object.keys(expected) as (keyof typeof expected)[]).every((k) => expected[k] === undefined || expected[k] === counts[k]);
-
-      // Close DB before rename to ensure clean state
-      db.close();
-
-      // Move temp to target on success
-      if (args.targetRoot) {
-        try {
-          await fs.rmdir(args.targetRoot);
-        } catch (e) {
-          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
-        }
-      }
-      await fs.rename(tempDir, args.targetRoot);
-
-      return {
+      result = {
         verifiedAssets,
         missingAssets: missingAssets.sort(),
         hashMismatches: hashMismatches.sort(),
         recordMismatches: recordMismatches.sort(),
         counts,
         countsMatch,
+        backupCreatedAt: manifest.createdAt,
+        managedFiles: managed.length,
+        problemItems: repo.originalItemsOf([...unfound, ...recordMismatches]),
       };
     } catch (e) {
+      throw unreadableBackup(e);
+    } finally {
       if (db.open) db.close();
+    }
+    // The database after migrate and the marks above, then the folder's own names (the layout's folders, the database).
+    await fsyncFile(temp.dbFile);
+    await fsyncDir(tempDir);
+    // The last point a stop leaves nothing behind: past it the library appears whole.
+    signal?.throwIfAborted();
+
+    try {
+      await fs.rmdir(target);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
+    await fs.rename(tempDir, target);
+    try {
+      await fsyncDir(parent);
+    } catch (e) {
+      // Its name may not survive a power cut: a library that cannot be trusted is not left behind.
+      await fs.rm(target, { recursive: true, force: true });
       throw e;
     }
+    return result;
   } catch (e) {
     await fs.rm(tempDir, { recursive: true, force: true });
     throw e;

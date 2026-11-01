@@ -385,6 +385,22 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     repo.trash([b.itemId]);
     expect(Object.fromEntries(repo.itemCountsByAsset())).toEqual({ [a.asset.id]: 2, [b.asset.id]: 1 });
   });
+  it('originalItemsOf: the items, the trash\'s too, whose original file is one of the assets — live ones first, each in the order it came in', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-30T01:00:00.000Z'));
+    const a = seedItem(db, { title: 'a-first' });
+    vi.setSystemTime(new Date('2026-10-30T02:00:00.000Z'));
+    const twin = seedItem(db, { title: 'a-twin', reuseAsset: a.asset });
+    const b = seedItem(db, { title: 'b' });
+    seedItem(db, { title: 'untouched' });
+    repo.trash([a.itemId]);
+    expect(repo.originalItemsOf([a.asset.id, b.asset.id, a.asset.id])).toEqual([
+      { assetId: a.asset.id, itemId: twin.itemId, title: 'a-twin', trashed: false },
+      { assetId: b.asset.id, itemId: b.itemId, title: 'b', trashed: false },
+      { assetId: a.asset.id, itemId: a.itemId, title: 'a-first', trashed: true },
+    ]);
+    expect(repo.originalItemsOf([])).toEqual([]);
+  });
 });
 
 describe('LibraryRepository.insertItemsForAsset (E2E seeding only, P-22)', () => {

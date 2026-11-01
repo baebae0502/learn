@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { newId, nowIso } from '@learn/domain';
+import { RESTORE_COPY, newId, nowIso } from '@learn/domain';
 import { CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
-import { Importer, createBackup, datedFolderName, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, restoreBackup, sha256File, type BackupProgress } from '../src/index';
+import { Importer, createBackup, datedFolderName, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, readBackupManifest, restoreBackup, sha256File, type BackupProgress, type RestoreProgress } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
 
 /** Every fsync createBackup asks for, with the renames between them, in one order (the durability test reads it). */
@@ -56,7 +56,7 @@ describe('backup and restore (AC15 — files part)', () => {
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0 }, countsMatch: true });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0 }, countsMatch: true, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);
@@ -151,12 +151,12 @@ describe('backup and restore (AC15 — files part)', () => {
     const dest = path.join(tempDir('bk'), 'backup-fail-restore');
     const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
 
-    // Delete one included asset file to cause restore failure
-    const victim = manifest.assets.find((a) => a.included)!;
-    fs.unlinkSync(path.join(dest, ...victim.relativePath!.split('/')));
+    // A manifest that lists an asset its database never had: refused after the copies, so there is a folder to clean up.
+    const stranger = { ...manifest.assets.find((a) => a.included)!, assetId: newId(), included: false };
+    fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify({ ...manifest, assets: [...manifest.assets, stranger] }, null, 2));
 
     const target = path.join(tempDir('restore'), 'Library-fail');
-    await expect(restoreBackup({ backupDir: dest, targetRoot: target })).rejects.toBeDefined();
+    await expect(restoreBackup({ backupDir: dest, targetRoot: target })).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: RESTORE_COPY.unknownFormat });
 
     // Verify targetRoot does not exist after failed restore
     expect(fs.existsSync(target)).toBe(false);
@@ -207,7 +207,7 @@ describe('backup and restore (AC15 — files part)', () => {
     const target = path.join(tempDir('restore'), 'Library');
     try {
       await expect(restoreBackup({ backupDir: dest, targetRoot: target })).rejects.toMatchObject({
-        code: 'VALIDATION_FAILED', message: '백업의 라이브러리 데이터가 손상되었습니다. 다른\u00a0백업을 선택하세요.',
+        code: 'VALIDATION_FAILED', message: RESTORE_COPY.damagedDatabase,
       });
       expect(close).toHaveBeenCalledTimes(1);
       expect((close.mock.contexts[0] as { open: boolean }).open).toBe(false);
@@ -216,6 +216,35 @@ describe('backup and restore (AC15 — files part)', () => {
     } finally {
       close.mockRestore();
     }
+  });
+
+  it('a backup whose database opens but is corrupt inside is refused as the backup\'s fault, whichever page is broken — never as the open library (not "restore from a backup")', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-corrupt-inside');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const PAGE = 4096;
+    const whole = fs.readFileSync(path.join(dest, 'library.sqlite'));
+    const refused: number[] = [];
+    // Page 1 (the header and the schema) stays valid so the file opens; each later page in turn is garbage. Some pages
+    // are only read by migrate, some by the first reads, some by the counts: all of them are the backup's damage.
+    for (let page = 1; page < whole.length / PAGE; page++) {
+      const broken = path.join(tempDir('bk'), `page-${page}`);
+      fs.cpSync(dest, broken, { recursive: true });
+      const bytes = Buffer.from(whole);
+      bytes.fill(0xff, page * PAGE, (page + 1) * PAGE);
+      fs.writeFileSync(path.join(broken, 'library.sqlite'), bytes);
+      const target = path.join(tempDir('restore'), 'Library');
+      const outcome = await restoreBackup({ backupDir: broken, targetRoot: target }).then(
+        () => 'restored',
+        (e: unknown) => e,
+      );
+      if (outcome === 'restored') continue;
+      expect(outcome, `page ${page}`).toMatchObject({ code: 'VALIDATION_FAILED', message: RESTORE_COPY.damagedDatabase });
+      expect(fs.existsSync(target), `page ${page}`).toBe(false);
+      expect(fs.readdirSync(path.dirname(target)).filter((e) => e.includes('.restoring-')), `page ${page}`).toEqual([]);
+      refused.push(page);
+    }
+    expect(refused.length).toBeGreaterThan(0);
   });
 
   it('copies each managed file from the path its hash names, not the path its row claims, and restore names the row', async () => {
@@ -406,5 +435,117 @@ describe('datedFolderName (spec 8.1, 9.1)', () => {
     const taken = new Set(['Learn 백업 2026-10-30 2141', 'Learn 백업 2026-10-30 2141 2']);
     expect(datedFolderName('Learn 백업', when, (n) => taken.has(n))).toBe('Learn 백업 2026-10-30 2141 3');
     expect(datedFolderName('Learn 복원', new Date(2026, 0, 5, 9, 7), () => false)).toBe('Learn 복원 2026-01-05 0907');
+  });
+});
+
+describe('restore: checked first, real copies read back, stoppable, flushed before the folder takes its name; what its problems touch (spec 9, Q-2d)', () => {
+  it('readBackupManifest: a backup folder\'s manifest, or why it is not one — before anything is copied', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'read');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    expect(await readBackupManifest(dest)).toMatchObject({ format: 'learn-backup', createdAt: manifest.createdAt, assets: manifest.assets });
+
+    const empty = tempDir('not-a-backup');
+    await expect(readBackupManifest(empty)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: RESTORE_COPY.unknownFormat });
+    const garbled = path.join(tempDir('bk'), 'garbled');
+    fs.cpSync(dest, garbled, { recursive: true });
+    fs.writeFileSync(path.join(garbled, 'manifest.json'), '{ not json');
+    await expect(readBackupManifest(garbled)).rejects.toMatchObject({ message: RESTORE_COPY.unknownFormat });
+    const newer = path.join(tempDir('bk'), 'newer');
+    fs.cpSync(dest, newer, { recursive: true });
+    fs.writeFileSync(path.join(newer, 'manifest.json'), JSON.stringify({ ...manifest, schemaVersion: 99 }));
+    await expect(readBackupManifest(newer)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: RESTORE_COPY.newerVersion });
+    const headless = path.join(tempDir('bk'), 'no-database');
+    fs.cpSync(dest, headless, { recursive: true });
+    fs.rmSync(path.join(headless, 'library.sqlite'));
+    await expect(readBackupManifest(headless)).rejects.toMatchObject({ message: RESTORE_COPY.unknownFormat });
+  });
+
+  it('reports its bytes — each copy written, then read back — and its files; says when the backup was made and how many copies it lists; copies are real', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'progress');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const included = manifest.assets.filter((a) => a.included);
+    const bytes = included.reduce((n, a) => n + a.size, 0);
+    const seen: RestoreProgress[] = [];
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target, onProgress: (p) => seen.push(p) });
+    expect(seen[0]).toEqual({ bytesDone: 0, bytesTotal: 2 * bytes, filesDone: 0, filesTotal: 2 });
+    expect(seen.at(-1)).toEqual({ bytesDone: 2 * bytes, bytesTotal: 2 * bytes, filesDone: 2, filesTotal: 2 });
+    for (let i = 1; i < seen.length; i++) expect(seen[i]!.bytesDone).toBeGreaterThanOrEqual(seen[i - 1]!.bytesDone);
+    expect(result).toMatchObject({ verifiedAssets: 2, backupCreatedAt: manifest.createdAt, managedFiles: 2, problemItems: [] });
+    for (const a of included) {
+      const copy = path.join(target, ...a.relativePath!.split('/'));
+      expect(fs.statSync(copy).ino).not.toBe(fs.statSync(path.join(dest, ...a.relativePath!.split('/'))).ino);
+    }
+  });
+
+  it('a file the backup lists but no longer holds is missing, not a failure; a changed one is set aside as damaged — never left where its hash says; both name their items, the trash\'s last', async () => {
+    const { layout, db, repo } = await populated();
+    const [pdf, mp4] = repo.assetsByMode('managed');
+    const mp4Item = repo.listItems().find((i) => i.assetId === mp4!.id)!;
+    repo.trash([mp4Item.id]);
+    const dest = path.join(tempDir('bk'), 'problems');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    fs.rmSync(path.join(dest, ...managedRelativePath(pdf!.sha256).split('/')));
+    fs.appendFileSync(path.join(dest, ...managedRelativePath(mp4!.sha256).split('/')), 'changed on the way');
+
+    const target = path.join(tempDir('restore'), 'Library');
+    const result = await restoreBackup({ backupDir: dest, targetRoot: target });
+    expect(result).toMatchObject({ verifiedAssets: 0, missingAssets: [pdf!.id], hashMismatches: [mp4!.id], recordMismatches: [], managedFiles: 2 });
+    const pdfItem = repo.listItems().find((i) => i.assetId === pdf!.id)!;
+    expect(result.problemItems).toEqual([
+      { assetId: pdf!.id, itemId: pdfItem.id, title: pdfItem.title, trashed: false },
+      { assetId: mp4!.id, itemId: mp4Item.id, title: mp4Item.title, trashed: true },
+    ]);
+    // The changed copy waits in staging for the library check (corrupt-…); nothing is where its hash says.
+    expect(fs.readdirSync(path.join(target, 'staging'))).toEqual([expect.stringMatching(new RegExp(`^corrupt-${mp4!.sha256}-[0-9a-f-]{36}$`))]);
+    for (const a of [pdf!, mp4!]) expect(fs.existsSync(path.join(target, ...managedRelativePath(a.sha256).split('/'))), a.id).toBe(false);
+    const rdb = openDatabase(libraryLayout(target).dbFile);
+    dbs.push(rdb);
+    const restored = new LibraryRepository(rdb);
+    for (const a of [pdf!, mp4!]) expect(restored.getAsset(a.id)!.availability, a.id).toBe('missing');
+  });
+
+  it('stops when its signal aborts — before it starts, or between a copy and its read-back — and leaves no folder', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'stop');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const parent = tempDir('restore');
+    await expect(restoreBackup({ backupDir: dest, targetRoot: path.join(parent, 'never'), signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fs.readdirSync(parent)).toEqual([]);
+    const stop = new AbortController();
+    await expect(
+      restoreBackup({ backupDir: dest, targetRoot: path.join(parent, 'stopped'), signal: stop.signal, hooks: { afterCopy: () => stop.abort() } }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fs.readdirSync(parent)).toEqual([]);
+  });
+
+  it('flushes the database, every copy, their folders, the database after its marks and the folder before it takes its name; then the folder it is in', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'durable');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const parent = tempDir('restore');
+    const target = path.join(parent, 'Library');
+    const realRename = fsp.rename;
+    vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+      durability.log.push(['rename', String(from), String(to)]);
+      return realRename(from, to);
+    });
+    durability.log.length = 0;
+    await restoreBackup({ backupDir: dest, targetRoot: target });
+    const temp = path.dirname(durability.log[0]![1]!);
+    expect(path.basename(temp)).toMatch(/^Library\.restoring-[0-9a-f-]{36}$/);
+    const copies = manifest.assets.filter((a) => a.included).map((a) => path.join(temp, ...a.relativePath!.split('/')));
+    expect(durability.log).toEqual([
+      ['fsyncFile', path.join(temp, 'library.sqlite')],
+      ...copies.map((f) => ['fsyncFile', f]),
+      ...[...new Set(copies.map((f) => path.dirname(f)))].map((d) => ['fsyncDir', d]),
+      ['fsyncDir', path.join(temp, 'assets')],
+      ['fsyncFile', path.join(temp, 'library.sqlite')],
+      ['fsyncDir', temp],
+      ['rename', temp, target],
+      ['fsyncDir', parent],
+    ]);
   });
 });

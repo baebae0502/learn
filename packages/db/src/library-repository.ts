@@ -49,6 +49,15 @@ export interface LibraryCounts {
   trashedCollections: number;
 }
 
+/** An item whose original file is a given asset (a restore names the items its problems touch, spec 9.3). */
+export interface AssetItem {
+  assetId: string;
+  itemId: string;
+  title: string;
+  /** In the trash: listed after the live ones. */
+  trashed: boolean;
+}
+
 export interface MetadataUpdate {
   title?: string;
   metadata?: ItemMetadata;
@@ -117,6 +126,29 @@ export class LibraryRepository {
   itemCountsByAsset(): Map<string, number> {
     const rows = this.db.prepare(`SELECT asset_id AS id, COUNT(*) AS n FROM item_assets WHERE role = 'original' GROUP BY asset_id`).all() as Array<{ id: string; n: number }>;
     return new Map(rows.map((r) => [r.id, r.n]));
+  }
+
+  /**
+   * The items, the trash's too, whose original file is one of `assetIds`: live ones first, then the trash's, each in the
+   * order it came in; an item once.
+   */
+  originalItemsOf(assetIds: readonly string[]): AssetItem[] {
+    const ids = [...new Set(assetIds)];
+    const rows: Array<{ assetId: string; itemId: string; title: string; trashed: number; createdAt: string; seq: number }> = [];
+    for (let start = 0; start < ids.length; start += GET_ITEMS_CHUNK) {
+      const chunk = ids.slice(start, start + GET_ITEMS_CHUNK);
+      rows.push(
+        ...(this.db
+          .prepare(
+            `SELECT ia.asset_id AS assetId, i.id AS itemId, i.title AS title, (i.deleted_at IS NOT NULL) AS trashed, i.created_at AS createdAt, i.rowid AS seq
+             FROM item_assets ia JOIN items i ON i.id = ia.item_id
+             WHERE ia.role = 'original' AND ia.asset_id IN (${chunk.map(() => '?').join(', ')})`,
+          )
+          .all(...chunk) as typeof rows),
+      );
+    }
+    rows.sort((a, b) => a.trashed - b.trashed || a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq);
+    return rows.map((r) => ({ assetId: r.assetId, itemId: r.itemId, title: r.title, trashed: r.trashed === 1 }));
   }
 
   assetsByMode(mode: StorageMode): AssetRow[] {

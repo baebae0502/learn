@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, ERROR_COPY, LIBRARY_COLUMNS } from '@learn/domain';
+import { COMMANDS, ERROR_COPY, LIBRARY_COLUMNS, RESTORE_COPY } from '@learn/domain';
 import { mainStrings } from '../../../main/strings';
 import { t } from './index';
 
@@ -21,6 +21,7 @@ collect(t, 't', copy);
 collect(mainStrings, 'mainStrings', copy);
 // The sentences toLearnError gives an engine's error (packages/domain/src/errors.ts): toasts and notices show them.
 collect(ERROR_COPY, 'errorCopy', copy);
+collect(RESTORE_COPY, 'restoreCopy', copy);
 for (const c of COMMANDS) {
   copy.push({ at: `command ${c.id}`, text: c.label });
   // A toggle's state labels are menu, palette and tooltip names too.

@@ -435,7 +435,7 @@ test('the item menu: 컬렉션에 추가 ▸ lists 새 컬렉션 first, then the
     await rowByTitle(page, 'sample').click({ button: 'right' });
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
     const [menu] = await recordedPopups(app);
-    expect(menu!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', REVEAL, '사본 내보내기…', '컬렉션에 추가']);
+    expect(menu!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', REVEAL, '사본 내보내기…', '컬렉션에 추가', '휴지통으로 이동']);
     const add = menu!.find((i) => i.label === '컬렉션에 추가')!;
     expect(rowsOf(add.submenu!)).toEqual([NEW, '-', '분자생물학', '통계']);
     expect(rowsOf(add.submenu!.find((i) => i.label === '분자생물학')!.submenu!)).toEqual(['분자생물학 ✓ ✗', '-', '6장 · 신호 전달']); // sample is in 분자생물학

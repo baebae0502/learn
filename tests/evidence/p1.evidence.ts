@@ -377,7 +377,7 @@ test('M6 check: the library check sheet — the window − 120 at most, its list
     if (theme === 'light') {
       await guard('check sheet: at most the window\'s height − 120; the head and the foot inside it, only the list scrolls (P-26)', async () => {
         const v = await sheet!.evaluate(() => {
-          const list = document.querySelector('.checklist') as HTMLElement;
+          const list = document.querySelector('.check-scroll') as HTMLElement;
           return {
             headTop: Math.round(document.querySelector('.check-head')!.getBoundingClientRect().top),
             footBottom: Math.round(document.querySelector('.d-foot')!.getBoundingClientRect().bottom),
@@ -401,11 +401,16 @@ test('M6 check: the library check sheet — the window − 120 at most, its list
     if (theme === 'light') await clickToCloseSheet(sheet, sheet.getByTestId('check-done'));
   }
   await setTheme('light');
-  await guard('check sheet: each action turns its row ok in place, and the window follows the shorter list (no band under the foot)', async () => {
+  const followName = IS_MAC
+    ? 'check sheet: each action turns its row ok in place, and the window never shrinks while the sheet is open (macOS centres it; the spare height lies under the list)'
+    : 'check sheet: each action turns its row ok in place, and the window follows the shorter list (no band under the foot)';
+  await guard(followName, async () => {
     const page = sheet!;
+    const before = await heights();
     await page.getByTestId('check-cleanStaging').click();
     await expect(row(page, 'staging')).toHaveAttribute('data-state', 'done');
     await row(page, 'unreferenced').getByTestId('check-askClean').click();
+    await shots(page, 'm6-21a-check-confirm-sheet', 'the library check sheet asking in the 쓰이지 않는 사본 row: 지우기 (danger) beside 취소 (default)');
     await page.getByTestId('check-confirm').click();
     await expect(row(page, 'unreferenced')).toHaveAttribute('data-state', 'done');
     await stubOpenDialog(s.app, [lostSrc]);
@@ -413,16 +418,24 @@ test('M6 check: the library check sheet — the window − 120 at most, its list
     await expect(row(page, 'missingManaged')).toHaveAttribute('data-state', 'done');
     await page.getByTestId('check-importOrphanEdits').click();
     await expect(row(page, 'orphanEdits')).toHaveAttribute('data-state', 'done');
-    await expect
-      .poll(async () => {
-        const h = await heights();
-        const root = await page.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
-        return h.sheet === root && root < h.main - 120;
-      })
-      .toBe(true);
-    const h = await heights();
-    results['checkFollows'] = h;
-    check('check sheet: each action turns its row ok in place, and the window follows the shorter list (no band under the foot)', true, h);
+    if (IS_MAC) {
+      // The window keeps its height (the head and the row just fixed stay where they are) and the foot stays at its bottom.
+      const v = await page.evaluate(() => ({ root: Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height), footBottom: Math.round(document.querySelector('.d-foot')!.getBoundingClientRect().bottom), innerHeight }));
+      const h = await heights();
+      results['checkFollows'] = { ...h, before, ...v };
+      check(followName, h.sheet !== null && before.sheet !== null && h.sheet >= before.sheet && v.root === h.sheet && v.footBottom === v.innerHeight, results['checkFollows']);
+    } else {
+      await expect
+        .poll(async () => {
+          const h = await heights();
+          const root = await page.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
+          return h.sheet === root && root < h.main - 120;
+        })
+        .toBe(true);
+      const h = await heights();
+      results['checkFollows'] = h;
+      check(followName, true, h);
+    }
   });
   if (IS_MAC) await fullScreenShot('m6-21-check-fixed', 'the library check after its actions: rows ok in place, the sheet as tall as its list');
   if (sheet) await shots(sheet, 'm6-21-check-fixed-sheet', 'the library check after its actions, its page');

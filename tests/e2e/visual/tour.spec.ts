@@ -58,6 +58,18 @@ const panelMasks = (page: Page) => [
   page.getByTestId('sha-value'),
   page.locator('[data-testid="file-row"][data-field="location"] dd'),
 ];
+/**
+ * Under a palette the dates behind the scrim are hidden, not masked: a mask is painted over everything, so one on a date
+ * the palette covers also covered the palette's corner and scroll bar (critique 5).
+ */
+const BEHIND_PALETTE = [
+  '[data-testid="item-row"] [data-col="createdAt"]',
+  '[data-testid="info-row"]:is([data-field="createdAt"], [data-field="updatedAt"]) dd',
+  '[data-testid="sha-value"]',
+  '[data-testid="file-row"][data-field="location"] dd',
+]
+  .map((sel) => `${sel} { visibility: hidden !important; }`)
+  .join('\n');
 /** One item in the panel as it stays: its kind line (the page count or length is read from the file, later) and its sections. */
 async function panelSettled(page: Page, kind: string | RegExp): Promise<void> {
   await expect(page.getByTestId('inspector-kind')).toHaveText(kind);
@@ -354,8 +366,11 @@ test('library check sheet: automatic, every row, a row fixed (M6 spec 7.2, P-26)
   const linkedSrc = path.join(outside, 'Calcium Signaling Revisited.pdf');
   fs.writeFileSync(linkedSrc, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from('\n% linked\n')]));
   const files = library(dir);
+  // Two more documents whose copies go missing with the others: four in all, so the row names two and says 외 2개.
+  const extras = ['Extra A', 'Extra B'].map((n) => sizedCopy(path.join(FIXTURES, 'sample.pdf'), path.join(dir, 'extra'), `${n}.pdf`, 60_000));
   let s = await launchTour(dir);
   await importPaths(s.page, files);
+  await importPaths(s.page, extras);
   await importPaths(s.page, [linkedSrc], { mode: 'linked' });
   await s.app.close();
   // Left while the app was closed (the mockup's automatic scene): two stopped imports, a damaged copy set aside, the
@@ -380,13 +395,30 @@ test('library check sheet: automatic, every row, a row fixed (M6 spec 7.2, P-26)
     const edit = path.join(lib, 'derived', 'open', '0a1b2c3d-4e5f-4061-8172-8394a5b6c7d8', '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf');
     fs.mkdirSync(path.dirname(edit), { recursive: true });
     fs.writeFileSync(edit, Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(3_091, 4)]));
-    for (const f of [files[1]!, files[2]!]) fs.rmSync(managedCopy(lib, f));
+    for (const f of [files[1]!, files[2]!, ...extras]) fs.rmSync(managedCopy(lib, f));
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
       const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+      // The sheet is at its cap on Linux: the list scrolls inside its card under the head and over the foot, 외 2개 in the row.
+      await expect(sheet.getByTestId('check-more')).toHaveText('외 2개');
+      await expect.poll(() => sheet.getByTestId('check-scroll').evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
       await shoot(sheet, `check-full-${theme}`, { mask: masks(sheet) });
+      // The one action that cannot be undone asks in its row (Q-8h), right after 정리…; esc keeps the copies.
+      await sheet.getByTestId('check-askClean').click();
+      await expect(sheet.getByTestId('check-confirm')).toBeVisible();
+      await shoot(sheet, `check-confirm-${theme}`, { mask: masks(sheet) });
+      await sheet.keyboard.press('Escape');
+      await expect(sheet.getByTestId('check-confirm')).toHaveCount(0);
       await closeSheet(sheet, 'Escape');
     }
+    // 파일 › 라이브러리 점검… with something to do (Q-8i): the rows to act on, and no sentence at the foot.
+    await setTheme(s.page, 'light');
+    await expect.poll(() => menuItemEnabled(s.app, 'file.checkLibrary')).toBe(true);
+    const manual = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.checkLibrary'));
+    await expect(manual.getByTestId('check-cleanStaging')).toBeVisible();
+    await expect(manual.getByTestId('check-hint')).toHaveCount(0);
+    await shoot(manual, 'check-manual-light', { mask: masks(manual) });
+    await closeSheet(manual, 'Escape');
     // A row fixed in place: 임시 파일 정리, both themes on the one sheet.
     const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
     await sheet.getByTestId('check-cleanStaging').click();
@@ -456,7 +488,7 @@ test('selection commands: the palette with one selected row lists 폴더에서 �
     await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(true);
     await runMenuCommand(s.app, 'app.palette');
     await expect(s.page.locator('[data-testid="palette-item"][data-command-id="item.openExternally"]')).toBeVisible();
-    await shoot(s.page, 'palette-selection-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+    await shoot(s.page, 'palette-selection-light', { style: BEHIND_PALETTE });
   } finally {
     await s.app.close();
   }
@@ -493,8 +525,6 @@ async function paletteLibrary(s: Session, dir: string): Promise<string[]> {
 
 test('palette: empty query, 자료 results (palette.html), commands only, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  // The table's dates in its rows only and whatever moves in the item panel behind the scrim.
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   const input = s.page.getByTestId('palette-input');
   const cursor = s.page.locator('.palette [role="option"][data-focused]');
   try {
@@ -504,30 +534,30 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       await runMenuCommand(s.app, 'app.palette');
       // Every available command, the cursor on the first; nothing ran from the palette yet.
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
-      await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-empty-${theme}`, { style: BEHIND_PALETTE });
       // palette.html: 자료 above 명령, the matched 신호 in each title, 저자 · 연도 on the right, 라이브러리에서 ‘신호’ 검색 last.
       await input.fill('신호');
       await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
       await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
       await expect(s.page.locator('.p-foot')).toContainText('ㅅㅎ → 신호');
-      await shoot(s.page, `palette-items-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-items-${theme}`, { style: BEHIND_PALETTE });
       // Commands only, the search row under them (ㄱㅈㅇ: 파일 가져오기… alone, in no title) — M3's palette-{light,dark} state.
       await input.fill('ㄱㅈㅇ');
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
-      await shoot(s.page, `palette-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-${theme}`, { style: BEHIND_PALETTE });
       if (theme === 'light') {
         // ㄱ: several command rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
         await input.fill('ㄱ');
         await expect(s.page.getByTestId('palette-item').nth(2)).toBeVisible();
         await expect(s.page.locator('[data-testid="palette-item"]:not([data-focused]) mark').first()).toBeVisible();
-        await shoot(s.page, 'palette-multi-light', { mask: dates() });
+        await shoot(s.page, 'palette-multi-light', { style: BEHIND_PALETTE });
       }
       // palette.html ?state=none: the notice, then the search row under the cursor; the foot says ↩ 실행 · esc 닫기.
       await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();
       await expect(cursor).toHaveAttribute('data-testid', 'palette-search-library');
-      await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-none-${theme}`, { style: BEHIND_PALETTE });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
@@ -543,7 +573,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
     });
     await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
-    await shoot(s.page, 'palette-inactive-light', { mask: dates() });
+    await shoot(s.page, 'palette-inactive-light', { style: BEHIND_PALETTE });
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
@@ -556,7 +586,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
     const longSub = s.page.getByTestId('palette-result').first().locator('.p-sub');
     await expect(longSub).toContainText('김하늘');
     await expect.poll(() => longSub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-    await shoot(s.page, 'palette-long-light', { mask: dates() });
+    await shoot(s.page, 'palette-long-light', { style: BEHIND_PALETTE });
   } finally {
     await s.app.close();
   }
@@ -564,7 +594,6 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
 
 test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   try {
     const ids = await paletteLibrary(s, testInfo.outputPath('media'));
     const bio = await createCollection(s.page, '분자생물학');
@@ -578,7 +607,7 @@ test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', as
       await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
       await expect(s.page.getByTestId('palette-collection')).toHaveCount(1);
       await expect(s.page.locator('.palette .p-group')).toHaveText(['자료', '컬렉션', '명령']);
-      await shoot(s.page, `palette-collections-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-collections-${theme}`, { style: BEHIND_PALETTE });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
@@ -1310,6 +1339,9 @@ test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line
     await s.page.getByTestId('keep-all-duplicates').click();
     await expect(specialRow(s.page, 'duplicates')).toHaveCount(0);
     await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    // The toast is what says what happened once the view has left 중복 항목 (two groups: 2 + 1).
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 3개를 휴지통으로 옮겼습니다');
+    await shoot(s.page, 'toast-duplicates-all-light', { mask: masks() });
     await gone('undo-toast');
     await shoot(s.page, 'duplicates-cleaned-light', { mask: masks() });
   } finally {

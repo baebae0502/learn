@@ -160,8 +160,9 @@ async function copyCounting(src: string, dst: string, signal: AbortSignal | unde
 }
 
 /**
- * One managed copy into the backup (spec 8.1): written, flushed, then read back from the backup's disk and checked
- * against its hash — a copy that reads back different fails the whole backup. False: the library's copy is gone.
+ * One managed copy into the backup (spec 8.1): written, flushed (fsync), then read back and checked against its hash — a
+ * copy that reads back different fails the whole backup. The read may be answered from the OS page cache, which Node
+ * cannot drop portably, so it shows the bytes that were written, not a second trip to the disk. False: the library's copy is gone.
  */
 async function backUpCopy(
   layout: LibraryLayout,

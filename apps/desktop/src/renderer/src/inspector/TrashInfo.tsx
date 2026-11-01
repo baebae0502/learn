@@ -28,12 +28,23 @@ export function RestoreButton({ target }: { target: CommandTarget }) {
 /** Under 복원: where the row is and since when; rows trashed at different times say only where. */
 export function TrashNote({ at }: { at: string | null }) {
   const now = useNow();
-  const text = at === null ? t.trash.panel.noteMixed : t.trash.panel.note(formatDate(at, now));
+  const when = at === null ? undefined : formatDate(at, now);
+  const text = when === undefined ? t.trash.panel.noteMixed : t.trash.panel.note(when);
+  // The time alone is wrapped, so the tour masks it (C-4a) and not the sentence round it.
+  const [before, after] = t.trash.panel.note('\u0000').split('\u0000');
   return (
     <div className="trash-note" data-testid="trash-note">
       <Icon icon={Trash2} size="sm" />
       <span className="ellipsis" title={text}>
-        {text}
+        {when === undefined ? (
+          text
+        ) : (
+          <>
+            {before}
+            <time data-testid="trash-note-when">{when}</time>
+            {after}
+          </>
+        )}
       </span>
     </div>
   );

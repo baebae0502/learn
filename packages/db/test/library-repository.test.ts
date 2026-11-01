@@ -363,8 +363,27 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     cols.addItems(cols.create({ name: 'c' }).id, [itemId]);
     new ReadingRepository(db).save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null });
     expect(repo.counts()).toEqual({
-      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1,
+      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0,
     });
+  });
+
+  it('counts the trash apart: the items and collections in it, which the live counts leave out (spec 8.3)', () => {
+    seedItem(db, { title: 'kept' });
+    const gone = seedItem(db, { title: 'gone' });
+    const cols = new CollectionsRepository(db);
+    const parent = cols.create({ name: 'p' });
+    cols.create({ name: 'child', parentId: parent.id });
+    repo.trash([gone.itemId]);
+    cols.softDelete(parent.id);
+    expect(repo.counts()).toMatchObject({ items: 1, trashedItems: 1, collections: 0, trashedCollections: 2 });
+  });
+
+  it('itemCountsByAsset: how many items, the trash too, have each asset as their original', () => {
+    const a = seedItem(db, { title: 'a' });
+    seedItem(db, { title: 'twin', reuseAsset: a.asset });
+    const b = seedItem(db, { title: 'b' });
+    repo.trash([b.itemId]);
+    expect(Object.fromEntries(repo.itemCountsByAsset())).toEqual({ [a.asset.id]: 2, [b.asset.id]: 1 });
   });
 });
 

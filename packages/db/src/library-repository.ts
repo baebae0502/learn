@@ -44,6 +44,9 @@ export interface LibraryCounts {
   tags: number;
   itemTags: number;
   readingPositions: number;
+  /** In the trash (spec 8.3: items with and without it) — the live counts above leave them out. */
+  trashedItems: number;
+  trashedCollections: number;
 }
 
 export interface MetadataUpdate {
@@ -108,6 +111,12 @@ export class LibraryRepository {
 
   allAssets(): AssetRow[] {
     return (this.db.prepare('SELECT * FROM assets ORDER BY created_at, rowid').all() as AssetDbRow[]).map(toAsset);
+  }
+
+  /** How many items, the trash too, have each asset as their original: a backup counts its linked and lost files by item (spec 8.2). */
+  itemCountsByAsset(): Map<string, number> {
+    const rows = this.db.prepare(`SELECT asset_id AS id, COUNT(*) AS n FROM item_assets WHERE role = 'original' GROUP BY asset_id`).all() as Array<{ id: string; n: number }>;
+    return new Map(rows.map((r) => [r.id, r.n]));
   }
 
   assetsByMode(mode: StorageMode): AssetRow[] {
@@ -442,6 +451,8 @@ export class LibraryRepository {
       tags: n('SELECT COUNT(*) AS n FROM tags'),
       itemTags: n('SELECT COUNT(*) AS n FROM item_tags'),
       readingPositions: n('SELECT COUNT(*) AS n FROM reading_positions'),
+      trashedItems: n('SELECT COUNT(*) AS n FROM items WHERE deleted_at IS NOT NULL'),
+      trashedCollections: n('SELECT COUNT(*) AS n FROM collections WHERE deleted_at IS NOT NULL'),
     };
   }
 }

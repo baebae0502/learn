@@ -1,13 +1,32 @@
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { newId, nowIso } from '@learn/domain';
-import { LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
-import { Importer, createBackup, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, restoreBackup, sha256File } from '../src/index';
+import { CollectionsRepository, LATEST_SCHEMA_VERSION, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
+import { Importer, createBackup, datedFolderName, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, restoreBackup, sha256File, type BackupProgress } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
+
+/** Every fsync createBackup asks for, with the renames between them, in one order (the durability test reads it). */
+const durability = vi.hoisted(() => ({ log: [] as string[][] }));
+vi.mock('../src/fsync', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/fsync')>();
+  return {
+    fsyncFile: async (p: string) => {
+      durability.log.push(['fsyncFile', p]);
+      return real.fsyncFile(p);
+    },
+    fsyncDir: async (p: string) => {
+      durability.log.push(['fsyncDir', p]);
+      return real.fsyncDir(p);
+    },
+  };
+});
 
 const dbs: Db[] = [];
 afterEach(() => {
+  durability.log.length = 0;
+  vi.restoreAllMocks();
   for (const db of dbs.splice(0)) if (db.open) db.close();
   cleanupTemp();
 });
@@ -31,13 +50,13 @@ describe('backup and restore (AC15 — files part)', () => {
   it('restores into an empty profile with matching hashes and counts', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-1');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     expect(manifest).toMatchObject({ format: 'learn-backup', formatVersion: 1, schemaVersion: LATEST_SCHEMA_VERSION, counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 } });
     expect(manifest.assets.filter((a) => a.included)).toHaveLength(2); // linked is reference-only
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });
-    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0 }, countsMatch: true });
+    expect(result).toEqual({ verifiedAssets: 2, missingAssets: [], hashMismatches: [], recordMismatches: [], counts: { items: 3, assets: 3, revisions: 3, collections: 0, collectionItems: 0, tags: 0, itemTags: 0, readingPositions: 0, trashedItems: 0, trashedCollections: 0 }, countsMatch: true });
 
     const rdb = openDatabase(libraryLayout(target).dbFile);
     dbs.push(rdb);
@@ -50,7 +69,7 @@ describe('backup and restore (AC15 — files part)', () => {
   it('detects corrupted asset copies in a backup', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-2');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     const victim = manifest.assets.find((a) => a.included)!;
     fs.appendFileSync(path.join(dest, ...victim.relativePath!.split('/')), 'tampered');
     const result = await restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library') });
@@ -79,7 +98,7 @@ describe('backup and restore (AC15 — files part)', () => {
   it('rejects tampered manifest with path traversal', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-tampered');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     const victim = manifest.assets.find((a) => a.included)!;
 
     // Tamper manifest to include path traversal
@@ -107,7 +126,7 @@ describe('backup and restore (AC15 — files part)', () => {
   it('restores from an old manifest that lacks the optional counts', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-old-manifest');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     const old = { ...manifest, schemaVersion: 1, counts: { items: 3, assets: 3, revisions: 3 } };
     fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(old, null, 2));
     const target = path.join(tempDir('restore'), 'Library');
@@ -118,7 +137,7 @@ describe('backup and restore (AC15 — files part)', () => {
   it('rejects manifest from a newer schema version', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-newer-schema');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
 
     const tampered = { ...manifest, schemaVersion: 99 };
     fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(tampered, null, 2));
@@ -130,7 +149,7 @@ describe('backup and restore (AC15 — files part)', () => {
   it('cleans up temp dir on restore failure', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-fail-restore');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
 
     // Delete one included asset file to cause restore failure
     const victim = manifest.assets.find((a) => a.included)!;
@@ -167,7 +186,7 @@ describe('backup and restore (AC15 — files part)', () => {
 
     // Backup should succeed and record the lost file as not included
     const dest = path.join(tempDir('bk'), 'backup-lost-file');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
 
     const entry = manifest.assets.find((a) => a.assetId === managedAsset.id)!;
     expect(entry.included).toBe(false);
@@ -208,7 +227,7 @@ describe('backup and restore (AC15 — files part)', () => {
     // The pdf's row now claims the mp4's file.
     db.prepare('UPDATE assets SET relative_path = ? WHERE id = ?').run(mp4.relativePath, pdf.id);
     const dest = path.join(tempDir('bk'), 'backup-derived');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     expect(manifest.assets.find((a) => a.assetId === pdf.id)).toMatchObject({ included: true, relativePath: managedRelativePath(pdf.sha256) });
     expect(await sha256File(path.join(dest, ...managedRelativePath(pdf.sha256).split('/')))).toBe(pdf.sha256);
 
@@ -228,7 +247,7 @@ describe('backup and restore (AC15 — files part)', () => {
     const odd = 'g'.repeat(64);
     db.prepare('UPDATE assets SET sha256 = ? WHERE id = ?').run(odd, pdf!.id);
     const dest = path.join(tempDir('bk'), 'backup-odd-sha');
-    const manifest = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     expect(manifest.assets.find((a) => a.assetId === pdf!.id)).toMatchObject({ included: false, sha256: odd });
     expect(fs.existsSync(path.join(dest, 'assets', 'gg'))).toBe(false);
   });
@@ -258,5 +277,108 @@ describe('backup and restore (AC15 — files part)', () => {
     const restored = new LibraryRepository(rdb);
     for (const id of [a!.id, b!.id, extra]) expect(restored.getAsset(id)!.availability, id).toBe('missing');
     expect(restored.getAsset(linked!.id)!.availability).toBe('available');
+  });
+});
+
+describe('the backup job\'s copy: real bytes, read back, counted, stoppable, flushed (spec 8.1, 8.3, Q-2d)', () => {
+  it('reports its bytes — each copy written, then read back — and its files, ending at its totals; sums up what it holds', async () => {
+    const { layout, db, repo } = await populated();
+    const managed = repo.assetsByMode('managed');
+    const dest = path.join(tempDir('bk'), 'progress');
+    const seen: BackupProgress[] = [];
+    const { manifest, summary } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true, onProgress: (p) => seen.push(p) });
+    const bytes = managed.reduce((n, a) => n + a.size, 0);
+    expect(seen[0]).toEqual({ bytesDone: 0, bytesTotal: 2 * bytes, filesDone: 0, filesTotal: 2 });
+    expect(seen.at(-1)).toEqual({ bytesDone: 2 * bytes, bytesTotal: 2 * bytes, filesDone: 2, filesTotal: 2 });
+    for (let i = 1; i < seen.length; i++) expect(seen[i]!.bytesDone).toBeGreaterThanOrEqual(seen[i - 1]!.bytesDone);
+    expect(summary).toEqual({ folder: dest, createdAt: manifest.createdAt, items: 3, trashedItems: 0, files: 2, bytes, linkedItems: 1, missingItems: 0 });
+    // A real copy: its own file, not a link to the library's.
+    for (const a of managed) {
+      const copy = path.join(dest, ...managedRelativePath(a.sha256).split('/'));
+      expect(fs.statSync(copy).ino).not.toBe(fs.statSync(resolveAssetPath(layout, a)).ino);
+    }
+  });
+
+  it('holds the trash: its items and collections are counted apart and its copies are in it; a restore compares those counts too', async () => {
+    const { layout, db, repo } = await populated();
+    const pdf = repo.listItems().find((i) => i.storageMode === 'managed' && i.type === 'pdf')!;
+    repo.trash([pdf.id]);
+    const cols = new CollectionsRepository(db);
+    cols.softDelete(cols.create({ name: '지운 묶음' }).id);
+    const dest = path.join(tempDir('bk'), 'with-trash');
+    const { manifest, summary } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    expect(manifest.counts).toMatchObject({ items: 2, trashedItems: 1, collections: 0, trashedCollections: 1 });
+    const entry = manifest.assets.find((a) => a.assetId === pdf.assetId)!;
+    expect(entry.included).toBe(true);
+    expect(await sha256File(path.join(dest, ...entry.relativePath!.split('/')))).toBe(entry.sha256);
+    expect(summary).toMatchObject({ items: 2, trashedItems: 1, files: 2, linkedItems: 1, missingItems: 0 });
+    const result = await restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library') });
+    expect(result.counts).toMatchObject({ trashedItems: 1, trashedCollections: 1 });
+    expect(result.countsMatch).toBe(true);
+  });
+
+  it('a managed copy already gone from the library is left out and counted by its items; a linked file is a location only', async () => {
+    const { layout, db, repo } = await populated();
+    const [gone] = repo.assetsByMode('managed');
+    fs.unlinkSync(resolveAssetPath(layout, gone!));
+    const { manifest, summary } = await createBackup({ layout, db, repo, destDir: path.join(tempDir('bk'), 'missing'), includeAssets: true });
+    expect(manifest.assets.find((a) => a.assetId === gone!.id)).toMatchObject({ included: false });
+    expect(summary).toMatchObject({ files: 1, missingItems: 1, linkedItems: 1 });
+  });
+
+  it('a copy that reads back different fails the whole backup with HASH_MISMATCH and leaves no folder', async () => {
+    const { layout, db, repo } = await populated();
+    const parent = tempDir('bk');
+    const changed = { afterCopy: (file: string) => fs.appendFileSync(file, 'changed on the way') };
+    await expect(createBackup({ layout, db, repo, destDir: path.join(parent, 'mismatch'), includeAssets: true, hooks: changed })).rejects.toMatchObject({ code: 'HASH_MISMATCH' });
+    expect(fs.readdirSync(parent)).toEqual([]);
+  });
+
+  it('stops when its signal aborts — before it starts, or between a copy and its read-back — and leaves no folder', async () => {
+    const { layout, db, repo } = await populated();
+    const parent = tempDir('bk');
+    await expect(createBackup({ layout, db, repo, destDir: path.join(parent, 'never'), includeAssets: true, signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fs.readdirSync(parent)).toEqual([]);
+    const stop = new AbortController();
+    await expect(
+      createBackup({ layout, db, repo, destDir: path.join(parent, 'stopped'), includeAssets: true, signal: stop.signal, hooks: { afterCopy: () => stop.abort() } }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fs.readdirSync(parent)).toEqual([]);
+  });
+
+  it('flushes the database, every copy, their folders and the manifest before the folder takes its name, then the folder it is in', async () => {
+    const { layout, db, repo } = await populated();
+    const parent = tempDir('bk');
+    const dest = path.join(parent, 'durable');
+    const realRename = fsp.rename;
+    vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+      durability.log.push(['rename', String(from), String(to)]);
+      return realRename(from, to);
+    });
+    durability.log.length = 0;
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const temp = path.dirname(durability.log[0]![1]!);
+    expect(path.basename(temp)).toMatch(/^durable\.partial-[0-9a-f-]{36}$/);
+    const copies = manifest.assets.filter((a) => a.included).map((a) => path.join(temp, ...a.relativePath!.split('/')));
+    expect(durability.log).toEqual([
+      ['fsyncFile', path.join(temp, 'library.sqlite')],
+      ...copies.map((f) => ['fsyncFile', f]),
+      ...[...new Set(copies.map((f) => path.dirname(f)))].map((d) => ['fsyncDir', d]),
+      ['fsyncDir', path.join(temp, 'assets')],
+      ['fsyncFile', path.join(temp, 'manifest.json')],
+      ['fsyncDir', temp],
+      ['rename', temp, dest],
+      ['fsyncDir', parent],
+    ]);
+  });
+});
+
+describe('datedFolderName (spec 8.1, 9.1)', () => {
+  it('names a folder by the local minute, then 2, 3 … past the names taken', () => {
+    const when = new Date(2026, 9, 30, 21, 41, 59);
+    expect(datedFolderName('Learn 백업', when, () => false)).toBe('Learn 백업 2026-10-30 2141');
+    const taken = new Set(['Learn 백업 2026-10-30 2141', 'Learn 백업 2026-10-30 2141 2']);
+    expect(datedFolderName('Learn 백업', when, (n) => taken.has(n))).toBe('Learn 백업 2026-10-30 2141 3');
+    expect(datedFolderName('Learn 복원', new Date(2026, 0, 5, 9, 7), () => false)).toBe('Learn 복원 2026-01-05 0907');
   });
 });

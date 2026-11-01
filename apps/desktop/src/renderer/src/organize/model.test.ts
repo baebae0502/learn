@@ -107,3 +107,28 @@ describe('organizeModelFor (one model for the three callers)', () => {
     expect(organizeModelFor({ ...SNAPSHOT }, ITEMS.slice(0, 5))).not.toBe(fewer);
   });
 });
+
+describe('duplicate groups (M6 spec 5)', () => {
+  it('keeps the groups with two or more listed items, maps each item to its group, and keeps the earliest import of each', () => {
+    const listed = [
+      item('a', { createdAt: '2026-10-03T00:00:00.000Z' }),
+      item('b', { createdAt: '2026-10-01T00:00:00.000Z' }),
+      item('c', { createdAt: '2026-10-01T00:00:00.000Z' }),
+      item('d'),
+      item('e'),
+    ];
+    const m = buildOrganizeModel(
+      { collections: [], tags: [], members: {}, tagged: {}, duplicates: [['a', 'b', 'c'], ['d', 'gone'], ['e', 'x', 'y']], trashCount: 0 },
+      listed,
+    );
+    expect(m.duplicateGroups).toEqual([['a', 'b', 'c']]);
+    expect(m.duplicateGroupOf('c')).toBe(0);
+    expect(m.duplicateGroupOf('d')).toBeUndefined();
+    expect([...m.duplicateKept]).toEqual(['b']); // b and c were imported at the same moment: the smaller id
+    expect(ids(m.duplicates)).toEqual(['a', 'b', 'c']);
+  });
+  it('the fixture: i1 and i5 are a group (ghost has left the list), i1 stays', () => {
+    expect(model.duplicateGroups).toEqual([['i1', 'i5']]);
+    expect([...model.duplicateKept]).toEqual(['i1']);
+  });
+});

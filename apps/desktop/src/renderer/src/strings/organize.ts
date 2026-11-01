@@ -108,6 +108,12 @@ export const organize = {
     /** m-6: a 이 컬렉션에서 빼기 refused part-way — what went before it, with 실행 취소 in the error toast. */
     removedPart: (collection: string, n: number) => `‘${collection}’\u2060에서 자료 ${n}개만 뺐습니다.`,
   },
+  /** 중복 정리 (M6 spec 5): the table's mark on the row that stays, and the toast (with 실행 취소). */
+  duplicates: {
+    kept: '남김',
+    keptTitle: '모두 정리하면 이\u00a0자료가 남습니다(가장 먼저 가져온 자료)',
+    done: (n: number) => `중복 ${n}개를 휴지통으로 옮겼습니다`,
+  },
   /** Drag and drop (spec 8.2): the badge on the drag image, its plain-text form for other apps, and the move toast (sentence as the spec has it). */
   dnd: {
     badge: (n: number) => `자료 ${n}개`,

@@ -1,4 +1,5 @@
 import type { LibraryItem, OrganizeSnapshot, OrganizeTag } from '@learn/domain';
+import { keptOf } from './duplicates';
 import { buildTree, nameCollator, type CollectionNode } from './tree';
 
 export type { CollectionNode } from './tree';
@@ -25,6 +26,12 @@ export interface OrganizeModel {
   unfiled: ReadonlySet<string>;
   /** Items of a duplicate group that still has two or more items in the list. */
   duplicates: ReadonlySet<string>;
+  /** The groups with two or more items in the list, in the snapshot's order (M6 spec 5: what 모두 정리 cleans). */
+  duplicateGroups: readonly (readonly string[])[];
+  /** The index in duplicateGroups of the item's group, or undefined. */
+  duplicateGroupOf(itemId: string): number | undefined;
+  /** Per group, the item that stays when it is cleaned up: the earliest import (keptOf). */
+  duplicateKept: ReadonlySet<string>;
   tags: readonly OrganizeTag[];
   tagByPosition(position: number): OrganizeTag | undefined;
   /** Trashed items and collection rows (the snapshot's): the trash view shows while it is above 0. */
@@ -89,9 +96,25 @@ export function buildOrganizeModel(snapshot: OrganizeSnapshot, items: readonly L
   for (const list of perItem.values()) list.sort(compareTags);
 
   const duplicates = new Set<string>();
-  for (const group of snapshot.duplicates) {
-    const here = group.filter((id) => present.has(id));
-    if (here.length >= 2) for (const id of here) duplicates.add(id);
+  const duplicateGroups: string[][] = [];
+  const groupOf = new Map<string, number>();
+  const duplicateKept = new Set<string>();
+  if (snapshot.duplicates.length > 0) {
+    // When each item came in, for the ones in a group only (one pass over the list).
+    const grouped = new Set(snapshot.duplicates.flat());
+    const createdAt = new Map<string, string>();
+    for (const i of items) if (grouped.has(i.id)) createdAt.set(i.id, i.createdAt);
+    for (const group of snapshot.duplicates) {
+      const here = group.filter((id) => present.has(id));
+      if (here.length < 2) continue;
+      for (const id of here) {
+        duplicates.add(id);
+        groupOf.set(id, duplicateGroups.length);
+      }
+      duplicateGroups.push(here);
+      const kept = keptOf(here.map((id) => ({ id, createdAt: createdAt.get(id)! })));
+      if (kept !== undefined) duplicateKept.add(kept);
+    }
   }
   const unfiled = new Set<string>();
   for (const i of items) if (!filed.has(i.id)) unfiled.add(i.id);
@@ -121,6 +144,9 @@ export function buildOrganizeModel(snapshot: OrganizeSnapshot, items: readonly L
     tagItems: (tagId) => tagSets.get(tagId) ?? NO_SET,
     unfiled,
     duplicates,
+    duplicateGroups,
+    duplicateGroupOf: (itemId) => groupOf.get(itemId),
+    duplicateKept,
     tags: snapshot.tags,
     tagByPosition: (position) => byPosition.get(position),
     trashCount: snapshot.trashCount,

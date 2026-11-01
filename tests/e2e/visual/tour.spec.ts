@@ -3,12 +3,13 @@
 //   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all, then restore any jitter-only rewrite.
 // @2x captures for the design critic, without updating (the baselines stay as committed):
 //   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitImportIdle, type Session,
+  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -333,6 +334,85 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
       await shoot(keys, `sheet-shortcuts-${theme}`);
       await closeSheet(keys, 'Escape');
       await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+const fileSha = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const managedCopy = (lib: string, file: string) => {
+  const sha = fileSha(file);
+  return path.join(lib, 'assets', sha.slice(0, 2), sha);
+};
+
+test('library check sheet: automatic, every row, a row fixed (M6 spec 7.2, P-26)', async ({}, testInfo) => {
+  const dir = testInfo.outputPath();
+  const lib = path.join(dir, 'library');
+  const outside = path.join(dir, 'outside');
+  fs.mkdirSync(outside, { recursive: true });
+  const linkedSrc = path.join(outside, 'Calcium Signaling Revisited.pdf');
+  fs.writeFileSync(linkedSrc, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from('\n% linked\n')]));
+  const files = library(dir);
+  let s = await launchTour(dir);
+  await importPaths(s.page, files);
+  await importPaths(s.page, [linkedSrc], { mode: 'linked' });
+  await s.app.close();
+  // Left while the app was closed (the mockup's automatic scene): two stopped imports, a damaged copy set aside, the
+  // linked original moved away.
+  for (const n of ['11111111-1111-4111-8111-111111111111.part', '22222222-2222-4222-8222-222222222222.part']) fs.writeFileSync(path.join(lib, 'staging', n), Buffer.alloc(2_060_000, 1));
+  fs.writeFileSync(path.join(lib, 'staging', `corrupt-${fileSha(files[0]!)}-44444444-4444-4444-8444-444444444444`), Buffer.alloc(4_200_000, 2));
+  fs.renameSync(linkedSrc, path.join(outside, 'moved.pdf'));
+  s = await launchTour(dir);
+  const masks = (sheet: Page) => [sheet.locator('.ce-path')]; // the original's folder is the test's own
+  try {
+    // The sheet that opened by itself was measured before the tour sized the window: closed, and asked for again.
+    await closeSheet(await waitForSheet(s.app), 'Escape');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+      await shoot(sheet, `check-auto-${theme}`, { mask: masks(sheet) });
+      await closeSheet(sheet, 'Escape');
+    }
+    // Every row (recovery-full): an unused copy, an orphan edited copy, two managed copies gone.
+    fs.mkdirSync(path.join(lib, 'assets', 'cc'), { recursive: true });
+    fs.writeFileSync(path.join(lib, 'assets', 'cc', 'c'.repeat(64)), Buffer.alloc(96_000, 3));
+    const edit = path.join(lib, 'derived', 'open', '0a1b2c3d-4e5f-4061-8172-8394a5b6c7d8', '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf');
+    fs.mkdirSync(path.dirname(edit), { recursive: true });
+    fs.writeFileSync(edit, Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(3_091, 4)]));
+    for (const f of [files[1]!, files[2]!]) fs.rmSync(managedCopy(lib, f));
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+      await shoot(sheet, `check-full-${theme}`, { mask: masks(sheet) });
+      await closeSheet(sheet, 'Escape');
+    }
+    // A row fixed in place: 임시 파일 정리, both themes on the one sheet.
+    const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+    await sheet.getByTestId('check-cleanStaging').click();
+    await expect(sheet.locator('[data-testid="check-row"][data-kind="staging"]')).toHaveAttribute('data-state', 'done');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // The open sheet follows the native theme on its own: wait for it before the shot.
+      await expect.poll(() => sheet.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+      await shoot(sheet, `check-fixed-${theme}`, { mask: masks(sheet) });
+    }
+    await closeSheet(sheet, 'Escape');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('library check sheet: nothing wrong (파일 › 라이브러리 점검…, recovery-ok)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, library(testInfo.outputPath()));
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect.poll(() => menuItemEnabled(s.app, 'file.checkLibrary')).toBe(true);
+      const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.checkLibrary'));
+      await shoot(sheet, `check-ok-${theme}`);
+      await closeSheet(sheet, 'Enter');
     }
   } finally {
     await s.app.close();

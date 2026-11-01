@@ -87,6 +87,10 @@ const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'item.trash': 'trash.spec.ts › ⌘⌫ moves the selection at once with 실행 취소, the trash row shows with its count, one item is named, and 파일 names the line by the view',
   'item.restore': 'trash.spec.ts › the trash rows’ menu (also by ⇧F10): 복원 · — · 영구 삭제…; 복원 brings a collection back with its child; an emptied trash closes its view',
   'trash.empty': 'trash.spec.ts › 영구 삭제… asks in the app sheet — ↩ and esc keep, the danger button on the left deletes; 휴지통 비우기… (⇧⌘⌫) empties and the view goes to 내 라이브러리',
+  'duplicates.keepOne':
+    'duplicates.spec.ts › 하나만 남기고 휴지통으로 from a row menu of 중복 항목: the group keeps its earliest import with the collections and tags of the rest, the rows stay grouped with 남김, and 실행 취소 undoes both',
+  'duplicates.keepOneAll':
+    'duplicates.spec.ts › 중복 N묶음 모두 정리 from the view button and the palette: every group keeps its earliest, the view goes to 내 라이브러리 once none is left, and 실행 취소 brings the rows back',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {

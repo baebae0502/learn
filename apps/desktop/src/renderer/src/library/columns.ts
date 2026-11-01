@@ -140,9 +140,21 @@ export function tradeWidths(
   return out;
 }
 
+/**
+ * The author column's default in the trash view, where 삭제한 날짜 needs 124 (the longest value, "오늘 오후 12:59", is 87 px plus
+ * the cell's 8 + 24): the six default columns still fit a 1024 window with the panel closed (240 + 776 + 8). A width the user dragged stays.
+ */
+export const TRASH_CREATORS_WIDTH = 168;
+
 /** The shown columns' pixel widths, the title's excepted: stored, else the default (the grid's tracks). */
-export const fixedWidths = (cfg: ColumnConfig, visible: readonly LibraryColumnSpec[]): Map<LibraryColumnId, number> =>
-  new Map(visible.flatMap((c) => (c.defaultWidth === null ? [] : [[c.id, widthOf(cfg, c)!] as const])));
+export const fixedWidths = (cfg: ColumnConfig, visible: readonly LibraryColumnSpec[]): Map<LibraryColumnId, number> => {
+  const trash = visible.some((c) => trailing(c.id));
+  return new Map(
+    visible.flatMap((c) =>
+      c.defaultWidth === null ? [] : [[c.id, trash && c.id === 'creators' && cfg.widths.creators === undefined ? TRASH_CREATORS_WIDTH : widthOf(cfg, c)!] as const],
+    ),
+  );
+};
 
 /** How far a row's fill sits in from the table's sides (design-spec 6 표: 표 몸통은 좌우 8 안쪽). */
 export const ROW_INSET = 8;

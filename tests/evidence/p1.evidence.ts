@@ -236,6 +236,19 @@ test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭�
     const fit = await s.page.getByTestId('library-scroller').evaluate((e) => ({ scrollWidth: e.scrollWidth, clientWidth: e.clientWidth }));
     results[`trashTableFit-${theme}`] = fit;
     check(`trash table (${theme}): no sideways scroll with the panel closed`, fit.scrollWidth <= fit.clientWidth, fit);
+    // T7 C-1: the date cell shows its whole value; the real values here are "오늘 …", so also the longest ones are put in.
+    const cellFit = await s.page.locator('[data-testid="item-row"] [data-col="deletedAt"] .ellipsis').first().evaluate((e) => {
+      const was = e.textContent;
+      const fitOf = (text: string) => {
+        e.textContent = text;
+        return { text, scrollWidth: e.scrollWidth, clientWidth: e.clientWidth };
+      };
+      const all = [fitOf(was ?? ''), fitOf('오늘 오후 12:59'), fitOf('2026. 12. 31.')];
+      e.textContent = was;
+      return all;
+    });
+    results[`trashDateFit-${theme}`] = cellFit;
+    check(`trash table (${theme}): 삭제한 날짜 cells do not clip, the longest values included`, cellFit.every((f) => f.scrollWidth <= f.clientWidth), cellFit);
     await shots(s.page, `m6-10b-trash-table-${theme}`, `the trash view with the item panel closed (${theme})`);
     await runMenuCommand(s.app, 'view.toggleInspector');
     await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'shown');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, type ColumnConfig, type LibraryColumnId } from '@learn/domain';
-import { columnTemplates, completeOrder, defaultColumns, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
+import { columnTemplates, completeOrder, defaultColumns, TRASH_CREATORS_WIDTH, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
 
 const spec = (id: LibraryColumnId) => LIBRARY_COLUMNS.find((c) => c.id === id)!;
 const px = (entries: Array<[LibraryColumnId, number]>) => new Map(entries);
@@ -173,5 +173,13 @@ describe('the trash view\'s 삭제한 날짜 (M6 spec 4.3)', () => {
     const cfg = defaultColumns();
     const shown = visibleColumns(cfg, forced);
     expect(columnTemplates(shown, fixedWidths(cfg, shown)).minWidth).toBeLessThanOrEqual(776);
+  });
+  it('the author column takes the width 삭제한 날짜 needs (124) in the trash only; a dragged width and the other views stay', () => {
+    const cfg = defaultColumns();
+    const trash = visibleColumns(cfg, forced);
+    expect(fixedWidths(cfg, trash).get('deletedAt')).toBe(124);
+    expect(fixedWidths(cfg, trash).get('creators')).toBe(TRASH_CREATORS_WIDTH);
+    expect(fixedWidths({ ...cfg, widths: { creators: 200 } }, trash).get('creators')).toBe(200);
+    expect(fixedWidths(cfg, visibleColumns(cfg)).get('creators')).toBe(180);
   });
 });

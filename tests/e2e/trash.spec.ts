@@ -2,7 +2,7 @@
 // ⌘ shortcuts go through the menu (runMenuCommand / runMenuAccelerator): CDP keys never reach native accelerators on Linux.
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
-  addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, expectWindow, importPaths, launch, menuSnapshot,
+  addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, expectWindow, importPaths, launch, mainWindow, menuSnapshot,
   organizeSnapshot, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, specialRow, stubContextMenu, stubOpenDialog, tagChip, trashItems, treeRow,
   type MenuNode,
 } from './helpers';
@@ -147,6 +147,33 @@ test('the trash view: collection rows on top, 삭제한 날짜 last and newest f
     for (const id of ['item.showInFolder', 'item.exportCopy', 'item.openExternally'] as const) {
       expect((flat(await menuSnapshot(app)).find((n) => n.id === id))?.enabled, id).toBe(false);
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test('the trash table at 1024 with the panel closed: no sideways scroll, and 삭제한 날짜 holding the longest values does not clip (T7 critique C-1)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, distinctPdfs(testInfo.outputPath('in'), 2));
+    await trashItems(page, [items[0]!.id]);
+    await specialRow(page, 'trash').click();
+    await expect(title(page)).toHaveText('휴지통');
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(1024);
+    await page.waitForTimeout(400); // the narrow window folds the panel on its own; let that settle before reading it
+    if ((await page.getByTestId('shell').getAttribute('data-inspector')) === 'shown') await runMenuCommand(app, 'view.toggleInspector');
+    await expect(page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    const cell = page.locator('[data-testid="item-row"] [data-col="deletedAt"] .ellipsis').first();
+    await expect(cell).toBeVisible();
+    // The longest a date can read in this font: the latest clock time of today, and the widest absolute date.
+    for (const text of ['오늘 오후 12:59', '2026. 12. 31.', '어제 오후 12:59']) {
+      await cell.evaluate((e, t) => void (e.textContent = t), text);
+      const fit = await cell.evaluate((e) => ({ scrollWidth: e.scrollWidth, clientWidth: e.clientWidth }));
+      expect(fit.scrollWidth, text).toBeLessThanOrEqual(fit.clientWidth);
+    }
+    const table = await page.getByTestId('library-scroller').evaluate((e) => ({ scrollWidth: e.scrollWidth, clientWidth: e.clientWidth }));
+    expect(table.scrollWidth).toBeLessThanOrEqual(table.clientWidth);
   } finally {
     await app.close();
   }

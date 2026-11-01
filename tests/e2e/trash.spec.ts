@@ -243,7 +243,7 @@ test('영구 삭제… asks in the app sheet — ↩ and esc keep, the danger bu
     await expect(empty.getByTestId('purge-text')).toHaveText('자료 1개와 컬렉션 1개를 영구히 지웁니다. 되돌릴 수 없습니다. 외부 연결 원본은 지우지 않습니다.');
     await expect(empty.getByTestId('purge-confirm')).toHaveText('휴지통 비우기');
     await clickToCloseSheet(empty, empty.getByTestId('purge-confirm'));
-    await expect(page.getByTestId('purge-done').first()).toHaveText('휴지통을 비웠습니다'); // the newest toast is first
+    await expect(page.getByTestId('purge-done').last()).toHaveText('휴지통을 비웠습니다'); // the newest toast is the last one (oldest on top)
     await expect(title(page)).toHaveText('내 라이브러리');
     await expect(specialRow(page, 'trash')).toHaveCount(0);
     expect(await trashed(page)).toEqual({ items: [], collections: [] });

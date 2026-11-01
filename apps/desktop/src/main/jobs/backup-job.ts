@@ -58,14 +58,20 @@ interface Run {
 /**
  * Inside the library folder, by real paths: a link or a different spelling of the name must not get a backup written
  * there. macOS volumes are mostly case-insensitive, so there the names are compared in lower case (a conservative refusal).
+ * A path that cannot be resolved (gone, no permission) is compared as written; the steps after say what is wrong with it.
  */
 function within(dir: string, root: string): boolean {
   const real = (p: string): string => {
-    const r = fs.realpathSync.native(path.resolve(p));
+    let r = path.resolve(p);
+    try {
+      r = fs.realpathSync.native(r);
+    } catch {
+      // compared as written
+    }
     return process.platform === 'darwin' ? r.toLowerCase() : r;
   };
   const rel = path.relative(real(root), real(dir));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /** What a failed run says: its own cause and next step; a copy that read back different has a sentence of its own. */

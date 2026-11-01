@@ -170,6 +170,15 @@ describe('the backup on the work line (spec 8.1, P-20)', () => {
     expect(fs.readdirSync(path.join(lib.layout.root, 'assets')).filter((n) => n.startsWith('Learn'))).toEqual([]);
   });
 
+  it('refuses a folder inside the library whose name only starts with two dots', async () => {
+    const lib = await library();
+    const dotted = path.join(lib.layout.root, '..hidden');
+    fs.mkdirSync(dotted);
+    const h = harness(lib, { pickFolder: async () => dotted });
+    await expect(h.job.start(null)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: mainStrings.backup.inLibrary });
+    expect(fs.readdirSync(dotted)).toEqual([]);
+  });
+
   it('checks the folder against the library that is open when the panel returns, not the one before it', async () => {
     const before = await library();
     const after = await library();

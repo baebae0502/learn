@@ -143,7 +143,12 @@ function describeBackup(s: JobProgress, ahead: AheadJob): JobToastText {
   };
 }
 
+/** Toast 취소 presses on an import, counted at the click: a drop's loop sees them before main's count (which stays authoritative for the other ways to cancel) can reach it. */
+let importCancelsHere = 0;
+export const importCancelsAskedHere = (): number => importCancelsHere;
+
 /** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
 export function cancelJob(job: ProgressJob): void {
+  if (job === 'import') importCancelsHere += 1;
   void (job === 'import' ? api().library.cancelImport() : api().backup.cancel());
 }

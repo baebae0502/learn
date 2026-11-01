@@ -4,7 +4,7 @@ import { keys } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
 import { afterEditing } from '../inspector/editGuard';
-import { useJobProgress } from '../jobs/jobProgress';
+import { importCancelsAskedHere, useJobProgress } from '../jobs/jobProgress';
 import { createProgressToast } from '../jobs/progressToast';
 import { useShell } from '../state/shell-store';
 import { readWindowParams } from '../ui/platform';
@@ -68,6 +68,7 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
         },
         collectionName: (id) => names.current(id),
         cancelCount: () => useJobProgress.getState().import.cancels,
+        askedHere: importCancelsAskedHere,
         takeQuiet: takeQuietImport,
         toast: importProgressToast,
         mark: perfMark,

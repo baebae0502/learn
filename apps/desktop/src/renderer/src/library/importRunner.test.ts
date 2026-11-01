@@ -16,6 +16,7 @@ function harness(over: Partial<ImportRunnerDeps> = {}) {
   let sending = 0;
   let settling = 0;
   let cancels = 0;
+  let askedHere = 0;
   const toast: ProgressToast = {
     begin: vi.fn((quiet: boolean) => void log.push(`begin:${quiet}`)),
     end: vi.fn(() => {
@@ -36,13 +37,14 @@ function harness(over: Partial<ImportRunnerDeps> = {}) {
     screenSettled: vi.fn(async () => void log.push('screen')),
     collectionName: (id) => (id === 'c1' ? '학회 준비' : null),
     cancelCount: () => cancels,
+    askedHere: () => askedHere,
     takeQuiet: () => false,
     toast,
     mark: (name) => void log.push(`mark:${name}`),
     clearMarks: vi.fn(),
     ...over,
   };
-  return { runner: createImportRunner(deps), deps, log, toasts, toast, cancel: () => void (cancels += 1), sending: () => sending, settling: () => settling };
+  return { runner: createImportRunner(deps), deps, log, toasts, toast, cancel: () => void (cancels += 1), cancelHere: () => void (askedHere += 1), sending: () => sending, settling: () => settling };
 }
 
 describe('a drop goes into the queue (P-2)', () => {
@@ -69,7 +71,17 @@ describe('a drop goes into the queue (P-2)', () => {
     expect(vi.mocked(h.deps.importPaths).mock.calls[0]![0]).toEqual({ paths: ['/in/a.pdf', '/in/b.pdf'], mode: 'managed' });
     expect(h.sending()).toBe(0);
   });
-  it('취소 between the chunks of one drop ends the rest: no second run, nothing counted as still being handed over', async () => {
+  it('취소 pressed here between two chunks ends the rest at once, before main has reported it', async () => {
+    const h = harness();
+    vi.mocked(h.deps.importPaths).mockImplementationOnce(async (input) => {
+      h.cancelHere();
+      return ok({ queued: input.paths.length });
+    });
+    await h.runner.drop(Array.from({ length: 1200 }, (_, i) => `/in/${i}.pdf`), 'managed', null, Promise.resolve());
+    expect(h.deps.importPaths).toHaveBeenCalledTimes(1);
+    expect(h.sending()).toBe(0);
+  });
+  it('a 취소 only main counted (menu, palette) ends the rest as well: no second run, nothing counted as still being handed over', async () => {
     const h = harness();
     vi.mocked(h.deps.importPaths).mockImplementationOnce(async (input) => {
       h.cancel();

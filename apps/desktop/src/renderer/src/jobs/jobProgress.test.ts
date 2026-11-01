@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
-import { cancelJob, describeJob, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
+import { cancelJob, describeJob, importCancelsAskedHere, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
 
 const state = (over: Partial<ImportQueueState>): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', ...over });
 afterEach(() => {
@@ -104,9 +104,12 @@ describe('the toast\'s 취소 reaches main and counts nothing here (the count is
     const cancelBackup = vi.fn(async () => ({ ok: true as const, data: undefined }));
     vi.stubGlobal('window', { learn: { library: { cancelImport }, backup: { cancel: cancelBackup } } });
     try {
+      const before = importCancelsAskedHere();
       cancelJob('import');
+      expect(importCancelsAskedHere()).toBe(before + 1);
       expect([cancelImport.mock.calls.length, cancelBackup.mock.calls.length]).toEqual([1, 0]);
       cancelJob('backup');
+      expect(importCancelsAskedHere()).toBe(before + 1);
       expect([cancelImport.mock.calls.length, cancelBackup.mock.calls.length]).toEqual([1, 1]);
       expect(useJobProgress.getState()).not.toHaveProperty('cancels');
     } finally {

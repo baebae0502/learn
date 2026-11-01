@@ -895,14 +895,8 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await assignTag(s.page, exam, [items[1]!.id]);
     await setTheme(s.page, 'light');
 
-    // ⌘⌫ on one row: the undo toast names it. Shot at once: a success toast closes 5 s after it first paints.
-    await rowByTitle(s.page, items[1]!.title).click();
-    await runMenuCommand(s.app, 'item.trash');
-    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
-    await shoot(s.page, 'toast-trash-undo-light', { mask: dates() });
-
     // The trash view: one collection row (발표 inside it), two items; the first trashed item selected, its read-only panel.
-    await trashItems(s.page, [items[2]!.id]);
+    await trashItems(s.page, [items[1]!.id, items[2]!.id]);
     await s.page.evaluate((id) => window.learn.collections.remove({ collectionId: id }), conf);
     await specialRow(s.page, 'trash').click();
     await rowByTitle(s.page, items[1]!.title).click();
@@ -937,6 +931,16 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
       await setTheme(s.page, theme);
       await shoot(s.page, `reader-trashed-${theme}`);
     }
+
+    // ⌘⌫ on one row: the undo toast names it. Last, and shot at once: a success toast closes 5 s after it first paints, so no
+    // other shot of this station may have it on screen.
+    await setTheme(s.page, 'light');
+    await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
+    await specialRow(s.page, 'all').click();
+    await rowByTitle(s.page, items[0]!.title).click();
+    await runMenuCommand(s.app, 'item.trash');
+    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
+    await shoot(s.page, 'toast-trash-undo-light', { mask: dates() });
   } finally {
     await s.app.close();
   }

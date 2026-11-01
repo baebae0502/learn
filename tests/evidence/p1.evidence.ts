@@ -230,6 +230,15 @@ test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭�
     await setTheme(theme);
     if (IS_MAC) await focusApp(s.app);
     await shots(s.page, `m6-10-trash-view-${theme}`, `the trash view, a row's read-only panel (${theme})`);
+    // The same view with the panel closed: the table has the whole width, and its columns must fit without a sideways scroll (T6 re-check §1).
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'hidden');
+    const fit = await s.page.getByTestId('library-scroller').evaluate((e) => ({ scrollWidth: e.scrollWidth, clientWidth: e.clientWidth }));
+    results[`trashTableFit-${theme}`] = fit;
+    check(`trash table (${theme}): no sideways scroll with the panel closed`, fit.scrollWidth <= fit.clientWidth, fit);
+    await shots(s.page, `m6-10b-trash-table-${theme}`, `the trash view with the item panel closed (${theme})`);
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(s.page.getByTestId('shell')).toHaveAttribute('data-inspector', 'shown');
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
     await guard(`purge sheet (${theme}): 취소 has the focus, the danger verb on its left`, async () => {
       const [danger, cancel] = await Promise.all([sheet.getByTestId('purge-confirm').boundingBox(), sheet.getByTestId('purge-cancel').boundingBox()]);
@@ -242,6 +251,70 @@ test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭�
     await closeSheet(sheet, 'Escape');
   }
   await setTheme('light');
+  save();
+});
+
+test('M6 duplicates and edited copies: 남김 in secondary text (white on the focused selected row), the group line, 중복 N묶음 모두 정리, the edited copy card (light and dark)', TAG, async () => {
+  const kinase = sized(PDF, 'Kinase Cascades A Primer.pdf', 900_000);
+  const molbio = sized(PDF, '분자생물학 6장 · 신호 전달.pdf', 1_100_000);
+  const [k1] = await importPaths(s.page, [kinase]);
+  const [m1] = await importPaths(s.page, [molbio]);
+  await importPaths(s.page, [kinase], { allowDuplicate: true });
+  await importPaths(s.page, [kinase], { allowDuplicate: true });
+  await importPaths(s.page, [molbio], { allowDuplicate: true });
+  const row = (id: string) => s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);
+  await s.page.getByTestId('nav-scope-duplicates').click();
+  await expect(row(m1!.id)).toBeVisible();
+  if (IS_MAC) await focusApp(s.app);
+  await row(m1!.id).click();
+  const name = 'duplicates: 남김 --text-secondary on a plain row and --text-on-accent on the focused selected one; the group line --separator; the button names the groups';
+  await guard(name, async () => {
+    const v = await s.page.evaluate(([kept, plain]) => {
+      const mark = (id: string) => document.querySelector(`[data-testid="item-row"][data-item-id="${id}"] [data-testid="kept-mark"]`);
+      const line = document.querySelector('[data-testid="item-row"][data-group-start]');
+      return {
+        inactive: document.documentElement.hasAttribute('data-window-inactive'),
+        selectedKept: mark(kept) ? getComputedStyle(mark(kept)!).color : null,
+        plainKept: mark(plain) ? getComputedStyle(mark(plain)!).color : null,
+        line: line ? getComputedStyle(line, '::before').backgroundColor : null,
+        button: document.querySelector('[data-testid="keep-all-duplicates"]')?.textContent ?? null,
+      };
+    }, [m1!.id, k1!.id] as const);
+    const [secondary, onAccent, separator] = await Promise.all(['--text-secondary', '--text-on-accent', '--separator'].map((token) => tokenColor(s.page, token)));
+    results['duplicatesView'] = { ...v, secondary, onAccent, separator };
+    check(name, v.inactive ? null : v.selectedKept === onAccent && v.plainKept === secondary && v.line === separator && /^중복 \d+묶음 모두 정리$/.test(v.button ?? ''), results['duplicatesView']);
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme);
+    if (IS_MAC) await focusApp(s.app);
+    await row(m1!.id).click();
+    await shots(s.page, `m6-10-duplicates-${theme}`, `중복 항목: 남김, the line between the groups, 중복 N묶음 모두 정리 (${theme})`);
+  }
+  await setTheme('light');
+
+  // An edited copy kept aside under its name and time, read when the panel shows the item again.
+  const folder = path.join(tmp, 'library', 'derived', 'open', m1!.assetId);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, '분자생물학 6장 · 신호 전달 (수정본 2026-10-30 1412).pdf'), Buffer.concat([fs.readFileSync(molbio), Buffer.from('% edited in another app\n')]));
+  await row(k1!.id).click();
+  await row(m1!.id).click();
+  const card = s.page.getByTestId('edited-copies');
+  await expect(card).toBeVisible();
+  const cardCheck = 'edited copy card: the line with the count, 새 자료로 가져오기 and the platform name of Finder에서 보기';
+  await guard(cardCheck, async () => {
+    const v = { head: await card.getByTestId('edited-copies-head').textContent(), buttons: await card.locator('button').allTextContents() };
+    check(cardCheck, v.head === '다른 앱에서 고친 수정본 1개' && v.buttons.join('|') === `새 자료로 가져오기|${IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'}`, v);
+  });
+  await card.scrollIntoViewIfNeeded();
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme);
+    if (IS_MAC) await focusApp(s.app);
+    await shots(s.page, `m6-11-edited-copy-${theme}`, `the item panel's 다른 앱에서 고친 수정본 card (${theme})`);
+  }
+  await setTheme('light');
+  // No duplicates left for the tests after this one.
+  await s.page.evaluate(() => window.learn.library.keepOneOfAllDuplicates());
+  await s.page.getByTestId('nav-scope-all').click();
   save();
 });
 

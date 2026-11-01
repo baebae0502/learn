@@ -414,10 +414,10 @@ export interface LearnTestHooks {
   /** The held copy's path inside the library being made, or null. */
   restoreWaiting(): string | null;
   restoreState(): JobProgress;
-    /** Items with a file each (seedAssets): copies in the library, the rows from `linkedFrom` on linked to files in `linkedDir`. */
-    seedAssets(input: SeedAssetsInput): SeedAssetsResult;
-    /** One import's flushes, `files` times, with the importer's own fsyncFile and fsyncDir (Q-2c's cost line). */
-    fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult>;
+  /** Items with a file each (seedAssets): copies in the library, the rows from `linkedFrom` on linked to files in `linkedDir`. */
+  seedAssets(input: SeedAssetsInput): SeedAssetsResult;
+  /** One import's flushes, `files` times, with the importer's own fsyncFile and fsyncDir (Q-2c's cost line). */
+  fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult>;
   /** The newest library check and what the startup check did about the automatic sheet ('pending' until it decided). */
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
@@ -445,8 +445,8 @@ export function installTestHooks(deps: {
   backup?: Pick<BackupJob<unknown>, 'setHooks' | 'state'>;
   /** The restore job (restorePause and its kin; tests that do not use them leave it out). */
   restore?: Pick<RestoreJob<unknown>, 'setHooks' | 'state'>;
-    /** The open library seedAssets writes into (index.ts); absent in tests that do not seed files. */
-    seedFiles?: () => SeedAssetsDeps;
+  /** The open library seedAssets writes into (index.ts); absent in tests that do not seed files. */
+  seedFiles?: () => SeedAssetsDeps;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
   organize(): OrganizeSeedDeps;
@@ -586,13 +586,13 @@ export function installTestHooks(deps: {
     },
     restoreWaiting: () => restoreHeld?.file ?? null,
     restoreState: () => restoreJob().state(),
-      seedAssets(input) {
-        if (!deps.seedFiles) throw new Error('seedAssets: no library to seed');
-        const out = seedAssets(deps.seedFiles(), input);
-        deps.broadcast('libraryChanged', { reason: 'import' });
-        return out;
-      },
-      fsyncProbe: (input) => fsyncProbe(input),
+    seedAssets(input) {
+      if (!deps.seedFiles) throw new Error('seedAssets: no library to seed');
+      const out = seedAssets(deps.seedFiles(), input);
+      deps.broadcast('libraryChanged', { reason: 'import' });
+      return out;
+    },
+    fsyncProbe: (input) => fsyncProbe(input),
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();

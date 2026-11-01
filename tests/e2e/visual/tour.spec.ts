@@ -3,11 +3,12 @@
 //   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all, then restore any jitter-only rewrite.
 // @2x captures for the design critic, without updating (the baselines stay as committed):
 //   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
@@ -1151,6 +1152,32 @@ test('organize: the item panel with tags and collections, the add field, several
   }
 });
 
+/**
+ * A native popup menu is not part of the page, so the page screenshot cannot hold it: the X root window is cropped to the
+ * menu instead (Xvfb, the window at 0,0). The menu's own popup is kept as it opens and closed through its object (a CDP key
+ * never reaches a native menu).
+ */
+async function shootNativeMenu(app: ElectronApplication, page: Page, name: string, open: () => Promise<void>, crop: { x: number; y: number; width: number; height: number }): Promise<void> {
+  await app.evaluate(({ Menu }) => {
+    const g = globalThis as { __learnLastMenu?: { closePopup(): void } | null; __learnWrapped?: boolean };
+    g.__learnLastMenu = null;
+    if (g.__learnWrapped) return;
+    g.__learnWrapped = true;
+    const popup = Menu.prototype.popup;
+    Menu.prototype.popup = function wrapped(this: { closePopup(): void }, ...args: unknown[]) {
+      g.__learnLastMenu = this;
+      return (popup as (...a: unknown[]) => void).apply(this, args);
+    } as typeof Menu.prototype.popup;
+  });
+  await open();
+  await expect.poll(() => app.evaluate(() => Boolean((globalThis as { __learnLastMenu?: unknown }).__learnLastMenu))).toBe(true);
+  await page.waitForTimeout(600); // the menu's window is mapped and painted
+  const geometry = `${crop.width}x${crop.height}+${crop.x}+${crop.y}`;
+  const png = execFileSync('import', ['-window', 'root', '-crop', geometry, '+repage', 'png:-'], { maxBuffer: 16 * 1024 * 1024 });
+  await app.evaluate(() => (globalThis as { __learnLastMenu?: { closePopup(): void } | null }).__learnLastMenu?.closePopup());
+  expect(png).toMatchSnapshot(`${name}.png`, { maxDiffPixels: 300, threshold: 0.2 });
+}
+
 // M6: 중복 항목 with two groups — 남김 on the kept rows (white on the selected one), the line between the groups, 중복 N묶음
 // 모두 정리 — and the item panel's edited copy. Pairs for the critic: library.html?state=duplicates and ?state=edited.
 test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line and 모두 정리; the item panel edited copy', async ({}, testInfo) => {
@@ -1185,6 +1212,10 @@ test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line
       await setTheme(s.page, theme);
       await shoot(s.page, `duplicates-view-${theme}`, { mask: masks() });
     }
+    // The same selection with the focus in the sidebar: the grey selected row, 남김 in secondary on it (T7 critique 2 라).
+    await setTheme(s.page, 'light');
+    await s.page.getByTestId('nav-scope-duplicates').focus();
+    await shoot(s.page, 'duplicates-unfocused-light', { mask: masks() });
 
     // A copy kept aside under the mockup's name and time (as the next 기본 앱으로 열기 would), so it reads the same every run.
     await setTheme(s.page, 'light');
@@ -1203,6 +1234,33 @@ test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line
       await setTheme(s.page, theme);
       await shoot(s.page, `edited-copy-${theme}`, { mask: masks() });
     }
+
+    // The clean-up's other states (T7 critique 2). 가: the item menu of a row that is not kept (the native popup, cropped from
+    // the screen), with 하나만 남기고 휴지통으로 right above 휴지통으로 이동. The menu stays up while the page is not touched.
+    await specialRow(s.page, 'duplicates').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    const newest = s.page.locator('[data-testid="item-row"]').first();
+    const gone = (id: string) => expect(s.page.getByTestId(id)).toHaveCount(0, { timeout: 12_000 });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shootNativeMenu(s.app, s.page, `duplicates-menu-${theme}`, () => newest.click({ button: 'right', position: { x: 300, y: 14 } }), { x: 400, y: 40, width: 520, height: 300 });
+    }
+    // 나 and 다 (light): the toast after 하나만 남기고 휴지통으로, then — with its 실행 취소 pressed — 중복 2묶음 모두 정리, which leaves for
+    // 내 라이브러리 (no 중복 항목 row in the tree). The toasts are last: each is waited out before the next picture.
+    await setTheme(s.page, 'light');
+    await stubContextMenu(s.app, '하나만 남기고 휴지통으로');
+    await newest.click({ button: 'right' });
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
+    expect(new Set((await recordedPopups(s.app)).at(-1)!.map((i) => i.label)).has('하나만 남기고 휴지통으로')).toBe(true);
+    await shoot(s.page, 'toast-duplicates-done-light', { mask: masks() });
+    await s.page.getByTestId('undo-action').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    await gone('undo-toast');
+    await s.page.getByTestId('keep-all-duplicates').click();
+    await expect(specialRow(s.page, 'duplicates')).toHaveCount(0);
+    await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    await gone('undo-toast');
+    await shoot(s.page, 'duplicates-cleaned-light', { mask: masks() });
   } finally {
     await s.app.close();
   }

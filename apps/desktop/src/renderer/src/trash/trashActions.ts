@@ -1,16 +1,16 @@
 import type { ConfirmPurgeInput, PurgeVariant, PurgedRows, TrashView } from '@learn/domain';
 import type { TrashRows } from '../commands/registry';
+import { inChunks } from '../organize/membership';
 import { t } from '../strings';
 
 /** Everything the trash's actions touch outside themselves, so they run in a test without a window (trash/actions.ts wires it). */
 export interface TrashDeps {
-  /** library.trash: how many items went (one deletion stamp per call). */
+  /** library.trash for one part (5,000 ids at most; trashItems cuts a larger selection): how many items went (one deletion stamp per call). */
   trash(itemIds: string[]): Promise<number>;
   /** library.restore: how many items came back. */
   restoreItems(itemIds: string[]): Promise<number>;
   restoreCollection(collectionId: string): Promise<void>;
   purge(rows: TrashRows): Promise<PurgedRows>;
-  emptyTrash(): Promise<PurgedRows>;
   /** The trash as it is now: 휴지통 비우기… from another view has no read of it yet. */
   readTrash(): Promise<TrashView>;
   /** The purge sheet (P-25): true when its destructive button was pressed. */
@@ -20,7 +20,12 @@ export interface TrashDeps {
   /** Takes the trashed items out of the cached list at once (spec 14: ⌘⌫ → the redrawn table ≤ 300 ms); the notice's read follows. */
   dropFromList(itemIds: readonly string[]): void;
   toast(title: string, testId: string): void;
-  undoToast(title: string, undo: () => Promise<void>): void;
+  /** The toast's key, for closeToast. */
+  undoToast(title: string, undo: () => Promise<void>): string;
+  /** Closes a toast by its key (a key already gone is nothing). */
+  closeToast(key: string): void;
+  /** R-5b: an error toast that names the part already moved and offers 실행 취소 for it (showUndoableError). */
+  failedWithUndo(e: unknown, title: string, undo: () => Promise<void>): void;
   failed(e: unknown): void;
 }
 
@@ -48,23 +53,49 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
       return false;
     }
   };
+  /**
+   * The 실행 취소 toasts that stand for trashed items (critique C-1): key -> the ids not yet gone for good. A purge closes the
+   * toast whose items are all gone, so no 실행 취소 is left for what cannot come back.
+   */
+  const undoable = new Map<string, Set<string>>();
+  const closeFor = (purged: readonly string[] | 'all'): void => {
+    const gone = purged === 'all' ? undefined : new Set(purged);
+    for (const [key, ids] of undoable) {
+      if (gone) for (const id of gone) ids.delete(id);
+      if (!gone || ids.size === 0) {
+        undoable.delete(key);
+        deps.closeToast(key);
+      }
+    }
+  };
   return {
     async trashItems(itemIds) {
       const ids = [...new Set(itemIds)];
       if (ids.length === 0) return;
       const one = ids.length === 1 ? deps.titleOf(ids[0]!) : undefined;
-      let moved: number;
+      let moved = 0;
+      const sent: string[] = [];
       try {
-        moved = await deps.trash(ids);
+        for (const part of inChunks(ids)) {
+          moved += await deps.trash(part);
+          sent.push(...part);
+        }
       } catch (e) {
-        deps.failed(e);
+        // R-5b: the parts before the refused one are in the trash; say so and offer to put them back.
+        if (moved > 0) {
+          deps.dropFromList(sent);
+          deps.failedWithUndo(e, t.trash.movedPart(moved), async () => void (await deps.restoreItems(sent)));
+        } else deps.failed(e);
         return;
       }
       if (moved === 0) return;
       deps.dropFromList(ids);
-      deps.undoToast(one !== undefined ? t.trash.movedOne(one) : t.trash.moved(moved), async () => {
+      // An undo that restores nothing (the items are gone for good, or already back) ends quietly.
+      const key = deps.undoToast(one !== undefined ? t.trash.movedOne(one) : t.trash.moved(moved), async () => {
         await deps.restoreItems(ids);
+        undoable.delete(key);
       });
+      undoable.set(key, new Set(ids));
     },
 
     async restore({ itemIds, collectionIds }, opts = {}) {
@@ -93,6 +124,7 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
         deps.failed(e);
         return;
       }
+      closeFor(done.itemIds);
       if (done.itemIds.length + done.collectionIds.length > 0) deps.toast(t.trash.purged(done.itemIds.length, done.collectionIds.length), 'purge-done');
     },
 
@@ -106,12 +138,15 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
       }
       if (view.items.length + view.collections.length === 0) return;
       if (!(await ask({ variant: 'empty', items: view.items.length, collections: view.collections.length }))) return;
+      // Exactly the rows the sheet counted (R-3), not whatever the trash holds by now.
+      const counted: TrashRows = { itemIds: view.items.map((i) => i.id), collectionIds: view.collections.map((c) => c.id) };
       try {
-        await deps.emptyTrash();
+        await deps.purge(counted);
       } catch (e) {
         deps.failed(e);
         return;
       }
+      closeFor('all');
       deps.toast(t.trash.emptied, 'purge-done');
     },
   };

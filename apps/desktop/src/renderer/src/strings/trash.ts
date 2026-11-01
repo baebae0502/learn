@@ -5,6 +5,8 @@ import { eulReul } from './josa';
 export const trash = {
   /** ⌘⌫ (spec 4.1): the toast with 실행 취소 — several counted, one named. */
   moved: (n: number) => `자료 ${n}개를 휴지통으로 옮겼습니다`,
+  /** A selection of more than 5,000 refused part-way: what did go (R-5b), with 실행 취소. */
+  movedPart: (n: number) => `자료 ${n}개만 휴지통으로 옮겼습니다.`,
   movedOne: (title: string) => `‘${title}’⁠${eulReul(title)} 휴지통으로 옮겼습니다`,
   /** A collection's 휴지통으로 이동 (spec 4.2), with 실행 취소. */
   collectionMoved: (name: string) => `‘${name}’ 컬렉션을 휴지통으로 옮겼습니다`,

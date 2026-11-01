@@ -346,6 +346,32 @@ describe('the backup job\'s copy: real bytes, read back, counted, stoppable, flu
     expect(fs.readdirSync(parent)).toEqual([]);
   });
 
+  it('stops in the middle of one file\'s stream, after its first chunk, and leaves no folder', async () => {
+    const { layout, db, repo } = await populated();
+    await new Importer({ layout, repo }).importOne(writePdf(tempDir('big'), 'big.pdf', 'x'.repeat(4 * 1024 * 1024)), { mode: 'managed' });
+    const size = repo.assetsByMode('managed').find((a) => a.size > 4 * 1024 * 1024)!.size;
+    const parent = tempDir('bk');
+    const stop = new AbortController();
+    const seen: number[] = [];
+    await expect(
+      createBackup({
+        layout,
+        db,
+        repo,
+        destDir: path.join(parent, 'midstream'),
+        includeAssets: true,
+        signal: stop.signal,
+        onProgress: (p) => {
+          seen.push(p.bytesDone);
+          // The other files are a few bytes: the first report past 1 MB is the first chunk of the big one, still being written.
+          if (p.bytesDone >= 1024 * 1024) stop.abort();
+        },
+      }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(Math.max(...seen)).toBeLessThan(size); // not even one copy was written whole, let alone read back
+    expect(fs.readdirSync(parent)).toEqual([]);
+  });
+
   it('flushes the database, every copy, their folders and the manifest before the folder takes its name, then the folder it is in', async () => {
     const { layout, db, repo } = await populated();
     const parent = tempDir('bk');

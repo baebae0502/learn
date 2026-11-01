@@ -683,6 +683,19 @@ export async function runMenuCommand(app: ElectronApplication, id: CommandId, ar
 }
 
 /**
+ * Clicks an application-menu item as its accelerator would (`triggeredByAccelerator`): CDP keys never reach native
+ * accelerators on Linux, and the page tells a key from a click (Q-6e: ⌘⌫ typed in a text field is the field's).
+ */
+export async function runMenuAccelerator(app: ElectronApplication, id: CommandId): Promise<void> {
+  await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
+  await app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+    if (!item?.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
+    item.click({ triggeredByAccelerator: true } as Electron.KeyboardEvent, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
+  }, id);
+}
+
+/**
  * The item panel shown, whatever the window's width: if it is folded (by the width or by the user) it is shown on demand
  * as ⌥⌘I does, and the command is repeated only when a late resize folded it again. The window is judged only once its
  * width has stopped changing (a macOS window that cannot reach the width asked for resizes after the first look), and
@@ -1040,7 +1053,7 @@ export async function nativeKeystroke(app: ElectronApplication, key: string, mod
 }
 
 /** macOS virtual key codes for the keys `nativeKeystroke` cannot type. */
-export const KEY_CODE = { return: 36, escape: 53 } as const;
+export const KEY_CODE = { return: 36, escape: 53, delete: 51 } as const;
 
 /**
  * darwin only: a real OS-level press of a non-printable key (System Events `key code`, e.g. KEY_CODE.return), with the

@@ -78,6 +78,9 @@ const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'file.cancelImport': 'import-queue.spec.ts › 가져오기 취소 from the palette stops the file at its checkpoint',
+  'item.trash': 'trash.spec.ts › ⌘⌫ moves the selection at once with 실행 취소, the trash row shows with its count, one item is named, and 파일 names the line by the view',
+  'item.restore': 'trash.spec.ts › the trash rows’ menu (also by ⇧F10): 복원 · — · 영구 삭제…; 복원 brings a collection back with its child; an emptied trash closes its view',
+  'trash.empty': 'trash.spec.ts › 영구 삭제… asks in the app sheet — ↩ and esc keep, the danger button on the left deletes; 휴지통 비우기… (⇧⌘⌫) empties and the view goes to 내 라이브러리',
 };
 
 test('every registry command runs without a page error (library and reader menus with a selection, item menu, palette, notice buttons)', async ({}, testInfo) => {
@@ -174,9 +177,10 @@ test('every registry command runs without a page error (library and reader menus
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
-      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'library.sortBy', 'view.toggleInspector']);
+      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {
+        if (COVERED_ELSEWHERE[id]) continue; // ⌘⌫ would move the sample to the trash: trash.spec.ts runs it
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
@@ -333,15 +337,13 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(async () => (await organizeSnapshot(page)).members[parent]?.length ?? 0).toBe(1);
       ran.add('collection.importInto');
 
-      // 컬렉션 삭제…: the sheet's question is asked in the sheet's words, the collection (and its child) go, 실행 취소 brings them back.
+      // 휴지통으로 이동 (M6 spec 4.2): no question; the collection (and its child) go to the trash, 실행 취소 brings them back.
       await stubConfirm(app, 'confirm');
       await stubContextMenu(app, commandById('collection.delete').label);
       await treeRow(page, parent).click({ button: 'right' });
       await expect(treeRow(page, parent)).toHaveCount(0);
-      const asked = await confirmCalls(app);
-      expect(asked).toHaveLength(1);
-      expect(asked[0]!.message).toMatch(/^‘정리 시험 2’\u2060[을를] 삭제하겠습니까\?$/);
-      await expect(page.getByTestId('undo-toast')).toBeVisible();
+      expect(await confirmCalls(app)).toEqual([]);
+      await expect(page.getByTestId('undo-toast')).toContainText('‘정리 시험 2’ 컬렉션을 휴지통으로 옮겼습니다');
       await page.getByTestId('undo-action').click();
       await expect(treeRow(page, parent)).toBeVisible();
       ran.add('collection.delete');

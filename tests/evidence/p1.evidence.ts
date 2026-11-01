@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, KEY_CODE, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, rowByTitle, runMenuCommand, stubOpenDialog, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
+import { FIXTURES, KEY_CODE, backupPause, backupResume, backupWaiting, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, rowByTitle, runMenuCommand, stubFolderPicker, stubOpenDialog, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
 import { IS_MAC, allShots, focusApp, fullScreenShot, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
@@ -158,7 +158,7 @@ test('M6 import: waiting behind the work before it, then 취소 — the result i
   await importFiles(s, [sized(PDF, 'molbio_ch10_mitosis.pdf', 1_000_000), sized(PDF, 'molbio_ch11_meiosis.pdf', 1_000_000)]);
   const toast = s.page.getByTestId('import-progress');
   await expect(toast).toHaveAttribute('data-state', 'waiting-job');
-  await shots(s.page, 'm6-03-import-waiting-job', 'the toast behind another job: 앞의 작업을 기다리는 중 · 2개');
+  await shots(s.page, 'm6-03-import-waiting-job', 'the toast behind another job: 앞의 작업을 기다리는 중 · 2개, no bar');
   await toast.getByTestId('import-cancel').click();
   await expect(s.page.getByTestId('import-done')).toContainText('가져오기를 취소했습니다');
   await guard('취소 while waiting: "가져오기를 취소했습니다", an info toast in the progress toast\'s place', async () => {
@@ -442,6 +442,77 @@ test('M6 check: the library check sheet — the window − 120 at most, its list
   if (sheet && !sheet.isClosed()) await clickToCloseSheet(sheet, sheet.getByTestId('check-done'));
   fs.rmSync(corrupt, { force: true }); // the app never removes it: the test does, so the later tests see a clean library
   await waitImportIdle(s.page);
+  save();
+});
+
+test('M6 backup: its toast with an import waiting behind it, the result sheet (macOS: a real sheet), 마지막 백업; throughput reported', TAG, async () => {
+  const parent = path.join(tmp, 'backups');
+  fs.mkdirSync(parent, { recursive: true });
+  await setTheme('light');
+  await backupPause(s.app);
+  await stubFolderPicker(s.app, parent);
+  await runMenuCommand(s.app, 'file.backup');
+  await expect.poll(() => backupWaiting(s.app)).not.toBeNull();
+  await importFiles(s, [sized(PDF, 'molbio_ch14_immunity.pdf', 1_000_000), sized(PDF, 'molbio_ch15_neurons.pdf', 1_000_000)]);
+  const backupToast = s.page.getByTestId('backup-progress');
+  const importToast = s.page.getByTestId('import-progress');
+  await expect(backupToast).toHaveAttribute('data-state', 'running');
+  await expect(importToast).toHaveAttribute('data-state', 'waiting-job');
+  await guard('backup toast: 백업을 만드는 중 with its files and folder, a bar; the import behind it waits with no bar and names the backup; both 360 wide', async () => {
+    const v = {
+      backup: (await backupToast.textContent()) ?? '',
+      importing: (await importToast.textContent()) ?? '',
+      bars: [await backupToast.locator('.progress').count(), await importToast.locator('.progress').count()],
+      widths: [await backupToast.evaluate((t) => Math.round(t.getBoundingClientRect().width)), await importToast.evaluate((t) => Math.round(t.getBoundingClientRect().width))],
+    };
+    results['backupToasts'] = v;
+    check(
+      'backup toast: 백업을 만드는 중 with its files and folder, a bar; the import behind it waits with no bar and names the backup; both 360 wide',
+      v.backup.includes('백업을 만드는 중 · 0 / ') && v.backup.includes('Learn 백업 ') && v.importing.includes('백업이 끝나면 가져오기를 시작합니다.') && v.bars[0] === 1 && v.bars[1] === 0 && v.widths.every((w) => w === 360),
+      v,
+    );
+  });
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme);
+    if (IS_MAC) await focusApp(s.app);
+    await shots(s.page, `m6-05-backup-jobs-${theme}`, `the backup's toast and an import waiting behind it (dialogs.html?scene=jobs, ${theme})`);
+  }
+  await setTheme('light');
+  const sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
+  await guard('backup sheet: 440 wide, the success badge, the location in mono, 완료 focused', async () => {
+    const v = await sheet.evaluate(() => ({
+      width: innerWidth,
+      badge: getComputedStyle(document.querySelector('.badge-icon')!).backgroundColor,
+      mono: getComputedStyle(document.querySelector('[data-testid="backup-location"]')!).fontFamily,
+      focused: document.activeElement?.getAttribute('data-testid') ?? null,
+    }));
+    const soft = await tokenColor(sheet, '--success-soft');
+    results['backupSheet'] = { ...v, soft };
+    check('backup sheet: 440 wide, the success badge, the location in mono, 완료 focused', v.width === 440 && v.badge === soft && /mono/i.test(v.mono) && v.focused === 'backup-done', results['backupSheet']);
+  });
+  if (IS_MAC) await fullScreenShot('m6-06-backup-sheet', 'the backup result sheet hanging on the main window (a macOS sheet)');
+  await shots(sheet, 'm6-06-backup-sheet-light', 'the backup result sheet (dialogs.html?scene=backup)');
+  await closeSheet(sheet, 'Enter');
+  await waitImportIdle(s.page);
+  const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+  await guard('settings: 마지막 백업 with its date and the reveal button', async () => {
+    const v = { date: (await settings.getByTestId('last-backup-date').textContent()) ?? null, reveal: (await settings.getByTestId('last-backup-reveal').textContent())?.trim() ?? null };
+    results['lastBackup'] = v;
+    check('settings: 마지막 백업 with its date and the reveal button', v.date !== null && /^\d{4}\. /.test(v.date) && v.reveal === (IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'), v);
+  });
+  await shots(settings, 'm6-07-settings-last-backup-light', 'the settings window with 마지막 백업 (settings.html)');
+  await settings.close();
+  // Throughput (spec 14: reported only — it depends on the disk): a 64 MB copy written, flushed and read back with the rest.
+  await importPaths(s.page, [sized(MP4, 'lecture-64mb.mp4', 64_000_000)]);
+  await stubFolderPicker(s.app, parent);
+  const started = Date.now();
+  const timed = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
+  const ms = Date.now() - started;
+  const newest = fs.readdirSync(parent).sort().at(-1)!;
+  const manifest = JSON.parse(fs.readFileSync(path.join(parent, newest, 'manifest.json'), 'utf8')) as { assets: Array<{ size: number; included: boolean }> };
+  const bytes = manifest.assets.filter((a) => a.included).reduce((n, a) => n + a.size, 0);
+  results['backupThroughput'] = { ms, bytes, mbPerSecond: Math.round((bytes / 1e6 / (ms / 1000)) * 10) / 10 };
+  await closeSheet(timed, 'Enter');
   save();
 });
 

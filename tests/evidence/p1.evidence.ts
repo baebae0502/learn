@@ -3,11 +3,12 @@
 // One shared session in serial mode, as organize.evidence.ts: no check stops the run, each is recorded in m6-p1.json
 // (`checks`) as it is measured, and the last test asserts them all with expect.soft. Task 4: the import queue's progress
 // toast and the duplicate sheet's box. Tasks 6–10 add their tests above the verdict and their measurements to `results`.
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, KEY_CODE, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, rowByTitle, runMenuCommand, tokenColor, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
+import { FIXTURES, KEY_CODE, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, rowByTitle, runMenuCommand, stubOpenDialog, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
 import { IS_MAC, allShots, focusApp, fullScreenShot, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
@@ -339,6 +340,95 @@ test('M6 duplicates and edited copies: 남김 in secondary text (white on the fo
   await expect(s.page.getByTestId('undo-toast')).toHaveCount(0, { timeout: 12_000 }); // the picture is the view, not the toast
   if (IS_MAC) await focusApp(s.app);
   await shots(s.page, 'm6-11b-duplicates-cleaned-light', 'after 중복 N묶음 모두 정리: 내 라이브러리 is open and the sidebar has no 중복 항목 row (light)');
+  save();
+});
+
+test('M6 check: the library check sheet — the window − 120 at most, its list scrolling under a fixed head and foot, rows ok in place and the window following (light and dark)', TAG, async () => {
+  const lib = path.join(tmp, 'library');
+  const shaOf = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  // What a crash, a purge that could not remove a file and another app leave in the library folder (spec 7.2).
+  for (const n of ['11111111-1111-4111-8111-111111111111.part', '22222222-2222-4222-8222-222222222222.part']) fs.writeFileSync(path.join(lib, 'staging', n), Buffer.alloc(2_060_000, 1));
+  fs.mkdirSync(path.join(lib, 'assets', 'cc'), { recursive: true });
+  const unused = path.join(lib, 'assets', 'cc', 'c'.repeat(64));
+  fs.writeFileSync(unused, Buffer.alloc(96_000, 2));
+  const corrupt = path.join(lib, 'staging', `corrupt-${shaOf(PDF)}-44444444-4444-4444-8444-444444444444`);
+  fs.writeFileSync(corrupt, Buffer.alloc(4_200, 3));
+  const edit = path.join(lib, 'derived', 'open', '0a1b2c3d-4e5f-4061-8172-8394a5b6c7d8', '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf');
+  fs.mkdirSync(path.dirname(edit), { recursive: true });
+  fs.copyFileSync(sized(PDF, 'orphan-edit.pdf', 3_100), edit);
+  // A copy of this test's own that goes missing (the earlier tests may have trashed or purged the shared items).
+  const lostSrc = sized(PDF, 'check-lost.pdf', 1_200_000);
+  await importPaths(s.page, [lostSrc]);
+  const lostSha = shaOf(lostSrc);
+  fs.rmSync(path.join(lib, 'assets', lostSha.slice(0, 2), lostSha));
+  const row = (sheet: Page, kind: string) => sheet.locator(`[data-testid="check-row"][data-kind="${kind}"]`);
+  const heights = () =>
+    s.app.evaluate(({ BrowserWindow }) => {
+      const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+      const main = all.find((w) => w.webContents.getURL().includes('window=main'))!;
+      const sheet = all.find((w) => w.webContents.getURL().includes('window=sheet') && w.isVisible());
+      return { main: main.getContentSize()[1]!, sheet: sheet?.getContentSize()[1] ?? null };
+    });
+  let sheet: Page | null = null;
+  for (const theme of ['light', 'dark'] as const) {
+    await setTheme(theme);
+    await requestLibraryCheck(s.app);
+    sheet = await waitForSheet(s.app);
+    if (theme === 'light') {
+      await guard('check sheet: at most the window\'s height − 120; the head and the foot inside it, only the list scrolls (P-26)', async () => {
+        const v = await sheet!.evaluate(() => {
+          const list = document.querySelector('.checklist') as HTMLElement;
+          return {
+            headTop: Math.round(document.querySelector('.check-head')!.getBoundingClientRect().top),
+            footBottom: Math.round(document.querySelector('.d-foot')!.getBoundingClientRect().bottom),
+            innerHeight,
+            scrolls: list.scrollHeight > list.clientHeight + 1,
+            root: Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height),
+          };
+        });
+        const h = await heights();
+        results['checkSheet'] = { ...v, ...h };
+        check('check sheet: at most the window\'s height − 120; the head and the foot inside it, only the list scrolls (P-26)', h.sheet !== null && h.sheet <= h.main - 120 && v.headTop >= 0 && v.footBottom <= v.innerHeight && (v.scrolls || v.root <= h.main - 120), results['checkSheet']);
+      });
+      await guard('check sheet: the rows to act on first in the table\'s order, 자료 기록 last (P-26)', async () => {
+        const kinds = await sheet!.locator('[data-testid="check-row"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-kind')));
+        results['checkRows'] = kinds;
+        check('check sheet: the rows to act on first in the table\'s order, 자료 기록 last (P-26)', JSON.stringify(kinds) === JSON.stringify(['staging', 'unreferenced', 'missingManaged', 'corrupt', 'orphanEdits', 'records']), kinds);
+      });
+    }
+    if (IS_MAC) await fullScreenShot(`m6-20-check-${theme}`, `the library check sheet over the library, every row but the linked one (${theme})`);
+    await shots(sheet, `m6-20-check-sheet-${theme}`, `the library check sheet, its page (${theme})`);
+    if (theme === 'light') await clickToCloseSheet(sheet, sheet.getByTestId('check-done'));
+  }
+  await setTheme('light');
+  await guard('check sheet: each action turns its row ok in place, and the window follows the shorter list (no band under the foot)', async () => {
+    const page = sheet!;
+    await page.getByTestId('check-cleanStaging').click();
+    await expect(row(page, 'staging')).toHaveAttribute('data-state', 'done');
+    await row(page, 'unreferenced').getByTestId('check-askClean').click();
+    await page.getByTestId('check-confirm').click();
+    await expect(row(page, 'unreferenced')).toHaveAttribute('data-state', 'done');
+    await stubOpenDialog(s.app, [lostSrc]);
+    await row(page, 'missingManaged').getByTestId('check-relink').click();
+    await expect(row(page, 'missingManaged')).toHaveAttribute('data-state', 'done');
+    await page.getByTestId('check-importOrphanEdits').click();
+    await expect(row(page, 'orphanEdits')).toHaveAttribute('data-state', 'done');
+    await expect
+      .poll(async () => {
+        const h = await heights();
+        const root = await page.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
+        return h.sheet === root && root < h.main - 120;
+      })
+      .toBe(true);
+    const h = await heights();
+    results['checkFollows'] = h;
+    check('check sheet: each action turns its row ok in place, and the window follows the shorter list (no band under the foot)', true, h);
+  });
+  if (IS_MAC) await fullScreenShot('m6-21-check-fixed', 'the library check after its actions: rows ok in place, the sheet as tall as its list');
+  if (sheet) await shots(sheet, 'm6-21-check-fixed-sheet', 'the library check after its actions, its page');
+  if (sheet && !sheet.isClosed()) await clickToCloseSheet(sheet, sheet.getByTestId('check-done'));
+  fs.rmSync(corrupt, { force: true }); // the app never removes it: the test does, so the later tests see a clean library
+  await waitImportIdle(s.page);
   save();
 });
 

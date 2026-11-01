@@ -1,8 +1,9 @@
-// @demo — a 2–4 minute macOS screen recording of the M5 organise work (collections and sub-collections, dragging rows into
-// them, moving with undo, colour tags and the 1–8 keys, the tag filter, importing into a collection, the palette's
-// collections, deleting with undo) with a chapter list (m5-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen, and the chapters embedded
-// in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on Linux). Elsewhere
-// (Linux CI) the same script runs at 1/10 pace, unrecorded.
+// @demo — a 3–4 minute macOS screen recording of the M6 work (a big folder imported with its progress toast, more put in
+// while it runs, 취소, the duplicate question with one answer for the rest, the trash with 실행 취소, the trash view's 복원 and
+// 영구 삭제, 중복 정리, 백업, 복원 up to its result sheet, and the library check on a leftover temporary file) with a chapter list
+// (m6-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen,
+// and the chapters embedded in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on
+// Linux). Elsewhere (Linux CI) the same script runs at 1/10 pace, unrecorded.
 //
 // Honest, readable, polished, safe (Task 13 fix rounds 1 and 2):
 // - Every synthetic step is said: the drag "스크립트로 재현합니다" (in its caption, and a lasting tag while it is on
@@ -32,17 +33,17 @@ import { expect, test, type ElectronApplication, type Locator, type Page } from 
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { commandById, commandLabel, type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
-import { MOVE_KEY, finderDrag } from '../e2e/dnd-helpers';
 import {
-  NativeInputNotPermitted, ROOT, assignTag, bringAppToFront, closeSheet, createTag, drag, dropSource, expectWindow, launch, nativeKeystroke, organizeSnapshot, osascript,
-  osascriptLimits, rowByTitle, runMenuCommand, seedMetadata, stubConfirm, type KeyModifier, type LaunchOptions, type Session,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, ROOT, bringAppToFront, clickToCloseSheet, drag, dropSource, expectWindow, importFiles, importPause, importQueueState, importResume, importWaiting,
+  launch, nativeKeyCode, nativeKeystroke, osascript, osascriptLimits, rowAt, rowByTitle, runMenuCommand, specialRow, stubFolderPicker, stubFolderPicks, waitImportIdle,
+  type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
 import { captionBottom, captionSpot, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron } from './demo-mac';
-import { DEMO_METADATA, DEMO_ORGANIZE, PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
+import { PDF_FOOTER, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
 
@@ -76,10 +77,14 @@ const GRAB = (() => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The platform's add-to-selection modifier for a click (⌘ on macOS, Ctrl elsewhere). */
 const MOD = IS_MAC ? 'Meta' : 'Control';
-/** The platform's move modifier for a drop (⌘ on macOS, Shift elsewhere: React Aria's own choice) and how a caption names it. */
-const MOVE_LABEL = IS_MAC ? '⌘' : 'Shift';
-const PARENT = DEMO_ORGANIZE.parent;
-const CHILD = DEMO_ORGANIZE.child;
+/** The size of a copy in the demo's big folder: sized so that 30 of them take a while to hash and place. */
+const FILLER_BYTES = 1_000_000;
+/** A PDF of about FILLER_BYTES that differs from every other by its name (a comment after %%EOF, then blanks); returns its path. */
+function fillerPdf(file: string, base: Buffer): string {
+  const tag = Buffer.from(`\n% Learn demo ${path.basename(file)}\n`);
+  fs.writeFileSync(file, Buffer.concat([base, tag, Buffer.alloc(Math.max(0, FILLER_BYTES - base.length - tag.length), 0x20)]));
+  return file;
+}
 
 /**
  * One way to take the recording. Mac run 39779536146 lost it: screencapture exited 8 s in, at 1600 × 900 ("capture
@@ -184,10 +189,6 @@ const label = (id: CommandId) => commandLabel(commandById(id), process.platform)
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
-/** Which pane holds the focus (data-pane), or null. */
-const inPane = (page: Page) => page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') ?? null);
-const isDark = (page: Page) => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches);
-
 /**
  * The demo's library folder, a path a viewer can read (the settings window shows it): on a CI runner (ephemeral)
  * ~/Learn 라이브러리, never on a developer's machine, where it lives under the temp folder. Never an existing folder.
@@ -260,6 +261,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   if (libraryDir.startsWith(work)) fs.rmSync(libraryDir, { recursive: true, force: true });
   const userData = fs.mkdtempSync(path.join(work, 'userdata-'));
   const materialDir = path.join(work, '자료');
+  const backups = path.join(work, '백업');
+  const restores = path.join(work, '복원');
+  for (const dir of [backups, restores]) fs.rmSync(dir, { recursive: true, force: true });
   const notes: string[] = [];
   const input = { native: 0, menu: 0 };
   const chapters: Array<{ at: number; ms: number; title: string }> = [];
@@ -353,6 +357,21 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       expect((screen as { window: unknown }).window, 'the window fills the recorded region').toEqual(want);
       expect((screen as { content: unknown }).content, 'the page fills the window (frameless)').toEqual(want);
     }
+
+    // ---- the files the chapters bring in, written before anything is recorded -------------------------------------------
+    // Files the chapters bring in, written before anything is recorded: folder A (30 files: the demo's own notes and
+    // sized copies), a handful dropped while it runs, folder C (the import that is cancelled).
+    const sampleBytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
+    const folderOf = (name: string, prefix: string, count: number) => {
+      const dir = path.join(materialDir, name);
+      fs.mkdirSync(dir, { recursive: true });
+      return Array.from({ length: count }, (_, i) => fillerPdf(path.join(dir, `${prefix} ${String(i + 1).padStart(2, '0')}.pdf`), sampleBytes));
+    };
+    const realNotes = [...media.drop, media.read, ...media.extra];
+    const folderA = [...realNotes, ...folderOf('강의 폴더', '생명과학 강의 노트', 30 - realNotes.length)];
+    const dropped = folderOf('추가 자료', '추가 자료', 4);
+    const folderC = folderOf('실험 보고서', '실험 보고서', 24);
+    expect(folderA).toHaveLength(30);
 
     // ---- input helpers -------------------------------------------------------------------------------------------
     const settingsPages: Page[] = [];
@@ -569,7 +588,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      * there (never toggling past it), and 2 s after a fallback a key that landed later still and undid it is undone
      * (re-review minor 1).
      */
-    const press = async (k: string, modifiers: KeyModifier[], menu: CommandId | (() => Promise<unknown>), there?: () => Promise<boolean>) => {
+    const press = async (k: string, modifiers: KeyModifier[], menu: CommandId | (() => Promise<unknown>), there?: () => Promise<boolean>, code?: number) => {
       const at = Date.now();
       const run = () => (typeof menu === 'function' ? menu() : runMenuCommand(app, menu));
       if (!IS_MAC) {
@@ -583,7 +602,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       };
       const how = await pressKey({
         name: `${modifiers.join('+')}+${k}`,
-        native: () => nativeKeystroke(app, k, modifiers),
+        native: () => (code === undefined ? nativeKeystroke(app, k, modifiers) : nativeKeyCode(app, code, modifiers)),
         fallback,
         ...(there ? { landed: there, settle: { holds: there, restore: fallback } } : {}),
         isNotPermitted: (e) => e instanceof NativeInputNotPermitted,
@@ -594,99 +613,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       input[how === 'menu' ? 'menu' : 'native']++;
       return at;
     };
-    /** A key in the page (Playwright's, which the renderer keymap and the overlay see); returns when it went out. */
-    const keyIn = async (p: Page, k: string) => {
-      const at = Date.now();
-      await p.keyboard.press(k);
-      return at;
-    };
-    /** The settings window, closed as a user does: ⌘W while it is the key window (macOS), else its page closes. */
-    const closeSettings = async (settings: Page) => {
-      const closed = settings.waitForEvent('close');
-      if (IS_MAC) {
-        await macStep('⌘W on the settings window', async () => {
-          const isKey = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getFocusedWindow()?.webContents.getURL().includes('window=settings') ?? false);
-          if (!isKey) throw new Error('the settings window was not the key window');
-          osascript('tell application "System Events" to keystroke "w" using command down');
-          input.native++;
-          if (!(await Promise.race([closed.then(() => true), sleep(5000).then(() => false)]))) throw new Error('it did not close within 5 s');
-        });
-      }
-      if (!settings.isClosed()) {
-        input.menu++;
-        await settings.close();
-      }
-      await closed;
-    };
     const rows = page.getByTestId('item-row');
-    /** The item panel's width: 0 while it is folded (or not there). */
-    const inspectorWidth = () => page.evaluate(() => Math.round(document.querySelector('[data-testid="inspector"]')?.getBoundingClientRect().width ?? 0));
-    const paletteOpen = () => page.getByTestId('palette').isVisible();
     /** A settings window or a sheet is on screen (the settings window may wait hidden beforehand). */
     const windowUp = (kind: 'settings' | 'sheet') => () =>
       app.evaluate(({ BrowserWindow }, kind) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes(`window=${kind}`)), kind);
-    /** Typing as a person does, a character at a time. */
-    const typeSlowly = (text: string) => page.keyboard.type(text, { delay: Math.round(70 * PACE) });
-    const tree = (id: string) => page.getByTestId(`nav-collection-${id}`);
-    /** A chip of the sidebar's tag selector (the item panel draws the same tag's chip too). */
-    const chip = (id: string) => page.getByTestId('tag-selector').getByTestId(`tag-chip-${id}`);
-    /** A collection row's number (its own items and its sub-collections', each once). */
-    const countOf = (id: string) => tree(id).locator('.count');
-    const snapshot = () => organizeSnapshot(page);
-    /**
-     * A drag of the page itself: Playwright's mouse, which Chromium turns into a real dragstart, dragover and drop (React Aria's
-     * own handlers run). The system arrow glides to the row the drag starts from and rests there — a native drag cannot be
-     * scripted with it — and the lasting tag says the gesture is scripted. `move` holds the platform's move modifier until the
-     * drop. The target's drop marker stays up long enough to read before the button goes.
-     */
-    const scriptedDrag = async (from: Locator, to: Locator, opts: { move?: boolean } = {}) => {
-      const a = (await from.boundingBox())!;
-      const b = (await to.boundingBox())!;
-      const [ax, ay] = [a.x + 40, a.y + a.height / 2];
-      const [bx, by] = [b.x + b.width / 2, b.y + b.height / 2];
-      await glide(page, 'main', ax, ay);
-      await pause(300);
-      await scriptedTag('스크립트로 재현');
-      await page.mouse.move(ax, ay);
-      await page.mouse.down();
-      if (opts.move) await page.keyboard.down(MOVE_KEY);
-      await page.mouse.move(ax + 10, ay + 10, { steps: 4 }); // past the drag threshold
-      for (let i = 1; i <= 24; i++) {
-        const t = ease(i / 24);
-        await page.mouse.move(ax + (bx - ax) * t, ay + (by - ay) * t);
-        await pause(18);
-      }
-      for (const d of [1, 2, 3]) await page.mouse.move(bx + d, by, { steps: 2 }); // settles the last dragover
-      await expect.poll(() => to.evaluate((el) => el.hasAttribute('data-drop-target'))).toBe(true);
-      await pause(1400);
-      await page.mouse.up();
-      if (opts.move) await page.keyboard.up(MOVE_KEY);
-      await scriptedTag(null);
-      mouseAt.set(page, { x: bx + 3, y: by });
-      await releasePointer(page, 'main');
-    };
-    /**
-     * A Finder drag of a real file onto an element, as the OS sends it (Chromium's drag events through CDP): the arrow comes in
-     * from the window's left edge, enter, over, a rest while `during` looks, drop.
-     */
-    const finderDrop = async (file: string, onto: Locator, during: () => Promise<void>) => {
-      const b = (await onto.boundingBox())!;
-      const files = await finderDrag(page, file);
-      try {
-        await glide(page, 'main', 14, b.y + b.height / 2);
-        await scriptedTag('스크립트로 재현');
-        await files.send('dragEnter', onto);
-        await files.send('dragOver', onto);
-        await expect.poll(() => onto.evaluate((el) => el.hasAttribute('data-drop-target'))).toBe(true);
-        await during();
-        await pause(2200);
-        await scriptedTag(null); // with the drop, never a frame after it
-        await files.send('drop', onto);
-        await releasePointer(page, 'main');
-      } finally {
-        await files.close().catch(() => {});
-      }
-    };
     /**
      * Native popups (the collection and tag menus, the item menu) as the camera should see them: on macOS the real menu opens
      * and stays up for a moment, then the script picks the row (its own click(), as stubContextMenu does) — a path of labels
@@ -728,18 +658,18 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await drawFor(page);
     await park(page, 'main');
     if (GRAB) {
-      const x11 = await startX11Recording(GRAB, 'm5-demo', 'M5 organize demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
+      const x11 = await startX11Recording(GRAB, 'm6-demo', 'M6 demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
       recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
     } else if (plan.capture === 'screencast') {
       // The last resort: the main window's page through CDP (no native chrome, menus, sheets or Finder in it).
-      const cast = await startScreencast(page, 'm5-demo', 'M5 organize demo: the main window page only (CDP screencast)');
+      const cast = await startScreencast(page, 'm6-demo', 'M6 demo: the main window page only (CDP screencast)');
       recordingStartMs = Date.now();
       stopRec = () => cast.stop();
       notes.push('the recording is the main window page only (CDP screencast): screencapture was lost three times');
     } else {
-      rec = startRecording(RECORD_SECONDS, 'm5-demo', 'M5 organize demo (2–4 min)');
+      rec = startRecording(RECORD_SECONDS, 'm6-demo', 'M6 demo (3–4 min)');
       const recordingFrom = Date.now();
       if (rec.file) {
         // Not for a skipped one (Linux CI). An exit before the demo has ended is a lost recording, with or without a
@@ -757,317 +687,264 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     started = Date.now();
 
-    // 1. First run: the empty library says how to bring files in.
-    // 37 characters were on screen 2.5 s (15 a second, design critique), then 4.0 s in the trimmed file (final critique
-    // nit: the still head's cut takes about 1.5 s of it): 6.5 s leaves about 5 s, and the drag starts half a second after
-    // the caption has gone.
-    await chapter('Learn을 처음 열면 빈 라이브러리가 가져오는 방법을 안내합니다.', page, 6500);
-    await expect(page.getByTestId('content').getByRole('button').first()).toBeVisible();
-    await pause(7000);
+    const importToast = page.getByTestId('import-progress');
+    const importDone = page.getByTestId('import-done');
+    const queueDone = async () => (await importQueueState(app)).done;
+    /**
+     * Slows an import to a pace a viewer can follow: each file waits `eachMs` at the importer's commit point (the E2E
+     * pause hook), the first one longer so the progress toast, which shows once a run has taken a second, is up before
+     * the captions are read. It ends by itself when the run does.
+     */
+    const slowImport = (startMs: number, firstMs = Math.max(1400, 2500 * PACE)) => {
+      let on = true;
+      let eachMs = startMs;
+      const loop = (async () => {
+        let seenBusy = false;
+        let first = true;
+        const began = Date.now();
+        while (on) {
+          await importPause(app, 'beforeCommit');
+          let held = false;
+          for (let i = 0; i < 80 && on; i++) {
+            if (await importWaiting(app)) {
+              held = true;
+              break;
+            }
+            const state = (await importQueueState(app)).state;
+            if (state !== 'idle') seenBusy = true;
+            else if (seenBusy || Date.now() - began > 4000) break;
+            await sleep(25);
+          }
+          if (!held) {
+            if (!on || seenBusy || Date.now() - began > 4000) break;
+            continue;
+          }
+          seenBusy = true;
+          await sleep(first ? firstMs : eachMs * PACE);
+          first = false;
+          await importResume(app);
+        }
+        await importPause(app, null);
+        await importResume(app);
+      })();
+      return {
+        each: (ms: number) => void (eachMs = ms),
+        stop: async () => {
+          on = false;
+          await loop;
+        },
+      };
+    };
+    /** A chapter whose point is a sheet: the caption is read in full and goes, then the sheet comes (as chapter 16 of the M5 demo did). */
+    const sheetChapter = async (title: string, open: () => Promise<unknown>): Promise<Page> => {
+      await chapter(title, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 60_000);
+      await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
+      await pause(captionMs(title));
+      await caption({ target: page }, '');
+      await expect(page.getByTestId('demo-caption')).toHaveCount(0, { timeout: 2000 });
+      return expectWindow(app, 'sheet', open);
+    };
+    const itemRow = (index: number) => rowAt(page, index);
+    const tableToTop = () => page.getByTestId('library-scroller').evaluate((e) => void (e.scrollTop = 0));
+    const titleAt = async (index: number) => (await itemRow(index).getAttribute('data-title'))!;
+    /** What the toolbar counts, as text. */
+    const rowCount = async () => (await page.getByTestId('toolbar-count').innerText()).replace(/\s+/g, ' ');
+    notes.push('the imports of chapters 1–3 are slowed by the E2E pause hook so that the progress can be read; the file panels are stubbed');
 
-    // 2. Files dragged in and dropped (a synthetic drag of real files: a Finder drag cannot be scripted): the window is the
-    //    drop target, the drop imports copies, the result is a toast. The tag stays until the drop.
-    const all = [...media.drop, media.read];
+    // 1. A big folder: 30 files in one go; past a second the progress toast appears, with the count and the bar.
+    await chapter('폴더 하나에 든 파일 30개를 한꺼번에 가져옵니다. 가져오는 동안 토스트가 진행을 보여 줍니다. (파일 선택 창은 건너뜁니다)', page, 5500);
+    await pause(1500);
+    let slow = slowImport(500);
+    await importFiles(s!, folderA);
+    await expect(importToast).toBeVisible({ timeout: 15_000 });
+    await expect(importToast).toContainText('가져오는 중');
+    await park(page, 'main');
+    await expect.poll(queueDone, { timeout: 60_000 }).toBeGreaterThanOrEqual(6);
+    await pause(1500);
+
+    // 2. The window stays usable and more can be put in: the whole count grows.
+    await chapter('가져오는 중에도 창을 그대로 쓸 수 있고, 파일을 더 놓으면 전체 수가 늘어납니다. (끌기는 스크립트로 재현합니다)');
+    await glideClick(page, 'main', itemRow(0));
+    await expect(itemRow(0)).toHaveAttribute('aria-selected', 'true');
+    slow.each(900); // the drop below must land while the run is still going
+    await pause(1200);
     const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-    await dropSource(page, all);
-    await chapter('자료 파일을 창으로 끌어 놓으면 사본으로 가져옵니다. (끌기는 스크립트로 재현하고, 저자\u2060·연도와 태그는 데모에서 넣었습니다)');
-    const overlay = page.getByTestId('drop-overlay');
-    await glide(page, 'main', 14, mainH * 0.55); // the pointer comes in from the window's left edge
-    await drag(page, 'dragenter', 'source');
-    await expect(overlay).toHaveAttribute('data-mode', 'copy');
-    await scriptedTag('스크립트로 재현');
-    await glide(page, 'main', mainW * 0.5, mainH * 0.78); // under the cards, on the overlay's empty part
-    await pause(3000);
-    await scriptedTag(null); // with the drop that ends the overlay, never a frame after it
-    await drag(page, 'drop', 'source');
-    await expect(rows).toHaveCount(all.length);
-    await expect(page.getByTestId('import-done')).toBeVisible();
-    await park(page, 'main');
-    // What a user would type in the item panel, written in now (chapter 2's caption says so): the table's 저자 and 연도.
-    const ids = await page.evaluate(async () => {
-      const r = await window.learn.library.list();
-      return r.ok ? Object.fromEntries(r.data.map((i) => [i.title, i.id])) : ({} as Record<string, string>);
-    });
-    for (const [title, meta] of Object.entries(DEMO_METADATA)) if (ids[title]) await seedMetadata(page, ids[title], meta);
-    await expect(rowByTitle(page, PALETTE_TITLE).locator('[data-col="creators"]')).toContainText('Jun Lee');
-    const tagIds: Record<string, string> = {};
-    for (const tag of DEMO_ORGANIZE.tags) {
-      tagIds[tag.name] = await createTag(page, tag.name);
-      await assignTag(page, tagIds[tag.name]!, tag.titles.map((title) => ids[title]!));
-    }
-    await pause(2500);
-    // The drop's toast closes by itself on camera, so each later toast is alone.
-    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
-
-    // The item panel needs room beside the sidebar (the runner's own 1024 mode has none): ⌥⌘I shows it before chapter 9.
-    const roomy = (await inspectorWidth()) > 0;
-    const colourTitle = '광합성 실험 영상';
-    const toggleTitle = '광합성 명반응과 암반응';
-
-    // 3. 새 컬렉션: ⇧⌘N puts a named-in-place row at the top of the tree; no dialog, and the view stays where it was.
-    await chapter(`${key('Shift+CmdOrCtrl+N')} 키로 새 컬렉션을 만듭니다. 이름은 트리 안에서 바로 적습니다.`);
-    await pause(1000);
-    const newAt = await press('n', ['shift', 'command'], 'collection.new', async () => (await page.getByTestId('rename-input').count()) > 0);
-    await expect(page.getByTestId('rename-input')).toBeFocused();
-    await afterKey(newAt, 800);
-    await typeSlowly(PARENT);
-    await pause(700);
-    await keyIn(page, 'Enter');
-    await expect(page.getByTestId('rename-input')).toHaveCount(0);
-    const parentId = (await snapshot()).collections.find((c) => c.name === PARENT)!.id;
-    await expect(tree(parentId)).toBeVisible();
-    await park(page, 'main');
-    await pause(2500);
-
-    // 4. 새 하위 컬렉션: the collection's native menu (real on macOS, the pick scripted).
-    await chapter('컬렉션을 오른쪽 클릭하면 새 하위 컬렉션을 만들 수 있습니다. (메뉴 고르기는 스크립트로 재현합니다)');
-    await pause(1000);
-    await pickFromNextPopup(label('collection.newChild'));
-    await glideClick(page, 'main', tree(parentId), { button: 'right' });
-    await expect(page.getByTestId('rename-input')).toBeFocused();
-    await typeSlowly(CHILD);
-    await pause(700);
-    await keyIn(page, 'Enter');
-    await expect(page.getByTestId('rename-input')).toHaveCount(0);
-    const childId = (await snapshot()).collections.find((c) => c.name === CHILD)!.id;
-    await expect(tree(childId)).toBeVisible();
-    await park(page, 'main');
-    await pause(2500);
-
-    // 5. Rows dragged into a collection: three chosen with ⌘-clicks, one drag takes them all.
-    await chapter('표의 행을 끌어 컬렉션에 놓으면 그 컬렉션에 넣습니다. 여러 행도 한 번에 넣습니다. (끌기는 스크립트로 재현합니다)');
-    await glideClick(page, 'main', page.getByTestId('nav-scope-all')); // the right click above viewed the empty collection
-    await expect(rows).toHaveCount(all.length);
-    const filed = [READ_TITLE, '단백질 접힘 강의 노트', '효소 반응 속도론 정리'];
-    await glideClick(page, 'main', rowByTitle(page, filed[0]!));
-    for (const title of filed.slice(1)) await glideClick(page, 'main', rowByTitle(page, title), { modifiers: [MOD] });
-    await pause(1200);
-    await scriptedDrag(rowByTitle(page, filed[0]!), tree(parentId));
-    await expect.poll(async () => (await snapshot()).members[parentId]?.length ?? 0).toBe(3);
-    await expect(countOf(parentId)).toHaveText('3');
-    await park(page, 'main');
-    await pause(2500);
-
-    // 6. ⌘ moves instead of adding (inside a collection: out of it, into the target), with 실행 취소 in the toast.
-    await chapter(`컬렉션 안에서 ${MOVE_LABEL} 키를 누른 채 놓으면 옮깁니다. 토스트의 ‘실행 취소’\u2060로 되돌립니다. (끌기는 스크립트로 재현합니다)`);
-    await glideClick(page, 'main', tree(parentId));
-    await expect(page.getByTestId('toolbar-title')).toHaveText(PARENT);
-    await expect(rows).toHaveCount(3);
-    await glideClick(page, 'main', rowByTitle(page, READ_TITLE));
-    await scriptedDrag(rowByTitle(page, READ_TITLE), tree(childId), { move: true });
-    await expect.poll(async () => (await snapshot()).members[childId] ?? []).toEqual([ids[READ_TITLE]]);
-    // A move takes the row out of the parent too: a drop that only added would leave it there.
-    await expect.poll(async () => (await snapshot()).members[parentId] ?? []).not.toContain(ids[READ_TITLE]);
-    // A collection's view lists its subtree, so the moved row is still in the parent's view (now through the child).
-    await expect(rows).toHaveCount(3);
-    await expect(page.getByTestId('undo-toast')).toBeVisible();
-    await expect(countOf(childId)).toHaveText('1');
-    await park(page, 'main');
-    await pause(3000);
-    await glideClick(page, 'main', page.getByTestId('undo-action'));
-    await expect.poll(async () => (await snapshot()).members[childId] ?? []).toEqual([]);
-    await expect.poll(async () => (await snapshot()).members[parentId] ?? []).toContain(ids[READ_TITLE]);
-    await expect.poll(async () => (await snapshot()).members[parentId]?.length ?? 0).toBe(3);
-    await park(page, 'main');
-    await pause(2500);
-
-    // 7. Colour tags: a chip's native menu sets colour 1 and 2 (the pick scripted); the key then puts the tag on the chosen row.
-    await chapter('태그의 색을 정하면 번호가 키가 됩니다. 1 키로 붙이고 다시 누르면 뗍니다. (태그는 미리 만들었고, 메뉴 고르기는 스크립트로 재현합니다)');
-    await glideClick(page, 'main', page.getByTestId('nav-scope-all'));
-    await expect(rows).toHaveCount(all.length);
-    await pause(1200);
-    const slotOf = async (name: string) => (await snapshot()).tags.find((t) => t.id === tagIds[name])?.position;
-    await pickFromNextPopup(['색 지정', '1 노랑']);
-    await glideClick(page, 'main', chip(tagIds['중요']!), { button: 'right' });
-    await expect.poll(() => slotOf('중요')).toBe(1);
-    await pause(1500);
-    await pickFromNextPopup(['색 지정', '2 빨강']);
-    await glideClick(page, 'main', chip(tagIds['시험 범위']!), { button: 'right' });
-    await expect.poll(() => slotOf('시험 범위')).toBe(2);
-    await park(page, 'main');
-    await pause(2200); // the dots on the rows that already carry the tags
-    const taggedWith = async (name: string, title = colourTitle) => ((await snapshot()).tagged[tagIds[name]!] ?? []).includes(ids[title]!);
-    // On and off again on a row without 중요, so chapter 8's counts are the same as without it.
-    await glideClick(page, 'main', rowByTitle(page, toggleTitle));
-    const onAt = await press('1', [], 'tag.color1', () => taggedWith('중요', toggleTitle));
-    await expect.poll(() => taggedWith('중요', toggleTitle)).toBe(true);
-    await afterKey(onAt, 1500);
-    const offAt = await press('1', [], 'tag.color1', async () => !(await taggedWith('중요', toggleTitle)));
-    await expect.poll(() => taggedWith('중요', toggleTitle)).toBe(false);
-    await afterKey(offAt, 1500);
-    await glideClick(page, 'main', rowByTitle(page, colourTitle));
-    const oneAt = await press('1', [], 'tag.color1', () => taggedWith('중요'));
-    await expect.poll(() => taggedWith('중요')).toBe(true);
-    await afterKey(oneAt, 1500);
-    const twoAt = await press('2', [], 'tag.color2', () => taggedWith('시험 범위'));
-    await expect.poll(() => taggedWith('시험 범위')).toBe(true);
-    await afterKey(twoAt, 2000);
-    await park(page, 'main');
-
-    // 8. The tag filter: a chip filters, two chips keep only what has both.
-    await chapter('태그 칩을 누르면 그 태그가 붙은 자료만 보입니다. 여러 개를 누르면 모두 가진 자료만 남습니다.');
-    await pause(1000);
-    const tagged = (await snapshot()).tagged;
-    const withImportant = tagged[tagIds['중요']!] ?? [];
-    const withBoth = withImportant.filter((id) => (tagged[tagIds['시험 범위']!] ?? []).includes(id));
-    await glideClick(page, 'main', chip(tagIds['중요']!));
-    await expect(page.getByTestId('toolbar-count')).toHaveText(`${withImportant.length}개 / ${all.length}개`);
-    await park(page, 'main');
-    await pause(2200);
-    await glideClick(page, 'main', chip(tagIds['시험 범위']!));
-    await expect(page.getByTestId('toolbar-count')).toHaveText(`${withBoth.length}개 / ${all.length}개`);
-    await park(page, 'main');
-    await pause(3000); // the two-chip result is the chapter's end frame (brief (c): it holds 2.5 s)
-
-    // 9. The item panel: 태그 추가, a new name, ↩ makes it and puts it on the item. A window with no room for the panel shows it first.
-    //    Chapter 8's filter goes first, under this caption, so chapter 8 ends on its result.
-    await chapter('항목 패널에서 태그를 더합니다. 새 이름을 쓰고 ↩를 누르면 만들어 붙입니다.');
-    await glideClick(page, 'main', chip(tagIds['시험 범위']!));
-    await glideClick(page, 'main', chip(tagIds['중요']!));
-    await expect(rows).toHaveCount(all.length);
-    await park(page, 'main');
-    await pause(800);
-    if (!roomy) {
-      notes.push('the window has no room for the item panel beside the sidebar: ⌥⌘I shows it');
-      const shownAt = await press('i', ['option', 'command'], 'view.toggleInspector', async () => (await inspectorWidth()) > 0);
-      await expect.poll(inspectorWidth).toBeGreaterThan(0);
-      await afterKey(shownAt, 1000);
-    }
-    await glideClick(page, 'main', rowByTitle(page, READ_TITLE));
-    await expect(page.getByTestId('tags-section')).toBeVisible();
-    await pause(1500);
-    await glideClick(page, 'main', page.getByTestId('tag-add-chip'));
-    await expect(page.getByTestId('tag-input')).toBeFocused();
-    await typeSlowly(DEMO_ORGANIZE.typedTag);
-    await pause(900);
-    await keyIn(page, 'Enter');
-    await expect
-      .poll(async () => {
-        const s = await snapshot();
-        const made = s.tags.find((t) => t.name === DEMO_ORGANIZE.typedTag);
-        return made ? (s.tagged[made.id] ?? []).includes(ids[READ_TITLE]!) : false;
-      })
-      .toBe(true);
-    await keyIn(page, 'Escape'); // the field stays open for the next tag until esc
-    await park(page, 'main');
-    await pause(3000);
-
-    // 10. Importing while a collection is viewed (a window drop, scripted): the overlay and the toast name the collection.
-    await chapter('컬렉션을 보는 중에 파일을 놓으면 그 컬렉션에도 넣습니다. (끌기는 스크립트로 재현합니다)');
-    await glideClick(page, 'main', tree(childId));
-    await expect(page.getByTestId('toolbar-title')).toHaveText(CHILD);
-    await dropSource(page, [media.extra[0]!]);
+    const totalBefore = (await importQueueState(app)).total;
+    await dropSource(page, dropped);
     await glide(page, 'main', 14, mainH * 0.55);
     await drag(page, 'dragenter', 'source');
-    await expect(overlay).toHaveAttribute('data-mode', 'copy');
-    await expect(overlay).toContainText(`‘${CHILD}’`);
+    await expect(page.getByTestId('drop-overlay')).toHaveAttribute('data-mode', 'copy');
     await scriptedTag('스크립트로 재현');
     await glide(page, 'main', mainW * 0.5, mainH * 0.78);
-    await pause(2800);
+    await pause(2200);
     await scriptedTag(null);
     await drag(page, 'drop', 'source');
-    await expect(page.getByTestId('import-done')).toBeVisible();
-    await expect.poll(async () => (await snapshot()).members[childId]?.length ?? 0).toBe(1);
+    await expect.poll(async () => (await importQueueState(app)).total).toBe(totalBefore + dropped.length);
+    await park(page, 'main');
+    slow.each(200);
+    await waitImportIdle(page);
+    await slow.stop();
+    await expect(importDone).toContainText('자료 34개를 가져왔습니다');
+    await pause(2800);
+    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
+
+    // 3. 취소: what is already in stays, the rest is dropped.
+    await chapter('토스트의 ‘취소’를 누르면 남은 파일은 가져오지 않고, 이미 들어온 자료는 그대로 둡니다.');
+    await pause(1000);
+    slow = slowImport(500);
+    await importFiles(s!, folderC);
+    await expect(importToast).toBeVisible({ timeout: 15_000 });
+    await expect.poll(queueDone, { timeout: 60_000 }).toBeGreaterThanOrEqual(7);
+    await glideClick(page, 'main', page.getByTestId('import-cancel'));
+    await expect(importDone).toContainText('개 중');
+    await slow.stop();
+    await waitImportIdle(page);
+    await park(page, 'main');
+    await pause(3500);
+    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
+
+    // 4. The same file again: a sheet asks; one answer for the rest of the duplicates.
+    const again = [media.read, media.drop[0]!, media.drop[1]!];
+    const dupSheet = await sheetChapter(
+      '이미 있는 파일을 다시 가져오면 시트가 묻습니다. ‘남은 중복 파일에도 같은 선택 적용’을 체크하면 한 번만 답합니다. (파일 선택 창은 건너뜁니다)',
+      () => importFiles(s!, again),
+    );
+    await expect(dupSheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
+    await pause(8000);
+    // 그래도 추가: the copies are what chapter 7 cleans up.
+    await clickToCloseSheet(dupSheet, dupSheet.getByTestId('dup-add'));
+    await waitImportIdle(page);
+    await park(page, 'main');
+    await expect(importDone).toContainText('자료 3개를 가져왔습니다');
+    await pause(3500);
+    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
+
+    // 5. 휴지통으로 이동 and 실행 취소.
+    await chapter(`${key('CmdOrCtrl+Backspace')} 키로 고른 자료를 휴지통으로 옮기고, 토스트의 ‘실행 취소’로 되돌립니다.`);
+    await glideClick(page, 'main', specialRow(page, 'all'));
+    await tableToTop();
+    await pause(800);
+    const firstTitle = await titleAt(0);
+    await glideClick(page, 'main', itemRow(0));
+    await glideClick(page, 'main', itemRow(1), { modifiers: [MOD] });
+    await pause(1200);
+    const countBefore = await rowCount();
+    const trashAt = await press('Backspace', ['command'], 'item.trash', async () => (await page.getByTestId('trash-undo').count()) > 0, KEY_CODE.delete);
+    await expect(page.getByTestId('trash-undo')).toContainText('자료 2개를 휴지통으로 옮겼습니다');
+    await afterKey(trashAt, 600); // the toast closes by itself after 5 s
+    await glideClick(page, 'main', page.getByTestId('trash-undo').getByTestId('undo-action'));
+    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
+    await expect.poll(rowCount).toBe(countBefore);
+    expect(await titleAt(0)).toBe(firstTitle);
+    await park(page, 'main');
+    await pause(3500);
+    // Three others go for the next chapter (no caption: it is the set-up); the copies of chapter 4 stay for chapter 7.
+    const toTrash = [await titleAt(3), await titleAt(4), await titleAt(5)];
+    for (const title of toTrash) expect(again.map((f) => path.basename(f, '.pdf')), 'a row of chapter 7 stays').not.toContain(title);
+    await glideClick(page, 'main', itemRow(3));
+    await glideClick(page, 'main', itemRow(5), { modifiers: ['Shift'] });
+    await pause(900);
+    await press('Backspace', ['command'], 'item.trash', async () => (await page.getByTestId('trash-undo').count()) > 0, KEY_CODE.delete);
+    await expect(page.getByTestId('trash-undo')).toContainText('자료 3개를 휴지통으로 옮겼습니다');
+    await expect(specialRow(page, 'trash')).toBeVisible();
+    await park(page, 'main');
+    await pause(2800);
+
+    // 6. The trash view: 복원, and 영구 삭제 behind a sheet.
+    await chapter('휴지통 보기에서 자료를 복원하거나 영구히 삭제합니다. 영구 삭제는 시트가 먼저 묻습니다. (메뉴 고르기는 스크립트로 재현합니다)', page, 5500);
+    await glideClick(page, 'main', specialRow(page, 'trash'));
+    await expect(rows).toHaveCount(3);
+    await pause(2500);
+    await pickFromNextPopup(label('item.restore'));
+    await glideClick(page, 'main', rowByTitle(page, toTrash[0]!), { button: 'right' });
+    await expect(page.getByTestId('restore-done')).toBeVisible();
+    await expect(rows).toHaveCount(2);
+    await park(page, 'main');
+    await pause(3000);
+    await expect(page.getByTestId('restore-done')).toHaveCount(0, { timeout: 10_000 });
+    await glideClick(page, 'main', rowByTitle(page, toTrash[1]!));
+    await pause(1200);
+    const purgeSheet = await expectWindow(app, 'sheet', () =>
+      press('Backspace', ['command'], 'item.trash', windowUp('sheet'), KEY_CODE.delete),
+    );
+    await expect(purgeSheet.getByTestId('purge-title')).toBeVisible();
+    await pause(4500);
+    await clickToCloseSheet(purgeSheet, purgeSheet.getByTestId('purge-confirm'));
+    await expect(page.getByTestId('purge-done')).toBeVisible();
     await expect(rows).toHaveCount(1);
     await park(page, 'main');
-    await pause(2500);
-    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
-
-    // 11. A Finder file dropped on a collection row (scripted): the row takes it, no window overlay.
-    await chapter('Finder에서 파일을 끌어 컬렉션 행에 놓으면 그 컬렉션으로 가져옵니다. (끌기는 스크립트로 재현합니다)');
-    await glideClick(page, 'main', page.getByTestId('nav-scope-all'));
-    await finderDrop(media.extra[1]!, tree(parentId), async () => {
-      await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
-    });
-    await expect(page.getByTestId('import-done')).toBeVisible();
-    await expect(page.getByTestId('import-done')).toContainText(`‘${PARENT}’`);
-    await expect.poll(async () => (await snapshot()).members[parentId]?.length ?? 0).toBe(4);
-    await park(page, 'main');
-    await pause(2500);
-    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
-
-    // 12. ⌘K lists the collection between the items and the commands; ↩ on its row goes there.
-    await chapter(`${key('CmdOrCtrl+K')} 팔레트에서 컬렉션도 찾아 바로 갑니다.`);
-    const paletteAt = await press('k', ['command'], 'app.palette', paletteOpen);
-    await expect(page.getByTestId('palette-input')).toBeFocused();
-    await afterKey(paletteAt, 800);
-    for (const ch of '신호') {
-      await page.keyboard.insertText(ch);
-      await pause(300);
-    }
-    await expect(page.getByTestId('palette-collection')).toHaveCount(1);
-    await pause(1800);
-    for (let i = 0; i < 4 && (await page.getByTestId('palette-collection').getAttribute('data-focused')) !== 'true'; i++) await keyIn(page, 'ArrowDown');
-    await expect(page.getByTestId('palette-collection')).toHaveAttribute('data-focused', 'true');
-    await pause(2200);
-    const wentAt = await keyIn(page, 'Enter');
-    await expect(page.getByTestId('toolbar-title')).toHaveText(CHILD);
-    await afterKey(wentAt);
-
-    // 13. 컬렉션 삭제…: the collection's menu (the pick scripted); the sheet is skipped (said); the view goes to the parent; 실행 취소.
-    await stubConfirm(app, 'confirm');
-    await chapter('컬렉션을 지우면 확인 시트가 뜨고, 지운 뒤에는 토스트의 ‘실행 취소’\u2060로 되돌립니다. (메뉴 고르기와 확인 시트는 스크립트로 재현합니다)');
-    await pause(1000);
-    await pickFromNextPopup(label('collection.delete'));
-    await glideClick(page, 'main', tree(childId), { button: 'right' });
-    await expect(tree(childId)).toHaveCount(0);
-    await expect(page.getByTestId('toolbar-title')).toHaveText(PARENT);
-    await expect(page.getByTestId('undo-toast')).toBeVisible();
-    await park(page, 'main');
-    await pause(3200);
-    await glideClick(page, 'main', page.getByTestId('undo-action'));
-    await expect(tree(childId)).toBeVisible();
-    await park(page, 'main');
-    await pause(2500);
-
-    // 14. ⌘, the settings window; a theme tile changes both windows in the same moment (spec 8 row 2). Captioned where
-    //     the settings window leaves room, under its tiles otherwise (demo-geometry.ts).
-    const settings = await expectWindow(app, 'settings', () => press(',', ['command'], 'app.settings', windowUp('settings')));
-    settingsPages.push(settings);
-    await drawFor(settings);
-    await chapter(`${key('CmdOrCtrl+,')} 설정 창에서 테마를 바꾸면 두 창이 같은 순간에 바뀝니다.`, await captionFor(settings, { clicksTiles: true }));
-    await park(settings, 'settings');
-    await pause(2500);
-    await glideClick(settings, 'settings', settings.getByTestId('theme-tile-dark'));
-    await park(settings, 'settings');
-    await expect.poll(() => isDark(page)).toBe(true);
-    await expect.poll(() => isDark(settings)).toBe(true);
     await pause(3000);
-    await closeSettings(settings);
-    await park(page, 'main');
-    await pause(2000);
-
-    // 15. Dark: the same screens and information — the tree and a collection, then an item in the item panel.
-    await chapter('다크 모드에서도 같은 화면, 같은 정보입니다.');
     await pause(1000);
-    await glideClick(page, 'main', tree(parentId));
-    await expect(page.getByTestId('toolbar-title')).toHaveText(PARENT);
-    await pause(2200);
-    await glideClick(page, 'main', rowByTitle(page, READ_TITLE));
-    await expect(page.getByTestId('inspector-head')).toContainText(READ_TITLE);
-    await park(page, 'main');
-    await pause(3200);
+    await expect(page.getByTestId('purge-done')).toHaveCount(0, { timeout: 10_000 });
 
-    // 16. ⌘/: the shortcut sheet, now with the organise shortcuts (the 정리 group); ↩ closes it. The caption is read in
-    //     full before the sheet comes, and goes as it comes: macOS dims the window under a sheet, a caption with it (round 2
-    //     minor 1). At most 400 px wide, left of where the sheet starts, should it still be fading out.
-    const sheetTitle = `${key('CmdOrCtrl+/')} 키로 단축키 도움말을 엽니다. ${key('Shift+CmdOrCtrl+N')} ‘${label('collection.new')}’\u2060과 1–8 색 태그 키도 들어 있습니다.`;
-    await chapter(sheetTitle, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 60_000); // cleared below, before the sheet
-    // Under a sheet the pill takes the bottom-left (demo.css): the pointer rests above it meanwhile.
-    await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
-    await pause(captionMs(sheetTitle));
-    await caption({ target: page }, '');
-    await expect(page.getByTestId('demo-caption')).toHaveCount(0, { timeout: 2000 });
-    const sheet = await expectWindow(app, 'sheet', () => press('/', ['command'], 'app.shortcuts', windowUp('sheet')));
-    await expect(sheet.getByTestId('shortcut-row').filter({ hasText: label('collection.new') }).first()).toBeVisible();
-    if ((await page.getByTestId('demo-caption').count()) > 0) overlayClashes.push('ch16: a caption in the main window under the sheet');
+    // 7. 중복 정리: the item menu's 하나만 남기고 휴지통으로 (above 휴지통으로 이동 in the real menu on macOS), then 모두 정리.
+    await chapter(
+      `중복 항목에서 행을 오른쪽 클릭하면 ‘${label('duplicates.keepOne')}’가 ‘${label('item.trash')}’ 바로 위에 있습니다. 남은 묶음은 ‘모두 정리’ 한 번으로 끝냅니다. (메뉴 고르기는 스크립트로 재현합니다)`,
+      page,
+      6500,
+    );
+    await glideClick(page, 'main', specialRow(page, 'duplicates'));
+    await expect(rows).toHaveCount(6);
+    await expect(page.getByTestId('kept-mark')).toHaveCount(3);
+    await pause(3000);
+    await pickFromNextPopup(label('duplicates.keepOne'), 3500);
+    await glideClick(page, 'main', page.locator('[data-testid="item-row"]:not(:has([data-testid="kept-mark"]))').first(), { button: 'right' });
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
+    await expect(rows).toHaveCount(4);
+    await park(page, 'main');
+    await pause(3000);
+    await expect(page.getByTestId('keep-all-duplicates')).toHaveText('중복 2묶음 모두 정리');
+    await glideClick(page, 'main', page.getByTestId('keep-all-duplicates'));
+    await expect(page.getByTestId('undo-toast').last()).toContainText('중복 2개를 휴지통으로 옮겼습니다');
+    await expect(specialRow(page, 'duplicates')).toHaveCount(0);
+    await park(page, 'main');
     await pause(5000);
-    await closeSheet(sheet, 'Enter');
 
-    // 17. The end: the library in dark, held. The pointer parks first, so it never crosses the final caption.
+    // 8. 백업 만들기…
+    fs.mkdirSync(backups, { recursive: true });
+    fs.mkdirSync(restores, { recursive: true });
+    await stubFolderPicker(app, backups);
+    const backupDone = await sheetChapter(
+      `‘${label('file.backup')}’\u2060는 라이브러리를 폴더 하나로 복사하고, 끝나면 결과를 시트로 알립니다. (폴더 선택 창은 건너뜁니다)`,
+      () => runMenuCommand(app, 'file.backup'),
+    );
+    await expect(backupDone.getByTestId('backup-title')).toHaveText('백업을 만들었습니다');
+    await expect(backupDone.getByTestId('backup-files')).toContainText('손상 없음');
+    await pause(7000);
+    await clickToCloseSheet(backupDone, backupDone.getByTestId('backup-done'));
     await park(page, 'main');
-    await chapter('Learn 둘러보기를 마칩니다.');
-    await pause(3000);
+    await pause(1500);
+
+    // 9. 백업에서 복원…: a new folder, the result sheet; switching libraries restarts the app, so the demo stops at the sheet.
+    const backupFolder = path.join(backups, fs.readdirSync(backups)[0]!);
+    await stubFolderPicks(app, [backupFolder, restores]);
+    const restoreDone = await sheetChapter(
+      `‘${label('file.restore')}’\u2060은 백업을 새 폴더로 복원하고 결과를 보여 줍니다. 라이브러리를 바꾸면 앱이 다시 시작되므로, 데모는 결과 시트에서 멈춥니다. (폴더 선택 창은 건너뜁니다)`,
+      () => runMenuCommand(app, 'file.restore'),
+    );
+    await expect(restoreDone.getByTestId('restore-title')).toHaveText('백업을 복원했습니다');
+    await expect(restoreDone.getByTestId('restore-files')).toContainText('손상 없음');
+    await pause(8000);
+    await clickToCloseSheet(restoreDone, restoreDone.getByTestId('restore-later'));
+    await park(page, 'main');
+    await pause(1500);
+
+    // 10. The check sheet on a library that holds one leftover temporary file (an import that stopped half way).
+    fs.writeFileSync(path.join(libraryDir, 'staging', 'demo-import.part'), Buffer.alloc(48 * 1024, 7));
+    const checkSheet = await sheetChapter(
+      `‘${label('file.checkLibrary')}’\u2060은 가져오다 멈춘 임시 파일 같은 것을 찾아 보여 주고, 지울지는 사용자가 정합니다. (임시 파일 하나를 미리 남겨 두었습니다)`,
+      () => runMenuCommand(app, 'file.checkLibrary'),
+    );
+    const stagingRow = checkSheet.locator('[data-testid="check-row"][data-kind="staging"]');
+    await expect(stagingRow).toBeVisible();
+    await pause(5000);
+    await checkSheet.getByTestId('check-cleanStaging').click();
+    await expect(stagingRow).toHaveAttribute('data-state', 'done');
+    await pause(3500);
+    await clickToCloseSheet(checkSheet, checkSheet.getByTestId('check-done'));
+    expect(fs.readdirSync(path.join(libraryDir, 'staging')).filter((n) => n.endsWith('.part'))).toEqual([]);
+    await park(page, 'main');
+    await pause(6000);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
     stopIfLost(); // an exit that came during the last pause
@@ -1098,6 +975,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     fs.rmSync(userData, { recursive: true, force: true });
     fs.rmSync(libraryDir, { recursive: true, force: true });
     fs.rmSync(path.join(work, 'app'), { recursive: true, force: true }); // the macOS app copy (re-review minor 5)
+    for (const dir of [backups, restores, materialDir]) fs.rmSync(dir, { recursive: true, force: true });
     // macOS: the recording began when screencapture's first frame did, RECORD_SECONDS before it exited (T13-m9); Linux:
     // when ffmpeg had opened the screen. Negative: the recording started before the chapters' zero (the pre-roll).
     const offset =
@@ -1108,8 +986,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    const txt = outFile('m5-demo.chapters.raw.txt');
-    const json = outFile('m5-demo.chapters.json');
+    const txt = outFile('m6-demo.chapters.raw.txt');
+    const json = outFile('m6-demo.chapters.json');
     fs.writeFileSync(txt.abs, chapters.map((c) => `${mmss(inVideo(c))} ${c.title}`).join('\n') + '\n');
     fs.writeFileSync(
       json.abs,
@@ -1127,8 +1005,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             'chapters[].ms': "milliseconds on the demo script's clock (zero = the first chapter's start)",
             offset: "seconds from that zero to the raw recording's first frame",
             demoSeconds: "seconds on the script's clock",
-            'm5-demo.chapters.raw.txt': 'the raw recording (m5-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
-            'm5-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
+            'm6-demo.chapters.raw.txt': 'the raw recording (m6-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
+            'm6-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
           },
           /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the raw video. */
           offset,
@@ -1152,8 +1030,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         2,
       )}\n`,
     );
-    record({ file: txt.rel, kind: 'data', description: 'M5 demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
-    record({ file: json.rel, kind: 'data', description: 'M5 demo chapters, offset, input, cursor, screen, display switch, notes' });
+    record({ file: txt.rel, kind: 'data', description: 'M6 demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
+    record({ file: json.rel, kind: 'data', description: 'M6 demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
@@ -1163,7 +1041,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   return { lost: null };
 }
 
-test('M5 demo recording with chapters', { tag: '@demo' }, async () => {
+test('M6 demo recording with chapters', { tag: '@demo' }, async () => {
   test.setTimeout(DEMO_BUDGET_MS + 60_000);
   const began = Date.now();
   const history: string[] = [];
@@ -1178,7 +1056,7 @@ test('M5 demo recording with chapters', { tag: '@demo' }, async () => {
     }
   }
   // Every attempt lost its recording: the last attempt's chapters.json carries the history; the run reports it.
-  const json = outFile('m5-demo.chapters.json').abs;
+  const json = outFile('m6-demo.chapters.json').abs;
   try {
     const written = JSON.parse(fs.readFileSync(json, 'utf8')) as { notes: string[] };
     fs.writeFileSync(json, `${JSON.stringify({ ...written, notes: [...history, ...written.notes.filter((n) => !history.includes(n))] }, null, 2)}\n`);

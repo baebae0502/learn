@@ -1153,8 +1153,8 @@ test('organize: the item panel with tags and collections, the add field, several
 });
 
 /**
- * A native popup menu is not part of the page, so the page screenshot cannot hold it: the X root window is cropped to the
- * menu instead (Xvfb, the window at 0,0). The menu's own popup is kept as it opens and closed through its object (a CDP key
+ * A native popup menu is not part of the page, so the page screenshot cannot hold it: the X screen is grabbed at the menu's
+ * rectangle instead (Xvfb, the window at 0,0). The menu's own popup is kept as it opens and closed through its object (a CDP key
  * never reaches a native menu).
  */
 async function shootNativeMenu(app: ElectronApplication, page: Page, name: string, open: () => Promise<void>, crop: { x: number; y: number; width: number; height: number }): Promise<void> {
@@ -1172,8 +1172,12 @@ async function shootNativeMenu(app: ElectronApplication, page: Page, name: strin
   await open();
   await expect.poll(() => app.evaluate(() => Boolean((globalThis as { __learnLastMenu?: unknown }).__learnLastMenu))).toBe(true);
   await page.waitForTimeout(600); // the menu's window is mapped and painted
-  const geometry = `${crop.width}x${crop.height}+${crop.x}+${crop.y}`;
-  const png = execFileSync('import', ['-window', 'root', '-crop', geometry, '+repage', 'png:-'], { maxBuffer: 16 * 1024 * 1024 });
+  // ffmpeg is on every machine that builds the fixtures (ImageMagick's `import` is not on the CI runner).
+  const png = execFileSync(
+    'ffmpeg',
+    ['-v', 'error', '-f', 'x11grab', '-video_size', `${crop.width}x${crop.height}`, '-i', `${process.env['DISPLAY'] ?? ':0'}+${crop.x},${crop.y}`, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
   await app.evaluate(() => (globalThis as { __learnLastMenu?: { closePopup(): void } | null }).__learnLastMenu?.closePopup());
   expect(png).toMatchSnapshot(`${name}.png`, { maxDiffPixels: 300, threshold: 0.2 });
 }

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { FIXTURES, KEY_CODE, backupPause, backupResume, backupWaiting, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, rowByTitle, runMenuCommand, stubFolderPicker, stubOpenDialog, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
-import { IS_MAC, allShots, focusApp, fullScreenShot, writeJson } from './capture';
+import { IS_MAC, allShots, cgWindowId, focusApp, fullScreenShot, pageShot, windowShotById, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -449,6 +449,8 @@ test('M6 backup: its toast with an import waiting behind it, the result sheet (m
   const parent = path.join(tmp, 'backups');
   fs.mkdirSync(parent, { recursive: true });
   await setTheme('light');
+  // An earlier result toast (it goes by itself after 5 s) would sit under the backup's in the shots.
+  await expect(s.page.locator('[data-pane="toasts"] .toast')).toHaveCount(0, { timeout: 15_000 });
   await backupPause(s.app);
   await stubFolderPicker(s.app, parent);
   await runMenuCommand(s.app, 'file.backup');
@@ -500,7 +502,24 @@ test('M6 backup: its toast with an import waiting behind it, the result sheet (m
     results['lastBackup'] = v;
     check('settings: 마지막 백업 with its date and the reveal button', v.date !== null && /^\d{4}\. /.test(v.date) && v.reveal === (IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'), v);
   });
-  await shots(settings, 'm6-07-settings-last-backup-light', 'the settings window with 마지막 백업 (settings.html)');
+  // The settings window in front (its own window id): shots() takes the main window, which is what the first run shot.
+  const settingsShots = async (name: string, description: string): Promise<void> => {
+    const entries = [await pageShot(settings, name, description)];
+    if (IS_MAC) {
+      await s.app.evaluate(({ app: a, BrowserWindow }) => {
+        a.focus({ steal: true });
+        const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=settings'));
+        w?.show();
+        w?.focus();
+        w?.moveTop();
+      });
+      await new Promise((r) => setTimeout(r, 400));
+      entries.push(await windowShotById(await cgWindowId(s.app, 'settings'), name, description));
+    }
+    entries.push(await fullScreenShot(name, description));
+    for (const e of entries) if (e.file === null && e.error) shotFailures.push({ name, kind: e.kind, description: e.description, error: e.error });
+  };
+  await settingsShots('m6-07-settings-last-backup-light', 'the settings window with 마지막 백업 (settings.html)');
   await settings.close();
   // Throughput (spec 14: reported only — it depends on the disk): a 64 MB copy written, flushed and read back with the rest.
   await importPaths(s.page, [sized(MP4, 'lecture-64mb.mp4', 64_000_000)]);

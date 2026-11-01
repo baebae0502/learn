@@ -727,18 +727,23 @@ test('backup: its toast with an import waiting behind it, the result sheet (and 
   try {
     const src = testInfo.outputPath('src');
     await importPaths(s.page, [fixedSizeCopy(path.join(FIXTURES, 'sample.pdf'), src, 1_500_000), h264(src)]);
-    const more = distinctPdfs(testInfo.outputPath('more'), 4);
+    const more = distinctPdfs(testInfo.outputPath('more'), 2);
     for (const p of more) fs.truncateSync(p, 1_000_000);
-    for (const [i, theme] of THEMES.entries()) {
+    const toastsGone = () => expect(s.page.locator('[data-pane="toasts"] .toast')).toHaveCount(0, { timeout: 15_000 });
+    for (const theme of THEMES) {
       await setTheme(s.page, theme);
+      await toastsGone(); // an earlier result toast would sit under the backup's (5 s), and the two themes must show the same stack
       await backupPause(s.app);
       await stubFolderPicker(s.app, documents);
       await runMenuCommand(s.app, 'file.backup');
       await expect.poll(() => backupWaiting(s.app)).not.toBeNull();
-      await importFiles(s, more.slice(2 * i, 2 * i + 2));
+      await importFiles(s, more.slice(0, 2));
       await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-job');
       await expect(s.page.getByTestId('backup-progress')).toHaveAttribute('data-state', 'running');
       await shoot(s.page, `toast-backup-jobs-${theme}`, { mask: [...dates(), s.page.getByTestId('backup-progress').locator('.t-file')] });
+      // The waiting import is cancelled, so the library keeps its two items and both themes back up (and show) the same.
+      await s.page.getByTestId('import-cancel').click();
+      await expect(s.page.getByTestId('import-progress')).toHaveCount(0);
       const sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
       await expect(sheet.getByTestId('backup-files')).toContainText('손상 없음');
       await shoot(sheet, `sheet-backup-${theme}`, { mask: sheetMasks(sheet) });

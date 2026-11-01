@@ -224,3 +224,15 @@ export const assetUrl = (assetId: string): string => `${APP_ORIGIN}/asset/${enco
  * spaces are U+00A0, so the list never breaks inside, nor starts a line with "·" ("(MP4 · MOV · WebM)").
  */
 export const VIDEO_FORMATS = 'MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM';
+
+/**
+ * A copy another app saved beside an item's read-only copy (M6 spec 6): `<제목> (수정본 YYYY-MM-DD HHmm).<확장자>` in
+ * derived/open/<assetId>/. The item panel names it back to main by `name` alone (R4: no path reaches the page).
+ */
+export interface EditedCopy {
+  /** The file name, NFC. */
+  name: string;
+  /** When the other app last wrote it (the file's modification time, ISO). */
+  modifiedAt: string;
+  size: number;
+}

@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { FIXTURES, KEY_CODE, backupPause, backupResume, backupWaiting, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, shellCalls, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubShell, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
-import { IS_MAC, allShots, cgWindowId, focusApp, fullScreenShot, pageShot, windowShotById, writeJson } from './capture';
+import { IS_MAC, allShots, cgWindowId, focusApp, fullScreenShot, movePointer, pageShot, windowShotById, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -624,6 +624,9 @@ test('M6 restore: its toast, the result sheet (macOS: a real sheet) and the one 
       // The fatal screen carries no data-theme (it follows the system scheme main set): the media query says it changed.
       await expect.poll(() => fatal.page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
       if (IS_MAC) await focusApp(fatal.app);
+      // The click on Finder에서 보기 left the pointer on it (a hover fill on one of the two buttons): the shots show the resting state.
+      await fatal.page.mouse.move(2, 2);
+      if (IS_MAC) await movePointer(512, 620);
       for (const e of await allShots(fatal.app, fatal.page, `m6-restore-4-fatal-${theme}`, `the fatal screen with Finder에서 보기 (dialogs.html?scene=fatal, ${theme})`)) {
         if (e.file === null && e.error) shotFailures.push({ name: `m6-restore-4-fatal-${theme}`, kind: e.kind, description: e.description, error: e.error });
       }

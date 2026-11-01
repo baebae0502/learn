@@ -57,9 +57,3 @@ export const duplicateMarks = (rows: readonly { id: string }[], model: Pick<Orga
   kept: model.duplicateKept,
   starts: groupStarts(rows, model.duplicateGroupOf),
 });
-
-/** How many groups a clean-up of these items' groups leaves: the groups none of them is in. */
-export function groupsLeftAfter(groups: readonly (readonly string[])[], chosen: readonly string[]): number {
-  const picked = new Set(chosen);
-  return groups.filter((g) => !g.some((id) => picked.has(id))).length;
-}

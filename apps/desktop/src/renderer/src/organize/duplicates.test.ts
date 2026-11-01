@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { duplicateMarks, groupRows, groupStarts, groupsLeftAfter, keptOf } from './duplicates';
+import { duplicateMarks, groupRows, groupStarts, keptOf } from './duplicates';
 import { item } from './testing';
 
 const GROUP: Record<string, number> = { p1: 0, p2: 0, p3: 0, q1: 1, q2: 1 };
@@ -38,14 +38,5 @@ describe('the line between groups', () => {
     const marks = duplicateMarks(rows('p2', 'p1', 'q1'), { duplicateKept: kept, duplicateGroupOf: groupOf });
     expect(marks.kept).toBe(kept);
     expect([...marks.starts]).toEqual(['q1']);
-  });
-});
-
-describe('groups left after a clean-up', () => {
-  it('counts the groups none of the chosen items is in', () => {
-    const groups = [['p1', 'p2', 'p3'], ['q1', 'q2']];
-    expect(groupsLeftAfter(groups, ['p2'])).toBe(1);
-    expect(groupsLeftAfter(groups, ['p2', 'q1'])).toBe(0);
-    expect(groupsLeftAfter(groups, ['x'])).toBe(2);
   });
 });

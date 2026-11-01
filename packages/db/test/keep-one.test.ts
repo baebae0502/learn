@@ -168,4 +168,19 @@ describe('undoKeepOne', () => {
     expect(repo.getItemDetail(a[0]).collections.map((c) => c.id)).toEqual([exam]);
     expect(repo.getItemDetail(a[0]).tags.map((t) => t.id)).toEqual([red]);
   });
+
+  it('is partial when one trashed item was restored on its own: the other comes back and the merge stays', () => {
+    const { a } = twoGroups();
+    const exam = collections.create({ name: '시험' }).id;
+    const red = tags.create('중요').id;
+    collections.addItems(exam, [a[1]]);
+    tags.assign(red, [a[2]]);
+    const { undo } = repo.keepOneOfDuplicates([a[0]]);
+    repo.restore([a[1]]);
+    expect(deletedAt(a[1])).toBeNull();
+    expect(repo.undoKeepOne(undo)).toEqual([a[2]]);
+    expect(deletedAt(a[2])).toBeNull();
+    expect(repo.getItemDetail(a[0]).collections.map((c) => c.id)).toEqual([exam]);
+    expect(repo.getItemDetail(a[0]).tags.map((t) => t.id)).toEqual([red]);
+  });
 });

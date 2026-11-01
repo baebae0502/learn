@@ -137,6 +137,14 @@ describe('the 실행 취소 toasts of what is purged (critique C-1)', () => {
     await actions.emptyTrash();
     expect(deps.closeToast).toHaveBeenLastCalledWith('another');
   });
+  it('the dispose trackUndo returns drops the entry: a later purge of those items closes nothing', async () => {
+    const { deps, actions } = setup();
+    const dispose = actions.trackUndo('keep-one-toast', ['x']);
+    dispose();
+    await actions.purge({ itemIds: ['x'], collectionIds: [] });
+    await actions.emptyTrash();
+    expect(deps.closeToast).not.toHaveBeenCalled();
+  });
   it('a cancelled sheet or a refused purge closes nothing', async () => {
     const no = setup({ confirmPurge: vi.fn(async () => false) });
     await no.actions.trashItems(['a']);

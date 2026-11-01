@@ -14,7 +14,7 @@ describe('the restore in this window (spec 9.1, P-3)', () => {
     expect(restoreResult(p({ outcome: 'done' }))).toBeNull();
     // A done run that names its folder is the one whose result sheet could not open: the toast says it finished and where.
     expect(restoreResult(p({ outcome: 'done', name: 'Learn 복원 2026-10-31 2141' }))).toEqual({
-      kind: 'info', title: '복원을 마쳤습니다', body: '결과 창을 열지 못했습니다. 새 라이브러리는 \u201cLearn 복원 2026-10-31 2141\u201d 폴더에 있습니다.', testId: 'restore-done',
+      kind: 'info', title: '복원을 마쳤습니다', body: '결과 창을 열지 못했습니다. 새\u00a0라이브러리는 ‘Learn 복원 2026-10-31 2141’ 폴더에 있습니다.', testId: 'restore-done',
     });
     expect(restoreRefused(new LearnError('VALIDATION_FAILED', '원인. 다음 행동.'))).toEqual({ kind: 'error', title: '복원하지 못했습니다', body: '원인. 다음 행동.', testId: 'restore-failed' });
   });

@@ -11,6 +11,7 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useNow } from '../useNow';
 import { multiSummary } from './summary';
+import { sharedTrashedAt } from './trashNote';
 
 /** Titles a multiple selection lists before "외 N개" (as InfoPane's). */
 const MULTI_TITLES = 8;
@@ -65,7 +66,7 @@ export function TrashSelection({ items, collections }: { items: readonly Trashed
     ],
     [items, collections, sort],
   );
-  const times = new Set([...items.map((i) => i.deletedAt), ...collections.map((c) => c.deletedAt)]);
+  const sharedAt = sharedTrashedAt([...items, ...collections]);
   const kind = one
     ? t.trash.panel.collectionKind(one.itemCount)
     : [items.length > 0 ? multiSummary(items) : '', collections.length > 0 ? t.trash.panel.collections(collections.length) : ''].filter(Boolean).join(' · ');
@@ -93,7 +94,7 @@ export function TrashSelection({ items, collections }: { items: readonly Trashed
         <div className="actions">
           <RestoreButton target={target} />
         </div>
-        <TrashNote at={times.size === 1 ? [...times][0]! : null} />
+        <TrashNote at={sharedAt} />
       </header>
     </div>
   );

@@ -451,8 +451,8 @@ if (!app.requestSingleInstanceLock()) {
     /** recovery:show: the main window asks for the automatic sheet itself, held as under any sheet it asks for (Q-8d). */
     const requestAutoCheck = (): void => {
       const win = liveMainWindow();
-          if (win) sendEvent(win.webContents, 'recovery:show', {});
-        };
+      if (win) sendEvent(win.webContents, 'recovery:show', {});
+    };
     const deps: IpcDeps = {
       getContext,
       appInfo: (): AppInfo => ({

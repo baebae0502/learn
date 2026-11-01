@@ -341,4 +341,35 @@
     flex: 1 1 auto;
     min-width: 0;
   }
+  /* 파일 section, last (M6 spec 6, library.html?state=edited): the copies another app changed — a card with a sub-head,
+     then each copy's name, date and two small buttons, which wrap where the panel is narrow. */
+  .inspector .edited-copies {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    margin-top: var(--space-12);
+    padding: var(--space-12);
+    border-radius: var(--radius-lg);
+    background: var(--fill-hover);
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+  }
+  .inspector .edited-copies .ec-head {
+    font-weight: var(--weight-medium); /* a sub-head under the section title's semibold */
+  }
+  .inspector .edited-copies .ec-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* local: a name and its date are one entry */
+    min-width: 0;
+  }
+  .inspector .edited-copies .ec-meta {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .inspector .edited-copies .ec-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4) var(--space-8);
+    margin-top: var(--space-4);
+  }
 }

@@ -55,6 +55,13 @@ export const inspector = {
   copied: '복사했습니다',
   copyFailedTitle: '복사하지 못했습니다',
   copyFailedBody: '클립보드에 쓸 수 없습니다. 창을 한 번 누른 뒤 다시 복사하세요.',
+  /** 다른 앱에서 고친 수정본 (M6 spec 6): the 파일 section's card, only while there is one. */
+  editedCopies: {
+    head: (n: number) => `다른\u00a0앱에서 고친 수정본 ${n}개`,
+    importNew: '새\u00a0자료로 가져오기',
+    /** Why 새 자료로 가져오기 is off for a copy already put in the queue (until that import is done). */
+    importing: '가져오는 중입니다',
+  },
   /** 정보 편집 (spec §5.3). A field's footnote: the cause, then what to write (design-spec 9). */
   editor: {
     form: '정보 편집',

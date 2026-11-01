@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dayKey, formatDate, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
+import { dayKey, formatDate, formatDateTime, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -98,5 +98,13 @@ describe('time of day follows the current time zone on every call', () => {
       const d = new Date(2026, 9, 21, h, m);
       expect(formatTimeOfDay(d)).toBe(old(d));
     }
+  });
+});
+
+describe('formatDateTime', () => {
+  it('an absolute date and time for a file another app saved (mockup library.html?state=edited)', () => {
+    expect(formatDateTime(at(2026, 10, 30, 14, 12))).toBe('2026. 10. 30. 오후 2:12');
+    expect(formatDateTime(at(2026, 1, 5, 0, 7))).toBe('2026. 1. 5. 오전 12:07');
+    expect(formatDateTime('not a date')).toBe('—');
   });
 });

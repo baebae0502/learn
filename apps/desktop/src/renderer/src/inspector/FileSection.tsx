@@ -7,6 +7,7 @@ import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { showToast } from '../ui/toasts';
+import { EditedCopies } from './EditedCopies';
 import { Section } from './Section';
 
 /** How long the copy button says 복사했습니다 (spec §5.3). */
@@ -51,6 +52,8 @@ export function FileSection({ detail }: { detail: ItemDetail }) {
           </dd>
         </div>
       </dl>
+      {/* Keyed by item: what was put in the queue from one item's card is not another's. */}
+      <EditedCopies key={detail.item.id} itemId={detail.item.id} />
     </Section>
   );
 }

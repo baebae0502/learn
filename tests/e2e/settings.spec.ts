@@ -226,9 +226,15 @@ test('a long library path gives way in the middle of 위치: the last folder\'s 
     const box = await where.evaluate((el) => {
       const head = el.querySelector('.path-head') as HTMLElement;
       const tail = el.querySelector('.path-tail') as HTMLElement;
-      return { headCut: head.scrollWidth > head.clientWidth, tailWhole: tail.scrollWidth <= tail.clientWidth, tailInside: tail.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5 };
+      return {
+        headCut: head.scrollWidth > head.clientWidth,
+        tailWhole: tail.scrollWidth <= tail.clientWidth,
+        tailInside: tail.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5,
+        // The box's gap belongs between the icon and the path, never inside the path.
+        joined: Math.abs(tail.getBoundingClientRect().left - head.getBoundingClientRect().right) < 0.5,
+      };
     });
-    expect(box).toEqual({ headCut: true, tailWhole: true, tailInside: true });
+    expect(box).toEqual({ headCut: true, tailWhole: true, tailInside: true, joined: true });
   } finally {
     await app.close();
   }

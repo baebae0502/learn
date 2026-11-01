@@ -168,7 +168,12 @@
   .settings .path-box .icon {
     color: var(--accent-text);
   }
-  /* The library path gives way in the middle: the folders take the ellipsis, the last name (with its separator) stays whole. */
+  /* The library path gives way in the middle: the folders take the ellipsis, the last name (with its separator) stays whole.
+     Head and tail share one flex child of the box, so the box's gap stays between the icon and the path. */
+  .settings .path-box .path-split {
+    display: flex;
+    min-width: 0;
+  }
   .settings .path-box .path-head {
     min-width: 0;
   }

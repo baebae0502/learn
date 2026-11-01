@@ -165,10 +165,12 @@ export function SettingsApp() {
                   <span className="hint ui-prose">{t.settings.locationHint}</span>
                 </span>
                 {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the folders give way in the middle, the last name stays whole. */}
-                <div className="path-box path-split" title={info.data.libraryRoot} data-testid="library-path">
+                <div className="path-box" title={info.data.libraryRoot} data-testid="library-path">
                   <Icon icon={Folder} size="sm" />
-                  <span className="path-head ellipsis">{libraryPath?.parent}</span>
-                  <span className="path-tail">{libraryPath?.name}</span>
+                  <span className="path-split">
+                    <span className="path-head ellipsis">{libraryPath?.parent}</span>
+                    <span className="path-tail">{libraryPath?.name}</span>
+                  </span>
                 </div>
                 <div className="row-actions">
                   <Button icon={FolderSearch} testId="library-reveal" onPress={() => void library(() => unwrap(api().app.showLibraryFolder()))}>

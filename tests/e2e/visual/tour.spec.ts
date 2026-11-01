@@ -8,7 +8,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, waitImportIdle, type Session,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -879,6 +879,69 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
 
 // M5: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
 // dots in the title cell, a selected row on the accent fill) and components.html?part=1 (chips, the eight colours).
+// M6: the trash. Pairs for the critic: library.html?state=trash (the sidebar row, a collection row on top, 삭제한 날짜 last,
+// 휴지통 비우기… in the head, a row's read-only panel), dialogs.html?scene=purge and ?scene=empty-trash (the app sheet),
+// reader-pdf.html?state=trashed (the stage notice) and components.html?part=1 (the undo toast).
+test('trash: the undo toast, the trash view and its read-only panel, the purge and empty-trash sheets, the reader notice', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The days in the table (added, trashed), the trash line's time, and what moves in the item panel.
+  const dates = () => [s.page.locator('[role="row"] :is([data-col="createdAt"], [data-col="deletedAt"])'), s.page.getByTestId('trash-note'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const conf = await createCollection(s.page, '학회 준비');
+    await createCollection(s.page, '발표', conf);
+    await addToCollection(s.page, conf, [items[0]!.id]);
+    const exam = await createTag(s.page, '시험 범위');
+    await assignTag(s.page, exam, [items[1]!.id]);
+    await setTheme(s.page, 'light');
+
+    // ⌘⌫ on one row: the undo toast names it. Shot at once: a success toast closes 5 s after it first paints.
+    await rowByTitle(s.page, items[1]!.title).click();
+    await runMenuCommand(s.app, 'item.trash');
+    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
+    await shoot(s.page, 'toast-trash-undo-light', { mask: dates() });
+
+    // The trash view: one collection row (발표 inside it), two items; the first trashed item selected, its read-only panel.
+    await trashItems(s.page, [items[2]!.id]);
+    await s.page.evaluate((id) => window.learn.collections.remove({ collectionId: id }), conf);
+    await specialRow(s.page, 'trash').click();
+    await rowByTitle(s.page, items[1]!.title).click();
+    await expect(s.page.getByTestId('inspector-restore')).toBeVisible();
+    await panelSettled(s.page, /^PDF/);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `trash-view-${theme}`, { mask: dates() });
+    }
+
+    // 영구 삭제… on that row, and 휴지통 비우기….
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const purge = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
+      await shoot(purge, `sheet-purge-${theme}`);
+      await closeSheet(purge, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'trash.empty')).toBe(true);
+      const empty = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'trash.empty'));
+      await shoot(empty, `sheet-empty-trash-${theme}`);
+      await closeSheet(empty, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'item.trash')).toBe(true);
+    }
+
+    // The reader: its item moved to the trash.
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'all').click();
+    await openItem(s.page, items[0]!.title);
+    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await trashItems(s.page, [items[0]!.id]);
+    await expect(s.page.getByTestId('reader-trashed')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `reader-trashed-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('organize: the tag selector with a filter and dim chips, the table dots with a selected row, and the filter that leaves nothing', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];

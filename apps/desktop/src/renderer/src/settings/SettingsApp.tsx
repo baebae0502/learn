@@ -15,6 +15,7 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Segmented } from '../ui/Segmented';
+import { splitLocation } from '../sheets/backupText';
 import { ThemePreview } from './ThemePreview';
 import { pickSettled, shownTheme, useApplyTheme } from './theme';
 
@@ -80,6 +81,7 @@ export function SettingsApp() {
     }
   };
 
+  const libraryPath = info.data ? splitLocation(homeRelative(info.data.libraryRoot, info.data.homeDir)) : null;
   const revealLabel = currentPlatform() === 'darwin' ? t.settings.reveal.darwin : t.settings.reveal.other;
   const revealBackup = async () => {
     setBackupError(null);
@@ -162,10 +164,11 @@ export function SettingsApp() {
                   <span>{t.settings.location}</span>
                   <span className="hint ui-prose">{t.settings.locationHint}</span>
                 </span>
-                {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the end is cut, never the middle. */}
-                <div className="path-box" title={info.data.libraryRoot} data-testid="library-path">
+                {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the folders give way in the middle, the last name stays whole. */}
+                <div className="path-box path-split" title={info.data.libraryRoot} data-testid="library-path">
                   <Icon icon={Folder} size="sm" />
-                  <span className="ellipsis">{homeRelative(info.data.libraryRoot, info.data.homeDir)}</span>
+                  <span className="path-head ellipsis">{libraryPath?.parent}</span>
+                  <span className="path-tail">{libraryPath?.name}</span>
                 </div>
                 <div className="row-actions">
                   <Button icon={FolderSearch} testId="library-reveal" onPress={() => void library(() => unwrap(api().app.showLibraryFolder()))}>

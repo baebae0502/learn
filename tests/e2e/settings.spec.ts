@@ -214,6 +214,26 @@ test('⌘, shows the settings window main prepared hidden once the main window w
   }
 });
 
+test('a long library path gives way in the middle of 위치: the last folder\'s name stays whole and the full path is the tooltip', async ({}, testInfo) => {
+  const lib = path.join(testInfo.outputPath('library-parent'), 'a-very-long-folder-name-'.repeat(4), 'and-another-long-one-'.repeat(3), 'Learn 라이브러리');
+  fs.mkdirSync(lib, { recursive: true });
+  const { app } = await launch(lib, testInfo.outputPath('userdata'));
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const where = settings.getByTestId('library-path');
+    await expect(where).toHaveAttribute('title', lib);
+    await expect(where.locator('.path-tail')).toHaveText(`${path.sep}Learn 라이브러리`);
+    const box = await where.evaluate((el) => {
+      const head = el.querySelector('.path-head') as HTMLElement;
+      const tail = el.querySelector('.path-tail') as HTMLElement;
+      return { headCut: head.scrollWidth > head.clientWidth, tailWhole: tail.scrollWidth <= tail.clientWidth, tailInside: tail.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5 };
+    });
+    expect(box).toEqual({ headCut: true, tailWhole: true, tailInside: true });
+  } finally {
+    await app.close();
+  }
+});
+
 test('R4: the renderer cannot set the library path; main picks, checks, confirms and relaunches', async ({}, testInfo) => {
   const [lib, ud] = dirs(testInfo);
   const target = testInfo.outputPath('other-library');

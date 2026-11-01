@@ -1379,3 +1379,54 @@ export const backupState = (app: ElectronApplication) => app.evaluate(() => (glo
 /** Until main's backup has ended (its last notice sent). */
 export const waitBackupIdle = (app: ElectronApplication) =>
   expect.poll(async () => (await backupState(app)).state, { message: 'the backup ended' }).toBe('idle');
+
+// ---- M6 restore ------------------------------------------------------------------------------------------------------
+
+/**
+ * Like stubFolderPicker, but the panel answers `answers` in turn (null: cancelled; past the last, cancelled): 백업에서
+ * 복원… asks twice, for the backup and for where to restore. Every call is recorded for folderPicks.
+ */
+export async function stubFolderPicks(app: ElectronApplication, answers: Array<string | null>): Promise<void> {
+  await app.evaluate(({ dialog }, list) => {
+    const g = globalThis as { __learnFolderPicks?: unknown[]; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    g.__learnRealOpenDialog ??= dialog.showOpenDialog;
+    g.__learnFolderPicks = [];
+    const queue = [...list];
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; message?: string; buttonLabel?: string; defaultPath?: string; properties?: string[] };
+      g.__learnFolderPicks!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        message: o.message ?? null,
+        buttonLabel: o.buttonLabel ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+      });
+      const answer = queue.length > 0 ? queue.shift()! : null;
+      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
+    }) as typeof dialog.showOpenDialog;
+  }, answers);
+}
+
+/** Main was asked to restart (E2E records it instead: Playwright cannot follow a new process). */
+export const relaunchRequested = (app: ElectronApplication): Promise<boolean> =>
+  app.evaluate(() => (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested ?? false);
+
+type WithRestoreHooks = {
+  __learnTest: {
+    restorePause(input: { at: 'afterCopy' | null }): void;
+    restoreResume(): void;
+    restoreWaiting(): string | null;
+    restoreState(): JobProgress;
+  };
+};
+/** The next restore holds its first copy once written, before it is read back, until restoreResume (null lifts it). */
+export const restorePause = (app: ElectronApplication, at: 'afterCopy' | null = 'afterCopy') =>
+  app.evaluate((_e, at) => (globalThis as unknown as WithRestoreHooks).__learnTest.restorePause({ at }), at);
+export const restoreResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreResume());
+/** The held copy's path inside the library being made, or null. */
+export const restoreWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreWaiting());
+export const restoreState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreState());
+/** Until main's restore has ended (its last notice sent). */
+export const waitRestoreIdle = (app: ElectronApplication) =>
+  expect.poll(async () => (await restoreState(app)).state, { message: 'the restore ended' }).toBe('idle');

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
-import { LearnError, RESTORE_COPY, newId, nowIso, toLearnError, type StorageMode } from '@learn/domain';
+import { LearnError, RESTORE_COPY, newId, nowIso, type StorageMode } from '@learn/domain';
 import { LATEST_SCHEMA_VERSION, LibraryRepository, currentVersion, migrate, openDatabase, snapshotDatabase, type AssetItem, type Db, type LibraryCounts } from '@learn/db';
 import { withManagedPath } from './asset-lock';
 import { fsyncDir, fsyncFile } from './fsync';

@@ -1113,6 +1113,13 @@ export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
   return r.data;
 }
 
+/** Moves items to the trash through the page's API (library.trash), as ⌘⌫ does; the number that moved. */
+export async function trashItems(page: Page, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.library.trash(input), { itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`library.trash failed: ${r.code}`);
+  return r.data;
+}
+
 /** How often main ran each IPC channel since launch (E2E only: ipc/register.ts counts, test-hooks.ts installs the counter). */
 export const ipcCalls = (app: ElectronApplication): Promise<Record<string, number>> =>
   app.evaluate(() => ({ ...((globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls ?? {}) }));
@@ -1139,7 +1146,7 @@ export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500)
 // ---- M5 sidebar and collections ------------------------------------------------------------------------------------
 
 /** A special view's row (spec 3.2): 내 라이브러리, 최근 연 자료, 미분류, 중복 항목. */
-export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates'): Locator => page.getByTestId(`nav-scope-${kind}`);
+export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates' | 'trash'): Locator => page.getByTestId(`nav-scope-${kind}`);
 /** A collection's row in the tree. */
 export const treeRow = (page: Page, collectionId: string): Locator => page.getByTestId(`nav-collection-${collectionId}`);
 

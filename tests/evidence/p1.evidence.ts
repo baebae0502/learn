@@ -331,9 +331,14 @@ test('M6 duplicates and edited copies: 남김 in secondary text (white on the fo
     await shots(s.page, `m6-11-edited-copy-${theme}`, `the item panel's 다른 앱에서 고친 수정본 card (${theme})`);
   }
   await setTheme('light');
-  // No duplicates left for the tests after this one.
-  await s.page.evaluate(() => window.learn.library.keepOneOfAllDuplicates());
-  await s.page.getByTestId('nav-scope-all').click();
+  // No duplicates left for the tests after this one: the view's own button, so the view after it is on record (T7 critique 2 다).
+  await s.page.getByTestId('nav-scope-duplicates').click();
+  await s.page.getByTestId('keep-all-duplicates').click();
+  await expect(s.page.getByTestId('nav-scope-duplicates')).toHaveCount(0);
+  await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+  await expect(s.page.getByTestId('undo-toast')).toHaveCount(0, { timeout: 12_000 }); // the picture is the view, not the toast
+  if (IS_MAC) await focusApp(s.app);
+  await shots(s.page, 'm6-11b-duplicates-cleaned-light', 'after 중복 N묶음 모두 정리: 내 라이브러리 is open and the sidebar has no 중복 항목 row (light)');
   save();
 });
 

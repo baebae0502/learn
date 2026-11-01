@@ -6,9 +6,9 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow,
+  FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
-  specialRow, stubOpenDialog, tagChip, treeRow,
+  specialRow, stubContextMenu, stubFolderPicker, stubOpenDialog, tagChip, treeRow, waitImportIdle,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -408,6 +408,94 @@ test('M5 keyboard only: ⇧⌘N → name → table → select → 컬렉션에 �
     await page.keyboard.press('Space');
     await expect(tagChip(page, important!)).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('item-row')).toHaveCount(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('M6 keyboard only: ⌘O → toast ends → F6 table → ↓ → ⌘⌫ → undo → ⌘⌫ → sidebar 휴지통 → 복원 → 백업 만들기 → 결과 시트 완료, with axe at every new stop', async ({}, testInfo) => {
+  const backups = testInfo.outputPath('backups');
+  fs.mkdirSync(backups, { recursive: true });
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const selected = page.locator('[data-testid="item-row"][aria-selected="true"]');
+  const rows = page.getByTestId('item-row');
+  /** Tab, at most `max` times, until the focus is on the control `testId` (a toast's button). */
+  const tabToControl = async (testId: string, max = 6) => {
+    for (let i = 0; i < max && (await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null)) !== testId; i++) await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null)).toBe(testId);
+  };
+  try {
+    // 1. ⌘O (파일 가져오기…, through its menu item): the run ends, the result toast names the count, the table has both rows.
+    await stubOpenDialog(app, [PDF, KO_PDF]);
+    await runMenuCommand(app, 'file.importManaged');
+    await expect(page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
+    await waitImportIdle(page);
+    await expect(rows).toHaveCount(2);
+    // A result toast closes by itself after 5 s; F6 below must find only what this journey puts up next.
+    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 15_000 });
+
+    // 2. F6 comes down on the table with its first row chosen; ⌘⌫ (휴지통으로 이동) leaves one row and offers 실행 취소.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await expect(selected).toHaveCount(1);
+    await runMenuCommand(app, 'item.trash');
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByTestId('trash-undo')).toContainText('휴지통으로 옮겼습니다');
+    await expectNoSeriousA11y(page, 'm6-undo-toast');
+
+    // 3. 실행 취소 by the keyboard: F6 reaches the toast, Tab the button, Enter presses it.
+    await f6To(page, 'toasts');
+    await tabToControl('undo-action');
+    await expectNoSeriousA11y(page, 'm6-undo-toast, the button focused');
+    await page.keyboard.press('Enter');
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
+
+    // 4. F6 pins the toast order (oldest first): with an import's progress toast up and then an undo toast, F6 lands on the import.
+    await f6To(page, 'content');
+    await expect(selected).toHaveCount(1);
+    await importPause(app, 'beforeCommit');
+    await stubOpenDialog(app, [MP4]);
+    await runMenuCommand(app, 'file.importManaged');
+    await expect.poll(() => importWaiting(app)).toBe('beforeCommit');
+    await expect(page.getByTestId('import-progress')).toBeVisible();
+    await runMenuCommand(app, 'item.trash');
+    await expect(page.getByTestId('trash-undo')).toBeVisible();
+    await page.locator('[data-pane="content"] [data-testid="item-row"]').first().focus();
+    await f6To(page, 'toasts');
+    expect(await focusedTestId(page), 'F6 lands on the oldest toast, the running import').toBe('import-progress');
+    await importResume(app);
+    await waitImportIdle(page);
+    await expect(page.getByTestId('import-done')).toHaveText('자료 1개를 가져왔습니다');
+    await expect(rows).toHaveCount(2); // three imported, one in the trash
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('1');
+
+    // 5. The sidebar: F6 lands on the current view's row, ↓ walks the special views to 휴지통, ↩ shows it. Its one row is the trashed one.
+    await f6To(page, 'sidebar');
+    for (let i = 0; i < 6 && (await focusedTestId(page)) !== 'nav-scope-trash'; i++) await page.keyboard.press('ArrowDown');
+    expect(await focusedTestId(page)).toBe('nav-scope-trash');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('toolbar-title')).toHaveText('휴지통');
+    await expect(rows).toHaveCount(1);
+    await expectNoSeriousA11y(page, 'm6-trash-view');
+
+    // 6. F6 → the table → its row → ⇧F10 opens the row's menu (stubbed: 복원 is picked): the trash empties, the view is the library again.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await stubContextMenu(app, '복원');
+    await page.keyboard.press('Shift+F10');
+    await expect(specialRow(page, 'trash')).toHaveCount(0);
+    await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    await expect(rows).toHaveCount(3);
+
+    // 7. 백업 만들기… (the menu bar cannot be opened by key, as in M5): the folder panel is stubbed; the result sheet's default button is 완료.
+    await stubFolderPicker(app, backups);
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.backup'));
+    await expect(sheet.getByTestId('backup-title')).toHaveText('백업을 만들었습니다');
+    await expect(sheet.getByTestId('backup-done')).toBeFocused();
+    await expectNoSeriousA11y(sheet, 'm6-backup-sheet');
+    await closeSheet(sheet, 'Enter');
+    expect(fs.readdirSync(backups)).toHaveLength(1);
   } finally {
     await app.close();
   }

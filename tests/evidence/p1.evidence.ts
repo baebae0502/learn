@@ -308,7 +308,10 @@ test('M6 duplicates and edited copies: 남김 in secondary text (white on the fo
   // An edited copy kept aside under its name and time, read when the panel shows the item again.
   const folder = path.join(tmp, 'library', 'derived', 'open', m1!.assetId);
   fs.mkdirSync(folder, { recursive: true });
-  fs.writeFileSync(path.join(folder, '분자생물학 6장 · 신호 전달 (수정본 2026-10-30 1412).pdf'), Buffer.concat([fs.readFileSync(molbio), Buffer.from('% edited in another app\n')]));
+  const aside = path.join(folder, '분자생물학 6장 · 신호 전달 (수정본 2026-10-30 1412).pdf');
+  fs.writeFileSync(aside, Buffer.concat([fs.readFileSync(molbio), Buffer.from('% edited in another app\n')]));
+  const savedAt = new Date('2026-10-30T05:12:00Z'); // the time in its name (오후 2:12 in Seoul): the card must not read older than the name says (T7 C-4)
+  fs.utimesSync(aside, savedAt, savedAt);
   await row(k1!.id).click();
   await row(m1!.id).click();
   const card = s.page.getByTestId('edited-copies');
@@ -318,10 +321,13 @@ test('M6 duplicates and edited copies: 남김 in secondary text (white on the fo
     const v = { head: await card.getByTestId('edited-copies-head').textContent(), buttons: await card.locator('button').allTextContents() };
     check(cardCheck, v.head === '다른 앱에서 고친 수정본 1개' && v.buttons.join('|') === `새 자료로 가져오기|${IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'}`, v);
   });
-  await card.scrollIntoViewIfNeeded();
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(theme);
     if (IS_MAC) await focusApp(s.app);
+    // The panel's end margin under the card shows (T7 C-4): scroll whatever scrolls around the card to its bottom.
+    await card.evaluate((el) => {
+      for (let p = el.parentElement; p; p = p.parentElement) if (p.scrollHeight > p.clientHeight && /auto|scroll/.test(getComputedStyle(p).overflowY)) p.scrollTop = p.scrollHeight;
+    });
     await shots(s.page, `m6-11-edited-copy-${theme}`, `the item panel's 다른 앱에서 고친 수정본 card (${theme})`);
   }
   await setTheme('light');

@@ -69,7 +69,7 @@ describe('the queue on a real library (spec 3.5, 15)', () => {
     expect(lib.repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
     expect(fs.readdirSync(lib.layout.stagingDir)).toEqual([]);
     expect(filesUnder(lib.layout.assetsDir)).toHaveLength(1);
-    expect(queue.state()).toEqual(IDLE_IMPORT_STATE);
+    expect(queue.state()).toEqual({ ...IDLE_IMPORT_STATE, cancels: 1 });
   });
 
   it('a duplicate the real importer finds is asked at the end; 새 자료로 추가 adds an item sharing the copy, filed into the collection', async () => {

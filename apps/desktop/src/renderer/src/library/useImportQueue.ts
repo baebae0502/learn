@@ -67,7 +67,7 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
           await settledWithin(busyScreenSettled(), BUSY_MIN_MS + 200);
         },
         collectionName: (id) => names.current(id),
-        cancelCount: () => useJobProgress.getState().cancels,
+        cancelCount: () => useJobProgress.getState().import.cancels,
         takeQuiet: takeQuietImport,
         toast: importProgressToast,
         mark: perfMark,

@@ -377,7 +377,6 @@ export function MainWindow(_props: { info: AppInfo }) {
       void imports.pick(mode, into);
     },
     cancelImport: () => {
-      useJobProgress.getState().noteCancel();
       void unwrap(api().library.cancelImport()).catch(actionFailed);
     },
     backup: () => void startBackup(),

@@ -189,9 +189,14 @@ export interface ImportQueueState {
   /** 0–100 from the same progress as `done` and `bytesDone`: never 100 while the run is going. */
   percent: number;
   current: string | null;
+  /**
+   * How many times 취소 reached main since it started, whichever way it came (the toast, the menu, the palette, a direct call).
+   * A drop handed over in chunks stops at a change: the cancelled run's rest must not start a run of its own.
+   */
+  cancels: number;
 }
 
-export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null });
+export const IDLE_IMPORT_STATE: Readonly<ImportQueueState> = Object.freeze<ImportQueueState>({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null, cancels: 0 });
 
 /**
  * 라이브러리 점검 (M6 spec 7, P-16): what the library folder holds that the app left behind or lost. Keys inside the

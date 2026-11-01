@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -708,6 +708,58 @@ test('settings window (light, dark, focus, not key, a refused folder), compact d
     await s.page.evaluate(() => window.learn.prefs.set({ density: 'regular', fontSize: 15 }));
     await expect(s.page.locator('html')).toHaveAttribute('data-font-size', '15');
     await shoot(s.page, 'font-15-light', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
+// 백업 (spec 8; dialogs.html?scene=jobs, ?scene=backup, ?scene=backup-missing, settings.html): the backup's toast with an
+// import waiting behind it, the result sheet, 마지막 백업. Files of fixed sizes, so the bar and the sizes read the same
+// everywhere; the minute (the folder's name, the sheet's first line, the settings date) is masked.
+test('backup: its toast with an import waiting behind it, the result sheet (and with a lost copy), 마지막 백업 in settings', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const dir = path.join(home, 'Library', 'Application Support', 'Learn');
+  const s = await launchTour(dir, { HOME: home });
+  const documents = path.join(home, 'Documents');
+  fs.mkdirSync(documents, { recursive: true });
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const sheetMasks = (sheet: Page) => [sheet.getByTestId('backup-when'), sheet.getByTestId('backup-location')];
+  try {
+    const src = testInfo.outputPath('src');
+    await importPaths(s.page, [fixedSizeCopy(path.join(FIXTURES, 'sample.pdf'), src, 1_500_000), h264(src)]);
+    const more = distinctPdfs(testInfo.outputPath('more'), 4);
+    for (const p of more) fs.truncateSync(p, 1_000_000);
+    for (const [i, theme] of THEMES.entries()) {
+      await setTheme(s.page, theme);
+      await backupPause(s.app);
+      await stubFolderPicker(s.app, documents);
+      await runMenuCommand(s.app, 'file.backup');
+      await expect.poll(() => backupWaiting(s.app)).not.toBeNull();
+      await importFiles(s, more.slice(2 * i, 2 * i + 2));
+      await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-job');
+      await expect(s.page.getByTestId('backup-progress')).toHaveAttribute('data-state', 'running');
+      await shoot(s.page, `toast-backup-jobs-${theme}`, { mask: [...dates(), s.page.getByTestId('backup-progress').locator('.t-file')] });
+      const sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
+      await expect(sheet.getByTestId('backup-files')).toContainText('손상 없음');
+      await shoot(sheet, `sheet-backup-${theme}`, { mask: sheetMasks(sheet) });
+      await closeSheet(sheet, 'Enter');
+      await waitImportIdle(s.page);
+      const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+      await expect(settings.getByTestId('last-backup-date')).toBeVisible();
+      await shoot(settings, `settings-backup-${theme}`, { mask: [settings.getByTestId('last-backup-date')] });
+      await settings.close();
+      await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    }
+    // A managed copy gone from the library: the sheet says it was kept without its file (?scene=backup-missing).
+    await setTheme(s.page, 'light');
+    const assets = path.join(dir, 'library', 'assets');
+    const shard = fs.readdirSync(assets).sort()[0]!;
+    fs.rmSync(path.join(assets, shard, fs.readdirSync(path.join(assets, shard))[0]!));
+    await stubFolderPicker(s.app, documents);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
+    await expect(sheet.getByTestId('backup-missing-note')).toBeVisible();
+    await shoot(sheet, 'sheet-backup-missing-light', { mask: sheetMasks(sheet) });
+    await closeSheet(sheet, 'Enter');
   } finally {
     await s.app.close();
   }
@@ -1451,6 +1503,11 @@ test('import progress toast: running, then the result in its place after 취소'
         await progress.getByTestId('import-cancel').focus();
         await shoot(s.page, 'toast-import-focus-cancel-light', { mask: dates(), keepPointer: true });
         await progress.getByTestId('import-cancel').blur(); // a focus the keyboard left in the toast would keep the result from closing by itself
+        // F6 lands on the toast itself: its ring is the whole toast's outline (Task 4 review Open-1).
+        await progress.focus();
+        await expect(progress).toHaveAttribute('data-focus-visible', 'true');
+        await shoot(s.page, 'toast-import-focus-toast-light', { mask: dates(), keepPointer: true });
+        await progress.blur();
       }
       // Not the button: pressing it takes the focus into the toast and leaves it there when the result replaces the button.
       await s.page.evaluate(() => window.learn.library.cancelImport());

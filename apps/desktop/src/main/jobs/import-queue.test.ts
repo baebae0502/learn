@@ -199,10 +199,10 @@ describe('progress (spec 3.3)', () => {
     const done = h.nextReport();
     h.queue.enqueue(batch(['/in/folder/a.pdf', '/in/folder/b.pdf']));
     await a.started;
-    await vi.waitFor(() => expect(h.queue.state()).toEqual({ state: 'running', done: 0, total: 2, bytesDone: 20, bytesTotal: 400, percent: 5, current: 'a.pdf' }));
+    await vi.waitFor(() => expect(h.queue.state()).toEqual({ state: 'running', done: 0, total: 2, bytesDone: 20, bytesTotal: 400, percent: 5, current: 'a.pdf', cancels: 0 }));
     a.release();
     await b.started;
-    expect(h.queue.state()).toEqual({ state: 'running', done: 1, total: 2, bytesDone: 160, bytesTotal: 400, percent: 40, current: 'b.pdf' });
+    expect(h.queue.state()).toEqual({ state: 'running', done: 1, total: 2, bytesDone: 160, bytesTotal: 400, percent: 40, current: 'b.pdf', cancels: 0 });
     b.release();
     await done;
     await vi.waitFor(() => expect(h.states.at(-1)).toEqual(IDLE_IMPORT_STATE));
@@ -379,7 +379,7 @@ describe('취소 (spec 3.5)', () => {
     expect(fake.calls.map((c) => c.path)).toEqual(['/in/d1.pdf', '/in/a.pdf', '/in/b.pdf']);
     expect(fake.calls[2]!.opts.signal?.aborted).toBe(true);
     expect(h.questions).toEqual([]);
-    expect(h.queue.state()).toEqual(IDLE_IMPORT_STATE);
+    expect(h.queue.state()).toEqual({ ...IDLE_IMPORT_STATE, cancels: 1 });
   });
 
   it('a file that committed before it saw the stop still counts', async () => {
@@ -432,10 +432,47 @@ describe('취소 (spec 3.5)', () => {
     expect(fake.calls.some((c) => c.opts.allowDuplicate)).toBe(false);
   });
 
+  it("취소 of the add that follows a duplicate choice leaves that file untouched too: the count says 2 of 2, not 1", async () => {
+    const fake = fakeImporter((p, o) => (o.allowDuplicate ? imported(p) : duplicate(p, 'e-1')));
+    let adding: ReturnType<typeof fake.hold> | null = null;
+    const h = setup({
+      importer: fake,
+      deps: {
+        ask: async () => {
+          adding = fake.hold('/in/d1.pdf'); // the add of this file is held, the duplicate check has passed
+          return { choice: 'add', applyToRest: false, askedOn: 1 };
+        },
+      },
+    });
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/d1.pdf', '/in/d2.pdf']));
+    await vi.waitFor(() => expect(adding).not.toBeNull());
+    await adding!.started;
+    h.queue.cancel();
+    expect(await done).toEqual(report({ requested: 2, cancelled: true, untouched: 2 }));
+  });
+
   it('취소 with nothing running does nothing', () => {
     const h = setup();
     h.queue.cancel();
     expect(h.reports).toEqual([]);
+  });
+
+  it('counts every 취소 that reaches it, whoever asks, and tells at once (a drop in chunks stops at the change)', async () => {
+    const h = setup();
+    expect(h.queue.state().cancels).toBe(0);
+    h.queue.cancel(); // nothing running: still asked for
+    expect(h.queue.state().cancels).toBe(1);
+    expect(h.states.at(-1)?.cancels).toBe(1);
+    const hold = h.fake.hold('/in/a.pdf');
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.pdf']));
+    await hold.started;
+    expect(h.queue.state().cancels).toBe(1);
+    h.queue.cancel();
+    await done;
+    expect(h.queue.state().cancels).toBe(2);
+    expect(h.states.at(-1)?.cancels).toBe(2);
   });
 });
 

@@ -159,10 +159,12 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
   let phase: 'running' | 'waiting-choice' | 'waiting-job' = 'running';
   /** The lane job working through the queue; null when none is asked for. */
   let job: Promise<void> | null = null;
+  /** Every 취소 that reached the queue (ImportQueueState.cancels). */
+  let cancelsAsked = 0;
 
   function state(): ImportQueueState {
     const run = active ?? stopping;
-    if (run === null) return { ...IDLE_IMPORT_STATE };
+    if (run === null) return { ...IDLE_IMPORT_STATE, cancels: cancelsAsked };
     const mine = current !== null && current.run === run ? current : null;
     // The file under way: its hash is the first half of its work, the copy and the commit the second.
     const bytesDone = Math.min(run.bytesTotal, run.bytesFinished + Math.floor((mine?.read ?? 0) / 2));
@@ -175,6 +177,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       bytesTotal: run.bytesTotal,
       percent: Math.min(99, Math.floor(byBytes * 100)),
       current: mine?.name ?? null,
+      cancels: cancelsAsked,
     };
   }
 
@@ -402,7 +405,12 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
         if (choice === 'open') run.openIn = answer.askedOn;
       }
       if (choice === 'open') run.report.openItemId = dup.existingItemId;
-      else if (choice === 'add') await take(entry, await importOnce(entry, laneSignal, { allowDuplicate: true }));
+      else if (choice === 'add') {
+        const outcome = await importOnce(entry, laneSignal, { allowDuplicate: true });
+        await take(entry, outcome);
+        // An add stopped by 취소 is left untouched, as a file stopped before its duplicate check is.
+        if (outcome.status === 'failed' && outcome.code === 'CANCELLED') return;
+      }
       else if (batch.collectionId !== null) {
         const ids = run.skipped.get(batch.collectionId) ?? [];
         ids.push(dup.existingItemId);
@@ -466,7 +474,13 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
 
   return {
     enqueue,
-    cancel,
+    // The person's 취소, counted where it lands (the quit's stop goes through the inner cancel, uncounted).
+    cancel() {
+      cancelsAsked++;
+      cancel();
+      progress.request();
+      progress.flush();
+    },
     state,
     onProgress(cb) {
       progressListeners.add(cb);

@@ -280,6 +280,20 @@ function closeOnEscape(e: KeyboardEvent): void {
 
 const focusReturn = toastFocusReturn(() => void focusPaneNamed('content'));
 
+/**
+ * A toast that goes while the focus is on it hands the focus on first (toastFocus.ts): the next toast, else the table. The
+ * layout cleanup of its item runs while its element is still in the page, so the focus can still be read.
+ */
+function useHandFocusOnClose(toastKey: string): void {
+  useLayoutEffect(
+    () => () => {
+      const el = [...document.querySelectorAll<HTMLElement>('[data-toast-key]')].find((e) => e.dataset['toastKey'] === toastKey);
+      if (el) focusReturn.closing(el);
+    },
+    [toastKey],
+  );
+}
+
 /** The inside of a plain toast; a job toast that its result took over draws the same. */
 function PlainToastBody({ toastKey, data, tookOver }: { toastKey: string; data: ToastData; tookOver?: boolean }) {
   // A job's result replaces its progress in place: the focus on 취소 goes with the button, so it is given back here.
@@ -347,6 +361,7 @@ function JobProgressBody({ text, onCancel }: { text: JobToastText; onCancel: () 
 
 /** One job's toast: the same <Toast> from its first progress to its result, so it never closes and comes back. */
 function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: ProgressJob }) {
+  useHandFocusOnClose(toast.key);
   const view = useJobProgress((s) => s.views[toast.key]);
   const live = useJobProgress((s) => liveState(s, job));
   const ahead = useJobProgress((s) => jobAhead(s, job));
@@ -361,6 +376,16 @@ function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: P
   return (
     <Toast toast={toast} className="toast" data-kind="progress" data-state={text.state} data-toast-key={toast.key} data-testid={text.testId}>
       <JobProgressBody text={text} onCancel={() => cancelJob(job)} />
+    </Toast>
+  );
+}
+
+/** A plain toast in the region (the item keeps the hook in one place). */
+function PlainToastItem({ toast, data }: { toast: QueuedToast<ToastContent>; data: ToastData }) {
+  useHandFocusOnClose(toast.key);
+  return (
+    <Toast toast={toast} className="toast" data-kind={data.kind} data-toast-key={toast.key} data-testid={data.testId ?? 'toast'}>
+      <PlainToastBody toastKey={toast.key} data={data} />
     </Toast>
   );
 }
@@ -384,9 +409,7 @@ export function Toasts() {
           toast.content.kind === 'job' ? (
             <JobToastItem toast={toast} job={toast.content.job} />
           ) : (
-            <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
-              <PlainToastBody toastKey={toast.key} data={toast.content} />
-            </Toast>
+            <PlainToastItem toast={toast} data={toast.content} />
           )
         }
       </ToastRegion>

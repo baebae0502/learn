@@ -20,14 +20,11 @@ export interface JobProgressState {
   quiet: boolean;
   /** Job toasts that stopped following their job, by toast key: their run's last state, then their result. */
   views: Readonly<Record<string, JobToastView>>;
-  /** How many times 취소 was asked for here: a drop still being handed over in chunks stops at the next one. */
-  cancels: number;
   setImport(state: ImportQueueState): void;
   setBackup(progress: JobProgress): void;
   addSending(delta: number): void;
   addSettling(delta: number): void;
   setQuiet(quiet: boolean): void;
-  noteCancel(): void;
   setView(key: string, view: JobToastView | undefined): void;
 }
 
@@ -39,7 +36,6 @@ export const useJobProgress = create<JobProgressState>()((set) => ({
   shownTotal: 0,
   quiet: false,
   views: {},
-  cancels: 0,
   setBackup: (backup) => set({ backup }),
   setImport: (state) => set((s) => ({ import: state, shownTotal: state.state !== 'idle' ? state.total : s.shownTotal })),
   addSending: (delta) =>
@@ -49,7 +45,6 @@ export const useJobProgress = create<JobProgressState>()((set) => ({
     }),
   addSettling: (delta) => set((s) => ({ settling: Math.max(0, s.settling + delta) })),
   setQuiet: (quiet) => set({ quiet }),
-  noteCancel: () => set((s) => ({ cancels: s.cancels + 1 })),
   setView: (key, view) =>
     set((s) => {
       const views = { ...s.views };
@@ -150,6 +145,5 @@ function describeBackup(s: JobProgress, ahead: AheadJob): JobToastText {
 
 /** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
 export function cancelJob(job: ProgressJob): void {
-  if (job === 'import') useJobProgress.getState().noteCancel();
   void (job === 'import' ? api().library.cancelImport() : api().backup.cancel());
 }

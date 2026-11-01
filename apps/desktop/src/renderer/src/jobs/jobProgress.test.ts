@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
-import { describeJob, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
+import { cancelJob, describeJob, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
 
 const state = (over: Partial<ImportQueueState>): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', ...over });
 afterEach(() => {
@@ -95,5 +95,22 @@ describe('the backup\'s progress toast (spec 8.1, dialogs.html?scene=jobs)', () 
     expect(jobAhead(s(), 'backup')).toBeNull();
     s().setImport(state({ total: 2 }));
     expect(jobAhead(s(), 'backup')).toBe('import');
+  });
+});
+
+describe('the toast\'s 취소 reaches main and counts nothing here (the count is main\'s, ImportQueueState.cancels)', () => {
+  it('an import\'s goes to library.cancelImport, a backup\'s to backup.cancel', () => {
+    const cancelImport = vi.fn(async () => ({ ok: true as const, data: undefined }));
+    const cancelBackup = vi.fn(async () => ({ ok: true as const, data: undefined }));
+    vi.stubGlobal('window', { learn: { library: { cancelImport }, backup: { cancel: cancelBackup } } });
+    try {
+      cancelJob('import');
+      expect([cancelImport.mock.calls.length, cancelBackup.mock.calls.length]).toEqual([1, 0]);
+      cancelJob('backup');
+      expect([cancelImport.mock.calls.length, cancelBackup.mock.calls.length]).toEqual([1, 1]);
+      expect(useJobProgress.getState()).not.toHaveProperty('cancels');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

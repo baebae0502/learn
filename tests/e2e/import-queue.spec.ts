@@ -6,8 +6,8 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  clickToCloseSheet, closeSheet, distinctPdfs, drag, dropSource, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, launch,
-  mainWindow, menuItemEnabled, releaseJob, rowByTitle, runMenuCommand, runPalette, waitImportIdle,
+  backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, distinctPdfs, drag, dropSource, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, launch,
+  mainWindow, menuItemEnabled, releaseJob, rowByTitle, runMenuCommand, runPalette, stubFolderPicker, waitBackupIdle, waitImportIdle,
 } from './helpers';
 
 /** A file that imports as a PDF (sniffed by its header), `bytes` long, with content of its own. */
@@ -290,6 +290,86 @@ test('the empty library\'s busy screen counts the queue: 2 becomes 3 with a seco
     await importResume(s.app);
     await expect(s.page.getByTestId('item-row')).toHaveCount(3);
     await expect(s.page.getByTestId('import-done')).toHaveText('자료 3개를 가져왔습니다');
+    await waitImportIdle(s.page);
+  } finally {
+    await s.app.close();
+  }
+});
+
+/** The focused element's own outline, as drawn: what a keyboard user sees as the ring. */
+const focusRing = (page: import('@playwright/test').Page) =>
+  page.evaluate(() => {
+    const el = document.activeElement as HTMLElement;
+    const style = getComputedStyle(el);
+    return { testId: el.dataset['testid'] ?? null, isToast: el.matches('.toast'), inToasts: el.closest('[data-pane="toasts"]') !== null, style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) };
+  });
+
+test('F6 into a job toast shows a focus ring on what it lands on (M6 task 4 review, Open-1)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [first, ...more] = distinctPdfs(testInfo.outputPath('src'), 3);
+    await importPaths(s.page, [first!]);
+    await importPause(s.app, 'beforeCommit');
+    await importFiles(s, more);
+    await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+    await expect(toast(s.page)).toBeVisible();
+    await s.page.getByTestId('item-row').first().click(); // the pointer was the last input, as it is when the user reaches for F6
+    for (let i = 0; i < 4 && !(await focusRing(s.page)).inToasts; i++) await s.page.keyboard.press('F6');
+    const ring = await focusRing(s.page);
+    expect(ring.inToasts).toBe(true);
+    expect(ring.style).not.toBe('none');
+    expect(ring.width).toBeGreaterThan(0);
+    await importResume(s.app);
+    await waitImportIdle(s.page);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a job toast that closes with no result while 취소 has the focus hands the focus on: the next toast if one is left, else the table (M6 task 4 review, N1)', async ({}, testInfo) => {
+  const parent = testInfo.outputPath('backups');
+  fs.mkdirSync(parent, { recursive: true });
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const where = () =>
+    s.page.evaluate(() => ({
+      body: document.activeElement === document.body,
+      inContent: document.querySelector('[data-pane="content"]')?.contains(document.activeElement) ?? false,
+      inToasts: document.querySelector('[data-pane="toasts"]')?.contains(document.activeElement) ?? false,
+      inBackupToast: document.activeElement?.closest('[data-testid="backup-progress"]') != null,
+    }));
+  const startBackup = async () => {
+    await backupPause(s.app);
+    await stubFolderPicker(s.app, parent);
+    await runMenuCommand(s.app, 'file.backup');
+    await expect.poll(() => backupWaiting(s.app)).not.toBeNull();
+    await expect(s.page.getByTestId('backup-progress')).toBeVisible();
+  };
+  try {
+    const [a, b, ...more] = distinctPdfs(testInfo.outputPath('src'), 4);
+    await importPaths(s.page, [a!, b!]);
+
+    // Nothing else on screen: the table has the focus afterwards (the done backup's sheet speaks for it; no result toast).
+    await startBackup();
+    await s.page.getByTestId('backup-progress').getByTestId('backup-cancel').focus();
+    await expect(s.page.getByTestId('backup-cancel')).toBeFocused();
+    let sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
+    await expect(s.page.getByTestId('backup-progress')).toHaveCount(0);
+    expect(await where()).toMatchObject({ body: false, inContent: true });
+    await closeSheet(sheet, 'Enter');
+    await waitBackupIdle(s.app);
+
+    // An import waits behind the backup, so its toast is still there when the backup's goes: the focus moves to it.
+    await startBackup();
+    await importPause(s.app, 'beforeCommit');
+    await importFiles(s, more);
+    await expect(toast(s.page)).toHaveAttribute('data-state', 'waiting-job');
+    await s.page.getByTestId('backup-progress').getByTestId('backup-cancel').focus();
+    await expect(s.page.getByTestId('backup-cancel')).toBeFocused();
+    sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
+    await expect(s.page.getByTestId('backup-progress')).toHaveCount(0);
+    expect(await where()).toMatchObject({ body: false, inToasts: true, inBackupToast: false });
+    await closeSheet(sheet, 'Enter');
+    await importResume(s.app);
     await waitImportIdle(s.page);
   } finally {
     await s.app.close();

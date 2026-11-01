@@ -8,6 +8,10 @@ export interface ToastFocusEnv {
   fallback(): void;
   /** The focus left the region without a blur event: tell the region's own focus hold that it ended. */
   release(to: Element | null): void;
+  /** `el` is the toast or inside it. */
+  holds(toast: Element, el: Element | null): boolean;
+  /** Another toast of the region than this one, if one is left. */
+  another(toast: Element): Element | null;
 }
 
 /**
@@ -41,6 +45,25 @@ export function createToastFocusReturn(env: ToastFocusEnv) {
       else env.fallback();
       env.release(env.active());
     },
+    /**
+     * A toast is about to go and the focus is on it: a removed button sends no blur, so the focus would fall to the page
+     * and the region would keep its hold. It moves to the next toast if one is left (the region keeps the focus), else
+     * back to where it came from, else the main content.
+     */
+    closing(toast: Element): void {
+      if (!env.holds(toast, env.active())) return;
+      const next = env.another(toast);
+      if (next) {
+        env.focus(next);
+        return;
+      }
+      const to = origin;
+      inside = false;
+      origin = null;
+      if (to && env.connected(to) && !env.inRegion(to)) env.focus(to);
+      else env.fallback();
+      env.release(env.active());
+    },
   };
 }
 
@@ -54,6 +77,8 @@ export const toastFocusReturn = (fallback: () => void) =>
     connected: (el) => el.isConnected,
     focus: (el) => (el as HTMLElement).focus(),
     fallback,
+    holds: (toast, el) => el !== null && toast.contains(el),
+    another: (toast) => [...(regionEl()?.querySelectorAll('.toast') ?? [])].find((el) => el !== toast && !el.contains(toast)) ?? null,
     release: (to) => {
       // RAC's useToastRegion ends its hold on a focusout of the region that goes elsewhere; the removed button sent none.
       regionEl()?.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: to }));

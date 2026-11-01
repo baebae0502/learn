@@ -50,6 +50,8 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
   focusPane: vi.fn(),
+  keepOneOfDuplicates: vi.fn(),
+  keepAllDuplicates: vi.fn(),
   cancelImport: vi.fn(),
   modal: false,
   ...over,
@@ -444,5 +446,20 @@ describe('the trash commands (P-10, P-11)', () => {
     expect(yieldsToText('trash.empty')).toBe(true);
     expect(yieldsToText('library.find')).toBe(false);
     expect(yieldsToText('item.restore')).toBe(false);
+  });
+  it('하나만 남기고 휴지통으로 runs on the rows handed over, in 중복 항목 only; 모두 정리 needs two groups; the count is reported (M6 spec 5)', () => {
+    const dupes = env({ scope: 'duplicates', targetsOf: available, duplicateGroups: 2 });
+    expect(runCommand('duplicates.keepOne', dupes, { itemIds: [ID, OTHER] })).toBe(true);
+    expect(dupes.keepOneOfDuplicates).toHaveBeenCalledWith([ID, OTHER]);
+    const all = env({ targetsOf: available, duplicateGroups: 2 });
+    expect(runCommand('duplicates.keepOne', all, { itemIds: [ID] })).toBe(false);
+    expect(runCommand('duplicates.keepOneAll', all)).toBe(true);
+    expect(all.keepAllDuplicates).toHaveBeenCalledOnce();
+    expect(runCommand('duplicates.keepOneAll', env({ duplicateGroups: 1 }))).toBe(false);
+    expect(contextOf(all)).toMatchObject({ duplicateGroups: 2 });
+    expect(contextOf(env())).not.toHaveProperty('duplicateGroups');
+    const picked = env({ scope: 'duplicates' });
+    expect(runPicked({ commandId: 'duplicates.keepOne' }, picked, { itemIds: [OTHER] })).toBe(true);
+    expect(picked.keepOneOfDuplicates).toHaveBeenCalledWith([OTHER]);
   });
 });

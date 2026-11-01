@@ -52,6 +52,10 @@ export interface CommandEnv extends CommandContextState {
   addToCollection(itemIds: readonly string[], args: CommandArgs): void;
   /** 이 컬렉션에서 빼기: out of the collection viewed and below it; the toast offers 실행 취소. */
   removeFromCollection(itemIds: readonly string[]): void;
+  /** 하나만 남기고 휴지통으로: each group of these items keeps its earliest import; the toast offers 실행 취소 (spec 5). */
+  keepOneOfDuplicates(itemIds: readonly string[]): void;
+  /** 중복 N묶음 모두 정리. */
+  keepAllDuplicates(): void;
   /** The trash view's selected rows, items and collections apart (P-10): what 복원 and 영구 삭제… act on from a menu or the palette. */
   trashSelection(): TrashRows;
   /** 휴지통으로 이동 ⌘⌫ (spec 4.1): at once, with 실행 취소. */
@@ -146,6 +150,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'collection.rename': (env, t) => env.renameCollection(collectionOf(t)),
   'collection.importInto': (env, t) => env.importFiles('managed', collectionOf(t)),
   'collection.delete': (env, t) => env.deleteCollection(collectionOf(t)),
+  'duplicates.keepOne': (env, target) => env.keepOneOfDuplicates(target.itemIds ?? []),
+  'duplicates.keepOneAll': (env) => env.keepAllDuplicates(),
   'tag.color1': colorAt(1),
   'tag.color2': colorAt(2),
   'tag.color3': colorAt(3),
@@ -202,6 +208,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
+    ...(env.duplicateGroups !== undefined ? { duplicateGroups: env.duplicateGroups } : {}),
   };
 }
 

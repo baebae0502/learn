@@ -48,7 +48,7 @@ import { Shell } from '../shell/Shell';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
-import { membershipCommands } from '../organize/actions';
+import { duplicateActions, membershipCommands } from '../organize/actions';
 import type { OrganizeModel } from '../organize/model';
 import { SCOPE_ALL } from '../organize/scope';
 import { useRestoreView } from '../organize/useRestoreView';
@@ -286,6 +286,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
   const scopeKind = scopeView.scope.kind;
   const collectionCount = scopeView.model?.collectionCount ?? 0;
+  // 중복 N묶음 모두 정리 needs two groups and names the count (a number, so the reported context stays flat).
+  const duplicateGroupCount = scopeView.model?.duplicateGroups.length ?? 0;
   const trashCount = scopeView.model?.trashCount ?? 0;
   // Whether a query is typed, not what it found: the answer follows every keystroke, this only turns over when the field
   // empties or fills.
@@ -327,6 +329,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionTagPositions: sharedTagPositions,
     scope: scopeKind,
     collectionCount,
+    duplicateGroups: duplicateGroupCount,
     tagPositions,
     tagFilterCount: tagCount,
     searchActive: searching,
@@ -377,6 +380,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     editInfo: startEditing,
     addToCollection: membershipCommands.add,
     removeFromCollection: (itemIds) => void membershipCommands.remove(itemIds),
+    keepOneOfDuplicates: (itemIds) => void duplicateActions.keepOne(itemIds),
+    keepAllDuplicates: () => void duplicateActions.keepAll(),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     focusPane,
@@ -387,7 +392,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

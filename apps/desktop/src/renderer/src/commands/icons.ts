@@ -1,4 +1,4 @@
-import { ArchiveRestore, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArchiveRestore, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -24,6 +24,8 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'collection.rename': Pencil,
   'collection.importInto': FolderInput,
   'collection.delete': Trash2,
+  'duplicates.keepOne': CopyMinus,
+  'duplicates.keepOneAll': CopyCheck,
   // The colour keys, the tag chip's menu and 태그 선택 해제; the palette lists the keys and the last only.
   'tag.color1': Tag,
   'tag.color2': Tag,

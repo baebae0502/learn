@@ -36,6 +36,8 @@ export type CommandId =
   | 'collection.rename'
   | 'collection.importInto'
   | 'collection.delete'
+  | 'duplicates.keepOne'
+  | 'duplicates.keepOneAll'
   | 'tag.color1'
   | 'tag.color2'
   | 'tag.color3'
@@ -137,6 +139,11 @@ export interface CommandSpec {
    * collection menu says 이름 바꾸기, the palette 컬렉션 이름 바꾸기, so it is not taken for a tag's.
    */
   paletteLabel?: string;
+  /**
+   * A name with the number it acts on (중복 N묶음 모두 정리, spec 11.1): the palette and the view's button say how many
+   * once the context reports it; `label` is the name without the number.
+   */
+  countLabel?: { duplicateGroups: (n: number) => string };
   /** Electron accelerator, owned by the native menu. */
   accelerator?: string;
   /** Single-key shortcut, matched by physical key in the renderer keymap. */
@@ -283,6 +290,19 @@ export const COMMANDS: readonly CommandSpec[] = [
     contextMenu: { kinds: ['collection'], group: 3, order: 1 },
     keywords: ['휴지통', '삭제', '지우기', '컬렉션', 'trash', 'delete', 'remove'],
   },
+  // 중복 정리 (M6 spec 5, 11.1): in each group the earliest import stays with the others' collections and tags, and the others
+  // go to the trash at once; the toast undoes both. 하나만 남기고 휴지통으로 is the 중복 항목 row menu's (absent elsewhere),
+  // next to 휴지통으로 이동 at the menu's end (what moves to the trash comes last, design-spec 7.3); 모두 정리 is the view's
+  // own button. Both in the palette, neither on the menu bar.
+  {
+    id: 'duplicates.keepOne', label: '하나만 남기고 휴지통으로', contexts: ['item'], palette: true,
+    contextMenu: { kinds: ['item'], group: 4, order: 0, onlyWhenAvailable: true },
+    keywords: ['중복', '정리', '하나만', '남기기', '휴지통', 'duplicate', 'dedupe'],
+  },
+  {
+    id: 'duplicates.keepOneAll', label: '중복 묶음 모두 정리', countLabel: { duplicateGroups: (n) => `중복 ${n}묶음 모두 정리` }, contexts: ['library'],
+    keywords: ['중복', '정리', '모두', '묶음', '휴지통', 'duplicate', 'dedupe'],
+  },
   // 1–8 (spec 4.2): the key puts the tag at that slot on the selected items, or takes it off when every one has it. A
   // member has no placement of its own — 색 태그 ▸ is the group in SUBMENUS, which lists the slots that have a tag. The
   // palette lists a slot only while a tag holds it (paletteListed); the key itself always runs, to say a slot is empty.
@@ -365,7 +385,7 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups'>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -377,6 +397,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: LabelState
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
   if (scoped !== undefined) return scoped;
+  if (c.countLabel && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
@@ -614,6 +635,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'tag.clearColor': (_c, t) => t.tags.length === 1 && t.tags[0]!.hasColor,
   'tag.delete': (_c, t) => t.tags.length === 1,
   'tags.clearFilter': (c) => c.tagFilterCount > 0,
+  // 중복 정리 (spec 11.1): rows of 중복 항목 (any file state: no file is touched), and two groups or more for 모두 정리.
+  'duplicates.keepOne': (c) => c.view === 'library' && c.scope === 'duplicates',
+  'duplicates.keepOneAll': (c) => c.view === 'library' && (c.duplicateGroups ?? 0) >= 2,
   'file.cancelImport': (c) => c.importRunning === true,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,

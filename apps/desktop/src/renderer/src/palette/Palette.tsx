@@ -119,7 +119,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
   /** 설정 as the hints name it: ㅅㅈ → 설정, when no title gives an example. */
   const settingsName = commandMention(commandById('app.settings'), platform);
   // The labels follow the pane states and the view (사이드바 가리기 / 사이드바 보기; ⌘⌫ is 영구 삭제… in the trash), as the menu bar's.
-  const state = { sidebar: env.sidebar, inspector: env.inspector, scope: env.scope };
+  const state = { sidebar: env.sidebar, inspector: env.inspector, scope: env.scope, duplicateGroups: env.duplicateGroups };
   // Item commands (Finder에서 보기, 기본 앱으로 열기, 사본 내보내기… and 정보 편집) are judged and run on the table
   // selection, which only the library view shows. Judged once per env rather than on every keystroke: a selection can
   // hold every row (⌘A).

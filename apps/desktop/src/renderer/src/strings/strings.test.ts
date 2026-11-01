@@ -27,6 +27,8 @@ for (const c of COMMANDS) {
   for (const [pane, names] of Object.entries(c.stateLabels ?? {})) {
     for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
   }
+  // A count label is a palette and button name too (중복 N묶음 모두 정리).
+  if (c.countLabel) copy.push({ at: `command ${c.id} count`, text: c.countLabel.duplicateGroups(3) });
 }
 // The table's column names (the header and main's column menu both show them) come from the domain catalogue.
 for (const c of LIBRARY_COLUMNS) copy.push({ at: `column ${c.id}`, text: c.label });

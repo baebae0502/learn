@@ -55,9 +55,16 @@ interface Run {
   ended: boolean;
 }
 
-/** Inside the library folder: a backup there would travel with the library it is a copy of. */
+/**
+ * Inside the library folder, by real paths: a link or a different spelling of the name must not get a backup written
+ * there. macOS volumes are mostly case-insensitive, so there the names are compared in lower case (a conservative refusal).
+ */
 function within(dir: string, root: string): boolean {
-  const rel = path.relative(path.resolve(root), dir);
+  const real = (p: string): string => {
+    const r = fs.realpathSync.native(path.resolve(p));
+    return process.platform === 'darwin' ? r.toLowerCase() : r;
+  };
+  const rel = path.relative(real(root), real(dir));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
@@ -100,6 +107,7 @@ export function createBackupJob<W>(deps: BackupJobDeps<W>): BackupJob<W> {
     const signal = AbortSignal.any([laneSignal, run.abort.signal]);
     signal.throwIfAborted();
     const lib = deps.library();
+    if (within(parent, lib.layout.root)) throw new LearnError('VALIDATION_FAILED', mainStrings.backup.inLibrary);
     const when = now();
     const name = datedFolderName(mainStrings.backup.folderPrefix, when, (n) => fs.existsSync(path.join(parent, n)));
     show({ ...IDLE_BACKUP_PROGRESS, state: 'running', name });
@@ -140,7 +148,7 @@ export function createBackupJob<W>(deps: BackupJobDeps<W>): BackupJob<W> {
   return {
     async start(owner) {
       if (pending !== null || asking) return { started: false };
-      const lib = deps.library();
+      deps.library(); // no library: nothing is asked
       asking = true;
       let chosen: string | null;
       try {
@@ -152,7 +160,8 @@ export function createBackupJob<W>(deps: BackupJobDeps<W>): BackupJob<W> {
       const parent = path.resolve(chosen);
       const check = checkLibraryFolder(parent);
       if (!check.ok) throw new LearnError('VALIDATION_FAILED', check.message);
-      if (within(parent, lib.layout.root)) throw new LearnError('VALIDATION_FAILED', mainStrings.backup.inLibrary);
+      // The library can change while the panel is up (a restore): the check and the backup use the one open now.
+      if (within(parent, deps.library().layout.root)) throw new LearnError('VALIDATION_FAILED', mainStrings.backup.inLibrary);
       try {
         deps.rememberDir(parent);
       } catch (e) {

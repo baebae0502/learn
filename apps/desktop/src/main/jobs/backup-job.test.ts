@@ -160,6 +160,31 @@ describe('the backup on the work line (spec 8.1, P-20)', () => {
     expect(closed.picks).toEqual([]);
   });
 
+  it('refuses a folder that only reaches into the library through a link', async () => {
+    const lib = await library();
+    const link = path.join(temp('links'), 'Shortcut');
+    fs.symlinkSync(path.join(lib.layout.root, 'assets'), link, 'dir');
+    const h = harness(lib, { pickFolder: async () => link });
+    await expect(h.job.start(null)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: mainStrings.backup.inLibrary });
+    expect([h.notices, h.remembered]).toEqual([[], []]);
+    expect(fs.readdirSync(path.join(lib.layout.root, 'assets')).filter((n) => n.startsWith('Learn'))).toEqual([]);
+  });
+
+  it('checks the folder against the library that is open when the panel returns, not the one before it', async () => {
+    const before = await library();
+    const after = await library();
+    let open = before;
+    const h = harness(before, {
+      library: () => open,
+      pickFolder: async () => {
+        open = after; // restore swapped the library while the panel was up
+        return path.join(after.layout.root, 'assets');
+      },
+    });
+    await expect(h.job.start(null)).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message: mainStrings.backup.inLibrary });
+    expect(h.remembered).toEqual([]);
+  });
+
   it('waits behind a running import as waiting-job and runs after it; 취소 while it waits ends it at once, and it never runs', async () => {
     const lib = await library();
     const h = harness(lib);

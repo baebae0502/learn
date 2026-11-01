@@ -204,6 +204,32 @@ export interface RecoveryReport {
   interruptedJobs: number;
 }
 
+/**
+ * 라이브러리 점검 (M6 spec 7, P-16): what the library folder holds that the app left behind or lost. Keys inside the
+ * library and ids only — no path outside it.
+ */
+export interface LibraryCheck {
+  checkedAt: string;
+  /** Live items: the 자료 기록 row's count. */
+  items: number;
+  /** Stopped imports' staging copies (`staging/*.part`); dot files, folders and corrupt copies are not counted. */
+  staging: { count: number; bytes: number };
+  /** Files under assets/ that no asset row holds, as `assets/<xx>/<name>` keys in order. */
+  unreferenced: { keys: string[]; bytes: number };
+  /** Live items whose managed copy is gone. */
+  missingManaged: { itemIds: string[] };
+  /** Live items whose linked original was not found: shown, never a reason to open the sheet by itself (spec 7.1). */
+  missingLinked: { itemIds: string[] };
+  /** Damaged copies the importer set aside in staging/ (`corrupt-<sha256>-<id>`), by name. The app never removes them. */
+  corrupt: { count: number; bytes: number; files: string[] };
+  /** Edited copies kept aside in derived/open/<assetId>/ whose asset has no row any more. */
+  orphanEdits: { count: number; bytes: number; copies: Array<{ assetId: string; name: string }> };
+  /** A hash of what may open the sheet by itself (not the linked row, not the item count). */
+  fingerprint: string;
+  /** Something the app left or lost is there: the sheet may open by itself. */
+  actionable: boolean;
+}
+
 export interface AppInfo {
   version: string;
   libraryRoot: string;

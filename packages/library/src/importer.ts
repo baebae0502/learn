@@ -40,6 +40,8 @@ export interface ImportOptions {
 
 export class Importer {
   private hooks: ImportHooks | undefined;
+  /** The staging copies place() is writing now, by file name: the library check leaves them alone. */
+  private readonly staged = new Set<string>();
 
   constructor(private readonly deps: { layout: LibraryLayout; repo: LibraryRepository; hooks?: ImportHooks | undefined }) {
     this.hooks = deps.hooks;
@@ -48,6 +50,33 @@ export class Importer {
   /** E2E only (main's test hooks): fault points for the importer the library context made without them. */
   setHooks(hooks: ImportHooks | undefined): void {
     this.hooks = hooks;
+  }
+
+  /** Staging names an import is writing now (a live view, read again by each check and cleanup). */
+  stagingInUse(): ReadonlySet<string> {
+    return this.staged;
+  }
+
+  /**
+   * 다시 연결… of a managed copy that went missing (the library check, spec 7.2): the picked file must hold the asset's
+   * exact bytes. It is placed at the asset's path the way an import places a copy (staging, check, flush, rename) and the
+   * asset is available again. Nothing else about the item changes.
+   */
+  async restoreCopy(src: string, assetId: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
+    const { repo } = this.deps;
+    const asset = repo.getAsset(assetId);
+    if (!asset) throw new LearnError('NOT_FOUND', '자료를 찾을 수 없습니다.');
+    if (asset.storageMode !== 'managed') throw new LearnError('VALIDATION_FAILED', '외부 연결 자료는 원본 위치를 다시 지정하세요.');
+    const abs = path.resolve(src);
+    const st = await fs.stat(abs).catch(() => null);
+    if (!st?.isFile()) throw new LearnError('NOT_FOUND', '선택한 파일을 찾을 수 없습니다.');
+    if ((await sha256File(abs, { signal: opts.signal })) !== asset.sha256) {
+      throw new LearnError('HASH_MISMATCH', '선택한 파일의 내용이 원래 자료와 다릅니다. 같은 파일을 선택하세요.');
+    }
+    await withManagedPath(managedRelativePath(asset.sha256), async () => {
+      await this.place(abs, asset.sha256, opts.signal);
+      repo.setAvailability(asset.id, 'available', nowIso());
+    });
   }
 
   /** Sequential on purpose: one writer, predictable disk usage. */
@@ -149,6 +178,8 @@ export class Importer {
     const target = path.join(layout.root, ...rel.split('/'));
     const shard = path.dirname(target);
     const staging = path.join(layout.stagingDir, `${newId()}.part`);
+    const stagedName = path.basename(staging);
+    this.staged.add(stagedName);
     try {
       // Not cut short: an APFS clone is instant, and another disk's copy finishes before the file stops.
       await fs.copyFile(src, staging);
@@ -182,6 +213,7 @@ export class Importer {
       return rel;
     } finally {
       await fs.rm(staging, { force: true });
+      this.staged.delete(stagedName);
     }
   }
 }

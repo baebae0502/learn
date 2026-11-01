@@ -20,8 +20,13 @@ export async function refreshAvailability(layout: LibraryLayout, repo: LibraryRe
   return availability;
 }
 
-export async function refreshLinkedAvailability(layout: LibraryLayout, repo: LibraryRepository): Promise<void> {
-  for (const asset of repo.assetsByMode('linked')) await refreshAvailability(layout, repo, asset);
+/** Looks for every linked original; answers the assets whose availability changed (main announces their items). */
+export async function refreshLinkedAvailability(layout: LibraryLayout, repo: LibraryRepository): Promise<string[]> {
+  const changed: string[] = [];
+  for (const asset of repo.assetsByMode('linked')) {
+    if ((await refreshAvailability(layout, repo, asset)) !== asset.availability) changed.push(asset.id);
+  }
+  return changed;
 }
 
 /** Point a linked asset at a new location — only if the bytes are identical. */

@@ -168,6 +168,7 @@ export type SheetResultInput = z.input<typeof sheetResultInput>;
 export const sheetActionSchema = z.union([
   z.object({ kind: z.literal('libraryCheck'), act: z.enum(CHECK_ACTS) }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
+  z.object({ kind: z.literal('libraryCheck'), act: z.literal('cleanUnreferenced'), keys: z.array(z.string().min(1).max(512)).max(100_000) }).strict(),
 ]) satisfies z.ZodType<SheetAction>;
 export const sheetActInput = z.object({ action: sheetActionSchema }).strict();
 export type SheetActInput = z.input<typeof sheetActInput>;

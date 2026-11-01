@@ -156,10 +156,10 @@ export function checkPayload(check: LibraryCheck, repo: LibraryRepository, input
   for (const kind of CHECK_ROW_KINDS) {
     const { count, bytes } = sizes[kind];
     const before = input.prev?.rows.find((r) => r.kind === kind);
-    if (count > 0) rows.push({ kind, state: 'todo', count, bytes, entries: entries(kind), fix: null });
+    if (count > 0) rows.push({ kind, state: 'todo', count, bytes, entries: entries(kind), fix: null, keys: kind === 'unreferenced' ? check.unreferenced.keys : [] });
     else if (before) {
       const fix: CheckFix = before.state === 'done' ? (before.fix ?? 'none') : input.acted?.kind === kind ? input.acted.fix : 'none';
-      rows.push({ kind, state: 'done', count: 0, bytes: 0, entries: [], fix });
+      rows.push({ kind, state: 'done', count: 0, bytes: 0, entries: [], fix, keys: [] });
     }
   }
   return { kind: 'libraryCheck', mode: input.mode, items: check.items, rows, homeDir: input.homeDir, failed: input.failed };
@@ -245,7 +245,9 @@ export function createCheckSheets(deps: CheckSheetsDeps): CheckSheets {
           break;
         }
         case 'cleanUnreferenced': {
-          const { keys } = (await runCheck(ctx, deps.announce)).unreferenced;
+          // Only what the row listed when the user was asked, and what is still unused now: a copy that came later waits (as emptyTrash).
+          const asked = new Set(action.keys);
+          const keys = (await runCheck(ctx, deps.announce)).unreferenced.keys.filter((k) => asked.has(k));
           const r = await cleanUnreferenced(ctx.layout, (key) => ctx.repo.managedPathInUse(key), keys);
           acted = { kind: 'unreferenced', fix: 'cleaned' };
           if (r.failed > 0) failed = { kind: 'unreferenced', message: words.unreferencedLeft(r.failed) };

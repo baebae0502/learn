@@ -204,7 +204,7 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     const h = sheets(ctx);
     const p = await shown(h);
     expect(p).toMatchObject({ kind: 'libraryCheck', mode: 'manual', items: 3, homeDir: '/home/u', failed: null });
-    expect(p.rows).toEqual([{ kind: 'missingManaged', state: 'todo', count: 3, bytes: 0, entries: [{ itemId: items[1]!.id, label: 'a', path: null }, { itemId: items[2]!.id, label: 'b', path: null }], fix: null }]);
+    expect(p.rows).toEqual([{ kind: 'missingManaged', state: 'todo', count: 3, bytes: 0, entries: [{ itemId: items[1]!.id, label: 'a', path: null }, { itemId: items[2]!.id, label: 'b', path: null }], fix: null, keys: [] }]);
     expect(ctx.settings.get(LAST_SHOWN)).toBe(ctx.check!.fingerprint);
     expect(h.deps.stopAuto).toHaveBeenCalledTimes(1);
   });
@@ -269,8 +269,16 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
     expect(rowOf(p, 'unreferenced')).toMatchObject({ state: 'todo', count: 1 });
     expect(p.failed).toEqual({ kind: 'unreferenced', message: '사본 1개는 자료로 되살리지 못했습니다. 지원하지 않는 형식이면 정리할 수 있습니다.' });
     expect(fs.existsSync(copy)).toBe(true);
-    p = await act(h, p, { kind: 'libraryCheck', act: 'cleanUnreferenced' });
+    const asked = rowOf(p, 'unreferenced')!.keys;
+    expect(asked).toHaveLength(1);
+    // A copy that comes after the question (an interrupted import's leftover) is not what the user was asked about.
+    const later = put(path.join(ctx.layout.assetsDir, 'ff', 'f'.repeat(64)), Buffer.from('came later'));
+    p = await act(h, p, { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: asked });
+    expect(fs.existsSync(later)).toBe(true);
+    expect(rowOf(p, 'unreferenced')).toMatchObject({ state: 'todo', count: 1 });
+    p = await act(h, p, { kind: 'libraryCheck', act: 'cleanUnreferenced', keys: rowOf(p, 'unreferenced')!.keys });
     expect(rowOf(p, 'unreferenced')).toMatchObject({ state: 'done', fix: 'cleaned' });
+    expect(fs.existsSync(later)).toBe(false);
     expect(p.failed).toBeNull();
     expect(fs.existsSync(junk)).toBe(false);
     expect(fs.existsSync(copy)).toBe(true);
@@ -301,7 +309,7 @@ describe('the check sheet (spec 7.1–7.2, P-17, P-26)', () => {
       answer = src;
       p = await relink(items[k]!.id);
     }
-    expect(rowOf(p, 'missingManaged')).toEqual({ kind: 'missingManaged', state: 'done', count: 0, bytes: 0, entries: [], fix: 'relinked' });
+    expect(rowOf(p, 'missingManaged')).toEqual({ kind: 'missingManaged', state: 'done', count: 0, bytes: 0, entries: [], fix: 'relinked', keys: [] });
     answer = moved;
     p = await relink(linked.id);
     expect(rowOf(p, 'missingLinked')).toMatchObject({ state: 'done', fix: 'relinked' });

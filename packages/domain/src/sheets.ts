@@ -54,6 +54,8 @@ export interface CheckRow {
   entries: CheckEntry[];
   /** Set on a done row. */
   fix: CheckFix | null;
+  /** The unused copies the 쓰이지 않는 사본 row lists (library keys); [정리…] removes these and no others. Empty on every other row. */
+  keys: string[];
 }
 /** What the last action could not finish, in main's words, under its row. */
 export interface CheckFailure {
@@ -71,7 +73,11 @@ export interface LibraryCheckPayload {
   failed: CheckFailure | null;
 }
 /** The check sheet's row actions; 다시 연결… names an item, never a path (R4). */
-export const CHECK_ACTS = ['cleanStaging', 'revive', 'cleanUnreferenced', 'revealCorrupt', 'importOrphanEdits', 'revealOrphanEdit'] as const;
-export type CheckAction = { kind: 'libraryCheck'; act: (typeof CHECK_ACTS)[number] } | { kind: 'libraryCheck'; act: 'relink'; itemId: string };
+export const CHECK_ACTS = ['cleanStaging', 'revive', 'revealCorrupt', 'importOrphanEdits', 'revealOrphanEdit'] as const;
+/** 지우기 names the copies the row listed when the user was asked; one that came later is left for the next check. */
+export type CheckAction =
+  | { kind: 'libraryCheck'; act: (typeof CHECK_ACTS)[number] }
+  | { kind: 'libraryCheck'; act: 'relink'; itemId: string }
+  | { kind: 'libraryCheck'; act: 'cleanUnreferenced'; keys: string[] };
 /** What an open sheet asks main to do (sheet:act). The backup and restore result sheets add theirs. */
 export type SheetAction = CheckAction;

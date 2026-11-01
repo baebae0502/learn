@@ -205,6 +205,7 @@
   .inspector .info-hint {
     margin: 0 0 var(--space-8);
     color: var(--text-secondary);
+    text-wrap: pretty; /* no one-word last line when a scrollbar narrows the panel (T7 critique C-3) */
     font: var(--type-footnote);
   }
 

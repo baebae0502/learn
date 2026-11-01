@@ -4,6 +4,7 @@ import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
+import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
@@ -1319,3 +1320,62 @@ type WithCheckHooks = { __learnTest: CheckTestHooks };
 export const libraryCheckState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.libraryCheck());
 /** A fresh check and the automatic sheet again (after a test sized the window). */
 export const requestLibraryCheck = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.requestLibraryCheck());
+
+// ---- M6 backup -------------------------------------------------------------------------------------------------------
+
+/** One call of the stubbed folder panel (백업 만들기…): whether it hung on a window (a sheet), and what it said. */
+export interface FolderPickCall {
+  parent: boolean;
+  title: string | null;
+  message: string | null;
+  buttonLabel: string | null;
+  defaultPath: string | null;
+  properties: string[];
+}
+
+/**
+ * Replace the native open panel in main with a folder picker that answers `folder` (null: cancelled), recording every
+ * call from none (folderPicks). The real panel is kept the first time, as stubOpenDialog keeps it.
+ */
+export async function stubFolderPicker(app: ElectronApplication, folder: string | null): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnFolderPicks?: unknown[]; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    g.__learnRealOpenDialog ??= dialog.showOpenDialog;
+    g.__learnFolderPicks = [];
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; message?: string; buttonLabel?: string; defaultPath?: string; properties?: string[] };
+      g.__learnFolderPicks!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        message: o.message ?? null,
+        buttonLabel: o.buttonLabel ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+      });
+      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
+    }) as typeof dialog.showOpenDialog;
+  }, folder);
+}
+export const folderPicks = (app: ElectronApplication): Promise<FolderPickCall[]> =>
+  app.evaluate(() => ((globalThis as { __learnFolderPicks?: FolderPickCall[] }).__learnFolderPicks ?? []));
+/** Where main opens the folder panel the first time (spec 8.1: the documents folder). */
+export const documentsDir = (app: ElectronApplication): Promise<string> => app.evaluate(({ app }) => app.getPath('documents'));
+
+type WithBackupHooks = {
+  __learnTest: {
+    backupPause(input: { at: 'afterCopy' | null }): void;
+    backupResume(): void;
+    backupWaiting(): string | null;
+    backupState(): JobProgress;
+  };
+};
+/** The next backup holds its first copy once written, before it is read back, until backupResume (null lifts it). */
+export const backupPause = (app: ElectronApplication, at: 'afterCopy' | null = 'afterCopy') =>
+  app.evaluate((_e, at) => (globalThis as unknown as WithBackupHooks).__learnTest.backupPause({ at }), at);
+export const backupResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupResume());
+/** The held copy's path inside the backup being made, or null. */
+export const backupWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupWaiting());
+export const backupState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupState());
+/** Until main's backup has ended (its last notice sent). */
+export const waitBackupIdle = (app: ElectronApplication) =>
+  expect.poll(async () => (await backupState(app)).state, { message: 'the backup ended' }).toBe('idle');

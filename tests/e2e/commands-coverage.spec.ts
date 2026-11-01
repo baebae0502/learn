@@ -122,6 +122,8 @@ test('every registry command runs without a page error (library and reader menus
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
     'app.shortcuts': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
+    // 라이브러리 점검… (spec 7.1): a fresh check in its sheet (문제가 없습니다 here); closeTransient closes it with esc.
+    'file.checkLibrary': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
     'app.palette': () => expect(page.getByTestId('palette')).toBeVisible(),
     // 새 컬렉션 starts the row in the tree and names it in place; esc drops it (collections.spec creates one for real).
     'collection.new': async () => {

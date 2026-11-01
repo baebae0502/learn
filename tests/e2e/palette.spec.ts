@@ -52,7 +52,7 @@ test('the launcher opens the palette; 초성 finds 파일 가져오기…; ↩ r
     // The scrim lies over the 52 px drag strips; it must not drag the window (R-23).
     expect(await page.locator('.palette-scrim').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region') || getComputedStyle(el).getPropertyValue('app-region'))).toBe('no-drag');
     // What can run now, in registry order, the toggle by what it will do (사이드바 가리기 while shown; Task 8 m2).
-    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /새\u00a0컬렉션/, /사이드바 가리기/, /단축키 도움말/, /설정…/, /글자 크게/, /글자 작게/]);
+    await expect(page.getByTestId('palette-item')).toHaveText([/파일 가져오기…/, /외부 파일 연결…/, /새\u00a0컬렉션/, /라이브러리 점검…/, /사이드바 가리기/, /단축키 도움말/, /설정…/, /글자 크게/, /글자 작게/]);
     // ㄱㅈㅇ: only 가져오기 (ㄱㅈ alone also finds 글자 크게 / 작게 and 설정…'s 글자 크기, Task 10).
     await page.getByTestId('palette-input').fill('ㄱㅈㅇ');
     const first = page.getByTestId('palette-item').first();

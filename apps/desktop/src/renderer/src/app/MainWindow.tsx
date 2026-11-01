@@ -330,7 +330,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     selectionTagPositions: sharedTagPositions,
     scope: scopeKind,
     collectionCount,
-    duplicateGroups: duplicateGroupCount,
+    ...(duplicateGroupCount > 0 ? { duplicateGroups: duplicateGroupCount } : {}), // absent with none, so a library without any reports what it did before
     tagPositions,
     tagFilterCount: tagCount,
     searchActive: searching,

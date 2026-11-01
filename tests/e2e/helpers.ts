@@ -4,7 +4,7 @@ import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
-import type { ImportQueueState, ImportReport, LibraryItem, StorageMode } from '../../packages/domain/src/library';
+import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
@@ -389,6 +389,22 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
   }
 }
 
+/** A sheet window is shown at its measured size, and its page's viewport has that size. */
+async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const shown = await app.evaluate(({ BrowserWindow }, url) => {
+          const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
+          return w?.isVisible() ? w.getContentSize().join('x') : null;
+        }, page.url());
+        return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
+      },
+      { message: 'the sheet is shown at its measured size' },
+    )
+    .toBe(true);
+}
+
 /**
  * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. The first ⌘, of a
  * session shows the settings window main prepared hidden instead of making one: its page, already open, is the one
@@ -407,20 +423,7 @@ export async function expectWindow(app: ElectronApplication, kind: 'settings' | 
   const page = prepared ?? (await opened!);
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
-  if (kind === 'sheet') {
-    await expect
-      .poll(
-        async () => {
-          const shown = await app.evaluate(({ BrowserWindow }, url) => {
-            const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
-            return w?.isVisible() ? w.getContentSize().join('x') : null;
-          }, page.url());
-          return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
-        },
-        { message: 'the sheet is shown at its measured size' },
-      )
-      .toBe(true);
-  }
+  if (kind === 'sheet') await sheetShownAtSize(app, page);
   if (kind === 'settings') {
     await expect
       .poll(
@@ -1292,3 +1295,27 @@ export async function removeChip(chip: Locator): Promise<void> {
   await chip.hover();
   await chip.locator('xpath=..').getByTestId('tag-chip-remove').click();
 }
+
+// ---- M6 라이브러리 점검 ----------------------------------------------------------------------------------------------
+
+/**
+ * A sheet main opened by itself (the automatic library check): the one on screen or the next to come, once shown at its
+ * measured size. A sheet a test asks for is expectWindow's.
+ */
+export async function waitForSheet(app: ElectronApplication): Promise<Page> {
+  const isSheet = (p: Page) => !p.isClosed() && p.url().includes('window=sheet');
+  await expect.poll(() => app.windows().some(isSheet), { message: 'a sheet window', timeout: 20_000 }).toBe(true);
+  const page = app.windows().find(isSheet)!;
+  await page.locator('[data-sheet-root]').waitFor();
+  await sheetShownAtSize(app, page);
+  return page;
+}
+interface CheckTestHooks {
+  libraryCheck(): { check: LibraryCheck | null; auto: 'requested' | 'not-due' | 'stopped' | 'pending' };
+  requestLibraryCheck(): Promise<void>;
+}
+type WithCheckHooks = { __learnTest: CheckTestHooks };
+/** The newest library check and what the startup check did about the automatic sheet. */
+export const libraryCheckState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.libraryCheck());
+/** A fresh check and the automatic sheet again (after a test sized the window). */
+export const requestLibraryCheck = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.requestLibraryCheck());

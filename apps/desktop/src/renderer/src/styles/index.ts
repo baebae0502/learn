@@ -28,6 +28,7 @@ import './screens/inspector.css';
 import './screens/inspector-organize.css';
 import './screens/trash.css';
 import './screens/sheet.css';
+import './screens/check.css';
 import './screens/reader.css';
 import './screens/palette.css';
 import './screens/settings.css';

@@ -165,7 +165,13 @@ export function createRestoreJob<W>(deps: RestoreJobDeps<W>): RestoreJob<W> {
     // The sheet waits for its answer off the line: the next job does not wait for the user.
     void deps.showResult(owner, restoreSheet(result, target, deps.homeDir())).then(
       (answer) => answered(answer, target, owner),
-      () => undefined,
+      (e: unknown) => {
+        console.error(`[restore] result sheet failed: ${toLearnError(e).code}`);
+        // The run's toast closed with it: it opens and settles once more, now naming the folder, so the user still learns
+        // that the restore finished and where it is.
+        show({ ...IDLE_RESTORE_PROGRESS, state: 'running', name }, true);
+        show({ ...IDLE_RESTORE_PROGRESS, outcome: 'done', name }, true);
+      },
     );
   }
 

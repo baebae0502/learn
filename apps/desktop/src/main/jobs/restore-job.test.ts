@@ -62,6 +62,21 @@ async function backedUp(): Promise<Backed> {
 const manifestOf = (backup: string) =>
   JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { createdAt: string; assets: Array<{ assetId: string; included: boolean; relativePath: string | null; storageMode: string }> };
 
+/** Every entry under `dir` with its size and modification time: what a folder looks like from outside. */
+function tree(dir: string): Array<[string, number, number]> {
+  const out: Array<[string, number, number]> = [];
+  const walk = (d: string): void => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(d, e.name);
+      const st = fs.lstatSync(full);
+      out.push([path.relative(dir, full), e.isDirectory() ? 0 : st.size, st.mtimeMs]);
+      if (e.isDirectory()) walk(full);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
 type Win = { id: number };
 const WHEN = new Date(2026, 9, 31, 21, 41, 5);
 function harness(lib: Pick<Backed, 'layout' | 'backup'>, over: Partial<RestoreJobDeps<Win>> = {}) {
@@ -201,6 +216,20 @@ describe('the restore on the work line (spec 9.1, P-20)', () => {
       [lib.backup, mainStrings.restore.inBackup],
       [path.join(temp('x'), 'gone'), mainStrings.libraryFolder.missing],
     ];
+    // Through a link, and through a child whose name only begins with two dots: the real places are what count.
+    const links = temp('links');
+    fs.symlinkSync(lib.backup, path.join(links, 'to-backup'));
+    fs.symlinkSync(lib.layout.root, path.join(links, 'to-library'));
+    fs.symlinkSync(path.join(lib.layout.root, 'assets'), path.join(links, 'to-assets'));
+    fs.mkdirSync(path.join(lib.backup, '..name'));
+    fs.mkdirSync(path.join(lib.layout.root, '..name'));
+    refusals.push(
+      [path.join(links, 'to-backup'), mainStrings.restore.inBackup],
+      [path.join(links, 'to-library'), mainStrings.restore.inLibrary],
+      [path.join(links, 'to-assets'), mainStrings.restore.inLibrary],
+      [path.join(lib.backup, '..name'), mainStrings.restore.inBackup],
+      [path.join(lib.layout.root, '..name'), mainStrings.restore.inLibrary],
+    );
     for (const [chosen, message] of refusals) {
       const h = harness(lib, { pickParent: async () => chosen });
       await expect(h.job.start(null), chosen).rejects.toMatchObject({ code: 'VALIDATION_FAILED', message });
@@ -283,6 +312,32 @@ describe('the restore on the work line (spec 9.1, P-20)', () => {
       records: null, countsMatch: true,
     });
     expect(fs.readdirSync(path.join(h.parent, NAME, 'staging'))).toHaveLength(1);
+  });
+
+  it('leaves the backup and the open library exactly as they were: the same files, sizes and times, nothing added', async () => {
+    const lib = await backedUp();
+    const h = harness(lib);
+    const before = [tree(lib.backup), tree(lib.layout.root)];
+    await h.job.start(null);
+    await vi.waitFor(() => expect(h.sheets).toHaveLength(1));
+    expect([tree(lib.backup), tree(lib.layout.root)]).toEqual(before);
+    expect(before[0]!.length).toBeGreaterThan(3);
+  });
+
+  it('a result sheet that cannot open is logged by its code and the toast still says the restore finished and where', async () => {
+    const lib = await backedUp();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const h = harness(lib, {
+      showResult: async () => {
+        throw new LearnError('INTERNAL', 'x');
+      },
+    });
+    await h.job.start(null);
+    await vi.waitFor(() => expect(h.notices.at(-1)).toEqual({ ...IDLE_RESTORE_PROGRESS, outcome: 'done', name: NAME }));
+    // The toast closed with the run: a second, named run-and-end lets it settle once more with the folder.
+    expect(h.notices.slice(-3).map((n) => [n.state, n.outcome, n.name])).toEqual([['idle', 'done', null], ['running', undefined, NAME], ['idle', 'done', NAME]]);
+    expect(logged.mock.calls).toEqual([['[restore] result sheet failed: INTERNAL']]);
+    expect(h.switched).toEqual([]);
   });
 
   it('a backup whose database is broken ends failed with its own sentence and the code alone in the log: no folder, no sheet', async () => {

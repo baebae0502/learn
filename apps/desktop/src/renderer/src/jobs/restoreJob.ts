@@ -6,10 +6,12 @@ import { followJob } from './followJob';
 import { useJobProgress } from './jobProgress';
 import { createProgressToast } from './progressToast';
 
-/** How a restore run ends in its toast (spec 9.3 실패); the result sheet speaks for a done one, so it has none here. */
+/** How a restore run ends in its toast (spec 9.3 실패); the result sheet speaks for a done one, so it has none here unless the sheet could not open. */
 export function restoreResult(p: JobProgress): ToastData | null {
   if (p.outcome === 'cancelled') return { kind: 'info', title: t.jobs.restoreCancelled, body: t.jobs.restoreCancelledBody, testId: 'restore-cancelled' };
   if (p.outcome === 'failed') return { kind: 'error', title: t.jobs.restoreFailed, ...(p.error ? { body: p.error.message } : {}), testId: 'restore-failed' };
+  // A done run is told by its result sheet; one that names its folder is a run whose sheet could not open.
+  if (p.outcome === 'done' && p.name) return { kind: 'info', title: t.jobs.restoreDone, body: t.jobs.restoreDoneBody(p.name), testId: 'restore-done' };
   return null;
 }
 

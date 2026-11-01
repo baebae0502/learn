@@ -27,6 +27,9 @@ export const jobs = {
   /** How a restore run ends in its toast; a done one is said by its result sheet. */
   restoreCancelled: '복원을 취소했습니다',
   restoreCancelledBody: '만들던 라이브러리 폴더는 남기지 않았습니다.',
+  restoreDone: '복원을 마쳤습니다',
+  /** Only when the result sheet could not open: where the new library is. */
+  restoreDoneBody: (folder: string): string => `결과 창을 열지 못했습니다. 새 라이브러리는 \u201c${folder}\u201d 폴더에 있습니다.`,
   restoreFailed: '복원하지 못했습니다',
   cancel: '취소',
 } as const;

@@ -301,7 +301,13 @@ const focusRing = (page: import('@playwright/test').Page) =>
   page.evaluate(() => {
     const el = document.activeElement as HTMLElement;
     const style = getComputedStyle(el);
-    return { testId: el.dataset['testid'] ?? null, isToast: el.matches('.toast'), inToasts: el.closest('[data-pane="toasts"]') !== null, style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) };
+    // The shared focus token, resolved the way the browser resolves it for an outline (light-dark() included).
+    const probe = document.createElement('i');
+    probe.style.outlineColor = 'var(--focus)';
+    el.append(probe);
+    const token = getComputedStyle(probe).outlineColor;
+    probe.remove();
+    return { testId: el.dataset['testid'] ?? null, isToast: el.matches('.toast'), inToasts: el.closest('[data-pane="toasts"]') !== null, style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth), color: style.outlineColor, token };
   });
 
 test('F6 into a job toast shows a focus ring on what it lands on (M6 task 4 review, Open-1)', async ({}, testInfo) => {
@@ -317,8 +323,10 @@ test('F6 into a job toast shows a focus ring on what it lands on (M6 task 4 revi
     for (let i = 0; i < 4 && !(await focusRing(s.page)).inToasts; i++) await s.page.keyboard.press('F6');
     const ring = await focusRing(s.page);
     expect(ring.inToasts).toBe(true);
-    expect(ring.style).not.toBe('none');
-    expect(ring.width).toBeGreaterThan(0);
+    expect(ring.isToast).toBe(true); // the toast itself carries the ring, not a control inside it
+    expect(ring.style).toBe('solid');
+    expect(ring.width).toBe(2);
+    expect(ring.color).toBe(ring.token);
     await importResume(s.app);
     await waitImportIdle(s.page);
   } finally {

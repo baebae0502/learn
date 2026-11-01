@@ -13,3 +13,32 @@ export const perf = { processStart: Math.round(performance.timeOrigin), ready: 0
 export function markPerf(name: 'ready' | 'firstPaint' | 'windowShown' | 'windowCreated' | 'checkStart' | 'checkEnd'): void {
   if (perf[name] === 0) perf[name] = Date.now();
 }
+
+/** Main-side steps p1-perf.evidence.ts times (M6 spec 14): a purge's transaction, an emptied trash's, and the files after either. */
+export type TimedStep = 'purge' | 'emptyTrash' | 'purgeFiles';
+
+/**
+ * The newest duration of each timed step, in ms (performance.now, fractional), read through app.evaluate
+ * (globalThis.__learnLastMs). A step not run yet has no key. Kept in every build: two numbers, no names or paths.
+ */
+export const lastMs: Partial<Record<TimedStep, number>> = {};
+(globalThis as { __learnLastMs?: typeof lastMs }).__learnLastMs = lastMs;
+
+/** Runs `run` and keeps how long it took as `step`'s newest time, whether it returned or threw. */
+export function timeLast<T>(step: TimedStep, run: () => T): T {
+  const start = performance.now();
+  try {
+    return run();
+  } finally {
+    lastMs[step] = performance.now() - start;
+  }
+}
+
+export async function timeLastAsync<T>(step: TimedStep, run: () => Promise<T>): Promise<T> {
+  const start = performance.now();
+  try {
+    return await run();
+  } finally {
+    lastMs[step] = performance.now() - start;
+  }
+}

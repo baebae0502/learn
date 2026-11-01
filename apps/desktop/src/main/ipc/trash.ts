@@ -3,6 +3,7 @@ import type { PurgeResult } from '@learn/db';
 import { removePurgedFiles } from '@learn/library';
 import { broadcast } from '../events';
 import type { LibraryContext } from '../library-context';
+import { timeLast, timeLastAsync } from '../perf';
 import type { Handle, IpcDeps } from './register';
 
 /** The file step of each purge, in the order they committed (tests wait on it; the app never does). */
@@ -18,7 +19,7 @@ function removeFilesAfter(ctx: LibraryContext, assets: PurgeResult['assets']): v
   if (assets.length === 0) return;
   const inUse = (relativePath: string): boolean => !ctx.db.open || ctx.repo.managedPathInUse(relativePath);
   filesSettled = filesSettled
-    .then(() => removePurgedFiles(ctx.layout, assets, { inUse }))
+    .then(() => timeLastAsync('purgeFiles', () => removePurgedFiles(ctx.layout, assets, { inUse })))
     .then(({ failed }) => {
       if (failed > 0) console.warn(`[library] purge: ${failed} file(s) left for the library check`);
     })
@@ -46,12 +47,13 @@ export function registerTrashIpc(handle: Handle, deps: IpcDeps): void {
 
   handle(Channels.library.purge, purgeInput, ({ itemIds, collectionIds }) => {
     const ctx = deps.getContext();
-    return announcePurge(ctx, ctx.repo.purge({ itemIds, collectionIds }));
+    // spec 14 budgets the transaction alone; the files go after the answer and are timed on their own.
+    return announcePurge(ctx, timeLast('purge', () => ctx.repo.purge({ itemIds, collectionIds })));
   });
 
   handle(Channels.library.emptyTrash, emptyInput, () => {
     const ctx = deps.getContext();
-    return announcePurge(ctx, ctx.repo.emptyTrash());
+    return announcePurge(ctx, timeLast('emptyTrash', () => ctx.repo.emptyTrash()));
   });
 
   handle(Channels.library.keepOneOfDuplicates, keepOneInput, ({ itemIds }) => announceKeepOne(deps.getContext().repo.keepOneOfDuplicates(itemIds)));

@@ -6,6 +6,7 @@ import type { KeepOneResult, PurgedRows, Result, TrashView } from '@learn/domain
 import { resolveAssetPath } from '@learn/library';
 import { openLibraryContext, type LibraryContext } from '../library-context';
 import { fakeSender, stubDeps } from './test-deps';
+import { lastMs } from '../perf';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
 const handlers = new Map<string, Listener>();
@@ -189,5 +190,30 @@ describe('library:keepOneOfDuplicates, keepOneOfAllDuplicates, undoKeepOne (spec
       ok: false,
       code: 'VALIDATION_FAILED',
     });
+  });
+});
+
+describe('the purge is timed in main for the evidence (spec 14)', () => {
+  it('library:purge and library:emptyTrash keep their transaction time; the file step after the answer keeps its own', async () => {
+    for (const k of ['purge', 'emptyTrash', 'purgeFiles'] as const) delete lastMs[k];
+    const a = await imported(pdf('a.pdf', 'a'));
+    const b = await imported(pdf('b.pdf', 'b'));
+    ctx.repo.trash([a.item.id]);
+    await call('library:purge', { itemIds: [a.item.id], collectionIds: [] });
+    expect(lastMs.purge).toBeGreaterThanOrEqual(0);
+    await purgeFilesSettled();
+    expect(lastMs.purgeFiles).toBeGreaterThanOrEqual(0);
+    ctx.repo.trash([b.item.id]);
+    await call('library:emptyTrash');
+    expect(lastMs.emptyTrash).toBeGreaterThanOrEqual(0);
+  });
+  it('a purge with no file to remove leaves the file step untimed', async () => {
+    for (const k of ['purge', 'purgeFiles'] as const) delete lastMs[k];
+    const coll = ctx.collections.create({ name: '강의' }).id;
+    ctx.collections.softDelete(coll);
+    await call('library:purge', { itemIds: [], collectionIds: [coll] });
+    await purgeFilesSettled();
+    expect(lastMs.purge).toBeGreaterThanOrEqual(0);
+    expect(lastMs.purgeFiles).toBeUndefined();
   });
 });

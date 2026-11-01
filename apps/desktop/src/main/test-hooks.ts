@@ -1,7 +1,10 @@
-import { createHash } from 'node:crypto';
-import { newId, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
+import { createHash, randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import { newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
-import type { ImportHooks, Importer } from '@learn/library';
+import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
 import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
@@ -23,6 +26,15 @@ export interface SeedItemsInput {
 }
 export type SeedRepo = Pick<LibraryRepository, 'getItem' | 'insertItemsForAsset'>;
 
+/** A seeded row's metadata as updateMetadata would store it (schema v1). */
+const seedMetadataJson = (r: SeedRow): string =>
+  JSON.stringify({
+    creators: r.creators.map((name) => ({ name, role: 'author' })),
+    ...(r.year === null ? {} : { date: String(r.year) }),
+    ...(r.abstract ? { abstract: r.abstract } : {}),
+    ...(r.extra ? { extra: r.extra } : {}),
+  });
+
 /**
  * Items for `rows` that share the file of the managed item `fromItemId` — its asset and revision — written in one
  * transaction (LibraryRepository.insertItemsForAsset). A large library in seconds, without copying a file per item.
@@ -36,12 +48,7 @@ export function seedItems(repo: SeedRepo, input: SeedItemsInput, makeId: () => s
     type: from.type,
     title: r.title,
     createdAt: r.createdAt,
-    metadataJson: JSON.stringify({
-      creators: r.creators.map((name) => ({ name, role: 'author' })),
-      ...(r.year === null ? {} : { date: String(r.year) }),
-      ...(r.abstract ? { abstract: r.abstract } : {}),
-      ...(r.extra ? { extra: r.extra } : {}),
-    }),
+    metadataJson: seedMetadataJson(r),
     assetId: from.assetId,
     revisionId: from.revisionId,
   }));
@@ -243,6 +250,128 @@ export function createImportPause(): ImportPause {
   };
 }
 
+export interface SeedAssetsInput {
+  /** One item each, in this order (seedRows: newest first). */
+  rows: SeedRow[];
+  /** Rows from this index on are linked to a file of their own in `linkedDir`; the rows before it are managed copies. Default: none linked. */
+  linkedFrom?: number;
+  /** Absolute; made when missing. */
+  linkedDir?: string;
+}
+export interface SeedAssetsResult {
+  /** In the rows' order. */
+  itemIds: string[];
+  /** Each item's file hash, in the rows' order. */
+  sha256: string[];
+}
+export interface SeedAssetsDeps {
+  db: Db;
+  repo: Pick<LibraryRepository, 'insertItemsForAsset'>;
+  layout: Pick<LibraryLayout, 'root'>;
+}
+
+/**
+ * Items that each have a file of their own — what a library of many imports is to the library check, a purge and a
+ * backup — without importing them one by one: a small PDF per row (bytes unique to this call), written where an import
+ * puts it (assets/<xx>/<sha256>, or `linkedDir` for a linked row), then every row in one transaction. E2E only.
+ */
+export function seedAssets(deps: SeedAssetsDeps, input: SeedAssetsInput, makeId: () => string = newId): SeedAssetsResult {
+  const linkedFrom = input.linkedFrom ?? input.rows.length;
+  if (!Number.isInteger(linkedFrom) || linkedFrom < 0) throw new Error('seedAssets: linkedFrom must be a row index');
+  const linkedDir = input.linkedDir;
+  if (linkedFrom < input.rows.length && (linkedDir === undefined || !path.isAbsolute(linkedDir))) throw new Error('seedAssets: linked rows need an absolute linkedDir');
+  const batch = makeId();
+  const now = nowIso();
+  const files = input.rows.map((row, i) => {
+    const bytes = Buffer.from(`%PDF-1.4\n% learn seed ${batch} ${i + 1}\n%%EOF\n`);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const linked = i >= linkedFrom;
+    const relativePath = linked ? null : managedRelativePath(sha256);
+    const target = relativePath === null ? path.join(linkedDir!, `seed-${i + 1}.pdf`) : path.join(deps.layout.root, ...relativePath.split('/'));
+    return { row, i, bytes, sha256, linked, relativePath, target, assetId: makeId(), revisionId: makeId(), itemId: makeId() };
+  });
+  // The files first: a row is written only for a file that is there.
+  const folders = new Set<string>();
+  for (const f of files) {
+    const folder = path.dirname(f.target);
+    if (!folders.has(folder)) {
+      fs.mkdirSync(folder, { recursive: true });
+      folders.add(folder);
+    }
+    fs.writeFileSync(f.target, f.bytes);
+  }
+  const insertAsset = deps.db.prepare(
+    `INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'application/pdf', ?, 'available', ?, ?)`,
+  );
+  const insertRevision = deps.db.prepare('INSERT INTO source_revisions (id, asset_id, hash, created_at) VALUES (?, ?, ?, ?)');
+  deps.db.transaction(() => {
+    for (const f of files) {
+      insertAsset.run(f.assetId, f.sha256, f.linked ? 'linked' : 'managed', f.relativePath, f.linked ? f.target : null, `seed-${f.i + 1}.pdf`, f.bytes.length, f.row.createdAt, now);
+      insertRevision.run(f.revisionId, f.assetId, f.sha256, f.row.createdAt);
+    }
+    deps.repo.insertItemsForAsset(
+      files.map((f) => ({ id: f.itemId, type: 'pdf' as const, title: f.row.title, createdAt: f.row.createdAt, metadataJson: seedMetadataJson(f.row), assetId: f.assetId, revisionId: f.revisionId })),
+    );
+  })();
+  return { itemIds: files.map((f) => f.itemId), sha256: files.map((f) => f.sha256) };
+}
+
+export interface FsyncProbeInput {
+  /** Absolute, and new: the probe makes staging/ and assets/<xx>/ in it. */
+  dir: string;
+  /** 1–256: one new shard each. */
+  files: number;
+  bytes: number;
+}
+export interface FsyncProbeResult {
+  /** fsyncDir of assets/ after a new shard was made in it. */
+  parentMs: number[];
+  /** fsyncFile of the staging copy before its rename. */
+  fileMs: number[];
+  /** fsyncDir of the shard after the rename. */
+  shardMs: number[];
+  /** This process's libuv (macOS: F_FULLFSYNC since 1.25.0, Q-2c). */
+  uv: string;
+}
+export interface FsyncIo {
+  fsyncFile(file: string): Promise<void>;
+  fsyncDir(dir: string): Promise<void>;
+}
+
+/**
+ * One import's flushes as Importer.place makes them on a new shard — its parent, the staging copy before the rename,
+ * the shard after it — `files` times on random files of `bytes` in `dir` (the test's folder, on the library's disk), with
+ * the importer's own fsyncFile and fsyncDir: a Mac run measures F_FULLFSYNC as the app pays it. E2E evidence only.
+ */
+export async function fsyncProbe(input: FsyncProbeInput, io: FsyncIo = { fsyncFile, fsyncDir }): Promise<FsyncProbeResult> {
+  if (!path.isAbsolute(input.dir)) throw new Error('fsyncProbe: dir must be absolute');
+  if (!Number.isInteger(input.files) || input.files < 1 || input.files > 256) throw new Error('fsyncProbe: 1 to 256 files (one new shard each)');
+  if (!Number.isInteger(input.bytes) || input.bytes < 1) throw new Error('fsyncProbe: bytes must be a positive integer');
+  const staging = path.join(input.dir, 'staging');
+  const assets = path.join(input.dir, 'assets');
+  await fsp.mkdir(staging, { recursive: true });
+  await fsp.mkdir(assets, { recursive: true });
+  const out: FsyncProbeResult = { parentMs: [], fileMs: [], shardMs: [], uv: process.versions.uv };
+  const timed = async (list: number[], run: () => Promise<void>): Promise<void> => {
+    const start = performance.now();
+    await run();
+    list.push(performance.now() - start);
+  };
+  for (let i = 0; i < input.files; i++) {
+    const name = i.toString(16).padStart(2, '0');
+    const staged = path.join(staging, `${name}.part`);
+    await fsp.writeFile(staged, randomBytes(input.bytes));
+    const shard = path.join(assets, name);
+    await fsp.mkdir(shard);
+    await timed(out.parentMs, () => io.fsyncDir(assets));
+    await timed(out.fileMs, () => io.fsyncFile(staged));
+    await fsp.rename(staged, path.join(shard, name));
+    await timed(out.shardMs, () => io.fsyncDir(shard));
+  }
+  return out;
+}
+
 export interface LearnTestHooks {
   /** Returns how many items were added. */
   seedItems(input: SeedItemsInput): number;
@@ -285,6 +414,10 @@ export interface LearnTestHooks {
   /** The held copy's path inside the library being made, or null. */
   restoreWaiting(): string | null;
   restoreState(): JobProgress;
+    /** Items with a file each (seedAssets): copies in the library, the rows from `linkedFrom` on linked to files in `linkedDir`. */
+    seedAssets(input: SeedAssetsInput): SeedAssetsResult;
+    /** One import's flushes, `files` times, with the importer's own fsyncFile and fsyncDir (Q-2c's cost line). */
+    fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult>;
   /** The newest library check and what the startup check did about the automatic sheet ('pending' until it decided). */
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
@@ -312,6 +445,8 @@ export function installTestHooks(deps: {
   backup?: Pick<BackupJob<unknown>, 'setHooks' | 'state'>;
   /** The restore job (restorePause and its kin; tests that do not use them leave it out). */
   restore?: Pick<RestoreJob<unknown>, 'setHooks' | 'state'>;
+    /** The open library seedAssets writes into (index.ts); absent in tests that do not seed files. */
+    seedFiles?: () => SeedAssetsDeps;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
   organize(): OrganizeSeedDeps;
@@ -451,6 +586,13 @@ export function installTestHooks(deps: {
     },
     restoreWaiting: () => restoreHeld?.file ?? null,
     restoreState: () => restoreJob().state(),
+      seedAssets(input) {
+        if (!deps.seedFiles) throw new Error('seedAssets: no library to seed');
+        const out = seedAssets(deps.seedFiles(), input);
+        deps.broadcast('libraryChanged', { reason: 'import' });
+        return out;
+      },
+      fsyncProbe: (input) => fsyncProbe(input),
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();

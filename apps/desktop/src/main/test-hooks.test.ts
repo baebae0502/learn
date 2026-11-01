@@ -1,10 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, IDLE_RESTORE_PROGRESS, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
 import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
-import type { BackupHooks } from '@learn/library';
+import { checkLibrary, ensureLayout, libraryLayout, managedRelativePath, refreshLinkedAvailability, type BackupHooks } from '@learn/library';
 import {
-  createImportPause, installTestHooks, seedItems, seedOrganize, stageCommitFailures,
-  type LearnTestHooks, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow,
+  createImportPause, fsyncProbe, installTestHooks, seedAssets, seedItems, seedOrganize, stageCommitFailures,
+  type LearnTestHooks, type OrganizeSeedDeps, type SeedAssetsInput, type SeedAssetsResult, type SeedOrganizeInput, type SeedRepo, type SeedRow,
 } from './test-hooks';
 
 const FROM = { id: 'from-id', type: 'video', storageMode: 'managed', assetId: 'asset-1', revisionId: 'rev-1' } as LibraryItem;
@@ -396,5 +400,141 @@ describe('holding a restored copy (Task 10: the restore\'s toast, its 취소, qu
     expect(hooks).toBeUndefined();
     expect(t.restoreState()).toEqual(IDLE_RESTORE_PROGRESS);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('E2E file seeding hook (M6 spec 14: items that each have a file)', () => {
+  const made: string[] = [];
+  afterEach(() => {
+    for (const dir of made.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+  function library() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-seed-assets-'));
+    made.push(dir);
+    const layout = libraryLayout(path.join(dir, 'Library'));
+    ensureLayout(layout);
+    const db = openDatabase(layout.dbFile);
+    migrate(db, { dbFile: layout.dbFile });
+    return { dir, layout, db, repo: new LibraryRepository(db) };
+  }
+  const THREE: SeedRow[] = [ROWS[0]!, ROWS[1]!, { title: 'Linked 3', creators: [], year: 2020, createdAt: '2026-09-30T23:58:00.000Z' }];
+  const fileSha = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+  it('gives every row a file of its own where an import would put it — copies in assets/, the rows from linkedFrom outside — and the check finds nothing', async () => {
+    const lib = library();
+    try {
+      const outside = path.join(lib.dir, 'outside');
+      const out = seedAssets({ db: lib.db, repo: lib.repo, layout: lib.layout }, { rows: THREE, linkedFrom: 2, linkedDir: outside });
+      expect(out.itemIds).toHaveLength(3);
+      expect(new Set(out.sha256).size).toBe(3);
+      const byHash = new Map(lib.repo.allAssets().map((a) => [a.sha256, a]));
+      out.sha256.forEach((sha, i) => {
+        const managed = i < 2;
+        const file = managed ? path.join(lib.layout.root, ...managedRelativePath(sha).split('/')) : path.join(outside, 'seed-3.pdf');
+        expect(byHash.get(sha)).toMatchObject(
+          managed ? { storageMode: 'managed', relativePath: managedRelativePath(sha), externalPath: null, size: fs.statSync(file).size } : { storageMode: 'linked', relativePath: null, externalPath: file },
+        );
+        expect(fileSha(file)).toBe(sha);
+      });
+      const items = lib.repo.listItems();
+      expect(items.map((x) => x.id)).toEqual(out.itemIds); // newest first: the rows' order
+      expect(items[0]).toMatchObject({ title: '세포 신호 1', type: 'pdf', creators: ['김민지', 'Alice Kim'], year: 2019, availability: 'available' });
+      expect(lib.repo.counts()).toMatchObject({ items: 3, assets: 3, revisions: 3 });
+      await expect(refreshLinkedAvailability(lib.layout, lib.repo)).resolves.toEqual([]);
+      await expect(checkLibrary(lib.layout, lib.repo)).resolves.toMatchObject({
+        items: 3, actionable: false, staging: { count: 0 }, unreferenced: { keys: [] }, missingManaged: { itemIds: [] }, missingLinked: { itemIds: [] },
+      });
+    } finally {
+      lib.db.close();
+    }
+  });
+  it('another call writes other files: every call has bytes of its own', () => {
+    const lib = library();
+    try {
+      const deps = { db: lib.db, repo: lib.repo, layout: lib.layout };
+      const first = seedAssets(deps, { rows: [ROWS[0]!] });
+      const second = seedAssets(deps, { rows: [ROWS[0]!] });
+      expect(first.sha256[0]).not.toBe(second.sha256[0]);
+      expect(lib.repo.counts()).toMatchObject({ items: 2, assets: 2 });
+    } finally {
+      lib.db.close();
+    }
+  });
+  it('refuses linked rows without an absolute linkedDir, before it writes anything', () => {
+    const lib = library();
+    try {
+      const deps = { db: lib.db, repo: lib.repo, layout: lib.layout };
+      expect(() => seedAssets(deps, { rows: THREE, linkedFrom: 1 })).toThrow(/linkedDir/);
+      expect(() => seedAssets(deps, { rows: THREE, linkedFrom: 1, linkedDir: 'relative/outside' })).toThrow(/linkedDir/);
+      expect(() => seedAssets(deps, { rows: THREE, linkedFrom: -1 })).toThrow(/linkedFrom/);
+      expect(lib.repo.counts()).toMatchObject({ items: 0, assets: 0 });
+      expect(fs.readdirSync(lib.layout.assetsDir)).toEqual([]);
+    } finally {
+      lib.db.close();
+    }
+  });
+  it('installed: __learnTest.seedAssets writes and announces the change once; __learnTest.fsyncProbe runs the probe', async () => {
+    const lib = library();
+    const broadcast = vi.fn();
+    const g = globalThis as { __learnTest?: { seedAssets(input: SeedAssetsInput): SeedAssetsResult; fsyncProbe(input: unknown): Promise<{ fileMs: number[] }> } };
+    try {
+      installTestHooks({
+        importCommits: () => ({}) as never,
+        repo: () => ({}) as never,
+        organize: () => {
+          throw new Error('not used');
+        },
+        broadcast,
+        seedFiles: () => ({ db: lib.db, repo: lib.repo, layout: lib.layout }),
+      });
+      expect(g.__learnTest!.seedAssets({ rows: [ROWS[0]!] }).itemIds).toHaveLength(1);
+      expect(broadcast.mock.calls).toEqual([['libraryChanged', { reason: 'import' }]]);
+      expect((await g.__learnTest!.fsyncProbe({ dir: path.join(lib.dir, 'probe'), files: 1, bytes: 16 })).fileMs).toHaveLength(1);
+    } finally {
+      lib.db.close();
+      delete g.__learnTest;
+      delete (globalThis as { __learnIpcCalls?: unknown }).__learnIpcCalls;
+      delete (globalThis as { __learnIpcDelays?: unknown }).__learnIpcDelays;
+    }
+  });
+});
+
+describe("E2E fsync probe (Q-2c: what one import's flush costs)", () => {
+  it('flushes as Importer.place does on a new shard — its parent, the staging file, then the shard after the rename — timing each', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-fsync-probe-'));
+    try {
+      const calls: string[] = [];
+      const io = {
+        fsyncFile: async (f: string) => void calls.push(`file ${path.relative(dir, f)}`),
+        fsyncDir: async (d: string) => void calls.push(`dir ${path.relative(dir, d)}`),
+      };
+      const out = await fsyncProbe({ dir, files: 2, bytes: 1024 }, io);
+      expect(calls).toEqual(['dir assets', 'file staging/00.part', 'dir assets/00', 'dir assets', 'file staging/01.part', 'dir assets/01']);
+      for (const list of [out.parentMs, out.fileMs, out.shardMs]) {
+        expect(list).toHaveLength(2);
+        for (const ms of list) expect(ms).toBeGreaterThanOrEqual(0);
+      }
+      expect(out.uv).toBe(process.versions.uv);
+      expect(fs.readdirSync(path.join(dir, 'staging'))).toEqual([]);
+      expect(fs.statSync(path.join(dir, 'assets', '01', '01')).size).toBe(1024);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("uses the importer's own fsyncFile and fsyncDir by default", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-fsync-probe-'));
+    try {
+      const out = await fsyncProbe({ dir, files: 3, bytes: 4096 });
+      expect([out.parentMs.length, out.fileMs.length, out.shardMs.length]).toEqual([3, 3, 3]);
+      expect(fs.readdirSync(path.join(dir, 'assets')).sort()).toEqual(['00', '01', '02']);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it('refuses a relative folder, a count outside 1–256 and an empty file, before it touches the disk', async () => {
+    await expect(fsyncProbe({ dir: 'relative', files: 1, bytes: 1 })).rejects.toThrow(/absolute/);
+    await expect(fsyncProbe({ dir: os.tmpdir(), files: 0, bytes: 1 })).rejects.toThrow(/256/);
+    await expect(fsyncProbe({ dir: os.tmpdir(), files: 257, bytes: 1 })).rejects.toThrow(/256/);
+    await expect(fsyncProbe({ dir: os.tmpdir(), files: 1, bytes: 0 })).rejects.toThrow(/bytes/);
   });
 });

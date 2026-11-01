@@ -615,6 +615,10 @@ if (!app.requestSingleInstanceLock()) {
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
         backup,
         restore,
+        seedFiles: () => {
+          const c = getContext();
+          return { db: c.db, repo: c.repo, layout: c.layout };
+        },
         check: {
           state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
           request: async () => {

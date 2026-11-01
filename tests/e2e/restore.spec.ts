@@ -4,11 +4,11 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
 import { RESTORE_COPY } from '../../packages/domain/src/backup';
 import {
   addToCollection, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, createTag, distinctPdfs, enabledMenuCommands, expectWindow,
-  folderPicks, importFiles, importPause, importPaths, importResume, launch, relaunchRequested, restorePause, restoreResume, restoreWaiting, runMenuCommand,
+  folderPicks, importFiles, importPause, importPaths, importResume, launch, libraryFacts, relaunchRequested, restorePause, restoreResume, restoreWaiting, runMenuCommand,
   setTagColor, shellCalls, stubConfirm, stubFolderPicker, stubFolderPicks, stubShell, trashItems, waitImportIdle, waitRestoreIdle,
 } from './helpers';
 
@@ -36,42 +36,6 @@ async function backUp(app: ElectronApplication, parent: string): Promise<string>
   return path.join(parent, name!);
 }
 
-/** Everything a restore must bring back, read through the page as the app shows it (spec 9.2, AC15). */
-async function libraryFacts(page: Page) {
-  return page.evaluate(async () => {
-    const un = <T>(r: { ok: true; data: T } | { ok: false; code: string }): T => {
-      if (!r.ok) throw new Error(r.code);
-      return r.data;
-    };
-    const byId = <T extends { id: string }>(xs: readonly T[]): T[] => [...xs].sort((a, b) => a.id.localeCompare(b.id));
-    const sorted = (r: Record<string, string[]>) =>
-      Object.fromEntries(Object.entries(r).map(([k, v]) => [k, [...v].sort()] as const).sort(([a], [b]) => a.localeCompare(b)));
-    const items = un(await window.learn.library.list());
-    const trash = un(await window.learn.library.trashView());
-    const organize = un(await window.learn.library.organize());
-    const files: Record<string, { title: string; sha256: string; storageMode: string; availability: string; tags: string[]; collections: string[] }> = {};
-    for (const it of [...items, ...trash.items]) {
-      const d = un(await window.learn.library.detail({ itemId: it.id }));
-      files[it.id] = {
-        title: it.title, sha256: d.file.sha256, storageMode: d.file.storageMode, availability: d.file.availability,
-        tags: d.tags.map((t) => t.name).sort(), collections: d.collections.map((c) => c.name).sort(),
-      };
-    }
-    return {
-      items: items.map((i) => i.id).sort(),
-      trashed: byId(trash.items.map((i) => ({ id: i.id, deletedAt: i.deletedAt }))),
-      trashedCollections: byId(trash.collections),
-      collections: byId(organize.collections),
-      tags: byId(organize.tags),
-      members: sorted(organize.members),
-      tagged: sorted(organize.tagged),
-      trashMembers: sorted(trash.members),
-      trashTagged: sorted(trash.tagged),
-      trashCount: organize.trashCount,
-      files,
-    };
-  });
-}
 type Facts = Awaited<ReturnType<typeof libraryFacts>>;
 
 test('a backup restores into a new folder beside the library; the sheet says what came back; 전환 saves the folder and asks for a restart; an app on it holds the same library (spec 9, AC15)', async ({}, testInfo) => {

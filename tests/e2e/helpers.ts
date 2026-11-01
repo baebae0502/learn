@@ -1430,3 +1430,27 @@ export const restoreState = (app: ElectronApplication) => app.evaluate(() => (gl
 /** Until main's restore has ended (its last notice sent). */
 export const waitRestoreIdle = (app: ElectronApplication) =>
   expect.poll(async () => (await restoreState(app)).state, { message: 'the restore ended' }).toBe('idle');
+
+// ---- M6 P1 gate and @perf ------------------------------------------------------------------------------------------------
+
+export { factCounts, libraryFacts, type FactCounts, type LibraryFacts } from './library-facts';
+
+/**
+ * SIGKILL of the Electron main process, as a crash or a power cut ends the app: no quit handler and no beforeunload run.
+ * Waits at most `timeoutMs` for the exit.
+ */
+export async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Promise<void> {
+  const proc = app.process();
+  const pid = proc.pid!;
+  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+  process.kill(pid, 'SIGKILL');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Electron main process ${pid} did not exit within ${timeoutMs} ms of SIGKILL`)), timeoutMs);
+  });
+  try {
+    await Promise.race([exited, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}

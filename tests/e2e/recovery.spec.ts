@@ -6,7 +6,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, clickToCloseSheet, closeSheet, distinctPdfs, expectWindow, importFiles, importPause, importPaths, importWaiting, launch, libraryCheckState, menuItemEnabled,
+  FIXTURES, clickToCloseSheet, closeSheet, distinctPdfs, expectWindow, hardKill, importFiles, importPause, importPaths, importWaiting, launch, libraryCheckState, menuItemEnabled,
   rowByTitle, runMenuCommand, shellCalls, stubOpenDialog, stubShell, waitForSheet, waitImportIdle, type Session,
 } from './helpers';
 
@@ -23,22 +23,6 @@ const row = (sheet: Page, kind: string) => sheet.locator(`[data-testid="check-ro
 const visibleSheets = (app: ElectronApplication) =>
   app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes('window=sheet')).length);
 const openCheck = (s: Session) => expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.checkLibrary'));
-
-/** SIGKILL, as a crash or a power cut ends the app: no quit handler runs (position.spec.ts does the same). */
-async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Promise<void> {
-  const proc = app.process();
-  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
-  process.kill(proc.pid!, 'SIGKILL');
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`the app did not exit within ${timeoutMs} ms of SIGKILL`)), timeoutMs);
-  });
-  try {
-    await Promise.race([exited, late]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 test('a killed import leaves a .part: the sheet opens by itself after the relaunch; the same list does not open it again, a new leftover does; 임시 파일 정리 removes the .part only', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');

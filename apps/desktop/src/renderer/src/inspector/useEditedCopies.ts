@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, unwrap } from '../api';
 import { keys } from '../data/queries';
 import { useLearnEvent } from '../events';
-import { focusRegained } from './editedCopies';
+import { focusRegained } from './editedCopyFocus';
 
 /**
  * An item's edited copies (M6 spec 6). Another app writes them and main announces nothing for that, so the panel reads

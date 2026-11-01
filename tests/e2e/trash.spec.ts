@@ -65,19 +65,22 @@ test('⌘⌫ moves the selection at once with 실행 취소, the trash row shows
     await rowByTitle(page, 'distinct-03').click();
     await runMenuCommand(app, 'item.trash');
     await expect(page.getByTestId('trash-undo')).toContainText('‘distinct-03’⁠을 휴지통으로 옮겼습니다');
-    // In the trash view the same line is 영구 삭제… (P-11).
+    // C-1: 영구 삭제 of that very item closes its toast at once (a success toast closes by itself after 5 s, so this comes first).
     await specialRow(page, 'trash').click();
+    await rowByTitle(page, 'distinct-03').click();
+    await expect(page.getByTestId('trash-undo')).toBeVisible();
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await expect(page.getByTestId('trash-undo')).toBeVisible(); // still offered while the sheet asks
+    await clickToCloseSheet(sheet, sheet.getByTestId('purge-confirm'));
+    await expect(page.getByTestId('purge-done')).toHaveText('자료 1개를 영구히 삭제했습니다');
+    await expect(page.getByTestId('trash-undo')).toHaveCount(0, { timeout: 1000 }); // closed with the purge, not by its own 5 s
+    await expect.poll(async () => (await trashed(page))?.items).toEqual(['distinct-04']);
+    await rowByTitle(page, 'distinct-04').click();
+    // In the trash view the same line is 영구 삭제… (P-11).
     await expect(title(page)).toHaveText('휴지통');
     await expect.poll(() => menuLabel(app, 'item.trash')).toBe('영구 삭제…');
     await specialRow(page, 'all').click();
     await expect.poll(() => menuLabel(app, 'item.trash')).toBe('휴지통으로 이동');
-    // C-1: 영구 삭제 of the item the toast still offers to take back closes that toast (no 실행 취소 for what cannot come back).
-    await specialRow(page, 'trash').click();
-    await rowByTitle(page, 'distinct-03').click();
-    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
-    await clickToCloseSheet(sheet, sheet.getByTestId('purge-confirm'));
-    await expect(page.getByTestId('purge-done')).toHaveText('자료 1개를 영구히 삭제했습니다');
-    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
   } finally {
     await app.close();
   }

@@ -527,6 +527,7 @@ test('axe at every M6 state: the import toast running and waiting for the answer
     const question = await expectWindow(app, 'sheet', () => importFiles(s, [a!, b!]));
     await expect(page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
     await expectNoSeriousA11y(page, 'the import toast, waiting for the answer');
+    await expect(question.getByTestId('dup-card')).toBeVisible();
     await expectNoSeriousA11y(question, 'the duplicate question');
     await closeSheet(question, 'Escape');
     await waitImportIdle(page);
@@ -540,6 +541,7 @@ test('axe at every M6 state: the import toast running and waiting for the answer
     await expectNoSeriousA11y(purge, 'the permanent-delete sheet');
     await closeSheet(purge, 'Escape');
     const empty = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'trash.empty'));
+    await expect(empty.getByTestId('purge-title')).toHaveText('휴지통을 비우겠습니까?');
     await expectNoSeriousA11y(empty, 'the empty-trash sheet');
     await closeSheet(empty, 'Escape');
     await stubContextMenu(app, '복원');

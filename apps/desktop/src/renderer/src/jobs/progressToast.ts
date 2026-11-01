@@ -1,14 +1,16 @@
-import type { ImportQueueState } from '@learn/domain';
+import type { ImportQueueState, JobProgress } from '@learn/domain';
 import type { ToastData } from '../ui/toasts';
 
 /** design-spec 6 "1초를 넘는 작업은 진행 토스트", spec 3.3: a run that has not ended by then gets its toast. */
 export const JOB_TOAST_DELAY_MS = 1000;
 
-/** The jobs with a progress toast. Task 9 adds the backup's and the restore's (the same toast, P-3). */
-export type ProgressJob = 'import';
+/** The jobs with a progress toast (P-3): the import queue's, the backup's. Task 10 adds the restore's. */
+export type ProgressJob = 'import' | 'backup';
+/** What a job's toast draws live: the import queue's state, or a backup's (job:progress). */
+export type JobState = ImportQueueState | JobProgress;
 
 /** What a job's toast shows once it no longer follows its job: its run's last state, then the result that took it over. */
-export type JobToastView = { kind: 'progress'; state: ImportQueueState } | { kind: 'result'; data: ToastData };
+export type JobToastView = { kind: 'progress'; state: JobState } | { kind: 'result'; data: ToastData };
 
 export interface ProgressToastDeps {
   /** Puts the job's toast in the region (it draws the job's live state until it is given a view); answers its key. */
@@ -24,7 +26,7 @@ export interface ProgressToast {
   /** A run began. Its toast comes once it has run JOB_TOAST_DELAY_MS; a quiet run (the E2E setup helper) has none. */
   begin(quiet: boolean): void;
   /** The run's end reached this window: no toast comes for it now; the one up keeps `last` and is answered (null: none). */
-  end(last: ImportQueueState | null): string | null;
+  end(last: JobState | null): string | null;
   /** The run's result takes its toast over in place, or is a toast of its own; null closes the toast. */
   settle(key: string | null, result: ToastData | null): void;
 }

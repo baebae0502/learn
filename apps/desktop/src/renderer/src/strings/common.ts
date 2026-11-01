@@ -11,4 +11,10 @@ export const common = {
   noValue: '—',
   /** Why a control is disabled while an import or a sheet holds the window (M-2). */
   busy: '진행 중인 작업이 끝나면 쓸 수 있습니다',
+  /** How long work took (format.ts formatElapsed): "38초", "2분 5초", "1시간 4분". */
+  elapsed: {
+    seconds: (s: number) => `${s}초`,
+    minutes: (m: number, s: number) => (s > 0 ? `${m}분 ${s}초` : `${m}분`),
+    hours: (h: number, m: number) => (m > 0 ? `${h}시간 ${m}분` : `${h}시간`),
+  },
 } as const;

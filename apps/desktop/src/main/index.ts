@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type WebContents } from 'electron';
+import { app, dialog, Menu, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -18,8 +18,10 @@ import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic'
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
+import { revealBackupFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
 import { createHandle, type IpcDeps } from './ipc/register';
+import { createBackupJob } from './jobs/backup-job';
 import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
@@ -448,6 +450,38 @@ if (!app.requestSingleInstanceLock()) {
       },
     });
     sheets.onAct('libraryCheck', (action, sheet) => checks.act(action, sheet));
+    // 백업 만들기… on the same work line (spec 8.1): the folder panel hangs on the window that asked; the result sheet too.
+    const backup = createBackupJob<BrowserWindow>({
+      lane: jobs,
+      library: () => {
+        const c = getContext();
+        return { layout: c.layout, db: c.db, repo: c.repo, settings: c.settings };
+      },
+      pickFolder: async (owner, { defaultPath }) => {
+        const copy = mainStrings.backup;
+        const options: OpenDialogOptions = { title: copy.pickTitle, message: copy.pickMessage, buttonLabel: copy.pickButton, defaultPath, properties: ['openDirectory', 'createDirectory'] };
+        const res = owner && !owner.isDestroyed() ? await asSheet(owner, () => dialog.showOpenDialog(owner, options)) : await dialog.showOpenDialog(options);
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+      backupDir: () => prefs.get().backupDir,
+      rememberDir: (dir) => {
+        if (prefs.get().backupDir !== dir) broadcast('prefsChanged', { prefs: prefs.set({ backupDir: dir }) });
+      },
+      documentsDir: () => app.getPath('documents'),
+      homeDir: () => app.getPath('home'),
+      progress: (p) => broadcast('job:progress', p),
+      stored: () => broadcast('settingsChanged', { keys: ['backup.last'] }),
+      showResult: (owner, payload) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        if (!parent) return; // no window left to show it on (macOS): 마지막 백업 in settings still says it
+        void sheets.open(parent, payload);
+      },
+    });
+    // The result sheet's Finder에서 보기 (sheet:act): the folder that sheet names, kept in main; the sheet stays as it is.
+    sheets.onAct('backupDone', async (action, sheet) => {
+      if (action.kind === 'backupDone' && action.act === 'reveal' && sheet.payload.kind === 'backupDone') revealBackupFolder(sheet.payload.location);
+      return sheet.payload;
+    });
     /** recovery:show: the main window asks for the automatic sheet itself, held as under any sheet it asks for (Q-8d). */
     const requestAutoCheck = (): void => {
       const win = liveMainWindow();
@@ -481,6 +515,7 @@ if (!app.requestSingleInstanceLock()) {
       sheets,
       jobs,
       imports,
+      backup,
       checks,
       windows: { openSettings: () => void settingsWindow.open(), asSheet },
       theme: {
@@ -537,6 +572,7 @@ if (!app.requestSingleInstanceLock()) {
         },
         broadcast,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
+        backup,
         check: {
           state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
           request: async () => {

@@ -1,3 +1,4 @@
+import type { JobProgress } from './backup';
 import type { CommandArgs, CommandId } from './commands';
 import type { ImportQueueState, ImportReport } from './library';
 import type { Prefs } from './settings';
@@ -60,4 +61,6 @@ export interface LearnEventMap {
    * automatic check sheet itself (library.check({ auto: true })), so it is held as under any sheet it asks for (Q-8d).
    */
   'recovery:show': Record<string, never>;
+  /** A backup (or a restore, Task 10) on main's work line: its state at most ten times a second, and its end (P-20). */
+  'job:progress': JobProgress;
 }

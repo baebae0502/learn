@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { newId, type ImportQueueState, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
+import { newId, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
 import type { ImportHooks, Importer } from '@learn/library';
+import type { BackupJob } from './jobs/backup-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
@@ -265,6 +266,15 @@ export interface LearnTestHooks {
    */
   holdJob(input: { kind: Exclude<JobKind, 'import'> }): void;
   releaseJob(): void;
+  /**
+   * The next backup holds its first copy once it is written, before it is read back (spec 8.1), until backupResume — so a
+   * test sees its toast, presses its 취소, or changes the copy under it. `null` lifts it.
+   */
+  backupPause(input: { at: 'afterCopy' | null }): void;
+  backupResume(): void;
+  /** The held copy's path inside the backup being made, or null. */
+  backupWaiting(): string | null;
+  backupState(): JobProgress;
   /** The newest library check and what the startup check did about the automatic sheet ('pending' until it decided). */
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
@@ -288,6 +298,8 @@ export function installTestHooks(deps: {
     /** The work line holdJob takes (unit tests that do not hold it leave it out). */
     lane?: Pick<JobLane, 'run'>;
   };
+  /** The backup job (backupPause and its kin; tests that do not use them leave it out). */
+  backup?: Pick<BackupJob<unknown>, 'setHooks' | 'state'>;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
   organize(): OrganizeSeedDeps;
@@ -315,6 +327,11 @@ export function installTestHooks(deps: {
     return imports;
   };
   let heldJob: (() => void) | null = null;
+  let backupHeld: { file: string; go: () => void } | null = null;
+  const backupJob = (): NonNullable<typeof deps.backup> => {
+    if (!deps.backup) throw new Error('backup hooks: no backup job');
+    return deps.backup;
+  };
   (globalThis as { __learnTest?: LearnTestHooks }).__learnTest = {
     seedItems(input) {
       const ids = seedItems(deps.repo(), input);
@@ -371,6 +388,29 @@ export function installTestHooks(deps: {
       heldJob = null;
       go?.();
     },
+    backupPause({ at }) {
+      if (at === null) {
+        backupJob().setHooks(undefined);
+        return;
+      }
+      let armed = true;
+      backupJob().setHooks({
+        afterCopy: (file) => {
+          if (!armed) return undefined;
+          armed = false; // once: the copies after it pass
+          return new Promise<void>((resolve) => {
+            backupHeld = { file, go: resolve };
+          });
+        },
+      });
+    },
+    backupResume() {
+      const held = backupHeld;
+      backupHeld = null;
+      held?.go();
+    },
+    backupWaiting: () => backupHeld?.file ?? null,
+    backupState: () => backupJob().state(),
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();

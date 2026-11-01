@@ -20,6 +20,8 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'app:info': MAIN_AND_SETTINGS,
   'app:showLibraryFolder': SETTINGS,
   'app:chooseLibraryFolder': SETTINGS,
+  'app:backupInfo': SETTINGS,
+  'app:revealBackup': SETTINGS,
 
   'library:pickAndImport': MAIN,
   'library:import': MAIN,
@@ -49,6 +51,9 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'library:getItems': MAIN,
   'library:exportCopy': MAIN,
   'library:revealExport': MAIN,
+
+  'backup:create': MAIN,
+  'backup:cancel': MAIN,
 
   'collections:list': MAIN,
   'collections:create': MAIN,

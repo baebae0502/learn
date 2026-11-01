@@ -22,14 +22,14 @@ describe('CHANNEL_KINDS', () => {
     expect(callableFrom('sheet')).toEqual(['sheet:act', 'sheet:payload', 'sheet:resolve']);
   });
 
-  it('the settings window: what SettingsApp calls — app info and the library location, the device prefs, its window state and theme', () => {
+  it('the settings window: what SettingsApp calls — app info, the library location and 마지막 백업, the device prefs, its window state and theme', () => {
     expect(callableFrom('settings')).toEqual([
-      'app:chooseLibraryFolder', 'app:info', 'app:showLibraryFolder', 'prefs:get', 'prefs:set', 'ui:themeShown', 'ui:windowState',
+      'app:backupInfo', 'app:chooseLibraryFolder', 'app:info', 'app:revealBackup', 'app:showLibraryFolder', 'prefs:get', 'prefs:set', 'ui:themeShown', 'ui:windowState',
     ]);
   });
 
-  it("the main window: everything but the settings window's library location and the sheets' own channels", () => {
-    const elsewhere = ['app:chooseLibraryFolder', 'app:showLibraryFolder', 'sheet:act', 'sheet:payload', 'sheet:resolve'];
+  it("the main window: everything but the settings window's library location and 마지막 백업 and the sheets' own channels", () => {
+    const elsewhere = ['app:backupInfo', 'app:chooseLibraryFolder', 'app:revealBackup', 'app:showLibraryFolder', 'sheet:act', 'sheet:payload', 'sheet:resolve'];
     expect(callableFrom('main')).toEqual(ALL.filter((c) => !elsewhere.includes(c)));
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { COMMAND_IDS, type CommandContextState, type PickedCommand } from './commands';
+import type { BackupInfo } from './backup';
 import type { LearnEventMap, WindowState } from './events';
 import type {
   AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
@@ -101,8 +102,8 @@ export const settingSetInput = z.object({ key: z.string().min(1).max(100), value
 /** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */
 export const prefsPatchInput = z.object(prefsFields).partial().strict();
 export type PrefsPatch = z.input<typeof prefsPatchInput>;
-/** What the renderer may change: everything but the library location, which only app.chooseLibraryFolder sets (R4). */
-export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true }).partial().strict();
+/** What the renderer may change: everything but the library location and the backup folder, which only main sets (R4). */
+export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true }).partial().strict();
 /** ui.themeShown: the theme a page now shows (its own resolution of the pref; T13R4-m1). */
 export const themeShownInput = z.object({ shade: z.enum(['light', 'dark']) }).strict();
 export const savePositionInput = z.object({
@@ -143,6 +144,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
+    /** A backup is on main's work line: 백업 만들기… is off. */
+    backupRunning: z.boolean().optional(),
     /** Duplicate groups of two or more listed items: 중복 N묶음 모두 정리 needs two and names the count (spec 11.1). */
     duplicateGroups: contextCount.optional(),
   })
@@ -154,6 +157,7 @@ export const sheetResultInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('shortcuts') }),
   z.object({ kind: z.literal('purge'), confirmed: z.boolean() }),
   z.object({ kind: z.literal('libraryCheck') }),
+  z.object({ kind: z.literal('backupDone') }),
 ]);
 /** A native question with the renderer's words (collection delete, tag merge and delete): spec 3.4. */
 export const confirmInput = z.object({ message: z.string().min(1).max(300), detail: z.string().max(600).optional(), confirm: z.string().min(1).max(40), caution: z.boolean().optional() }).strict();
@@ -169,6 +173,7 @@ export const sheetActionSchema = z.union([
   z.object({ kind: z.literal('libraryCheck'), act: z.enum(CHECK_ACTS) }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('relink'), itemId: z.uuid() }).strict(),
   z.object({ kind: z.literal('libraryCheck'), act: z.literal('cleanUnreferenced'), keys: z.array(z.string().min(1).max(512)).max(100_000) }).strict(),
+  z.object({ kind: z.literal('backupDone'), act: z.literal('reveal') }).strict(),
 ]) satisfies z.ZodType<SheetAction>;
 export const sheetActInput = z.object({ action: sheetActionSchema }).strict();
 export type SheetActInput = z.input<typeof sheetActInput>;
@@ -234,6 +239,10 @@ export interface LearnApi {
     showLibraryFolder(): Promise<Result<void>>;
     /** Main picks and checks a folder, confirms the restart, saves it and relaunches (the renderer never sends a path). */
     chooseLibraryFolder(): Promise<Result<{ relaunching: boolean }>>;
+    /** 마지막 백업 for the settings window (spec 8.2): when, and the folder's name; null when this library has none. */
+    backupInfo(): Promise<Result<BackupInfo | null>>;
+    /** Shows the last backup's folder in Finder; main has its path (the page never sends one). */
+    revealBackup(): Promise<Result<void>>;
   };
   library: {
     /**
@@ -342,6 +351,12 @@ export interface LearnApi {
     /** The stored position, or null. A pure read. */
     getPosition(input: ItemIdInput): Promise<Result<ReadingPosition | null>>;
     savePosition(input: SavePositionInput): Promise<Result<void>>;
+  };
+  backup: {
+    /** 백업 만들기…: main asks for a folder over the calling window and puts the backup on its work line (spec 8.1). */
+    create(): Promise<Result<{ started: boolean }>>;
+    /** The progress toast's 취소: the backup stops at its next checkpoint and leaves nothing. */
+    cancel(): Promise<Result<void>>;
   };
   ui: {
     showContextMenu(input: ShowContextMenuInput): Promise<Result<PickedCommand | null>>;

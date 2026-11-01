@@ -74,6 +74,8 @@ export interface CommandEnv extends CommandContextState {
   setTextSize(update: TextSizeUpdate): void;
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
   cancelImport(): void;
+  /** 백업 만들기… (spec 8.1): main asks for a folder and puts the backup on its work line; the window stays in use. */
+  backup(): void;
   /** F6 / ⇧F6 (Task 12): the next / previous pane (shell/panes.ts). */
   focusPane(direction: 1 | -1): void;
   /** ⌘F: the quick search field takes the focus with its text selected (library/LibrarySearch.tsx). */
@@ -95,6 +97,8 @@ export interface CommandEnv extends CommandContextState {
   held?: boolean;
   /** The import queue has files to finish (jobs/jobProgress.ts): 가져오기 취소 is available. */
   importRunning?: boolean;
+  /** A backup is on main's work line (jobs/jobProgress.ts): 백업 만들기… is off until it ends. */
+  backupRunning?: boolean;
 }
 
 const clampTextSize = (n: number): TextSize => Math.min(15, Math.max(12, n)) as TextSize;
@@ -134,6 +138,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.importLinked': (env) => env.importFiles('linked'),
   'file.checkLibrary': (env) => env.checkLibrary(),
   'file.cancelImport': (env) => env.cancelImport(),
+  'file.backup': (env) => env.backup(),
   'library.find': (env) => env.focusSearch(),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
@@ -211,6 +216,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),
+    ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.duplicateGroups !== undefined ? { duplicateGroups: env.duplicateGroups } : {}),
   };
 }

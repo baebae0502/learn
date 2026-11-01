@@ -17,6 +17,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   selection: () => [],
   targetsOf: (target) => (target.itemIds ?? []).map(() => missingLinked),
   importFiles: vi.fn(),
+  backup: vi.fn(),
   checkLibrary: vi.fn(),
   newCollection: vi.fn(),
   renameCollection: vi.fn(),
@@ -336,6 +337,15 @@ describe('renderer command registry', () => {
     expect(e.editInfo).toHaveBeenCalledWith(ID);
     expect(runCommand('item.editInfo', env(), { itemIds: [ID, ID] })).toBe(false);
     expect(runCommand('item.editInfo', env({ view: 'viewer' }), { itemIds: [ID] })).toBe(false);
+  });
+  it('백업 만들기… runs with something to back up and no backup on the line; the context says when one is (Task 9)', () => {
+    const e = env({ libraryCount: 2 });
+    expect(runCommand('file.backup', e)).toBe(true);
+    expect(e.backup).toHaveBeenCalledTimes(1);
+    expect(runCommand('file.backup', env({ libraryCount: 2, backupRunning: true }))).toBe(false);
+    expect(runCommand('file.backup', env())).toBe(false);
+    expect(contextOf(env({ backupRunning: true }))).toMatchObject({ backupRunning: true });
+    expect(contextOf(env())).not.toHaveProperty('backupRunning');
   });
 });
 

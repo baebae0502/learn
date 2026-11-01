@@ -158,4 +158,55 @@
   .sheet[data-fresh] .d-foot .btn-primary:is([data-focus-visible], :focus-visible) {
     outline: none;
   }
+  /* The title and the line under it (when · how long; dialogs.html?scene=backup). */
+  .sheet .d-heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  /* Label–value rows in a sheet's card (mockup .kv): footnote secondary labels, right-aligned, as wide as the widest. */
+  .sheet .kv-card {
+    padding: var(--space-12) var(--space-16);
+  }
+  .sheet .kv {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--space-12);
+    row-gap: var(--space-6);
+    align-items: baseline;
+    margin: 0;
+  }
+  .sheet .kv dt {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .sheet .kv dd {
+    margin: 0;
+    min-width: 0;
+  }
+  .sheet .kv dd.mono-val {
+    font: var(--type-mono);
+    color: var(--text-secondary);
+  }
+  /* A note under the card: an info icon and a footnote in secondary text (mockup backupSheet). */
+  .sheet .sheet-note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-8);
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .sheet .sheet-note .icon {
+    flex: none;
+    margin-top: 1px; /* local: the 14 px icon on the footnote's first line (16 px leading) */
+  }
+  .sheet .field-error {
+    margin: 0;
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
 }

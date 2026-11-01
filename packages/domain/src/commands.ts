@@ -17,6 +17,7 @@ export { COLOR_SLOTS } from './tag-colors';
 export type CommandId =
   | 'file.importManaged'
   | 'file.importLinked'
+  | 'file.backup'
   | 'file.checkLibrary'
   | 'file.cancelImport'
   | 'library.find'
@@ -205,6 +206,12 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'file.checkLibrary', label: '라이브러리 점검…', menu: { menu: 'file', group: 3, order: 1 }, contexts: ['app'],
     keywords: ['점검', '검사', '복구', '정리', '임시 파일', '사본', '수정본', 'check', 'repair', 'recovery'],
+  },
+  // 백업 만들기… (spec 8.1, 11): main asks for a folder and runs the backup on its work line; the window stays in use.
+  // 파일 group 3 after 라이브러리 점검…, and the palette. Off with nothing to back up and while a backup is on the line.
+  {
+    id: 'file.backup', label: '백업 만들기…', menu: { menu: 'file', group: 3, order: 2 }, contexts: ['app'],
+    keywords: ['백업', '보관', '복사본', '저장', 'backup'],
   },
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
@@ -468,6 +475,8 @@ export interface CommandContextState {
   trashCount: number;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
+  /** A backup is on main's work line, running or waiting (job:progress): 백업 만들기… is off until it ends. */
+  backupRunning?: boolean;
   /**
    * Duplicate groups with two or more items in the list (spec 11.1): 중복 N묶음 모두 정리 needs two, and its name says how
    * many. Absent where no library view reports it.
@@ -646,6 +655,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'duplicates.keepOne': (c) => c.view === 'library' && c.scope === 'duplicates',
   'duplicates.keepOneAll': (c) => c.view === 'library' && (c.duplicateGroups ?? 0) >= 2,
   'file.cancelImport': (c) => c.importRunning === true,
+  // Something to back up — in the library or only in its trash — and no backup on the line already (one at a time; an
+  // import running first only makes it wait, spec 3.1).
+  'file.backup': (c) => (c.libraryCount > 0 || c.trashCount > 0) && c.backupRunning !== true,
   'view.textBigger': (c) => c.textSize < 15,
   'view.textSmaller': (c) => c.textSize > 12,
   'view.textReset': (c) => c.textSize !== 13,

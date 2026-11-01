@@ -151,6 +151,9 @@ export function openPrefsStore(dir: string, opts: { now?: () => Date } = {}): Pr
       if (typeof defined.libraryRoot === 'string' && !path.isAbsolute(defined.libraryRoot)) {
         throw new LearnError('VALIDATION_FAILED', mainStrings.prefs.libraryRootRelative);
       }
+      if (typeof defined.backupDir === 'string' && !path.isAbsolute(defined.backupDir)) {
+        throw new LearnError('VALIDATION_FAILED', mainStrings.prefs.backupDirRelative);
+      }
       // The patch goes over the stored object, so keys (and values) this build does not know — a newer build's —
       // survive. Known fields missing from the file are written with their current value.
       const nextStored: StoredObject = { ...current, ...stored, ...defined };

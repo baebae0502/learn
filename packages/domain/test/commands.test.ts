@@ -113,7 +113,7 @@ describe('command registry', () => {
   });
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
-      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
+      'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -260,7 +260,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'collection.addItems', 'item.trash', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.backup', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'collection.addItems', 'item.trash', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected
@@ -500,8 +500,8 @@ describe('collection.addItems and collection.removeItems (M5 spec 9.2, 9.3)', ()
   });
   it('both follow 기본 앱으로 열기 in 파일, and sit in their own group of the item menu after 사본 내보내기… (7.3 order: 추가 · 빼기)', () => {
     const file = COMMANDS.filter((c) => c.menu?.menu === 'file').sort((a, b) => a.menu!.group - b.menu!.group || a.menu!.order - b.menu!.order).map((c) => c.id);
-    expect(file.slice(-8, -3)).toEqual(['item.showInFolder', 'item.exportCopy', 'item.openExternally', 'collection.addItems', 'collection.removeItems']);
-    expect(file.at(-3)).toBe('file.checkLibrary'); // 라이브러리 점검… is 파일's third group, before the trash's
+    expect(file.slice(-9, -4)).toEqual(['item.showInFolder', 'item.exportCopy', 'item.openExternally', 'collection.addItems', 'collection.removeItems']);
+    expect(file.slice(-4, -2)).toEqual(['file.checkLibrary', 'file.backup']); // 파일's third group, before the trash's
     const item = COMMANDS.filter((c) => c.contextMenu?.kinds.includes('item')).sort((a, b) => a.contextMenu!.group - b.contextMenu!.group || a.contextMenu!.order - b.contextMenu!.order);
     expect(item.map((c) => [c.id, c.contextMenu!.group])).toEqual([
       ['item.relink', 0], ['item.open', 1], ['item.showInFolder', 2], ['item.exportCopy', 2], ['collection.addItems', 3], ['collection.removeItems', 3], ['duplicates.keepOne', 4], ['item.trash', 4],

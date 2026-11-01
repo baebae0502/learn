@@ -14,18 +14,43 @@ export interface DuplicateCard {
 /** What 영구 삭제… or 휴지통 비우기… asks about (P-25): its title and text follow. */
 export type PurgeVariant = 'items' | 'collections' | 'mixed' | 'empty';
 
+/**
+ * 백업을 만들었습니다 (spec 8.2, dialogs.html?scene=backup): what the result sheet says. The location is shown, never
+ * sent back: Finder에서 보기 is an act main carries out with its own copy of it.
+ */
+export interface BackupDoneSheet {
+  kind: 'backupDone';
+  /** When the backup is of (its manifest's createdAt), and how long it took. */
+  at: string;
+  tookMs: number;
+  /** Items outside the trash, and in it. */
+  items: number;
+  trashed: number;
+  /** Managed copies written and read back, and their bytes. */
+  files: number;
+  bytes: number;
+  /** Items kept as a location only (linked), and items whose managed copy was already gone. */
+  linked: number;
+  missing: number;
+  /** The backup folder, and the home folder it is shown under as "~/…". */
+  location: string;
+  homeDir: string;
+}
+
 export type SheetPayload =
   /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
   | { kind: 'shortcuts' }
   | { kind: 'purge'; variant: PurgeVariant; items: number; collections: number }
-  | LibraryCheckPayload;
+  | LibraryCheckPayload
+  | BackupDoneSheet;
 export type SheetResult =
   /** `applyToRest`: the same choice for the remaining duplicates (always false when `remaining` was 0). */
   | { kind: 'duplicate'; choice: DuplicateChoice; applyToRest: boolean }
   | { kind: 'shortcuts' }
   | { kind: 'purge'; confirmed: boolean }
-  | { kind: 'libraryCheck' };
+  | { kind: 'libraryCheck' }
+  | { kind: 'backupDone' };
 
 // ---- 라이브러리 점검 (M6 spec 7, P-16/P-17/P-26) ----
 
@@ -79,5 +104,7 @@ export type CheckAction =
   | { kind: 'libraryCheck'; act: (typeof CHECK_ACTS)[number] }
   | { kind: 'libraryCheck'; act: 'relink'; itemId: string }
   | { kind: 'libraryCheck'; act: 'cleanUnreferenced'; keys: string[] };
-/** What an open sheet asks main to do (sheet:act). The backup and restore result sheets add theirs. */
-export type SheetAction = CheckAction;
+/** The backup result sheet's own action: Finder에서 보기 on the folder it made (main has its path). */
+export type BackupAction = { kind: 'backupDone'; act: 'reveal' };
+/** What an open sheet asks main to do (sheet:act). The restore result sheet adds its own (Task 10). */
+export type SheetAction = CheckAction | BackupAction;

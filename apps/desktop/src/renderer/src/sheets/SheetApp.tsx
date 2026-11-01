@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SheetResult } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { DuplicateSheet } from './DuplicateSheet';
+import { BackupDoneSheet } from './BackupDoneSheet';
 import { LibraryCheckSheet } from './LibraryCheckSheet';
 import { PurgeSheet } from './PurgeSheet';
 import { ShortcutsSheet } from './ShortcutsSheet';
@@ -16,5 +17,6 @@ export function SheetApp() {
   if (p.kind === 'duplicate') return <DuplicateSheet payload={p} />;
   if (p.kind === 'purge') return <PurgeSheet payload={p} />;
   if (p.kind === 'libraryCheck') return <LibraryCheckSheet payload={p} />;
+  if (p.kind === 'backupDone') return <BackupDoneSheet payload={p} />;
   return <ShortcutsSheet />;
 }

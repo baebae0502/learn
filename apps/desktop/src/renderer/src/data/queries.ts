@@ -9,6 +9,8 @@ import { queryClient } from './query-client';
 export const keys = {
   info: ['app', 'info'] as const,
   prefs: ['prefs'] as const,
+  /** 마지막 백업 (spec 8.2), the settings window's: read again when main says backup.last changed. */
+  backupInfo: ['app', 'backupInfo'] as const,
   items: ['library', 'items'] as const,
   searchTexts: ['library', 'searchTexts'] as const,
   item: (itemId: string) => ['library', 'item', itemId] as const,

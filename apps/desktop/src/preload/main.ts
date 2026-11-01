@@ -18,8 +18,9 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
+    backup: ['create', 'cancel'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],
   },
-  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show'],
+  events: ['menuCommand', 'libraryChanged', 'windowState', 'settingsChanged', 'prefsChanged', 'nativeMenu', 'demoShortcut', 'import:progress', 'import:finished', 'item:openRequested', 'recovery:show', 'job:progress'],
   pathForFile: true,
 });

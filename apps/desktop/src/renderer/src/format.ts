@@ -78,3 +78,14 @@ export function formatDateTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return t.common.noValue;
   return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. ${formatTimeOfDay(d)}`;
 }
+
+/** How long work took, in words (design-spec 9; the backup sheet's "38초 걸림"): at least a second; hours drop the seconds. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(1, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return t.common.elapsed.hours(h, m);
+  if (m > 0) return t.common.elapsed.minutes(m, s);
+  return t.common.elapsed.seconds(s);
+}

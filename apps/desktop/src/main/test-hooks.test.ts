@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ERROR_COPY, IDLE_IMPORT_STATE, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
+import { ERROR_COPY, IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, itemMetadataSchema, newId, nowIso, toLearnError, type ImportReport, type LibraryItem } from '@learn/domain';
 import { CollectionsRepository, LibraryRepository, TagsRepository, migrate, openDatabase, readOrganizeSnapshot, type Db } from '@learn/db';
+import type { BackupHooks } from '@learn/library';
 import {
   createImportPause, installTestHooks, seedItems, seedOrganize, stageCommitFailures,
   type LearnTestHooks, type OrganizeSeedDeps, type SeedOrganizeInput, type SeedRepo, type SeedRow,
@@ -334,6 +335,36 @@ describe('the library check\'s hooks (Task 8)', () => {
     expect(hooks.libraryCheck()).toEqual({ check: null, auto: 'not-due' });
     await hooks.requestLibraryCheck();
     expect(request).toHaveBeenCalledTimes(1);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('holding a backup copy (Task 9: the backup\'s toast, its 취소, a copy that reads back different)', () => {
+  it('backupPause holds the first copy written until backupResume, says which file, and lets the copies after it pass', async () => {
+    let hooks: BackupHooks | undefined;
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      backup: { setHooks: (h) => (hooks = h), state: () => ({ ...IDLE_BACKUP_PROGRESS }) },
+    });
+    const t = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    t.backupPause({ at: 'afterCopy' });
+    let first = false;
+    void Promise.resolve(hooks!.afterCopy!('/b/assets/aa/1')).then(() => (first = true));
+    await Promise.resolve();
+    expect(t.backupWaiting()).toBe('/b/assets/aa/1');
+    expect(first).toBe(false);
+    expect(hooks!.afterCopy!('/b/assets/bb/2')).toBeUndefined(); // once: the copies after it pass
+    t.backupResume();
+    await vi.waitFor(() => expect(first).toBe(true));
+    expect(t.backupWaiting()).toBeNull();
+    t.backupPause({ at: null });
+    expect(hooks).toBeUndefined();
+    expect(t.backupState()).toEqual(IDLE_BACKUP_PROGRESS);
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });

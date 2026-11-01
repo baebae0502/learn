@@ -8,7 +8,7 @@ import {
   UNSTABLE_ToastRegion as ToastRegion,
   type QueuedToast,
 } from 'react-aria-components';
-import { cancelJob, describeJob, useJobProgress, type JobToastText } from '../jobs/jobProgress';
+import { cancelJob, describeJob, jobAhead, liveState, useJobProgress, type JobToastText } from '../jobs/jobProgress';
 import type { ProgressJob } from '../jobs/progressToast';
 import { t } from '../strings';
 import { Button, IconButton } from './Button';
@@ -348,7 +348,8 @@ function JobProgressBody({ text, onCancel }: { text: JobToastText; onCancel: () 
 /** One job's toast: the same <Toast> from its first progress to its result, so it never closes and comes back. */
 function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: ProgressJob }) {
   const view = useJobProgress((s) => s.views[toast.key]);
-  const live = useJobProgress((s) => s.import);
+  const live = useJobProgress((s) => liveState(s, job));
+  const ahead = useJobProgress((s) => jobAhead(s, job));
   if (view?.kind === 'result') {
     return (
       <Toast toast={toast} className="toast" data-kind={view.data.kind} data-toast-key={toast.key} data-testid={view.data.testId ?? 'toast'}>
@@ -356,7 +357,7 @@ function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: P
       </Toast>
     );
   }
-  const text = describeJob(job, view?.state ?? live);
+  const text = describeJob(job, view?.state ?? live, ahead);
   return (
     <Toast toast={toast} className="toast" data-kind="progress" data-state={text.state} data-toast-key={toast.key} data-testid={text.testId}>
       <JobProgressBody text={text} onCancel={() => cancelJob(job)} />

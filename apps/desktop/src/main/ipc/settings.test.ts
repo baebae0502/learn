@@ -49,3 +49,10 @@ describe('settings.set: keys main writes itself (Q-8e)', () => {
     expect(written).toEqual([['ui.lastOpenItemId', null]]);
   });
 });
+
+describe('settings.set: what main alone writes (R4)', () => {
+  it('refuses backup.last from a page — it would point 마지막 백업\'s Finder에서 보기 anywhere — before the library is asked', async () => {
+    const set = (raw: unknown) => handlers.get('settings:set')!({ sender: MAIN_PAGE, senderFrame: { url: 'learn://app/index.html' } }, raw);
+    expect(await set({ key: 'backup.last', value: { at: '2026-10-30T12:41:00.000Z', folder: '/tmp' } })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+  });
+});

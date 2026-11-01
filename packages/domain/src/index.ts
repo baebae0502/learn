@@ -1,5 +1,6 @@
 export * from './accelerator';
 export * from './anchors';
+export * from './backup';
 export * from './commands';
 export * from './errors';
 export * from './event-channels';

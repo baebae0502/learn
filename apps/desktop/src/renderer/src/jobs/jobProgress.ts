@@ -1,13 +1,15 @@
 import { create } from 'zustand';
-import { IDLE_IMPORT_STATE, type ImportQueueState } from '@learn/domain';
+import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
 import { api } from '../api';
 import { t } from '../strings';
-import type { JobToastView, ProgressJob } from './progressToast';
+import type { JobState, JobToastView, ProgressJob } from './progressToast';
 
 /** Work main runs on its work line, as this window knows it (spec 3: the window is not held meanwhile). */
 export interface JobProgressState {
   /** Main's import queue as last pushed (import:progress). */
   import: ImportQueueState;
+  /** main's backup as last pushed (job:progress). */
+  backup: JobProgress;
   /** Files this window has handed to main and main has not answered for yet (a drop between its event and the reply). */
   sending: number;
   /** Runs whose end is being shown (the list read again, the result toast): the busy screen and waitImportIdle wait. */
@@ -21,6 +23,7 @@ export interface JobProgressState {
   /** How many times 취소 was asked for here: a drop still being handed over in chunks stops at the next one. */
   cancels: number;
   setImport(state: ImportQueueState): void;
+  setBackup(progress: JobProgress): void;
   addSending(delta: number): void;
   addSettling(delta: number): void;
   setQuiet(quiet: boolean): void;
@@ -30,12 +33,14 @@ export interface JobProgressState {
 
 export const useJobProgress = create<JobProgressState>()((set) => ({
   import: { ...IDLE_IMPORT_STATE },
+  backup: { ...IDLE_BACKUP_PROGRESS },
   sending: 0,
   settling: 0,
   shownTotal: 0,
   quiet: false,
   views: {},
   cancels: 0,
+  setBackup: (backup) => set({ backup }),
   setImport: (state) => set((s) => ({ import: state, shownTotal: state.state !== 'idle' ? state.total : s.shownTotal })),
   addSending: (delta) =>
     set((s) => {
@@ -67,7 +72,7 @@ export function importBusyTotal(s: JobProgressState): number | null {
 
 /** The progress toast's words and numbers (spec 3.3, mockup importToast and jobToasts). */
 export interface JobToastText {
-  state: ImportQueueState['state'];
+  state: JobState['state'];
   /** The pause icon instead of the spinner: a question is open, or another job runs first. */
   waiting: boolean;
   title: string;
@@ -86,7 +91,29 @@ export interface JobToastText {
   cancelTestId: string;
 }
 
-export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastText {
+/** The job ahead of a waiting one, when this window knows which (Q-4e): the backup's notices say it runs. */
+export type AheadJob = 'import' | 'backup' | null;
+
+/** What a job's toast draws live (Task 10 adds the restore's). */
+export function liveState(s: JobProgressState, job: ProgressJob): JobState {
+  return job === 'import' ? s.import : s.backup;
+}
+
+/** The job running ahead of `job` on main's work line, as this window knows it. */
+export function jobAhead(s: JobProgressState, job: ProgressJob): AheadJob {
+  if (job === 'import') return s.backup.state === 'running' ? 'backup' : null;
+  return s.import.state !== 'idle' ? 'import' : null;
+}
+
+/** Floored, so the bar never reads 100 before the work has ended; 0 before the sizes are known. */
+const percentOf = (done: number, total: number): number => (total > 0 ? Math.min(100, Math.floor((done * 100) / total)) : 0);
+
+export function describeJob(job: ProgressJob, s: JobState, ahead: AheadJob = null): JobToastText {
+  // Each job's toast is handed its own job's state (liveState, or the view its controller froze).
+  return job === 'import' ? describeImport(s as ImportQueueState, ahead) : describeBackup(s as JobProgress, ahead);
+}
+
+function describeImport(s: ImportQueueState, ahead: AheadJob): JobToastText {
   const waitingJob = s.state === 'waiting-job';
   return {
     state: s.state,
@@ -94,7 +121,7 @@ export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastTex
     title: s.state === 'waiting-choice' ? t.jobs.waitingChoice : waitingJob ? t.jobs.waitingJob : t.jobs.importing,
     count: waitingJob ? t.jobs.countTotal(s.total) : t.jobs.count(s.done, s.total),
     file: waitingJob ? null : s.current,
-    note: waitingJob ? t.jobs.waitingJobNote : null,
+    note: waitingJob ? (ahead === 'backup' ? t.jobs.importAfter.backup : t.jobs.waitingJobNote) : null,
     bar: !waitingJob,
     percent: s.percent,
     valueText: t.jobs.progressValue(s.done, s.total, s.percent),
@@ -103,8 +130,26 @@ export function describeJob(_job: ProgressJob, s: ImportQueueState): JobToastTex
   };
 }
 
+function describeBackup(s: JobProgress, ahead: AheadJob): JobToastText {
+  const percent = percentOf(s.bytesDone, s.bytesTotal);
+  const waitingJob = s.state === 'waiting-job';
+  return {
+    state: s.state,
+    waiting: waitingJob,
+    title: waitingJob ? t.jobs.waitingJob : t.jobs.backingUp,
+    count: !waitingJob && s.total > 0 ? t.jobs.count(s.done, s.total) : '',
+    file: waitingJob ? null : s.name,
+    note: waitingJob ? (ahead === 'import' ? t.jobs.backupAfter.import : t.jobs.backupAfter.other) : null,
+    bar: !waitingJob,
+    percent,
+    valueText: t.jobs.progressValue(s.done, s.total, percent),
+    testId: 'backup-progress',
+    cancelTestId: 'backup-cancel',
+  };
+}
+
 /** The toast's 취소: the job stops (spec 3.5). A refused call changes nothing the user could act on, so it says nothing. */
-export function cancelJob(_job: ProgressJob): void {
-  useJobProgress.getState().noteCancel();
-  void api().library.cancelImport();
+export function cancelJob(job: ProgressJob): void {
+  if (job === 'import') useJobProgress.getState().noteCancel();
+  void (job === 'import' ? api().library.cancelImport() : api().backup.cancel());
 }

@@ -12,5 +12,14 @@ export const jobs = {
   percent: (pct: number) => `${pct}%`,
   /** The bar's value as read out (aria-valuetext). */
   progressValue: (done: number, total: number, pct: number) => `파일 ${total}개 중 ${done}개, ${pct}%`,
+  /** The backup's toast (dialogs.html?scene=jobs). */
+  backingUp: '백업을 만드는 중',
+  /** Under 앞의 작업을 기다리는 중 (Q-4e): what comes next, naming the job ahead when this window knows it. */
+  importAfter: { backup: '백업이 끝나면 가져오기를 시작합니다.' },
+  backupAfter: { import: '가져오기가 끝나면 백업을 시작합니다.', other: '앞의 작업이 끝나면 백업을 시작합니다.' },
+  /** How a backup run ends in its toast; a done one is said by its result sheet. */
+  backupCancelled: '백업을 취소했습니다',
+  backupCancelledBody: '만들던 백업 폴더는 남기지 않았습니다.',
+  backupFailed: '백업을 만들지 못했습니다',
   cancel: '취소',
 } as const;

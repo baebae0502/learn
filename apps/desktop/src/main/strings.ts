@@ -85,6 +85,7 @@ export const mainStrings = {
     readOnly: '환경설정 파일을 읽거나 옮길 수 없어 이번 실행에서는 변경 내용을 저장하지 않습니다. 파일 권한을 확인한 뒤 앱을 다시 시작하세요.',
     invalid: '환경설정 값이 올바르지 않습니다.',
     libraryRootRelative: '라이브러리 위치는 절대 경로여야 합니다.',
+    backupDirRelative: '백업 위치는 절대 경로여야 합니다.',
   },
   /**
    * The application menu's own items (registry commands carry their labels in COMMANDS) and the edit context menu.
@@ -132,6 +133,20 @@ export const mainStrings = {
     backup: { message: '백업을 만드는 중입니다', detail: '끝내면 만들던 백업은 남지 않습니다.' },
     restore: { message: '복원하는 중입니다', detail: '끝내면 만들던 라이브러리는 남지 않습니다.' },
     quit: '끝내기',
+  },
+  /** 백업 만들기… (jobs/backup-job.ts, ipc/backup.ts, spec 8): its folder panel, its folder's name, what it can fail with. */
+  backup: {
+    pickTitle: '백업 만들기',
+    /** macOS shows no title on a sheet: the panel's one line says what the backup leaves out (spec 8.1). */
+    pickMessage: '외부 연결 자료는 파일 없이 위치만 기록합니다.',
+    pickButton: '여기에 만들기',
+    /** The folder's name before its date and time: "Learn 백업 2026-10-30 2141". */
+    folderPrefix: 'Learn 백업',
+    inLibrary: '라이브러리 폴더 안에는 백업할 수 없습니다. 다른 폴더를 고르세요.',
+    copyMismatch: '복사한 파일의 내용이 원래 자료와 달라 백업을 남기지 않았습니다. 다른 디스크나 폴더에 다시 만들어 보세요.',
+    /** Under 백업을 만들지 못했습니다 when nothing more is known. */
+    failed: '잠시 뒤에 다시 만들어 보세요. 계속 안 되면 다른 폴더를 고르세요.',
+    revealMissing: '백업 폴더를 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
   },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',

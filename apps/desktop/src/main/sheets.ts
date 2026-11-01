@@ -6,7 +6,7 @@ import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady
 import { mainStrings } from './strings';
 import { registerWindowKind } from './window-kinds';
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560 };
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440 };
 /**
  * Off macOS: 8 px under the 52 px toolbar, centred across the window (design-spec 6 시트). macOS places a sheet itself:
  * centred over the parent window, which it dims (Big Sur and later — every macOS Electron 44 runs on).
@@ -26,8 +26,8 @@ export function sheetMaxHeight(roomHeight: number, platform: NodeJS.Platform): n
 }
 /** Room the library check keeps below its parent's height (P-26: at most the parent's height − 120, the list scrolls). */
 export const CHECK_SHEET_ROOM = 120;
-/** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap. */
-export const FOLLOWING_SHEETS: ReadonlySet<SheetPayload['kind']> = new Set<SheetPayload['kind']>(['libraryCheck']);
+/** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap; the backup result sheet grows by its reveal error line. */
+export const FOLLOWING_SHEETS: ReadonlySet<SheetPayload['kind']> = new Set<SheetPayload['kind']>(['libraryCheck', 'backupDone']);
 
 /** The tallest a sheet of `kind` may be over a parent `roomHeight` tall. */
 export function sheetHeightCap(kind: SheetPayload['kind'], roomHeight: number, platform: NodeJS.Platform): number {

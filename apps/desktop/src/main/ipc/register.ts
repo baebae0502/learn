@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Prefs, type Result } from '@learn/domain';
 import type { ImportQueue } from '../jobs/import-queue';
 import type { CheckSheets } from '../library-check';
+import type { BackupJob } from '../jobs/backup-job';
 import type { JobLane } from '../jobs/lane';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
@@ -24,6 +25,8 @@ export interface IpcDeps {
   jobs: JobLane;
   /** The import queue on it (jobs/import-queue.ts): every window's imports go in here, and its reports come out. */
   imports: ImportQueue;
+  /** 백업 만들기… on the same work line (jobs/backup-job.ts): one backup at a time. */
+  backup: BackupJob<BrowserWindow>;
   /** 라이브러리 점검 (library-check.ts): library:check opens its sheet; the sheet host runs its actions (sheet:act). */
   checks: CheckSheets;
   /**

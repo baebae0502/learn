@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { IDLE_IMPORT_STATE, type ImportQueueState } from '@learn/domain';
-import { describeJob, importBusy, importBusyTotal, useJobProgress } from './jobProgress';
+import { IDLE_BACKUP_PROGRESS, IDLE_IMPORT_STATE, type ImportQueueState, type JobProgress } from '@learn/domain';
+import { describeJob, importBusy, importBusyTotal, jobAhead, useJobProgress } from './jobProgress';
 
 const state = (over: Partial<ImportQueueState>): ImportQueueState => ({ ...IDLE_IMPORT_STATE, state: 'running', ...over });
 afterEach(() => {
-  useJobProgress.setState({ import: { ...IDLE_IMPORT_STATE }, sending: 0, settling: 0, shownTotal: 0, quiet: false, views: {} });
+  useJobProgress.setState({ import: { ...IDLE_IMPORT_STATE }, backup: { ...IDLE_BACKUP_PROGRESS }, sending: 0, settling: 0, shownTotal: 0, quiet: false, views: {} });
 });
 
 describe('the progress toast in words (spec 3.3, mockup importToast)', () => {
@@ -19,10 +19,12 @@ describe('the progress toast in words (spec 3.3, mockup importToast)', () => {
       waiting: true, title: '확인을 기다리는 중', count: ' · 7 / 12', file: 'molbio_ch06_signaling.pdf', note: null, bar: true, percent: 90,
     });
   });
-  it('waiting for the work before it: paused, 앞의 작업을 기다리는 중 and what comes next, no file', () => {
-    expect(describeJob('import', state({ state: 'waiting-job', done: 0, total: 12, bytesTotal: 5000 }))).toMatchObject({
-      waiting: true, title: '앞의 작업을 기다리는 중', count: ' · 12개', file: null, note: '앞의 작업이 끝나면 가져오기를 시작합니다.', bar: false, percent: 0,
+  it('waiting for the work before it: paused, 앞의 작업을 기다리는 중 · N개 with no bar (nothing measured yet), naming the backup when it is the one ahead (Q-4e)', () => {
+    const waiting = state({ state: 'waiting-job', done: 0, total: 12, bytesTotal: 5000 });
+    expect(describeJob('import', waiting)).toMatchObject({
+      waiting: true, title: '앞의 작업을 기다리는 중', count: ' · 12개', file: null, note: '앞의 작업이 끝나면 가져오기를 시작합니다.', bar: false,
     });
+    expect(describeJob('import', waiting, 'backup').note).toBe('백업이 끝나면 가져오기를 시작합니다.');
   });
   it('shows main\'s percent as it is, so the bar and the count measure the same progress (never 100 while waiting for a choice)', () => {
     expect(describeJob('import', state({ state: 'waiting-choice', done: 0, total: 3, percent: 33 })).percent).toBe(33);
@@ -64,5 +66,34 @@ describe('the empty library\'s busy screen N (spec 3.2: the queue\'s total)', ()
     expect(Object.keys(s().views)).toEqual(['k1']);
     s().setView('k1', undefined);
     expect(s().views).toEqual({});
+  });
+});
+
+const backup = (over: Partial<JobProgress>): JobProgress => ({ ...IDLE_BACKUP_PROGRESS, state: 'running', ...over });
+
+describe('the backup\'s progress toast (spec 8.1, dialogs.html?scene=jobs)', () => {
+  it('running: 백업을 만드는 중 · files done / total, the folder\'s name, the bytes written and read back as the bar', () => {
+    expect(describeJob('backup', backup({ done: 56, total: 128, bytesDone: 460, bytesTotal: 1000, name: 'Learn 백업 2026-10-30 2141' }))).toEqual({
+      state: 'running', waiting: false, title: '백업을 만드는 중', count: ' · 56 / 128', file: 'Learn 백업 2026-10-30 2141', note: null, bar: true,
+      percent: 46, valueText: '파일 128개 중 56개, 46%', testId: 'backup-progress', cancelTestId: 'backup-cancel',
+    });
+  });
+  it('no count before it has counted its files; waiting behind an import, no bar, saying what comes next', () => {
+    expect(describeJob('backup', backup({ name: null })).count).toBe('');
+    expect(describeJob('backup', backup({ state: 'waiting-job' }), 'import')).toMatchObject({
+      waiting: true, title: '앞의 작업을 기다리는 중', count: '', file: null, note: '가져오기가 끝나면 백업을 시작합니다.', bar: false,
+    });
+    expect(describeJob('backup', backup({ state: 'waiting-job' })).note).toBe('앞의 작업이 끝나면 백업을 시작합니다.');
+  });
+  it('the job ahead of each, as this window knows it: a running backup ahead of an import, an import ahead of a backup', () => {
+    const s = useJobProgress.getState;
+    expect(jobAhead(s(), 'import')).toBeNull();
+    s().setBackup(backup({ state: 'waiting-job' }));
+    expect(jobAhead(s(), 'import')).toBeNull(); // it waits too: not ahead
+    s().setBackup(backup({}));
+    expect(jobAhead(s(), 'import')).toBe('backup');
+    expect(jobAhead(s(), 'backup')).toBeNull();
+    s().setImport(state({ total: 2 }));
+    expect(jobAhead(s(), 'backup')).toBe('import');
   });
 });

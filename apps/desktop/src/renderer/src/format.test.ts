@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { dayKey, formatDate, formatDateTime, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
+import { dayKey, formatDate, formatElapsed, formatDateTime, formatTimeOfDay, formatDuration, formatSize, homeRelative, msUntilMidnight } from './format';
 
 const at = (y: number, m: number, d: number, h: number, min: number) => new Date(y, m - 1, d, h, min).toISOString();
 const now = new Date(2026, 9, 21, 15, 0);
@@ -38,6 +38,14 @@ describe('format (design-spec 9)', () => {
     expect(formatSize(9_960)).toBe('10 KB'); // rounds to 10: whole, not "10.0"
     expect(formatSize(999_600)).toBe('1.0 MB'); // never "1000 KB"
     expect(formatSize(1_000_000_000_000)).toBe('1.0 TB');
+  });
+  it('how long a job took, in words (the backup sheet\'s "38초 걸림"): at least a second, hours drop the seconds', () => {
+    expect(formatElapsed(400)).toBe('1초');
+    expect(formatElapsed(38_400)).toBe('38초');
+    expect(formatElapsed(60_000)).toBe('1분');
+    expect(formatElapsed(125_000)).toBe('2분 5초');
+    expect(formatElapsed(3_600_000 + 4 * 60_000 + 59_000)).toBe('1시간 4분');
+    expect(formatElapsed(7_200_000)).toBe('2시간');
   });
 });
 

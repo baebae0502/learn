@@ -689,13 +689,16 @@ export async function runMenuCommand(app: ElectronApplication, id: CommandId, ar
 /**
  * Clicks an application-menu item as its accelerator would (`triggeredByAccelerator`): CDP keys never reach native
  * accelerators on Linux, and the page tells a key from a click (Q-6e: ⌘⌫ typed in a text field is the field's).
+ * Resolves to main's clock at the click (epoch ms, performance.timeOrigin + now): where a key's timing starts (p1-perf).
  */
-export async function runMenuAccelerator(app: ElectronApplication, id: CommandId): Promise<void> {
+export async function runMenuAccelerator(app: ElectronApplication, id: CommandId): Promise<number> {
   await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
-  await app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
+  return app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
     const item = Menu.getApplicationMenu()?.getMenuItemById(id);
     if (!item?.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
+    const at = performance.timeOrigin + performance.now();
     item.click({ triggeredByAccelerator: true } as Electron.KeyboardEvent, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
+    return at;
   }, id);
 }
 
@@ -1454,3 +1457,35 @@ export async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Pr
     clearTimeout(timer);
   }
 }
+
+
+/** main/test-hooks.ts seedAssets: one item per row, each with a file of its own (rows from `linkedFrom` on linked to files in `linkedDir`). */
+export interface SeedAssetsInput {
+  rows: SeedRow[];
+  linkedFrom?: number;
+  linkedDir?: string;
+}
+export interface SeedAssetsResult {
+  itemIds: string[];
+  sha256: string[];
+}
+/** main/test-hooks.ts fsyncProbe: one import's flushes, `files` times, in `dir` (absolute and new). */
+export interface FsyncProbeInput {
+  dir: string;
+  files: number;
+  bytes: number;
+}
+export interface FsyncProbeResult {
+  parentMs: number[];
+  fileMs: number[];
+  shardMs: number[];
+  uv: string;
+}
+type WithSeedHooks = {
+  __learnTest: { seedAssets(input: SeedAssetsInput): SeedAssetsResult; fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult> };
+};
+/** Writes the files and rows in main, then announces one import; resolves with the ids and hashes in the rows' order. */
+export const seedAssets = (app: ElectronApplication, input: SeedAssetsInput): Promise<SeedAssetsResult> =>
+  app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.seedAssets(arg), input);
+export const fsyncProbe = (app: ElectronApplication, input: FsyncProbeInput): Promise<FsyncProbeResult> =>
+  app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.fsyncProbe(arg), input);

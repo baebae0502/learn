@@ -6,7 +6,7 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { currentPlatform } from '../ui/platform';
-import { backupSheetText } from './backupText';
+import { backupSheetText, splitLocation } from './backupText';
 import { resolveSheet } from './SheetApp';
 import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
@@ -22,6 +22,7 @@ export function BackupDoneSheet({ payload }: { payload: BackupDonePayload }) {
   const region = useScrollRegion(body, 'sheet-title');
   const [revealError, setRevealError] = useState<string | null>(null);
   const text = backupSheetText(payload, currentPlatform());
+  const location = splitLocation(text.location);
   const reveal = () => {
     setRevealError(null);
     void unwrap(api().sheet.act({ action: { kind: 'backupDone', act: 'reveal' } })).catch((e: unknown) => setRevealError((e as Error).message));
@@ -53,8 +54,9 @@ export function BackupDoneSheet({ payload }: { payload: BackupDonePayload }) {
               {text.files}
             </dd>
             <dt>{t.backup.labels.location}</dt>
-            <dd className="mono-val ellipsis" title={payload.location} data-testid="backup-location">
-              {text.location}
+            <dd className="mono-val path-split" title={payload.location} data-testid="backup-location">
+              <span className="path-head ellipsis">{location.parent}</span>
+              <span className="path-tail">{location.name}</span>
             </dd>
           </dl>
         </div>

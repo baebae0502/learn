@@ -191,6 +191,17 @@
     font: var(--type-mono);
     color: var(--text-secondary);
   }
+  /* A path that shrinks in the middle: the folders give way with an ellipsis, the last name stays whole. */
+  .sheet .kv dd.path-split {
+    display: flex;
+  }
+  .sheet .path-head {
+    min-width: 0;
+  }
+  .sheet .path-tail {
+    flex: none;
+    white-space: nowrap;
+  }
   /* A note under the card: an info icon and a footnote in secondary text (mockup backupSheet). */
   .sheet .sheet-note {
     display: flex;

@@ -32,6 +32,10 @@ const folderFor = (dir: string) => {
   return dir;
 };
 
+/** The job toasts on screen from top to bottom, by test id: the DOM order, which is also F6's and the arrow keys'. */
+const toastOrder = (page: Page) =>
+  page.locator('[data-pane="toasts"] .toast').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset['testid']).filter((id) => id?.endsWith('-progress')));
+
 test('a backup holds the database, every managed copy — the trash\'s too — and the manifest; the sheet says what it holds; 마지막 백업 shows it (spec 8.1–8.3)', async ({}, testInfo) => {
   const ud = testInfo.outputPath('userdata');
   const parent = folderFor(testInfo.outputPath('backups'));
@@ -95,6 +99,29 @@ test('a backup holds the database, every managed copy — the trash\'s too — a
     await expect(date).toHaveAttribute('title', name!);
     await settings.getByTestId('last-backup-reveal').click();
     await expect.poll(async () => (await shellCalls(s.app)).at(-1)).toEqual(['reveal', folder]);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a long parent path gives way in the middle of the result sheet\'s 위치; the backup folder\'s own name stays whole (C-2)', async ({}, testInfo) => {
+  const parent = folderFor(path.join(testInfo.outputPath('backups'), 'a-very-long-folder-name-'.repeat(3), 'and-another-long-one-'.repeat(3)));
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, distinctPdfs(testInfo.outputPath('src'), 1));
+    await stubFolderPicker(s.app, parent);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
+    const [folder] = fs.readdirSync(parent);
+    const where = sheet.getByTestId('backup-location');
+    await expect(where.locator('.path-tail')).toHaveText(folder!);
+    const box = await where.evaluate((dd) => {
+      const head = dd.querySelector('.path-head') as HTMLElement;
+      const tail = dd.querySelector('.path-tail') as HTMLElement;
+      return { headCut: head.scrollWidth > head.clientWidth, tailWhole: tail.scrollWidth <= tail.clientWidth, tailInside: tail.getBoundingClientRect().right <= dd.getBoundingClientRect().right + 0.5 };
+    });
+    expect(box).toEqual({ headCut: true, tailWhole: true, tailInside: true });
+    await expect(where).toHaveAttribute('title', path.join(parent, folder!));
+    await closeSheet(sheet, 'Enter');
   } finally {
     await s.app.close();
   }
@@ -212,6 +239,8 @@ test('one work line: an import waits behind a backup and its toast names it; a b
     await expect(importing).toContainText('백업이 끝나면 가져오기를 시작합니다.');
     await expect(importing.getByRole('progressbar')).toHaveCount(0);
     await expect(s.page.getByTestId('backup-progress')).toHaveAttribute('data-state', 'running');
+    // Oldest on top, in the order the jobs began (the mockup's): the running backup, then the import waiting behind it.
+    expect(await toastOrder(s.page)).toEqual(['backup-progress', 'import-progress']);
     let sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
     expect(readManifest(path.join(parent, fs.readdirSync(parent)[0]!)).counts).toMatchObject({ items: 2 }); // made before the import ran
     await closeSheet(sheet, 'Enter');
@@ -229,6 +258,7 @@ test('one work line: an import waits behind a backup and its toast names it; a b
     await expect(waiting).toContainText('앞의 작업을 기다리는 중');
     await expect(waiting).toContainText('가져오기가 끝나면 백업을 시작합니다.');
     await expect(waiting.getByRole('progressbar')).toHaveCount(0);
+    expect(await toastOrder(s.page)).toEqual(['import-progress', 'backup-progress']);
     sheet = await expectWindow(s.app, 'sheet', () => importResume(s.app));
     await expect(sheet.getByTestId('backup-items')).toHaveText('6개 · 컬렉션⁠·태그 포함');
     await closeSheet(sheet, 'Escape');

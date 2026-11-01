@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BackupDoneSheet } from '@learn/domain';
-import { backupSheetText } from './backupText';
+import { backupSheetText, splitLocation } from './backupText';
 
 const payload = (over: Partial<BackupDoneSheet> = {}): BackupDoneSheet => ({
   kind: 'backupDone', at: new Date(2026, 9, 30, 21, 41).toISOString(), tookMs: 38_400, items: 128, trashed: 7, files: 128, bytes: 2_800_000_000,
@@ -26,5 +26,14 @@ describe('the backup result sheet in words (spec 8.2, dialogs.html?scene=backup)
     expect(t).toMatchObject({ items: '128개 · 컬렉션⁠·태그 포함', files: '126개 · 2.7 GB · 손상 없음', linkedNote: null, missingNote: '사본이 사라진 자료 2개는 파일 없이 기록했습니다.', reveal: '폴더에서 보기' });
     expect(t.when.endsWith(' · 2분 5초 걸림')).toBe(true);
     expect(backupSheetText(payload({ files: 0, bytes: 0 }), 'darwin').files).toBe('없음');
+  });
+});
+
+describe('a location in two pieces (the folders may shrink, the last name stays)', () => {
+  it('splits after the last separator, either kind, and leaves a bare name whole', () => {
+    expect(splitLocation('~/Documents/Learn 백업 2026-10-30 2141')).toEqual({ parent: '~/Documents/', name: 'Learn 백업 2026-10-30 2141' });
+    expect(splitLocation('C:\\Users\\a\\Learn 백업')).toEqual({ parent: 'C:\\Users\\a\\', name: 'Learn 백업' });
+    expect(splitLocation('Learn 백업')).toEqual({ parent: '', name: 'Learn 백업' });
+    expect(splitLocation('/')).toEqual({ parent: '', name: '/' });
   });
 });

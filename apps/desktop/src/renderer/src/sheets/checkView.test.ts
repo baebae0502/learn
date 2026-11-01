@@ -13,7 +13,7 @@ describe('the check sheet\'s rows (spec 7.2, approved mockups recovery and recov
   it('임시 파일: its count, the sentence, the size, one button', () => {
     expect(checkRowView(todo({ kind: 'staging', count: 2, bytes: 4_120_000 }), HOME, 'darwin')).toEqual({
       kind: 'staging', count: 2, state: 'todo', tone: 'warning', title: '가져오다 멈춘 임시 파일 2개',
-      text: '라이브러리에는 추가되지 않았습니다. 정리하면 디스크 공간을 돌려받습니다.', meta: '4.1 MB',
+      text: '라이브러리에는 추가되지 않았습니다. 정리하면 디스크 공간을 돌려받습니다.', meta: '4.1 MB', metaTail: null,
       buttons: [{ key: 'cleanStaging', label: '임시 파일 정리' }], entries: [], more: 0,
     });
   });
@@ -54,13 +54,15 @@ describe('the check sheet\'s rows (spec 7.2, approved mockups recovery and recov
     expect(checkRowView(todo({ kind: 'corrupt', bytes: 900 }), HOME, 'linux')).toMatchObject({ meta: '900 B', buttons: [{ key: 'revealCorrupt', label: '폴더에서 보기' }] });
     const edits = checkRowView(todo({ kind: 'orphanEdits', bytes: 3_100, entries: [{ itemId: null, label: '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf', path: null }] }), HOME, 'linux');
     expect([edits.tone, edits.title, edits.meta]).toEqual(['info', '주인 없는 수정본 1개', '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf · 3.1 KB']);
+    expect(edits.metaTail).toBe(' · 3.1 KB');
+    expect(edits.meta!.endsWith(edits.metaTail!)).toBe(true);
     expect(edits.text).toBe('다른 앱에서 고쳤지만 원래 자료가 없는 파일입니다.');
     expect(edits.buttons).toEqual([{ key: 'importOrphanEdits', label: '새 자료로 가져오기' }, { key: 'revealOrphanEdit', label: '폴더에서 보기' }]);
   });
 
   it('a row fixed in the sheet keeps its place as an ok row: its name without a count, and how it was fixed', () => {
     expect(checkRowView(done('staging', 'cleaned'), HOME, 'darwin')).toEqual({
-      kind: 'staging', count: 0, state: 'done', tone: 'success', title: '가져오다 멈춘 임시 파일', text: '정리했습니다.', meta: null, buttons: [], entries: [], more: 0,
+      kind: 'staging', count: 0, state: 'done', tone: 'success', title: '가져오다 멈춘 임시 파일', text: '정리했습니다.', meta: null, metaTail: null, buttons: [], entries: [], more: 0,
     });
     expect(checkRowView(done('unreferenced', 'revived'), HOME, 'darwin').text).toBe('자료로 되살렸습니다.');
     expect(checkRowView(done('missingManaged', 'relinked'), HOME, 'darwin')).toMatchObject({ title: '사본이 사라진 자료', text: '다시 연결했습니다.' });

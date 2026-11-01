@@ -28,6 +28,8 @@ export interface CheckRowView {
   text: string;
   /** The footnote line: a size, or the first copy's name and the size. */
   meta: string | null;
+  /** The end of `meta` that stays whole when the line is short of room (" · 3.1 KB"): the name before it gives way. */
+  metaTail: string | null;
   buttons: CheckButtonView[];
   entries: CheckEntryView[];
   /** 외 N개 after the names. */
@@ -57,11 +59,16 @@ function metaOf(row: CheckRow): string | null {
   return `${name} · ${formatSize(row.bytes)}`;
 }
 
+function metaTailOf(row: CheckRow): string | null {
+  if ((row.kind !== 'corrupt' && row.kind !== 'orphanEdits') || !row.entries[0]) return null;
+  return ` · ${formatSize(row.bytes)}`;
+}
+
 /** One row as the sheet draws it (mockup recoverySheet `ci`): status, title, sentence, footnote, buttons, names. */
 export function checkRowView(row: CheckRow, homeDir: string, platform: string): CheckRowView {
   const copy = t.check.rows[row.kind];
   if (row.state === 'done') {
-    return { kind: row.kind, count: 0, state: 'done', tone: 'success', title: copy.name, text: t.check.fixed[row.fix ?? 'none'], meta: null, buttons: [], entries: [], more: 0 };
+    return { kind: row.kind, count: 0, state: 'done', tone: 'success', title: copy.name, text: t.check.fixed[row.fix ?? 'none'], meta: null, metaTail: null, buttons: [], entries: [], more: 0 };
   }
   const items = row.kind === 'missingManaged' || row.kind === 'missingLinked';
   const entries: CheckEntryView[] = items
@@ -81,6 +88,7 @@ export function checkRowView(row: CheckRow, homeDir: string, platform: string): 
     title: copy.title(row.count),
     text: copy.text,
     meta: metaOf(row),
+    metaTail: metaTailOf(row),
     buttons: buttonsOf(row.kind, platform),
     entries,
     more: items ? Math.max(0, row.count - entries.length) : 0,

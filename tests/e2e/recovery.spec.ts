@@ -136,6 +136,25 @@ test('쓰이지 않는 사본: 자료로 되살리기 brings a copy back as 이�
     await unused.getByTestId('check-askClean').click();
     await expect(unused.locator('.ci-title')).toHaveText('쓰이지 않는 사본 1개를 지우겠습니까?');
     await expect(sheet.getByTestId('check-confirm-cancel')).toBeFocused();
+    await expect(unused.locator('.ci-text')).toHaveText('되돌릴 수 없습니다. 라이브러리 폴더에서 지웁니다.');
+    await expect(unused.locator('.ci-meta')).toBeVisible(); // what would go, and how much, stays on the line
+    // [지우기] [취소] side by side on one line, the destructive one first; 취소 is the filled default and takes ↩ from 완료.
+    const [remove, cancel, ends] = await Promise.all([
+      unused.getByTestId('check-confirm').boundingBox(),
+      unused.getByTestId('check-confirm-cancel').boundingBox(),
+      unused.getByTestId('check-askClean').count(),
+    ]);
+    expect(ends).toBe(0);
+    expect(remove!.y).toBeCloseTo(cancel!.y, 0);
+    expect(remove!.x + remove!.width).toBeLessThanOrEqual(cancel!.x);
+    await expect(unused.getByTestId('check-confirm-cancel')).toHaveClass(/btn-primary/);
+    await expect(unused.getByTestId('check-confirm')).not.toHaveClass(/btn-primary/);
+    await expect(sheet.getByTestId('check-done')).not.toHaveClass(/btn-primary/);
+    await sheet.keyboard.press('Enter'); // ↩ is 취소: nothing is deleted
+    await expect(unused.locator('.ci-title')).toHaveText('쓰이지 않는 사본 1개');
+    await expect(sheet.getByTestId('check-done')).toHaveClass(/btn-primary/);
+    expect(fs.existsSync(junk)).toBe(true);
+    await unused.getByTestId('check-askClean').click();
     await sheet.keyboard.press('Escape');
     await expect(unused.locator('.ci-title')).toHaveText('쓰이지 않는 사본 1개');
     await expect(unused.getByTestId('check-askClean')).toBeFocused();

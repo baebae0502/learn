@@ -106,6 +106,20 @@
     align-items: stretch;
     gap: var(--space-4);
   }
+  /* The question in the row: [지우기] [취소] side by side, the destructive one on the left, the pair ending where the other rows' buttons end. */
+  .check-sheet .ci-action.confirm {
+    display: flex;
+    gap: var(--space-4);
+    width: max-content;
+  }
+  /* The file line: the name gives way, its size does not. */
+  .check-sheet .ci-meta:has(.cm-tail) {
+    display: flex;
+  }
+  .check-sheet .cm-tail {
+    flex: none;
+    white-space: pre;
+  }
   /* A line per name or path, each with its own button, across the text and action columns. */
   .check-sheet .ci-entries {
     grid-column: 2 / 4;

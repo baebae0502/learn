@@ -38,7 +38,7 @@ export const check = {
   /** 정리… asks in its row first (no sheet over the sheet); ↩ and esc keep the copies. */
   confirm: {
     title: (n: number) => `쓰이지 않는 사본 ${n}개를 지우겠습니까?`,
-    text: '라이브러리 폴더에서 지웁니다. 되돌릴 수 없습니다.',
+    text: '되돌릴 수 없습니다. 라이브러리 폴더에서 지웁니다.',
     remove: '지우기',
     cancel: '취소',
   },

@@ -139,7 +139,7 @@ export function LibraryCheckSheet({ payload }: { payload: LibraryCheckPayload })
           </span>
         )}
         <span className="spacer" />
-        <Button variant="primary" autoFocus testId="check-done" onPress={done}>
+        <Button variant={asking ? 'secondary' : 'primary'} autoFocus testId="check-done" onPress={done}>
           {t.common.done}
         </Button>
       </div>
@@ -170,19 +170,26 @@ function CheckRowItem({ view, working, asking, failure, onAct, onRelink, onConfi
       <div className="ci-main">
         <div className="ci-title">{asking ? t.check.confirm.title(view.count) : view.title}</div>
         <div className="ci-text">{asking ? t.check.confirm.text : view.text}</div>
-        {view.meta !== null && !asking && (
-          <div className="ci-meta ellipsis" title={view.meta}>
-            {view.meta}
+        {view.meta !== null && (
+          <div className={cx('ci-meta', view.metaTail === null && 'ellipsis')} title={view.meta}>
+            {view.metaTail === null ? (
+              view.meta
+            ) : (
+              <>
+                <span className="cm-name ellipsis">{view.meta.slice(0, view.meta.length - view.metaTail.length)}</span>
+                <span className="cm-tail">{view.metaTail}</span>
+              </>
+            )}
           </div>
         )}
       </div>
-      <div className={cx('ci-action', (asking || view.buttons.length > 1) && 'stack')}>
+      <div className={cx('ci-action', asking ? 'confirm' : view.buttons.length > 1 && 'stack')}>
         {asking ? (
           <>
             <Button size="small" variant="plain-danger" testId="check-confirm" onPress={onConfirm}>
               {t.check.confirm.remove}
             </Button>
-            <Button size="small" autoFocus testId="check-confirm-cancel" onPress={onKeep}>
+            <Button size="small" variant="primary" autoFocus testId="check-confirm-cancel" onPress={onKeep}>
               {t.check.confirm.cancel}
             </Button>
           </>

@@ -3,7 +3,6 @@
 //   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all, then restore any jitter-only rewrite.
 // @2x captures for the design critic, without updating (the baselines stay as committed):
 //   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -1153,9 +1152,9 @@ test('organize: the item panel with tags and collections, the add field, several
 });
 
 /**
- * A native popup menu is not part of the page, so the page screenshot cannot hold it: the X screen is grabbed at the menu's
- * rectangle instead (Xvfb, the window at 0,0). The menu's own popup is kept as it opens and closed through its object (a CDP key
- * never reaches a native menu).
+ * A native popup menu is not part of the page, so the page screenshot cannot hold it: the screen is captured (desktopCapturer in
+ * main; Xvfb, the window at 0,0) and cropped to the menu instead. The menu's own popup is kept as it opens and closed through its
+ * object (a CDP key never reaches a native menu).
  */
 async function shootNativeMenu(app: ElectronApplication, page: Page, name: string, open: () => Promise<void>, crop: { x: number; y: number; width: number; height: number }): Promise<void> {
   await app.evaluate(({ Menu }) => {
@@ -1172,11 +1171,14 @@ async function shootNativeMenu(app: ElectronApplication, page: Page, name: strin
   await open();
   await expect.poll(() => app.evaluate(() => Boolean((globalThis as { __learnLastMenu?: unknown }).__learnLastMenu))).toBe(true);
   await page.waitForTimeout(600); // the menu's window is mapped and painted
-  // ffmpeg is on every machine that builds the fixtures (ImageMagick's `import` is not on the CI runner).
-  const png = execFileSync(
-    'ffmpeg',
-    ['-v', 'error', '-f', 'x11grab', '-video_size', `${crop.width}x${crop.height}`, '-i', `${process.env['DISPLAY'] ?? ':0'}+${crop.x},${crop.y}`, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'],
-    { maxBuffer: 16 * 1024 * 1024 },
+  // The screen, not the page: the main process captures the X screen (menus included) and crops it. No tool of the runner is used.
+  const png = Buffer.from(
+    await app.evaluate(async ({ desktopCapturer, screen }, rect) => {
+      const { size, scaleFactor } = screen.getPrimaryDisplay();
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: size.width * scaleFactor, height: size.height * scaleFactor } });
+      return sources[0]!.thumbnail.crop(rect).toPNG().toString('base64');
+    }, crop),
+    'base64',
   );
   await app.evaluate(() => (globalThis as { __learnLastMenu?: { closePopup(): void } | null }).__learnLastMenu?.closePopup());
   expect(png).toMatchSnapshot(`${name}.png`, { maxDiffPixels: 300, threshold: 0.2 });

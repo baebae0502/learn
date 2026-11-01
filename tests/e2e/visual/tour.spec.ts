@@ -1151,6 +1151,63 @@ test('organize: the item panel with tags and collections, the add field, several
   }
 });
 
+// M6: 중복 항목 with two groups — 남김 on the kept rows (white on the selected one), the line between the groups, 중복 N묶음
+// 모두 정리 — and the item panel's edited copy. Pairs for the critic: library.html?state=duplicates and ?state=edited.
+test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line and 모두 정리; the item panel edited copy', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const dir = testInfo.outputPath('in');
+    fs.mkdirSync(dir, { recursive: true });
+    const named = (name: string) => {
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from(`\n% ${name}\n`)]));
+      return file;
+    };
+    const kinase = named('Kinase Cascades A Primer.pdf');
+    const molbio = named('분자생물학 6장 · 신호 전달.pdf');
+    const cell = named('세포생물학 3장.pdf');
+    // Imported K, M, K, K, M: newest first the M group (2 rows) comes before the K group (3), as the mockup draws them.
+    await importPaths(s.page, [kinase]);
+    const [m1] = await importPaths(s.page, [molbio]);
+    await importPaths(s.page, [kinase], { allowDuplicate: true });
+    await importPaths(s.page, [kinase], { allowDuplicate: true });
+    await importPaths(s.page, [molbio], { allowDuplicate: true });
+    const [c1] = await importPaths(s.page, [cell]);
+
+    await specialRow(s.page, 'duplicates').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    await expect(s.page.getByTestId('keep-all-duplicates')).toBeVisible();
+    // The M group's kept row selected with the table focused (the mockup selects it): its 남김 in white.
+    await s.page.locator(`[data-testid="item-row"][data-item-id="${m1!.id}"]`).click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `duplicates-view-${theme}`, { mask: masks() });
+    }
+
+    // A copy kept aside under the mockup's name and time (as the next 기본 앱으로 열기 would), so it reads the same every run.
+    await setTheme(s.page, 'light');
+    const folder = path.join(testInfo.outputPath(), 'library', 'derived', 'open', c1!.assetId);
+    fs.mkdirSync(folder, { recursive: true });
+    const aside = path.join(folder, '세포생물학 3장 (수정본 2026-10-30 1412).pdf');
+    fs.writeFileSync(aside, Buffer.concat([fs.readFileSync(cell), Buffer.from('% edited\n')]));
+    const at = new Date('2026-10-30T05:12:00Z'); // 오후 2:12 in Seoul (launchTour's TZ)
+    fs.utimesSync(aside, at, at);
+    await specialRow(s.page, 'all').click();
+    await s.page.locator(`[data-testid="item-row"][data-item-id="${c1!.id}"]`).click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await expect(s.page.getByTestId('edited-copy')).toHaveCount(1);
+    await s.page.getByTestId('edited-copies').scrollIntoViewIfNeeded();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `edited-copy-${theme}`, { mask: masks() });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 // M5: drag and drop at rest. A drag cannot be held for a screenshot (the tour parks the pointer), so the drop state is
 // forced on a real tree row and a real table row, in the window the drag would run in; the drag image and the heading are on the
 // state board (part 5). Pairs for the critic: components.html?part=1 ("드롭 대상 (⌘ 이동)") and library.html for the window.

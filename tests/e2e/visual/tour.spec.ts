@@ -969,8 +969,7 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'trash').click();
     await rowByTitle(s.page, items[1]!.title).click();
-    await expect.poll(() => menuItemEnabled(s.app, 'item.restore')).toBe(true);
-    await runMenuCommand(s.app, 'item.restore');
+    await s.page.getByTestId('inspector-restore').click();
     await expect(s.page.getByTestId('restore-done')).toBeVisible();
     await shoot(s.page, 'toast-restore-done-light', { mask: dates() });
     await gone('restore-done');

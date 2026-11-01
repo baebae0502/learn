@@ -22,4 +22,10 @@ describe('the Linux CI limit is twice the budget', () => {
   it('takes another factor', () => {
     expect(limitFailures([{ what: 'x', value: 151, budget: 100 }], 1.5)).toHaveLength(1);
   });
+  it('names another unit, for a rate', () => {
+    expect(limitFailures([{ what: 'notices in one second', value: 21, budget: 10, unit: '/s' }])).toEqual([
+      'notices in one second: 21 /s against the Linux CI limit 20 /s (budget 10 /s)',
+    ]);
+    expect(limitFailures([{ what: 'notices in one second', value: 20, budget: 10, unit: '/s' }])).toEqual([]);
+  });
 });

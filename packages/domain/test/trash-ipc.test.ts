@@ -34,7 +34,7 @@ describe('the trash channels (spec 12)', () => {
   });
 
   it('the undo token is exactly what keepOne answered: ids, an ISO stamp, id pairs', () => {
-    const token: KeepOneUndo = { trashed: [B], stamp: '2026-10-31T01:00:00.001Z', memberships: [[A, B]], tags: [[B, A]] };
+    const token: KeepOneUndo = { trashed: [B], stamp: '2026-10-31T01:00:00.001Z', kept: [A], memberships: [[A, B]], tags: [[B, A]] };
     expect(keepOneUndoInput.parse(token)).toEqual(token);
     for (const bad of [
       { ...token, stamp: 'yesterday' },
@@ -43,6 +43,8 @@ describe('the trash channels (spec 12)', () => {
       { ...token, tags: [['x', A]] },
       { ...token, extra: 1 },
       { trashed: [B], stamp: token.stamp, memberships: [] },
+      { trashed: [B], stamp: token.stamp, memberships: [], tags: [] }, // no kept list
+      { ...token, kept: ['x'] },
     ]) {
       expect(keepOneUndoInput.safeParse(bad).success, JSON.stringify(bad).slice(0, 80)).toBe(false);
     }

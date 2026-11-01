@@ -42,7 +42,7 @@ export function keepOneOf(db: Db, itemIds: readonly string[] | null): KeepOneRes
     const file = db.prepare('INSERT OR IGNORE INTO collection_items (collection_id, item_id, added_at) VALUES (?, ?, ?)');
     const tag = db.prepare('INSERT OR IGNORE INTO item_tags (item_id, tag_id) VALUES (?, ?)');
     const toTrash = db.prepare('UPDATE items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL');
-    const result: KeepOneResult = { kept: [], trashed: [], undo: { trashed: [], stamp, memberships: [], tags: [] } };
+    const result: KeepOneResult = { kept: [], trashed: [], undo: { trashed: [], stamp, kept: [], memberships: [], tags: [] } };
     for (const [keep, ...rest] of groups.values()) {
       result.kept.push(keep!);
       for (const other of rest) {
@@ -56,25 +56,27 @@ export function keepOneOf(db: Db, itemIds: readonly string[] | null): KeepOneRes
       }
     }
     result.undo.trashed = [...result.trashed];
+    result.undo.kept = [...result.kept];
     return result;
   })();
 }
 
 /**
  * The undo of keepOneOf: the items still in the trash under its stamp come back (one restored or trashed again since is
- * left as it is), and the memberships and tags it added go. When none comes back (a second undo; every one restored,
- * trashed again or purged since) nothing changes: the kept item keeps what it was given rather than lose it with them.
- * Returns the items restored.
+ * left as it is). The memberships and tags it added go only when every item it trashed came back, and only for the items
+ * it kept: when one is gone (purged, or restored on its own) the undo is partial and the kept item keeps what the merge
+ * gave it, since a source that is gone must not take its organisation with it. Returns the items restored.
  */
 export function undoKeepOne(db: Db, undo: KeepOneUndo): string[] {
   return db.transaction((): string[] => {
     const back = db.prepare('UPDATE items SET deleted_at = NULL WHERE id = ? AND deleted_at = ?');
     const restored = undo.trashed.filter((id) => back.run(id, undo.stamp).changes > 0);
-    if (restored.length === 0) return restored;
+    if (restored.length === 0 || restored.length < undo.trashed.length) return restored;
+    const kept = new Set(undo.kept);
     const unfile = db.prepare('DELETE FROM collection_items WHERE collection_id = ? AND item_id = ?');
-    for (const [collectionId, itemId] of undo.memberships) unfile.run(collectionId, itemId);
+    for (const [collectionId, itemId] of undo.memberships) if (kept.has(itemId)) unfile.run(collectionId, itemId);
     const untag = db.prepare('DELETE FROM item_tags WHERE tag_id = ? AND item_id = ?');
-    for (const [tagId, itemId] of undo.tags) untag.run(tagId, itemId);
+    for (const [tagId, itemId] of undo.tags) if (kept.has(itemId)) untag.run(tagId, itemId);
     return restored;
   })();
 }

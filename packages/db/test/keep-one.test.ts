@@ -42,7 +42,7 @@ describe('keepOneOfDuplicates (spec 5)', () => {
   it('keeps the item imported first in each group of the chosen items and trashes the rest under one stamp', () => {
     const { a, b } = twoGroups();
     const result = repo.keepOneOfDuplicates([a[2]]); // a row of group a only
-    expect(result).toEqual({ kept: [a[0]], trashed: [a[1], a[2]], undo: { trashed: [a[1], a[2]], stamp: '2026-10-31T02:00:00.000Z', memberships: [], tags: [] } });
+    expect(result).toEqual({ kept: [a[0]], trashed: [a[1], a[2]], undo: { trashed: [a[1], a[2]], stamp: '2026-10-31T02:00:00.000Z', kept: [a[0]], memberships: [], tags: [] } });
     expect([deletedAt(a[1]), deletedAt(a[2])]).toEqual(['2026-10-31T02:00:00.000Z', '2026-10-31T02:00:00.000Z']);
     expect(deletedAt(a[0])).toBeNull();
     expect(b.map(deletedAt)).toEqual([null, null]); // the other group is not touched
@@ -135,5 +135,37 @@ describe('undoKeepOne', () => {
     repo.purge({ itemIds: again.trashed, collectionIds: [] });
     expect(repo.undoKeepOne(again)).toEqual([]);
     expect(memberships()).toEqual([[exam, a[0]]]);
+  });
+
+  it('takes a membership or tag pair away only for an item it kept: a pair of another item in a token stays', () => {
+    const { a } = twoGroups();
+    const exam = collections.create({ name: '시험' }).id;
+    const red = tags.create('중요').id;
+    collections.addItems(exam, [a[1]]);
+    tags.assign(red, [a[1]]);
+    const { undo } = repo.keepOneOfDuplicates([a[0]]);
+    const bystander = seedItem(db).itemId;
+    collections.addItems(exam, [bystander]);
+    tags.assign(red, [bystander]);
+    const forged = { ...undo, memberships: [...undo.memberships, [exam, bystander] as [string, string]], tags: [...undo.tags, [red, bystander] as [string, string]] };
+    expect(repo.undoKeepOne(forged)).toEqual([a[1], a[2]]);
+    expect(memberships()).toContainEqual([exam, bystander]);
+    expect(tagPairs()).toContainEqual([red, bystander]);
+    expect(memberships()).not.toContainEqual([exam, a[0]]); // what it really gave the kept item went
+    expect(tagPairs()).not.toContainEqual([red, a[0]]);
+  });
+
+  it('is partial when one trashed item is gone: the others come back and the kept item keeps what the merge gave it', () => {
+    const { a } = twoGroups();
+    const exam = collections.create({ name: '시험' }).id;
+    const red = tags.create('중요').id;
+    collections.addItems(exam, [a[1]]);
+    tags.assign(red, [a[2]]);
+    const { undo } = repo.keepOneOfDuplicates([a[0]]);
+    repo.purge({ itemIds: [a[1]], collectionIds: [] });
+    expect(repo.undoKeepOne(undo)).toEqual([a[2]]);
+    expect(deletedAt(a[2])).toBeNull();
+    expect(repo.getItemDetail(a[0]).collections.map((c) => c.id)).toEqual([exam]);
+    expect(repo.getItemDetail(a[0]).tags.map((t) => t.id)).toEqual([red]);
   });
 });

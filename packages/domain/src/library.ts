@@ -127,6 +127,8 @@ export interface KeepOneUndo {
   /** The items it moved to the trash, all with `stamp`. */
   trashed: string[];
   stamp: string;
+  /** The items it kept (KeepOneResult.kept): the only ones whose memberships and tags the undo takes away again. */
+  kept: string[];
   /** [collectionId, itemId]: the memberships it gave the items kept. */
   memberships: Array<[string, string]>;
   /** [tagId, itemId]: the tags it gave the items kept. */

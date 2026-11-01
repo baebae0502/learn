@@ -61,7 +61,8 @@ export function registerTrashIpc(handle: Handle, deps: IpcDeps): void {
   handle(Channels.library.undoKeepOne, keepOneUndoInput, (undo) => {
     const restored = deps.getContext().repo.undoKeepOne(undo);
     if (restored.length > 0) {
-      const kept = [...undo.memberships, ...undo.tags].map(([, itemId]) => itemId);
+      const keptSet = new Set(undo.kept);
+      const kept = [...undo.memberships, ...undo.tags].map(([, itemId]) => itemId).filter((id) => keptSet.has(id));
       broadcast('libraryChanged', { reason: 'restore', itemIds: [...new Set([...restored, ...kept])] });
     }
     return restored.length;

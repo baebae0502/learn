@@ -59,11 +59,12 @@ export const purgeInput = z
 /** library.keepOneOfDuplicates: rows chosen in the duplicates view; each one's group is cleaned once. */
 export const keepOneInput = z.object({ itemIds: z.array(z.uuid()).min(1).max(1_000_000) }).strict();
 const idPairSchema = z.tuple([z.uuid(), z.uuid()]);
-/** library.undoKeepOne: the token keepOne handed out. Only items still in the trash under its stamp come back. */
+/** library.undoKeepOne: the token keepOne handed out. Only items still in the trash under its stamp come back, and the merge is taken away only when all of them do. */
 export const keepOneUndoInput = z
   .object({
     trashed: z.array(z.uuid()).max(1_000_000),
     stamp: z.iso.datetime(),
+    kept: z.array(z.uuid()).max(1_000_000),
     memberships: z.array(idPairSchema).max(1_000_000),
     tags: z.array(idPairSchema).max(1_000_000),
   })

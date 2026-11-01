@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, type KeyboardEvent } from 'react';
+import { useContext, useEffect, useLayoutEffect, type KeyboardEvent, type ReactNode } from 'react';
 import { CircleAlert, CircleCheck, CirclePause, Info, X } from 'lucide-react';
 import {
   Text,
   UNSTABLE_Toast as Toast,
   UNSTABLE_ToastContent as ToastContent,
   UNSTABLE_ToastQueue as ToastQueue,
+  UNSTABLE_ToastStateContext as ToastStateContext,
   UNSTABLE_ToastRegion as ToastRegion,
   type QueuedToast,
 } from 'react-aria-components';
@@ -390,6 +391,26 @@ function PlainToastItem({ toast, data }: { toast: QueuedToast<ToastContent>; dat
   );
 }
 
+/**
+ * The toasts in the order the jobs began, oldest on top, as the mockups stack them (a running backup above the import
+ * waiting behind it). RAC's own list draws the newest first, so this one reads the same state and turns it over in
+ * render: the DOM, F6 and the arrow keys then go in the order the user sees, which a CSS reversal would not give.
+ */
+function OldestFirstList({ children }: { children: (args: { toast: QueuedToast<ToastContent> }) => ReactNode }) {
+  const state = useContext(ToastStateContext);
+  if (state === null) return null;
+  const shown = [...(state.visibleToasts as Array<QueuedToast<ToastContent>>)].reverse();
+  return (
+    <ol style={{ display: 'contents' }}>
+      {shown.map((toast) => (
+        <li key={toast.key} style={{ display: 'contents' }}>
+          {children({ toast })}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function Toasts() {
   return (
     <div
@@ -405,13 +426,15 @@ export function Toasts() {
         aria-label={t.common.notifications}
         data-pane="toasts"
       >
-        {({ toast }) =>
-          toast.content.kind === 'job' ? (
-            <JobToastItem toast={toast} job={toast.content.job} />
-          ) : (
-            <PlainToastItem toast={toast} data={toast.content} />
-          )
-        }
+        <OldestFirstList>
+          {({ toast }) =>
+            toast.content.kind === 'job' ? (
+              <JobToastItem toast={toast} job={toast.content.job} />
+            ) : (
+              <PlainToastItem toast={toast} data={toast.content} />
+            )
+          }
+        </OldestFirstList>
       </ToastRegion>
     </div>
   );

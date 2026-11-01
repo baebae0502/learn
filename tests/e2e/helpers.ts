@@ -8,6 +8,7 @@ import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
+import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
@@ -1458,29 +1459,6 @@ export async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Pr
   }
 }
 
-
-/** main/test-hooks.ts seedAssets: one item per row, each with a file of its own (rows from `linkedFrom` on linked to files in `linkedDir`). */
-export interface SeedAssetsInput {
-  rows: SeedRow[];
-  linkedFrom?: number;
-  linkedDir?: string;
-}
-export interface SeedAssetsResult {
-  itemIds: string[];
-  sha256: string[];
-}
-/** main/test-hooks.ts fsyncProbe: one import's flushes, `files` times, in `dir` (absolute and new). */
-export interface FsyncProbeInput {
-  dir: string;
-  files: number;
-  bytes: number;
-}
-export interface FsyncProbeResult {
-  parentMs: number[];
-  fileMs: number[];
-  shardMs: number[];
-  uv: string;
-}
 type WithSeedHooks = {
   __learnTest: { seedAssets(input: SeedAssetsInput): SeedAssetsResult; fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult> };
 };

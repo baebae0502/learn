@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -765,6 +765,65 @@ test('backup: its toast with an import waiting behind it, the result sheet (and 
     await expect(sheet.getByTestId('backup-missing-note')).toBeVisible();
     await shoot(sheet, 'sheet-backup-missing-light', { mask: sheetMasks(sheet) });
     await closeSheet(sheet, 'Enter');
+  } finally {
+    await s.app.close();
+  }
+});
+
+// 복원 (spec 9; dialogs.html?scene=restore, ?scene=restore-issues): the result sheet, the one with problems, and the restore's
+// toast (as ?scene=jobs draws the backup's). Files of fixed sizes, so the bar reads the same everywhere; the backup's minute,
+// the restored folder's name and the table's dates are masked.
+test('restore: the result sheet (and with problems), its toast', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const dir = path.join(home, 'Library', 'Application Support', 'Learn');
+  const s = await launchTour(dir, { HOME: home });
+  const backups = path.join(home, 'Documents');
+  fs.mkdirSync(backups, { recursive: true });
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const masks = (sheet: Page) => [sheet.getByTestId('restore-when'), sheet.getByTestId('restore-location')];
+  // Restored beside the library (its parent, the second panel's default): ~/Library/Application Support/Learn/Learn 복원 ….
+  const restoreFrom = async (backup: string) => {
+    await stubFolderPicks(s.app, [backup, dir]);
+    return expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.restore'));
+  };
+  try {
+    const src = testInfo.outputPath('src');
+    const items = await importPaths(s.page, [
+      fixedSizeCopy(path.join(FIXTURES, 'sample.pdf'), src, 1_500_000),
+      fixedSizeCopy(path.join(FIXTURES, '한글 경로 (테스트) #1.pdf'), src, 900_000),
+      h264(src),
+    ]);
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [items[0]!.id]);
+    await assignTag(s.page, await createTag(s.page, '시험 범위'), [items[1]!.id]);
+    await stubFolderPicker(s.app, backups);
+    await closeSheet(await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup')), 'Enter');
+    const backup = path.join(backups, fs.readdirSync(backups).find((n) => n.startsWith('Learn 백업'))!);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await restoreFrom(backup);
+      await expect(sheet.getByTestId('restore-files')).toHaveText('3개 확인 · 손상 없음');
+      await shoot(sheet, `sheet-restore-${theme}`, { mask: masks(sheet) });
+      await closeSheet(sheet, 'Escape');
+    }
+    // A file the backup no longer holds and one whose contents changed (?scene=restore-issues).
+    await setTheme(s.page, 'light');
+    const listed = (JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { assets: Array<{ included: boolean; relativePath: string | null }> }).assets;
+    const [lost, changed] = listed.filter((a) => a.included);
+    fs.rmSync(path.join(backup, ...lost!.relativePath!.split('/')));
+    fs.appendFileSync(path.join(backup, ...changed!.relativePath!.split('/')), 'changed on the way');
+    const issues = await restoreFrom(backup);
+    await expect(issues.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'warning');
+    await shoot(issues, 'sheet-restore-issues-light', { mask: masks(issues) });
+    await closeSheet(issues, 'Escape');
+    // The restore's toast while it copies (the backup's machine, P-3).
+    await restorePause(s.app);
+    await stubFolderPicks(s.app, [backup, dir]);
+    await runMenuCommand(s.app, 'file.restore');
+    await expect.poll(() => restoreWaiting(s.app)).not.toBeNull();
+    await expect(s.page.getByTestId('restore-progress')).toHaveAttribute('data-state', 'running');
+    await shoot(s.page, 'toast-restore-light', { mask: [...dates(), s.page.getByTestId('restore-progress').locator('.t-file')] });
+    await closeSheet(await expectWindow(s.app, 'sheet', () => restoreResume(s.app)), 'Escape');
   } finally {
     await s.app.close();
   }

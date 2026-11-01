@@ -24,6 +24,12 @@
     flex-direction: column;
     gap: var(--space-4);
   }
+  /* A line and the names under it keep the gap the lines of different problems have (mockup: both sit in .restore-issues). */
+  .restore-sheet .ri-issue {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
   .restore-sheet .ri-line {
     display: flex;
     align-items: center;

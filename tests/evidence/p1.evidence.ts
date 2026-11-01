@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, KEY_CODE, backupPause, backupResume, backupWaiting, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, rowByTitle, runMenuCommand, stubFolderPicker, stubOpenDialog, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
+import { FIXTURES, KEY_CODE, backupPause, backupResume, backupWaiting, clickToCloseSheet, createCollection, distinctPdfs, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, launch, mainWindow, menuSnapshot, nativeKeyCode, releaseJob, requestLibraryCheck, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, shellCalls, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubShell, tokenColor, waitForSheet, waitImportIdle, closeSheet, type MenuNode, type Session } from '../e2e/helpers';
 import { IS_MAC, allShots, cgWindowId, focusApp, fullScreenShot, pageShot, windowShotById, writeJson } from './capture';
 
 const TAG = { tag: '@p1' };
@@ -532,6 +532,105 @@ test('M6 backup: its toast with an import waiting behind it, the result sheet (m
   const bytes = manifest.assets.filter((a) => a.included).reduce((n, a) => n + a.size, 0);
   results['backupThroughput'] = { ms, bytes, mbPerSecond: Math.round((bytes / 1e6 / (ms / 1000)) * 10) / 10 };
   await closeSheet(timed, 'Enter');
+  save();
+});
+
+test('M6 restore: its toast, the result sheet (macOS: a real sheet) and the one with problems; the fatal screen\'s Finder에서 보기; throughput reported', TAG, async () => {
+  const backups = path.join(tmp, 'restore-backups');
+  const parent = path.join(tmp, 'restored');
+  fs.mkdirSync(backups, { recursive: true });
+  fs.mkdirSync(parent, { recursive: true });
+  await setTheme('light');
+  await stubFolderPicker(s.app, backups);
+  await closeSheet(await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup')), 'Enter');
+  const backup = path.join(backups, fs.readdirSync(backups).find((n) => n.startsWith('Learn 백업'))!);
+
+  await restorePause(s.app);
+  await stubFolderPicks(s.app, [backup, parent]);
+  await runMenuCommand(s.app, 'file.restore');
+  await expect.poll(() => restoreWaiting(s.app)).not.toBeNull();
+  const toast = s.page.getByTestId('restore-progress');
+  await expect(toast).toHaveAttribute('data-state', 'running');
+  await guard('restore toast: 복원하는 중 with its files and its folder, a bar, 360 wide', async () => {
+    const v = { text: (await toast.textContent()) ?? '', bars: await toast.locator('.progress').count(), width: await toast.evaluate((t) => Math.round(t.getBoundingClientRect().width)) };
+    results['restoreToast'] = v;
+    check('restore toast: 복원하는 중 with its files and its folder, a bar, 360 wide', v.text.includes('복원하는 중 · 0 / ') && v.text.includes('Learn 복원 ') && v.bars === 1 && v.width === 360, v);
+  });
+  if (IS_MAC) await focusApp(s.app);
+  await shots(s.page, 'm6-restore-1-toast-light', 'the restore\'s progress toast (the backup\'s machine, dialogs.html?scene=jobs)');
+  const started = Date.now();
+  const sheet = await expectWindow(s.app, 'sheet', () => restoreResume(s.app));
+  results['restoreThroughput'] = { ms: Date.now() - started }; // from the first copy's read-back on: reported only (spec 14)
+  await guard('restore sheet: 560 wide, the success badge, the location in mono with a small Finder button, 전환 the focused default', async () => {
+    const v = await sheet.evaluate(() => ({
+      width: innerWidth,
+      badge: getComputedStyle(document.querySelector('[data-testid="restore-badge"]')!).backgroundColor,
+      mono: getComputedStyle(document.querySelector('[data-testid="restore-location"]')!).fontFamily,
+      reveal: document.querySelector('[data-testid="restore-reveal"]')?.className ?? '',
+      focused: document.activeElement?.getAttribute('data-testid') ?? null,
+    }));
+    const soft = await tokenColor(sheet, '--success-soft');
+    results['restoreSheet'] = { ...v, soft };
+    check(
+      'restore sheet: 560 wide, the success badge, the location in mono with a small Finder button, 전환 the focused default',
+      v.width === 560 && v.badge === soft && /mono/i.test(v.mono) && /btn-small/.test(v.reveal) && v.focused === 'restore-switch',
+      results['restoreSheet'],
+    );
+  });
+  if (IS_MAC) await fullScreenShot('m6-restore-2-sheet', 'the restore result sheet hanging on the main window (a macOS sheet)');
+  await shots(sheet, 'm6-restore-2-sheet-light', 'the restore result sheet (dialogs.html?scene=restore)');
+  await closeSheet(sheet, 'Escape'); // 나중에: the library in use stays
+
+  // With problems (dialogs.html?scene=restore-issues): a copy gone from the backup, another changed.
+  const copies = (JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { assets: Array<{ included: boolean; relativePath: string | null }> }).assets.filter((a) => a.included);
+  fs.rmSync(path.join(backup, ...copies[0]!.relativePath!.split('/')));
+  fs.appendFileSync(path.join(backup, ...copies[1]!.relativePath!.split('/')), 'changed on the way');
+  await stubFolderPicks(s.app, [backup, parent]);
+  const issues = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.restore'));
+  await guard('restore sheet with problems: the warning badge, a line for the missing file and one for the damaged, the 파일 없음 sentence', async () => {
+    const v = {
+      tone: await issues.getByTestId('restore-badge').getAttribute('data-tone'),
+      kinds: await issues.getByTestId('restore-issue').evaluateAll((els) => els.map((e) => e.getAttribute('data-kind'))),
+      note: (await issues.getByTestId('restore-missing-note').textContent()) ?? '',
+    };
+    results['restoreIssues'] = v;
+    check('restore sheet with problems: the warning badge, a line for the missing file and one for the damaged, the 파일 없음 sentence', v.tone === 'warning' && JSON.stringify(v.kinds) === '["missing","damaged"]' && v.note.includes('파일'), v);
+  });
+  await shots(issues, 'm6-restore-3-issues-light', 'the restore result sheet with problems (dialogs.html?scene=restore-issues)');
+  await closeSheet(issues, 'Escape');
+
+  // The fatal screen in a profile of its own: an unreadable library and one pre-update backup (dialogs.html?scene=fatal).
+  const broken = path.join(tmp, 'broken-library');
+  fs.mkdirSync(broken, { recursive: true });
+  fs.writeFileSync(path.join(broken, 'library.sqlite'), 'not a database');
+  fs.writeFileSync(path.join(broken, 'library.sqlite.pre-v2.bak'), '');
+  const fatal = await launch(broken, path.join(tmp, 'broken-userdata'), { colorScheme: null });
+  try {
+    await guard('fatal screen: Finder에서 보기 before 설정 열기, both secondary; it shows the backup file selected', async () => {
+      await stubShell(fatal.app);
+      const labels = (await fatal.page.getByTestId('fatal-notice').locator('.actions button').allTextContents()).map((l) => l.trim());
+      await fatal.page.getByTestId('fatal-reveal').click();
+      await expect.poll(() => shellCalls(fatal.app)).toHaveLength(1);
+      const v = { labels, shell: await shellCalls(fatal.app) };
+      results['fatalReveal'] = v;
+      check(
+        'fatal screen: Finder에서 보기 before 설정 열기, both secondary; it shows the backup file selected',
+        JSON.stringify(v.labels) === JSON.stringify([IS_MAC ? 'Finder에서 보기' : '폴더에서 보기', '설정 열기']) && v.shell[0]?.[1] === path.join(broken, 'library.sqlite.pre-v2.bak'),
+        v,
+      );
+    });
+    for (const theme of ['light', 'dark'] as const) {
+      await fatal.page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
+      // The fatal screen carries no data-theme (it follows the system scheme main set): the media query says it changed.
+      await expect.poll(() => fatal.page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+      if (IS_MAC) await focusApp(fatal.app);
+      for (const e of await allShots(fatal.app, fatal.page, `m6-restore-4-fatal-${theme}`, `the fatal screen with Finder에서 보기 (dialogs.html?scene=fatal, ${theme})`)) {
+        if (e.file === null && e.error) shotFailures.push({ name: `m6-restore-4-fatal-${theme}`, kind: e.kind, description: e.description, error: e.error });
+      }
+    }
+  } finally {
+    await fatal.app.close();
+  }
   save();
 });
 

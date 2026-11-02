@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import {
   Importer, assetKeyFile, checkLibrary, cleanStaging, cleanUnreferenced, corruptCopies, ensureLayout, libraryLayout, managedRelativePath,
@@ -11,6 +12,7 @@ import { cleanupTemp, tempDir, writePdf } from './helpers';
 
 const dbs: Db[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const db of dbs.splice(0)) db.close();
   cleanupTemp();
 });
@@ -320,6 +322,29 @@ describe('linked availability and relink', () => {
     await relinkAsset(repo, out.item.assetId, moved);
     expect(repo.getAsset(out.item.assetId)).toMatchObject({ externalPath: moved, availability: 'available' });
     expect(await refreshAvailability(layout, repo, repo.getAsset(out.item.assetId)!)).toBe('available');
+  });
+
+  it('skips an asset a purge removed during the pass instead of failing the whole check', async () => {
+    const { layout, repo, importer } = setup();
+    const dir = tempDir('src');
+    const a = await importer.importOne(writePdf(dir, 'a.pdf', 'first'), { mode: 'linked' });
+    const b = await importer.importOne(writePdf(dir, 'b.pdf', 'second'), { mode: 'linked' });
+    if (a.status !== 'imported' || b.status !== 'imported') throw new Error('import');
+    fs.rmSync(path.join(dir, 'a.pdf'));
+    fs.rmSync(path.join(dir, 'b.pdf'));
+    // The purge commits while the first file is looked at.
+    const stat = fsp.stat.bind(fsp);
+    let purged = false;
+    vi.spyOn(fsp, 'stat').mockImplementation(async (...args: Parameters<typeof fsp.stat>) => {
+      if (!purged) {
+        purged = true;
+        repo.trash([a.item.id]);
+        repo.purge({ itemIds: [a.item.id], collectionIds: [] });
+      }
+      return stat(...args);
+    });
+    expect(await refreshLinkedAvailability(layout, repo)).toEqual([b.item.assetId]);
+    expect(repo.getAsset(a.item.assetId)).toBeUndefined();
   });
 
   it('refuses to relink managed assets', async () => {

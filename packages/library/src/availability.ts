@@ -16,6 +16,8 @@ async function isFile(p: string): Promise<boolean> {
 
 export async function refreshAvailability(layout: LibraryLayout, repo: LibraryRepository, asset: AssetRow): Promise<Availability> {
   const availability: Availability = (await isFile(resolveAssetPath(layout, asset))) ? 'available' : 'missing';
+  // A purge may have removed the asset while the file was looked at: nothing to write, nothing changed.
+  if (!repo.getAsset(asset.id)) return asset.availability;
   if (availability !== asset.availability) repo.setAvailability(asset.id, availability, nowIso());
   return availability;
 }

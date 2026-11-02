@@ -928,6 +928,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3000);
     await pickFromNextPopup(label('duplicates.keepOne'), 5500);
     await glideClick(page, 'main', page.locator('[data-testid="item-row"]:not(:has([data-testid="kept-mark"]))').first(), { button: 'right' });
+    await highlightPickedRow();
     await expect(page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
     await expect(rows).toHaveCount(4);
     await park(page, 'main');

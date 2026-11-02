@@ -235,7 +235,7 @@
     const pages = it.pages ?? r.pages;
     const tags = it.tags ?? [];
     const head = trashed
-      ? `<div class="item-head" ${ms('M6', '휴지통 항목 패널 머리 — 제안: ‘휴지통에 있습니다’ · 복원')}>`
+      ? `<div class="item-head" ${ms('M6', '휴지통 항목 패널 머리(복원 · ‘휴지통에 있습니다’ 줄)')}>`
       : `<div class="item-head" ${ms('M4', '항목 패널 머리(열기·Finder에서 보기)')}>`;
     return `<div class="inspector-scroll" ${trashed ? ms('M6', '휴지통 항목 패널(읽기 전용)') : ''}>
       ${head}
@@ -735,7 +735,7 @@
         state === 'locked'
           ? `<div class="pane-empty top" ${ms('M7', '쪽 없음')}>${icon('lock')}<div class="pe-title">암호를 입력하면 쪽이 보입니다</div></div>`
           : state === 'trashed'
-            ? `<div class="pane-empty top" ${ms('M6', '쪽 없음(휴지통)')}>${icon('trash-2')}<div class="pe-title">복원하면 쪽이 보입니다</div></div>`
+            ? `<div class="pane-empty top" ${ms('M7', '쪽 없음(휴지통)')}>${icon('trash-2')}<div class="pe-title">복원하면 쪽이 보입니다</div></div>`
             : `<div class="pane-empty top" ${ms('M7', '쪽 없음')}>${icon('file-x')}<div class="pe-title">표시할 쪽이 없습니다</div></div>`;
       return M.windowShell({ tabs, sidebar, main });
     }

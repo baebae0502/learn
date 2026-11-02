@@ -194,8 +194,13 @@ const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
  * ~/Learn 라이브러리, never on a developer's machine, where it lives under the temp folder. Never an existing folder.
  */
 function libraryFolder(work: string): string {
-  const home = path.join(os.homedir(), 'Learn 라이브러리');
-  return process.env['CI'] && !fs.existsSync(home) ? home : path.join(work, 'Learn 라이브러리');
+  return readableFolder(work, 'Learn 라이브러리');
+}
+
+/** A folder of the demo that a sheet shows: under the CI home (shown as ~/…) when that name is free there, else under `work`. */
+function readableFolder(work: string, name: string): string {
+  const home = path.join(os.homedir(), name);
+  return process.env['CI'] && !fs.existsSync(home) ? home : path.join(work, name);
 }
 
 /**
@@ -261,9 +266,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   if (libraryDir.startsWith(work)) fs.rmSync(libraryDir, { recursive: true, force: true });
   const userData = fs.mkdtempSync(path.join(work, 'userdata-'));
   const materialDir = path.join(work, '자료');
-  const backups = path.join(work, '백업');
-  const restores = path.join(work, '복원');
-  for (const dir of [backups, restores]) fs.rmSync(dir, { recursive: true, force: true });
+  const backups = readableFolder(work, 'Learn 백업');
+  const restores = readableFolder(work, '복원 위치');
+  // Folders under `work` may be left by an interrupted run; the CI home's are never reused.
+  for (const dir of [backups, restores]) if (dir.startsWith(work)) fs.rmSync(dir, { recursive: true, force: true });
   const notes: string[] = [];
   const input = { native: 0, menu: 0 };
   const chapters: Array<{ at: number; ms: number; title: string }> = [];

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import {
   Importer, assetKeyFile, checkLibrary, cleanStaging, cleanUnreferenced, corruptCopies, ensureLayout, libraryLayout, managedRelativePath,
-  refreshAvailability, refreshLinkedAvailability, relinkAsset, resolveAssetPath, type ImportHooks,
+  isManagedPathHeld, refreshAvailability, refreshLinkedAvailability, withManagedPath, relinkAsset, resolveAssetPath, type ImportHooks,
 } from '../src/index';
 import { cleanupTemp, tempDir, writePdf } from './helpers';
 
@@ -160,6 +160,66 @@ describe('checkLibrary (M6 spec 7, P-16)', () => {
     expect((await checkLibrary(layout, repo)).fingerprint).toBe(before);
     put(path.join(layout.stagingDir, 'b.part'), 1);
     expect((await checkLibrary(layout, repo)).fingerprint).not.toBe(before);
+  });
+});
+
+describe('checkLibrary under a running import queue', () => {
+  it('does not mark missing a row committed while the check lists assets/', async () => {
+    const { layout, repo, importer } = setup();
+    const src = writePdf(tempDir('src'), 'late.pdf', 'late');
+    const check = await checkLibrary(layout, repo, {
+      hooks: {
+        afterAssetsListed: async () => {
+          // The listing above ran before this file was placed: an import commits now.
+          await imported(importer, src);
+        },
+      },
+    });
+    expect(check.missingManaged.itemIds).toEqual([]);
+    expect(check.unreferenced.keys).toEqual([]);
+    expect(repo.assetsByMode('managed').map((a) => a.availability)).toEqual(['available']);
+  });
+
+  it('does not write missing for a row whose file is there when asked again', async () => {
+    const { layout, repo, importer } = setup();
+    await imported(importer, writePdf(tempDir('src'), 'a.pdf', 'a'));
+    const asset = repo.assetsByMode('managed')[0]!;
+    const file = path.join(layout.root, ...asset.relativePath!.split('/'));
+    const bytes = fs.readFileSync(file);
+    fs.rmSync(file);
+    const check = await checkLibrary(layout, repo, { hooks: { afterAssetsListed: () => fs.writeFileSync(file, bytes) } });
+    expect(check.missingManaged.itemIds).toEqual([]);
+    expect(repo.assetsByMode('managed')[0]!.availability).toBe('available');
+  });
+
+  it('leaves out of the unused copies one an import is placing (its path is locked), and lists it once the lock is gone', async () => {
+    const { layout, repo } = setup();
+    const key = managedRelativePath(SHA);
+    put(path.join(layout.root, ...key.split('/')), 12);
+    let release!: () => void;
+    const holding = withManagedPath(key, () => new Promise<void>((r) => (release = r)));
+    expect(isManagedPathHeld(key)).toBe(true);
+    expect((await checkLibrary(layout, repo)).unreferenced.keys).toEqual([]);
+    release();
+    await holding;
+    await new Promise((r) => setImmediate(r));
+    expect(isManagedPathHeld(key)).toBe(false);
+    expect((await checkLibrary(layout, repo)).unreferenced.keys).toEqual([key]);
+  });
+
+  it('does not count a .part whose import finished while the check ran', async () => {
+    const { layout, repo } = setup();
+    const gone = path.join(layout.stagingDir, 'done.part');
+    put(gone, 10);
+    put(path.join(layout.stagingDir, 'dead.part'), 20);
+    // The import renames its .part away and leaves stagingInUse just after the listing.
+    const inUse = new (class extends Set<string> {
+      override has(name: string) {
+        if (name === 'done.part') fs.rmSync(gone);
+        return false;
+      }
+    })();
+    expect((await checkLibrary(layout, repo, { stagingInUse: inUse })).staging).toEqual({ count: 1, bytes: 20 });
   });
 });
 

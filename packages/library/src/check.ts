@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { nowIso, type LibraryCheck } from '@learn/domain';
 import type { LibraryRepository } from '@learn/db';
-import { withManagedPath } from './asset-lock';
+import { isManagedPathHeld, withManagedPath } from './asset-lock';
 import { editedCopyFile, orphanEditedCopies } from './edited-copies';
 import type { LibraryLayout } from './layout';
 
@@ -20,6 +20,8 @@ export interface CheckOptions {
   /** Staging names an import is writing right now (Importer.stagingInUse): no leftovers. */
   stagingInUse?: ReadonlySet<string>;
   now?: () => string;
+  /** Seams for tests that need a concurrent import at an exact point of the check. */
+  hooks?: { afterAssetsListed?: () => void | Promise<void> };
 }
 
 const code = (e: unknown) => (e as NodeJS.ErrnoException)?.code;
@@ -65,11 +67,18 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
   const now = (opts.now ?? nowIso)();
   if (opts.interruptJobs) repo.markRunningJobsInterrupted(now);
 
+  // The rows come before the listing: a row committed while the disk is listed is never judged against that listing.
+  const managed = repo.assetsByMode('managed');
+
   const parts: string[] = [];
   const corrupt: string[] = [];
   for (const name of await namesIn(layout.stagingDir, 'file')) {
     if (CORRUPT.test(name)) corrupt.push(name);
     else if (PART.test(name) && !opts.stagingInUse?.has(name)) parts.push(name);
+  }
+  // An import that finished after the listing renamed its .part away: only a file still there is a leftover.
+  for (const name of [...parts]) {
+    if (!(await fs.lstat(path.join(layout.stagingDir, name)).catch(() => null))) parts.splice(parts.indexOf(name), 1);
   }
   const inStaging = (names: readonly string[]) => Promise.all(names.map((n) => sizeOf(path.join(layout.stagingDir, n))));
   const partBytes = sum(await inStaging(parts));
@@ -79,15 +88,19 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
   for (const shard of await namesIn(layout.assetsDir, 'dir')) {
     for (const name of await namesIn(path.join(layout.assetsDir, shard), 'file')) onDisk.add(`assets/${shard}/${name}`);
   }
-  const managed = repo.assetsByMode('managed');
-  const held = new Set(managed.flatMap((a) => (a.relativePath === null ? [] : [a.relativePath])));
-  const unreferenced = [...onDisk].filter((key) => !held.has(key)).sort();
+  await opts.hooks?.afterAssetsListed?.();
+  // One synchronous step: a path an import holds is being placed; once its lock is gone its row is committed and is read here.
+  const unreferenced = (() => {
+    const locked = new Set([...onDisk].filter(isManagedPathHeld));
+    const held = new Set(repo.assetsByMode('managed').flatMap((a) => (a.relativePath === null ? [] : [a.relativePath])));
+    return [...onDisk].filter((key) => !locked.has(key) && !held.has(key)).sort();
+  })();
   const unreferencedBytes = sum(await Promise.all(unreferenced.map((key) => sizeOf(path.join(layout.root, ...key.split('/'))))));
 
   const missingAssets: string[] = [];
   for (const a of managed) {
     if (a.relativePath === null) continue;
-    const there = onDisk.has(a.relativePath);
+    const there = onDisk.has(a.relativePath) || (await fs.access(path.join(layout.root, ...a.relativePath.split('/'))).then(() => true, () => false));
     if (!there) missingAssets.push(a.id);
     if (!there && a.availability !== 'missing') repo.setAvailability(a.id, 'missing', now);
     if (there && a.availability === 'missing') repo.setAvailability(a.id, 'available', now);

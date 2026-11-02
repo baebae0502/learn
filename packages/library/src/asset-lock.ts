@@ -17,3 +17,8 @@ export function withManagedPath<T>(relativePath: string, work: () => Promise<T>)
   });
   return run;
 }
+
+/** True while an import, a purge, a cleanup or a backup holds this path: a copy there may be placed but not yet committed. */
+export function isManagedPathHeld(relativePath: string): boolean {
+  return held.has(relativePath);
+}

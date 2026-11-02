@@ -25,7 +25,7 @@ export function PurgeSheet({ payload }: { payload: PurgePayload }) {
         <span className="badge-icon warning">
           <Icon icon={Trash2} />
         </span>
-        <h2 id="sheet-title" className="ui-balance" data-testid="purge-title">
+        <h2 id="sheet-title" className="ui-balance" data-testid="purge-title" title={text.title}>
           {text.title}
         </h2>
       </div>

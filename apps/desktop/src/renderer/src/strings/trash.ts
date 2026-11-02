@@ -10,8 +10,11 @@ export const trash = {
   movedOne: (title: string) => `‘${title}’⁠${eulReul(title)} 휴지통으로 옮겼습니다`,
   /** A collection's 휴지통으로 이동 (spec 4.2), with 실행 취소. */
   collectionMoved: (name: string) => `‘${name}’ 컬렉션을 휴지통으로 옮겼습니다`,
-  /** 복원 (spec 4.4): no 실행 취소 (⌘⌫ again); items and collections counted together. */
-  restored: (n: number) => `${n}개를 복원했습니다`,
+  /** 복원 (spec 4.4): no 실행 취소 (⌘⌫ again); one row is named like the move toasts, several are counted. */
+  restored: (items: number, collections: number) =>
+    items > 0 && collections > 0 ? `자료 ${items}개와 컬렉션 ${collections}개를 복원했습니다` : collections > 0 ? `컬렉션 ${collections}개를 복원했습니다` : `자료 ${items}개를 복원했습니다`,
+  restoredOne: (title: string) => `‘${title}’⁠${eulReul(title)} 복원했습니다`,
+  collectionRestored: (name: string) => `‘${name}’ 컬렉션을 복원했습니다`,
   /** After 영구 삭제… (Q-6f; spec 4.5: told as done even when a file could not be removed — the check shows it). */
   purged: (items: number, collections: number) =>
     items > 0 && collections > 0

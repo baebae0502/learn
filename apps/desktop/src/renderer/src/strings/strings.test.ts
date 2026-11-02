@@ -108,6 +108,8 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
     ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0), '’⁠의 '],
     ['the palette no-results title', t.palette.emptyTitle('세포'), '’⁠와 일치'],
     ['the trash toast for one item', t.trash.movedOne('통계'), '’⁠를 휴지통'],
+    ['the restore toast for one item', t.trash.restoredOne('통계'), '’⁠를 복원'],
+    ['the purge sheet title for one item', t.sheets.purge.titleItems(1, '통계'), '’⁠를 영구히'],
     ['the m-6 partial removal toast', t.organize.panel.removedPart('통계', 1), '’⁠에서 자료'],
     ['the tag merge detail', t.organize.tags.mergeDetail('수용체', '중요'), '’⁠로 옮겨지고'],
     ['the panel\'s removal toast', t.organize.panel.removed('통계', 1), '’⁠에서 자료'],

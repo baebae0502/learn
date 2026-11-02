@@ -8,9 +8,9 @@ export function purgeText(p: PurgePayload): { title: string; body: string; verb:
   const s = t.sheets.purge;
   switch (p.variant) {
     case 'items':
-      return { title: s.titleItems(p.items), body: s.bodyItems, verb: s.purge };
+      return { title: s.titleItems(p.items, p.name), body: s.bodyItems, verb: s.purge };
     case 'collections':
-      return { title: s.titleCollections(p.collections), body: s.bodyCollections, verb: s.purge };
+      return { title: s.titleCollections(p.collections, p.name), body: s.bodyCollections, verb: s.purge };
     case 'mixed':
       return { title: s.titleMixed(p.items, p.collections), body: s.bodyMixed, verb: s.purge };
     case 'empty':

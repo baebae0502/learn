@@ -167,7 +167,7 @@ export const confirmInput = z.object({ message: z.string().min(1).max(300), deta
 export type ConfirmInput = z.input<typeof confirmInput>;
 /** 영구 삭제… / 휴지통 비우기… (P-25): main opens the purge sheet with what it is about; the words are the sheet's own. */
 export const confirmPurgeInput = z
-  .object({ variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount })
+  .object({ variant: z.enum(['items', 'collections', 'mixed', 'empty']) satisfies z.ZodType<PurgeVariant>, items: contextCount, collections: contextCount, name: z.string().min(1).max(1000).optional() })
   .strict();
 export type ConfirmPurgeInput = z.input<typeof confirmPurgeInput>;
 export type SheetResultInput = z.input<typeof sheetResultInput>;

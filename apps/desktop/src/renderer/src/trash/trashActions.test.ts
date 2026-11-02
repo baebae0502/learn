@@ -64,7 +64,7 @@ describe('복원 (spec 4.4)', () => {
     await actions.restore({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
     expect(deps.restoreItems).toHaveBeenCalledExactlyOnceWith(['t0', 't1']);
     expect(deps.restoreCollection).toHaveBeenCalledExactlyOnceWith('c0');
-    expect(deps.toast).toHaveBeenCalledExactlyOnceWith('3개를 복원했습니다', 'restore-done');
+    expect(deps.toast).toHaveBeenCalledExactlyOnceWith('자료 2개와 컬렉션 1개를 복원했습니다', 'restore-done');
     expect(deps.undoToast).not.toHaveBeenCalled();
     await actions.restore({ itemIds: ['t0'], collectionIds: [] }, { quiet: true });
     expect(deps.toast).toHaveBeenCalledTimes(1);
@@ -74,7 +74,30 @@ describe('복원 (spec 4.4)', () => {
     const { deps, actions } = setup({ restoreCollection: vi.fn(async () => Promise.reject(boom)) });
     await actions.restore({ itemIds: ['t0'], collectionIds: ['c0'] });
     expect(deps.failed).toHaveBeenCalledExactlyOnceWith(boom);
-    expect(deps.toast).toHaveBeenCalledExactlyOnceWith('1개를 복원했습니다', 'restore-done');
+    expect(deps.toast).toHaveBeenCalledExactlyOnceWith('자료 1개를 복원했습니다', 'restore-done');
+  });
+  it('one row is named like the move toasts: an item by its title (을 or 를), a collection by its name; several are counted', async () => {
+    const named = (items: Array<[string, string]>, collections: Array<[string, string]> = []) =>
+      setup({
+        readTrash: vi.fn(async () => ({
+          ...view(0, 0),
+          items: items.map(([id, title]) => ({ ...item(id, { title }), deletedAt: '2026-10-31T00:00:00.000Z' })),
+          collections: collections.map(([id, name]) => ({ id, name, parentId: null, deletedAt: '2026-10-31T00:00:00.000Z', childCount: 0, itemCount: 0 })),
+        })),
+      });
+    const consonant = named([['a', '분자생물학 6장'], ['b', '통계']], [['c', '학회 준비'], ['d', '발표 자료']]);
+    await consonant.actions.restore({ itemIds: ['a'], collectionIds: [] });
+    await consonant.actions.restore({ itemIds: ['b'], collectionIds: [] });
+    await consonant.actions.restore({ itemIds: [], collectionIds: ['c'] });
+    await consonant.actions.restore({ itemIds: [], collectionIds: ['c', 'd'] });
+    await consonant.actions.restore({ itemIds: ['a', 'b'], collectionIds: [] });
+    expect(vi.mocked(consonant.deps.toast).mock.calls.map((c) => c[0])).toEqual([
+      '‘분자생물학 6장’\u2060을 복원했습니다',
+      '‘통계’\u2060를 복원했습니다',
+      '‘학회 준비’ 컬렉션을 복원했습니다',
+      '컬렉션 2개를 복원했습니다',
+      '자료 2개를 복원했습니다',
+    ]);
   });
 });
 
@@ -82,7 +105,7 @@ describe('영구 삭제… and 휴지통 비우기… (spec 4.5, P-25)', () => {
   it('asks in the sheet first with its variant; 취소 deletes nothing; the toast counts what went', async () => {
     const no = setup({ confirmPurge: vi.fn(async () => false) });
     await no.actions.purge({ itemIds: ['t0'], collectionIds: [] });
-    expect(no.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0 });
+    expect(no.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0, name: 't0' });
     expect(no.deps.purge).not.toHaveBeenCalled();
     const yes = setup();
     await yes.actions.purge({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
@@ -90,6 +113,18 @@ describe('영구 삭제… and 휴지통 비우기… (spec 4.5, P-25)', () => {
     expect(yes.deps.purge).toHaveBeenCalledExactlyOnceWith({ itemIds: ['t0', 't1'], collectionIds: ['c0'] });
     expect(yes.deps.toast).toHaveBeenCalledExactlyOnceWith('자료 2개와 컬렉션 1개를 영구히 삭제했습니다', 'purge-done');
     expect([purgeVariant(0, 2), purgeVariant(3, 0), purgeVariant(1, 1)]).toEqual(['collections', 'items', 'mixed']);
+  });
+  it('one row is named in the sheet (item or collection); several rows and a read that fails fall back to counts', async () => {
+    const a = setup({ readTrash: vi.fn(async () => ({ ...view(0, 0), items: [{ ...item('x', { title: '통계' }), deletedAt: '2026-10-31T00:00:00.000Z' }], collections: [{ id: 'y', name: '학회 준비', parentId: null, deletedAt: '2026-10-31T00:00:00.000Z', childCount: 0, itemCount: 0 }] })) });
+    await a.actions.purge({ itemIds: ['x'], collectionIds: [] });
+    await a.actions.purge({ itemIds: [], collectionIds: ['y'] });
+    expect(vi.mocked(a.deps.confirmPurge).mock.calls.map((c) => c[0])).toEqual([
+      { variant: 'items', items: 1, collections: 0, name: '통계' },
+      { variant: 'collections', items: 0, collections: 1, name: '학회 준비' },
+    ]);
+    const broken = setup({ readTrash: vi.fn(async () => Promise.reject(new Error('x'))) });
+    await broken.actions.purge({ itemIds: ['x'], collectionIds: [] });
+    expect(broken.deps.confirmPurge).toHaveBeenCalledExactlyOnceWith({ variant: 'items', items: 1, collections: 0 });
   });
   it('휴지통 비우기… counts the trash as it is now; an empty trash asks nothing', async () => {
     const { deps, actions } = setup();

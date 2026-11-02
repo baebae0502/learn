@@ -73,6 +73,16 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
       }
     }
   };
+  /** The title or name of the one trashed row chosen, for the sheet and the toast that name it; none for several, or when the trash cannot be read. */
+  const nameOfOne = async ({ itemIds, collectionIds }: TrashRows): Promise<string | undefined> => {
+    if (itemIds.length + collectionIds.length !== 1) return undefined;
+    try {
+      const view = await deps.readTrash();
+      return itemIds.length === 1 ? view.items.find((i) => i.id === itemIds[0])?.title : view.collections.find((c) => c.id === collectionIds[0])?.name;
+    } catch {
+      return undefined;
+    }
+  };
   return {
     async trashItems(itemIds) {
       const ids = [...new Set(itemIds)];
@@ -108,25 +118,31 @@ export function createTrashActions(deps: TrashDeps): TrashActions {
       return () => void undoable.delete(toastKey);
     },
 
-    async restore({ itemIds, collectionIds }, opts = {}) {
-      let restored = 0;
+    async restore(rows, opts = {}) {
+      const { itemIds, collectionIds } = rows;
+      const one = opts.quiet ? undefined : await nameOfOne(rows);
+      let items = 0;
+      let collections = 0;
       try {
-        if (itemIds.length > 0) restored += await deps.restoreItems([...itemIds]);
+        if (itemIds.length > 0) items += await deps.restoreItems([...itemIds]);
         for (const id of collectionIds) {
           await deps.restoreCollection(id);
-          restored += 1;
+          collections += 1;
         }
       } catch (e) {
         deps.failed(e);
       }
-      if (restored > 0 && !opts.quiet) deps.toast(t.trash.restored(restored), 'restore-done');
+      if (items + collections === 0 || opts.quiet) return;
+      const title = one === undefined ? t.trash.restored(items, collections) : items === 1 ? t.trash.restoredOne(one) : t.trash.collectionRestored(one);
+      deps.toast(title, 'restore-done');
     },
 
     async purge({ itemIds, collectionIds }) {
       const items = itemIds.length;
       const collections = collectionIds.length;
       if (items + collections === 0) return;
-      if (!(await ask({ variant: purgeVariant(items, collections), items, collections }))) return;
+      const name = await nameOfOne({ itemIds, collectionIds });
+      if (!(await ask({ variant: purgeVariant(items, collections), items, collections, ...(name !== undefined ? { name } : {}) }))) return;
       let done: PurgedRows;
       try {
         done = await deps.purge({ itemIds: [...itemIds], collectionIds: [...collectionIds] });

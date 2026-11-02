@@ -188,7 +188,7 @@ test('the trash rows’ menu (also by ⇧F10): 복원 · — · 영구 삭제…
     await specialRow(page, 'trash').click();
     await stubContextMenu(app, '복원');
     await collectionRow(page, '학회 준비').click({ button: 'right' });
-    await expect(page.getByTestId('restore-done')).toHaveText('1개를 복원했습니다');
+    await expect(page.getByTestId('restore-done')).toHaveText('‘학회 준비’ 컬렉션을 복원했습니다');
     const popup = (await recordedPopups(app))[0]!;
     expect(popup.map((i) => (i.type === 'separator' ? '-' : i.label))).toEqual(['복원', '-', '영구 삭제…']);
     await expect.poll(async () => (await organizeSnapshot(page)).collections.map((c) => c.id).sort()).toEqual([conf, talk].sort());
@@ -219,7 +219,7 @@ test('영구 삭제… asks in the app sheet — ↩ and esc keep, the danger bu
     await rowByTitle(page, 'distinct-01').click();
     for (const key of ['Enter', 'Escape'] as const) {
       const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
-      await expect(sheet.getByTestId('purge-title')).toHaveText('자료 1개를 영구히 삭제하겠습니까?');
+      await expect(sheet.getByTestId('purge-title')).toHaveText('‘distinct-01’\u2060을 영구히 삭제하겠습니까?');
       await expect(sheet.getByTestId('purge-text')).toHaveText('되돌릴 수 없습니다. 라이브러리 안의 사본도 지웁니다. 외부 연결 원본은 지우지 않습니다.');
       await expect(sheet.getByTestId('purge-cancel')).toBeFocused();
       const [danger, cancel] = await Promise.all([sheet.getByTestId('purge-confirm').boundingBox(), sheet.getByTestId('purge-cancel').boundingBox()]);
@@ -249,6 +249,42 @@ test('영구 삭제… asks in the app sheet — ↩ and esc keep, the danger bu
     await expect(specialRow(page, 'trash')).toHaveCount(0);
     expect(await trashed(page)).toEqual({ items: [], collections: [] });
     expect(await liveIds(page)).toEqual([items[2]!.id]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('영구 삭제… with a 120-character title: the sheet keeps its width, the title stops at two lines with an end ellipsis and names the whole title in full', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { items } = await seed(page, testInfo.outputPath('in'));
+    const korean = '세포 신호 전달 경로에서 인산화 효소가 수행하는 역할과 조절 기전에 관한 종합적인 고찰 및 최근 연구 동향의 분석 그리고 임상 적용 가능성에 대한 논의와 앞으로의 과제 정리 노트 모음집 최종본';
+    const latin = 'Kinase cascades and the regulation of signal transduction pathways in eukaryotic cells: a comprehensive review of recent findings and open questions';
+    const longTitles = [`${korean} ${korean}`.slice(0, 120), latin.slice(0, 120)];
+    expect(longTitles.map((x) => x.length)).toEqual([120, 120]);
+    for (const [k, longTitle] of longTitles.entries()) await page.evaluate(({ itemId, title }) => window.learn.library.updateMetadata({ itemId, title }), { itemId: items[k]!.id, title: longTitle });
+    await trashItems(page, [items[0]!.id, items[1]!.id, items[2]!.id]);
+    await specialRow(page, 'trash').click();
+    const widths: number[] = [];
+    for (const name of [...longTitles, 'distinct-03']) {
+      await rowByTitle(page, name).click();
+      const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+      const h2 = sheet.getByTestId('purge-title');
+      await expect(h2).toContainText(name.trim().slice(0, 12));
+      const fit = await h2.evaluate((e) => {
+        const cs = getComputedStyle(e);
+        const lines = Math.round(e.getBoundingClientRect().height / parseFloat(cs.lineHeight));
+        return { lines, clamp: cs.getPropertyValue('-webkit-line-clamp'), wrapped: e.scrollWidth <= e.clientWidth, whole: e.getAttribute('title'), shown: e.textContent, root: document.querySelector('[data-sheet-root]')!.getBoundingClientRect().width };
+      });
+      expect(fit.lines).toBeLessThanOrEqual(2);
+      expect(fit.clamp).toBe('2');
+      expect(fit.wrapped).toBe(true);
+      expect(fit.whole).toBe(fit.shown);
+      expect(fit.shown).not.toContain('\u2026'); // the clamp draws the ellipsis; no name is cut in the text
+      widths.push(fit.root);
+      await closeSheet(sheet, 'Escape');
+    }
+    expect(new Set(widths).size).toBe(1);
   } finally {
     await app.close();
   }

@@ -47,6 +47,18 @@
   .sheet .d-title h2 {
     font: var(--type-title2);
   }
+  /* The purge title names its one row (‘제목’을 영구히 삭제하겠습니까?): a long name wraps at word breaks (a long word anywhere), stops at
+     two lines with an end ellipsis and never widens the sheet; the whole name stays in the title attribute. */
+  .sheet[data-kind='purge'] .d-title h2 {
+    min-width: 0;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
   .sheet .badge-icon {
     width: 32px;
     height: 32px;

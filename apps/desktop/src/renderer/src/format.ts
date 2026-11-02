@@ -68,3 +68,24 @@ export function formatDuration(ms: number): string {
   const ss = String(total % 60).padStart(2, '0');
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 }
+
+/**
+ * A moment as an absolute date and time ("2026. 10. 30. 오후 2:12"): when a file another app saved was written (the item
+ * panel's edited copies, mockup library.html?state=edited), where 오늘/어제 would hide the day it matches in the name.
+ */
+export function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return t.common.noValue;
+  return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}. ${formatTimeOfDay(d)}`;
+}
+
+/** How long work took, in words (design-spec 9; the backup sheet's "38초 걸림"): at least a second; hours drop the seconds. */
+export function formatElapsed(ms: number): string {
+  const total = Math.max(1, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return t.common.elapsed.hours(h, m);
+  if (m > 0) return t.common.elapsed.minutes(m, s);
+  return t.common.elapsed.seconds(s);
+}

@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Folder, FolderSearch } from 'lucide-react';
 import { Radio, RadioGroup } from 'react-aria-components';
 import { DEFAULT_PREFS, type Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
-import { useAppInfo, usePrefs, usePrefsSync } from '../data/queries';
-import { homeRelative } from '../format';
+import { keys, useAppInfo, usePrefs, usePrefsSync } from '../data/queries';
+import { queryClient } from '../data/query-client';
+import { useLearnEvent } from '../events';
+import { formatDateTime, homeRelative } from '../format';
 import { DemoOverlay } from '../shell/DemoOverlay';
 import { useWindowState } from '../shell/useWindowState';
 import { t } from '../strings';
@@ -12,6 +15,7 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Segmented } from '../ui/Segmented';
+import { splitLocation } from '../sheets/backupText';
 import { ThemePreview } from './ThemePreview';
 import { pickSettled, shownTheme, useApplyTheme } from './theme';
 
@@ -33,6 +37,13 @@ export function SettingsApp() {
   usePrefsSync();
   const prefsQuery = usePrefs();
   const info = useAppInfo();
+  // 마지막 백업 (spec 8.2): this library's last backup; one made while this window is open, or prepared hidden, shows at
+  // once (main says backup.last changed).
+  const lastBackup = useQuery({ queryKey: keys.backupInfo, queryFn: () => unwrap(api().app.backupInfo()) });
+  useLearnEvent('settingsChanged', ({ keys: changed }) => {
+    if (changed.includes('backup.last')) void queryClient.invalidateQueries({ queryKey: keys.backupInfo });
+  });
+  const [backupError, setBackupError] = useState<string | null>(null);
   const [prefsError, setPrefsError] = useState<string | null>(null);
   const [libraryError, setLibraryError] = useState<string | null>(null);
   useEffect(() => {
@@ -47,10 +58,10 @@ export function SettingsApp() {
     if (pickSettled(pickedTheme, savedTheme)) setPickedTheme(null);
   }, [pickedTheme, savedTheme]);
   useApplyTheme(savedTheme);
-  if (prefsQuery.isPending || info.isPending) return null;
+  if (prefsQuery.isPending || info.isPending || lastBackup.isPending) return null;
   const prefs = prefsQuery.data ?? DEFAULT_PREFS;
 
-  const set = (patch: Partial<Omit<Prefs, 'libraryRoot'>>, failed?: () => void) => {
+  const set = (patch: Partial<Omit<Prefs, 'libraryRoot' | 'backupDir'>>, failed?: () => void) => {
     setPrefsError(null);
     void unwrap(api().prefs.set(patch)).catch((e: unknown) => {
       failed?.();
@@ -67,6 +78,17 @@ export function SettingsApp() {
       await run();
     } catch (e) {
       setLibraryError(messageOf(e));
+    }
+  };
+
+  const libraryPath = info.data ? splitLocation(homeRelative(info.data.libraryRoot, info.data.homeDir)) : null;
+  const revealLabel = currentPlatform() === 'darwin' ? t.settings.reveal.darwin : t.settings.reveal.other;
+  const revealBackup = async () => {
+    setBackupError(null);
+    try {
+      await unwrap(api().app.revealBackup());
+    } catch (e) {
+      setBackupError(messageOf(e));
     }
   };
 
@@ -142,14 +164,17 @@ export function SettingsApp() {
                   <span>{t.settings.location}</span>
                   <span className="hint ui-prose">{t.settings.locationHint}</span>
                 </span>
-                {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the end is cut, never the middle. */}
+                {/* The home folder as ~ (design-spec 4); the full path in the tooltip; the folders give way in the middle, the last name stays whole. */}
                 <div className="path-box" title={info.data.libraryRoot} data-testid="library-path">
                   <Icon icon={Folder} size="sm" />
-                  <span className="ellipsis">{homeRelative(info.data.libraryRoot, info.data.homeDir)}</span>
+                  <span className="path-split">
+                    <span className="path-head ellipsis">{libraryPath?.parent}</span>
+                    <span className="path-tail">{libraryPath?.name}</span>
+                  </span>
                 </div>
                 <div className="row-actions">
                   <Button icon={FolderSearch} testId="library-reveal" onPress={() => void library(() => unwrap(api().app.showLibraryFolder()))}>
-                    {currentPlatform() === 'darwin' ? t.settings.reveal.darwin : t.settings.reveal.other}
+                    {revealLabel}
                   </Button>
                   <Button testId="library-choose" onPress={() => void library(() => unwrap(api().app.chooseLibraryFolder()))}>
                     {t.settings.choose}
@@ -161,7 +186,35 @@ export function SettingsApp() {
                   </p>
                 )}
               </div>
+                {/* 마지막 백업 (settings.html, ?state=nobackup): the date and 28 px Finder에서 보기, or 아직 없음 with where one is made. */}
+                {!info.data.libraryError && lastBackup.isSuccess && (
+                  <div className="form-row" data-testid="last-backup">
+                    <span className="fr-label">
+                      <span>{t.backup.last}</span>
+                      {lastBackup.data === null && <span className="hint">{t.backup.noneHint}</span>}
+                    </span>
+                    {lastBackup.data === null ? (
+                      <span className="c-secondary" data-testid="last-backup-none">
+                        {t.backup.none}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="c-secondary num" title={lastBackup.data.folderName} data-testid="last-backup-date">
+                          {formatDateTime(lastBackup.data.at)}
+                        </span>
+                        <Button icon={FolderSearch} testId="last-backup-reveal" onPress={() => void revealBackup()}>
+                          {revealLabel}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
             </div>
+              {backupError && (
+                <p className="field-error" role="alert" data-testid="backup-error">
+                  {backupError}
+                </p>
+              )}
           </section>
         )}
       </div>

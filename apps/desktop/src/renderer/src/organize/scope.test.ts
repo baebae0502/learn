@@ -26,6 +26,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['filed'], c6: ['new'] },
   tagged: {},
   duplicates: [['old', 'never']],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ITEMS);
 const idsOf = (xs: readonly LibraryItem[]) => xs.map((i) => i.id);

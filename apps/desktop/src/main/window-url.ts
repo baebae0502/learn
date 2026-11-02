@@ -8,6 +8,8 @@ export interface WindowUrlOptions {
   vibrancy: boolean;
   /** LEARN_DEMO_OVERLAY=1 in an unpackaged build: key and pointer overlay for demo recordings (main and settings). */
   demo: boolean;
+  /** LEARN_E2E=1 in an unpackaged build: the main window's page may take the tests' switches (the quiet import counter). */
+  e2e: boolean;
 }
 
 /** The renderer reads these flags synchronously before its first paint (ui/platform.ts). */
@@ -19,5 +21,6 @@ export function windowUrl(base: string, kind: WindowKind, o: WindowUrlOptions): 
   if (kind === 'main' && o.vibrancy) url.searchParams.set('vibrancy', '1');
   // The settings window too: the demo clicks in it, and those clicks must be seen (T13-M5). Sheets have none.
   if ((kind === 'main' || kind === 'settings') && o.demo) url.searchParams.set('demo', '1');
+  if (kind === 'main' && o.e2e) url.searchParams.set('e2e', '1');
   return url.toString();
 }

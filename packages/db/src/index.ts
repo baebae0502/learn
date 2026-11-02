@@ -1,4 +1,5 @@
 export * from './connection';
+export * from './deletion-stamp';
 export * from './migrate';
 export * from './migrations/index';
 export * from './library-repository';
@@ -7,3 +8,5 @@ export * from './reading-repository';
 export * from './collections-repository';
 export * from './tags-repository';
 export * from './organize-query';
+export * from './trash';
+export * from './duplicates';

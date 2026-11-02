@@ -19,6 +19,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['a', 'b', 'c'], c6: ['a', 'b'], stat: ['d'] },
   tagged: { t1: ['a', 'b', 'c'], t2: ['a', 'b'], t3: ['a'] },
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ['a', 'b', 'c', 'd', 'e'].map((id) => item(id)));
 
@@ -65,6 +66,7 @@ describe('10,000 selected items (spec 12: no IPC)', () => {
       members: { bio: ids, c6: ids.slice(0, 5_000) },
       tagged: { t1: ids, t2: ids.slice(0, 9_999) },
       duplicates: [],
+      trashCount: 0,
     };
     const m = buildOrganizeModel(big, ids.map((id) => item(id)));
     expect(commonTags(m, ids).map((t) => t.id)).toEqual(['t1']);

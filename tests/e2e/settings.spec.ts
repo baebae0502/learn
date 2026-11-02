@@ -214,6 +214,32 @@ test('⌘, shows the settings window main prepared hidden once the main window w
   }
 });
 
+test('a long library path gives way in the middle of 위치: the last folder\'s name stays whole and the full path is the tooltip', async ({}, testInfo) => {
+  const lib = path.join(testInfo.outputPath('library-parent'), 'a-very-long-folder-name-'.repeat(4), 'and-another-long-one-'.repeat(3), 'Learn 라이브러리');
+  fs.mkdirSync(lib, { recursive: true });
+  const { app } = await launch(lib, testInfo.outputPath('userdata'));
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const where = settings.getByTestId('library-path');
+    await expect(where).toHaveAttribute('title', lib);
+    await expect(where.locator('.path-tail')).toHaveText(`${path.sep}Learn 라이브러리`);
+    const box = await where.evaluate((el) => {
+      const head = el.querySelector('.path-head') as HTMLElement;
+      const tail = el.querySelector('.path-tail') as HTMLElement;
+      return {
+        headCut: head.scrollWidth > head.clientWidth,
+        tailWhole: tail.scrollWidth <= tail.clientWidth,
+        tailInside: tail.getBoundingClientRect().right <= el.getBoundingClientRect().right + 0.5,
+        // The box's gap belongs between the icon and the path, never inside the path.
+        joined: Math.abs(tail.getBoundingClientRect().left - head.getBoundingClientRect().right) < 0.5,
+      };
+    });
+    expect(box).toEqual({ headCut: true, tailWhole: true, tailInside: true, joined: true });
+  } finally {
+    await app.close();
+  }
+});
+
 test('R4: the renderer cannot set the library path; main picks, checks, confirms and relaunches', async ({}, testInfo) => {
   const [lib, ud] = dirs(testInfo);
   const target = testInfo.outputPath('other-library');
@@ -222,8 +248,8 @@ test('R4: the renderer cannot set the library path; main picks, checks, confirms
   try {
     expect(await page.evaluate(() => window.learn.prefs.set({ libraryRoot: '/tmp/x' } as never))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
     // Only the settings window asks for the library location: the main window's preload has no such invoker, and
-    // main refuses its kind on those channels (app.test.ts, register.test.ts).
-    expect(await page.evaluate(() => Object.keys(window.learn.app))).toEqual(['info']);
+    // main refuses its kind on those channels (app.test.ts, register.test.ts) — and the fatal screen's 업데이트 전 백업 (no path goes either way).
+    expect(await page.evaluate(() => Object.keys(window.learn.app))).toEqual(['info', 'revealUpdateBackup']);
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     // It takes no input at all: a path sent anyway is refused before any dialog.
     expect(await settings.evaluate(() => (window.learn.app.chooseLibraryFolder as (input: unknown) => Promise<unknown>)({ path: '/tmp/x' }))).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });

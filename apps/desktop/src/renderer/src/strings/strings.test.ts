@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { COMMANDS, LIBRARY_COLUMNS } from '@learn/domain';
+import { COMMANDS, ERROR_COPY, LIBRARY_COLUMNS, RESTORE_COPY } from '@learn/domain';
 import { mainStrings } from '../../../main/strings';
 import { t } from './index';
 
@@ -19,12 +19,17 @@ const copy: Array<{ at: string; text: string }> = [];
 collect(t, 't', copy);
 // Main's own copy module (native dialogs, messages that reach the screen): the same rules as the renderer's (review minor 7).
 collect(mainStrings, 'mainStrings', copy);
+// The sentences toLearnError gives an engine's error (packages/domain/src/errors.ts): toasts and notices show them.
+collect(ERROR_COPY, 'errorCopy', copy);
+collect(RESTORE_COPY, 'restoreCopy', copy);
 for (const c of COMMANDS) {
   copy.push({ at: `command ${c.id}`, text: c.label });
   // A toggle's state labels are menu, palette and tooltip names too.
   for (const [pane, names] of Object.entries(c.stateLabels ?? {})) {
     for (const [state, text] of Object.entries(names ?? {})) copy.push({ at: `command ${c.id} ${pane}.${state}`, text });
   }
+  // A count label is a palette and button name too (중복 N묶음 모두 정리).
+  if (c.countLabel) copy.push({ at: `command ${c.id} count`, text: c.countLabel.duplicateGroups(3) });
 }
 // The table's column names (the header and main's column menu both show them) come from the domain catalogue.
 for (const c of LIBRARY_COLUMNS) copy.push({ at: `column ${c.id}`, text: c.label });
@@ -102,8 +107,10 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
     ['the search no-results title', t.library.searchEmptyTitle('형광'), '’⁠과 일치'],
     ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0), '’⁠의 '],
     ['the palette no-results title', t.palette.emptyTitle('세포'), '’⁠와 일치'],
-    ['the delete sheet', t.organize.remove.message('학회 준비'), '’⁠를 삭제'],
-    ['the delete toast', t.organize.remove.done('통계'), '’⁠를 삭제'],
+    ['the trash toast for one item', t.trash.movedOne('통계'), '’⁠를 휴지통'],
+    ['the restore toast for one item', t.trash.restoredOne('통계'), '’⁠를 복원'],
+    ['the purge sheet title for one item', t.sheets.purge.titleItems(1, '통계'), '’⁠를 영구히'],
+    ['the m-6 partial removal toast', t.organize.panel.removedPart('통계', 1), '’⁠에서 자료'],
     ['the tag merge detail', t.organize.tags.mergeDetail('수용체', '중요'), '’⁠로 옮겨지고'],
     ['the panel\'s removal toast', t.organize.panel.removed('통계', 1), '’⁠에서 자료'],
     ['the drop toast', t.organize.dnd.moved(2, '실험 노트'), '’⁠로 옮겼습니다'],

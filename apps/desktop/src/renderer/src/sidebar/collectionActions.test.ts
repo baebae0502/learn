@@ -14,7 +14,7 @@ const BASE: OrganizeSnapshot = {
     { id: 'c7', name: '7장', parentId: 'bio', createdAt: AT },
     { id: 'stats', name: '통계', parentId: null, createdAt: AT },
   ],
-  tags: [], members: {}, tagged: {}, duplicates: [],
+  tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0,
 };
 const NEW = '새\u00a0컬렉션';
 
@@ -28,7 +28,6 @@ function setup(over: Partial<ActionDeps> = {}, startAt: LibraryScope = { kind: '
       remove: vi.fn(async () => {}),
       restore: vi.fn(async ({ collectionId }) => collection(collectionId, '되살림')),
     },
-    confirm: vi.fn(async () => true),
     model: () => buildOrganizeModel(snapshot, []),
     scope: () => scope,
     setScope: vi.fn((s: LibraryScope) => void (scope = s)),
@@ -158,29 +157,19 @@ describe('renaming (spec 3.4)', () => {
   });
 });
 
-describe('deleting (spec 3.4)', () => {
-  it('asks in the renderer\'s words — the name with its particle, the sub-collections counted, the items staying — and deletes with an undo', async () => {
+describe('휴지통으로 이동 (M6 spec 4.2: no sheet, 실행 취소)', () => {
+  it('moves the collection and its children to the trash at once, says so with 실행 취소, and the undo restores it', async () => {
     const { actions, deps, snapshot } = setup();
     await actions.remove('bio');
-    expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({
-      message: '‘분자생물학’\u2060을 삭제하겠습니까?',
-      detail: '하위 컬렉션 3개도 함께 삭제합니다.\n자료는 내 라이브러리에 남습니다.',
-      confirm: '삭제',
-    });
     expect(deps.collections.remove).toHaveBeenCalledExactlyOnceWith({ collectionId: 'bio' });
     expect(snapshot().collections.map((c) => c.id)).toEqual(['stats']);
     expect(deps.undoToast).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(deps.undoToast).mock.calls[0]![0]).toBe('‘분자생물학’\u2060을 삭제했습니다');
+    expect(vi.mocked(deps.undoToast).mock.calls[0]![0]).toBe('‘분자생물학’ 컬렉션을 휴지통으로 옮겼습니다');
     await vi.mocked(deps.undoToast).mock.calls[0]![1]();
     expect(deps.collections.restore).toHaveBeenCalledExactlyOnceWith({ collectionId: 'bio' });
     expect(deps.forget).toHaveBeenCalledExactlyOnceWith(['bio', 'c6', 'lab', 'c7']); // restored folded
   });
-  it('a collection with no sub-collections says only that the items stay, and a vowel name takes 를', async () => {
-    const { actions, deps } = setup();
-    await actions.remove('stats');
-    expect(deps.confirm).toHaveBeenCalledExactlyOnceWith({ message: '‘통계’\u2060를 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', confirm: '삭제' });
-  });
-  it('the view moves to the parent when it was inside the deleted collection (to 내 라이브러리 from the top level), and stays otherwise', async () => {
+  it('the view moves to the parent when it was inside the collection (to 내 라이브러리 from the top level), and stays otherwise', async () => {
     const inside = setup({}, { kind: 'collection', id: 'lab' });
     await inside.actions.remove('c6');
     expect(inside.scope()).toEqual({ kind: 'collection', id: 'bio' });
@@ -191,16 +180,7 @@ describe('deleting (spec 3.4)', () => {
     await elsewhere.actions.remove('bio');
     expect(elsewhere.deps.setScope).not.toHaveBeenCalled();
   });
-  it('a sheet that fails is told and deletes nothing', async () => {
-    const { actions, deps } = setup({ confirm: vi.fn(async () => Promise.reject(new Error('x'))) });
-    await actions.remove('bio');
-    expect(deps.failed).toHaveBeenCalledTimes(1);
-    expect(deps.collections.remove).not.toHaveBeenCalled();
-  });
-  it('cancelling the sheet, a refused delete, and an unknown collection change nothing', async () => {
-    const cancelled = setup({ confirm: vi.fn(async () => false) });
-    await cancelled.actions.remove('bio');
-    expect(cancelled.deps.collections.remove).not.toHaveBeenCalled();
+  it('a refused move and an unknown collection change nothing', async () => {
     const refused = setup({ collections: { ...setup().deps.collections, remove: vi.fn(async () => Promise.reject(new Error('x'))) } });
     await refused.actions.remove('bio');
     expect(refused.deps.failed).toHaveBeenCalledTimes(1);
@@ -208,6 +188,6 @@ describe('deleting (spec 3.4)', () => {
     expect(refused.deps.undoToast).not.toHaveBeenCalled();
     const unknown = setup();
     await unknown.actions.remove('gone');
-    expect(unknown.deps.confirm).not.toHaveBeenCalled();
+    expect(unknown.deps.collections.remove).not.toHaveBeenCalled();
   });
 });

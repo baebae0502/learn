@@ -1,14 +1,18 @@
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commandById, type LibraryItem } from '@learn/domain';
 import { FileX } from 'lucide-react';
 import { api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { keys, useItem } from '../data/queries';
+import { useLearnEvent } from '../events';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
 import { PdfViewer } from './PdfViewer';
 import { MissingNotice } from './ReaderNotices';
+import { readerLost, trashedAfter, type TrashedState } from './readerState';
+import { TrashedNotice } from './TrashedNotice';
 import { VideoViewer } from './VideoViewer';
 
 /** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
@@ -17,6 +21,13 @@ export function ViewerHost({ itemId }: { itemId: string }) {
   // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
   // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
   const item = useItem(itemId, true);
+  // Spec 4.6: moved to the trash while open — the notice; restored, it stays until the item reads again, then the reader opens here.
+  const [trashed, setTrashed] = useState<TrashedState>('no');
+  useLearnEvent('libraryChanged', (change) => setTrashed((s) => trashedAfter(s, change, itemId)));
+  const readAgain = trashed === 'back' && item.isSuccess && !item.isFetching;
+  useEffect(() => {
+    if (readAgain) setTrashed('no');
+  }, [readAgain]);
   const { run, isEnabled } = useCommands();
   // The path a linked file was last seen at (the notice's file line); a managed copy's path means nothing to the user.
   const linkedMissing = item.data?.availability === 'missing' && item.data.storageMode === 'linked';
@@ -25,9 +36,11 @@ export function ViewerHost({ itemId }: { itemId: string }) {
   // frame can paint at once (the dark video stage, the PDF reader's strip and sunken stage) instead of the empty white
   // column (T13-m6). Nothing else is decided from the cache.
   const cachedType = useQueryClient().getQueryData<LibraryItem[]>(keys.items)?.find((x) => x.id === itemId)?.type;
+  if (trashed !== 'no') return <TrashedNotice itemId={itemId} />;
   if (!item.isFetchedAfterMount) return <ReaderFrame type={cachedType} />; // transient: one IPC round trip
-  if (item.isError) {
-    // The item itself could not be read (deleted meanwhile, or the library went away): main's message is Korean.
+  if (readerLost(item)) {
+    // The item itself could not be read (deleted meanwhile, or the library went away): main's message is Korean. A re-read
+    // that failed otherwise keeps the reader (spec 4.6).
     return (
       <div className="reader-stage">
         <div className="stage-center">
@@ -41,7 +54,7 @@ export function ViewerHost({ itemId }: { itemId: string }) {
               </Button>
             }
           >
-            {item.error.message}
+            {item.error?.message}
           </Notice>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { Fragment, useMemo } from 'react';
 import { Folder } from 'lucide-react';
 import { Button as AriaButton } from 'react-aria-components';
-import { useOrganize } from '../organize/useOrganize';
+import { useViewModel } from '../trash/useTrashSource';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
@@ -16,7 +16,7 @@ import { Section } from './Section';
  * editor's rules come first (save, keep, discard), as for any way off the item.
  */
 export function CollectionsSection({ ids }: { ids: readonly string[] }) {
-  const { model } = useOrganize();
+  const model = useViewModel();
   const rows = useMemo(() => (model ? pathRows(model, ids) : []), [model, ids]);
   if (!model) return null;
   const multi = ids.length > 1;

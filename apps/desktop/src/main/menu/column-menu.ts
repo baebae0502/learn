@@ -11,11 +11,12 @@ export type ColumnMenuEntry =
 /**
  * The table header's native menu (design-spec 7.3 열 머리): every column of the catalogue, checked while shown (제목
  * checked and disabled: it cannot be hidden), then 열 구성 되돌리기. Its items come from the catalogue only, so none
- * can lack a handler. A column a view forces on (`locked`) is checked and fixed like the title.
+ * can lack a handler. A column a view forces on (`locked`) is checked and fixed like the title. A column only one view draws
+ * (삭제한 날짜) is listed only where that view forces it.
  */
 export function columnMenuEntries(visible: readonly LibraryColumnId[], resetLabel: string, locked: readonly LibraryColumnId[] = []): ColumnMenuEntry[] {
   return [
-    ...LIBRARY_COLUMNS.map((c) => {
+    ...LIBRARY_COLUMNS.filter((c) => !c.trashOnly || locked.includes(c.id)).map((c) => {
       const fixed = c.required === true || locked.includes(c.id);
       return { kind: 'column' as const, id: c.id, label: c.label, checked: fixed || visible.includes(c.id), enabled: !fixed };
     }),

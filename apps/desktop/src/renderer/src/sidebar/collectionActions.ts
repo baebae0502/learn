@@ -14,8 +14,6 @@ export interface ActionDeps {
     remove(input: { collectionId: string }): Promise<void>;
     restore(input: { collectionId: string }): Promise<Collection>;
   };
-  /** ui.confirm: the native sheet. */
-  confirm(input: { message: string; detail?: string; confirm: string }): Promise<boolean>;
   model(): OrganizeModel | undefined;
   /** The scope shown. */
   scope(): LibraryScope;
@@ -101,19 +99,12 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
       if (s.edit && !s.busy) s.end();
     },
 
+    /** 휴지통으로 이동 (M6 spec 4.2): no sheet — the toast's 실행 취소 brings it back with what went with it. */
     async remove(collectionId) {
       const model = deps.model();
       const node = model?.node(collectionId);
       if (!model || !node) return;
       const below = descendantIds(model, collectionId);
-      let sure: boolean;
-      try {
-        sure = await deps.confirm({ message: t.organize.remove.message(node.name), detail: t.organize.remove.detail(below.length), confirm: t.organize.remove.confirm });
-      } catch (e) {
-        deps.failed(e);
-        return;
-      }
-      if (!sure) return;
       const scope = deps.scope();
       const viewed = scope.kind === 'collection' && (scope.id === collectionId || below.includes(scope.id));
       try {
@@ -125,7 +116,7 @@ export function createCollectionActions(deps: ActionDeps): CollectionActions {
       deps.patch((snap) => withoutCollections(snap, new Set([collectionId, ...below])));
       deps.forget([collectionId, ...below]);
       if (viewed) deps.setScope(node.parentId === null ? { kind: 'all' } : { kind: 'collection', id: node.parentId });
-      deps.undoToast(t.organize.remove.done(node.name), async () => {
+      deps.undoToast(t.trash.collectionMoved(node.name), async () => {
         await deps.collections.restore({ collectionId });
       });
     },

@@ -497,7 +497,8 @@ test('1–8 keys put the tag at that slot on the selection or take it off, tell 
     await setTagColor(page, tags[4]!, null, null);
     await expect(tagChip(page, tags[4]!).locator('.dot')).toHaveCount(0);
     await page.keyboard.press('5');
-    await expect(page.getByTestId('tag-notice').first()).toHaveText('색 태그 5가 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
+    // the newest notice is the lowest: toasts stack oldest first
+    await expect(page.getByTestId('tag-notice').last()).toHaveText('색 태그 5가 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.');
 
     // Never in a text field, and never while a composition owns the key (keyCode 229 included).
     const before = await heldBy(page, tags[1]!);
@@ -553,9 +554,8 @@ test('table dots: the coloured tags only, by slot, after the title and the link 
   try {
     const linkedFile = testInfo.outputPath('linked.pdf');
     fs.copyFileSync(PDF, linkedFile);
-    const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), linkedFile);
-    if (!linked.ok || linked.data[0]?.status !== 'imported') throw new Error('linked import failed');
-    const both = [id('sample'), linked.data[0].item.id];
+    const [linked] = await importPaths(page, [linkedFile], { mode: 'linked', allowDuplicate: true });
+    const both = [id('sample'), linked!.id];
     const [important, exam] = await makeTags(page, [
       { name: '중요', slot: 3, items: both },
       { name: '시험 범위', slot: 1, items: both },

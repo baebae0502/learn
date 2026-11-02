@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Result } from '@learn/domain';
+import { mainStrings } from '../strings';
 import { fakeSender, stubDeps } from './test-deps';
 
 type Listener = (event: unknown, raw: unknown) => Promise<Result<unknown>>;
@@ -11,6 +12,7 @@ const handlers = new Map<string, Listener>();
 const calls: Array<{ kind: 'open' | 'confirm' | 'reveal'; parent: unknown; detail?: string }> = [];
 let picked: string[] = [];
 let answer = 0;
+let updateBackup: string | null = null;
 
 const SETTINGS = { id: 2, name: 'settings window' };
 let senderWindow: typeof SETTINGS | null = SETTINGS;
@@ -42,13 +44,13 @@ fs.mkdirSync(other);
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const saved: unknown[] = [];
-const relaunch = vi.fn();
+const switchLibrary = vi.fn();
 /** Each native dialog runs inside windows.asSheet(owner, …): the owner stays main and is re-read afterwards. */
 const sheetOwners: Array<{ owner: unknown; phase: 'shown' | 'closed' }> = [];
 registerAppIpc(
   createHandle(null),
   stubDeps({
-    appInfo: () => ({ libraryRoot: current }) as never,
+    appInfo: () => ({ libraryRoot: current, backupFile: updateBackup }) as never,
     prefs: { readOnly: false, get: () => ({}) as never, set: (patch) => (saved.push(patch), {} as never) },
     windows: {
       openSettings: () => {},
@@ -61,7 +63,7 @@ registerAppIpc(
         }
       },
     },
-    relaunch,
+    switchLibrary,
     isSettingsWindow: (sender) => sender === (SETTINGS_PAGE as never),
   }),
 );
@@ -78,7 +80,7 @@ beforeEach(() => {
   calls.length = 0;
   saved.length = 0;
   sheetOwners.length = 0;
-  relaunch.mockClear();
+  switchLibrary.mockClear();
   picked = [];
   answer = 0;
   senderWindow = SETTINGS;
@@ -86,7 +88,7 @@ beforeEach(() => {
 });
 
 describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and relaunches)', () => {
-  it('a confirmed folder: both dialogs are sheets on the settings window, then the path is saved and the app relaunches', async () => {
+  it('a confirmed folder: both dialogs are sheets on the settings window, then the switch is requested', async () => {
     picked = [other];
     expect(await choose()).toEqual({ ok: true, data: { relaunching: true } });
     expect(calls.map((c) => [c.kind, c.parent])).toEqual([['open', SETTINGS], ['confirm', SETTINGS]]);
@@ -96,8 +98,7 @@ describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and r
       { owner: SETTINGS, phase: 'shown' }, { owner: SETTINGS, phase: 'closed' },
       { owner: SETTINGS, phase: 'shown' }, { owner: SETTINGS, phase: 'closed' },
     ]);
-    expect(saved).toEqual([{ libraryRoot: other }]);
-    expect(relaunch).toHaveBeenCalledTimes(1);
+    expect(switchLibrary).toHaveBeenCalledExactlyOnceWith(other);
   });
   it('cancelling either dialog, or picking the current folder, changes nothing', async () => {
     expect(await choose()).toEqual({ ok: true, data: { relaunching: false } }); // the folder dialog cancelled
@@ -108,14 +109,14 @@ describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and r
     expect(await choose()).toEqual({ ok: true, data: { relaunching: false } }); // the library already open
     expect(calls.filter((c) => c.kind === 'confirm')).toHaveLength(1);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
   it('a folder that is missing or not a folder is refused before any confirmation, with the cause and next step', async () => {
     picked = [path.join(tmp, 'missing')];
     expect(await choose()).toMatchObject({ ok: false, code: 'VALIDATION_FAILED', message: '폴더를 찾을 수 없습니다. 다른\u00a0폴더를 고르세요.' });
     expect(calls.map((c) => c.kind)).toEqual(['open']);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
   it('takes no input: the renderer never sends a path', async () => {
     picked = [other];
@@ -131,7 +132,7 @@ describe('only the settings window may ask for the library folder (defence in de
     expect(await invokeFrom(MAIN_PAGE, 'app:showLibraryFolder')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(calls).toEqual([]);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
 });
 
@@ -139,5 +140,30 @@ describe('app.showLibraryFolder', () => {
   it('reveals the library folder of this session', async () => {
     expect(await invoke('app:showLibraryFolder')).toEqual({ ok: true, data: undefined });
     expect(calls).toEqual([{ kind: 'reveal', parent: current }]);
+  });
+});
+
+describe('app.revealUpdateBackup (spec 9.4: the fatal screen\'s Finder에서 보기)', () => {
+  it('shows the pre-update backup main found, selected in the library folder; the main window\'s only; no path goes in', async () => {
+    const file = path.join(current, 'library.sqlite.pre-v2.bak');
+    fs.writeFileSync(file, '');
+    updateBackup = 'library.sqlite.pre-v2.bak';
+    try {
+      expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toEqual({ ok: true, data: undefined });
+      expect(calls).toEqual([{ kind: 'reveal', parent: file }]);
+      expect(await invokeFrom(SETTINGS_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
+      expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup', { path: '/tmp/x' })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+      expect(calls).toHaveLength(1);
+    } finally {
+      fs.rmSync(file, { force: true });
+      updateBackup = null;
+    }
+  });
+  it('a backup that is gone since the screen asked, or none at all, says so and shows nothing', async () => {
+    updateBackup = 'library.sqlite.pre-v2.bak';
+    expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'NOT_FOUND', message: mainStrings.libraryFolder.updateBackupMissing });
+    updateBackup = null;
+    expect(await invokeFrom(MAIN_PAGE, 'app:revealUpdateBackup')).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    expect(calls).toEqual([]);
   });
 });

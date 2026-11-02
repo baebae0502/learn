@@ -6,9 +6,9 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, drag, dropSource, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importPaths, launch, mainWindow,
-  makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
-  specialRow, stubOpenDialog, tagChip, treeRow,
+  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
+  makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
+  specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, treeRow, waitImportIdle,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -236,7 +236,7 @@ test('axe at every M4 library state: nothing selected, several, a missing file, 
   try {
     await importPaths(page, [PDF, KO_PDF, MP4]);
     // A linked file that went missing; library.get notices it (as the visual tour does).
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -413,6 +413,186 @@ test('M5 keyboard only: ⇧⌘N → name → table → select → 컬렉션에 �
   }
 });
 
+test('M6 keyboard only: ⌘O → toast ends → F6 table → ↓ → ⌘⌫ → undo → ⌘⌫ → sidebar 휴지통 → 복원 → 백업 만들기 → 결과 시트 완료, with axe at every new stop', async ({}, testInfo) => {
+  const backups = testInfo.outputPath('backups');
+  fs.mkdirSync(backups, { recursive: true });
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const selected = page.locator('[data-testid="item-row"][aria-selected="true"]');
+  const rows = page.getByTestId('item-row');
+  /** Tab, at most `max` times, until the focus is on the control `testId` (a toast's button). */
+  const tabToControl = async (testId: string, max = 6) => {
+    for (let i = 0; i < max && (await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null)) !== testId; i++) await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null)).toBe(testId);
+  };
+  try {
+    // 1. ⌘O (파일 가져오기…, through its menu item): the run ends, the result toast names the count, the table has both rows.
+    await stubOpenDialog(app, [PDF, KO_PDF]);
+    await runMenuCommand(app, 'file.importManaged');
+    await expect(page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
+    await waitImportIdle(page);
+    await expect(rows).toHaveCount(2);
+    // A result toast closes by itself after 5 s; F6 below must find only what this journey puts up next.
+    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 15_000 });
+
+    // 2. F6 comes down on the table with its first row chosen; ⌘⌫ (휴지통으로 이동) leaves one row and offers 실행 취소.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await expect(selected).toHaveCount(1);
+    await runMenuCommand(app, 'item.trash');
+    await expect(rows).toHaveCount(1);
+    await expect(page.getByTestId('trash-undo')).toContainText('휴지통으로 옮겼습니다');
+    await expectNoSeriousA11y(page, 'm6-undo-toast');
+
+    // 3. 실행 취소 by the keyboard: F6 reaches the toast, Tab the button, Enter presses it.
+    await f6To(page, 'toasts');
+    await tabToControl('undo-action');
+    await expectNoSeriousA11y(page, 'm6-undo-toast, the button focused');
+    await page.keyboard.press('Enter');
+    await expect(rows).toHaveCount(2);
+    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
+
+    // 4. F6 pins the toast order (oldest first): with an import's progress toast up and then an undo toast, F6 lands on the import.
+    await f6To(page, 'content');
+    await expect(selected).toHaveCount(1);
+    await importPause(app, 'beforeCommit');
+    await stubOpenDialog(app, [MP4]);
+    await runMenuCommand(app, 'file.importManaged');
+    await expect.poll(() => importWaiting(app)).toBe('beforeCommit');
+    await expect(page.getByTestId('import-progress')).toBeVisible();
+    await runMenuCommand(app, 'item.trash');
+    await expect(page.getByTestId('trash-undo')).toBeVisible();
+    await page.locator('[data-pane="content"] [data-testid="item-row"]').first().focus();
+    await f6To(page, 'toasts');
+    expect(await focusedTestId(page), 'F6 lands on the oldest toast, the running import').toBe('import-progress');
+    await importResume(app);
+    await waitImportIdle(page);
+    await expect(page.getByTestId('import-done')).toHaveText('자료 1개를 가져왔습니다');
+    await expect(rows).toHaveCount(2); // three imported, one in the trash
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('1');
+
+    // 5. The sidebar: F6 lands on the current view's row, ↓ walks the special views to 휴지통, ↩ shows it. Its one row is the trashed one.
+    await f6To(page, 'sidebar');
+    for (let i = 0; i < 6 && (await focusedTestId(page)) !== 'nav-scope-trash'; i++) await page.keyboard.press('ArrowDown');
+    expect(await focusedTestId(page)).toBe('nav-scope-trash');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('toolbar-title')).toHaveText('휴지통');
+    await expect(rows).toHaveCount(1);
+    await expectNoSeriousA11y(page, 'm6-trash-view');
+
+    // 6. F6 → the table → its row → ⇧F10 opens the row's menu (stubbed: 복원 is picked): the trash empties, the view is the library again.
+    await f6To(page, 'content');
+    await expect.poll(() => focusedTestId(page)).toBe('item-row');
+    await stubContextMenu(app, '복원');
+    await page.keyboard.press('Shift+F10');
+    await expect(specialRow(page, 'trash')).toHaveCount(0);
+    await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    await expect(rows).toHaveCount(3);
+
+    // 7. 백업 만들기… (the menu bar cannot be opened by key, as in M5): the folder panel is stubbed; the result sheet's default button is 완료.
+    await stubFolderPicker(app, backups);
+    const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.backup'));
+    await expect(sheet.getByTestId('backup-title')).toHaveText('백업을 만들었습니다');
+    await expect(sheet.getByTestId('backup-done')).toBeFocused();
+    await expectNoSeriousA11y(sheet, 'm6-backup-sheet');
+    await closeSheet(sheet, 'Enter');
+    expect(fs.readdirSync(backups)).toHaveLength(1);
+  } finally {
+    await app.close();
+  }
+});
+
+// Spec 13 "axe(심각 이상 0)": the screens M6 adds beyond the keyboard journey's stops. The duplicates view, the library check
+// sheet (automatic and nothing wrong) and the item panel with an edited copy have their stops in duplicates, recovery and
+// edited-copy.spec.ts; the undo toast, the trash view and the backup sheet are the journey's.
+test('axe at every M6 state: the import toast running and waiting for the answer, the duplicate question, the permanent-delete and empty-trash sheets, the restore sheet (clean and with problems), the reader\'s trash notice, the settings window\'s last backup', async ({}, testInfo) => {
+  const backups = testInfo.outputPath('backups');
+  const restores = testInfo.outputPath('restores');
+  for (const dir of [backups, restores]) fs.mkdirSync(dir, { recursive: true });
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const { app, page } = s;
+  try {
+    const [a, b, c] = distinctPdfs(testInfo.outputPath('src'), 3);
+    const [first, second] = await importPaths(page, [a!, b!]);
+
+    // The import toast, running: held before its commit past the 1 s the toast waits for.
+    await importPause(app, 'beforeCommit');
+    await importFiles(s, [c!]);
+    await expect.poll(() => importWaiting(app)).toBe('beforeCommit');
+    await expect(page.getByTestId('import-progress')).toHaveAttribute('data-state', 'running');
+    await expectNoSeriousA11y(page, 'the import toast, running');
+    await importResume(app);
+    await waitImportIdle(page);
+
+    // The same files again: the duplicate question holds the window, the toast waits for the answer.
+    const question = await expectWindow(app, 'sheet', () => importFiles(s, [a!, b!]));
+    await expect(page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+    await expectNoSeriousA11y(page, 'the import toast, waiting for the answer');
+    await expect(question.getByTestId('dup-card')).toBeVisible();
+    await expectNoSeriousA11y(question, 'the duplicate question');
+    await closeSheet(question, 'Escape');
+    await waitImportIdle(page);
+
+    // Both sheets of the trash view: 영구 삭제… of one item, 휴지통 비우기….
+    await trashItems(page, [first!.id, second!.id]);
+    await specialRow(page, 'trash').click();
+    await rowByTitle(page, 'distinct-01').click();
+    const purge = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+    await expect(purge.getByTestId('purge-cancel')).toBeFocused();
+    await expectNoSeriousA11y(purge, 'the permanent-delete sheet');
+    await closeSheet(purge, 'Escape');
+    const empty = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'trash.empty'));
+    await expect(empty.getByTestId('purge-title')).toHaveText('휴지통을 비우겠습니까?');
+    await expectNoSeriousA11y(empty, 'the empty-trash sheet');
+    await closeSheet(empty, 'Escape');
+    await sheetReleased(page); // a row picked from the menu while the window is still held (macOS: up to 250 ms) is refused
+    await stubContextMenu(app, '복원');
+    await rowByTitle(page, 'distinct-01').click({ button: 'right' });
+    await expect(rowByTitle(page, 'distinct-01')).toHaveCount(0);
+    await rowByTitle(page, 'distinct-02').click({ button: 'right' });
+    await expect(specialRow(page, 'trash')).toHaveCount(0);
+
+    // The reader, its item moved to the trash.
+    await rowByTitle(page, 'distinct-03').dblclick();
+    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    const open = (await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? r.data.find((i) => i.title === 'distinct-03')?.id : null;
+    }))!;
+    await trashItems(page, [open]);
+    await expect(page.getByTestId('reader-trashed')).toBeVisible();
+    await expectNoSeriousA11y(page, 'the reader\'s trash notice');
+    await page.getByTestId('reader-trashed-restore').click();
+    await expect(page.getByTestId('reader-trashed')).toHaveCount(0);
+    await runMenuCommand(app, 'nav.back');
+
+    // A backup, the settings window's 마지막 백업, and the restore sheet: clean, then with a file lost and another changed.
+    await stubFolderPicker(app, backups);
+    await closeSheet(await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.backup')), 'Enter');
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect(settings.getByTestId('last-backup-date')).toBeVisible();
+    await expectNoSeriousA11y(settings, 'the settings window, 마지막 백업');
+    const [name] = fs.readdirSync(backups);
+    const backup = path.join(backups, name!);
+    await stubFolderPicks(app, [backup, restores]);
+    await expect.poll(() => enabledMenuCommands(app)).toContain('file.restore');
+    const clean = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.restore'));
+    await expect(clean.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'success');
+    await expectNoSeriousA11y(clean, 'the restore sheet, nothing wrong');
+    await closeSheet(clean, 'Escape');
+    const manifest = JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { assets: Array<{ included: boolean; relativePath: string | null }> };
+    const [lost, changed] = manifest.assets.filter((x) => x.included);
+    fs.rmSync(path.join(backup, ...lost!.relativePath!.split('/')));
+    fs.appendFileSync(path.join(backup, ...changed!.relativePath!.split('/')), 'changed on the way');
+    await stubFolderPicks(app, [backup, restores]);
+    const problems = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.restore'));
+    await expect(problems.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'warning');
+    await expectNoSeriousA11y(problems, 'the restore sheet, with problems');
+    await closeSheet(problems, 'Escape');
+  } finally {
+    await app.close();
+  }
+});
+
 // Spec 13 "axe(심각 이상 0)": every screen state M5 adds beyond the keyboard journey's stops, in one library.
 test('axe at every M5 state: the sidebar and its special views, a collection being named, an empty collection, the tag selector and its filter, coloured dots, the item panel\'s tags and collections, several items, the search and palette collections, an undo toast, a row dragged over a collection, a header being moved, the drop overlay', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
@@ -423,7 +603,7 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
 
     const [sample, ko, mp4] = await importPaths(page, [PDF, KO_PDF, MP4]);
     // The same PDF again: a duplicate group; and one opened item: the recent view.
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+    await importPaths(page, [PDF], { allowDuplicate: true });
     await expect(page.getByTestId('item-row')).toHaveCount(4);
     // Two rows carry the title now: the first import is opened by its id.
     await page.locator(`[data-testid="item-row"][data-item-id="${sample!.id}"]`).dblclick();
@@ -701,13 +881,13 @@ test('the palette, the drop overlay and the ⌘/ sheet keep the focus on F6 / �
   }
 });
 
-// Task 12 polish ruling: an import holds the window but F6 / ⇧F6 only move the focus, so they keep working; a modal
-// surface over the import still swallows them.
-test('during an import F6 still moves between panes; the palette over an import keeps the focus', async ({}, testInfo) => {
+// Task 12 polish ruling: a held window (here 파일 가져오기…'s open panel) still takes F6 / ⇧F6, which only move the focus.
+// The palette held under a duplicate question is import-queue.spec.ts (its real path, with the axe station).
+test('under 파일 가져오기…\'s open panel F6 still moves between panes', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await holdOpenDialog(app, []);
-    await runMenuCommand(app, 'file.importManaged'); // the import waits on its dialog: the window is held
+    await runMenuCommand(app, 'file.importManaged'); // the panel is up: the window is held
     await expect(page.getByTestId('import-managed')).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('sidebar');
@@ -717,28 +897,6 @@ test('during an import F6 still moves between panes; the palette over an import 
     expect(await inPane(page)).toBe('sidebar');
     await releaseOpenDialog(app); // cancelled
     await expect(page.getByTestId('import-managed')).not.toHaveAttribute('aria-disabled', 'true');
-
-    // No UI opens the palette over an import (⌘K is refused while held; a menu command or a file drag closes it first,
-    // Task 11 ruling D). A drop without its dragenter, which no real drag sends, starts one under the open palette.
-    await runMenuCommand(app, 'app.palette');
-    await expect(page.getByTestId('palette-input')).toBeFocused();
-    await app.evaluate(({ ipcMain }) => {
-      const g = globalThis as { __learnReleaseImport?: () => void };
-      ipcMain.removeHandler('library:import');
-      ipcMain.handle('library:import', () => new Promise((resolve) => (g.__learnReleaseImport = () => resolve({ ok: true, data: [] }))));
-    });
-    await dropSource(page, [PDF]);
-    await drag(page, 'drop', 'source', { repeat: false });
-    await expect(page.getByTestId('palette-busy')).toBeVisible(); // the held palette (defensive branch, Task 11)
-    await expectNoSeriousA11y(page, 'palette while an import holds the window');
-    for (const key of ['F6', 'Shift+F6']) {
-      await page.keyboard.press(key);
-      await expect(page.getByTestId('palette-input')).toBeFocused();
-    }
-    await app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
-    await expect(page.getByTestId('palette-busy')).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await expect(page.getByTestId('palette')).toHaveCount(0);
   } finally {
     await app.close();
   }

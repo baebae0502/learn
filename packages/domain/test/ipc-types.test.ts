@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type * as Ipc from '../src/ipc';
 import type { LearnApi } from '../src/ipc';
-import type { LibraryItem, SearchText } from '../src/library';
+import type { ImportQueueState, ImportReport, LibraryItem, SearchText } from '../src/library';
+import type { LearnEventMap } from '../src/events';
 import type { LibraryColumnId } from '../src/library-columns';
 import type { Result } from '../src/result';
 import type { PickedCommand } from '../src/commands';
@@ -15,7 +16,7 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['library']['restore']>>().toEqualTypeOf<Ipc.ItemIdsInput>();
     expectTypeOf<P<LearnApi['library']['updateMetadata']>>().toEqualTypeOf<Ipc.UpdateMetadataInput>();
     expectTypeOf<P<LearnApi['library']['import']>>().toEqualTypeOf<Ipc.ImportPathsInput>();
-    expectTypeOf<P<LearnApi['library']['pickAndRelink']>>().toEqualTypeOf<Ipc.AssetIdInput>();
+    expectTypeOf<P<LearnApi['library']['pickAndRelink']>>().toEqualTypeOf<Ipc.ItemIdInput>();
     expectTypeOf<P<LearnApi['collections']['create']>>().toEqualTypeOf<Ipc.CreateCollectionInput>();
     expectTypeOf<P<LearnApi['collections']['rename']>>().toEqualTypeOf<Ipc.RenameCollectionInput>();
     expectTypeOf<P<LearnApi['collections']['move']>>().toEqualTypeOf<Ipc.MoveCollectionInput>();
@@ -36,7 +37,6 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<P<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Ipc.ShowContextMenuInput>();
     expectTypeOf<P<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Ipc.ShowColumnMenuInput>();
     expectTypeOf<P<LearnApi['ui']['reportContext']>>().toEqualTypeOf<Ipc.CommandContextInput>();
-    expectTypeOf<P<LearnApi['ui']['confirmDuplicate']>>().toEqualTypeOf<Ipc.ConfirmDuplicateInput>();
     expectTypeOf<P<LearnApi['sheet']['resolve']>>().toEqualTypeOf<Ipc.SheetResultInput>();
     // A context-menu pick carries its row's value: the renderer runs the command with it.
     expectTypeOf<ReturnType<LearnApi['ui']['showContextMenu']>>().toEqualTypeOf<Promise<Result<PickedCommand | null>>>();
@@ -58,11 +58,21 @@ describe('LearnApi inputs are the schema input types', () => {
     expectTypeOf<ReturnType<LearnApi['app']['chooseLibraryFolder']>>().toEqualTypeOf<Promise<Result<{ relaunching: boolean }>>>();
   });
   it('context menus are typed by kind; the column header has its own menu (P-9)', () => {
-    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag'>();
+    expectTypeOf<Ipc.ShowContextMenuInput['kind']>().toEqualTypeOf<'item' | 'collection' | 'tag' | 'trash'>();
     expectTypeOf<ReturnType<LearnApi['ui']['showColumnMenu']>>().toEqualTypeOf<Promise<Result<{ toggle: LibraryColumnId } | { reset: true } | null>>>();
   });
   it('togglePosition reports which tag was toggled and how (null when nothing to toggle)', () => {
     expectTypeOf<ReturnType<LearnApi['tags']['togglePosition']>>()
       .toEqualTypeOf<Promise<Result<{ tagId: string; assigned: boolean } | null>>>();
+  });
+  it('the import channels answer at once with the run\'s total and the outcome is pushed; no duplicate channel (spec 3.7, P-1)', () => {
+    expectTypeOf<ReturnType<LearnApi['library']['pickAndImport']>>().toEqualTypeOf<Promise<Result<{ queued: number }>>>();
+    expectTypeOf<ReturnType<LearnApi['library']['import']>>().toEqualTypeOf<Promise<Result<{ queued: number }>>>();
+    expectTypeOf<Parameters<LearnApi['library']['cancelImport']>>().toEqualTypeOf<[]>();
+    expectTypeOf<ReturnType<LearnApi['library']['cancelImport']>>().toEqualTypeOf<Promise<Result<void>>>();
+    expectTypeOf<LearnApi['ui']>().not.toHaveProperty('confirmDuplicate');
+    expectTypeOf<LearnEventMap['import:progress']>().toEqualTypeOf<ImportQueueState>();
+    expectTypeOf<LearnEventMap['import:finished']>().toEqualTypeOf<{ report: ImportReport }>();
+    expectTypeOf<LearnEventMap['item:openRequested']>().toEqualTypeOf<{ itemId: string }>();
   });
 });

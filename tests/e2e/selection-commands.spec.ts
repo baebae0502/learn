@@ -32,9 +32,8 @@ test('파일 › Finder에서 보기 (⇧⌘R) and 기본 앱으로 열기 follo
     // A linked copy whose file then goes: 파일 없음 once main has checked it again.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(PDF, gone);
-    const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
-    if (!linked.ok || linked.data[0]?.status !== 'imported') throw new Error('linked import failed');
-    const goneId = linked.data[0].item.id;
+    const [goneItem] = await importPaths(page, [gone], { mode: 'linked', allowDuplicate: true });
+    const goneId = goneItem!.id;
     fs.rmSync(gone);
     await page.evaluate((itemId) => window.learn.library.get({ itemId }), goneId);
     await expect(page.getByTestId('item-row')).toHaveCount(3);
@@ -122,13 +121,13 @@ test('the palette lists 폴더에서 보기 and 기본 앱으로 열기 for one 
   }
 });
 
-test('the ⌘/ sheet lists the selected row’s shortcut under 자료 (design-spec 7.4)', async ({}, testInfo) => {
+test('the ⌘/ sheet lists the selected row’s shortcuts (⇧⌘R, ⌘⌫) under 자료 (design-spec 7.4)', async ({}, testInfo) => {
   const { app } = await launch(...dirs(testInfo));
   try {
     const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
     const group = sheet.locator('section[aria-label="자료"]');
-    await expect(group.getByTestId('shortcut-row')).toHaveText([new RegExp(`^${REVEAL}`)]);
-    await expect(group.locator('.visually-hidden')).toHaveText(IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R');
+    await expect(group.getByTestId('shortcut-row')).toHaveText([new RegExp(`^${REVEAL}`), /^휴지통으로 이동/]);
+    await expect(group.locator('.visually-hidden')).toHaveText([IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R', IS_MAC ? '⌘⌫' : 'Ctrl+Backspace']);
     // 자료 follows 라이브러리 (design-spec 7.4 lists ⇧⌘R with the library keys).
     const titles = await sheet.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
     expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '리더', '팔레트·대화상자']);

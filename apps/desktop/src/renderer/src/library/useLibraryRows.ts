@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { groupRows } from '../organize/duplicates';
 import type { LibraryItem } from '@learn/domain';
 import type { Match } from '../palette/hangul';
 import type { SearchResult } from './search';
@@ -21,7 +22,11 @@ export function keepFound(rows: readonly LibraryItem[], found: SearchResult | nu
 export function useLibraryRows(items: readonly LibraryItem[]): { rows: readonly LibraryItem[]; titleMatches: ReadonlyMap<string, Match> | null; view: ScopeView } {
   const { sort } = useLibrarySettings();
   const view = useScopeView(items);
-  const sorted = useMemo(() => sortItems(view.filtered, sort), [view.filtered, sort]);
+  // 중복 항목 keeps each group's rows together whatever the sort (M6 spec 5): the group of the first row first.
+  const sorted = useMemo(() => {
+    const rows = sortItems(view.filtered, sort);
+    return view.scope.kind === 'duplicates' && view.model ? groupRows(rows, view.model.duplicateGroupOf) : rows;
+  }, [view.filtered, view.scope.kind, view.model, sort]);
   // Quick search filters the sorted rows: the order stays the table's (spec 4.2); relevance ranks only the palette.
   // The index is built once per list (buildSearchIndex) and each query searched once (search), shared with the toolbar.
   const found = useSearch(items);

@@ -64,7 +64,7 @@ test('special views appear with content and 내 라이브러리 always; the one 
     await expect(specialRow(page, 'unfiled')).toHaveCount(0);
 
     // 중복 항목: items that share a file.
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
+    await importPaths(page, [PDF], { allowDuplicate: true });
     await expect(specialRow(page, 'duplicates').locator('.count')).toHaveText('2');
     await specialRow(page, 'duplicates').click();
     await expect(page.getByTestId('item-row')).toHaveCount(2);

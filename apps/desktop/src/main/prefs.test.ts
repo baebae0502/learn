@@ -4,10 +4,11 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LearnError } from '@learn/domain';
 import { PREFS_FILE, openPrefsStore, resolveLibraryRoot } from './prefs';
+import { mainStrings } from './strings';
 
 let dir: string;
 const file = () => path.join(dir, PREFS_FILE);
-const DEFAULTS = { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null };
+const DEFAULTS = { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null };
 const ABS = path.resolve(os.tmpdir(), 'learn-lib');
 const errno = (code: string) => Object.assign(new Error(code), { code });
 
@@ -131,6 +132,14 @@ describe('prefs store', () => {
     expect(store.get().libraryRoot).toBeNull();
   });
 
+  it('keeps the backup folder main chose (spec 8.1); a relative one is refused', () => {
+    const store = openPrefsStore(dir);
+    expect(store.set({ backupDir: ABS }).backupDir).toBe(ABS);
+    expect(openPrefsStore(dir).get().backupDir).toBe(ABS);
+    expect(() => store.set({ backupDir: 'relative/backups' })).toThrow(mainStrings.prefs.backupDirRelative);
+    expect(store.get().backupDir).toBe(ABS);
+  });
+
   it('a hand-edited relative libraryRoot does not block other changes', () => {
     fs.writeFileSync(file(), JSON.stringify({ libraryRoot: 'rel/lib' }));
     expect(openPrefsStore(dir).set({ theme: 'dark' })).toEqual({ ...DEFAULTS, theme: 'dark', libraryRoot: 'rel/lib' });
@@ -145,7 +154,7 @@ describe('prefs store', () => {
     const body = JSON.stringify({ theme: 'blue', density: 'compact', fontSize: 99, libraryRoot: ABS });
     fs.writeFileSync(file(), body);
     const store = openPrefsStore(dir);
-    expect(store.get()).toEqual({ theme: 'system', density: 'compact', fontSize: 13, libraryRoot: ABS });
+    expect(store.get()).toEqual({ theme: 'system', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null });
     expect(store.readOnly).toBe(false);
     expect(vi.mocked(console.warn).mock.calls).toEqual([['PREFS_FIELD_INVALID theme'], ['PREFS_FIELD_INVALID fontSize']]);
     expect(fs.readdirSync(dir)).toEqual([PREFS_FILE]); // not quarantined
@@ -158,7 +167,7 @@ describe('prefs store', () => {
     const store = openPrefsStore(dir);
     expect(store.set({ density: 'compact' })).toEqual({ ...DEFAULTS, density: 'compact', libraryRoot: ABS });
     expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toEqual({
-      theme: 'sepia', density: 'compact', fontSize: 13, libraryRoot: ABS, future: { shortcuts: { 'library.import': 'Cmd+I' } },
+      theme: 'sepia', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null, future: { shortcuts: { 'library.import': 'Cmd+I' } },
     });
     expect(store.set({ theme: 'dark' }).theme).toBe('dark');
     expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toMatchObject({ theme: 'dark', future: { shortcuts: { 'library.import': 'Cmd+I' } } });
@@ -263,7 +272,7 @@ describe('prefs store', () => {
 
 describe('resolveLibraryRoot', () => {
   const userData = path.resolve(os.tmpdir(), 'ud');
-  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot }) as const;
+  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot, backupDir: null }) as const;
 
   it('LEARN_LIBRARY_DIR wins over prefs.libraryRoot', () => {
     expect(resolveLibraryRoot({ envDir: '/env/lib', prefs: prefs(ABS), userData })).toBe('/env/lib');

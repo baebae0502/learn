@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OrganizeSnapshot } from '@learn/domain';
 import { buildOrganizeModel } from './model';
+import type { Removal } from './membership';
 import { createMembershipCommands, type MembershipDeps } from './membershipCommands';
 import { item } from './testing';
 
@@ -14,6 +15,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['a'], c6: ['a', 'b'] },
   tagged: {},
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ['a', 'b', 'c'].map((id) => item(id)));
 
@@ -27,6 +29,7 @@ function setup(over: Partial<MembershipDeps> = {}) {
     startNew: vi.fn(),
     undoToast: vi.fn(),
     failed: vi.fn(),
+    failedWithUndo: vi.fn(),
   };
   const deps = { ...mocks, ...over } as typeof mocks;
   return { deps, commands: createMembershipCommands(deps as MembershipDeps) };
@@ -78,7 +81,7 @@ describe('이 컬렉션에서 빼기 (spec 9.2, owner decision 0)', () => {
   it('takes the items out of the collection viewed and below it, and offers 실행 취소 with what went — N counts items, not memberships', async () => {
     const { deps, commands } = setup();
     await commands.remove(['a', 'b']);
-    expect(deps.removeFromScope).toHaveBeenCalledExactlyOnceWith(model, 'bio', ['a', 'b']);
+    expect(deps.removeFromScope).toHaveBeenCalledExactlyOnceWith(model, 'bio', ['a', 'b'], expect.any(Array));
     expect(deps.undoToast).toHaveBeenCalledOnce();
     const [title, undo] = deps.undoToast.mock.calls[0]! as [string, () => Promise<void>];
     expect(title).toBe('‘분자생물학’\u2060에서 자료 2개를 뺐습니다.'); // a was in two collections, b in one: two items
@@ -110,5 +113,22 @@ describe('이 컬렉션에서 빼기 (spec 9.2, owner decision 0)', () => {
     await commands.remove(['a']);
     expect(deps.failed).toHaveBeenCalledExactlyOnceWith(boom);
     expect(deps.undoToast).not.toHaveBeenCalled();
+  });
+  it('m-6: a refusal part-way leaves what went out and offers 실행 취소 for it in the error toast', async () => {
+    const boom = new Error('저장 공간이 부족합니다. 공간을 비운 뒤 다시 하세요.');
+    const removeFromScope = vi.fn(async (_m: unknown, _s: string, _ids: readonly string[], progress: Removal[] = []) => {
+      progress.push({ collectionId: 'bio', itemIds: ['a'] });
+      throw boom;
+    });
+    const { deps, commands } = setup({ removeFromScope: removeFromScope as never });
+    await commands.remove(['a', 'b']);
+    expect(deps.failed).not.toHaveBeenCalled();
+    expect(deps.undoToast).not.toHaveBeenCalled();
+    expect(deps.failedWithUndo).toHaveBeenCalledTimes(1);
+    const [error, title, undo] = vi.mocked(deps.failedWithUndo).mock.calls[0]!;
+    expect(error).toBe(boom);
+    expect(title).toBe('‘분자생물학’⁠에서 자료 1개만 뺐습니다.');
+    await undo();
+    expect(deps.undoRemovals).toHaveBeenCalledExactlyOnceWith([{ collectionId: 'bio', itemIds: ['a'] }]);
   });
 });

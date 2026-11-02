@@ -92,3 +92,16 @@ export function followContentHeight(contents: WebContents, selector: string, kno
     () => {}, // the page went away mid-call
   );
 }
+
+/** A sheet that follows its content (sheets.ts FOLLOWING_SHEETS): the tallest its root may grow, as `--sheet-max-height`. */
+export async function capHeight(contents: WebContents, px: number): Promise<void> {
+  await contents.executeJavaScript(`document.documentElement.style.setProperty('--sheet-max-height', '${Math.round(px)}px')`, false);
+}
+
+/**
+ * macOS, a sheet that follows its content: the sheet keeps the window's height while the window does not shrink (CSS
+ * :root[data-holds]), so the spare height lies under the list and the foot stays at the bottom.
+ */
+export async function holdHeight(contents: WebContents): Promise<void> {
+  await contents.executeJavaScript("document.documentElement.dataset.holds = '1'", false);
+}

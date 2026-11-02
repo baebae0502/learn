@@ -14,8 +14,12 @@ export const mainStrings = {
     confirmButtons: ['다시 시작', '취소'],
     missing: '폴더를 찾을 수 없습니다. 다른 폴더를 고르세요.',
     notFolder: '폴더가 아닙니다. 다른 폴더를 고르세요.',
+    /** A linked import of a file that lies inside the library folder, where the app's own cleanups work. */
+    linkedInside: '라이브러리 폴더 안의 파일은 연결할 수 없습니다. 사본으로 가져오세요.',
     notWritable: '이 폴더에는 쓸 수 없습니다. 쓰기 권한이 있는 폴더를 고르세요.',
     revealMissing: '라이브러리 폴더를 찾을 수 없습니다. 폴더가 있는 디스크가 연결되어 있는지 확인하세요.',
+    /** The fatal screen's Finder에서 보기 (spec 9.4) for a pre-update backup that is gone since the screen was drawn. */
+    updateBackupMissing: '업데이트 전 백업 파일을 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
   },
   /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
   importFilters: { media: 'PDF\u00a0·\u00a0동영상', all: '모든\u00a0파일' },
@@ -41,6 +45,22 @@ export const mainStrings = {
     managedMissing: '라이브러리 안의 사본을 찾을 수 없습니다. 원본\u00a0파일이 있으면 다시 가져오세요.',
     noItem: '자료를 찾을 수 없습니다.',
     noApp: '기본 앱으로 열지 못했습니다. 이\u00a0형식을 여는 앱이 설치되어 있는지 확인하세요.',
+  },
+  /** An edited copy the item panel named (ipc/edited-copies.ts) that is no longer there. */
+  editedCopy: {
+    gone: '이\u00a0수정본을 찾을 수 없습니다. 이미 가져왔거나 다른\u00a0곳으로 옮겼는지 확인하세요.',
+  },
+  /** 라이브러리 점검 (library-check.ts): the title main gives a copy brought back, its open panel's line, what an action could not finish. */
+  libraryCheck: {
+    /** A copy brought back from the library folder (spec 7.2): its own file name is only its hash. */
+    revivedTitle: '이름 없는 자료',
+    /** 다시 연결… of a managed copy that went missing (macOS shows no title on a sheet). */
+    restoreMessage: '사라진 사본과 내용이 같은 원본 파일을 고르세요. 라이브러리에 다시 복사합니다.',
+    stagingLeft: (n: number) => `임시 파일 ${n}개를 지우지 못했습니다. 다른 앱이 쓰고 있지 않은지 확인하고 다시 정리하세요.`,
+    unreferencedLeft: (n: number) => `사본 ${n}개를 지우지 못했습니다. 파일 권한을 확인하고 다시 정리하세요.`,
+    notRevived: (n: number) => `사본 ${n}개는 자료로 되살리지 못했습니다. 지원하지 않는 형식이면 정리할 수 있습니다.`,
+    notImported: (n: number) => `수정본 ${n}개는 가져오지 못했습니다. 가져오기 알림에서 까닭을 확인하세요.`,
+    gone: '이 파일을 찾을 수 없습니다. 이미 지웠는지 확인하고 다시 점검하세요.',
   },
   /** 사본 내보내기… (ipc/library.ts exportCopy): the save panel's type filter and what the copy can fail with. */
   exportCopy: {
@@ -69,6 +89,7 @@ export const mainStrings = {
     readOnly: '환경설정 파일을 읽거나 옮길 수 없어 이번 실행에서는 변경 내용을 저장하지 않습니다. 파일 권한을 확인한 뒤 앱을 다시 시작하세요.',
     invalid: '환경설정 값이 올바르지 않습니다.',
     libraryRootRelative: '라이브러리 위치는 절대 경로여야 합니다.',
+    backupDirRelative: '백업 위치는 절대 경로여야 합니다.',
   },
   /**
    * The application menu's own items (registry commands carry their labels in COMMANDS) and the edit context menu.
@@ -99,6 +120,57 @@ export const mainStrings = {
       'PDF: PDF.js — Apache License 2.0',
       'React, react-resizable-panels, TanStack Query, TanStack Virtual, zustand, Zod, Electron, better-sqlite3 — MIT License',
     ],
+  },
+  /** The work line (jobs/lane.ts): a job dropped before it ran, as the app quits. A stopped job reports nothing, so it is never shown. */
+  jobs: { cancelled: '작업을 멈췄습니다.' },
+  /** The duplicate question when no main window is left to hang the sheet on (jobs/duplicate-asker.ts, spec 3.4). */
+  duplicateQuestion: {
+    message: '이미 라이브러리에 있는 파일입니다',
+    detail: (file: string, title: string) => `${file}의 내용이 ‘${title}’ 자료와 완전히 같습니다. 어느\u00a0쪽을 골라도 원본\u00a0파일은 지우지 않습니다.`,
+    add: '새\u00a0자료로 추가',
+    skip: '건너뛰기',
+    applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
+  },
+  /** before-quit while the work line runs (jobs/quit-guard.ts, spec 3.6): what is lost if the app quits now. */
+  quitGuard: {
+    import: { message: '가져오는 중입니다', detail: (n: number) => `끝내면 남은 ${n}개는 가져오지 않습니다.` },
+    backup: { message: '백업을 만드는 중입니다', detail: '끝내면 만들던 백업은 남지 않습니다.' },
+    restore: { message: '복원하는 중입니다', detail: '끝내면 만들던 라이브러리는 남지 않습니다.' },
+    quit: '끝내기',
+  },
+  /** 백업 만들기… (jobs/backup-job.ts, ipc/backup.ts, spec 8): its folder panel, its folder's name, what it can fail with. */
+  backup: {
+    pickTitle: '백업 만들기',
+    /** macOS shows no title on a sheet: the panel's one line says what the backup leaves out (spec 8.1). */
+    pickMessage: '외부 연결 자료는 파일 없이 위치만 기록합니다.',
+    pickButton: '여기에 만들기',
+    /** The folder's name before its date and time: "Learn 백업 2026-10-30 2141". */
+    folderPrefix: 'Learn 백업',
+    inLibrary: '라이브러리 폴더 안에는 백업할 수 없습니다. 다른 폴더를 고르세요.',
+    copyMismatch: '복사한 파일의 내용이 원래 자료와 달라 백업을 남기지 않았습니다. 다른 디스크나 폴더에 다시 만들어 보세요.',
+    /** Under 백업을 만들지 못했습니다 when nothing more is known. */
+    failed: '잠시 뒤에 다시 만들어 보세요. 계속 안 되면 다른 폴더를 고르세요.',
+    revealMissing: '백업 폴더를 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
+  },
+  /** 백업에서 복원… (jobs/restore-job.ts, ipc/backup.ts, index.ts; spec 9): its two folder panels, its folder's name, its refusals. */
+  restore: {
+    pickBackupTitle: '백업에서 복원',
+    /** macOS shows no title on a sheet: each panel's one line says what to pick. */
+    pickBackupMessage: '복원할 백업 폴더를 고르세요.',
+    pickBackupButton: '선택',
+    pickParentTitle: '복원할 위치',
+    pickParentMessage: '고른 폴더 안에 새 라이브러리 폴더를 만듭니다. 지금 라이브러리는 그대로 남습니다.',
+    pickParentButton: '여기에 복원',
+    /** The folder's name before its date and time: "Learn 복원 2026-10-31 2141". */
+    folderPrefix: 'Learn 복원',
+    inLibrary: '라이브러리 폴더 안에는 복원할 수 없습니다. 다른 폴더를 고르세요.',
+    inBackup: '백업 폴더 안에는 복원할 수 없습니다. 다른 폴더를 고르세요.',
+    /** Under 복원하지 못했습니다 when nothing more is known. */
+    failed: '잠시 뒤에 다시 복원해 보세요. 계속 안 되면 다른 폴더를 고르세요.',
+    revealMissing: '복원한 폴더를 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
+    /** 전환 after the result sheet closed and could not be made: a native box over the main window, the cause under it. */
+    switchFailed: '라이브러리를 전환하지 못했습니다',
+    ok: '확인',
   },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',

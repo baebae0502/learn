@@ -27,6 +27,9 @@ const filled = (v: string | undefined): v is string => v !== undefined && v.trim
 export const hasInfo = (meta: ItemMetadata): boolean =>
   meta.creators.length > 0 || [meta.date, meta.publisher, meta.language, meta.url, meta.abstract, meta.extra].some(filled);
 
+/** The hint that writing author and year fills this section: only where the panel can edit (critique C-3: a trashed row has no pencil). */
+export const showsInfoHint = (meta: ItemMetadata, readOnly: boolean): boolean => !readOnly && !hasInfo(meta);
+
 const fullTime = (iso: string): string => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });

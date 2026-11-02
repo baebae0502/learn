@@ -1,8 +1,8 @@
 import { ariaKeyShortcuts, commandById, commandLabel, type LibraryItem } from '@learn/domain';
-import { useItems } from '../data/queries';
 import { focusPaneNamed } from '../shell/panes';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
+import { useViewItems } from '../trash/useTrashSource';
 import { SearchField } from '../ui/SearchField';
 import { countRender } from '../ui/renderCount';
 import { currentPlatform } from '../ui/platform';
@@ -32,7 +32,7 @@ export function LibrarySearch({ disabled = false }: { disabled?: boolean }) {
   countRender('LibrarySearch');
   const query = useLibrary((s) => s.query);
   const setQuery = useLibrary((s) => s.setQuery);
-  const found = useSearch(useItems().data ?? NO_ITEMS);
+  const found = useSearch(useViewItems() ?? NO_ITEMS);
   const find = commandById('library.find');
   const platform = currentPlatform();
   return (

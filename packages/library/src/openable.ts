@@ -14,7 +14,8 @@ import type { LibraryLayout } from './layout';
  * sha256. The copy is read-only (0o444): Preview and the like say the file is locked and offer a duplicate, rather than
  * let the user think the edits go into Learn. A copy that may hold edits all the same (unlocked, or a different size) is
  * never overwritten or removed: it is kept aside under `<name> (수정본 <YYYY-MM-DD HHmm>).<ext>` (final review I1,
- * addendum 2). Importing an edited copy again is M4/M6; removing these files belongs with trash (M6).
+ * addendum 2). Importing an edited copy again is M6's; a purge removes the named copies with their asset and keeps the
+ * edited ones (clearNamedCopies, ADR-0006).
  */
 
 /** The extensions each sniffed type may have (sniff.ts); the first is the one used when the original name has none of them. */
@@ -219,6 +220,57 @@ async function ensureNamedCopyNow(src: string, dst: string, size: number, now: (
 }
 
 const code = (e: unknown) => (e as NodeJS.ErrnoException)?.code;
+
+/**
+ * A purged asset's named copies (ADR-0006): empties its `derived/open/<assetId>/` folder of read-only copies, our scratch
+ * files and Finder's .DS_Store, and keeps every edited copy — one already kept aside, and a copy that may hold edits
+ * (mayHoldEdits against the asset's `size`), which is kept aside now under its 수정본 name so the library check can offer
+ * it. The folder goes only once it is empty. Folders and links in it are left. Returns how many could not be handled.
+ */
+export function clearNamedCopies(dir: string, size: number, now: () => Date = () => new Date()): Promise<number> {
+  // Behind a named copy still being made in this folder (ensureNamedCopy keeps one call per folder at a time).
+  const run = (inFlight.get(dir) ?? Promise.resolve()).then(() => clearNamedCopiesNow(dir, size, now));
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  inFlight.set(dir, settled);
+  void settled.then(() => {
+    if (inFlight.get(dir) === settled) inFlight.delete(dir);
+  });
+  return run;
+}
+
+async function clearNamedCopiesNow(dir: string, size: number, now: () => Date): Promise<number> {
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch (e) {
+    return code(e) === 'ENOENT' || code(e) === 'ENOTDIR' ? 0 : 1;
+  }
+  const modes = await keepsModes(dir);
+  let failed = 0;
+  for (const name of names) {
+    if (isAside(name)) continue;
+    const file = path.join(dir, name);
+    const st = await fs.lstat(file).catch(() => null);
+    if (!st?.isFile()) continue;
+    try {
+      if (name.startsWith('.')) {
+        if (SCRATCH.test(name) || name === '.DS_Store') await fs.rm(file, { force: true });
+      } else if (mayHoldEdits(st, size, modes)) {
+        await moveAside(file, now());
+      } else {
+        await fs.rm(file, { force: true });
+      }
+    } catch {
+      failed += 1;
+    }
+  }
+  // Only an empty folder goes: one that keeps an edited copy (or anything we left) stays where the check looks.
+  await fs.rmdir(dir).catch(() => {});
+  return failed;
+}
 
 /**
  * Moves `file` to its first free aside name, never over an existing one: a hard link (which fails with EEXIST) then

@@ -7,14 +7,17 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, confirmCalls, createCollection, enabledMenuCommands, importPaths, launch, makeTags, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot,
-  rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls, specialRow, stubConfirm, stubContextMenu, stubOpenDialog, stubSaveDialog, stubShell, tagChip, treeRow,
+  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, importResume, importWaiting, launch, makeTags,
+  menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
+  stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
+/** The Korean fixture's title (titleFromFile). */
+const KO = '한글 경로 (테스트) #1';
 const REVEAL = process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기';
 
 /** Closes what a command opened: sheets by Escape once they rendered, other windows directly, then the palette. */
@@ -58,6 +61,12 @@ async function menuLabel(app: ElectronApplication, id: CommandId): Promise<strin
   const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
   return flat(await menuSnapshot(app)).find((n) => n.id === id)?.label ?? null;
 }
+/** The id of the live item titled `title`. */
+const organizeIdOf = (page: Page, title: string) =>
+  page.evaluate(async (t) => {
+    const r = await window.learn.library.list();
+    return r.ok ? (r.data.find((i) => i.title === t)?.id ?? null) : null;
+  }, title);
 const escaped = (p: string) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A value submenu's command runs from one of its rows: this value; the other rows are the menu unit tests'. */
@@ -69,6 +78,17 @@ const M5_COMMANDS: readonly CommandId[] = [
   'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8',
   'tag.rename', 'tag.setColor', 'tag.clearColor', 'tag.delete', 'tags.clearFilter', 'library.findEverywhere', 'library.sortBy',
 ] as CommandId[];
+
+/** Every command the trash, duplicates, library check, backup and import queue put in the registry (M6): each runs here, none is left to another test. */
+const M6_COMMANDS: readonly CommandId[] = [
+  'item.trash', 'item.restore', 'trash.empty', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.checkLibrary', 'file.backup', 'file.restore', 'file.cancelImport',
+] as CommandId[];
+
+/**
+ * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
+ * (and the reader pass) needs: ⌘⌫ is 휴지통으로 이동. Their test is the COVERED_ELSEWHERE entry of the same id.
+ */
+const DESTRUCTIVE: ReadonlySet<CommandId> = new Set<CommandId>(['item.trash']);
 
 /**
  * Commands this test does not run, each with the test that does (`<spec file> › <test title>`): F6 / ⇧F6 are keys of
@@ -108,6 +128,8 @@ test('every registry command runs without a page error (library and reader menus
   const effects: Partial<Record<CommandId, () => Promise<void>>> = {
     'app.settings': () => expect.poll(() => otherWindows(app)).toContain('settings'),
     'app.shortcuts': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
+    // 라이브러리 점검… (spec 7.1): a fresh check in its sheet (문제가 없습니다 here); closeTransient closes it with esc.
+    'file.checkLibrary': () => expect.poll(() => otherWindows(app)).toContain('sheet'),
     'app.palette': () => expect(page.getByTestId('palette')).toBeVisible(),
     // 새 컬렉션 starts the row in the tree and names it in place; esc drops it (collections.spec creates one for real).
     'collection.new': async () => {
@@ -168,14 +190,23 @@ test('every registry command runs without a page error (library and reader menus
         await rowByTitle(page, 'sample').click();
         await expect(rowByTitle(page, 'sample')).toHaveAttribute('aria-selected', 'true');
         await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(true);
-      } else await openItem(page, 'sample'); // a double-click: a single click only selects
+      } else {
+        // The library pass ends with a sheet (단축키): on macOS main holds the window for up to 250 ms after it closes and
+        // refuses a double-click in that gap, so the reader never opened (Mac run 41380108893).
+        await sheetReleased(page);
+        await openItem(page, 'sample'); // a double-click: a single click only selects
+        // The menu is read once below: wait until the reader is up and main's menu has followed.
+        await expect(page.getByTestId('viewer-title')).toBeVisible();
+        await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+      }
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
-      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'library.find', 'library.sortBy', 'view.toggleInspector']);
+      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {
+        if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
@@ -225,7 +256,7 @@ test('every registry command runs without a page error (library and reader menus
     fs.mkdirSync(src, { recursive: true });
     const linked = path.join(src, 'linked.pdf');
     fs.copyFileSync(PDF, linked);
-    await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), linked);
+    await importPaths(page, [linked], { mode: 'linked', allowDuplicate: true });
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     const moved = path.join(src, 'moved.pdf');
     fs.renameSync(linked, moved);
@@ -332,15 +363,13 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(async () => (await organizeSnapshot(page)).members[parent]?.length ?? 0).toBe(1);
       ran.add('collection.importInto');
 
-      // 컬렉션 삭제…: the sheet's question is asked in the sheet's words, the collection (and its child) go, 실행 취소 brings them back.
+      // 휴지통으로 이동 (M6 spec 4.2): no question; the collection (and its child) go to the trash, 실행 취소 brings them back.
       await stubConfirm(app, 'confirm');
       await stubContextMenu(app, commandById('collection.delete').label);
       await treeRow(page, parent).click({ button: 'right' });
       await expect(treeRow(page, parent)).toHaveCount(0);
-      const asked = await confirmCalls(app);
-      expect(asked).toHaveLength(1);
-      expect(asked[0]!.message).toMatch(/^‘정리 시험 2’\u2060[을를] 삭제하겠습니까\?$/);
-      await expect(page.getByTestId('undo-toast')).toBeVisible();
+      expect(await confirmCalls(app)).toEqual([]);
+      await expect(page.getByTestId('undo-toast')).toContainText('‘정리 시험 2’ 컬렉션을 휴지통으로 옮겼습니다');
       await page.getByTestId('undo-action').click();
       await expect(treeRow(page, parent)).toBeVisible();
       ran.add('collection.delete');
@@ -372,6 +401,111 @@ test('every registry command runs without a page error (library and reader menus
       ran.add('library.findEverywhere');
     }
 
+    {
+      // The trash (M6 spec 4). ⌘⌫ has two names: 휴지통으로 이동 in the library (menu bar, then undone), 영구 삭제… in the trash view.
+      const trashToast = page.getByTestId('trash-undo');
+      await rowByTitle(page, 'sample-mpeg4part2').click();
+      await expect.poll(() => menuLabel(app, 'item.trash')).toBe('휴지통으로 이동');
+      await runMenuCommand(app, 'item.trash');
+      await expect(trashToast).toContainText('휴지통으로 옮겼습니다');
+      await expect(rowByTitle(page, 'sample-mpeg4part2')).toHaveCount(0);
+      ran.add('item.trash');
+
+      // 복원 is a row-menu command (and the panel's button): the trashed row's menu picks it.
+      await specialRow(page, 'trash').click();
+      await stubContextMenu(app, '복원');
+      await rowByTitle(page, 'sample-mpeg4part2').click({ button: 'right' });
+      await expect(specialRow(page, 'trash')).toHaveCount(0);
+      await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+      await expect(rowByTitle(page, 'sample-mpeg4part2')).toBeVisible();
+      ran.add('item.restore');
+
+      // The second name: in the trash view the same ⌘⌫ asks the permanent-delete question in its sheet, and 영구 삭제 answers it.
+      await trashItems(page, [(await organizeIdOf(page, 'sample-mpeg4part2'))!]);
+      await specialRow(page, 'trash').click();
+      await rowByTitle(page, 'sample-mpeg4part2').click();
+      await expect.poll(() => menuLabel(app, 'item.trash')).toBe('영구 삭제…');
+      const purge = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'item.trash'));
+      await clickToCloseSheet(purge, purge.getByTestId('purge-confirm'));
+      await expect(page.getByTestId('purge-done')).toHaveText('자료 1개를 영구히 삭제했습니다');
+      await expect(specialRow(page, 'trash')).toHaveCount(0);
+
+      // 휴지통 비우기…: one more item in the trash, then the whole trash is asked about and emptied.
+      await trashItems(page, [(await organizeIdOf(page, KO))!]);
+      await specialRow(page, 'trash').click();
+      await expect(page.getByTestId('item-row')).toHaveCount(1);
+      const emptied = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'trash.empty'));
+      await expect(emptied.getByTestId('purge-title')).toHaveText('휴지통을 비우겠습니까?');
+      await clickToCloseSheet(emptied, emptied.getByTestId('purge-confirm'));
+      await expect(page.getByTestId('purge-done').last()).toHaveText('휴지통을 비웠습니다');
+      await expect(page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+      ran.add('trash.empty');
+
+      // 중복 정리: the same file imported twice more makes two groups. 모두 정리 from the palette keeps the earliest of each (undone by
+      // its toast), 하나만 남기고 휴지통으로 from a row menu of 중복 항목 cleans one group.
+      await importPaths(page, [PDF], { allowDuplicate: true });
+      await importPaths(page, [KO_PDF]); // the Korean file went with the emptied trash: new once, then twice
+      await importPaths(page, [KO_PDF], { allowDuplicate: true });
+      await specialRow(page, 'duplicates').click();
+      const groups = await page.getByTestId('item-row').count();
+      expect(groups).toBeGreaterThanOrEqual(4);
+      await expect(page.getByTestId('keep-all-duplicates')).toBeVisible();
+      await runPalette(page, app, '모두 정리', 'duplicates.keepOneAll');
+      await expect(page.getByTestId('undo-toast')).toContainText('휴지통으로 옮겼습니다');
+      await expect(specialRow(page, 'duplicates')).toHaveCount(0);
+      ran.add('duplicates.keepOneAll');
+      await page.getByTestId('undo-action').click();
+      await expect(specialRow(page, 'duplicates')).toBeVisible();
+      await specialRow(page, 'duplicates').click();
+      await expect(page.getByTestId('item-row')).toHaveCount(groups);
+      await stubContextMenu(app, '하나만 남기고 휴지통으로');
+      await page.getByTestId('item-row').last().click({ button: 'right' });
+      await expect(page.getByTestId('undo-toast').last()).toContainText('휴지통으로 옮겼습니다');
+      expect((await recordedPopups(app)).length).toBeGreaterThan(0);
+      await expect.poll(() => page.getByTestId('item-row').count()).toBeLessThan(groups);
+      ran.add('duplicates.keepOne');
+      await specialRow(page, 'all').click();
+
+      // 가져오기 취소: an import held at its checkpoint is stopped from the palette; the file stays out.
+      const before = await page.getByTestId('item-row').count();
+      const unseen = path.join(testInfo.outputPath('src'), 'never-in.pdf');
+      fs.writeFileSync(unseen, '%PDF-1.4\n% never in\n%%EOF\n');
+      await importPause(app, 'afterStage');
+      await stubOpenDialog(app, [unseen]);
+      await runMenuCommand(app, 'file.importManaged');
+      await expect.poll(() => importWaiting(app)).toBe('afterStage');
+      await runPalette(page, app, '가져오기 취소', 'file.cancelImport');
+      await importResume(app);
+      await expect(page.getByTestId('import-done')).toContainText('가져오기를 취소했습니다');
+      await waitImportIdle(page);
+      await expect(page.getByTestId('item-row')).toHaveCount(before);
+      ran.add('file.cancelImport');
+
+      // 백업 만들기… and 백업에서 복원…, the folder panels stubbed: the result sheet of each.
+      const backups = testInfo.outputPath('backups');
+      const restores = testInfo.outputPath('restores');
+      for (const dir of [backups, restores]) fs.mkdirSync(dir, { recursive: true });
+      await stubFolderPicker(app, backups);
+      const made = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.backup'));
+      await expect(made.getByTestId('backup-title')).toHaveText('백업을 만들었습니다');
+      await clickToCloseSheet(made, made.getByTestId('backup-done'));
+      const [backup] = fs.readdirSync(backups);
+      expect(backup).toMatch(/^Learn 백업 /);
+      ran.add('file.backup');
+      await stubFolderPicks(app, [path.join(backups, backup!), restores]);
+      await expect.poll(() => menuItemEnabled(app, 'file.restore')).toBe(true);
+      const restored = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.restore'));
+      await expect(restored.getByTestId('restore-title')).toHaveText('백업을 복원했습니다');
+      await closeSheet(restored, 'Escape');
+      expect(fs.readdirSync(restores)).toHaveLength(1);
+      ran.add('file.restore');
+      // 라이브러리 점검… ran in the menu loop above (its sheet opened); once more with the sheet's answer read.
+      const check = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'file.checkLibrary'));
+      await expect(check.locator('[data-sheet-root]')).toBeVisible();
+      await closeSheet(check, 'Escape');
+      ran.add('file.checkLibrary');
+    }
+
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.
     const all = COMMANDS.map((c) => c.id);
@@ -380,6 +514,10 @@ test('every registry command runs without a page error (library and reader menus
     expect(m5, 'the M5 commands in the registry').toEqual([...M5_COMMANDS].sort());
     expect(m5.filter((id) => !ran.has(id)), 'M5 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M5_COMMANDS.includes(id as CommandId)), 'M5 commands left to another test').toEqual([]);
+    // The M6 commands, all run above: none is left to another test, and every one is in the registry.
+    expect(M6_COMMANDS.filter((id) => !all.includes(id)), 'M6 commands gone from the registry').toEqual([]);
+    expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
     // The backstop for M5 commands outside the prefix filter above: they still have to run here or be covered elsewhere.
     expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);

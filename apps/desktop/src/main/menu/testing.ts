@@ -9,7 +9,7 @@ export const ALL_COMMANDS: CommandSpec[] = [...COMMANDS];
 export const ALL_SUBMENUS: SubmenuSpec[] = [...SUBMENUS];
 
 export function organize(over: Partial<OrganizeSnapshot> = {}): OrganizeSnapshot {
-  return { collections: [], tags: [], members: {}, tagged: {}, duplicates: [], ...over };
+  return { collections: [], tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0, ...over };
 }
 /** 분자생물학 ▸ (2장, 10장, 유전학) and 시험, with 태그 중요 (slot 3) and 시험 범위 (slot 1). */
 export const LIBRARY = organize({

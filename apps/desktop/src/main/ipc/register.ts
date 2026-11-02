@@ -1,6 +1,11 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent, type WebContents } from 'electron';
 import type { z } from 'zod';
 import { LearnError, failureFrom, ok, type AppInfo, type Channels, type CommandContextState, type LearnApi, type Prefs, type Result } from '@learn/domain';
+import type { ImportQueue } from '../jobs/import-queue';
+import type { CheckSheets } from '../library-check';
+import type { BackupJob } from '../jobs/backup-job';
+import type { RestoreJob } from '../jobs/restore-job';
+import type { JobLane } from '../jobs/lane';
 import type { LibraryContext } from '../library-context';
 import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
@@ -17,6 +22,16 @@ export interface IpcDeps {
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */
   sheets: SheetHost;
+  /** The work line imports, backups and restores share, one at a time (jobs/lane.ts). */
+  jobs: JobLane;
+  /** The import queue on it (jobs/import-queue.ts): every window's imports go in here, and its reports come out. */
+  imports: ImportQueue;
+  /** 백업 만들기… on the same work line (jobs/backup-job.ts): one backup at a time. */
+  backup: BackupJob<BrowserWindow>;
+  /** 백업에서 복원… on the same work line (jobs/restore-job.ts): one restore at a time. */
+  restore: RestoreJob<BrowserWindow>;
+  /** 라이브러리 점검 (library-check.ts): library:check opens its sheet; the sheet host runs its actions (sheet:act). */
+  checks: CheckSheets;
   /**
    * Whether `sender` is the current main window's renderer. createHandle has checked its kind already; this is the
    * window itself (a main window being closed still has the kind, and its last report must not drive the menu).
@@ -42,8 +57,8 @@ export interface IpcDeps {
   theme: { changed(theme: Prefs['theme']): void; shown(sender: WebContents, shade: 'light' | 'dark'): void };
   /** ui.reportIdle: the settings window is made, loaded and measured hidden now; nothing when one exists. */
   prepareSettings(): void;
-  /** Restarts into the library location just saved. Under E2E (LEARN_E2E=1) it only records the request. */
-  relaunch(): void;
+  /** Switches to another library folder: the app quits and restarts on it, unless the user keeps it from quitting. Under E2E (LEARN_E2E=1) it only saves the folder and records the request. */
+  switchLibrary(target: string): void;
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

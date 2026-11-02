@@ -1,0 +1,166 @@
+@layer screens {
+  /* 라이브러리 점검 (dialogs.html?scene=recovery, recovery-full, recovery-ok; P-26). Main caps the sheet at the parent window's
+     height − 120 (--sheet-max-height) and follows its content as rows change; the head and the foot stay, and the list
+     scrolls inside its card, whose ring is the list's top and bottom edge. */
+  :root[data-sized] .sheet[data-follows] {
+    max-height: var(--sheet-max-height, 100vh);
+  }
+  /* Nothing to fix (recovery-ok), or all of it fixed. */
+  .sheet .badge-icon.success {
+    background: var(--success-soft);
+    color: var(--success-text);
+  }
+  .check-sheet .check-head {
+    align-items: flex-start;
+  }
+  .check-sheet .check-head-text {
+    min-width: 0;
+  }
+  .check-sheet .check-head h2 {
+    margin-top: 5px; /* local: the title's first line level with the 32 px badge's middle (mockup recoverySheet) */
+  }
+  .check-sheet .check-head .d-text {
+    margin-top: var(--space-4);
+  }
+  .check-sheet .check-body {
+    padding-bottom: 0;
+  }
+  .check-sheet .d-foot {
+    padding-top: calc(var(--space-16) - 1px);
+  }
+  /* The card: the ring and the radius. The list scrolls in the box inside it, so an always-visible (legacy) scrollbar is
+     cut at the rounded corners and the ring, drawn above it, is one line all round (critique 3). */
+  .check-sheet .card.checklist {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    box-shadow: none;
+  }
+  .check-sheet .checklist::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--separator-on-surface);
+    pointer-events: none;
+  }
+  .check-sheet .check-scroll {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .check-sheet .check-scroll[data-scrolls]:focus-visible {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+  /* macOS: the window never shrinks while the sheet is open (sheets.ts followedHeight), so the spare height lies under
+     the list card, above the foot (critique 4). */
+  :root[data-holds] .sheet[data-follows] {
+    min-height: 100vh;
+  }
+  :root[data-holds] .check-sheet .check-body {
+    flex: 1 1 auto;
+  }
+  .check-sheet .check-row {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 128px; /* local: one action column, so every text column is as wide (mockup .check-item) */
+    column-gap: var(--space-16);
+    align-items: start;
+    padding: var(--space-12) var(--space-16);
+  }
+  .check-sheet .check-row + .check-row {
+    border-top: 1px solid var(--separator-on-surface);
+  }
+  .check-sheet .ci-status {
+    display: flex;
+    margin-top: 1px; /* local: the 16 px icon on the headline's first line (mockup .status-dot) */
+  }
+  .check-sheet .ci-main {
+    min-width: 0;
+  }
+  .check-sheet .ci-title {
+    font: var(--type-headline);
+    text-wrap: balance;
+  }
+  .check-sheet .ci-text {
+    margin-top: 2px; /* local: mockup .ci-text */
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    text-wrap: pretty;
+  }
+  .check-sheet .ci-meta {
+    margin-top: var(--space-4);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .check-sheet .ci-action {
+    align-self: center;
+    justify-self: end;
+  }
+  /* Two actions on one row stand stacked, as wide as the wider one. */
+  .check-sheet .ci-action.stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+  }
+  /* The question in the row: [지우기] [취소] side by side, the destructive one on the left, the pair ending where the other rows' buttons end. */
+  .check-sheet .ci-action.confirm {
+    display: flex;
+    gap: var(--space-4);
+    width: max-content;
+  }
+  /* The file line: the name gives way, its size does not. */
+  .check-sheet .ci-meta:has(.cm-tail) {
+    display: flex;
+  }
+  .check-sheet .cm-tail {
+    flex: none;
+    white-space: pre;
+  }
+  /* A line per name or path, each with its own button, across the text and action columns. */
+  .check-sheet .ci-entries {
+    grid-column: 2 / 4;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-top: var(--space-8);
+  }
+  .check-sheet .ci-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-16);
+    min-width: 0;
+    min-height: var(--control-height-small);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .check-sheet .ci-entry > .ellipsis {
+    min-width: 0;
+  }
+  /* 외 N개 has no button: relinking one checks again and the next name shows. */
+  .check-sheet .ci-entry.more {
+    color: var(--text-tertiary);
+  }
+  .check-sheet .ce-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .check-sheet .ce-title {
+    font: var(--type-body);
+  }
+  .check-sheet .ce-path {
+    font: var(--type-mono);
+  }
+  /* What an action could not finish, in main's words (cause + next step). */
+  .check-sheet .ci-error {
+    grid-column: 2 / 4;
+    margin-top: var(--space-8);
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
+}

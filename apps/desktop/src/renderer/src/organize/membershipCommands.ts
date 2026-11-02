@@ -14,6 +14,8 @@ export interface MembershipDeps {
   startNew(opts: { onCreated(collectionId: string): void }): void;
   undoToast(title: string, undo: () => Promise<void>): void;
   failed(e: unknown): void;
+  /** m-6: an error toast that names what was done before the refusal and offers 실행 취소 for it (showUndoableError). */
+  failedWithUndo(e: unknown, title: string, undo: () => Promise<void>): void;
 }
 
 export interface MembershipCommands {
@@ -39,11 +41,15 @@ export function createMembershipCommands(deps: MembershipDeps): MembershipComman
       const model = deps.model();
       const node = scope.kind === 'collection' ? model?.node(scope.id) : undefined;
       if (!model || !node || scope.kind !== 'collection') return;
+      const progress: Removal[] = [];
       let removals: Removal[];
       try {
-        removals = await deps.removeFromScope(model, scope.id, itemIds);
+        removals = await deps.removeFromScope(model, scope.id, itemIds, progress);
       } catch (e) {
-        deps.failed(e);
+        // m-6: what went before the refusal stays out; the error toast offers to put it back.
+        const gone = new Set(progress.flatMap((r) => r.itemIds)).size;
+        if (gone > 0) deps.failedWithUndo(e, t.organize.panel.removedPart(node.name, gone), () => deps.undoRemovals([...progress]));
+        else deps.failed(e);
         return;
       }
       if (removals.length === 0) return;

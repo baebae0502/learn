@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import type { LibraryItem } from '../../packages/domain/src/library';
-import { FIXTURES, importPaths, launch, openItem } from './helpers';
+import { FIXTURES, hardKill, importPaths, launch, openItem } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf'); // 3 pages
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4'); // 10 s (fixtures/generate.mjs)
@@ -22,23 +22,6 @@ async function listed(page: Page, title: string): Promise<LibraryItem> {
 }
 
 const progressOf = async (page: Page, title: string) => (await listed(page, title)).progress;
-
-/** Hard kill of the Electron main process (no quit handlers, no beforeunload); waits at most `timeoutMs` for the exit. */
-async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Promise<void> {
-  const proc = app.process();
-  const pid = proc.pid!;
-  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
-  process.kill(pid, 'SIGKILL');
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Electron main process ${pid} did not exit within ${timeoutMs} ms of SIGKILL`)), timeoutMs);
-  });
-  try {
-    await Promise.race([exited, timedOut]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 test('PDF reopens on the page it was left on; progress reaches library.list', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));

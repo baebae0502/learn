@@ -12,6 +12,7 @@ const BASE: OrganizeSnapshot = {
   members: { bio: ['a', 'b'] },
   tagged: { t1: ['a'] },
   duplicates: [],
+  trashCount: 0,
 };
 
 describe('patching the organize snapshot before the notice brings the real one', () => {

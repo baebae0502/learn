@@ -13,6 +13,7 @@ const BASE: OrganizeSnapshot = {
   members: {},
   tagged: { rng: ['i1'], imp: ['i1', 'i2'], rec: ['i3'], alpha: ['i2'] },
   duplicates: [],
+  trashCount: 0,
 };
 const ITEMS = ['i1', 'i2', 'i3', 'i4'].map((id) => item(id));
 const NOTICE = (slot: string) => `색 태그 ${slot} 없습니다. 태그의 컨텍스트 메뉴에서 색을 지정하세요.`;

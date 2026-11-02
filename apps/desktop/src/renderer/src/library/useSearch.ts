@@ -1,8 +1,10 @@
 import { useDeferredValue, useEffect, useMemo } from 'react';
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { useSearchTexts } from '../data/queries';
+import type { OrganizeModel } from '../organize/model';
 import { useOrganize } from '../organize/useOrganize';
 import { useLibrary } from '../state/library-store';
+import { useViewModel } from '../trash/useTrashSource';
 import { whenIdle } from '../ui/whenIdle';
 import { searchCached, searchIndexFor, type SearchResult, type TagNames } from './search';
 import { tagNamesFor } from './tagField';
@@ -16,12 +18,13 @@ export interface SearchSources {
   settled: boolean;
 }
 
-/** What the search index is built from besides the list; the toolbar, the table and the palette read the same. */
-export function useSearchSources(queryTyped: boolean): SearchSources {
+/** What the search index is built from besides the list; `model` names the tags (the view's: the trash's in the trash view). */
+export function useSearchSources(queryTyped: boolean, model?: OrganizeModel): SearchSources {
   const texts = useSearchTexts(queryTyped).data;
-  const { model, settled } = useOrganize();
-  const tags = useMemo(() => tagNamesFor(model), [model]);
-  return { texts, tags, settled };
+  const organize = useOrganize();
+  const used = model ?? organize.model;
+  const tags = useMemo(() => tagNamesFor(used), [used]);
+  return { texts, tags, settled: organize.settled };
 }
 
 /**
@@ -32,7 +35,7 @@ export function useSearchSources(queryTyped: boolean): SearchSources {
  */
 export function useSearch(items: readonly LibraryItem[]): SearchResult | null {
   const query = useLibrary((s) => s.query);
-  const { texts, tags, settled } = useSearchSources(query.trim() !== '');
+  const { texts, tags, settled } = useSearchSources(query.trim() !== '', useViewModel());
   const deferred = useDeferredValue(query);
   // The index of a new list is built while the window is idle, so the first keystroke does not pay for it. It waits for
   // the tag names, or the first build would be thrown away as they arrive.

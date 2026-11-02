@@ -14,9 +14,11 @@ export const inspector = {
   noneTitle: '선택한 자료 없음',
   noneBody: '표에서 자료를 고르면 정보가 여기에 보입니다.',
   /** "내 라이브러리 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB"; `kinds` and `size` arrive bound (summary.ts). */
-  stats: (scope: string, count: number, kinds: string, size: string) => `${scope}\u00a0· 자료 ${count}개(${kinds})\u00a0· ${size}`,
+  stats: (scope: string, count: number, kinds: string, size: string, collections = '') => `${scope}\u00a0· 자료 ${count}개(${kinds})${collections}\u00a0· ${size}`,
   /** A view with no items yet (a new collection): no kinds, no size. */
-  statsNone: (scope: string) => `${scope}\u00a0· 자료 0개`,
+  statsNone: (scope: string, collections = '') => `${scope}\u00a0· 자료 0개${collections}`,
+  /** The trash view's part for its trashed collections, after the items: "휴지통 · 자료 3개(…) · 컬렉션 1개 · 4.5 MB". */
+  statsCollections: (n: number) => `\u00a0· 컬렉션 ${n}개`,
   kindCount: (kind: string, n: number) => `${kind} ${n}`,
   kindItems: (kind: string, n: number) => `${kind} ${n}개`,
   total: (size: string) => `합계 ${size}`,
@@ -55,6 +57,13 @@ export const inspector = {
   copied: '복사했습니다',
   copyFailedTitle: '복사하지 못했습니다',
   copyFailedBody: '클립보드에 쓸 수 없습니다. 창을 한 번 누른 뒤 다시 복사하세요.',
+  /** 다른 앱에서 고친 수정본 (M6 spec 6): the 파일 section's card, only while there is one. */
+  editedCopies: {
+    head: (n: number) => `다른\u00a0앱에서 고친 수정본 ${n}개`,
+    importNew: '새\u00a0자료로 가져오기',
+    /** Why 새 자료로 가져오기 is off for a copy already put in the queue (until that import is done). */
+    importing: '가져오는 중입니다',
+  },
   /** 정보 편집 (spec §5.3). A field's footnote: the cause, then what to write (design-spec 9). */
   editor: {
     form: '정보 편집',

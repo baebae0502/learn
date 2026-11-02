@@ -19,6 +19,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { c6: ['a'], stats: ['b'] },
   tagged: {},
   duplicates: [['d1', 'd2']],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ITEMS);
 

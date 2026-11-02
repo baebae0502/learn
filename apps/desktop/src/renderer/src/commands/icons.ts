@@ -1,10 +1,14 @@
-import { ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, Command, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Tag, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArchiveRestore, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, History, Keyboard, LibraryBig, Link, PanelLeft, PanelRight, Palette, Pencil, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
 export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'file.importManaged': FilePlus,
   'file.importLinked': Link,
+  'file.backup': DatabaseBackup,
+  'file.restore': History,
+  'file.checkLibrary': Stethoscope,
+  'file.cancelImport': CircleX,
   'library.find': Search,
   'library.findEverywhere': LibraryBig,
   'nav.back': ArrowLeft,
@@ -16,11 +20,15 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'item.exportCopy': FileOutput,
   'collection.addItems': FolderPlus,
   'collection.removeItems': FolderMinus,
+  'item.trash': Trash2,
+  'item.restore': ArchiveRestore,
   'collection.new': FolderPlus,
   'collection.newChild': FolderTree,
   'collection.rename': Pencil,
   'collection.importInto': FolderInput,
   'collection.delete': Trash2,
+  'duplicates.keepOne': CopyMinus,
+  'duplicates.keepOneAll': CopyCheck,
   // The colour keys, the tag chip's menu and 태그 선택 해제; the palette lists the keys and the last only.
   'tag.color1': Tag,
   'tag.color2': Tag,
@@ -44,6 +52,7 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'view.textBigger': ZoomIn,
   'view.textSmaller': ZoomOut,
   'view.textReset': Type,
+  'trash.empty': Trash,
   'view.nextPane': ArrowRightToLine,
   'view.previousPane': ArrowLeftToLine,
   // Not listed in the palette (a run there carries no value); the table is exhaustive.

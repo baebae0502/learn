@@ -221,7 +221,7 @@ test('rename by the ↩ key, the menu and the palette keeps the tree in name ord
   }
 });
 
-test('delete asks in the sheet words, the view moves to the parent, and 실행 취소 brings it back without what was deleted before it', async ({}, testInfo) => {
+test('휴지통으로 이동 asks nothing, the view moves to the parent, and 실행 취소 brings it back without what went before it (M6 spec 4.2)', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
@@ -229,41 +229,32 @@ test('delete asks in the sheet words, the view moves to the parent, and 실행 �
     const c6 = await createCollection(page, '6장', bio);
     await createCollection(page, '7장', bio);
     await addToCollection(page, c6, [pdf!.id]);
-    await stubConfirm(app, 'confirm');
+    await stubConfirm(app, 'confirm'); // records any native question: there must be none
     await stubContextMenu(app, L('collection.delete'));
     await treeRow(page, bio).locator('.disclosure').click();
 
-    // 6장 goes first (it is deleted before its parent).
+    // 6장 goes first (to the trash before its parent).
     await treeRow(page, c6).click({ button: 'right' });
-    await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]).toEqual({ type: 'none', message: '‘6장’\u2060을 삭제하겠습니까?', detail: '자료는 내 라이브러리에 남습니다.', buttons: ['삭제', '취소'], defaultId: 0, cancelId: 1 });
     await expect(treeRow(page, c6)).toHaveCount(0);
+    expect(await confirmCalls(app)).toEqual([]);
     await expect(title(page)).toHaveText('분자생물학'); // the view that was inside it moved to the parent
-    await expect(page.getByTestId('undo-toast').first()).toContainText('‘6장’\u2060을 삭제했습니다');
+    await expect(page.getByTestId('undo-toast').first()).toContainText('‘6장’ 컬렉션을 휴지통으로 옮겼습니다');
     await specialRow(page, 'all').click();
     await expect(page.getByTestId('item-row')).toHaveCount(1); // the item stays in the library
 
-    // The parent has one live child left; the sheet says so and the view goes to 내 라이브러리 (it was top level).
+    // The parent and its live child go together; the view goes to 내 라이브러리 (it was top level).
     await treeRow(page, bio).click({ button: 'right' });
-    await expect.poll(async () => (await confirmCalls(app)).length).toBe(2);
-    expect((await confirmCalls(app))[1]).toMatchObject({ message: '‘분자생물학’\u2060을 삭제하겠습니까?', detail: '하위 컬렉션 1개도 함께 삭제합니다.\n자료는 내 라이브러리에 남습니다.' });
     await expect.poll(() => names(page)).toEqual([]);
     await expect(title(page)).toHaveText('내 라이브러리');
 
-    await page.getByTestId('undo-toast').first().getByTestId('undo-action').click();
-    // 분자생물학 and 7장 are back; 6장 stays deleted — it was deleted by its own act, before its parent.
+    // the newest toast is the lowest: toasts stack oldest first
+    await page.getByTestId('undo-toast').last().getByTestId('undo-action').click();
+    // 분자생물학 and 7장 are back; 6장 stays in the trash — it went by its own act, before its parent.
     await expect.poll(async () => (await names(page)).sort()).toEqual(['7장', '분자생물학']);
     await expect(treeRow(page, bio)).toBeVisible();
     await expect(treeRow(page, bio)).toHaveAttribute('aria-expanded', 'false'); // it comes back folded, though it was open
-
-    // Cancelling the sheet changes nothing; a name ending in a vowel takes 를.
-    const stats = await createCollection(page, '통계');
-    await stubConfirm(app, 'cancel');
-    await treeRow(page, stats).click({ button: 'right' });
-    await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
-    expect((await confirmCalls(app))[0]!.message).toBe('‘통계’\u2060를 삭제하겠습니까?');
-    await expect(treeRow(page, stats)).toBeVisible();
-    expect(await names(page)).toContain('통계');
+    await expect(specialRow(page, 'trash').locator('.count')).toHaveText('1');
+    expect(await confirmCalls(app)).toEqual([]);
   } finally {
     await app.close();
   }

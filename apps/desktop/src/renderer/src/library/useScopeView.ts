@@ -3,8 +3,8 @@ import type { LibraryItem, LibraryScope } from '@learn/domain';
 import { filterByTags } from '../organize/tagFilter';
 import type { OrganizeModel } from '../organize/model';
 import { resolveScope, scopeItems, scopeLabel, scopePath } from '../organize/scope';
-import { useOrganize } from '../organize/useOrganize';
 import { useLibrary } from '../state/library-store';
+import { useViewModel } from '../trash/useTrashSource';
 import { useNow } from '../useNow';
 
 export interface ScopeView {
@@ -29,7 +29,7 @@ export interface ScopeView {
 export function useScopeView(items: readonly LibraryItem[]): ScopeView {
   const chosen = useLibrary((s) => s.scope);
   const tagFilter = useLibrary((s) => s.tagFilter);
-  const { model } = useOrganize();
+  const model = useViewModel();
   const now = useNow().getTime();
   const scope = useMemo(() => resolveScope(model, chosen), [model, chosen]);
   const scoped = useMemo(() => scopeItems(model, items, scope, now), [model, items, scope, now]);

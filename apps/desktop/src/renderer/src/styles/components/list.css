@@ -301,8 +301,8 @@
   .table-row[data-force~='focused'] {
     background: var(--accent);
   }
-  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] :is(.td, .icon, .item-title, .c-tertiary, .c-warning),
-  .table-row[data-force~='focused'] :is(.td, .icon, .item-title, .c-tertiary, .c-warning) {
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .kept-mark),
+  .table-row[data-force~='focused'] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .kept-mark) {
     color: var(--text-on-accent);
   }
   /* Keyboard cursor (design-spec 6): an inset 2 px focus ring, keyboard only (data-focus-visible, LibraryTable). On the
@@ -319,6 +319,27 @@
   .table-row:is([data-drop-target], [data-force~='drop']) {
     background: var(--accent-soft);
     box-shadow: inset 0 0 0 2px var(--accent-ring);
+  }
+
+  /* 중복 항목 (M6 spec 5): the row that stays when its group is cleaned up — a state, so secondary text at 12 px
+     (design-spec 10.5); white with the rest of a focused selected row (above). */
+  .table-row .kept-mark {
+    flex: none;
+    white-space: nowrap;
+    font: var(--type-footnote);
+    color: var(--text-secondary);
+  }
+  /* A duplicate group's first row after another group: a 1 px line in the middle of the gap above it (LibraryTable
+     GROUP_GAP = 4 + 1 + 4), as wide as the row (mockup .table-group-sep). */
+  .table-row[data-group-start]::before {
+    content: '';
+    position: absolute;
+    top: calc(-1 * var(--space-4) - 1px);
+    right: 0;
+    left: 0;
+    height: 1px;
+    background: var(--separator);
+    pointer-events: none;
   }
 
   .inline-flag {

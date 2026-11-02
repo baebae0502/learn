@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, Menu, systemPreferences, type BrowserWindow, type WebContents } from 'electron';
+import { app, dialog, Menu, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -18,7 +18,17 @@ import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic'
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
+import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
+import { IMPORT_FILTERS } from './ipc/library';
 import { createHandle, type IpcDeps } from './ipc/register';
+import { createBackupJob } from './jobs/backup-job';
+import { createRestoreJob } from './jobs/restore-job';
+import { createDuplicateAsker } from './jobs/duplicate-asker';
+import { createImportQueue } from './jobs/import-queue';
+import { createJobLane } from './jobs/lane';
+import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
+import { createLibrarySwitch, refuseLinkedInside, type LibrarySwitch } from './library-folder';
+import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
 import { createMenuRebuilder } from './menu/rebuild';
@@ -64,7 +74,7 @@ if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.comma
 /** Every window loads the same renderer; `?window=` picks what it shows (main, settings, sheet). */
 const rendererBase = devServerUrl ?? `${APP_SCHEME}://app/index.html`;
 const vibrancy = shouldUseVibrancy(process.platform, process.env);
-const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: isDemoOverlay(app.isPackaged, process.env) };
+const urlOptions = { platform: process.platform, deterministic, vibrancy, demo: isDemoOverlay(app.isPackaged, process.env), e2e: isE2E(app.isPackaged, process.env) };
 const chrome = (): ChromeOptions => ({ platform: process.platform, theme: currentTheme(), vibrancy });
 
 registerAppScheme();
@@ -77,11 +87,25 @@ let mainWindow: BrowserWindow | null = null;
 const editFlush = createFlushGate({
   mainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
   quit: () => app.quit(),
+  onStay: () => cancelLibrarySwitch(),
   record: (entry) => {
     // E2E reads what each close or quit was answered.
     if (isE2E(app.isPackaged, process.env)) ((globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ??= []).push(entry);
   },
 });
+
+/** A library switch waiting for the quit to go ahead (library-folder.ts): forgotten when a gate keeps the app, applied in will-quit. */
+let cancelLibrarySwitch = (): void => {};
+let applyLibrarySwitch = (): void => {};
+
+/** The work line (spec 3.1): imports, backups and restores run on it one at a time. */
+const jobs = createJobLane();
+/** Asked before the edit-flush gate on every quit; made with the import queue once the app is ready. */
+let quitGuard: QuitGuard | null = null;
+/** The automatic check sheet stands down once a check sheet is shown or the app quits (library-check.ts AutoGate). */
+let checkStopped = false;
+/** What the startup check did about the automatic sheet (E2E reads it). */
+let autoCheck: AutoOutcome | 'pending' = 'pending';
 
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
@@ -268,7 +292,7 @@ const isSettingsWindow = (sender: WebContents): boolean => {
  * Menu clicks and accelerators act on the main window (also when a settings or sheet window is focused), except the
  * main-owned 설정…, which main runs itself: it works even when the library failed to open or no main window exists.
  */
-function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs): void {
+function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs, byKey?: true): void {
   if (commandId === 'app.settings') {
     const c = commandById('app.settings');
     demoShortcut(c.accelerator!, commandLabel(c, process.platform));
@@ -278,7 +302,7 @@ function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs): void {
   const target = mainWindow;
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
-  sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}) });
+  sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}), ...(byKey ? { byKey } : {}) });
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -351,11 +375,187 @@ if (!app.requestSingleInstanceLock()) {
 
     /** The ⌘/ sheet lists the registry's shortcuts: its height is kept per what it is drawn from. */
     const shortcutsSheetDigest = shortcutsDigest(COMMANDS, process.platform);
-    const deps: IpcDeps = {
-      getContext: () => {
-        if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
-        return ctx;
+    const getContext = (): LibraryContext => {
+      if (!ctx) throw new LearnError('LIBRARY_UNAVAILABLE', libraryError?.message ?? mainStrings.library.unavailable);
+      return ctx;
+    };
+    const sheets = createSheetHost({
+      preload: path.join(here, '../preload/sheet.cjs'),
+      url: () => windowUrl(rendererBase, 'sheet', urlOptions),
+      platform: process.platform,
+      onSheetShown,
+      onSheetClosed,
+      staticKey: (payload) =>
+        payload.kind === 'shortcuts'
+          ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
+          : null,
+    });
+    /** Every native dialog with a parent window goes through this (IpcDeps.windows.asSheet). */
+    const asSheet = async <T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T> => {
+      onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
+      try {
+        return await show();
+      } finally {
+        if (!owner.isDestroyed()) onSheetClosed(owner, { native: true });
+      }
+    };
+    const liveMainWindow = (): BrowserWindow | null => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null);
+    // Every window's imports, one file at a time on the work line; a duplicate question hangs on the window that asked.
+    const imports = createImportQueue({
+      lane: jobs,
+      importer: () => {
+        const c = getContext();
+        return refuseLinkedInside(c.importer, c.layout.root);
       },
+      card: (itemId) => {
+        const item = ctx?.repo.getItem(itemId);
+        return item ? { title: item.title, type: item.type, size: item.size, createdAt: item.createdAt, storageMode: item.storageMode } : null;
+      },
+      ask: createDuplicateAsker<BrowserWindow>({
+        windowOf: (id) => {
+          const win = liveMainWindow();
+          return win && win.webContents.id === id ? win : null;
+        },
+        anyMainWindow: liveMainWindow,
+        sheet: (parent, payload, signal) => sheets.open(parent, payload, signal),
+        messageBox: (options) => dialog.showMessageBox(options),
+      }),
+      fileExisting: (collectionId, itemIds) => {
+        const filed = getContext().collections.addItemsChanged(collectionId, itemIds);
+        if (filed.length > 0) broadcast('libraryChanged', { reason: 'collections', itemIds: filed });
+        return filed.length;
+      },
+      announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
+    });
+    // Every window hears the queue (the progress toast, the busy screen); 기존 자료 열기 opens in the window it was
+    // answered on, which may not be the one that put the file in (spec 3.4).
+    imports.onProgress((state) => broadcast('import:progress', state));
+    imports.onFinished((report, openIn) => {
+      broadcast('import:finished', { report });
+      if (report.openItemId === null || openIn === null) return;
+      const contents = webContents.fromId(openIn);
+      if (contents && !contents.isDestroyed()) sendEvent(contents, 'item:openRequested', { itemId: report.openItemId });
+    });
+    /** The main window drew its first list and went idle (ui.reportIdle): the automatic check sheet may follow. */
+    let firstScreenDrawn = (): void => {};
+    const firstScreen = new Promise<void>((resolve) => {
+      firstScreenDrawn = resolve;
+    });
+    const announceAvailability = (itemIds: string[]) => broadcast('libraryChanged', { reason: 'availability', itemIds });
+    // 라이브러리 점검 (spec 7): the sheet and its actions. Its open panel hangs on the check sheet that asked (Q-8g).
+    const checks = createCheckSheets({
+      context: getContext,
+      sheets,
+      imports,
+      announce: announceAvailability,
+      relinked: (itemIds) => broadcast('libraryChanged', { reason: 'relink', itemIds }),
+      homeDir: app.getPath('home'),
+      pickFile: async (owner, words) => {
+        const res = await asSheet(owner, () => dialog.showOpenDialog(owner, { ...words, properties: ['openFile'], filters: IMPORT_FILTERS }));
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+      reveal: (file) => shell.showItemInFolder(file),
+      stopAuto: () => {
+        checkStopped = true;
+      },
+    });
+    sheets.onAct('libraryCheck', (action, sheet) => checks.act(action, sheet));
+    /**
+     * Another library folder (설정, the restore's 전환): the app is asked to quit, and the folder is saved and the restart
+     * armed in will-quit, when the quit really goes ahead. E2E applies at once and only records the request: Playwright
+     * cannot follow a new process.
+     */
+    const e2e = isE2E(app.isPackaged, process.env);
+    const librarySwitch: LibrarySwitch = createLibrarySwitch({
+      prefs,
+      arm: () => {
+        if (e2e) (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
+        else app.relaunch();
+      },
+      quit: () => {
+        if (e2e) librarySwitch.apply();
+        else setImmediate(() => app.quit());
+      },
+    });
+    cancelLibrarySwitch = () => librarySwitch.cancel();
+    applyLibrarySwitch = () => librarySwitch.apply();
+    const switchLibrary = (target: string): void => librarySwitch.request(target);
+    // 백업 만들기… on the same work line (spec 8.1): the folder panel hangs on the window that asked; the result sheet too.
+    const backup = createBackupJob<BrowserWindow>({
+      lane: jobs,
+      library: () => {
+        const c = getContext();
+        return { layout: c.layout, db: c.db, repo: c.repo, settings: c.settings };
+      },
+      pickFolder: async (owner, { defaultPath }) => {
+        const copy = mainStrings.backup;
+        const options: OpenDialogOptions = { title: copy.pickTitle, message: copy.pickMessage, buttonLabel: copy.pickButton, defaultPath, properties: ['openDirectory', 'createDirectory'] };
+        const res = owner && !owner.isDestroyed() ? await asSheet(owner, () => dialog.showOpenDialog(owner, options)) : await dialog.showOpenDialog(options);
+        return res.canceled ? null : (res.filePaths[0] ?? null);
+      },
+      backupDir: () => prefs.get().backupDir,
+      rememberDir: (dir) => {
+        if (prefs.get().backupDir !== dir) broadcast('prefsChanged', { prefs: prefs.set({ backupDir: dir }) });
+      },
+      documentsDir: () => app.getPath('documents'),
+      homeDir: () => app.getPath('home'),
+      progress: (p) => broadcast('job:progress', p),
+      stored: () => broadcast('settingsChanged', { keys: ['backup.last'] }),
+      showResult: (owner, payload) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        if (!parent) return; // no window left to show it on (macOS): 마지막 백업 in settings still says it
+        void sheets.open(parent, payload);
+      },
+    });
+    // The result sheet's Finder에서 보기 (sheet:act): the folder that sheet names, kept in main; the sheet stays as it is.
+    sheets.onAct('backupDone', async (action, sheet) => {
+      if (action.kind === 'backupDone' && action.act === 'reveal' && sheet.payload.kind === 'backupDone') revealBackupFolder(sheet.payload.location);
+      return sheet.payload;
+    });
+    /** A folder panel over `owner` (a sheet on macOS), or on its own when there is no window. */
+    const pickFolderOver = async (owner: BrowserWindow | null, options: OpenDialogOptions): Promise<string | null> => {
+      const res = owner && !owner.isDestroyed() ? await asSheet(owner, () => dialog.showOpenDialog(owner, options)) : await dialog.showOpenDialog(options);
+      return res.canceled ? null : (res.filePaths[0] ?? null);
+    };
+    const restoreWords = mainStrings.restore;
+    // 백업에서 복원… on the same work line (spec 9): two folder panels over the window that asked, the result sheet after.
+    const restore = createRestoreJob<BrowserWindow>({
+      lane: jobs,
+      libraryRoot: () => libraryRoot,
+      pickBackup: (owner, { defaultPath }) =>
+        pickFolderOver(owner, { title: restoreWords.pickBackupTitle, message: restoreWords.pickBackupMessage, buttonLabel: restoreWords.pickBackupButton, defaultPath, properties: ['openDirectory'] }),
+      pickParent: (owner, { defaultPath }) =>
+        pickFolderOver(owner, {
+          title: restoreWords.pickParentTitle, message: restoreWords.pickParentMessage, buttonLabel: restoreWords.pickParentButton, defaultPath, properties: ['openDirectory', 'createDirectory'],
+        }),
+      backupDir: () => prefs.get().backupDir,
+      documentsDir: () => app.getPath('documents'),
+      homeDir: () => app.getPath('home'),
+      progress: (p) => broadcast('job:progress', p),
+      showResult: (owner, payload) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        // No window left (macOS): the folder is there all the same, and 설정's 다른 폴더 선택… can switch to it.
+        return parent ? sheets.open(parent, payload) : Promise.resolve(null);
+      },
+      switchTo: switchLibrary,
+      switchFailed: (owner, error) => {
+        const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
+        const box: MessageBoxOptions = { type: 'warning', message: restoreWords.switchFailed, detail: error.message, buttons: [restoreWords.ok], defaultId: 0, noLink: true };
+        void (parent ? asSheet(parent, () => dialog.showMessageBox(parent, box)) : dialog.showMessageBox(box));
+      },
+    });
+    // The result sheet's Finder에서 보기: the folder main made, from the payload main holds (the page sends no path).
+    sheets.onAct('restoreDone', async (action, sheet) => {
+      if (action.kind === 'restoreDone' && action.act === 'reveal' && sheet.payload.kind === 'restoreDone') revealRestoredFolder(sheet.payload.location);
+      return sheet.payload;
+    });
+    /** recovery:show: the main window asks for the automatic sheet itself, held as under any sheet it asks for (Q-8d). */
+    const requestAutoCheck = (): void => {
+      const win = liveMainWindow();
+      if (win) sendEvent(win.webContents, 'recovery:show', {});
+    };
+    const deps: IpcDeps = {
+      getContext,
       appInfo: (): AppInfo => ({
         version: app.getVersion(),
         libraryRoot,
@@ -379,61 +579,99 @@ if (!app.requestSingleInstanceLock()) {
       },
       isMainWindow,
       isSettingsWindow,
-      sheets: createSheetHost({
-        preload: path.join(here, '../preload/sheet.cjs'),
-        url: () => windowUrl(rendererBase, 'sheet', urlOptions),
-        platform: process.platform,
-        onSheetShown,
-        onSheetClosed,
-        staticKey: (payload) =>
-          payload.kind === 'shortcuts'
-            ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
-            : null,
-      }),
-      windows: {
-        openSettings: () => void settingsWindow.open(),
-        async asSheet(owner, show) {
-          onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
-          try {
-            return await show();
-          } finally {
-            if (!owner.isDestroyed()) onSheetClosed(owner, { native: true });
-          }
-        },
-      },
+      sheets,
+      jobs,
+      imports,
+      backup,
+      restore,
+      checks,
+      windows: { openSettings: () => void settingsWindow.open(), asSheet },
       theme: {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
-      prepareSettings: () => settingsWindow.prepare(),
-      relaunch() {
-        if (isE2E(app.isPackaged, process.env)) {
-          // Playwright cannot follow a relaunched process: E2E only records the request.
-          (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
-          return;
-        }
-        setImmediate(() => {
-          app.relaunch();
-          app.quit();
-        });
+      // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
+      prepareSettings: () => {
+        settingsWindow.prepare();
+        firstScreenDrawn();
       },
+      switchLibrary,
     };
     registerAllIpc(createHandle(devOrigin), deps);
-    // E2E only (LEARN_E2E=1, never packaged): the seeding hook a large-library test calls through app.evaluate.
+    // A running import, backup or restore is asked about before the edit-flush gate on every quit.
+    quitGuard = createQuitGuard<BrowserWindow>({
+      lane: jobs,
+      remaining: () => {
+        const s = imports.state();
+        return s.total - s.done;
+      },
+      owner: liveMainWindow,
+      ask: async (owner, question) => {
+        const options: MessageBoxOptions = { ...question, buttons: [...question.buttons], noLink: true };
+        const { response } = owner ? await asSheet(owner, () => dialog.showMessageBox(owner, options)) : await dialog.showMessageBox(options);
+        return response === 0;
+      },
+      quit: () => app.quit(),
+      // Linux/Windows quit when the last window closes: staying on without one would leave no way back into the app.
+      onStay: () => {
+        cancelLibrarySwitch();
+        if (process.platform === 'darwin' || liveMainWindow() !== null) return;
+        mainWindow = openMainWindow();
+        refreshFullScreenItem();
+      },
+    });
+    // E2E only (LEARN_E2E=1, never packaged): the hooks tests call through app.evaluate (seeding, the import pause and queue).
     if (isE2E(app.isPackaged, process.env)) {
       installTestHooks({
         repo: () => deps.getContext().repo,
+        importCommits: () => deps.getContext().repo,
         organize: () => {
           const ctx = deps.getContext();
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
+        imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
+        backup,
+        restore,
+        seedFiles: () => {
+          const c = getContext();
+          return { db: c.db, repo: c.repo, layout: c.layout };
+        },
+        check: {
+          state: () => ({ check: ctx?.check ?? null, auto: autoCheck }),
+          request: async () => {
+            await checks.recheck();
+            requestAutoCheck();
+          },
+        },
       });
     }
 
     activation.markReady();
     mainWindow = openMainWindow();
+    markPerf('windowCreated');
     refreshFullScreenItem();
+    // P-18: the library check runs once the window exists, in the background: the first paint never waits for the disk.
+    if (ctx) {
+      void startLibraryCheck(ctx, {
+        announce: announceAvailability,
+        requestAuto: requestAutoCheck,
+        gate: {
+          firstScreen,
+          busy: () => {
+            const win = liveMainWindow();
+            return win === null || isSheetOpen(win) || jobs.busy() !== null || imports.state().state !== 'idle';
+          },
+          stopped: () => checkStopped,
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        },
+      }).then(
+        (outcome) => {
+          autoCheck = outcome;
+        },
+        (e: unknown) => console.error(`[check] the startup check failed: ${toLearnError(e).code}`),
+      );
+    }
   });
 
   // Ignored until the ready path above has registered the protocol and IPC (it opens the first window itself).
@@ -446,9 +684,13 @@ if (!app.requestSingleInstanceLock()) {
     setTimeout(resyncAllWindowStates, 50);
   });
 
-  // Before anything closes: an open 정보 편집 is saved first, or keeps the app (marked fields). Any other before-quit
-  // cleanup registers after this one and must skip a quit this called off (event.defaultPrevented).
-  app.on('before-quit', (event) => editFlush.onBeforeQuit(event));
+  // Before anything closes: a running import, backup or restore is asked about first (it stops, or the quit is off),
+  // then an open 정보 편집 is saved, or keeps the app (marked fields). Any other before-quit cleanup registers after this
+  // one and must skip a quit this called off (event.defaultPrevented).
+  app.on('before-quit', (event) => {
+    if (quitGuard?.onBeforeQuit(event)) return;
+    editFlush.onBeforeQuit(event);
+  });
 
   // ⌘Q, the app menu's 종료, or a relaunch: a prepared settings window nobody opened is closed first — but only when the
   // quit goes ahead; the edit-flush gate above may call this attempt off and quit again after saving.
@@ -461,6 +703,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    applyLibrarySwitch();
+    checkStopped = true;
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });

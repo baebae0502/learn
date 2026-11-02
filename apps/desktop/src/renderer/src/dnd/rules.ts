@@ -1,6 +1,7 @@
 import type { LibraryScope } from '@learn/domain';
 import type { OrganizeModel } from '../organize/model';
 import { DRAFT_KEY, SCOPE_KEYS } from '../sidebar/rows';
+import { MIME_COLLECTION, MIME_ITEMS } from './mime';
 
 /** What a drop target answers to React Aria: nothing (no marker, no drop), an add (copy) or a move. */
 export type DropVerdict = 'cancel' | 'copy' | 'move';
@@ -54,3 +55,10 @@ export function filesOnRow(target: string, model: OrganizeModel | undefined): { 
 
 /** The draft row (a collection not created yet) and the row whose name is being typed take no part in drag and drop: not a source, not a target. */
 export const inertRow = (key: string, editingKey: string | null): boolean => key === DRAFT_KEY || key === editingKey;
+
+/** Rows or a collection row dropped on the sidebar's 휴지통 (spec 4.1, 4.2): to the trash, as a move. Finder's files and tags never. */
+export function onTrashRow(input: { target: string; types: { has(type: string): boolean }; files: boolean; allowed: readonly string[] }): DropVerdict {
+  if (input.target !== SCOPE_KEYS.trash || input.files) return 'cancel';
+  if (!input.types.has(MIME_ITEMS) && !input.types.has(MIME_COLLECTION)) return 'cancel';
+  return input.allowed.includes('move') ? 'move' : 'cancel';
+}

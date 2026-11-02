@@ -16,12 +16,19 @@ async function isFile(p: string): Promise<boolean> {
 
 export async function refreshAvailability(layout: LibraryLayout, repo: LibraryRepository, asset: AssetRow): Promise<Availability> {
   const availability: Availability = (await isFile(resolveAssetPath(layout, asset))) ? 'available' : 'missing';
+  // A purge may have removed the asset while the file was looked at: nothing to write, nothing changed.
+  if (!repo.getAsset(asset.id)) return asset.availability;
   if (availability !== asset.availability) repo.setAvailability(asset.id, availability, nowIso());
   return availability;
 }
 
-export async function refreshLinkedAvailability(layout: LibraryLayout, repo: LibraryRepository): Promise<void> {
-  for (const asset of repo.assetsByMode('linked')) await refreshAvailability(layout, repo, asset);
+/** Looks for every linked original; answers the assets whose availability changed (main announces their items). */
+export async function refreshLinkedAvailability(layout: LibraryLayout, repo: LibraryRepository): Promise<string[]> {
+  const changed: string[] = [];
+  for (const asset of repo.assetsByMode('linked')) {
+    if ((await refreshAvailability(layout, repo, asset)) !== asset.availability) changed.push(asset.id);
+  }
+  return changed;
 }
 
 /** Point a linked asset at a new location — only if the bytes are identical. */

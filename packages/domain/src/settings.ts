@@ -25,6 +25,8 @@ export const SETTINGS = {
   'library.sort': sortSchema,
   /** The recent view's own sort (spec 3.2): the other views share `library.sort`. */
   'library.sort.recent': sortSchema,
+  /** The trash view's own sort (M6 spec 4.3: 삭제한 날짜, newest first, by default). */
+  'library.sort.trash': sortSchema,
   /** The scope the table showed last (spec 3.1). A collection that is gone is dropped by the renderer on read, not here. */
   'library.view': libraryScopeSchema,
   /** The collections the sidebar tree shows open. Ids of collections that no longer exist are dropped on read (the renderer). */
@@ -36,10 +38,22 @@ export const SETTINGS = {
   'ui.lastOpenItemId': z.uuid().nullable(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
+  /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */
+  'recovery.lastShown': z.string().regex(/^[0-9a-f]{64}$/),
+  /**
+   * 마지막 백업 (spec 8.2): when and where this library's last backup was made. Main writes it (MAIN_WRITTEN_SETTINGS); the
+   * settings window reads it through app.backupInfo, which gives the folder's name only.
+   */
+  'backup.last': z.object({ at: z.string().min(1).max(64), folder: z.string().min(2).max(4096).startsWith('/') }).strict(),
 } as const;
 
 export type SettingKey = keyof typeof SETTINGS;
 export const isSettingKey = (key: string): key is SettingKey => Object.hasOwn(SETTINGS, key);
+/**
+ * Keys main writes itself (Q-8e): settings.set refuses them from a page. backup.last also names a folder main shows in
+ * Finder: a page must not be able to point it anywhere (R4).
+ */
+export const MAIN_WRITTEN_SETTINGS: ReadonlySet<SettingKey> = new Set<SettingKey>(['recovery.lastShown', 'backup.last']);
 
 /**
  * What a write may carry beyond what a read accepts. A record has no length of its own: column ids stay open (a later
@@ -68,12 +82,15 @@ export const prefsFields = {
   /** UI text size in pt (lists, menus, panels; reader content zooms separately). */
   fontSize: z.union([z.literal(12), z.literal(13), z.literal(14), z.literal(15)]),
   libraryRoot: z.string().min(1).nullable(),
+  /** The folder the last backup was made in (spec 8.1; ADR-0007 (a), a device's value): the folder panel opens there. Main's own. */
+  backupDir: z.string().min(1).nullable(),
 };
 export const prefsSchema = z.object({
   theme: prefsFields.theme.default('system'),
   density: prefsFields.density.default('regular'),
   fontSize: prefsFields.fontSize.default(13),
   libraryRoot: prefsFields.libraryRoot.default(null),
+  backupDir: prefsFields.backupDir.default(null),
 });
 export type Prefs = z.infer<typeof prefsSchema>;
 /** All defaults: what a window falls back to when reading the prefs failed. */

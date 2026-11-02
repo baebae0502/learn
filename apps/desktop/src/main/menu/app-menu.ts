@@ -1,7 +1,7 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import {
   COMMANDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, commandLabel, platformAccelerator,
-  type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type MenuName, type OrganizeSnapshot, type PickedCommand, type SubmenuSpec,
+  type CommandArgs, type CommandContextState, type CommandId, type CommandSpec, type LabelState, type MenuName, type OrganizeSnapshot, type PickedCommand, type SubmenuSpec,
 } from '@learn/domain';
 import { mainStrings } from '../strings';
 import { dotIcon } from './dot-icon';
@@ -16,8 +16,8 @@ export interface AppMenuOptions {
   commands: readonly CommandSpec[];
   /** availableMenuCommands(context at build time): the only registry items that start enabled (applyMenuEnabled flips them later). */
   enabled: ReadonlySet<CommandId>;
-  /** Registry item clicked (mouse or accelerator); `args` is the value of a submenu row. */
-  onCommand(id: CommandId, args?: CommandArgs): void;
+  /** Registry item clicked (mouse or accelerator); `args` is the value of a submenu row; `byKey` when a key press reached it (Q-6e). */
+  onCommand(id: CommandId, args?: CommandArgs, byKey?: true): void;
   /** The reported UI state that state labels follow (design-spec 7.4); absent before the first report. */
   labels?: MenuLabelState;
   /** Whether the main window is in full screen now (the macOS item says what it will do: 시작 / 종료). */
@@ -65,17 +65,17 @@ function fullScreenItems(opts: AppMenuOptions): Item[] {
 type Item = MenuItemConstructorOptions;
 const SEP: Item = { type: 'separator' };
 
-/** The reported pane states that state labels follow (design-spec 7.4). */
-export type MenuLabelState = Pick<CommandContextState, 'sidebar' | 'inspector'>;
+/** The reported state that state labels follow (design-spec 7.4): the pane states, and the view for ⌘⌫ (P-11). */
+export type MenuLabelState = LabelState;
 
-/** The pane states of a reported context, without the absent ones (the fatal screen reports neither). */
-export function menuLabelState(ctx: MenuLabelState): MenuLabelState {
-  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}) };
+/** The label state of a reported context, without the absent parts (the fatal screen reports no pane). */
+export function menuLabelState<T extends LabelState>(ctx: T): MenuLabelState {
+  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}) };
 }
 
-/** Whether a new report renames a menu item: a pane state that a state label follows has changed. */
+/** Whether a new report renames a menu item: a pane state or the view that a state label follows has changed. */
 export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
-  return before.sidebar !== after.sidebar || before.inspector !== after.inspector;
+  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope;
 }
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
@@ -122,7 +122,8 @@ function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
     const rows = valueRows(c, submenuInput(opts), true);
     return rows.length === 0 ? [] : [{ id: c.id, label, enabled, submenu: entriesToTemplate(rows, picker(opts), barOptions(opts)) }];
   }
-  const click = () => opts.onCommand(c.id);
+  // A key press says so (Q-6e): the page lets a focused text field keep the keys it edits with (⌘⌫).
+  const click: NonNullable<Item['click']> = (_item, _window, event) => (event?.triggeredByAccelerator ? opts.onCommand(c.id, undefined, true) : opts.onCommand(c.id));
   const [id, ...twinIds] = menuItemIds(c);
   const item: Item = { id, label, enabled, click };
   if (c.accelerator) item.accelerator = platformAccelerator(c.accelerator, opts.platform);

@@ -12,7 +12,8 @@ const SHEET: readonly WindowKind[] = ['sheet'];
  * exposes exactly its kind's channels (preload/surfaces.test.ts holds the two together).
  *
  * - main: the library window — all but the settings window's library location and the sheets' own channels. Channels
- *   no page calls yet (collections, tags, trash, the recovery report) are the main window's (M5, M6).
+ *   no page calls yet (collections, tags, trash, the library check) are the main window's (M5, M6) — and the fatal
+ *   screen's 업데이트 전 백업 (it is the main window's page).
  * - settings: what SettingsApp calls. Not ui.openSettings: its ⌘, is the menu's, which main runs itself.
  * - sheet: its payload and its answer.
  */
@@ -20,18 +21,30 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'app:info': MAIN_AND_SETTINGS,
   'app:showLibraryFolder': SETTINGS,
   'app:chooseLibraryFolder': SETTINGS,
+  'app:backupInfo': SETTINGS,
+  'app:revealBackup': SETTINGS,
+  'app:revealUpdateBackup': MAIN,
 
   'library:pickAndImport': MAIN,
   'library:import': MAIN,
+  'library:cancelImport': MAIN,
   'library:list': MAIN,
   'library:get': MAIN,
   'library:pickAndRelink': MAIN,
-  'library:recoveryReport': MAIN,
+  'library:check': MAIN,
   'library:detail': MAIN,
   'library:updateMetadata': MAIN,
   'library:trash': MAIN,
   'library:restore': MAIN,
-  'library:listTrash': MAIN,
+  'library:trashView': MAIN,
+  'library:purge': MAIN,
+  'library:emptyTrash': MAIN,
+  'library:keepOneOfDuplicates': MAIN,
+  'library:keepOneOfAllDuplicates': MAIN,
+  'library:undoKeepOne': MAIN,
+  'library:editedCopies': MAIN,
+  'library:importEditedCopy': MAIN,
+  'library:revealEditedCopy': MAIN,
   'library:duplicateGroups': MAIN,
   'library:showInFolder': MAIN,
   'library:openExternally': MAIN,
@@ -40,6 +53,10 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'library:getItems': MAIN,
   'library:exportCopy': MAIN,
   'library:revealExport': MAIN,
+
+  'backup:create': MAIN,
+  'backup:cancel': MAIN,
+  'backup:restore': MAIN,
 
   'collections:list': MAIN,
   'collections:create': MAIN,
@@ -72,8 +89,8 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'ui:showContextMenu': MAIN,
   'ui:windowState': MAIN_AND_SETTINGS,
   'ui:reportContext': MAIN,
-  'ui:confirmDuplicate': MAIN,
   'ui:confirm': MAIN,
+  'ui:confirmPurge': MAIN,
   'ui:showShortcuts': MAIN,
   'ui:openSettings': MAIN,
   'ui:themeShown': MAIN_AND_SETTINGS,
@@ -82,4 +99,5 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
 
   'sheet:payload': SHEET,
   'sheet:resolve': SHEET,
+  'sheet:act': SHEET,
 };

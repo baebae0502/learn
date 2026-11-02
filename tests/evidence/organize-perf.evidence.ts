@@ -8,11 +8,12 @@
 // taken in the capture phase on the window, so nothing of ours runs before the clock starts.
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, createCollection, importPaths, ipcCalls, launch, recordedPopupTimes, rowAt, seedRows, stubContextMenu } from '../e2e/helpers';
+import { FIXTURES, createCollection, importPaths, launch, recordedPopupTimes, rowAt, seedRows, stubContextMenu } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { limitFailures } from './budget';
 import { seedOrganizeFixture, type ScopeFact } from './organize-fixture';
 import { median } from './percentile';
+import { grew, settleCalls, settleIndex } from './settle';
 
 /** spec 12, ms. Linux CI fails beyond twice each. */
 const ORGANIZE_BUDGET_MS = { organizeIpc: 50, scopeSwitch: 100, tagFilter: 100, keyOneSelected: 100, keyAllSelected: 300, drop100: 200, contextMenu10k: 150 } as const;
@@ -20,7 +21,6 @@ const ITEMS = 10_000;
 /** Every single-shot timing at least five times (spec 12). */
 const RUNS = 5;
 const DROP_ROWS = 100;
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const tenth = (x: number) => Math.round(x * 10) / 10;
 
 /** The markup of other tasks this test reads. */
@@ -148,34 +148,6 @@ async function revealNavRow(page: Page, testId: string): Promise<void> {
 async function arm(page: Page, kind: 'down' | 'key' | 'drop', spec: Settled): Promise<() => Promise<number | null>> {
   await page.evaluate(([k, sp]) => (window as unknown as { __learnOrg: OrgProbe }).__learnOrg.after(k, sp), [kind, spec] as const);
   return () => page.evaluate(() => (window as unknown as { __learnOrg: OrgProbe }).__learnOrg.result());
-}
-
-/** Call counts once none has changed for `quietMs`: what an action started has finished. */
-async function settleCalls(app: ElectronApplication, quietMs = 300): Promise<Record<string, number>> {
-  let last = JSON.stringify(await ipcCalls(app));
-  let since = Date.now();
-  while (Date.now() - since < quietMs) {
-    await sleep(60);
-    const now = JSON.stringify(await ipcCalls(app));
-    if (now !== last) {
-      last = now;
-      since = Date.now();
-    }
-  }
-  return JSON.parse(last) as Record<string, number>;
-}
-const grew = (before: Record<string, number>, after: Record<string, number>, channel: string) => (after[channel] ?? 0) - (before[channel] ?? 0);
-
-/** The search index is built at an idle moment after each list (useSearch): wait until no new build starts, so that long task lands in no timing. */
-async function settleIndex(page: Page, app: ElectronApplication): Promise<void> {
-  let last = -1;
-  for (let i = 0; i < 30; i++) {
-    const n = await page.evaluate(() => performance.getEntriesByName('learn:search:index', 'measure').length);
-    if (n > 0 && n === last) break;
-    last = n;
-    await sleep(700);
-  }
-  await settleCalls(app, 500);
 }
 
 const summary = (runs: readonly number[]) => ({ runs: runs.map(tenth), median: tenth(median(runs)), max: tenth(Math.max(...runs)) });

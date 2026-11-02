@@ -156,7 +156,7 @@
     display: none;
   }
 
-  /* Library location: a read-only path (no field chrome), the full path in its tooltip, cut at the end. */
+  /* Library location: a read-only path (no field chrome), the full path in its tooltip, cut in the middle. */
   .settings .path-box {
     display: flex;
     align-items: center;
@@ -167,6 +167,19 @@
   }
   .settings .path-box .icon {
     color: var(--accent-text);
+  }
+  /* The library path gives way in the middle: the folders take the ellipsis, the last name (with its separator) stays whole.
+     Head and tail share one flex child of the box, so the box's gap stays between the icon and the path. */
+  .settings .path-box .path-split {
+    display: flex;
+    min-width: 0;
+  }
+  .settings .path-box .path-head {
+    min-width: 0;
+  }
+  .settings .path-box .path-tail {
+    flex: none;
+    white-space: nowrap;
   }
   .settings .row-actions {
     display: flex;

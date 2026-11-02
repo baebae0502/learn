@@ -54,34 +54,43 @@ export function toggleColumn(cfg: ColumnConfig, id: LibraryColumnId): ColumnConf
   return { ...cfg, visible: LIBRARY_COLUMN_IDS.filter((c) => (c === id ? !on : cfg.visible.includes(c))) };
 }
 
+/** A column one view draws last and keeps there (the trash's 삭제한 날짜, M6 spec 4.3). */
+const trailing = (id: LibraryColumnId): boolean => columnSpec(id).trashOnly === true;
+
 /**
- * The shown columns in the stored order. `forced` columns are shown whatever the config says and sit right after the
- * title (the recent view's 마지막으로 연 날, spec 3.2); the rest keep their order.
+ * The shown columns in the stored order. `forced` columns are shown whatever the config says: right after the title (the
+ * recent view's 마지막으로 연 날, spec 3.2), or last for a column only one view draws (the trash's 삭제한 날짜), which no other
+ * view shows whatever library.columns says. The rest keep their order.
  */
 export function visibleColumns(cfg: ColumnConfig, forced: readonly LibraryColumnId[] = []): LibraryColumnSpec[] {
-  const rank = (id: LibraryColumnId) => (id === 'title' ? 0 : forced.includes(id) ? 1 : 2);
+  const rank = (id: LibraryColumnId) => (id === 'title' ? 0 : forced.includes(id) ? (trailing(id) ? 3 : 1) : 2);
   return completeOrder(cfg.order)
-    .filter((id) => cfg.visible.includes(id) || forced.includes(id))
+    .filter((id) => forced.includes(id) || (cfg.visible.includes(id) && !trailing(id)))
     .sort((a, b) => rank(a) - rank(b)) // stable: a rank keeps the stored order inside it
     .map(columnSpec);
 }
 
 /** How many leading columns are fixed: the title and the forced columns shown after it. They take no drag and nothing goes before them. */
 export const pinnedCount = (shown: readonly LibraryColumnId[], forced: readonly LibraryColumnId[]): number =>
-  shown.filter((id) => id === 'title' || forced.includes(id)).length;
+  shown.filter((id) => id === 'title' || (forced.includes(id) && !trailing(id))).length;
+
+/** How many columns are fixed at the end (the trash's 삭제한 날짜): they take no drag and nothing goes after them. */
+export const trailingCount = (shown: readonly LibraryColumnId[], forced: readonly LibraryColumnId[]): number =>
+  shown.filter((id) => forced.includes(id) && trailing(id)).length;
 
 /**
  * The configuration with column `id` moved to `slot`: a boundary between the shown columns (0 before the first, `n`
  * after the last). It lands right before the column that follows the boundary, or right after the last shown column,
  * in the whole order — hidden columns keep their place. The same object comes back when nothing moves: the column is
- * the title, a forced one or not shown, the boundary is before the pinned columns or outside the table, or it is the
- * column's own.
+ * the title, a forced one or not shown, the boundary is before the pinned columns, after the fixed last column or
+ * outside the table, or it is the column's own.
  */
 export function moveColumn(cfg: ColumnConfig, forced: readonly LibraryColumnId[], id: LibraryColumnId, slot: number): ColumnConfig {
   const shown = visibleColumns(cfg, forced).map((c) => c.id);
   const pinned = pinnedCount(shown, forced);
+  const last = shown.length - trailingCount(shown, forced);
   const from = shown.indexOf(id);
-  if (from < pinned || slot < pinned || slot > shown.length || slot === from || slot === from + 1) return cfg;
+  if (from < pinned || from >= last || slot < pinned || slot > last || slot === from || slot === from + 1) return cfg;
   const others = shown.filter((c) => c !== id);
   const before = others[slot > from ? slot - 1 : slot];
   const rest = completeOrder(cfg.order).filter((c) => c !== id);
@@ -131,9 +140,21 @@ export function tradeWidths(
   return out;
 }
 
+/**
+ * The author column's default in the trash view, where 삭제한 날짜 needs 124 (the longest value, "오늘 오후 12:59", is 87 px plus
+ * the cell's 8 + 24): the six default columns still fit a 1024 window with the panel closed (240 + 776 + 8). A width the user dragged stays.
+ */
+export const TRASH_CREATORS_WIDTH = 168;
+
 /** The shown columns' pixel widths, the title's excepted: stored, else the default (the grid's tracks). */
-export const fixedWidths = (cfg: ColumnConfig, visible: readonly LibraryColumnSpec[]): Map<LibraryColumnId, number> =>
-  new Map(visible.flatMap((c) => (c.defaultWidth === null ? [] : [[c.id, widthOf(cfg, c)!] as const])));
+export const fixedWidths = (cfg: ColumnConfig, visible: readonly LibraryColumnSpec[]): Map<LibraryColumnId, number> => {
+  const trash = visible.some((c) => trailing(c.id));
+  return new Map(
+    visible.flatMap((c) =>
+      c.defaultWidth === null ? [] : [[c.id, trash && c.id === 'creators' && cfg.widths.creators === undefined ? TRASH_CREATORS_WIDTH : widthOf(cfg, c)!] as const],
+    ),
+  );
+};
 
 /** How far a row's fill sits in from the table's sides (design-spec 6 표: 표 몸통은 좌우 8 안쪽). */
 export const ROW_INSET = 8;

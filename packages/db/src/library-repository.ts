@@ -1,10 +1,14 @@
 import {
   LearnError, clipSearchText, creatorNames, itemMetadataSchema, nowIso, parseItemMetadata, yearOf,
-  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type LibraryItem, type SearchText, type StorageMode,
+  type Availability, type DuplicateGroup, type ItemDetail, type ItemMetadata, type ItemType, type KeepOneResult, type KeepOneUndo, type LibraryItem,
+  type SearchText, type StorageMode, type TrashView,
 } from '@learn/domain';
 import type { Db } from './connection';
+import { nextDeletionStamp } from './deletion-stamp';
+import { keepOneOf, undoKeepOne } from './duplicates';
 import { CollectionsRepository } from './collections-repository';
 import { TagsRepository } from './tags-repository';
+import { emptyTrash, purgeTrash, trashedCollections, trashPlaces, type PurgeResult } from './trash';
 
 export interface AssetRow {
   id: string;
@@ -40,6 +44,18 @@ export interface LibraryCounts {
   tags: number;
   itemTags: number;
   readingPositions: number;
+  /** In the trash (spec 8.3: items with and without it) — the live counts above leave them out. */
+  trashedItems: number;
+  trashedCollections: number;
+}
+
+/** An item whose original file is a given asset (a restore names the items its problems touch, spec 9.3). */
+export interface AssetItem {
+  assetId: string;
+  itemId: string;
+  title: string;
+  /** In the trash: listed after the live ones. */
+  trashed: boolean;
 }
 
 export interface MetadataUpdate {
@@ -54,12 +70,12 @@ interface AssetDbRow {
 interface ItemDbRow {
   id: string; title: string; type: ItemType; created_at: string; updated_at: string; metadata_json: string;
   asset_id: string; mime: string; size: number; storage_mode: StorageMode; availability: Availability; original_name: string;
-  sha256: string; external_path: string | null; revision_id: string; progress: number | null; opened_at: string | null;
+  sha256: string; external_path: string | null; revision_id: string; progress: number | null; opened_at: string | null; deleted_at: string | null;
 }
 
 /** Item + original asset + latest revision + reading position. Callers add the deleted_at filter (ITEM_SELECT / TRASH_SELECT). */
 const ITEM_FROM = `
-SELECT i.id, i.title, i.type, i.created_at, i.updated_at, i.metadata_json,
+SELECT i.id, i.title, i.type, i.created_at, i.updated_at, i.metadata_json, i.deleted_at,
        a.id AS asset_id, a.mime, a.size, a.storage_mode, a.availability, a.original_name, a.sha256, a.external_path,
        (SELECT r.id FROM source_revisions r WHERE r.asset_id = a.id
          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS revision_id,
@@ -104,6 +120,35 @@ export class LibraryRepository {
 
   allAssets(): AssetRow[] {
     return (this.db.prepare('SELECT * FROM assets ORDER BY created_at, rowid').all() as AssetDbRow[]).map(toAsset);
+  }
+
+  /** How many items, the trash too, have each asset as their original: a backup counts its linked and lost files by item (spec 8.2). */
+  itemCountsByAsset(): Map<string, number> {
+    const rows = this.db.prepare(`SELECT asset_id AS id, COUNT(*) AS n FROM item_assets WHERE role = 'original' GROUP BY asset_id`).all() as Array<{ id: string; n: number }>;
+    return new Map(rows.map((r) => [r.id, r.n]));
+  }
+
+  /**
+   * The items, the trash's too, whose original file is one of `assetIds`: live ones first, then the trash's, each in the
+   * order it came in; an item once.
+   */
+  originalItemsOf(assetIds: readonly string[]): AssetItem[] {
+    const ids = [...new Set(assetIds)];
+    const rows: Array<{ assetId: string; itemId: string; title: string; trashed: number; createdAt: string; seq: number }> = [];
+    for (let start = 0; start < ids.length; start += GET_ITEMS_CHUNK) {
+      const chunk = ids.slice(start, start + GET_ITEMS_CHUNK);
+      rows.push(
+        ...(this.db
+          .prepare(
+            `SELECT ia.asset_id AS assetId, i.id AS itemId, i.title AS title, (i.deleted_at IS NOT NULL) AS trashed, i.created_at AS createdAt, i.rowid AS seq
+             FROM item_assets ia JOIN items i ON i.id = ia.item_id
+             WHERE ia.role = 'original' AND ia.asset_id IN (${chunk.map(() => '?').join(', ')})`,
+          )
+          .all(...chunk) as typeof rows),
+      );
+    }
+    rows.sort((a, b) => a.trashed - b.trashed || a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq);
+    return rows.map((r) => ({ assetId: r.assetId, itemId: r.itemId, title: r.title, trashed: r.trashed === 1 }));
   }
 
   assetsByMode(mode: StorageMode): AssetRow[] {
@@ -272,9 +317,9 @@ export class LibraryRepository {
     return row && toItem(row);
   }
 
-  /** Detail pane data for a non-trashed item. */
+  /** Detail pane data for an item, also one in the trash (its panel is read-only: Task 6, Q-6b). */
   getItemDetail(id: string): ItemDetail {
-    const row = this.db.prepare(`${ITEM_SELECT} AND i.id = ?`).get(id) as ItemDbRow | undefined;
+    const row = this.db.prepare(`${ITEM_FROM} WHERE i.id = ?`).get(id) as ItemDbRow | undefined;
     if (!row) throw itemNotFound();
     const metadata = parseItemMetadata(row.metadata_json);
     return {
@@ -327,8 +372,8 @@ export class LibraryRepository {
   trashChanged(itemIds: readonly string[]): string[] {
     return this.db.transaction(() => {
       const stmt = this.db.prepare('UPDATE items SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL');
-      const now = nowIso();
-      return itemIds.filter((id) => stmt.run(now, id).changes > 0);
+      const stamp = nextDeletionStamp(this.db);
+      return itemIds.filter((id) => stmt.run(stamp, id).changes > 0);
     })();
   }
 
@@ -345,10 +390,49 @@ export class LibraryRepository {
     })();
   }
 
-  /** Trashed items, most recently deleted first. */
-  listTrash(): LibraryItem[] {
-    const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
-    return rows.map((r) => toItem(r));
+  /** The trash view (spec 4.3): its collection rows and the trashed items, most recently trashed first, in one read. */
+  trashView(): TrashView {
+    return this.db.transaction((): TrashView => {
+      const rows = this.db.prepare(`${TRASH_SELECT} ORDER BY i.deleted_at DESC, i.rowid DESC`).all() as ItemDbRow[];
+      return { collections: trashedCollections(this.db), items: rows.map((r) => ({ ...toItem(r), deletedAt: r.deleted_at! })), ...trashPlaces(this.db) };
+    })();
+  }
+
+  /** 영구 삭제 of trashed items and collection rows (live and unknown ids are skipped): trash.ts. The files are the caller's, after this returns. */
+  purge(asked: { itemIds: readonly string[]; collectionIds: readonly string[] }): PurgeResult {
+    return purgeTrash(this.db, asked);
+  }
+
+  /** 휴지통 비우기: trash.ts. */
+  emptyTrash(): PurgeResult {
+    return emptyTrash(this.db);
+  }
+
+  /** 하나만 남기고 휴지통으로 for the duplicate groups of these items (duplicates.ts). */
+  keepOneOfDuplicates(itemIds: readonly string[]): KeepOneResult {
+    return keepOneOf(this.db, itemIds);
+  }
+
+  /** 중복 N묶음 모두 정리: every duplicate group (duplicates.ts). */
+  keepOneOfAllDuplicates(): KeepOneResult {
+    return keepOneOf(this.db, null);
+  }
+
+  /** The undo of either; returns the items restored (duplicates.ts). */
+  undoKeepOne(undo: KeepOneUndo): string[] {
+    return undoKeepOne(this.db, undo);
+  }
+
+  /**
+   * Whether an asset row holds this managed path now. Asked again right before a purged copy goes: an import may have
+   * placed the same file since the purge committed. Imports write `assets/<xx>/<sha256>`, found through the sha index.
+   */
+  managedPathInUse(relativePath: string): boolean {
+    const sha = relativePath.slice(relativePath.lastIndexOf('/') + 1);
+    const row = /^[0-9a-f]{64}$/.test(sha)
+      ? this.db.prepare('SELECT 1 FROM assets WHERE sha256 = ? AND relative_path = ?').get(sha, relativePath)
+      : this.db.prepare('SELECT 1 FROM assets WHERE relative_path = ?').get(relativePath);
+    return row !== undefined;
   }
 
   /** Non-trashed items whose original files have identical content (same sha256, any storage mode), 2+ per group. */
@@ -399,6 +483,8 @@ export class LibraryRepository {
       tags: n('SELECT COUNT(*) AS n FROM tags'),
       itemTags: n('SELECT COUNT(*) AS n FROM item_tags'),
       readingPositions: n('SELECT COUNT(*) AS n FROM reading_positions'),
+      trashedItems: n('SELECT COUNT(*) AS n FROM items WHERE deleted_at IS NOT NULL'),
+      trashedCollections: n('SELECT COUNT(*) AS n FROM collections WHERE deleted_at IS NOT NULL'),
     };
   }
 }

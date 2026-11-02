@@ -298,7 +298,8 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
 
     expectLearnError(() => repo.getItemDetail(newId()), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
     repo.trash([itemId]);
-    expectLearnError(() => repo.getItemDetail(itemId), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
+    // The trash view's read-only panel reads it too (M6 Task 6, Q-6b).
+    expect(repo.getItemDetail(itemId).item.id).toBe(itemId);
   });
 
   it('trashes and restores items, listing the trash most recently deleted first', () => {
@@ -315,15 +316,15 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
 
     expect(repo.listItems().map((i) => i.id)).toEqual([c]);
     expect(repo.getItem(a)).toBeUndefined();
-    const trash = repo.listTrash();
-    expect(trash.map((i) => i.id)).toEqual([b, a]);
+    const trash = repo.trashView().items;
+    expect(trash.map((i) => [i.id, i.deletedAt])).toEqual([[b, '2026-10-20T03:00:00.000Z'], [a, '2026-10-20T02:00:00.000Z']]);
     expect(trash[1]).toMatchObject({ id: a });
     expect(trash[1]).not.toHaveProperty('tagIds');
     expect((db.prepare('SELECT deleted_at FROM items WHERE id = ?').get(a) as { deleted_at: string }).deleted_at).toBe('2026-10-20T02:00:00.000Z');
     expect(repo.counts().items).toBe(1);
 
     expect(repo.restore([a, c, newId()])).toBe(1); // only a was in the trash
-    expect(repo.listTrash().map((i) => i.id)).toEqual([b]);
+    expect(repo.trashView().items.map((i) => i.id)).toEqual([b]);
     expect(repo.getItem(a)).toMatchObject({ id: a });
     expect(repo.listItems().map((i) => i.id).sort()).toEqual([a, c].sort());
   });
@@ -362,8 +363,43 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     cols.addItems(cols.create({ name: 'c' }).id, [itemId]);
     new ReadingRepository(db).save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null });
     expect(repo.counts()).toEqual({
-      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1,
+      items: 1, assets: 1, revisions: 1, collections: 1, collectionItems: 1, tags: 1, itemTags: 1, readingPositions: 1, trashedItems: 0, trashedCollections: 0,
     });
+  });
+
+  it('counts the trash apart: the items and collections in it, which the live counts leave out (spec 8.3)', () => {
+    seedItem(db, { title: 'kept' });
+    const gone = seedItem(db, { title: 'gone' });
+    const cols = new CollectionsRepository(db);
+    const parent = cols.create({ name: 'p' });
+    cols.create({ name: 'child', parentId: parent.id });
+    repo.trash([gone.itemId]);
+    cols.softDelete(parent.id);
+    expect(repo.counts()).toMatchObject({ items: 1, trashedItems: 1, collections: 0, trashedCollections: 2 });
+  });
+
+  it('itemCountsByAsset: how many items, the trash too, have each asset as their original', () => {
+    const a = seedItem(db, { title: 'a' });
+    seedItem(db, { title: 'twin', reuseAsset: a.asset });
+    const b = seedItem(db, { title: 'b' });
+    repo.trash([b.itemId]);
+    expect(Object.fromEntries(repo.itemCountsByAsset())).toEqual({ [a.asset.id]: 2, [b.asset.id]: 1 });
+  });
+  it('originalItemsOf: the items, the trash\'s too, whose original file is one of the assets — live ones first, each in the order it came in', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-30T01:00:00.000Z'));
+    const a = seedItem(db, { title: 'a-first' });
+    vi.setSystemTime(new Date('2026-10-30T02:00:00.000Z'));
+    const twin = seedItem(db, { title: 'a-twin', reuseAsset: a.asset });
+    const b = seedItem(db, { title: 'b' });
+    seedItem(db, { title: 'untouched' });
+    repo.trash([a.itemId]);
+    expect(repo.originalItemsOf([a.asset.id, b.asset.id, a.asset.id])).toEqual([
+      { assetId: a.asset.id, itemId: twin.itemId, title: 'a-twin', trashed: false },
+      { assetId: b.asset.id, itemId: b.itemId, title: 'b', trashed: false },
+      { assetId: a.asset.id, itemId: a.itemId, title: 'a-first', trashed: true },
+    ]);
+    expect(repo.originalItemsOf([])).toEqual([]);
   });
 });
 

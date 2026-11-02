@@ -3,12 +3,13 @@
 //   pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts --update-snapshots=all, then restore any jitter-only rewrite.
 // @2x captures for the design critic, without updating (the baselines stay as committed):
 //   LEARN_TOUR_2X=1 pnpm e2e:xvfb tests/e2e/visual/tour.spec.ts → test-results/tour/
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, closeSheet, createCollection, createTag, drag, expectWindow, holdCopies, importFiles, importPaths, mainWindow, menuItemEnabled, openItem, releaseCopies, rowAt, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubSaveDialog, tagChip, treeRow, type Session,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
@@ -41,12 +42,34 @@ const library = (dir: string) => [
   fixedSizeCopy(path.join(FIXTURES, 'sample-mpeg4part2.mp4'), dir, TOUR_VIDEO_BYTES.mpeg4),
 ];
 
+/** A file named `name` in `dir`: `src`'s bytes and a line of its own (new content every time, and for every `salt`), zero-extended to `bytes`. */
+function sizedCopy(src: string, dir: string, name: string, bytes: number, salt = ''): string {
+  fs.mkdirSync(dir, { recursive: true });
+  const out = path.join(dir, name);
+  fs.writeFileSync(out, Buffer.concat([fs.readFileSync(src), Buffer.from(`\n% ${name}${salt}\n`)]));
+  if (fs.statSync(out).size > bytes) throw new Error(`${name} outgrew its tour size (${bytes} B)`);
+  fs.truncateSync(out, bytes);
+  return out;
+}
+
 /** What changes between runs in the item panel: its dates, a fixture's SHA-256 (pdf-lib writes the date), an outside file's path. */
 const panelMasks = (page: Page) => [
   page.locator('[data-testid="info-row"]:is([data-field="createdAt"], [data-field="updatedAt"]) dd'),
   page.getByTestId('sha-value'),
   page.locator('[data-testid="file-row"][data-field="location"] dd'),
 ];
+/**
+ * Under a palette the dates behind the scrim are hidden, not masked: a mask is painted over everything, so one on a date
+ * the palette covers also covered the palette's corner and scroll bar (critique 5).
+ */
+const BEHIND_PALETTE = [
+  '[data-testid="item-row"] [data-col="createdAt"]',
+  '[data-testid="info-row"]:is([data-field="createdAt"], [data-field="updatedAt"]) dd',
+  '[data-testid="sha-value"]',
+  '[data-testid="file-row"][data-field="location"] dd',
+]
+  .map((sel) => `${sel} { visibility: hidden !important; }`)
+  .join('\n');
 /** One item in the panel as it stays: its kind line (the page count or length is read from the file, later) and its sections. */
 async function panelSettled(page: Page, kind: string | RegExp): Promise<void> {
   await expect(page.getByTestId('inspector-kind')).toHaveText(kind);
@@ -66,7 +89,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     // A linked file that went missing: the row shows the link mark and the 파일 없음 flag.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(LIBRARY[0]!, gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await s.page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -87,7 +110,7 @@ test('library: empty, list, collapsed sidebar, failure toasts', async ({}, testI
     // A duplicate opens the duplicate sheet (shot in its own test below): close it, which skips.
     const dup = await expectWindow(s.app, 'sheet', () => importFiles(s, [path.join(FIXTURES, 'sample.pdf')]));
     await closeSheet(dup, 'Escape');
-    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
+    await waitImportIdle(s.page);
     const txt = testInfo.outputPath('notes.txt');
     fs.writeFileSync(txt, 'x');
     await importFiles(s, [txt]);
@@ -221,7 +244,7 @@ test('item panel: nothing selected, one item, several, a missing original, folde
     // A linked original that went missing: 다시 연결… leads.
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(LIBRARY[0]!, gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     await s.page.evaluate(async () => {
       const list = await window.learn.library.list();
@@ -329,6 +352,132 @@ test('sheets: duplicate and shortcuts', async ({}, testInfo) => {
   }
 });
 
+const fileSha = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const managedCopy = (lib: string, file: string) => {
+  const sha = fileSha(file);
+  return path.join(lib, 'assets', sha.slice(0, 2), sha);
+};
+
+test('library check sheet: automatic, every row, a row fixed (M6 spec 7.2, P-26)', async ({}, testInfo) => {
+  const dir = testInfo.outputPath();
+  const lib = path.join(dir, 'library');
+  const outside = path.join(dir, 'outside');
+  fs.mkdirSync(outside, { recursive: true });
+  const linkedSrc = path.join(outside, 'Calcium Signaling Revisited.pdf');
+  fs.writeFileSync(linkedSrc, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from('\n% linked\n')]));
+  const files = library(dir);
+  // Two more documents whose copies go missing with the others: four in all, so the row names two and says 외 2개.
+  const extras = ['Extra A', 'Extra B'].map((n) => sizedCopy(path.join(FIXTURES, 'sample.pdf'), path.join(dir, 'extra'), `${n}.pdf`, 60_000));
+  let s = await launchTour(dir);
+  await importPaths(s.page, files);
+  await importPaths(s.page, extras);
+  await importPaths(s.page, [linkedSrc], { mode: 'linked' });
+  await s.app.close();
+  // Left while the app was closed (the mockup's automatic scene): two stopped imports, a damaged copy set aside, the
+  // linked original moved away.
+  for (const n of ['11111111-1111-4111-8111-111111111111.part', '22222222-2222-4222-8222-222222222222.part']) fs.writeFileSync(path.join(lib, 'staging', n), Buffer.alloc(2_060_000, 1));
+  fs.writeFileSync(path.join(lib, 'staging', `corrupt-${fileSha(files[0]!)}-44444444-4444-4444-8444-444444444444`), Buffer.alloc(4_200_000, 2));
+  fs.renameSync(linkedSrc, path.join(outside, 'moved.pdf'));
+  s = await launchTour(dir);
+  const masks = (sheet: Page) => [sheet.locator('.ce-path')]; // the original's folder is the test's own
+  try {
+    // The sheet that opened by itself was measured before the tour sized the window: closed, and asked for again.
+    await closeSheet(await waitForSheet(s.app), 'Escape');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+      await shoot(sheet, `check-auto-${theme}`, { mask: masks(sheet) });
+      await closeSheet(sheet, 'Escape');
+    }
+    // Every row (recovery-full): an unused copy, an orphan edited copy, two managed copies gone.
+    fs.mkdirSync(path.join(lib, 'assets', 'cc'), { recursive: true });
+    fs.writeFileSync(path.join(lib, 'assets', 'cc', 'c'.repeat(64)), Buffer.alloc(96_000, 3));
+    const edit = path.join(lib, 'derived', 'open', '0a1b2c3d-4e5f-4061-8172-8394a5b6c7d8', '단백질 접힘 정리 (수정본 2026-10-18 2210).pdf');
+    fs.mkdirSync(path.dirname(edit), { recursive: true });
+    fs.writeFileSync(edit, Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(3_091, 4)]));
+    for (const f of [files[1]!, files[2]!, ...extras]) fs.rmSync(managedCopy(lib, f));
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+      // The sheet is at its cap on Linux: the list scrolls inside its card under the head and over the foot, 외 2개 in the row.
+      await expect(sheet.getByTestId('check-more')).toHaveText('외 2개');
+      await expect.poll(() => sheet.getByTestId('check-scroll').evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
+      await shoot(sheet, `check-full-${theme}`, { mask: masks(sheet) });
+      // The one action that cannot be undone asks in its row (Q-8h), right after 지우기…; esc keeps the copies.
+      await sheet.getByTestId('check-askClean').click();
+      await expect(sheet.getByTestId('check-confirm')).toBeVisible();
+      await shoot(sheet, `check-confirm-${theme}`, { mask: masks(sheet) });
+      await sheet.keyboard.press('Escape');
+      await expect(sheet.getByTestId('check-confirm')).toHaveCount(0);
+      await closeSheet(sheet, 'Escape');
+    }
+    // 파일 › 라이브러리 점검… with something to do (Q-8i): the rows to act on, and no sentence at the foot.
+    await setTheme(s.page, 'light');
+    await expect.poll(() => menuItemEnabled(s.app, 'file.checkLibrary')).toBe(true);
+    const manual = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.checkLibrary'));
+    await expect(manual.getByTestId('check-cleanStaging')).toBeVisible();
+    await expect(manual.getByTestId('check-hint')).toHaveCount(0);
+    await shoot(manual, 'check-manual-light', { mask: masks(manual) });
+    await closeSheet(manual, 'Escape');
+    // A row fixed in place: 임시 파일 정리, both themes on the one sheet.
+    const sheet = await expectWindow(s.app, 'sheet', () => requestLibraryCheck(s.app));
+    await sheet.getByTestId('check-cleanStaging').click();
+    await expect(sheet.locator('[data-testid="check-row"][data-kind="staging"]')).toHaveAttribute('data-state', 'done');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      // The open sheet follows the native theme on its own: wait for it before the shot.
+      await expect.poll(() => sheet.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+      await shoot(sheet, `check-fixed-${theme}`, { mask: masks(sheet) });
+    }
+    await closeSheet(sheet, 'Escape');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('library check sheet: nothing wrong (파일 › 라이브러리 점검…, recovery-ok)', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    await importPaths(s.page, library(testInfo.outputPath()));
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await expect.poll(() => menuItemEnabled(s.app, 'file.checkLibrary')).toBe(true);
+      const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.checkLibrary'));
+      await shoot(sheet, `check-ok-${theme}`);
+      await closeSheet(sheet, 'Enter');
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.4): the duplicate question with its box for the rest, ticked as it opens; the existing station above is the
+// single duplicate, which has no box.
+test('sheets: duplicate with the box for the remaining duplicates', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  try {
+    const dir = testInfo.outputPath('again');
+    const twice = ['molbio_ch06_signaling.pdf', 'molbio_ch07_receptors.pdf', 'molbio_ch08_kinases.pdf'].map((n) => sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, n, 1_000_000));
+    await importPaths(s.page, twice);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, twice));
+      await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
+      await shoot(sheet, `sheet-duplicate-rest-${theme}`, { mask: [sheet.getByTestId('dup-card').locator('.t-footnote')] });
+      if (theme === 'light') {
+        // Tab from 건너뛰기 round to the box: its ring is the keyboard's.
+        for (let i = 0; i < 6 && !(await sheet.locator('label.checkbox[data-focus-visible]').count()); i++) await sheet.keyboard.press('Tab');
+        await expect(sheet.locator('label.checkbox[data-focus-visible]')).toHaveCount(1);
+        await shoot(sheet, 'sheet-duplicate-rest-focus-light', { mask: [sheet.getByTestId('dup-card').locator('.t-footnote')], keepPointer: true });
+      }
+      await closeSheet(sheet, 'Escape'); // 건너뛰기 for all three: the box was ticked
+      await waitImportIdle(s.page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('selection commands: the palette with one selected row lists 폴더에서 보기 and 기본 앱으로 열기', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   try {
@@ -339,7 +488,7 @@ test('selection commands: the palette with one selected row lists 폴더에서 �
     await expect.poll(() => menuItemEnabled(s.app, 'item.showInFolder')).toBe(true);
     await runMenuCommand(s.app, 'app.palette');
     await expect(s.page.locator('[data-testid="palette-item"][data-command-id="item.openExternally"]')).toBeVisible();
-    await shoot(s.page, 'palette-selection-light', { mask: [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)] });
+    await shoot(s.page, 'palette-selection-light', { style: BEHIND_PALETTE });
   } finally {
     await s.app.close();
   }
@@ -376,8 +525,6 @@ async function paletteLibrary(s: Session, dir: string): Promise<string[]> {
 
 test('palette: empty query, 자료 results (palette.html), commands only, no results, and the cursor row when the window is not key', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  // The table's dates in its rows only and whatever moves in the item panel behind the scrim.
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   const input = s.page.getByTestId('palette-input');
   const cursor = s.page.locator('.palette [role="option"][data-focused]');
   try {
@@ -387,30 +534,30 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       await runMenuCommand(s.app, 'app.palette');
       // Every available command, the cursor on the first; nothing ran from the palette yet.
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
-      await shoot(s.page, `palette-empty-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-empty-${theme}`, { style: BEHIND_PALETTE });
       // palette.html: 자료 above 명령, the matched 신호 in each title, 저자 · 연도 on the right, 라이브러리에서 ‘신호’ 검색 last.
       await input.fill('신호');
       await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
       await expect(cursor).toHaveAttribute('data-testid', 'palette-result');
       await expect(s.page.locator('.p-foot')).toContainText('ㅅㅎ → 신호');
-      await shoot(s.page, `palette-items-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-items-${theme}`, { style: BEHIND_PALETTE });
       // Commands only, the search row under them (ㄱㅈㅇ: 파일 가져오기… alone, in no title) — M3's palette-{light,dark} state.
       await input.fill('ㄱㅈㅇ');
       await expect(cursor).toHaveAttribute('data-command-id', 'file.importManaged');
       await expect(s.page.getByTestId('palette-search-library')).toBeVisible();
-      await shoot(s.page, `palette-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-${theme}`, { style: BEHIND_PALETTE });
       if (theme === 'light') {
         // ㄱ: several command rows (빠른 검색 by its 검색, 항목 패널 by 가리기), the <mark> in accent text on the rows the cursor is not on.
         await input.fill('ㄱ');
         await expect(s.page.getByTestId('palette-item').nth(2)).toBeVisible();
         await expect(s.page.locator('[data-testid="palette-item"]:not([data-focused]) mark').first()).toBeVisible();
-        await shoot(s.page, 'palette-multi-light', { mask: dates() });
+        await shoot(s.page, 'palette-multi-light', { style: BEHIND_PALETTE });
       }
       // palette.html ?state=none: the notice, then the search row under the cursor; the foot says ↩ 실행 · esc 닫기.
       await input.fill('효소 억제제');
       await expect(s.page.getByTestId('palette-empty')).toBeVisible();
       await expect(cursor).toHaveAttribute('data-testid', 'palette-search-library');
-      await shoot(s.page, `palette-none-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-none-${theme}`, { style: BEHIND_PALETTE });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
@@ -426,7 +573,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
       (globalThis as { __probeWindow?: unknown }).__probeWindow = w;
     });
     await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
-    await shoot(s.page, 'palette-inactive-light', { mask: dates() });
+    await shoot(s.page, 'palette-inactive-light', { style: BEHIND_PALETTE });
     await s.app.evaluate(() => (globalThis as { __probeWindow?: { close(): void } }).__probeWindow?.close());
     await (await mainWindow(s.app)).evaluate((w) => w.focus());
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive', '');
@@ -439,7 +586,7 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
     const longSub = s.page.getByTestId('palette-result').first().locator('.p-sub');
     await expect(longSub).toContainText('김하늘');
     await expect.poll(() => longSub.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
-    await shoot(s.page, 'palette-long-light', { mask: dates() });
+    await shoot(s.page, 'palette-long-light', { style: BEHIND_PALETTE });
   } finally {
     await s.app.close();
   }
@@ -447,7 +594,6 @@ test('palette: empty query, 자료 results (palette.html), commands only, no res
 
 test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   try {
     const ids = await paletteLibrary(s, testInfo.outputPath('media'));
     const bio = await createCollection(s.page, '분자생물학');
@@ -461,7 +607,7 @@ test('palette: the 컬렉션 group between 자료 and 명령 (palette.html)', as
       await expect(s.page.getByTestId('palette-result')).toHaveCount(4);
       await expect(s.page.getByTestId('palette-collection')).toHaveCount(1);
       await expect(s.page.locator('.palette .p-group')).toHaveText(['자료', '컬렉션', '명령']);
-      await shoot(s.page, `palette-collections-${theme}`, { mask: dates() });
+      await shoot(s.page, `palette-collections-${theme}`, { style: BEHIND_PALETTE });
       await s.page.keyboard.press('Escape');
       await expect(s.page.getByTestId('palette')).toBeHidden();
     }
@@ -567,6 +713,122 @@ test('settings window (light, dark, focus, not key, a refused folder), compact d
   }
 });
 
+// 백업 (spec 8; dialogs.html?scene=jobs, ?scene=backup, ?scene=backup-missing, settings.html): the backup's toast with an
+// import waiting behind it, the result sheet, 마지막 백업. Files of fixed sizes, so the bar and the sizes read the same
+// everywhere; the minute (the folder's name, the sheet's first line, the settings date) is masked.
+test('backup: its toast with an import waiting behind it, the result sheet (and with a lost copy), 마지막 백업 in settings', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const dir = path.join(home, 'Library', 'Application Support', 'Learn');
+  const s = await launchTour(dir, { HOME: home });
+  const documents = path.join(home, 'Documents');
+  fs.mkdirSync(documents, { recursive: true });
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  const sheetMasks = (sheet: Page) => [sheet.getByTestId('backup-when'), sheet.getByTestId('backup-location')];
+  try {
+    const src = testInfo.outputPath('src');
+    await importPaths(s.page, [fixedSizeCopy(path.join(FIXTURES, 'sample.pdf'), src, 1_500_000), h264(src)]);
+    const more = distinctPdfs(testInfo.outputPath('more'), 2);
+    for (const p of more) fs.truncateSync(p, 1_000_000);
+    const toastsGone = () => expect(s.page.locator('[data-pane="toasts"] .toast')).toHaveCount(0, { timeout: 15_000 });
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await toastsGone(); // an earlier result toast would sit under the backup's (5 s), and the two themes must show the same stack
+      await backupPause(s.app);
+      await stubFolderPicker(s.app, documents);
+      await runMenuCommand(s.app, 'file.backup');
+      await expect.poll(() => backupWaiting(s.app)).not.toBeNull();
+      await importFiles(s, more.slice(0, 2));
+      await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-job');
+      await expect(s.page.getByTestId('backup-progress')).toHaveAttribute('data-state', 'running');
+      await shoot(s.page, `toast-backup-jobs-${theme}`, { mask: [...dates(), s.page.getByTestId('backup-progress').locator('.t-file')] });
+      // The waiting import is cancelled, so the library keeps its two items and both themes back up (and show) the same.
+      await s.page.getByTestId('import-cancel').click();
+      await expect(s.page.getByTestId('import-progress')).toHaveCount(0);
+      const sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
+      await expect(sheet.getByTestId('backup-files')).toContainText('손상 없음');
+      await shoot(sheet, `sheet-backup-${theme}`, { mask: sheetMasks(sheet) });
+      await closeSheet(sheet, 'Enter');
+      await waitImportIdle(s.page);
+      const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+      await expect(settings.getByTestId('last-backup-date')).toBeVisible();
+      await shoot(settings, `settings-backup-${theme}`, { mask: [settings.getByTestId('last-backup-date')] });
+      await settings.close();
+      await (await mainWindow(s.app)).evaluate((w) => w.focus());
+    }
+    // A managed copy gone from the library: the sheet says it was kept without its file (?scene=backup-missing).
+    await setTheme(s.page, 'light');
+    const assets = path.join(dir, 'library', 'assets');
+    const shard = fs.readdirSync(assets).sort()[0]!;
+    fs.rmSync(path.join(assets, shard, fs.readdirSync(path.join(assets, shard))[0]!));
+    await stubFolderPicker(s.app, documents);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
+    await expect(sheet.getByTestId('backup-missing-note')).toBeVisible();
+    await shoot(sheet, 'sheet-backup-missing-light', { mask: sheetMasks(sheet) });
+    await closeSheet(sheet, 'Enter');
+  } finally {
+    await s.app.close();
+  }
+});
+
+// 복원 (spec 9; dialogs.html?scene=restore, ?scene=restore-issues): the result sheet, the one with problems, and the restore's
+// toast (as ?scene=jobs draws the backup's). Files of fixed sizes, so the bar reads the same everywhere; the backup's minute,
+// the restored folder's name and the table's dates are masked.
+test('restore: the result sheet (and with problems), its toast', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const dir = path.join(home, 'Library', 'Application Support', 'Learn');
+  const s = await launchTour(dir, { HOME: home });
+  const backups = path.join(home, 'Documents');
+  fs.mkdirSync(backups, { recursive: true });
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const masks = (sheet: Page) => [sheet.getByTestId('restore-when'), sheet.getByTestId('restore-location')];
+  // Restored beside the library (its parent, the second panel's default): ~/Library/Application Support/Learn/Learn 복원 ….
+  const restoreFrom = async (backup: string) => {
+    await stubFolderPicks(s.app, [backup, dir]);
+    return expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.restore'));
+  };
+  try {
+    const src = testInfo.outputPath('src');
+    const items = await importPaths(s.page, [
+      fixedSizeCopy(path.join(FIXTURES, 'sample.pdf'), src, 1_500_000),
+      fixedSizeCopy(path.join(FIXTURES, '한글 경로 (테스트) #1.pdf'), src, 900_000),
+      h264(src),
+    ]);
+    const bio = await createCollection(s.page, '분자생물학');
+    await addToCollection(s.page, bio, [items[0]!.id]);
+    await assignTag(s.page, await createTag(s.page, '시험 범위'), [items[1]!.id]);
+    await stubFolderPicker(s.app, backups);
+    await closeSheet(await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup')), 'Enter');
+    const backup = path.join(backups, fs.readdirSync(backups).find((n) => n.startsWith('Learn 백업'))!);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await restoreFrom(backup);
+      await expect(sheet.getByTestId('restore-files')).toHaveText('3개 확인 · 손상 없음');
+      await shoot(sheet, `sheet-restore-${theme}`, { mask: masks(sheet) });
+      await closeSheet(sheet, 'Escape');
+    }
+    // A file the backup no longer holds and one whose contents changed (?scene=restore-issues).
+    await setTheme(s.page, 'light');
+    const listed = (JSON.parse(fs.readFileSync(path.join(backup, 'manifest.json'), 'utf8')) as { assets: Array<{ included: boolean; relativePath: string | null }> }).assets;
+    const [lost, changed] = listed.filter((a) => a.included);
+    fs.rmSync(path.join(backup, ...lost!.relativePath!.split('/')));
+    fs.appendFileSync(path.join(backup, ...changed!.relativePath!.split('/')), 'changed on the way');
+    const issues = await restoreFrom(backup);
+    await expect(issues.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'warning');
+    await shoot(issues, 'sheet-restore-issues-light', { mask: masks(issues) });
+    await closeSheet(issues, 'Escape');
+    // The restore's toast while it copies (the backup's machine, P-3).
+    await restorePause(s.app);
+    await stubFolderPicks(s.app, [backup, dir]);
+    await runMenuCommand(s.app, 'file.restore');
+    await expect.poll(() => restoreWaiting(s.app)).not.toBeNull();
+    await expect(s.page.getByTestId('restore-progress')).toHaveAttribute('data-state', 'running');
+    await shoot(s.page, 'toast-restore-light', { mask: [...dates(), s.page.getByTestId('restore-progress').locator('.t-file')] });
+    await closeSheet(await expectWindow(s.app, 'sheet', () => restoreResume(s.app)), 'Escape');
+  } finally {
+    await s.app.close();
+  }
+});
+
 /**
  * A home folder inside the test folder (HOME for the app): paths on screen read "~/…" the same on every machine, so
  * the path lines need no mask. Returns its path.
@@ -589,7 +851,7 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
     const gone = path.join(home, 'Downloads', 'gone.pdf');
     fs.mkdirSync(path.dirname(gone), { recursive: true });
     fs.copyFileSync(path.join(FIXTURES, 'sample.pdf'), gone);
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked', allowDuplicate: true }), gone);
+    await importPaths(s.page, [gone], { mode: 'linked', allowDuplicate: true });
     fs.rmSync(gone);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
@@ -825,7 +1087,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('viewer-title')).toBeVisible();
     await runMenuCommand(s.app, 'nav.back');
-    await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), path.join(FIXTURES, 'sample.pdf'));
+    await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')], { allowDuplicate: true });
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
     await specialRow(s.page, 'unfiled').click();
     await shoot(s.page, 'sidebar-special-light', { mask: dates() });
@@ -842,6 +1104,111 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
 
 // M5: the tag selector and the table's dots. Pairs for the critic: library.html (the selector at the sidebar's foot, the
 // dots in the title cell, a selected row on the accent fill) and components.html?part=1 (chips, the eight colours).
+// M6: the trash. Pairs for the critic: library.html?state=trash (the sidebar row, a collection row on top, 삭제한 날짜 last,
+// 휴지통 비우기… in the head, a row's read-only panel), dialogs.html?scene=purge and ?scene=empty-trash (the app sheet),
+// reader-pdf.html?state=trashed (the stage notice) and components.html?part=1 (the undo toast).
+test('trash: the undo toast, the trash view and its read-only panel, the purge and empty-trash sheets, the reader notice', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  // The days in the table's body rows (not its header: the sort mark stays in the picture), the trash line's time alone
+  // (its icon and wording stay), and what moves in the item panel.
+  const dates = () => [s.page.locator('[data-row-id] :is([data-col="createdAt"], [data-col="deletedAt"])'), s.page.getByTestId('trash-note-when'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const conf = await createCollection(s.page, '학회 준비');
+    await createCollection(s.page, '발표', conf);
+    await addToCollection(s.page, conf, [items[0]!.id]);
+    const exam = await createTag(s.page, '시험 범위');
+    await assignTag(s.page, exam, [items[1]!.id]);
+    await setTheme(s.page, 'light');
+
+    // The trash view: one collection row (발표 inside it), two items; the first trashed item selected, its read-only panel.
+    await trashItems(s.page, [items[1]!.id, items[2]!.id]);
+    await s.page.evaluate((id) => window.learn.collections.remove({ collectionId: id }), conf);
+    await specialRow(s.page, 'trash').click();
+    await rowByTitle(s.page, items[1]!.title).click();
+    await expect(s.page.getByTestId('inspector-restore')).toBeVisible();
+    await panelSettled(s.page, /^PDF/);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `trash-view-${theme}`, { mask: dates() });
+    }
+
+    // 영구 삭제… on that row, and 휴지통 비우기….
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const purge = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
+      await shoot(purge, `sheet-purge-${theme}`);
+      await closeSheet(purge, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'trash.empty')).toBe(true);
+      const empty = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'trash.empty'));
+      await shoot(empty, `sheet-empty-trash-${theme}`);
+      await closeSheet(empty, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'item.trash')).toBe(true);
+    }
+
+    // More than one row, and a collection row (C-5): a third item joins the trash; three rows chosen (no sheet), then the collection.
+    await trashItems(s.page, [items[3]!.id]);
+    await expect(rowByTitle(s.page, items[3]!.title)).toBeVisible();
+    await selectRows(s.page, [items[1]!.title, items[2]!.title, items[3]!.title]);
+    await expect(s.page.getByTestId('inspector-trash')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `trash-selection-${theme}`, { mask: dates() });
+    }
+    await setTheme(s.page, 'light');
+    await s.page.locator('[data-testid="trash-collection-row"]').first().click();
+    await expect(s.page.getByTestId('inspector-kind')).toContainText('컬렉션');
+    await shoot(s.page, 'trash-collection-light', { mask: dates() });
+
+    // The reader: its item moved to the trash.
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'all').click();
+    await openItem(s.page, items[0]!.title);
+    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await trashItems(s.page, [items[0]!.id]);
+    await expect(s.page.getByTestId('reader-trashed')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `reader-trashed-${theme}`);
+    }
+
+    // The toasts, last (a success toast closes 5 s after it first paints, so none may be on screen in another shot): each is
+    // shot at once and waited out before the next. ⌘⌫ on one row: the undo toast names it.
+    const gone = (id: string) => expect(s.page.getByTestId(id)).toHaveCount(0, { timeout: 12_000 });
+    await setTheme(s.page, 'light');
+    await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
+    await specialRow(s.page, 'all').click();
+    await rowByTitle(s.page, items[0]!.title).click();
+    await runMenuCommand(s.app, 'item.trash');
+    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
+    await shoot(s.page, 'toast-trash-undo-light', { mask: dates() });
+    await gone('trash-undo');
+    await setTheme(s.page, 'dark');
+    await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
+    await rowByTitle(s.page, items[0]!.title).click();
+    await runMenuCommand(s.app, 'item.trash');
+    await expect(s.page.getByTestId('trash-undo')).toBeVisible();
+    await shoot(s.page, 'toast-trash-undo-dark', { mask: dates() });
+    await gone('trash-undo');
+    // 복원 and 영구 삭제… from the trash view: their result toasts.
+    await setTheme(s.page, 'light');
+    await specialRow(s.page, 'trash').click();
+    await rowByTitle(s.page, items[1]!.title).click();
+    await s.page.getByTestId('inspector-restore').click();
+    await expect(s.page.getByTestId('restore-done')).toBeVisible();
+    await shoot(s.page, 'toast-restore-done-light', { mask: dates() });
+    await gone('restore-done');
+    await rowByTitle(s.page, items[2]!.title).click();
+    await expect.poll(() => menuItemEnabled(s.app, 'item.trash')).toBe(true);
+    const purge = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'item.trash'));
+    await clickToCloseSheet(purge, purge.getByTestId('purge-confirm'));
+    await expect(s.page.getByTestId('purge-done')).toBeVisible();
+    await shoot(s.page, 'toast-purge-done-light', { mask: dates() });
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('organize: the tag selector with a filter and dim chips, the table dots with a selected row, and the filter that leaves nothing', async ({}, testInfo) => {
   const s = await launchTour(testInfo.outputPath());
   const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
@@ -1009,6 +1376,95 @@ test('organize: the item panel with tags and collections, the add field, several
   }
 });
 
+// M6: 중복 항목 with two groups — 남김 on the kept rows (white on the selected one), the line between the groups, 중복 N묶음
+// 모두 정리 — and the item panel's edited copy. Pairs for the critic: library.html?state=duplicates and ?state=edited.
+test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line and 모두 정리; the item panel edited copy', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const dir = testInfo.outputPath('in');
+    fs.mkdirSync(dir, { recursive: true });
+    const named = (name: string) => {
+      const file = path.join(dir, name);
+      fs.writeFileSync(file, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'sample.pdf')), Buffer.from(`\n% ${name}\n`)]));
+      return file;
+    };
+    const kinase = named('Kinase Cascades A Primer.pdf');
+    const molbio = named('분자생물학 6장 · 신호 전달.pdf');
+    const cell = named('세포생물학 3장.pdf');
+    // Imported K, M, K, K, M: newest first the M group (2 rows) comes before the K group (3), as the mockup draws them.
+    await importPaths(s.page, [kinase]);
+    const [m1] = await importPaths(s.page, [molbio]);
+    await importPaths(s.page, [kinase], { allowDuplicate: true });
+    await importPaths(s.page, [kinase], { allowDuplicate: true });
+    await importPaths(s.page, [molbio], { allowDuplicate: true });
+    const [c1] = await importPaths(s.page, [cell]);
+
+    await specialRow(s.page, 'duplicates').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    await expect(s.page.getByTestId('keep-all-duplicates')).toBeVisible();
+    // The M group's kept row selected with the table focused (the mockup selects it): its 남김 in white.
+    await s.page.locator(`[data-testid="item-row"][data-item-id="${m1!.id}"]`).click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `duplicates-view-${theme}`, { mask: masks() });
+    }
+    // The same selection with the focus in the sidebar: the grey selected row, 남김 in secondary on it (T7 critique 2 라).
+    await setTheme(s.page, 'light');
+    await s.page.getByTestId('nav-scope-duplicates').focus();
+    await shoot(s.page, 'duplicates-unfocused-light', { mask: masks() });
+
+    // A copy kept aside under the mockup's name and time (as the next 기본 앱으로 열기 would), so it reads the same every run.
+    await setTheme(s.page, 'light');
+    const folder = path.join(testInfo.outputPath(), 'library', 'derived', 'open', c1!.assetId);
+    fs.mkdirSync(folder, { recursive: true });
+    const aside = path.join(folder, '세포생물학 3장 (수정본 2026-10-30 1412).pdf');
+    fs.writeFileSync(aside, Buffer.concat([fs.readFileSync(cell), Buffer.from('% edited\n')]));
+    const at = new Date('2026-10-30T05:12:00Z'); // 오후 2:12 in Seoul (launchTour's TZ)
+    fs.utimesSync(aside, at, at);
+    await specialRow(s.page, 'all').click();
+    await s.page.locator(`[data-testid="item-row"][data-item-id="${c1!.id}"]`).click();
+    await panelSettled(s.page, 'PDF · 3쪽');
+    await expect(s.page.getByTestId('edited-copy')).toHaveCount(1);
+    await s.page.getByTestId('edited-copies').scrollIntoViewIfNeeded();
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `edited-copy-${theme}`, { mask: masks() });
+    }
+
+    // The clean-up's other states (T7 critique 2). 가, the item menu on a non-kept row, is a native popup: its picture is not
+    // reproducible across machines (the menu takes the system's fonts: tofu on the CI runner, CI 41300686469), so the order of its
+    // lines is asserted below (and in duplicates.spec) and the picture is left to the Mac evidence.
+    await specialRow(s.page, 'duplicates').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    const newest = s.page.locator('[data-testid="item-row"]').first();
+    const gone = (id: string) => expect(s.page.getByTestId(id)).toHaveCount(0, { timeout: 12_000 });
+    // 나 and 다 (light): the toast after 하나만 남기고 휴지통으로, then — with its 실행 취소 pressed — 중복 2묶음 모두 정리, which leaves for
+    // 내 라이브러리 (no 중복 항목 row in the tree). The toasts are last: each is waited out before the next picture.
+    await setTheme(s.page, 'light');
+    await stubContextMenu(s.app, '하나만 남기고 휴지통으로');
+    await newest.click({ button: 'right' });
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 항목 1개를 휴지통으로 옮겼습니다');
+    const menu = (await recordedPopups(s.app)).at(-1)!.map((i) => i.label);
+    expect(menu[menu.indexOf('휴지통으로 이동') - 1]).toBe('하나만 남기고 휴지통으로'); // right above 휴지통으로 이동
+    await shoot(s.page, 'toast-duplicates-done-light', { mask: masks() });
+    await s.page.getByTestId('undo-action').click();
+    await expect(s.page.getByTestId('item-row')).toHaveCount(5);
+    await gone('undo-toast');
+    await s.page.getByTestId('keep-all-duplicates').click();
+    await expect(specialRow(s.page, 'duplicates')).toHaveCount(0);
+    await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
+    // The toast is what says what happened once the view has left 중복 항목 (two groups: 2 + 1).
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 항목 3개를 휴지통으로 옮겼습니다');
+    await shoot(s.page, 'toast-duplicates-all-light', { mask: masks() });
+    await gone('undo-toast');
+    await shoot(s.page, 'duplicates-cleaned-light', { mask: masks() });
+  } finally {
+    await s.app.close();
+  }
+});
+
 // M5: drag and drop at rest. A drag cannot be held for a screenshot (the tour parks the pointer), so the drop state is
 // forced on a real tree row and a real table row, in the window the drag would run in; the drag image and the heading are on the
 // state board (part 5). Pairs for the critic: components.html?part=1 ("드롭 대상 (⌘ 이동)") and library.html for the window.
@@ -1073,6 +1529,109 @@ test('drag and drop: a tree row and a table row as drop targets, then the board 
       expect(await s.page.getByTestId('gallery').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(true);
       await shoot(s.page, `gallery5-${theme}`);
     }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.3, mockup importToast and components part 2): the progress toast while a run goes — one file in, the next held
+// before its commit, so the count and the bar agree (1 / 3, half of the work) — and the result
+// that takes it over after 취소, in both themes (each theme is a run of its own: the result closes by itself after 5 s).
+const LONG_VIDEO = '분자생물학 강의 08 · 세포 신호 전달과 효소 조절 (2026 가을 학기 녹화본).mp4';
+test('import progress toast: running, then the result in its place after 취소', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  try {
+    await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const progress = s.page.getByTestId('import-progress');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const dir = testInfo.outputPath(`incoming-${theme}`);
+      const files = [
+        sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 3장.pdf', 1_500_000, theme),
+        sizedCopy(path.join(FIXTURES, 'sample-h264-aac.mp4'), dir, LONG_VIDEO, 4_200_000, theme),
+        sizedCopy(path.join(FIXTURES, 'sample.pdf'), dir, '세포생물학 4장.pdf', 1_500_000, theme),
+      ];
+      await importPause(s.app, 'beforeCommit');
+      await importFiles(s, files);
+      await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+      await importPause(s.app, 'beforeCommit'); // the next file is held too
+      await importResume(s.app);
+      await expect(progress).toContainText('가져오는 중 · 1 / 3');
+      await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+      await expect(progress.locator('.pct')).toHaveText('50%'); // 1.5 MB in, half of the 4.2 MB under way, of 7.2 MB
+      await shoot(s.page, `toast-import-running-${theme}`, { mask: dates() });
+      if (theme === 'light') {
+        // The keyboard's ring on 취소 (a key first, so it is the keyboard's).
+        await s.page.keyboard.press('Shift');
+        await progress.getByTestId('import-cancel').focus();
+        await shoot(s.page, 'toast-import-focus-cancel-light', { mask: dates(), keepPointer: true });
+        await progress.getByTestId('import-cancel').blur(); // a focus the keyboard left in the toast would keep the result from closing by itself
+        // F6 lands on the toast itself: its ring is the whole toast's outline (Task 4 review Open-1).
+        await progress.focus();
+        await expect(progress).toHaveAttribute('data-focus-visible', 'true');
+        await shoot(s.page, 'toast-import-focus-toast-light', { mask: dates(), keepPointer: true });
+        await progress.blur();
+      }
+      // Not the button: pressing it takes the focus into the toast and leaves it there when the result replaces the button.
+      await s.page.evaluate(() => window.learn.library.cancelImport());
+      await importResume(s.app);
+      await expect(s.page.getByTestId('import-done')).toContainText('3개 중 2개를 가져왔습니다');
+      await expect(s.page.getByTestId('import-done')).toContainText('취소해서 남은 1개는 가져오지 않았습니다.');
+      await shoot(s.page, `toast-import-cancelled-${theme}`, { mask: dates() });
+      await waitImportIdle(s.page);
+      await expect(s.page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 });
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// M6 (spec 3.4, mockup dialogs.html?scene=duplicate): three duplicates asked at the end — the toast waiting under the sheet; the palette opened during an import, held when the question comes; and an import waiting
+// behind another job (mockup dialogs.html?scene=jobs).
+test('import progress toast: waiting for a choice (and the sheet\'s box), the palette under it, waiting for the work before it', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const pdf = path.join(FIXTURES, 'sample.pdf');
+  try {
+    await importPaths(s.page, library(testInfo.outputPath('videos')));
+    const dir = testInfo.outputPath('again');
+    const twice = ['molbio_ch06_signaling.pdf', 'molbio_ch07_receptors.pdf', 'molbio_ch08_kinases.pdf'].map((n) => sizedCopy(pdf, dir, n, 1_000_000));
+    await importPaths(s.page, twice);
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, twice));
+      await expect(sheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
+      await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+      await shoot(s.page, `toast-import-choice-${theme}`, { mask: dates() });
+      await closeSheet(sheet, 'Escape'); // 건너뛰기 for all three: the box was ticked
+      await waitImportIdle(s.page);
+    }
+    await setTheme(s.page, 'light');
+    await importPause(s.app, 'afterStage');
+    await importFiles(s, [sizedCopy(pdf, dir, 'molbio_ch09_cycle.pdf', 1_000_000), twice[0]!]);
+    await expect.poll(() => importWaiting(s.app)).toBe('afterStage');
+    await runMenuCommand(s.app, 'app.palette');
+    await expect(s.page.getByTestId('palette-input')).toBeFocused();
+    const sheet = await expectWindow(s.app, 'sheet', () => importResume(s.app));
+    await expect(s.page.getByTestId('palette-busy')).toBeVisible();
+    await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-choice');
+    // Hidden, not masked: a mask paints over the palette that floats above the table.
+    await shoot(s.page, 'palette-held-light', { style: '[data-testid="item-row"] [data-col="createdAt"] { visibility: hidden !important; }' });
+    await closeSheet(sheet, 'Escape');
+    await s.page.keyboard.press('Escape');
+    await waitImportIdle(s.page);
+    await expect(s.page.getByTestId('import-done')).toHaveCount(0, { timeout: 10_000 }); // the run's result closes by itself, so it is not in the next shots
+    await holdJob(s.app, 'backup');
+    await importFiles(s, [sizedCopy(pdf, dir, 'molbio_ch10_mitosis.pdf', 1_000_000), sizedCopy(pdf, dir, 'molbio_ch11_meiosis.pdf', 1_000_000)]);
+    await expect(s.page.getByTestId('import-progress')).toHaveAttribute('data-state', 'waiting-job');
+    for (const theme of THEMES) {
+      await setTheme(s.page, theme);
+      await shoot(s.page, `toast-import-waiting-${theme}`, { mask: dates() });
+    }
+    await releaseJob(s.app);
+    await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
+    await waitImportIdle(s.page);
   } finally {
     await s.app.close();
   }

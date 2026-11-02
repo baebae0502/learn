@@ -29,6 +29,8 @@ export interface TagChipProps {
   onRename?: () => void;
   /** Right click, the menu key or ⇧F10 on a filter chip: where to open the tag's menu. */
   onMenu?: (at: { x: number; y: number }) => void;
+  /** An assigned chip shown, not changed (a trashed item's panel): no ×, and ⌫ takes nothing off. */
+  readOnly?: boolean;
   /** State board only. */
   force?: ForcedState[];
 }
@@ -58,7 +60,7 @@ function EditingChip({ tag, role }: { tag: OrganizeTag; role: ChipRole }) {
  * assigned one, which does nothing when pressed and has × beside it. Both are stops of their ChipGroup (`data-chip-id`).
  */
 export function TagChip(props: TagChipProps) {
-  const { tag, role, on, dim, onToggle, onRemove, onRename, onMenu, editing, force, dragProps } = props;
+  const { tag, role, on, dim, onToggle, onRemove, onRename, onMenu, editing, force, dragProps, readOnly } = props;
   const stop = useChipStop(tag.id);
   const keyMenuAt = useRef<number | null>(null);
   if (editing) return <EditingChip tag={tag} role={role} />;
@@ -77,7 +79,7 @@ export function TagChip(props: TagChipProps) {
     if (action?.kind === 'rename') {
       e.preventDefault(); // ↩ on a button would also press it
       onRename?.();
-    } else if (action?.kind === 'remove') {
+    } else if (action?.kind === 'remove' && !readOnly) {
       e.preventDefault();
       onRemove?.();
     }
@@ -127,7 +129,7 @@ export function TagChip(props: TagChipProps) {
           {inner}
         </span>
       )}
-      {role === 'assigned' && (
+      {role === 'assigned' && !readOnly && (
         <button type="button" className="x" tabIndex={-1} aria-label={t.organize.tags.removeLabel(tag.name)} data-testid="tag-chip-remove" onClick={onRemove}>
           <Icon icon={X} size="xs" />
         </button>

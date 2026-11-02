@@ -123,8 +123,7 @@ test('a missing original (P-8): a linked file leads with 다시 연결…, a man
     await showItemPanel(app, page);
     const gone = testInfo.outputPath('gone.pdf');
     fs.copyFileSync(PDF, gone);
-    const linked = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'linked' }), gone);
-    expect(linked).toMatchObject({ ok: true });
+    await importPaths(page, [gone], { mode: 'linked' });
     fs.rmSync(gone);
     const assets = path.join(lib, 'assets'); // the managed copy goes too (readers.spec does the same)
     for (const d of fs.readdirSync(assets)) fs.rmSync(path.join(assets, d), { recursive: true, force: true });

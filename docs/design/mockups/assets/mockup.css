@@ -925,7 +925,7 @@ h2,
   height: var(--row-height);
   border-radius: var(--radius-md);
 }
-.table-row:nth-child(even) {
+.table-row:nth-child(even of .table-row) {
   background: var(--bg-content-alt);
 }
 .table-row .td {
@@ -967,6 +967,7 @@ h2,
 .table-row.is-selected.is-focused .td,
 .table-row.is-selected.is-focused .td > .icon,
 .table-row.is-selected.is-focused .c-tertiary,
+.table-row.is-selected.is-focused .c-secondary,
 .table-row.is-selected.is-focused .c-success,
 .table-row.is-selected.is-focused .c-warning {
   color: var(--text-on-accent);
@@ -3740,4 +3741,156 @@ h2,
 
 .nobr {
   white-space: nowrap;
+}
+
+/* ── M6 (docs/superpowers/specs/2026-10-31-m6-p1-gate-design.md §13) ─────── */
+/* A trashed item's panel head (proposal): 복원 in the actions row, then one footnote line — where the item is and since when. */
+.trash-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  min-width: 0;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.trash-note > .icon {
+  flex: none;
+  color: var(--text-secondary);
+}
+/* 중복 항목: a 1 px line between groups (inside the body's 8 px inset), and the row 모두 정리 keeps. */
+.table-group-sep {
+  height: 1px;
+  margin: var(--space-4) var(--space-8);
+  background: var(--separator);
+}
+.table-row .td .kept-mark {
+  flex: none;
+}
+/* 파일 section: copies another app changed (spec 6) — the line, then each copy's name, date and two buttons. */
+.edited-copies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+  padding: var(--space-12);
+}
+.edited-copies .ec-head {
+  font-weight: var(--weight-medium); /* a sub-head inside the 파일 section, under the section title's 600 */
+}
+.edited-copies .ec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* local: name and date are one entry (the ci-text rhythm) */
+  min-width: 0;
+}
+.edited-copies .ec-meta {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.edited-copies .ec-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-8);
+  margin-top: var(--space-4);
+}
+/* Library check: rows with a line per name or path (each with its own button), and rows with two actions. */
+.check-item .ci-action.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch; /* both buttons as wide as the wider one */
+  gap: var(--space-4);
+}
+.check-item .ci-entries {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+}
+.check-item .ci-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  min-height: var(--control-height-small);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.check-item .ci-entry.more {
+  color: var(--text-tertiary);
+}
+/* An entry with a title and its path under it (원본을 찾을 수 없는 외부 연결). */
+.check-item .ci-entry .ce-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.check-item .ci-entry .ce-title {
+  font: var(--type-body);
+}
+.check-item .ci-entry .ce-path {
+  font: var(--type-mono);
+}
+/* A long check (spec 7.2): the sheet stops at the parent window's height − 120; the head and the foot stay and only the
+   list scrolls (macOS overlay scroll bars are not drawn). Its ring is the list's top and bottom edge. */
+.dialog.capped {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 120px); /* local: the parent window's height − 120 (toolbar 52 + room above and below) */
+}
+.dialog.capped > .d-body,
+.dialog.capped > .d-foot {
+  flex: none;
+}
+.dialog.capped > .checklist {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Restore result: the location wraps only after a separator and carries its own small Finder에서 보기. */
+.restore-kv {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.restore-kv .loc-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.restore-kv .loc {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+.loc .part,
+.notice .file .part {
+  white-space: nowrap;
+}
+.restore-issues {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.restore-issues .ri-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.restore-issues .ri-line .icon {
+  display: block;
+}
+.restore-issues .d-text {
+  margin-top: var(--space-4);
+}
+/* The items behind an issue line: footnote, under the line's text. */
+.restore-issues .ri-items {
+  display: flex;
+  flex-direction: column;
+  padding-left: 22px; /* local: the icon column (14) + its gap (8), so the names line up with the text */
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+/* Fatal screen (components/FatalScreen.tsx): no shell, the window background and the stage notice. */
+.window.fatal-window {
+  display: block;
+  background: var(--bg-window);
 }

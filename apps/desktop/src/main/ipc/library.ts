@@ -3,17 +3,19 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, shell, type IpcMainInvokeEvent, type OpenDialogOptions, type SaveDialogOptions } from 'electron';
 import {
-  Channels, LearnError, assetIdInput, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
-  type ImportOutcome,
+  Channels, LearnError, commandById, commandMention, emptyInput, getItemsInput, importPathsInput, itemIdInput, itemIdsInput, pickAndImportInput, updateMetadataInput,
+  type StorageMode,
 } from '@learn/domain';
 import { readOrganizeSnapshot } from '@learn/db';
 import { exportDestinationRefusal, exportFile, openExtension, openableFile, openableName, relinkAsset, resolveAssetPath, safeBaseName } from '@learn/library';
 import { broadcast } from '../events';
 import { refreshItemAvailability } from '../item-availability';
+import type { ImportBatch } from '../jobs/import-queue';
 import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
-const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
+/** The open panels' type filters (import, relink, the library check's 다시 연결…). */
+export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
   { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
@@ -47,22 +49,30 @@ export function exportError(e: unknown): unknown {
   return new LearnError('INTERNAL', words.failed, { cause: e, retryable: true });
 }
 
-/** Push libraryChanged when an import added at least one item. */
-function announceImported(outcomes: ImportOutcome[]): ImportOutcome[] {
-  const itemIds = outcomes.flatMap((o) => (o.status === 'imported' ? [o.item.id] : []));
-  if (itemIds.length > 0) broadcast('libraryChanged', { reason: 'import', itemIds });
-  return outcomes;
+/** One put-in for the import queue from a channel's input: its duplicate questions hang on the window that sent it. */
+function batchOf(paths: string[], input: { mode: StorageMode; allowDuplicate: boolean; collectionId?: string | null | undefined }, owner: number): ImportBatch {
+  return { paths, mode: input.mode, collectionId: input.collectionId ?? null, owner, ...(input.allowDuplicate ? { allowDuplicate: true } : {}) };
 }
 
 export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   const words = mainStrings.openPanels;
+  // Into main's import queue (spec 3.7): answered at once with the run's total once these files are in (0: nothing was
+  // picked). What becomes of them comes as import:progress and import:finished.
   handle(Channels.library.pickAndImport, pickAndImportInput, async (input, event) => {
-    const ctx = deps.getContext();
+    deps.getContext(); // no library (the fatal screen): refused before any panel opens
     const paths = await showOpen(deps, event, { title: words.import, message: input.mode === 'linked' ? words.linkMessage : words.importMessage, buttonLabel: input.mode === 'linked' ? words.linkButton : words.importButton, properties: ['openFile', 'multiSelections'], filters: IMPORT_FILTERS });
-    return paths.length === 0 ? [] : announceImported(await ctx.importer.importMany(paths, input));
+    return { queued: paths.length === 0 ? 0 : deps.imports.enqueue(batchOf(paths, input, event.sender.id)) };
   });
 
-  handle(Channels.library.import, importPathsInput, async (input) => announceImported(await deps.getContext().importer.importMany(input.paths, input)));
+  handle(Channels.library.import, importPathsInput, (input, event) => {
+    deps.getContext();
+    return { queued: deps.imports.enqueue(batchOf(input.paths, input, event.sender.id)) };
+  });
+
+  // 취소 on the progress toast and 가져오기 취소 in the palette (spec 3.5, 11.1).
+  handle(Channels.library.cancelImport, emptyInput, () => {
+    deps.imports.cancel();
+  });
 
   handle(Channels.library.list, emptyInput, () => deps.getContext().repo.listItems());
   handle(Channels.library.searchTexts, emptyInput, () => deps.getContext().repo.searchTexts());
@@ -73,18 +83,18 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
   // Re-checks the file; a changed availability is broadcast (libraryChanged{availability}).
   handle(Channels.library.get, itemIdInput, ({ itemId }) => refreshItemAvailability(deps.getContext(), itemId));
 
-  handle(Channels.library.pickAndRelink, assetIdInput, async ({ assetId }, event) => {
+  // 다시 연결… from one item: its file is pointed at the picked one, every item on that file is announced, and the answer
+  // is the item asked from (not whichever item shares the file first).
+  handle(Channels.library.pickAndRelink, itemIdInput, async ({ itemId }, event) => {
     const ctx = deps.getContext();
+    const item = ctx.repo.getItem(itemId);
+    if (!item) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
     const [picked] = await showOpen(deps, event, { title: words.relink, message: words.relinkMessage, buttonLabel: words.relinkButton, properties: ['openFile'], filters: IMPORT_FILTERS });
     if (!picked) return null;
-    await relinkAsset(ctx.repo, assetId, picked);
-    const itemIds = ctx.repo.itemIdsForAsset(assetId);
-    broadcast('libraryChanged', { reason: 'relink', itemIds });
-    const itemId = itemIds[0];
-    return itemId ? ctx.repo.getItem(itemId) ?? null : null;
+    await relinkAsset(ctx.repo, item.assetId, picked);
+    broadcast('libraryChanged', { reason: 'relink', itemIds: ctx.repo.itemIdsForAsset(item.assetId) });
+    return ctx.repo.getItem(itemId) ?? null;
   });
-
-  handle(Channels.library.recoveryReport, emptyInput, () => deps.getContext().recovery);
 
   handle(Channels.library.detail, itemIdInput, ({ itemId }) => deps.getContext().repo.getItemDetail(itemId));
 
@@ -107,8 +117,6 @@ export function registerLibraryIpc(handle: Handle, deps: IpcDeps): void {
     if (changed.length > 0) broadcast('libraryChanged', { reason: 'restore', itemIds: changed });
     return changed.length;
   });
-
-  handle(Channels.library.listTrash, emptyInput, () => deps.getContext().repo.listTrash());
 
   handle(Channels.library.duplicateGroups, emptyInput, () => deps.getContext().repo.duplicateGroups());
 

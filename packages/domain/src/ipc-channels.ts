@@ -3,14 +3,17 @@
  * Names only — kept free of zod so the sandboxed preload bundle stays tiny.
  */
 export const Channels = {
-  app: { info: 'app:info', showLibraryFolder: 'app:showLibraryFolder', chooseLibraryFolder: 'app:chooseLibraryFolder' },
+  app: { info: 'app:info', showLibraryFolder: 'app:showLibraryFolder', chooseLibraryFolder: 'app:chooseLibraryFolder', backupInfo: 'app:backupInfo', revealBackup: 'app:revealBackup', revealUpdateBackup: 'app:revealUpdateBackup' },
   library: {
-    pickAndImport: 'library:pickAndImport', import: 'library:import', list: 'library:list', get: 'library:get',
-    pickAndRelink: 'library:pickAndRelink', recoveryReport: 'library:recoveryReport', detail: 'library:detail',
-    updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', listTrash: 'library:listTrash',
+    pickAndImport: 'library:pickAndImport', import: 'library:import', cancelImport: 'library:cancelImport', list: 'library:list', get: 'library:get',
+    pickAndRelink: 'library:pickAndRelink', detail: 'library:detail',
+    updateMetadata: 'library:updateMetadata', trash: 'library:trash', restore: 'library:restore', trashView: 'library:trashView',
+    purge: 'library:purge', emptyTrash: 'library:emptyTrash', keepOneOfDuplicates: 'library:keepOneOfDuplicates',
+    keepOneOfAllDuplicates: 'library:keepOneOfAllDuplicates', undoKeepOne: 'library:undoKeepOne',
     duplicateGroups: 'library:duplicateGroups', showInFolder: 'library:showInFolder', openExternally: 'library:openExternally',
     exportCopy: 'library:exportCopy', revealExport: 'library:revealExport',
-    searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems',
+    searchTexts: 'library:searchTexts', organize: 'library:organize', getItems: 'library:getItems', check: 'library:check',
+    editedCopies: 'library:editedCopies', importEditedCopy: 'library:importEditedCopy', revealEditedCopy: 'library:revealEditedCopy',
   },
   collections: {
     list: 'collections:list', create: 'collections:create', rename: 'collections:rename', move: 'collections:move',
@@ -23,9 +26,10 @@ export const Channels = {
   settings: { get: 'settings:get', set: 'settings:set' },
   prefs: { get: 'prefs:get', set: 'prefs:set' },
   reader: { open: 'reader:open', getPosition: 'reader:getPosition', savePosition: 'reader:savePosition' },
+  backup: { create: 'backup:create', cancel: 'backup:cancel', restore: 'backup:restore' },
   ui: {
-    showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirmDuplicate: 'ui:confirmDuplicate', confirm: 'ui:confirm',
+    showContextMenu: 'ui:showContextMenu', windowState: 'ui:windowState', reportContext: 'ui:reportContext', confirm: 'ui:confirm', confirmPurge: 'ui:confirmPurge',
     showShortcuts: 'ui:showShortcuts', openSettings: 'ui:openSettings', themeShown: 'ui:themeShown', reportIdle: 'ui:reportIdle', showColumnMenu: 'ui:showColumnMenu',
   },
-  sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve' },
+  sheet: { payload: 'sheet:payload', resolve: 'sheet:resolve', act: 'sheet:act' },
 } as const;

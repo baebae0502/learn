@@ -23,10 +23,10 @@ beforeEach(() => {
 });
 
 describe('column header menu entries (design-spec 7.3 열 머리, M4 spec 3.2)', () => {
-  it('lists every catalogue column, checked when shown, the title checked and fixed, then a separator and the reset', () => {
+  it('lists every catalogue column but the trash-only one, checked when shown, the title checked and fixed, then a separator and the reset', () => {
     const shown = ['title', 'creators', 'size'];
     expect(columnMenuEntries(['title', 'creators', 'size'], '열 구성 되돌리기')).toEqual([
-      ...LIBRARY_COLUMNS.map((c) => ({ kind: 'column', id: c.id, label: c.label, checked: shown.includes(c.id), enabled: c.id !== 'title' })),
+      ...LIBRARY_COLUMNS.filter((c) => !c.trashOnly).map((c) => ({ kind: 'column', id: c.id, label: c.label, checked: shown.includes(c.id), enabled: c.id !== 'title' })),
       'separator',
       { kind: 'reset', label: '열 구성 되돌리기' },
     ]);

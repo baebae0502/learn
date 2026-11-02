@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEv
 import type { ColumnConfig, LibraryColumnId, LibraryColumnSpec } from '@learn/domain';
 import { currentPlatform } from '../ui/platform';
 import { DRAG_THRESHOLD, dropSlot, edgeScroll, type HeaderCell } from './columnDrag';
-import { moveColumn, pinnedCount } from './columns';
+import { moveColumn, pinnedCount, trailingCount } from './columns';
 
 /** A header drag in progress: the cell being dragged, where its insertion line stands, and its ghost's width. */
 export interface ColumnDrag {
@@ -61,8 +61,9 @@ export function useColumnReorder(options: Options): {
     const id = cell?.dataset['col'] as LibraryColumnId | undefined;
     const ids = latest.current.visible.map((c) => c.id);
     const pinned = pinnedCount(ids, latest.current.forced);
+    const trail = trailingCount(ids, latest.current.forced);
     const from = id === undefined ? -1 : ids.indexOf(id);
-    if (id === undefined || from < pinned || !cell) return; // the title and the forced columns stay
+    if (id === undefined || from < pinned || from >= ids.length - trail || !cell) return; // the title and the forced columns stay
     abort.current?.();
 
     const pointerId = e.pointerId;
@@ -97,7 +98,7 @@ export function useColumnReorder(options: Options): {
         const r = el.getBoundingClientRect();
         return { left: r.left, right: r.right };
       });
-      const hit = dropSlot(cells, pinned, from, x);
+      const hit = dropSlot(cells.slice(0, cells.length - trail), pinned, from, x); // nothing lands after a fixed last column
       slot = hit === null ? null : hit.slot;
       const box = head.getBoundingClientRect();
       const next = hit === null ? null : Math.min(Math.max(hit.at - box.left, 1), box.width - 1);

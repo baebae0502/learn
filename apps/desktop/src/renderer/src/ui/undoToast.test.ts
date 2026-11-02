@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { showUndoToast, toastQueue, type ToastData } from './toasts';
+import { showUndoToast, showUndoableError, toastQueue, type ToastData } from './toasts';
 
 /** The queue lists the newest toast first. */
-const last = (): ToastData => toastQueue.visibleToasts[0]!.content;
+const last = (): ToastData => toastQueue.visibleToasts[0]!.content as ToastData;
 afterEach(() => {
   for (const toast of [...toastQueue.visibleToasts]) toastQueue.close(toast.key);
 });
@@ -23,5 +23,16 @@ describe('showUndoToast (spec 3.4, 8.2)', () => {
     last().action!.onAction();
     await new Promise((r) => setTimeout(r, 0));
     expect(last()).toMatchObject({ kind: 'error', title: '되돌리지 못했습니다', body: '컬렉션을 찾을 수 없습니다.', testId: 'undo-failed' });
+  });
+});
+
+describe('showUndoableError (M6 m-6)', () => {
+  it('is an error toast naming what was done, with main\'s cause and 실행 취소 for that part', async () => {
+    let undone = 0;
+    showUndoableError(new Error('저장 공간이 부족합니다.'), '‘분자생물학’⁠에서 자료 1개만 뺐습니다.', async () => void undone++);
+    expect(last()).toMatchObject({ kind: 'error', title: '‘분자생물학’⁠에서 자료 1개만 뺐습니다.', body: '저장 공간이 부족합니다.', testId: 'partial-failure', action: { label: '실행 취소', testId: 'undo-action' } });
+    last().action!.onAction();
+    await Promise.resolve();
+    expect(undone).toBe(1);
   });
 });

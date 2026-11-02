@@ -18,6 +18,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: { bio: ['a', 'b'], c6: ['a', 'c'], stat: ['d'] },
   tagged: {},
   duplicates: [],
+  trashCount: 0,
 };
 const model = buildOrganizeModel(SNAPSHOT, ['a', 'b', 'c', 'd', 'e'].map((id) => item(id)));
 const members = () => queryClient.getQueryData<OrganizeSnapshot>(keys.organize)!.members;

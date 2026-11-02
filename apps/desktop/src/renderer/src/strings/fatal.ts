@@ -11,4 +11,6 @@ export const fatal = {
   renderTitle: '화면을 표시하지 못했습니다',
   /** The library could not be opened: its location can still be changed in the settings window (main-owned ⌘,). */
   openSettings: '설정 열기',
+  /** The pre-update backup shown selected in the file manager (spec 9.4), named for the platform's file manager. */
+  reveal: { darwin: 'Finder에서 보기', other: '폴더에서 보기' },
 } as const;

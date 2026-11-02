@@ -4,12 +4,13 @@ import { api } from '../api';
 import { cacheDrawn } from '../data/query-client';
 import { currentModel } from '../sidebar/actions';
 import { importTarget, type ImportTarget } from '../sidebar/importTarget';
+import { SCOPE_KEYS } from '../sidebar/rows';
 import { useSidebarEdit } from '../sidebar/sidebarEdit';
 import { dropActions, viewedScope } from './actions';
 import { dragState, useDndGate } from './dragState';
 import { filesFromDrop } from './fileDrop';
 import { MIME_COLLECTION, MIME_ITEMS, MIME_TAG, collectionDrag, parseCollectionPayload, parseItemsPayload } from './mime';
-import { collectionOnCollection, filesOnRow, inertRow, itemsOnCollection } from './rules';
+import { collectionOnCollection, filesOnRow, inertRow, itemsOnCollection, onTrashRow } from './rules';
 
 /** What the sidebar does with files dropped on a row: MainWindow's drop, told where they go (a collection, or null for 내 라이브러리). */
 export type FilesDropHandler = (paths: string[], mode: StorageMode, unresolved: number, into: ImportTarget | null) => void;
@@ -54,6 +55,8 @@ export function treeDropOperation(target: DropTarget, types: DragTypes, allowed:
   if (target.type !== 'item' || target.dropPosition !== 'on') return 'cancel';
   const key = String(target.key);
   if (inertRow(key, renamingKey())) return 'cancel'; // the draft row and the row being named: no item, collection, tag or file
+  // 휴지통 (spec 4.1, 4.2): rows and collection rows go to the trash; files and tags do not.
+  if (key === SCOPE_KEYS.trash) return onTrashRow({ target: key, types, files: dragState.filesOver(), allowed });
   const model = currentModel();
   if (dragState.filesOver()) {
     if (filesOnRow(key, model) === null) return 'cancel';
@@ -79,6 +82,16 @@ async function handOver(e: DroppableCollectionOnItemDropEvent, key: string, onFi
   const alt = dragState.alt(); // read before any wait: the next event may change it
   const first = e.items[0];
   if (first?.kind === 'text') {
+    if (key === SCOPE_KEYS.trash) {
+      if (first.types.has(MIME_COLLECTION)) {
+        const id = parseCollectionPayload(await first.getText(MIME_COLLECTION));
+        if (id) await dropActions.collectionOnTrash(id);
+      } else if (first.types.has(MIME_ITEMS)) {
+        const ids = parseItemsPayload(await first.getText(MIME_ITEMS));
+        if (ids) await dropActions.itemsOnTrash(ids);
+      }
+      return;
+    }
     if (first.types.has(MIME_COLLECTION)) {
       const id = parseCollectionPayload(await first.getText(MIME_COLLECTION));
       if (id) await dropActions.collectionOn(id, key);

@@ -10,6 +10,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: {},
   tagged: { t1: ['a'] },
   duplicates: [],
+  trashCount: 0,
 };
 const snap = () => queryClient.getQueryData<OrganizeSnapshot>(keys.organize)!;
 const create = vi.fn();

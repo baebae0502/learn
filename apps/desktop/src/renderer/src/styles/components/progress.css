@@ -1,0 +1,30 @@
+@layer components {
+  /* design-spec 6 진행 막대 (mockup .progress): a 4 px track and the --meter fill. Only the fill's width moves (160 ms,
+     design-spec 6 모션 "진행 막대 폭 변화만"). */
+  .progress {
+    position: relative;
+    display: block;
+    width: 44px; /* local: the mockup's inline meter width */
+    height: 4px; /* local: the bar's thickness (mockup .progress) */
+    border-radius: 2px; /* local: half the bar's height */
+    background: var(--bg-track);
+    flex: none;
+    overflow: hidden;
+  }
+  .progress > i {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--meter);
+    transition: width var(--duration-base) var(--ease-standard);
+  }
+  .progress.wide {
+    width: auto;
+    flex: 1 1 auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .progress > i {
+      transition: none;
+    }
+  }
+}

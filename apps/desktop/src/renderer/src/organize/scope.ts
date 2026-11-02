@@ -28,6 +28,7 @@ export function recentItems(items: readonly LibraryItem[], now: number): readonl
  */
 export function scopeItems(model: OrganizeModel | undefined, items: readonly LibraryItem[], scope: LibraryScope, now: number): readonly LibraryItem[] {
   if (scope.kind === 'recent') return recentItems(items, now);
+  if (scope.kind === 'trash') return items; // the trash view's list is the trash itself (useViewItems)
   if (scope.kind === 'all' || model === undefined) return items;
   switch (scope.kind) {
     case 'collection': {
@@ -52,6 +53,8 @@ export function scopeLabel(model: OrganizeModel | undefined, scope: LibraryScope
       return t.organize.scopes.unfiled;
     case 'duplicates':
       return t.organize.scopes.duplicates;
+    case 'trash':
+      return t.organize.scopes.trash;
     case 'collection':
       return model?.node(scope.id)?.name ?? t.shell.myLibrary;
   }
@@ -67,7 +70,7 @@ export function scopePath(model: OrganizeModel | undefined, scope: LibraryScope)
 /**
  * What the table shows for the scope the user chose: a collection that is gone, or a view that needs the snapshot before
  * it arrived, shows `all`. The chosen scope itself is left as it is, so a collection that comes back (another window's undo,
- * a snapshot that catches up) is shown again. Deleting the viewed collection here moves the view to its parent
+ * a snapshot that catches up) is shown again. An emptied trash shows `all` — and its view is left for good (useLeaveEmptyTrash). Deleting the viewed collection here moves the view to its parent
  * (collectionActions), and its undo does not move it back.
  */
 export function resolveScope(model: OrganizeModel | undefined, scope: LibraryScope): LibraryScope {
@@ -80,6 +83,8 @@ export function resolveScope(model: OrganizeModel | undefined, scope: LibrarySco
     case 'unfiled':
     case 'duplicates':
       return model ? scope : SCOPE_ALL;
+    case 'trash':
+      return model && model.trashCount > 0 ? scope : SCOPE_ALL;
   }
 }
 
@@ -103,5 +108,7 @@ export function restorableScope(raw: unknown, model: OrganizeModel | undefined, 
       return model && model.collectionCount > 0 && model.unfiled.size > 0 ? scope : SCOPE_ALL;
     case 'duplicates':
       return model && model.duplicates.size > 0 ? scope : SCOPE_ALL;
+    case 'trash':
+      return model && model.trashCount > 0 ? scope : SCOPE_ALL;
   }
 }

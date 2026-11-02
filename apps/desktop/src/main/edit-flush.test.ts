@@ -14,7 +14,7 @@ const ev = (): Ev => ({
 
 /** A main window and an app the way Electron drives the gate: close() emits 'close', quit() emits 'before-quit', then closes. */
 function rig(answers: Array<() => Promise<unknown>>, opts: { quitCloses?: boolean; passMs?: number } = {}) {
-  const calls = { scripts: 0, exited: false, records: [] as Array<{ action: string; result: string }> };
+  const calls = { scripts: 0, stays: 0, exited: false, records: [] as Array<{ action: string; result: string }> };
   let gate!: FlushGate;
   const win: FlushWindow & { destroyed: boolean } = {
     destroyed: false,
@@ -40,7 +40,7 @@ function rig(answers: Array<() => Promise<unknown>>, opts: { quitCloses?: boolea
     if (!win.destroyed) win.close();
     calls.exited = win.destroyed;
   };
-  gate = createFlushGate({ mainWindow: () => (win.destroyed ? null : win), quit, timeoutMs: 50, passMs: opts.passMs ?? 20, record: (r) => calls.records.push(r) });
+  gate = createFlushGate({ mainWindow: () => (win.destroyed ? null : win), quit, timeoutMs: 50, passMs: opts.passMs ?? 20, record: (r) => calls.records.push(r), onStay: () => void calls.stays++ });
   return { win, quit, calls };
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -71,6 +71,15 @@ describe('closing or quitting over an open 정보 편집 (spec §5.3; M/edit-flu
     expect(r.calls.exited).toBe(false);
     expect(r.calls.scripts).toBe(2);
     expect(r.calls.records).toEqual([{ action: 'close', result: 'invalid' }, { action: 'quit', result: 'invalid' }]);
+  });
+  it('invalid: a quit that is called off tells onStay (a library switch waiting for it is dropped); a close does not', async () => {
+    const r = rig([() => Promise.resolve('invalid'), () => Promise.resolve('invalid')]);
+    r.win.close();
+    await tick();
+    expect(r.calls.stays).toBe(0);
+    r.quit();
+    await tick();
+    expect(r.calls.stays).toBe(1);
   });
   it('a page that does not answer in time, throws or says something else holds nothing (counts as clean)', async () => {
     const hung = rig([() => new Promise(() => {})]);

@@ -1,18 +1,27 @@
-import { useEffect, type KeyboardEvent } from 'react';
-import { CircleAlert, CircleCheck, Info, X } from 'lucide-react';
+import { useContext, useEffect, useLayoutEffect, type KeyboardEvent, type ReactNode } from 'react';
+import { CircleAlert, CircleCheck, CirclePause, Info, X } from 'lucide-react';
 import {
   Text,
   UNSTABLE_Toast as Toast,
   UNSTABLE_ToastContent as ToastContent,
   UNSTABLE_ToastQueue as ToastQueue,
+  UNSTABLE_ToastStateContext as ToastStateContext,
   UNSTABLE_ToastRegion as ToastRegion,
+  type QueuedToast,
 } from 'react-aria-components';
+import { cancelJob, describeJob, jobAhead, liveState, useJobProgress, type JobToastText } from '../jobs/jobProgress';
+import type { ProgressJob } from '../jobs/progressToast';
 import { t } from '../strings';
 import { Button, IconButton } from './Button';
+import { cx } from './cx';
 import { Icon } from './Icon';
+import { MiddleEllipsis } from './MiddleEllipsis';
+import { ProgressBar } from './ProgressBar';
 import { Spinner } from './Spinner';
 import { afterPaintOr, type Pending } from './afterPaint';
 import { perfMark } from './perfMarks';
+import { focusPaneNamed } from '../shell/panes';
+import { toastFocusReturn } from './toastFocus';
 import { DismissTimer } from './toastTimer';
 
 export type ToastKind = 'success' | 'error' | 'info' | 'busy';
@@ -39,6 +48,16 @@ export interface ToastData {
   action?: ToastAction;
   testId?: string;
 }
+
+/**
+ * A job's toast in the queue: its content is which job, not words. It draws the job's live state (jobs/jobProgress.ts),
+ * then the view its controller gives it (jobs/progressToast.ts): the run's last state, then the result that took it over.
+ */
+export interface JobToastContent {
+  kind: 'job';
+  job: ProgressJob;
+}
+export type ToastContent = ToastData | JobToastContent;
 
 /** Description of a toast (shared with the state board): the lines, then the paragraph. */
 export function ToastLines({ data }: { data: Pick<ToastData, 'lines' | 'body'> }) {
@@ -108,7 +127,7 @@ export class LearnToastQueue<T = ToastData> extends ToastQueue<T> {
  * stands for ends (closeToast). Action buttons are verbs (보기·다시 시도). RAC's toast API is UNSTABLE_-prefixed in 1.22.1; it is pinned and used only through
  * this module.
  */
-export const toastQueue = new LearnToastQueue({ maxVisibleToasts: 3 });
+export const toastQueue = new LearnToastQueue<ToastContent>({ maxVisibleToasts: 3 });
 
 /** No RAC timeout: a toast that closes by itself does so through AutoClose, while it is on screen. */
 export function showToast(data: ToastData): string {
@@ -125,6 +144,13 @@ export function closeToast(key: string): void {
   toastQueue.close(key);
 }
 
+/** A job's toast: in the same region, Tab and F6 order as every toast; its view is forgotten when it closes. */
+export function showJobToast(job: ProgressJob): string {
+  let key = '';
+  key = toastQueue.add({ kind: 'job', job }, { onClose: () => useJobProgress.getState().setView(key, undefined) });
+  return key;
+}
+
 /**
  * A result toast that can be taken back (spec 3.4, 8.2): one verb, 실행 취소, which runs `undo` and closes the toast. A
  * refused undo is an error toast with the cause main gave (cause + next step), so the user is never left thinking it worked.
@@ -139,6 +165,25 @@ export function showUndoToast(title: string, undo: () => Promise<void>, opts: { 
       testId: 'undo-action',
       onAction: () =>
         void undo().catch((e: unknown) => showToast({ kind: 'error', title: t.toast.undoFailed, body: e instanceof Error ? e.message : undefined, testId: 'undo-failed' })),
+    },
+  });
+}
+
+/**
+ * An action refused part-way (m-6): an error toast that names what was done, gives main's cause, and offers 실행 취소 for
+ * that part. It stays until closed, as errors do; a refused undo is told like showUndoToast's.
+ */
+export function showUndoableError(e: unknown, title: string, undo: () => Promise<void>): string {
+  return showToast({
+    kind: 'error',
+    title,
+    body: e instanceof Error ? e.message : undefined,
+    testId: 'partial-failure',
+    action: {
+      label: t.toast.undo,
+      testId: 'undo-action',
+      onAction: () =>
+        void undo().catch((err: unknown) => showToast({ kind: 'error', title: t.toast.undoFailed, body: err instanceof Error ? err.message : undefined, testId: 'undo-failed' })),
     },
   });
 }
@@ -234,29 +279,162 @@ function closeOnEscape(e: KeyboardEvent): void {
   toastQueue.close(toast.dataset['toastKey']!);
 }
 
+const focusReturn = toastFocusReturn(() => void focusPaneNamed('content'));
+
+/**
+ * A toast that goes while the focus is on it hands the focus on first (toastFocus.ts): the next toast, else the table. The
+ * layout cleanup of its item runs while its element is still in the page, so the focus can still be read.
+ */
+function useHandFocusOnClose(toastKey: string): void {
+  useLayoutEffect(
+    () => () => {
+      const el = [...document.querySelectorAll<HTMLElement>('[data-toast-key]')].find((e) => e.dataset['toastKey'] === toastKey);
+      if (el) focusReturn.closing(el);
+    },
+    [toastKey],
+  );
+}
+
+/** The inside of a plain toast; a job toast that its result took over draws the same. */
+function PlainToastBody({ toastKey, data, tookOver }: { toastKey: string; data: ToastData; tookOver?: boolean }) {
+  // A job's result replaces its progress in place: the focus on 취소 goes with the button, so it is given back here.
+  useLayoutEffect(() => {
+    if (tookOver) focusReturn.settled();
+  }, [tookOver]);
+  return (
+    <>
+      <AutoClose toastKey={toastKey} kind={data.kind} testId={data.testId} />
+      <ToastIcon kind={data.kind} />
+      <ToastContent className="t-text">
+        <Text slot="title" className="t-title">
+          {data.title}
+        </Text>
+        {(data.lines?.length || data.body) && (
+          <Text slot="description" elementType="div" className="t-desc">
+            <ToastLines data={data} />
+          </Text>
+        )}
+      </ToastContent>
+      {data.action && <ToastActionButton action={data.action} onDone={() => toastQueue.close(toastKey)} />}
+      {data.kind === 'error' && <IconButton slot="close" icon={X} label={t.common.close} size="small" testId="toast-close" />}
+    </>
+  );
+}
+
+/**
+ * A job's progress (mockup importToast): spinner or pause, the title — the only announced part (RAC's role=alert): the
+ * count, the file name and the bar change ten times a second — then 취소, and the bar with its percent under them.
+ */
+function JobProgressBody({ text, onCancel }: { text: JobToastText; onCancel: () => void }) {
+  return (
+    <>
+      <span className={cx('t-icon', text.waiting && 'c-secondary')}>{text.waiting ? <Icon icon={CirclePause} size="md" /> : <Spinner />}</span>
+      <div className="t-text">
+        <div className="t-head">
+          <ToastContent className="t-live">
+            <Text slot="title" className="t-title">
+              {text.title}
+            </Text>
+          </ToastContent>
+          <span className="t-title t-count num" aria-hidden="true">
+            {text.count}
+          </span>
+        </div>
+        {text.file !== null && <MiddleEllipsis className="t-file" text={text.file} />}
+        {text.note !== null && <span className="t-file ui-prose">{text.note}</span>}
+      </div>
+      <span className="t-actions">
+        <Button size="small" testId={text.cancelTestId} onPress={onCancel}>
+          {t.jobs.cancel}
+        </Button>
+      </span>
+      {text.bar && (
+        <div className="t-progress">
+          <ProgressBar percent={text.percent} label={text.title} valueText={text.valueText} wide />
+          <span className="pct t-footnote c-secondary num" aria-hidden="true">
+            {t.jobs.percent(text.percent)}
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** One job's toast: the same <Toast> from its first progress to its result, so it never closes and comes back. */
+function JobToastItem({ toast, job }: { toast: QueuedToast<ToastContent>; job: ProgressJob }) {
+  useHandFocusOnClose(toast.key);
+  const view = useJobProgress((s) => s.views[toast.key]);
+  const live = useJobProgress((s) => liveState(s, job));
+  const ahead = useJobProgress((s) => jobAhead(s, job));
+  if (view?.kind === 'result') {
+    return (
+      <Toast toast={toast} className="toast" data-kind={view.data.kind} data-toast-key={toast.key} data-testid={view.data.testId ?? 'toast'}>
+        <PlainToastBody toastKey={toast.key} data={view.data} tookOver />
+      </Toast>
+    );
+  }
+  const text = describeJob(job, view?.state ?? live, ahead);
+  return (
+    <Toast toast={toast} className="toast" data-kind="progress" data-state={text.state} data-toast-key={toast.key} data-testid={text.testId}>
+      <JobProgressBody text={text} onCancel={() => cancelJob(job)} />
+    </Toast>
+  );
+}
+
+/** A plain toast in the region (the item keeps the hook in one place). */
+function PlainToastItem({ toast, data }: { toast: QueuedToast<ToastContent>; data: ToastData }) {
+  useHandFocusOnClose(toast.key);
+  return (
+    <Toast toast={toast} className="toast" data-kind={data.kind} data-toast-key={toast.key} data-testid={data.testId ?? 'toast'}>
+      <PlainToastBody toastKey={toast.key} data={data} />
+    </Toast>
+  );
+}
+
+/**
+ * The toasts in the order the jobs began, oldest on top, as the mockups stack them (a running backup above the import
+ * waiting behind it). RAC's own list draws the newest first, so this one reads the same state and turns it over in
+ * render: the DOM, F6 and the arrow keys then go in the order the user sees, which a CSS reversal would not give.
+ */
+function OldestFirstList({ children }: { children: (args: { toast: QueuedToast<ToastContent> }) => ReactNode }) {
+  const state = useContext(ToastStateContext);
+  if (state === null) return null;
+  const shown = [...(state.visibleToasts as Array<QueuedToast<ToastContent>>)].reverse();
+  return (
+    <ol style={{ display: 'contents' }}>
+      {shown.map((toast) => (
+        <li key={toast.key} style={{ display: 'contents' }}>
+          {children({ toast })}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function Toasts() {
   return (
-    <div className="toast-keys" onKeyDown={closeOnEscape}>
+    <div
+      className="toast-keys"
+      onKeyDown={closeOnEscape}
+      onFocus={(e) => focusReturn.entered(e.relatedTarget as Element | null)}
+      onBlur={(e) => focusReturn.left(e.relatedTarget as Element | null)}
+    >
       {/* The last F6 pane while a toast is visible (shell/panes.ts, R-1); RAC passes data-* through to the region. */}
-      <ToastRegion queue={toastQueue} className="toasts" aria-label={t.common.notifications} data-pane="toasts">
-        {({ toast }) => (
-          <Toast toast={toast} className="toast" data-kind={toast.content.kind} data-toast-key={toast.key} data-testid={toast.content.testId ?? 'toast'}>
-            <AutoClose toastKey={toast.key} kind={toast.content.kind} testId={toast.content.testId} />
-            <ToastIcon kind={toast.content.kind} />
-            <ToastContent className="t-text">
-              <Text slot="title" className="t-title">
-                {toast.content.title}
-              </Text>
-              {(toast.content.lines?.length || toast.content.body) && (
-                <Text slot="description" elementType="div" className="t-desc">
-                  <ToastLines data={toast.content} />
-                </Text>
-              )}
-            </ToastContent>
-            {toast.content.action && <ToastActionButton action={toast.content.action} onDone={() => toastQueue.close(toast.key)} />}
-            {toast.content.kind === 'error' && <IconButton slot="close" icon={X} label={t.common.close} size="small" testId="toast-close" />}
-          </Toast>
-        )}
+      <ToastRegion
+        queue={toastQueue}
+        className="toasts"
+        aria-label={t.common.notifications}
+        data-pane="toasts"
+      >
+        <OldestFirstList>
+          {({ toast }) =>
+            toast.content.kind === 'job' ? (
+              <JobToastItem toast={toast} job={toast.content.job} />
+            ) : (
+              <PlainToastItem toast={toast} data={toast.content} />
+            )
+          }
+        </OldestFirstList>
       </ToastRegion>
     </div>
   );

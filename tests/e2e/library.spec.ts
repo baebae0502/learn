@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, holdOpenDialog, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, type Session } from './helpers';
+import { FIXTURES, backFromReader, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, holdOpenDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, waitImportIdle, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -52,7 +52,7 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
   await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
   await expect(s.page.getByTestId('viewer-title')).toHaveText('Chapter 06');
-  await s.page.getByTestId('viewer-back').click();
+  await backFromReader(s.page);
 
   const notes = path.join(src, 'notes.txt');
   fs.writeFileSync(notes, 'plain text');
@@ -81,7 +81,7 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   await stubOpenDialog(s.app, [moved]);
   await s.page.getByTestId('relink').click();
   await expect(s.page.getByTestId('missing-notice')).toBeHidden();
-  await s.page.getByTestId('viewer-back').click();
+  await backFromReader(s.page);
   await expect(row.getByTestId('missing-flag')).toHaveCount(0);
   await s.page.screenshot({ path: testInfo.outputPath('library.png') });
   await s.app.close();
@@ -109,52 +109,51 @@ test('the empty-state buttons and the drop path need a real file location', asyn
 /** Two frames: anything a click set off in React has rendered. */
 const frames = (s: Session) => s.page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
-test('while an import runs, its controls are disabled with the reason as their tooltip (M-2) and the list opens nothing', async ({}, testInfo) => {
+test('while an import runs the window stays in use: its controls stay enabled, more files join it, the list opens items; only its open panel holds the window (spec 3.2)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
-  const pdf = fakePdf(testInfo.outputPath('src'), 'held.pdf', 'held');
+  const src = testInfo.outputPath('src');
   try {
-    const managed = s.page.getByTestId('import-managed');
-    // A dropped file's import runs while the window stays key (held in main here): the controls are disabled with the
-    // reason, which is their tooltip on hover.
-    await s.app.evaluate(({ ipcMain }) => {
-      const g = globalThis as { __learnReleaseImport?: () => void };
-      ipcMain.removeHandler('library:import');
-      ipcMain.handle('library:import', () => new Promise((resolve) => (g.__learnReleaseImport = () => resolve({ ok: true, data: [] }))));
-    });
-    await dropSource(s.page, [pdf]);
+    await importPaths(s.page, [fakePdf(src, 'kept.pdf', 'kept')]);
+    await expect(rowByTitle(s.page, 'kept')).toBeVisible();
+    // A drop whose first file is held in main before its commit (the E2E pause): nothing in the window waits for it.
+    await importPause(s.app, 'beforeCommit');
+    await dropSource(s.page, [fakePdf(src, 'held.pdf', 'held')]);
     await drag(s.page, 'dragenter', 'source');
     await drag(s.page, 'drop', 'source', { repeat: false });
-    // The first-run screen gives way to the import's progress; the toolbar's 가져오기 stays.
-    await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
-    await hoverLikeUser(s.page, 'import-menu');
-    await expectTooltipText(s.page, BUSY, 'import-menu');
-    await s.app.evaluate(() => (globalThis as { __learnReleaseImport?: () => void }).__learnReleaseImport?.());
-    await expectDisabledReason(managed, null); // nothing imported: the first-run screen is back
+    await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
+    await expectDisabledReason(s.page.getByTestId('import-menu'), null);
+    await expect(s.page.getByTestId('search-field').locator('input')).not.toHaveAttribute('aria-disabled', 'true');
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
+    // Past 1 s the progress toast; more files join the same run and its total grows in that same toast.
+    const toast = s.page.getByTestId('import-progress');
+    await expect(toast).toContainText('가져오는 중 · 0 / 1');
+    const node = await toast.elementHandle();
+    await dropSource(s.page, [fakePdf(src, 'more.pdf', 'more')]);
+    await drag(s.page, 'dragenter', 'source');
+    await drag(s.page, 'drop', 'source', { repeat: false });
+    await expect(toast).toContainText('가져오는 중 · 0 / 2');
+    expect(await node!.evaluate((e) => e.isConnected)).toBe(true);
+    // The list opens an item meanwhile: the registry's item.open is not refused.
+    await rowByTitle(s.page, 'kept').dblclick();
+    await expect(s.page.getByTestId('viewer-title')).toHaveText('kept');
+    await s.page.getByTestId('viewer-back').click();
+    await importResume(s.app);
+    await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
+    expect(await node!.evaluate((e) => (e.isConnected ? e.getAttribute('data-testid') : null))).toBe('import-done'); // the same toast, now the result
+    await waitImportIdle(s.page);
     await s.page.mouse.move(700, 880);
 
-    // The import from 파일 가져오기… waits on its open panel, a sheet on the window (follow-up D): the controls are
-    // disabled with the reason as well, but the window is not key under the panel, so no tooltip shows on hover.
-    await holdOpenDialog(s.app, [pdf]);
-    await managed.click();
-    for (const id of ['import-managed', 'import-linked', 'import-menu']) await expectDisabledReason(s.page.getByTestId(id), BUSY);
+    // 파일 가져오기…'s open panel is a sheet on the window (follow-up D): that still holds it, with the reason, and no
+    // tooltip shows on hover (the window is not key under the panel).
+    const managed = s.page.getByTestId('import-menu');
+    await holdOpenDialog(s.app, [fakePdf(src, 'picked.pdf', 'picked')]);
+    await runMenuCommand(s.app, 'file.importManaged');
+    await expectDisabledReason(managed, BUSY);
     await expect(s.page.locator('html')).toHaveAttribute('data-window-inactive', '');
-    await s.page.mouse.move(700, 880); // leave the button the click pressed, then come back
     await managed.hover();
     await s.page.waitForTimeout(900); // past the 600 ms hover delay
     await expect(s.page.getByRole('tooltip')).toHaveCount(0);
-    await releaseOpenDialog(s.app);
-    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
-    await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
-    await expectDisabledReason(s.page.getByTestId('import-menu'), null);
-    // The focused button left with the first-run screen: focus continues on the table's first row, not on <body>.
-    await expect(rowAt(s.page, 0)).toBeFocused();
-
-    // Opening from the list goes through the registry (item.open), so it is refused while the import holds the window.
-    await holdOpenDialog(s.app, []);
-    await s.page.getByTestId('import-menu').click();
-    await s.page.getByTestId('import-menu-managed').click();
-    await expectDisabledReason(s.page.getByTestId('import-menu'), BUSY);
-    // The quick search is held like the other toolbar controls (drawn disabled, no input) while the panel is up.
+    // The quick search is held like the other toolbar controls while the panel is up, and the list opens nothing.
     await expect(s.page.getByTestId('search-field').locator('input')).toHaveAttribute('aria-disabled', 'true');
     const row = rowByTitle(s.page, 'held');
     const opensNothing = async (how: () => Promise<void>) => {
@@ -168,9 +167,10 @@ test('while an import runs, its controls are disabled with the reason as their t
       await row.click(); // selecting stays allowed; opening is the registry's item.open, refused while held
       await s.page.keyboard.press('Enter');
     });
-    await releaseOpenDialog(s.app); // cancelled: nothing imported, nothing to report
-    await expectDisabledReason(s.page.getByTestId('import-menu'), null);
-    await expect(s.page.getByTestId('search-field').locator('input')).not.toHaveAttribute('aria-disabled', 'true');
+    await releaseOpenDialog(s.app);
+    await expect(s.page.getByTestId('import-done').filter({ hasText: '자료 1개를 가져왔습니다' })).toHaveCount(1);
+    await expectDisabledReason(managed, null);
+    await waitImportIdle(s.page);
     await row.dblclick();
     await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
   } finally {
@@ -234,7 +234,7 @@ test('a success toast closes 5 s after it appears, also when the pointer reaches
         if (!document.querySelector('[data-testid="import-done"]')) return;
         obs.disconnect();
         (window as unknown as { __toastAt: number }).__toastAt = Date.now(); // the page's (fake) clock
-      }).observe(document.body, { childList: true, subtree: true });
+      }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-testid'] });
     });
     await dropSource(s.page, [path.join(FIXTURES, 'sample.pdf'), path.join(FIXTURES, 'sample-mpeg4part2.mp4')]);
     await drag(s.page, 'dragenter', 'source');

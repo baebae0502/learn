@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BrowserWindow, WebContents } from 'electron';
 import { COMMANDS } from '@learn/domain';
+import type { LibraryCheckPayload } from '@learn/domain';
 import { windowKindOf } from './window-kinds';
 
 /** A BrowserWindow stand-in: records what the host does with it; tests drive its lifecycle events. */
@@ -12,20 +13,28 @@ class FakeWindow extends EventEmitter {
   static pageHeight = 200;
   /** Whether the fake page's `document.fonts.ready` resolves in time (fontsReady's answer). */
   static fontsReady = true;
+  /** Every script a page was asked to run, in order (the cap a following sheet is told). */
+  static scripts: string[] = [];
+  /** A following sheet's height watch (followContentHeight) waits here until a test gives the page a new height. */
+  static followers: Array<(height: number) => void> = [];
   destroyed = false;
   shown = false;
   contentSize: [number, number];
   position: [number, number] | null = null;
   url = '';
-  readonly webContents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown> };
+  readonly webContents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown>; isDestroyed(): boolean };
   constructor(readonly options: { width: number; height: number; parent: unknown; modal: boolean; frame: boolean }) {
     super();
     this.contentSize = [options.width, options.height];
     const contents = new EventEmitter() as FakeWindow['webContents'];
     contents.id = FakeWindow.nextId++;
+    contents.isDestroyed = () => this.destroyed;
     // contentHeight polls in the page; fontsReady waits for document.fonts; markSized sets a flag.
-    contents.executeJavaScript = async (script: string) =>
-      script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : script.includes('document.fonts') ? FakeWindow.fontsReady : undefined;
+    contents.executeJavaScript = async (script: string) => {
+      FakeWindow.scripts.push(script);
+      if (script.includes('ResizeObserver')) return new Promise((resolve) => FakeWindow.followers.push(resolve));
+      return script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : script.includes('document.fonts') ? FakeWindow.fontsReady : undefined;
+    };
     this.webContents = contents;
     FakeWindow.all.push(this);
   }
@@ -47,11 +56,14 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
+const { createSheetHost, FOLLOWING_SHEETS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
-type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn> };
-const parent = (id = 1, height = 900): FakeParent =>
-  ({ id, isDestroyed: () => false, focus: vi.fn(), getContentBounds: () => ({ x: 100, y: 50, width: 1440, height }) }) as unknown as FakeParent;
+type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn>; height: number };
+/** A parent window whose height a test may change (then emit 'resize'). */
+const parent = (id = 1, height = 900): FakeParent => {
+  const p = Object.assign(new EventEmitter(), { id, height, isDestroyed: () => false, focus: vi.fn() });
+  return Object.assign(p, { getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: p.height }) }) as unknown as FakeParent;
+};
 const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
@@ -65,6 +77,8 @@ beforeEach(() => {
   FakeWindow.all = [];
   FakeWindow.pageHeight = 200;
   FakeWindow.fontsReady = true;
+  FakeWindow.scripts = [];
+  FakeWindow.followers = [];
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -177,7 +191,7 @@ describe('sheet host', () => {
     const result = h.open(parent(), { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
     const w = FakeWindow.all[0]!;
-    expect(() => h.resolve(contentsOf(w), { kind: 'duplicate', choice: 'add' })).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
+    expect(() => h.resolve(contentsOf(w), { kind: 'duplicate', choice: 'add', applyToRest: false })).toThrow(expect.objectContaining({ code: 'VALIDATION_FAILED' }));
     w.close();
     await expect(result).resolves.toBeNull();
     // Closed: its contents are a stranger now.
@@ -374,5 +388,223 @@ describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
     const keyless = COMMANDS.filter((c) => c.accelerator === undefined && c.key === undefined);
     const listed = COMMANDS.filter((c) => c.accelerator !== undefined || c.key !== undefined);
     expect(shortcutsDigest([...keyless, ...listed], 'darwin')).toBe(digest);
+  });
+});
+
+describe('a sheet given up with the work that asked it (the duplicate question of a stopped import)', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+
+  it('aborting the signal closes the shown sheet window, answers null and gives the focus back', async () => {
+    const h = host();
+    const p = parent();
+    const stop = new AbortController();
+    const result = h.open(p, { kind: 'shortcuts' }, stop.signal);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    expect(w.shown).toBe(true);
+    stop.abort();
+    await expect(result).resolves.toBeNull();
+    expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('a signal already aborted opens nothing, and one aborted while the sheet waits behind another never opens it', async () => {
+    const h = host();
+    const p = parent();
+    const gone = new AbortController();
+    gone.abort();
+    await expect(h.open(p, { kind: 'shortcuts' }, gone.signal)).resolves.toBeNull();
+    expect(FakeWindow.all).toHaveLength(0);
+    const first = h.open(p, { kind: 'shortcuts' });
+    await tick();
+    const stop = new AbortController();
+    const second = h.open(p, { kind: 'shortcuts' }, stop.signal);
+    stop.abort();
+    h.resolve(contentsOf(FakeWindow.all[0]!), { kind: 'shortcuts' });
+    await first;
+    await expect(second).resolves.toBeNull();
+    await tick();
+    expect(FakeWindow.all).toHaveLength(1);
+  });
+
+  it('a sheet answered before the abort is not touched by it', async () => {
+    const h = host();
+    const stop = new AbortController();
+    const result = h.open(parent(), { kind: 'shortcuts' }, stop.signal);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    stop.abort();
+    expect(w.destroyed).toBe(true);
+  });
+});
+
+describe('the result sheets that grow by a reveal error line', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+  const RESTORE = { kind: 'restoreDone', backupAt: '2026-10-30T12:41:00.000Z', items: 3, trashed: 0, collections: 0, tags: 0, files: 2, verified: 2, missing: null, damaged: null, records: null, countsMatch: true, location: '/home/u/Learn 복원', homeDir: '/home/u' } as const;
+
+  it('FOLLOWING_SHEETS names the backup and the restore result sheets', () => {
+    expect([...FOLLOWING_SHEETS].sort()).toEqual(['backupDone', 'libraryCheck', 'restoreDone']);
+  });
+
+  it('the restore sheet follows its content up to the cap, so the error line of a failed reveal fits', async () => {
+    FakeWindow.pageHeight = 400;
+    void host().open(parent(1, 900), RESTORE);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(w.contentSize).toEqual([560, 400]);
+    FakeWindow.followers.shift()!(436);
+    await tick();
+    expect(w.contentSize).toEqual([560, 436]);
+  });
+});
+
+describe('the library check sheet: acts while open (P-17), capped at the parent − 120 and following its content (P-26)', () => {
+  const CHECK: LibraryCheckPayload = { kind: 'libraryCheck', mode: 'manual', items: 3, rows: [], homeDir: '/home/u', failed: null };
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+
+  it('is wide, measured within the parent\'s height − 120, and tells the page that cap before it is sized', async () => {
+    FakeWindow.pageHeight = 600;
+    void host().open(parent(1, 900), CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    expect(w.options).toMatchObject({ width: 560, height: 780 });
+    await ready(w);
+    expect(w.contentSize).toEqual([560, 600]);
+    const cap = FakeWindow.scripts.findIndex((s) => s.includes("'--sheet-max-height', '780px'"));
+    const sized = FakeWindow.scripts.findIndex((s) => s.includes('dataset.sized'));
+    expect(cap).toBeGreaterThan(-1);
+    expect(cap).toBeLessThan(sized);
+  });
+
+  it('follows its content down and up while open, never past the cap', async () => {
+    FakeWindow.pageHeight = 600;
+    void host().open(parent(1, 900), CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    FakeWindow.followers.shift()!(420);
+    await tick();
+    expect(w.contentSize).toEqual([560, 420]);
+    await tick();
+    FakeWindow.followers.shift()!(1200);
+    await tick();
+    expect(w.contentSize).toEqual([560, 780]);
+  });
+
+  it('re-caps at the parent − 120 when the parent resizes while it is open, and clamps the window to it', async () => {
+    FakeWindow.pageHeight = 700;
+    const p = parent(1, 900);
+    void host().open(p, CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(w.contentSize).toEqual([560, 700]);
+    p.height = 700;
+    p.emit('resize');
+    await tick();
+    expect(FakeWindow.scripts.some((s) => s.includes("'--sheet-max-height', '580px'"))).toBe(true);
+    expect(w.contentSize).toEqual([560, 580]);
+    // The content then follows under the new cap.
+    FakeWindow.followers.shift()!(900);
+    await tick();
+    expect(w.contentSize).toEqual([560, 580]);
+    // Closed: the parent is no longer listened to.
+    w.close();
+    await tick();
+    expect(p.listenerCount('resize')).toBe(0);
+  });
+
+  it('macOS: the window grows with the content up to the cap and never shrinks; Linux follows both ways', async () => {
+    const mac = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'darwin' });
+    FakeWindow.pageHeight = 400;
+    void mac.open(parent(1, 900), CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    await tick();
+    expect(FakeWindow.scripts.some((s) => s.includes('dataset.holds'))).toBe(true);
+    FakeWindow.followers.shift()!(650);
+    await tick();
+    expect(w.contentSize).toEqual([560, 650]);
+    await tick();
+    FakeWindow.followers.shift()!(300);
+    await tick();
+    expect(w.contentSize).toEqual([560, 650]);
+    await tick();
+    FakeWindow.followers.shift()!(1200);
+    await tick();
+    expect(w.contentSize).toEqual([560, 780]);
+    // Off macOS the page is not told to hold its height.
+    void host().open(parent(2, 900), CHECK);
+    await tick();
+    const l = FakeWindow.all[1]!;
+    await ready(l);
+    expect(FakeWindow.scripts.filter((s) => s.includes('dataset.holds'))).toHaveLength(1);
+  });
+
+  it('followedHeight: the platform branch', () => {
+    expect(followedHeight(300, 650, 780, 'darwin')).toBe(650);
+    expect(followedHeight(700, 650, 780, 'darwin')).toBe(700);
+    expect(followedHeight(900, 650, 780, 'darwin')).toBe(780);
+    expect(followedHeight(300, 650, 780, 'linux')).toBe(300);
+    expect(followedHeight(900, 650, 780, 'win32')).toBe(780);
+  });
+
+  it('the other sheets keep their own cap and do not follow', async () => {
+    void host().open(parent(1, 900), { kind: 'shortcuts' });
+    await tick();
+    const w = FakeWindow.all[0]!;
+    expect(w.options.height).toBe(900 - SHEET_TOP - 16);
+    await ready(w);
+    await tick();
+    expect(FakeWindow.followers).toEqual([]);
+    expect(FakeWindow.scripts.some((s) => s.includes('--sheet-max-height'))).toBe(false);
+  });
+
+  it('runs an action through its kind\'s handler, one at a time; the page reads the newest payload back', async () => {
+    const h = host();
+    const p = parent();
+    const order: string[] = [];
+    let release = (): void => {};
+    h.onAct('libraryCheck', async (action, sheet) => {
+      order.push(`start ${action.act}`);
+      expect(sheet.parent).toBe(p);
+      expect(sheet.window).toBe(FakeWindow.all[0]);
+      expect(sheet.payload.kind).toBe('libraryCheck');
+      if (order.length === 1) await new Promise<void>((resolve) => (release = resolve));
+      order.push('end');
+      return { ...CHECK, items: 3 + order.length };
+    });
+    void h.open(p, CHECK);
+    await tick();
+    const w = FakeWindow.all[0]!;
+    await ready(w);
+    const first = h.act(contentsOf(w), { kind: 'libraryCheck', act: 'cleanStaging' });
+    const second = h.act(contentsOf(w), { kind: 'libraryCheck', act: 'revive' });
+    await tick();
+    expect(order).toEqual(['start cleanStaging']);
+    release();
+    expect(await first).toMatchObject({ items: 5 });
+    expect(await second).toMatchObject({ items: 7 });
+    expect(order).toEqual(['start cleanStaging', 'end', 'start revive', 'end']);
+    expect(h.payloadFor(contentsOf(w))).toMatchObject({ items: 7 });
+  });
+
+  it('refuses an action for another kind, a kind with no handler, and a window that is not an open sheet', async () => {
+    const h = host();
+    void h.open(parent(1), { kind: 'shortcuts' });
+    void h.open(parent(2), CHECK);
+    await tick();
+    const [keys, check] = FakeWindow.all as [FakeWindow, FakeWindow];
+    await expect(h.act(contentsOf(keys), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(h.act(contentsOf(check), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    await expect(h.act({ id: 999 } as unknown as WebContents, { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
   });
 });

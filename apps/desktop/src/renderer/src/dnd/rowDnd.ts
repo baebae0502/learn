@@ -11,12 +11,12 @@ import { renderRowPreview } from './rowPreview';
  * with that key) and reads a synthetic mouse press as a virtual one, so no native drag starts. The row has no drag button
  * — the keyboard's way to file items is 컬렉션에 추가 ▸.
  */
-export function useRowDnd(ref: RefObject<HTMLElement | null>, itemId: string, dragIdsOf: (rowId: string) => string[]): { rowProps: HTMLAttributes<HTMLElement>; isDropTarget: boolean } {
+export function useRowDnd(ref: RefObject<HTMLElement | null>, itemId: string, dragIdsOf: (rowId: string) => string[], enabled = true): { rowProps: HTMLAttributes<HTMLElement>; isDropTarget: boolean } {
   const open = useDndGate();
   const tagDragging = useTagDragging();
   const preview = useRef(renderRowPreview);
   const { dragProps } = useDrag({
-    isDisabled: !open,
+    isDisabled: !open || !enabled,
     hasDragButton: true,
     preview,
     getAllowedDropOperations: () => ['copy', 'move'],
@@ -27,7 +27,7 @@ export function useRowDnd(ref: RefObject<HTMLElement | null>, itemId: string, dr
   const { dropProps, isDropTarget } = useDrop({
     ref,
     // A row that takes drops all the time swallows every dragover, Finder's files too: the window overlay would never show over the table.
-    isDisabled: !open || !tagDragging,
+    isDisabled: !open || !tagDragging || !enabled,
     getDropOperation: (types) => (types.has(MIME_TAG) && tagDropIds(itemId) !== null ? 'copy' : 'cancel'),
     onDrop: async (e) => {
       const item = e.items.find((i): i is TextDropItem => i.kind === 'text' && i.types.has(MIME_TAG));

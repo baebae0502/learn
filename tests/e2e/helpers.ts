@@ -4,14 +4,18 @@ import path from 'node:path';
 import { _electron as electron, expect, type ElectronApplication, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
-import type { LibraryItem } from '../../packages/domain/src/library';
+import type { JobProgress } from '../../packages/domain/src/backup';
+import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
+import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
 import { compareShots, isTranslucent, type Pixels } from './shot-compare';
 
 declare global {
   interface Window {
     learn: LearnApi;
+    /** The renderer's E2E switch (library/useImportQueue.ts): importPaths' runs show no busy screen and no toast. */
+    __learnQuietImports?: number;
   }
 }
 
@@ -282,15 +286,77 @@ export async function holdCopies(app: ElectronApplication): Promise<void> {
 }
 export const releaseCopies = (app: ElectronApplication) => app.evaluate(() => (globalThis as { __learnReleaseCopy?: () => void }).__learnReleaseCopy?.());
 
-/** Import files through `learn.library.import` (managed); every path must come back as a new item. */
-export async function importPaths(page: Page, paths: string[]): Promise<LibraryItem[]> {
-  const r = await page.evaluate((paths) => window.learn.library.import({ paths, mode: 'managed' }), paths);
-  if (!r.ok) throw new Error(`library.import failed: ${r.code}`);
-  return r.data.map((o) => {
-    if (o.status !== 'imported') throw new Error(`library.import: ${o.path} → ${o.status}`);
-    return o.item;
-  });
+/**
+ * Imports files through `learn.library.import` and waits for the queue's run to end (P-22): every path must come in as a
+ * new item; they come back in the order given. The run is quiet — no busy screen, no progress or result toast — as this
+ * helper was before the queue. `allowDuplicate`: the same content as an item already there comes in as a new item (no
+ * question). Call it while no other import runs: the run must be this call's alone.
+ */
+export async function importPaths(page: Page, paths: string[], opts: { mode?: StorageMode; allowDuplicate?: true } = {}): Promise<LibraryItem[]> {
+  const r = await page.evaluate(
+    async ({ paths, mode, allowDuplicate }) => {
+      const learn = window.learn;
+      const ids: string[] = [];
+      const offs: Array<() => void> = [];
+      const ended = new Promise<{ report: ImportReport } | { asked: true }>((resolve) => {
+        offs.push(learn.on('libraryChanged', (c) => void (c.reason === 'import' && ids.push(...(c.itemIds ?? [])))));
+        offs.push(learn.on('import:progress', (s) => void (s.state === 'waiting-choice' && resolve({ asked: true }))));
+        offs.push(learn.on('import:finished', ({ report }) => resolve({ report })));
+      });
+      window.__learnQuietImports = (window.__learnQuietImports ?? 0) + 1;
+      try {
+        const sent = await learn.library.import({ paths, mode, ...(allowDuplicate ? { allowDuplicate: true } : {}) });
+        if (!sent.ok) {
+          window.__learnQuietImports = Math.max(0, (window.__learnQuietImports ?? 1) - 1);
+          return { error: `library.import failed: ${sent.code}` };
+        }
+        const end = await ended;
+        if ('asked' in end) return { error: 'importPaths: a duplicate was asked (pass allowDuplicate, or answer the sheet in the test)' };
+        const got = ids.length > 0 ? await learn.library.getItems({ ids }) : { ok: true as const, data: [] as LibraryItem[] };
+        if (!got.ok) return { error: `library.getItems failed: ${got.code}` };
+        return { report: end.report, items: got.data };
+      } finally {
+        for (const off of offs) off();
+      }
+    },
+    { paths, mode: opts.mode ?? 'managed', allowDuplicate: opts.allowDuplicate === true },
+  );
+  if ('error' in r) throw new Error(r.error);
+  if (r.report.requested !== paths.length) throw new Error(`importPaths: the run had ${r.report.requested} files, not ${paths.length} (another import was running)`);
+  if (r.report.failed.length > 0 || r.items.length !== paths.length) {
+    throw new Error(`importPaths: ${r.report.failed.map((f) => `${f.name}: ${f.message}`).join('; ') || `${r.items.length} of ${paths.length} came in`}`);
+  }
+  return r.items;
 }
+
+/**
+ * Until the import has ended for this window: main's queue idle, nothing being handed over, no run's end being shown (its
+ * toasts are up). Call it after something showed that the run began (a toast, a sheet, a row).
+ */
+export async function waitImportIdle(page: Page): Promise<void> {
+  const marker = page.getByTestId('import-queue');
+  await expect.poll(() => marker.evaluate((e) => `${e.getAttribute('data-state')}|${e.getAttribute('data-sending')}|${e.getAttribute('data-settling') ?? ''}`), { message: 'the import ended' }).toBe('idle|0|');
+}
+
+/** Main's E2E import hooks (main/test-hooks.ts, P-6, Q-3c, Q-4i). */
+export type ImportPausePoint = 'afterStage' | 'afterPlace' | 'beforeCommit';
+interface QueueTestHooks {
+  importPause(input: { at: ImportPausePoint | null }): void;
+  importResume(): void;
+  importWaiting(): ImportPausePoint | null;
+  importQueueState(): ImportQueueState;
+  holdJob(input: { kind: 'backup' | 'restore' }): void;
+  releaseJob(): void;
+}
+type WithQueueHooks = { __learnTest: QueueTestHooks };
+/** The next file of an import waits at `at` until importResume; null calls it off. */
+export const importPause = (app: ElectronApplication, at: ImportPausePoint | null) => app.evaluate((_e, at) => (globalThis as unknown as WithQueueHooks).__learnTest.importPause({ at }), at);
+export const importResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importResume());
+export const importWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importWaiting());
+export const importQueueState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importQueueState());
+/** A job of another kind holds the work line until releaseJob: an import put in meanwhile waits behind it. */
+export const holdJob = (app: ElectronApplication, kind: 'backup' | 'restore' = 'backup') => app.evaluate((_e, kind) => (globalThis as unknown as WithQueueHooks).__learnTest.holdJob({ kind }), kind);
+export const releaseJob = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.releaseJob());
 
 /**
  * Metadata (and, when given, a title) for an item through `learn.library.updateMetadata` from the page. Main
@@ -325,6 +391,22 @@ export async function expectDisabledReason(control: Locator, reason: string | nu
   }
 }
 
+/** A sheet window is shown at its measured size, and its page's viewport has that size. */
+async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const shown = await app.evaluate(({ BrowserWindow }, url) => {
+          const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
+          return w?.isVisible() ? w.getContentSize().join('x') : null;
+        }, page.url());
+        return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
+      },
+      { message: 'the sheet is shown at its measured size' },
+    )
+    .toBe(true);
+}
+
 /**
  * Run `trigger` and return the window it opens (`?window=<kind>`), once its React root has rendered. The first ⌘, of a
  * session shows the settings window main prepared hidden instead of making one: its page, already open, is the one
@@ -343,20 +425,7 @@ export async function expectWindow(app: ElectronApplication, kind: 'settings' | 
   const page = prepared ?? (await opened!);
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
-  if (kind === 'sheet') {
-    await expect
-      .poll(
-        async () => {
-          const shown = await app.evaluate(({ BrowserWindow }, url) => {
-            const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
-            return w?.isVisible() ? w.getContentSize().join('x') : null;
-          }, page.url());
-          return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
-        },
-        { message: 'the sheet is shown at its measured size' },
-      )
-      .toBe(true);
-  }
+  if (kind === 'sheet') await sheetShownAtSize(app, page);
   if (kind === 'settings') {
     await expect
       .poll(
@@ -619,6 +688,22 @@ export async function runMenuCommand(app: ElectronApplication, id: CommandId, ar
 }
 
 /**
+ * Clicks an application-menu item as its accelerator would (`triggeredByAccelerator`): CDP keys never reach native
+ * accelerators on Linux, and the page tells a key from a click (Q-6e: ⌘⌫ typed in a text field is the field's).
+ * Resolves to main's clock at the click (epoch ms, performance.timeOrigin + now): where a key's timing starts (p1-perf).
+ */
+export async function runMenuAccelerator(app: ElectronApplication, id: CommandId): Promise<number> {
+  await expect.poll(() => menuItemEnabled(app, id), { timeout: 5_000, message: `menu item ${id} never became clickable` }).toBe(true);
+  return app.evaluate(({ BrowserWindow, Menu, webContents }, id) => {
+    const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+    if (!item?.enabled || !item.visible) throw new Error(`menu item ${id} is not clickable`);
+    const at = performance.timeOrigin + performance.now();
+    item.click({ triggeredByAccelerator: true } as Electron.KeyboardEvent, BrowserWindow.getFocusedWindow() ?? undefined, webContents.getFocusedWebContents() ?? undefined);
+    return at;
+  }, id);
+}
+
+/**
  * The item panel shown, whatever the window's width: if it is folded (by the width or by the user) it is shown on demand
  * as ⌥⌘I does, and the command is repeated only when a late resize folded it again. The window is judged only once its
  * width has stopped changing (a macOS window that cannot reach the width asked for resizes after the first look), and
@@ -799,6 +884,25 @@ export async function menuItemEnabled(app: ElectronApplication, id: string): Pro
   }, id);
 }
 
+/**
+ * The window takes commands again after a sheet or a native panel closed. Main keeps the parent held (blocked) until it
+ * is key again, up to 250 ms on macOS, and a click or a picked menu row in that gap is refused without a trace. Main's
+ * answer follows its push to the page on the same channel, so once it says the sheet is gone the page has the news too;
+ * the frame lets React apply it.
+ */
+export async function sheetReleased(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null))), { message: 'the sheet never let go of the window' })
+    .toBe(false);
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+}
+
+/** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
+export async function backFromReader(page: Page): Promise<void> {
+  await sheetReleased(page);
+  await page.getByTestId('viewer-back').click();
+}
+
 /** One item of a native popup menu, as recorded by `stubContextMenu`. */
 export interface PopupItem {
   id: string | null;
@@ -976,7 +1080,7 @@ export async function nativeKeystroke(app: ElectronApplication, key: string, mod
 }
 
 /** macOS virtual key codes for the keys `nativeKeystroke` cannot type. */
-export const KEY_CODE = { return: 36, escape: 53 } as const;
+export const KEY_CODE = { return: 36, escape: 53, delete: 51, down: 125 } as const;
 
 /**
  * darwin only: a real OS-level press of a non-printable key (System Events `key code`, e.g. KEY_CODE.return), with the
@@ -1049,6 +1153,13 @@ export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
   return r.data;
 }
 
+/** Moves items to the trash through the page's API (library.trash), as ⌘⌫ does; the number that moved. */
+export async function trashItems(page: Page, itemIds: readonly string[]): Promise<number> {
+  const r = await page.evaluate((input) => window.learn.library.trash(input), { itemIds: [...itemIds] });
+  if (!r.ok) throw new Error(`library.trash failed: ${r.code}`);
+  return r.data;
+}
+
 /** How often main ran each IPC channel since launch (E2E only: ipc/register.ts counts, test-hooks.ts installs the counter). */
 export const ipcCalls = (app: ElectronApplication): Promise<Record<string, number>> =>
   app.evaluate(() => ({ ...((globalThis as { __learnIpcCalls?: Record<string, number> }).__learnIpcCalls ?? {}) }));
@@ -1075,7 +1186,7 @@ export async function quietLibraryCalls(app: ElectronApplication, quietMs = 500)
 // ---- M5 sidebar and collections ------------------------------------------------------------------------------------
 
 /** A special view's row (spec 3.2): 내 라이브러리, 최근 연 자료, 미분류, 중복 항목. */
-export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates'): Locator => page.getByTestId(`nav-scope-${kind}`);
+export const specialRow = (page: Page, kind: 'all' | 'recent' | 'unfiled' | 'duplicates' | 'trash'): Locator => page.getByTestId(`nav-scope-${kind}`);
 /** A collection's row in the tree. */
 export const treeRow = (page: Page, collectionId: string): Locator => page.getByTestId(`nav-collection-${collectionId}`);
 
@@ -1208,3 +1319,170 @@ export async function removeChip(chip: Locator): Promise<void> {
   await chip.hover();
   await chip.locator('xpath=..').getByTestId('tag-chip-remove').click();
 }
+
+// ---- M6 라이브러리 점검 ----------------------------------------------------------------------------------------------
+
+/**
+ * A sheet main opened by itself (the automatic library check): the one on screen or the next to come, once shown at its
+ * measured size. A sheet a test asks for is expectWindow's.
+ */
+export async function waitForSheet(app: ElectronApplication): Promise<Page> {
+  const isSheet = (p: Page) => !p.isClosed() && p.url().includes('window=sheet');
+  await expect.poll(() => app.windows().some(isSheet), { message: 'a sheet window', timeout: 20_000 }).toBe(true);
+  const page = app.windows().find(isSheet)!;
+  await page.locator('[data-sheet-root]').waitFor();
+  await sheetShownAtSize(app, page);
+  return page;
+}
+interface CheckTestHooks {
+  libraryCheck(): { check: LibraryCheck | null; auto: 'requested' | 'not-due' | 'stopped' | 'pending' };
+  requestLibraryCheck(): Promise<void>;
+}
+type WithCheckHooks = { __learnTest: CheckTestHooks };
+/** The newest library check and what the startup check did about the automatic sheet. */
+export const libraryCheckState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.libraryCheck());
+/** A fresh check and the automatic sheet again (after a test sized the window). */
+export const requestLibraryCheck = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithCheckHooks).__learnTest.requestLibraryCheck());
+
+// ---- M6 backup -------------------------------------------------------------------------------------------------------
+
+/** One call of the stubbed folder panel (백업 만들기…): whether it hung on a window (a sheet), and what it said. */
+export interface FolderPickCall {
+  parent: boolean;
+  title: string | null;
+  message: string | null;
+  buttonLabel: string | null;
+  defaultPath: string | null;
+  properties: string[];
+}
+
+/**
+ * Replace the native open panel in main with a folder picker that answers `folder` (null: cancelled), recording every
+ * call from none (folderPicks). The real panel is kept the first time, as stubOpenDialog keeps it.
+ */
+export async function stubFolderPicker(app: ElectronApplication, folder: string | null): Promise<void> {
+  await app.evaluate(({ dialog }, answer) => {
+    const g = globalThis as { __learnFolderPicks?: unknown[]; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    g.__learnRealOpenDialog ??= dialog.showOpenDialog;
+    g.__learnFolderPicks = [];
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; message?: string; buttonLabel?: string; defaultPath?: string; properties?: string[] };
+      g.__learnFolderPicks!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        message: o.message ?? null,
+        buttonLabel: o.buttonLabel ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+      });
+      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
+    }) as typeof dialog.showOpenDialog;
+  }, folder);
+}
+export const folderPicks = (app: ElectronApplication): Promise<FolderPickCall[]> =>
+  app.evaluate(() => ((globalThis as { __learnFolderPicks?: FolderPickCall[] }).__learnFolderPicks ?? []));
+/** Where main opens the folder panel the first time (spec 8.1: the documents folder). */
+export const documentsDir = (app: ElectronApplication): Promise<string> => app.evaluate(({ app }) => app.getPath('documents'));
+
+type WithBackupHooks = {
+  __learnTest: {
+    backupPause(input: { at: 'afterCopy' | null }): void;
+    backupResume(): void;
+    backupWaiting(): string | null;
+    backupState(): JobProgress;
+  };
+};
+/** The next backup holds its first copy once written, before it is read back, until backupResume (null lifts it). */
+export const backupPause = (app: ElectronApplication, at: 'afterCopy' | null = 'afterCopy') =>
+  app.evaluate((_e, at) => (globalThis as unknown as WithBackupHooks).__learnTest.backupPause({ at }), at);
+export const backupResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupResume());
+/** The held copy's path inside the backup being made, or null. */
+export const backupWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupWaiting());
+export const backupState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithBackupHooks).__learnTest.backupState());
+/** Until main's backup has ended (its last notice sent). */
+export const waitBackupIdle = (app: ElectronApplication) =>
+  expect.poll(async () => (await backupState(app)).state, { message: 'the backup ended' }).toBe('idle');
+
+// ---- M6 restore ------------------------------------------------------------------------------------------------------
+
+/**
+ * Like stubFolderPicker, but the panel answers `answers` in turn (null: cancelled; past the last, cancelled): 백업에서
+ * 복원… asks twice, for the backup and for where to restore. Every call is recorded for folderPicks.
+ */
+export async function stubFolderPicks(app: ElectronApplication, answers: Array<string | null>): Promise<void> {
+  await app.evaluate(({ dialog }, list) => {
+    const g = globalThis as { __learnFolderPicks?: unknown[]; __learnRealOpenDialog?: typeof dialog.showOpenDialog };
+    g.__learnRealOpenDialog ??= dialog.showOpenDialog;
+    g.__learnFolderPicks = [];
+    const queue = [...list];
+    dialog.showOpenDialog = (async (...args: unknown[]) => {
+      const o = (args.length > 1 ? args[1] : args[0]) as { title?: string; message?: string; buttonLabel?: string; defaultPath?: string; properties?: string[] };
+      g.__learnFolderPicks!.push({
+        parent: args.length > 1,
+        title: o.title ?? null,
+        message: o.message ?? null,
+        buttonLabel: o.buttonLabel ?? null,
+        defaultPath: o.defaultPath ?? null,
+        properties: o.properties ?? [],
+      });
+      const answer = queue.length > 0 ? queue.shift()! : null;
+      return answer === null ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [answer] };
+    }) as typeof dialog.showOpenDialog;
+  }, answers);
+}
+
+/** Main was asked to restart (E2E records it instead: Playwright cannot follow a new process). */
+export const relaunchRequested = (app: ElectronApplication): Promise<boolean> =>
+  app.evaluate(() => (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested ?? false);
+
+type WithRestoreHooks = {
+  __learnTest: {
+    restorePause(input: { at: 'afterCopy' | null }): void;
+    restoreResume(): void;
+    restoreWaiting(): string | null;
+    restoreState(): JobProgress;
+  };
+};
+/** The next restore holds its first copy once written, before it is read back, until restoreResume (null lifts it). */
+export const restorePause = (app: ElectronApplication, at: 'afterCopy' | null = 'afterCopy') =>
+  app.evaluate((_e, at) => (globalThis as unknown as WithRestoreHooks).__learnTest.restorePause({ at }), at);
+export const restoreResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreResume());
+/** The held copy's path inside the library being made, or null. */
+export const restoreWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreWaiting());
+export const restoreState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithRestoreHooks).__learnTest.restoreState());
+/** Until main's restore has ended (its last notice sent). */
+export const waitRestoreIdle = (app: ElectronApplication) =>
+  expect.poll(async () => (await restoreState(app)).state, { message: 'the restore ended' }).toBe('idle');
+
+// ---- M6 P1 gate and @perf ------------------------------------------------------------------------------------------------
+
+export { factCounts, libraryFacts, type FactCounts, type LibraryFacts } from './library-facts';
+
+/**
+ * SIGKILL of the Electron main process, as a crash or a power cut ends the app: no quit handler and no beforeunload run.
+ * Waits at most `timeoutMs` for the exit.
+ */
+export async function hardKill(app: ElectronApplication, timeoutMs = 10_000): Promise<void> {
+  const proc = app.process();
+  const pid = proc.pid!;
+  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+  process.kill(pid, 'SIGKILL');
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Electron main process ${pid} did not exit within ${timeoutMs} ms of SIGKILL`)), timeoutMs);
+  });
+  try {
+    await Promise.race([exited, timedOut]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type WithSeedHooks = {
+  __learnTest: { seedAssets(input: SeedAssetsInput): SeedAssetsResult; fsyncProbe(input: FsyncProbeInput): Promise<FsyncProbeResult> };
+};
+/** Writes the files and rows in main, then announces one import; resolves with the ids and hashes in the rows' order. */
+export const seedAssets = (app: ElectronApplication, input: SeedAssetsInput): Promise<SeedAssetsResult> =>
+  app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.seedAssets(arg), input);
+export const fsyncProbe = (app: ElectronApplication, input: FsyncProbeInput): Promise<FsyncProbeResult> =>
+  app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.fsyncProbe(arg), input);

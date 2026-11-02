@@ -291,7 +291,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
     const items = (await recordedPopups(app))[0]!.filter((i) => i.type !== 'separator');
     expect(items.length).toBeGreaterThan(0);
-    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['컬렉션에 추가']);
+    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['컬렉션에 추가', '휴지통으로 이동']);
     await expect(page.getByTestId('action-error')).toHaveCount(0);
   } finally {
     await app.close();

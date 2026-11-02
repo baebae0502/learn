@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useReducer } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef } from 'react';
 import { afterPaintOr } from '../ui/afterPaint';
 import { perfMark } from '../ui/perfMarks';
 
@@ -30,6 +30,7 @@ export type BusyEvent =
   | { type: 'delayDone' }
   | { type: 'textPainted'; at: number }
   | { type: 'minDone' }
+  | { type: 'count'; count: number }
   | { type: 'end' };
 
 export function busyReducer(s: BusyState | null, e: BusyEvent): BusyState | null {
@@ -42,6 +43,8 @@ export function busyReducer(s: BusyState | null, e: BusyEvent): BusyState | null
       return s && s.phase === 'text' && s.textAt === null ? { ...s, textAt: e.at } : s;
     case 'minDone':
       return s ? (s.active ? { ...s, minDone: true } : null) : s;
+    case 'count':
+      return s ? { ...s, count: e.count } : s;
     case 'end':
       return !s || s.phase === 'quiet' || s.minDone ? null : { ...s, active: false };
   }
@@ -75,23 +78,29 @@ function setHeld(holding: boolean): void {
 export const busyScreenSettled = (): Promise<void> => held?.promise ?? Promise.resolve();
 
 /**
- * `count`: the files a drop into the empty library brings in while that import runs with the list still empty; null
- * otherwise (no import, a dialog import, or the rows have come).
+ * `count`: the files an import into the empty library brings in (the queue's total, spec 3.2) while the list is still
+ * empty; null otherwise. A count that changes while the screen is up (more files joined) changes its words only.
  */
 export function useBusyScreen(count: number | null): BusyScreen | null {
   const [s, dispatch] = useReducer(busyReducer, null);
+  const active = count !== null;
+  const latest = useRef(count);
+  latest.current = count;
   useEffect(() => {
-    if (count === null) {
+    if (!active) {
       dispatch({ type: 'end' });
       return;
     }
-    dispatch({ type: 'start', count });
+    dispatch({ type: 'start', count: latest.current! });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const cancel = afterPaintOr(BUSY_DELAY_MS, () => (timer = setTimeout(() => dispatch({ type: 'delayDone' }), BUSY_DELAY_MS)));
     return () => {
       cancel();
       clearTimeout(timer);
     };
+  }, [active]);
+  useEffect(() => {
+    if (count !== null) dispatch({ type: 'count', count });
   }, [count]);
   const text = s?.phase === 'text';
   const textAt = s?.textAt ?? null;

@@ -1,10 +1,10 @@
 // The library table's column catalogue (M4 spec 3.1). No zod: main builds the column header menu from it and the
 // renderer draws the header and the cells from it, so the menu and the header name every column alike.
-export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName'] as const;
+export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt'] as const;
 export type LibraryColumnId = (typeof LIBRARY_COLUMN_IDS)[number];
 
 /** Sortable fields. `progress` has no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). It lives here, not in settings.ts: command arguments need the type and settings.ts imports the command registry. */
-export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
+export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName', 'deletedAt'] as const;
 export type LibrarySortColumn = (typeof LIBRARY_SORT_COLUMNS)[number];
 
 /** The columns shown, as a bitmask over LIBRARY_COLUMN_IDS (bit i = the i-th id): the reported command context carries no arrays. */
@@ -31,6 +31,11 @@ export interface LibraryColumnSpec {
   align: 'start' | 'end';
   /** The title column cannot be hidden. */
   required?: true;
+  /**
+   * Only the trash view draws it (M6 spec 4.3: 삭제한 날짜), last and fixed there; no other view shows or lists it — the
+   * column menu included — whatever library.columns says.
+   */
+  trashOnly?: true;
 }
 
 export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
@@ -44,9 +49,13 @@ export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
   { id: 'storageMode', label: '보관', defaultVisible: false, defaultWidth: 96, minWidth: 80, align: 'start' },
   { id: 'size', label: '크기', defaultVisible: false, defaultWidth: 80, minWidth: 64, align: 'end' },
   { id: 'originalName', label: '원래 이름', defaultVisible: false, defaultWidth: 200, minWidth: 120, align: 'start' },
+  { id: 'deletedAt', label: '삭제한 날짜', defaultVisible: false, defaultWidth: 124, minWidth: 112, align: 'start', trashOnly: true },
 ] satisfies LibraryColumnSpec[]);
 
 /** The widest a column may be dragged (spec §3.2). */
+/** The columns the trash view draws whatever library.columns says (spec 4.3), after all the others. */
+export const TRASH_COLUMNS: readonly LibraryColumnId[] = Object.freeze(['deletedAt'] as const);
+
 export const COLUMN_WIDTH_MAX = 1200;
 
 /** How many column ids library.columns stores in each of its lists and in its widths (a later build's ids included). */

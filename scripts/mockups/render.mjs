@@ -109,7 +109,7 @@ export async function renderMockups({ renders, outDir, scale = 2, log = () => {}
       await page.evaluate(() => new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null)))));
       const pretendard = await page.evaluate(() => document.fonts.check('13px "Pretendard Variable"', '가'));
       if (errors.length) throw new Error(`${r.name}: page errors:\n${errors.join('\n')}`);
-      const fonts = await platformFonts(page, '.tab.is-active .title, .tb-title .title');
+      const fonts = await platformFonts(page, '.tab.is-active .title, .tb-title .title, .fatal-window .notice h2'); // the fatal screen has no shell: its heading is the text to probe
       const milestones = await page.evaluate(() => window.__milestones ?? { tagged: [], missing: [] });
       const copyLint = await page.evaluate(() => window.__copyLint ?? []);
       const file = path.join(outDir, `${r.name}.png`);

@@ -9,10 +9,14 @@ import { queryClient } from './query-client';
 export const keys = {
   info: ['app', 'info'] as const,
   prefs: ['prefs'] as const,
+  /** 마지막 백업 (spec 8.2), the settings window's: read again when main says backup.last changed. */
+  backupInfo: ['app', 'backupInfo'] as const,
   items: ['library', 'items'] as const,
   searchTexts: ['library', 'searchTexts'] as const,
   item: (itemId: string) => ['library', 'item', itemId] as const,
   detail: (itemId: string) => ['library', 'detail', itemId] as const,
+  /** An item's edited copies (M6 spec 6): under its detail, so whatever reads the detail again reads these too. */
+  editedCopies: (itemId: string) => ['library', 'detail', itemId, 'editedCopies'] as const,
   panes: ['settings', 'layout.panes'] as const,
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
   columns: ['settings', 'library.columns'] as const,
@@ -22,10 +26,13 @@ export const keys = {
   /** The tag selector's 표시·정렬 (tags.selector): read once, written optimistically (tags/useTagsSelector.ts). */
   tagsSelector: ['settings', 'tags.selector'] as const,
   sortRecent: ['settings', 'library.sort.recent'] as const,
+  sortTrash: ['settings', 'library.sort.trash'] as const,
   /** The stored view (read once at start, then written by the store: useRestoreView, library-store). */
   view: ['settings', 'library.view'] as const,
   /** The organize snapshot (spec 10.1): collections, tags, memberships, assignments, duplicate groups. */
   organize: ['library', 'organize'] as const,
+  /** The trash view's rows (spec 4.3): read while the trash view shows; under ['library'], so trash, restore and purge notices mark it stale. */
+  trash: ['library', 'trash'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });
@@ -54,6 +61,9 @@ export const usePanes = () => useQuery({ queryKey: keys.panes, queryFn: () => un
 /** The item panel's facts (metadata, file, SHA-256): the same cache entry as the reader's missing notice (ViewerHost). */
 export const useItemDetail = (itemId: string) => useQuery({ queryKey: keys.detail(itemId), queryFn: () => unwrap(api().library.detail({ itemId })) });
 
+/** The trash view (spec 4.3): its collection rows and items. `enabled` while the trash view is what the library shows. */
+export const useTrashView = (enabled = true) => useQuery({ queryKey: keys.trash, queryFn: () => unwrap(api().library.trashView()), enabled });
+
 /**
  * Every change made through main pushes libraryChanged. Collections and tags read the snapshot only; a change to some
  * items' own rows reads those items and patches the list; the rest drops all cached library data (libraryChange.ts).
@@ -75,6 +85,7 @@ const onLibraryChanged = createChangeHandler({
   getItems: (ids) => unwrap(api().library.getItems({ ids })),
   invalidateAll: () => void queryClient.invalidateQueries({ queryKey: ['library'] }),
   invalidateOrganize: () => void queryClient.invalidateQueries({ queryKey: keys.organize }),
+  invalidateTrash: () => void queryClient.invalidateQueries({ queryKey: keys.trash }),
   invalidateItem: (itemId) => {
     void queryClient.invalidateQueries({ queryKey: keys.item(itemId) });
     void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) });

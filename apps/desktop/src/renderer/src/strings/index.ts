@@ -1,15 +1,20 @@
 // UI copy by area (design-spec 9: 합니다체, verb buttons, U+00A0 groups). strings.test.ts lints all of it.
+import { backup } from './backup';
+import { check } from './check';
 import { common } from './common';
 import { drop } from './drop';
 import { fatal } from './fatal';
 import { inspector } from './inspector';
+import { jobs } from './jobs';
 import { library } from './library';
 import { organize } from './organize';
 import { palette } from './palette';
 import { reader } from './reader';
+import { restore } from './restore';
 import { settings } from './settings';
 import { shell } from './shell';
 import { sheets } from './sheets';
 import { toast } from './toast';
+import { trash } from './trash';
 
-export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize } as const;
+export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize, jobs, trash, check, backup, restore } as const;

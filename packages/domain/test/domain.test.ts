@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
-  VIDEO_FORMATS, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sourceAnchor, toLearnError, updateMetadataInput,
+  APP_ORIGIN, ANCHOR_SCHEMA_VERSION, ERROR_CODES, ERROR_COPY, IDLE_IMPORT_STATE, LIBRARY_COLUMN_IDS, LearnError, assetUrl, commandContextInput, createCollectionInput, createTagInput, fail, failureFrom, getItemsInput, importPathsInput,
+  VIDEO_FORMATS, absolutePathSchema, nameSchema, newId, nowIso, ok, pickAndImportInput, renameCollectionInput, renameTagInput, sheetResultInput, sourceAnchor, titleSchema, toLearnError, updateMetadataInput,
 } from '../src/index';
 
 describe('ids', () => {
@@ -19,6 +19,41 @@ describe('errors and results', () => {
     expect(full.code).toBe('DISK_FULL');
     expect(full.retryable).toBe(true);
     expect(toLearnError(new Error('boom')).code).toBe('INTERNAL');
+  });
+  it.each([
+    ['ENOSPC', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['EDQUOT', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['SQLITE_FULL', 'DISK_FULL', ERROR_COPY.diskFull],
+    ['EACCES', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['EPERM', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['EROFS', 'PERMISSION_DENIED', ERROR_COPY.fileDenied],
+    ['SQLITE_READONLY', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_READONLY_DBMOVED', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_CANTOPEN', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_CANTOPEN_ISDIR', 'PERMISSION_DENIED', ERROR_COPY.libraryDenied],
+    ['SQLITE_NOTADB', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['SQLITE_CORRUPT', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['SQLITE_CORRUPT_INDEX', 'LIBRARY_UNAVAILABLE', ERROR_COPY.libraryCorrupt],
+    ['ENOENT', 'NOT_FOUND', ERROR_COPY.fileMissing],
+  ] as const)('maps %s to %s in the user\'s words (spec 10), keeping the engine error as the cause', (raw, code, message) => {
+    const engine = Object.assign(new Error('engine text that never reaches the screen'), { code: raw });
+    const le = toLearnError(engine, '대신 쓰는 문장입니다.');
+    expect(le).toMatchObject({ code, message });
+    expect(le.cause).toBe(engine);
+  });
+  it('keeps the fallback for every other code: a constraint, an I/O error, odd and non-string codes', () => {
+    for (const raw of ['SQLITE_CONSTRAINT_UNIQUE', 'SQLITE_IOERR_FSYNC', 'SQLITE_BUSY', 'SQLITE_', 'EIO', 'toString', 'constructor']) {
+      expect(toLearnError(Object.assign(new Error('x'), { code: raw }), '대신 쓰는 문장입니다.'), raw).toMatchObject({ code: 'INTERNAL', message: '대신 쓰는 문장입니다.' });
+    }
+    expect(toLearnError({ code: 28 })).toMatchObject({ code: 'INTERNAL', message: ERROR_COPY.unknown });
+    expect(toLearnError(null)).toMatchObject({ code: 'INTERNAL', message: ERROR_COPY.unknown });
+  });
+  it('lets a full disk and a refused write be retried, not a damaged library', () => {
+    const e = (code: string) => toLearnError(Object.assign(new Error('x'), { code }));
+    expect([e('SQLITE_FULL').retryable, e('SQLITE_READONLY').retryable, e('EROFS').retryable, e('SQLITE_NOTADB').retryable]).toEqual([true, true, true, false]);
+  });
+  it('says each mapped cause with its next step: two sentences (design-spec 9)', () => {
+    for (const key of ['fileDenied', 'diskFull', 'libraryDenied', 'libraryCorrupt'] as const) expect(ERROR_COPY[key], key).toMatch(/^[^.]+\. [^.]+\.$/);
   });
   it('keeps LearnError as-is', () => {
     const e = new LearnError('HASH_MISMATCH', '다름', { retryable: true });
@@ -62,6 +97,21 @@ describe('ipc contract', () => {
     expect(importPathsInput.safeParse({ paths: [], mode: 'managed' }).success).toBe(false);
     expect(importPathsInput.safeParse({ paths: ['/a.pdf'], mode: 'copy' }).success).toBe(false);
   });
+  it('takes absolute paths only, without a NUL byte (R4: a page never names a file relative to main)', () => {
+    const accepts = (p: string) => importPathsInput.safeParse({ paths: [p], mode: 'managed' }).success;
+    for (const p of ['/a.pdf', '/Users/me/강의 자료/Lecture 1.pdf', '/tmp/x/../y.pdf']) expect(accepts(p), p).toBe(true);
+    for (const p of ['a.pdf', './a.pdf', '../a.pdf', '~/a.pdf', ' /a.pdf', 'C:\\Users\\a.pdf', 'file:///a.pdf', '/a\0.pdf', '']) {
+      expect(accepts(p), JSON.stringify(p)).toBe(false);
+    }
+    // One bad path refuses the whole call.
+    expect(importPathsInput.safeParse({ paths: ['/ok.pdf', 'relative.pdf'], mode: 'linked' }).success).toBe(false);
+    expect(absolutePathSchema.parse('/x/y')).toBe('/x/y');
+  });
+  it('stores titles NFC, as it does names (macOS can hand over decomposed Hangul)', () => {
+    const itemId = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
+    expect(updateMetadataInput.parse({ itemId, title: ' 세포 신호 '.normalize('NFD') }).title).toBe('세포 신호');
+    expect(titleSchema.parse('가'.repeat(500).normalize('NFD'))).toBe('가'.repeat(500)); // the bound counts the NFC form
+  });
   it('takes the collection an import files into: a uuid, null, or nothing', () => {
     const COLL = '5a0b8c1d-3e4f-4a5b-8c6d-7e8f9a0b1c2d';
     expect(pickAndImportInput.parse({ mode: 'managed', collectionId: COLL })).toEqual({ mode: 'managed', allowDuplicate: false, collectionId: COLL });
@@ -85,16 +135,16 @@ describe('ipc contract', () => {
     expect(getItemsInput.safeParse({}).success).toBe(false);
   });
   it('takes the reported command context strictly, with the library and selection counts and the view (P-2, spec 9.4)', () => {
-    const view = { selectionTagPositions: 0b11, scope: 'collection', collectionCount: 4, tagPositions: 0b101, tagFilterCount: 2, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b1111 };
+    const view = { selectionTagPositions: 0b11, scope: 'collection', collectionCount: 4, tagPositions: 0b101, tagFilterCount: 2, searchActive: true, sortColumn: 'year', sortDirection: 'asc', columnsShown: 0b1111, trashCount: 0 };
     const ctx = { view: 'library', blocked: false, sidebar: 'shown', inspector: 'hidden', textSize: 13, libraryCount: 3, selectionCount: 2, selectionAvailable: 1, selectionRelinkable: 1, ...view };
     expect(commandContextInput.parse(ctx)).toEqual(ctx);
     // The fatal screen reports neither pane.
-    const fatal = { view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 0b11111 };
+    const fatal = { view: 'library', blocked: true, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 0b11111, trashCount: 0 };
     expect(commandContextInput.safeParse(fatal).success).toBe(true);
     for (const k of ['libraryCount', 'selectionCount', 'selectionAvailable', 'selectionRelinkable', 'collectionCount', 'tagFilterCount'] as const) {
       for (const bad of [-1, 1.5, 1_000_001, '1']) expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
     }
-    for (const [k, bad] of [['scope', 'trash'], ['tagPositions', 256], ['tagPositions', -1], ['selectionTagPositions', 256], ['selectionTagPositions', -1], ['searchActive', 'yes'], ['sortColumn', 'tags'], ['sortDirection', 'up'], ['columnsShown', 2 ** LIBRARY_COLUMN_IDS.length], ['columnsShown', 1.5]] as const) {
+    for (const [k, bad] of [['tagPositions', 256], ['tagPositions', -1], ['selectionTagPositions', 256], ['selectionTagPositions', -1], ['searchActive', 'yes'], ['sortColumn', 'tags'], ['sortDirection', 'up'], ['columnsShown', 2 ** LIBRARY_COLUMN_IDS.length], ['columnsShown', 1.5]] as const) {
       expect(commandContextInput.safeParse({ ...ctx, [k]: bad }).success, `${k} ${bad}`).toBe(false);
     }
     // Every field is required: a report from before a field existed is refused, not guessed.
@@ -133,6 +183,27 @@ describe('ipc contract', () => {
     const long = '가'.repeat(200);
     expect(nameSchema.parse(long.normalize('NFD'))).toBe(long);
     expect(nameSchema.safeParse('가'.repeat(201).normalize('NFD')).success).toBe(false);
+  });
+  it('a duplicate sheet answers whether its choice is for the remaining duplicates too (P-1)', () => {
+    expect(sheetResultInput.parse({ kind: 'duplicate', choice: 'add', applyToRest: true })).toEqual({ kind: 'duplicate', choice: 'add', applyToRest: true });
+    expect(sheetResultInput.parse({ kind: 'duplicate', choice: 'open', applyToRest: false })).toEqual({ kind: 'duplicate', choice: 'open', applyToRest: false });
+    expect(sheetResultInput.safeParse({ kind: 'duplicate', choice: 'add' }).success).toBe(false);
+    expect(sheetResultInput.safeParse({ kind: 'duplicate', choice: 'add', applyToRest: 'yes' }).success).toBe(false);
+    expect(sheetResultInput.parse({ kind: 'shortcuts' })).toEqual({ kind: 'shortcuts' });
+  });
+  it('a stopped job is CANCELLED, which is not retryable (P-5)', () => {
+    expect(ERROR_CODES).toContain('CANCELLED');
+    expect(new LearnError('CANCELLED', '가져오기를 취소했습니다.').retryable).toBe(false);
+  });
+  it('the idle import queue: nothing to show, frozen', () => {
+    expect(IDLE_IMPORT_STATE).toEqual({ state: 'idle', done: 0, total: 0, bytesDone: 0, bytesTotal: 0, percent: 0, current: null, cancels: 0 });
+    expect(Object.isFrozen(IDLE_IMPORT_STATE)).toBe(true);
+  });
+  it('takes whether the import queue runs as an optional flag of the reported context (Q-4c)', () => {
+    const ctx = { view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, selectionTagPositions: 0, scope: 'all', collectionCount: 0, tagPositions: 0, tagFilterCount: 0, searchActive: false, sortColumn: 'createdAt', sortDirection: 'desc', columnsShown: 1, trashCount: 0 };
+    expect(commandContextInput.parse({ ...ctx, importRunning: true })).toMatchObject({ importRunning: true });
+    expect(commandContextInput.parse(ctx)).not.toHaveProperty('importRunning');
+    expect(commandContextInput.safeParse({ ...ctx, importRunning: 'yes' }).success).toBe(false);
   });
 });
 

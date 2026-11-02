@@ -16,6 +16,8 @@ export interface ChangeDeps {
   /** Everything under ['library']: the list, the snapshot, the search texts, every item and detail. */
   invalidateAll(): void;
   invalidateOrganize(): void;
+  /** The trash view's rows (['library','trash']), which the snapshot does not carry. */
+  invalidateTrash(): void;
   invalidateItem(itemId: string): void;
   invalidateTexts(): void;
 }
@@ -42,10 +44,11 @@ function patched(list: readonly LibraryItem[], ids: readonly string[], fresh: re
 }
 
 /**
- * What the renderer reads again after `libraryChanged` (spec 10.3). Collections and tags change only the snapshot. A
- * change to the rows of known items (metadata, relink, availability, opened) with 1–500 ids reads those items and puts
- * them into the cached list; everything else reads the whole list. A patch that a whole-list read overtook is dropped
- * (the whole read has the change), and a patch that cannot be applied falls back to the whole read.
+ * What the renderer reads again after `libraryChanged` (spec 10.3). Collections and tags change only the snapshot (and a
+ * collection moved to or from the trash, the trash view's rows). A change to the rows of known items (metadata, relink,
+ * availability, opened) with 1–500 ids reads those items and puts them into the cached list; everything else — import,
+ * trash, restore, purge — reads the whole list, the snapshot and the trash view with it. A patch that a whole-list read
+ * overtook is dropped (the whole read has the change), and a patch that cannot be applied falls back to the whole read.
  */
 export function createChangeHandler(d: ChangeDeps): (change: LearnEventMap['libraryChanged']) => void {
   let epoch = 0;
@@ -56,6 +59,7 @@ export function createChangeHandler(d: ChangeDeps): (change: LearnEventMap['libr
   return ({ reason, itemIds }) => {
     if (reason === 'collections' || reason === 'tags') {
       d.invalidateOrganize();
+      if (reason === 'collections') d.invalidateTrash();
       return;
     }
     const ids = itemIds === undefined ? [] : [...new Set(itemIds)];

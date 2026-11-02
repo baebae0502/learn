@@ -1,4 +1,6 @@
+import type { JobProgress } from './backup';
 import type { CommandArgs, CommandId } from './commands';
+import type { ImportQueueState, ImportReport } from './library';
 import type { Prefs } from './settings';
 
 /** The window's state as its renderer draws it: pushed on change (windowState event) and answered by `ui.windowState()`. */
@@ -20,17 +22,19 @@ export interface WindowState {
 
 /** Why `libraryChanged` was sent; the renderer decides from it what to read again. */
 export type LibraryChangeReason =
-  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'collections' | 'tags' | 'availability' | 'opened';
+  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'purge' | 'collections' | 'tags' | 'availability' | 'opened';
 
 export interface LearnEventMap {
   /** A menu-bar click or accelerator; `args` is the value of a submenu row (정렬 기준 › 연도). */
-  menuCommand: { commandId: CommandId; args?: CommandArgs };
+  /** `byKey`: the item was reached by its key, not a click (Q-6e: ⌘⌫ typed in a text field is the field's). */
+  menuCommand: { commandId: CommandId; args?: CommandArgs; byKey?: true };
   /**
    * Sent only when something changed. `itemIds`: the items that actually changed (absent when the change is not
    * per item, e.g. a collection or tag was created, renamed or removed).
    * `collections` / `tags`: the collection tree or memberships / the tag list or assignments changed.
    * `availability`: a file was found missing (or back) when an item was opened or right-clicked.
    * `opened`: the reader opened the item, so its `openedAt` changed.
+   * `purge`: items (`itemIds`) or collections left the trash for good (영구 삭제, 휴지통 비우기); no ids when only collections did.
    */
   libraryChanged: {
     reason: LibraryChangeReason;
@@ -46,4 +50,17 @@ export interface LearnEventMap {
    * 전체 화면, which send no menuCommand — ran, so the demo overlay can show its shortcut. Never sent otherwise.
    */
   demoShortcut: { accelerator: string; label: string };
+  /** The import queue (spec 3.3): at most 10 a second while it works, and once more when it is idle again. */
+  'import:progress': ImportQueueState;
+  /** One import run ended: done, or stopped by 취소 or quitting; what it did, for the result toasts. */
+  'import:finished': { report: ImportReport };
+  /** A duplicate was answered 기존 자료 열기 (spec 3.4): sent to the window it was answered on, which opens the item. */
+  'item:openRequested': { itemId: string };
+  /**
+   * Main found something the app left or lost at startup, not the list shown last (spec 7.1): the main window asks for the
+   * automatic check sheet itself (library.check({ auto: true })), so it is held as under any sheet it asks for (Q-8d).
+   */
+  'recovery:show': Record<string, never>;
+  /** A backup (or a restore, Task 10) on main's work line: its state at most ten times a second, and its end (P-20). */
+  'job:progress': JobProgress;
 }

@@ -14,6 +14,7 @@ const SNAPSHOT: OrganizeSnapshot = {
   members: {},
   tagged: {},
   duplicates: [],
+  trashCount: 0,
 };
 const LIST = [item('a', 'available'), item('b', 'missing', 'linked')];
 

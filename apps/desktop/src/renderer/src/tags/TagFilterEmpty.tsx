@@ -2,8 +2,7 @@ import { useMemo } from 'react';
 import { Tag } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
-import { useItems } from '../data/queries';
-import { useOrganize } from '../organize/useOrganize';
+import { useViewItems, useViewModel } from '../trash/useTrashSource';
 import { useScopeView } from '../library/useScopeView';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
@@ -23,9 +22,9 @@ const NO_ITEMS: never[] = [];
  */
 export function TagFilterEmpty() {
   const { run, isEnabled } = useCommands();
-  const { model } = useOrganize();
+  const model = useViewModel();
   const filter = useLibrary((s) => s.tagFilter);
-  const { scoped } = useScopeView(useItems().data ?? NO_ITEMS);
+  const { scoped } = useScopeView(useViewItems() ?? NO_ITEMS);
   const { selector } = useTagsSelector();
   // The cloud's own order (colour slots, then the sort setting), so the line reads like the chips above it.
   const names = useMemo(

@@ -15,7 +15,7 @@ import { useFocusOnLeave } from './focusOnLeave';
 export function EmptyLibrary(props: {
   /** Set when the screen goes away (first import) while focus is inside it: the list then takes the focus over. */
   focusOnLeave?: RefObject<boolean>;
-  /** A drop is bringing files in (library/busyScreen.ts): the busy screen, quiet or with its text. */
+  /** An import is bringing files in (the queue's total, spec 3.2; library/busyScreen.ts): the busy screen, quiet or with its text. */
   busy?: BusyScreen | null;
 }) {
   const { run, isEnabled } = useCommands();
@@ -23,9 +23,8 @@ export function EmptyLibrary(props: {
   const linked = commandById('file.importLinked');
   const root = useRef<HTMLDivElement>(null);
   useFocusOnLeave(root, props.focusOnLeave);
-  // A drop is bringing files in (the count is known): the screen says so, with nothing to press (T13R2-m1); for its
-  // first 300 ms it is quiet (design-spec 6), and once said it stays its minimum time (busyScreen.ts). The dialog flow
-  // keeps this screen, whose buttons are disabled with a reason while the dialog is up.
+  // An import is bringing files in (the count is the queue's): the screen says so, with nothing to press (T13R2-m1); for its
+  // first 300 ms it is quiet (design-spec 6), and once said it stays its minimum time (busyScreen.ts).
   const busy = props.busy ?? null;
   const busyCount = busy?.count ?? null;
   // A focus inside goes with the buttons: the screen itself keeps it, so the list can still take it over afterwards.

@@ -61,12 +61,19 @@ export async function settle(page: Page, park = true): Promise<void> {
  * a state that differs from its baseline still reaches the critic (R-2). Critic captures run without updating; the
  * baselines are updated by the 1x run only (README).
  */
-export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean } = {}): Promise<void> {
+export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean; style?: string } = {}): Promise<void> {
   if (TOUR_2X) await capture2x(page, name, opts.keepPointer !== true);
   await settle(page, opts.keepPointer !== true);
   // Tight on purpose: at most 300 pixels may differ by more than the default per-pixel threshold (0.2), so a moved
   // or recoloured 2 px focus ring fails while the Debian ↔ Ubuntu font raster noise passes (verified on CI, I2).
-  await expect(page).toHaveScreenshot(`${name}.png`, { animations: 'disabled', caret: 'hide', mask: opts.mask, maxDiffPixels: 300, threshold: 0.2 });
+  // `style`: a rule that is on while the picture is taken (what changes between runs, hidden where a mask would paint over
+  // a surface that floats above it).
+  const sheet = opts.style === undefined ? null : await page.addStyleTag({ content: opts.style });
+  try {
+    await expect(page).toHaveScreenshot(`${name}.png`, { animations: 'disabled', caret: 'hide', mask: opts.mask, maxDiffPixels: 300, threshold: 0.2 });
+  } finally {
+    await sheet?.evaluate((el) => (el as Element).remove());
+  }
 }
 
 async function capture2x(page: Page, name: string, park: boolean): Promise<void> {

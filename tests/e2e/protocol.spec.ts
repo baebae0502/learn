@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { launch } from './helpers';
+import { importPaths, launch } from './helpers';
 
 test('learn:// protocol serves static pages, ranged assets and rejects bad paths', async ({}, testInfo) => {
   const srcDir = testInfo.outputPath('src');
@@ -10,11 +10,8 @@ test('learn:// protocol serves static pages, ranged assets and rejects bad paths
   fs.writeFileSync(file, body);
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    const imported = await page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed' }), file);
-    expect(imported.ok).toBe(true);
-    const outcome = imported.ok ? imported.data[0] : undefined;
-    expect(outcome?.status).toBe('imported');
-    const assetId = outcome?.status === 'imported' ? outcome.item.assetId : '';
+    const [item] = await importPaths(page, [file]);
+    const assetId = item!.assetId;
     expect(assetId).not.toBe('');
 
     const probe = (url: string, range?: string) =>

@@ -221,7 +221,7 @@ test('M4 table: the column header menu — every column, the shown ones checked,
     await expect.poll(async () => (await recordedPopups(s.app)).length).toBe(1);
     const items = (await recordedPopups(s.app))[0]!.map((i) => [i.type === 'separator' ? '-' : i.label, i.checked, i.enabled]);
     const want = [
-      ...LIBRARY_COLUMNS.map((c) => [c.label, c.defaultVisible, c.required !== true]),
+      ...LIBRARY_COLUMNS.filter((c) => c.trashOnly !== true).map((c) => [c.label, c.defaultVisible, c.required !== true]), // 삭제한 날짜 is the trash view's only
       ['-', false, true],
       ['열 구성 되돌리기', false, true],
     ];
@@ -248,9 +248,9 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
   const shellCalls = () => s.app.evaluate(() => (globalThis as { __learnShell?: Array<[string, string]> }).__learnShell ?? []);
   const fileItems = async () => [await menuItemEnabled(s.app, 'item.showInFolder'), await menuItemEnabled(s.app, 'item.openExternally')];
   // A row of its own, whatever the session already holds (same content: allowDuplicate).
-  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
-  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
-  check('selection: a row to select was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  const imported = await importPaths(s.page, [PDF], { allowDuplicate: true }).catch((e: unknown) => String(e));
+  const id = Array.isArray(imported) ? imported[0]!.id : null;
+  check('selection: a row to select was imported', id !== null, Array.isArray(imported) ? imported.length : imported);
   if (id === null) return void save();
   const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);
   const pid = s.app.process().pid!;
@@ -312,7 +312,7 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
     const rows = await sheet.locator('section[aria-label="자료"] [data-testid="shortcut-row"]').evaluateAll((els) => els.map((e) => e.textContent ?? ''));
     v['sheetItemGroup'] = rows;
-    check('selection: ⌘/ lists ⇧⌘R under 자료', rows.length === 1 && rows[0]!.startsWith(IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'), rows);
+    check('selection: ⌘/ lists ⇧⌘R under 자료', rows.length === 2 && rows[0]!.startsWith(IS_MAC ? 'Finder에서 보기' : '폴더에서 보기') && rows[1]!.startsWith('휴지통으로 이동'), rows); // then ⌘⌫ (M6)
     // Two columns, groups whole, and a natural height that fits a 1440 × 900 Mac's ≈ 806 pt parent (room 774).
     const layout = await sheet.evaluate(() => ({
       columns: [...document.querySelectorAll('.shortcut-column')].map((c) => [...c.querySelectorAll('section')].map((g) => g.getAttribute('aria-label'))),
@@ -333,9 +333,9 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
   const v: Record<string, unknown> = {};
   results['search'] = v;
   const field = s.page.getByTestId('search-field').locator('input');
-  const imported = await s.page.evaluate((p) => window.learn.library.import({ paths: [p], mode: 'managed', allowDuplicate: true }), PDF);
-  const id = imported.ok && imported.data[0]?.status === 'imported' ? imported.data[0].item.id : null;
-  check('search: a row to find was imported', id !== null, imported.ok ? imported.data.map((o) => o.status) : imported.code);
+  const imported = await importPaths(s.page, [PDF], { allowDuplicate: true }).catch((e: unknown) => String(e));
+  const id = Array.isArray(imported) ? imported[0]!.id : null;
+  check('search: a row to find was imported', id !== null, Array.isArray(imported) ? imported.length : imported);
   if (id === null) return void save();
   await seedMetadata(s.page, id, { creators: [{ name: '김철수', role: 'author' }], date: '2024' }, '세포 신호 전달 개요');
   const row = s.page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);

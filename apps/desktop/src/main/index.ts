@@ -27,7 +27,7 @@ import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
-import { createLibrarySwitch, type LibrarySwitch } from './library-folder';
+import { createLibrarySwitch, refuseLinkedInside, type LibrarySwitch } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
@@ -403,7 +403,10 @@ if (!app.requestSingleInstanceLock()) {
     // Every window's imports, one file at a time on the work line; a duplicate question hangs on the window that asked.
     const imports = createImportQueue({
       lane: jobs,
-      importer: () => getContext().importer,
+      importer: () => {
+        const c = getContext();
+        return refuseLinkedInside(c.importer, c.layout.root);
+      },
       card: (itemId) => {
         const item = ctx?.repo.getItem(itemId);
         return item ? { title: item.title, type: item.type, size: item.size, createdAt: item.createdAt, storageMode: item.storageMode } : null;

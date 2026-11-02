@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { LearnError, type Prefs } from '@learn/domain';
 import { createQuitGuard } from './jobs/quit-guard';
-import { checkLibraryFolder, createLibrarySwitch, insideFolder, type LibrarySwitch } from './library-folder';
+import { checkLibraryFolder, createLibrarySwitch, insideFolder, refuseLinkedInside, type LibrarySwitch } from './library-folder';
 import { mainStrings } from './strings';
 
 describe('checkLibraryFolder (R4)', () => {
@@ -121,5 +121,40 @@ describe('createLibrarySwitch (app.chooseLibraryFolder and the restore\'s 전환
     };
     expect(() => createLibrarySwitch({ prefs: { get: prefs.get, set: readOnly }, arm: vi.fn(), quit }).request(tmp)).toThrow(mainStrings.prefs.readOnly);
     expect(quit).not.toHaveBeenCalled();
+  });
+});
+
+describe('refuseLinkedInside (a linked import of a file inside the library folder)', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-linked-'));
+  afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const root = path.join(tmp, 'Library');
+  fs.mkdirSync(path.join(root, 'assets', 'ab'), { recursive: true });
+  const inside = path.join(root, 'assets', 'ab', 'abcdef');
+  fs.writeFileSync(inside, 'x');
+  const outside = path.join(tmp, 'elsewhere.pdf');
+  fs.writeFileSync(outside, 'x');
+  const imported = (p: string) => ({ status: 'failed', path: p, code: 'X', message: 'asked' }) as const;
+
+  it('fails a linked file inside the library folder with the reason, and does not ask the importer', async () => {
+    const importOne = vi.fn(async (p: string) => imported(p));
+    const guarded = refuseLinkedInside({ importOne }, root);
+    expect(await guarded.importOne(inside, { mode: 'linked' })).toEqual({
+      status: 'failed', path: inside, code: 'VALIDATION_FAILED', message: mainStrings.libraryFolder.linkedInside,
+    });
+    expect(importOne).not.toHaveBeenCalled();
+  });
+  it('lets a managed import of the same file copy it, and a linked file outside go through', async () => {
+    const importOne = vi.fn(async (p: string) => imported(p));
+    const guarded = refuseLinkedInside({ importOne }, root);
+    await guarded.importOne(inside, { mode: 'managed' });
+    await guarded.importOne(outside, { mode: 'linked' });
+    expect(importOne).toHaveBeenCalledTimes(2);
+  });
+  it('sees a link into the folder by the real path', async () => {
+    const link = path.join(tmp, 'link');
+    fs.symlinkSync(root, link);
+    const importOne = vi.fn(async (p: string) => imported(p));
+    const out = await refuseLinkedInside({ importOne }, root).importOne(path.join(link, 'assets', 'ab', 'abcdef'), { mode: 'linked' });
+    expect(out).toMatchObject({ status: 'failed', code: 'VALIDATION_FAILED' });
   });
 });

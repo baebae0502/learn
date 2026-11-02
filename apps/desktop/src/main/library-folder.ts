@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { LearnError, type Prefs } from '@learn/domain';
+import { LearnError, type ImportOutcome, type Prefs } from '@learn/domain';
+import type { ImportOptions } from '@learn/library';
 import type { PrefsStore } from './prefs';
 import { mainStrings } from './strings';
 
@@ -43,6 +44,23 @@ export function insideFolder(dir: string, root: string): boolean {
   };
   const rel = path.relative(real(root), real(dir));
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
+export interface ImportsFiles {
+  importOne(inputPath: string, opts: ImportOptions): Promise<ImportOutcome>;
+}
+
+/**
+ * The importer as the queue uses it, with one refusal added: a linked import of a file inside the library folder fails
+ * (the file would be an "original" that a cleanup, a purge or the library check may delete). A managed import of it copies.
+ */
+export function refuseLinkedInside(importer: ImportsFiles, root: string): ImportsFiles {
+  return {
+    importOne: (inputPath, opts) =>
+      opts.mode === 'linked' && insideFolder(path.resolve(inputPath), root)
+        ? Promise.resolve<ImportOutcome>({ status: 'failed', path: path.resolve(inputPath), code: 'VALIDATION_FAILED', message: copy.linkedInside })
+        : importer.importOne(inputPath, opts),
+  };
 }
 
 export interface LibrarySwitch {

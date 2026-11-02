@@ -14,6 +14,8 @@ export const mainStrings = {
     confirmButtons: ['다시 시작', '취소'],
     missing: '폴더를 찾을 수 없습니다. 다른 폴더를 고르세요.',
     notFolder: '폴더가 아닙니다. 다른 폴더를 고르세요.',
+    /** A linked import of a file that lies inside the library folder, where the app's own cleanups work. */
+    linkedInside: '라이브러리 폴더 안의 파일은 연결할 수 없습니다. 사본으로 가져오세요.',
     notWritable: '이 폴더에는 쓸 수 없습니다. 쓰기 권한이 있는 폴더를 고르세요.',
     revealMissing: '라이브러리 폴더를 찾을 수 없습니다. 폴더가 있는 디스크가 연결되어 있는지 확인하세요.',
     /** The fatal screen's Finder에서 보기 (spec 9.4) for a pre-update backup that is gone since the screen was drawn. */

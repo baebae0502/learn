@@ -8,7 +8,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, importResume, importWaiting, launch, makeTags,
-  menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, shellCalls, specialRow, stubConfirm,
+  menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
   stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
@@ -191,8 +191,11 @@ test('every registry command runs without a page error (library and reader menus
         await expect(rowByTitle(page, 'sample')).toHaveAttribute('aria-selected', 'true');
         await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(true);
       } else {
+        // The library pass ends with a sheet (단축키): on macOS main holds the window for up to 250 ms after it closes and
+        // refuses a double-click in that gap, so the reader never opened (Mac run 41380108893).
+        await sheetReleased(page);
         await openItem(page, 'sample'); // a double-click: a single click only selects
-        // The menu is read once below: wait until the reader is up and main's menu has followed (the 1024 px macOS runner is slower than the double-click).
+        // The menu is read once below: wait until the reader is up and main's menu has followed.
         await expect(page.getByTestId('viewer-title')).toBeVisible();
         await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
       }

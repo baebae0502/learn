@@ -764,8 +764,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
     // 2. The window stays usable and more can be put in: the whole count grows.
     await chapter('가져오는 중에도 창을 그대로 쓸 수 있고, 파일을 더 놓으면 전체 수가 늘어납니다. (끌기는 스크립트로 재현합니다)');
-    await glideClick(page, 'main', itemRow(0));
-    await expect(itemRow(0)).toHaveAttribute('aria-selected', 'true');
+    // The run is still bringing rows in at the top while the pointer glides (slower on the Mac runner): the row is followed by its title.
+    const picked = rowByTitle(page, await titleAt(0));
+    await glideClick(page, 'main', picked);
+    await expect(picked).toHaveAttribute('aria-selected', 'true');
     slow.each(900); // the drop below must land while the run is still going
     await pause(1200);
     const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));

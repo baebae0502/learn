@@ -192,6 +192,20 @@ describe('order and batches (spec 3.1)', () => {
 });
 
 describe('progress (spec 3.3)', () => {
+  it('a push between two files still names the file before it, so the toast keeps its second line', async () => {
+    const h = setup({ deps: { progressMs: 0 } });
+    const b = h.fake.hold('/in/b.pdf');
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.pdf', '/in/b.pdf']));
+    await b.started;
+    const afterA = h.states.filter((s) => s.done === 1);
+    expect(afterA.length).toBeGreaterThan(0);
+    expect(afterA.map((s) => s.current)).not.toContain(null);
+    b.release();
+    await done;
+    expect(h.queue.state()).toEqual(IDLE_IMPORT_STATE);
+  });
+
   it('bytes: the total is the sizes when put in; a file counts half its hashed bytes (the hash is the first half of its work), then all of its size once it is in; only the file name shows', async () => {
     const h = setup({ sizes: { '/in/folder/a.pdf': 100, '/in/folder/b.pdf': 300 } });
     const a = h.fake.hold('/in/folder/a.pdf', 40);

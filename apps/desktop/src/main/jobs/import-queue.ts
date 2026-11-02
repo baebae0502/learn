@@ -100,6 +100,8 @@ interface Run {
   /** Collection id → the existing items whose duplicate was answered 건너뛰기 in an import into it. */
   skipped: Map<string, string[]>;
   openIn: number | null;
+  /** The last file started: the toast keeps its name between two files instead of dropping the line. */
+  shownName: string | null;
   abort: AbortController;
   cancelled: boolean;
   finished: boolean;
@@ -136,7 +138,7 @@ const statSize = (file: string): Promise<number> => fs.stat(file).then((s) => (s
 const newRun = (): Run => ({
   total: 0, done: 0, bytesTotal: 0, bytesFinished: 0,
   report: { imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null },
-  modes: new Set(), collections: new Set(), duplicates: [], sticky: null, skipped: new Map(), openIn: null,
+  modes: new Set(), collections: new Set(), duplicates: [], sticky: null, skipped: new Map(), openIn: null, shownName: null,
   abort: new AbortController(), cancelled: false, finished: false,
 });
 
@@ -176,7 +178,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       bytesDone,
       bytesTotal: run.bytesTotal,
       percent: Math.min(99, Math.floor(byBytes * 100)),
-      current: mine?.name ?? null,
+      current: mine?.name ?? (run.cancelled ? null : run.shownName),
       cancels: cancelsAsked,
     };
   }
@@ -342,6 +344,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
   async function importFile(entry: Entry, laneSignal: AbortSignal): Promise<void> {
     const { run } = entry;
     current = entry;
+    run.shownName = entry.name;
     try {
       await entry.sized;
       if (!run.cancelled) {
@@ -375,6 +378,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     const { entry } = dup;
     const { run, batch } = entry;
     current = entry;
+    run.shownName = entry.name;
     try {
       const existing = deps.card(dup.existingItemId);
       if (existing === null) {

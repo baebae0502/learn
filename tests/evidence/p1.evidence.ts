@@ -227,6 +227,8 @@ test('M6 trash: the trash view and its read-only panel, ⌘⌫ named 영구 삭�
     await expect.poll(label).toBe('영구 삭제…');
     check('파일 › ⌘⌫ reads 영구 삭제… in the trash view (P-11)', true, { label: await label() });
   });
+  // Toasts of the steps before go by themselves (5 s); both themes are shot with the same, empty stack.
+  await expect(s.page.locator('[data-pane="toasts"] .toast')).toHaveCount(0, { timeout: 15_000 });
   for (const theme of ['light', 'dark'] as const) {
     await setTheme(theme);
     if (IS_MAC) await focusApp(s.app);

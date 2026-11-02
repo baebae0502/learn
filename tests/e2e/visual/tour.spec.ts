@@ -722,7 +722,7 @@ test('backup: its toast with an import waiting behind it, the result sheet (and 
   const s = await launchTour(dir, { HOME: home });
   const documents = path.join(home, 'Documents');
   fs.mkdirSync(documents, { recursive: true });
-  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]')];
+  const dates = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
   const sheetMasks = (sheet: Page) => [sheet.getByTestId('backup-when'), sheet.getByTestId('backup-location')];
   try {
     const src = testInfo.outputPath('src');

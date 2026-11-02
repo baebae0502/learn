@@ -7,7 +7,7 @@ import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
   FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
-  makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, showItemPanel,
+  makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, treeRow, waitImportIdle,
 } from './helpers';
 
@@ -544,8 +544,10 @@ test('axe at every M6 state: the import toast running and waiting for the answer
     await expect(empty.getByTestId('purge-title')).toHaveText('휴지통을 비우겠습니까?');
     await expectNoSeriousA11y(empty, 'the empty-trash sheet');
     await closeSheet(empty, 'Escape');
+    await sheetReleased(page); // a row picked from the menu while the window is still held (macOS: up to 250 ms) is refused
     await stubContextMenu(app, '복원');
     await rowByTitle(page, 'distinct-01').click({ button: 'right' });
+    await expect(rowByTitle(page, 'distinct-01')).toHaveCount(0);
     await rowByTitle(page, 'distinct-02').click({ button: 'right' });
     await expect(specialRow(page, 'trash')).toHaveCount(0);
 

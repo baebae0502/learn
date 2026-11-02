@@ -884,6 +884,25 @@ export async function menuItemEnabled(app: ElectronApplication, id: string): Pro
   }, id);
 }
 
+/**
+ * The window takes commands again after a sheet or a native panel closed. Main keeps the parent held (blocked) until it
+ * is key again, up to 250 ms on macOS, and a click or a picked menu row in that gap is refused without a trace. Main's
+ * answer follows its push to the page on the same channel, so once it says the sheet is gone the page has the news too;
+ * the frame lets React apply it.
+ */
+export async function sheetReleased(page: Page): Promise<void> {
+  await expect
+    .poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null))), { message: 'the sheet never let go of the window' })
+    .toBe(false);
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
+}
+
+/** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
+export async function backFromReader(page: Page): Promise<void> {
+  await sheetReleased(page);
+  await page.getByTestId('viewer-back').click();
+}
+
 /** One item of a native popup menu, as recorded by `stubContextMenu`. */
 export interface PopupItem {
   id: string | null;

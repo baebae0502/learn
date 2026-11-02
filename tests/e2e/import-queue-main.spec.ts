@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import type { ImportQueueState, ImportReport } from '../../packages/domain/src/library';
-import { clickToCloseSheet, closeSheet, confirmCalls, distinctPdfs, expectWindow, importPaths, launch, stubConfirm } from './helpers';
+import { backFromReader, clickToCloseSheet, closeSheet, confirmCalls, distinctPdfs, expectWindow, importPaths, launch, stubConfirm } from './helpers';
 
 // Main's import queue before any page can reach it (Task 4 connects the channels): the E2E hooks of main/test-hooks.ts
 // put files in, hold one at a fault point and read the reports.
@@ -91,7 +91,7 @@ test('queued duplicates are asked at the end in the sheet, with one answer for t
     expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]);
     // The queue now sends item:openRequested: the window the question was answered on opens the existing item.
     await expect(s.page.getByTestId('viewer-title')).toHaveText(first[1]!.title);
-    await s.page.getByTestId('viewer-back').click();
+    await backFromReader(s.page);
     await expect(rows).toHaveCount(7);
   } finally {
     await s.app.close();

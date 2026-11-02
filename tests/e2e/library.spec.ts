@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { FIXTURES, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, holdOpenDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, waitImportIdle, type Session } from './helpers';
+import { FIXTURES, backFromReader, clickToCloseSheet, drag, dropSource, expectDisabledReason, expectTooltipText, expectWindow, hoverLikeUser, holdOpenDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, releaseOpenDialog, rowAt, rowByTitle, runMenuCommand, stubOpenDialog, waitImportIdle, type Session } from './helpers';
 
 const BUSY = '진행 중인 작업이 끝나면 쓸 수 있습니다';
 
@@ -52,7 +52,7 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
   await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
   await expect(s.page.getByTestId('viewer-title')).toHaveText('Chapter 06');
-  await s.page.getByTestId('viewer-back').click();
+  await backFromReader(s.page);
 
   const notes = path.join(src, 'notes.txt');
   fs.writeFileSync(notes, 'plain text');
@@ -81,7 +81,7 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   await stubOpenDialog(s.app, [moved]);
   await s.page.getByTestId('relink').click();
   await expect(s.page.getByTestId('missing-notice')).toBeHidden();
-  await s.page.getByTestId('viewer-back').click();
+  await backFromReader(s.page);
   await expect(row.getByTestId('missing-flag')).toHaveCount(0);
   await s.page.screenshot({ path: testInfo.outputPath('library.png') });
   await s.app.close();

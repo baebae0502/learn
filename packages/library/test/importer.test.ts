@@ -580,3 +580,31 @@ describe('stopping a file at its checkpoints (spec 3.5)', () => {
     expect(beforeCommit).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('an import that reuses an asset while a purge removes it', () => {
+  it.each(['managed', 'linked'] as const)('%s: the purge commits between the look-up and the commit, and the import places a new asset', async (mode) => {
+    let purgeNow: (() => void) | null = null;
+    const { layout, repo, importer } = setup({
+      beforeCommit: () => {
+        purgeNow?.();
+        purgeNow = null;
+      },
+    });
+    const src = writePdf(tempDir('src'), 'a.pdf', 'purged under it');
+    const first = await importer.importOne(src, { mode });
+    if (first.status !== 'imported') throw new Error(first.status);
+    purgeNow = () => {
+      repo.trash([first.item.id]);
+      repo.purge({ itemIds: [first.item.id], collectionIds: [] });
+    };
+    const again = await importer.importOne(src, { mode, allowDuplicate: true });
+    expect(again.status).toBe('imported');
+    if (again.status !== 'imported') return;
+    expect(again.item.assetId).not.toBe(first.item.assetId);
+    expect(repo.getAsset(first.item.assetId)).toBeUndefined();
+    const asset = repo.getAsset(again.item.assetId)!;
+    expect(asset).toMatchObject({ storageMode: mode, availability: 'available', sha256: await sha256File(src) });
+    expect(repo.counts()).toMatchObject({ items: 1, assets: 1 });
+    expect(await sha256File(resolveAssetPath(layout, asset))).toBe(asset.sha256);
+  });
+});

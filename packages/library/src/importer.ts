@@ -123,34 +123,28 @@ export class Importer {
       opts.mode === 'managed'
         ? existing.find((a) => a.storageMode === 'managed')
         : existing.find((a) => a.storageMode === 'linked' && a.externalPath === src);
-    let asset: AssetRow;
-    if (reusable) {
-      asset = reusable;
-      // Verify reused managed asset is intact; restore file if missing.
-      if (opts.mode === 'managed') {
-        await this.ensurePlaced(src, sha256, opts.signal);
-        if (reusable.availability === 'missing') {
-          repo.setAvailability(reusable.id, 'available', now);
-        }
-      }
-    } else {
-      asset = {
-        id: newId(), sha256, storageMode: opts.mode, relativePath: null, externalPath: null,
-        originalName: displayFileName(src), mime: kind.mime, size: st.size, availability: 'available', createdAt: now, checkedAt: now,
-      };
-      if (opts.mode === 'managed') asset.relativePath = await this.place(src, sha256, opts.signal);
-      else asset.externalPath = src;
-    }
+    const fresh = (relativePath: string | null): AssetRow => ({
+      id: newId(), sha256, storageMode: opts.mode, relativePath, externalPath: opts.mode === 'linked' ? src : null,
+      originalName: displayFileName(src), mime: kind.mime, size: st.size, availability: 'available', createdAt: now, checkedAt: now,
+    });
+    // A managed copy found in place is checked (and put back) now; the new asset's copy is placed now.
+    if (reusable && opts.mode === 'managed') await this.ensurePlaced(src, sha256, opts.signal);
+    let asset = reusable ?? fresh(opts.mode === 'managed' ? await this.place(src, sha256, opts.signal) : null);
 
     await hooks?.beforeCommit?.();
+    // A purge commits without this path's lock: a reused asset whose row is gone is replaced by a new one (its copy is in place).
+    const reused = reusable ? repo.getAsset(reusable.id) : undefined;
+    if (reusable && !reused) asset = fresh(opts.mode === 'managed' ? managedRelativePath(sha256) : null);
+    else if (reused && opts.mode === 'managed' && reused.availability === 'missing') repo.setAvailability(reused.id, 'available', now);
+
     // An asked-for title (an edited copy's name) is NFC like a file's; a blank one falls back to the file's.
     const item = { id: newId(), type: kind.type, title: opts.title !== undefined && opts.title.trim() !== '' ? opts.title.normalize('NFC') : fileTitle(src), createdAt: now };
     const collectionId = opts.collectionId ?? null;
     const filed = repo.insertImported({
       item,
       asset,
-      assetIsNew: !reusable,
-      revision: reusable ? null : { id: newId(), createdAt: now },
+      assetIsNew: !reused,
+      revision: reused ? null : { id: newId(), createdAt: now },
       job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha256}:${EXTRACTOR_VERSION}`, payload: { sha256, type: kind.type } },
       collectionId,
     });

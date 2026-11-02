@@ -458,11 +458,14 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       }
       mouseAt.set(p, { x, y });
     };
-    /** The main window's sidebar as drawn now: the tag selector's top (null: none drawn) and the last tree row's bottom. */
+    /** The main window's sidebar as drawn now: the tag selector's top (null: none drawn) and the bottom of the last tree row or of the hint. */
     const sidebarNow = (p: Page) =>
       p.evaluate(() => {
         const tags = document.querySelector('.sidebar .tag-selector')?.getBoundingClientRect();
         const rows = [...document.querySelectorAll('[data-testid="sidebar-tree"] [role="row"]')].map((r) => r.getBoundingClientRect().bottom);
+        // With no collections the tree shows a hint under its rows; the pointer must not rest on it.
+        const hint = document.querySelector('[data-testid="sidebar-hint"]')?.getBoundingClientRect();
+        if (hint && hint.height > 0) rows.push(hint.bottom);
         return { h: innerHeight, w: innerWidth, tagTop: tags && tags.height > 0 ? tags.top : null, treeBottom: rows.length > 0 ? Math.max(...rows) : 0 };
       });
     /**

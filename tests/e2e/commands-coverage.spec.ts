@@ -190,7 +190,12 @@ test('every registry command runs without a page error (library and reader menus
         await rowByTitle(page, 'sample').click();
         await expect(rowByTitle(page, 'sample')).toHaveAttribute('aria-selected', 'true');
         await expect.poll(() => menuItemEnabled(app, 'item.showInFolder')).toBe(true);
-      } else await openItem(page, 'sample'); // a double-click: a single click only selects
+      } else {
+        await openItem(page, 'sample'); // a double-click: a single click only selects
+        // The menu is read once below: wait until the reader is up and main's menu has followed (the 1024 px macOS runner is slower than the double-click).
+        await expect(page.getByTestId('viewer-title')).toBeVisible();
+        await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+      }
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');

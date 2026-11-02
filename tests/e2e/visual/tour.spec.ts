@@ -1445,7 +1445,7 @@ test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line
     await setTheme(s.page, 'light');
     await stubContextMenu(s.app, '하나만 남기고 휴지통으로');
     await newest.click({ button: 'right' });
-    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 항목 1개를 휴지통으로 옮겼습니다');
     const menu = (await recordedPopups(s.app)).at(-1)!.map((i) => i.label);
     expect(menu[menu.indexOf('휴지통으로 이동') - 1]).toBe('하나만 남기고 휴지통으로'); // right above 휴지통으로 이동
     await shoot(s.page, 'toast-duplicates-done-light', { mask: masks() });
@@ -1456,7 +1456,7 @@ test('M6 duplicates and edited copies: 중복 항목 with 남김, the group line
     await expect(specialRow(s.page, 'duplicates')).toHaveCount(0);
     await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
     // The toast is what says what happened once the view has left 중복 항목 (two groups: 2 + 1).
-    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 3개를 휴지통으로 옮겼습니다');
+    await expect(s.page.getByTestId('undo-toast')).toContainText('중복 항목 3개를 휴지통으로 옮겼습니다');
     await shoot(s.page, 'toast-duplicates-all-light', { mask: masks() });
     await gone('undo-toast');
     await shoot(s.page, 'duplicates-cleaned-light', { mask: masks() });

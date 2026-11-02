@@ -948,13 +948,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pickFromNextPopup(label('duplicates.keepOne'), 5500);
     await glideClick(page, 'main', page.locator('[data-testid="item-row"]:not(:has([data-testid="kept-mark"]))').first(), { button: 'right' });
     await highlightPickedRow();
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 1개를 휴지통으로 옮겼습니다');
     await expect(rows).toHaveCount(4);
     await park(page, 'main');
     await pause(3000);
     await expect(page.getByTestId('keep-all-duplicates')).toHaveText('중복 2묶음 모두 정리');
     await glideClick(page, 'main', page.getByTestId('keep-all-duplicates'));
-    await expect(page.getByTestId('undo-toast').last()).toContainText('중복 2개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast').last()).toContainText('중복 항목 2개를 휴지통으로 옮겼습니다');
     await expect(specialRow(page, 'duplicates')).toHaveCount(0);
     await park(page, 'main');
     await pause(5000);

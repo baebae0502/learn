@@ -54,7 +54,7 @@ describe('하나만 남기고 휴지통으로 (M6 spec 5)', () => {
     const h = harness({ kind: 'duplicates' }, {}, (set) => set(without(['p2', 'p3'])));
     await h.actions.keepOne(['p2']);
     expect(h.log).toEqual(['keepOne p2', 'list read']);
-    expect(h.toasts.map((t) => t.title)).toEqual(['중복 2개를 휴지통으로 옮겼습니다']);
+    expect(h.toasts.map((t) => t.title)).toEqual(['중복 항목 2개를 휴지통으로 옮겼습니다']);
     await h.toasts[0]!.undo();
     expect(h.deps.undo).toHaveBeenCalledWith(answer(['p2', 'p3'], ['p1']).undo);
     expect(h.log).toEqual(['keepOne p2', 'list read', 'undo']);
@@ -116,7 +116,7 @@ describe('중복 N묶음 모두 정리', () => {
     const h = harness({ kind: 'duplicates' }, {}, (set) => set(without(['p2', 'p3', 'q2'])));
     await h.actions.keepAll();
     expect(h.log).toEqual(['keepAll', 'list read', 'view all']);
-    expect(h.toasts.map((t) => t.title)).toEqual(['중복 3개를 휴지통으로 옮겼습니다']);
+    expect(h.toasts.map((t) => t.title)).toEqual(['중복 항목 3개를 휴지통으로 옮겼습니다']);
   });
 
   it('run from another view (the palette) it stays where it is', async () => {

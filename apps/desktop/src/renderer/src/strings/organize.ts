@@ -112,7 +112,7 @@ export const organize = {
   duplicates: {
     kept: '남김',
     keptTitle: '모두 정리하면 이\u00a0자료가 남습니다(가장 먼저 가져온 자료)',
-    done: (n: number) => `중복 ${n}개를 휴지통으로 옮겼습니다`,
+    done: (n: number) => `중복 항목 ${n}개를 휴지통으로 옮겼습니다`,
   },
   /** Drag and drop (spec 8.2): the badge on the drag image, its plain-text form for other apps, and the move toast (sentence as the spec has it). */
   dnd: {

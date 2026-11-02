@@ -77,7 +77,7 @@ test('하나만 남기고 휴지통으로 from a row menu of 중복 항목: the 
 
     await stubContextMenu(app, '하나만 남기고 휴지통으로');
     await row(page, goes1).click({ button: 'right' });
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 2개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 2개를 휴지통으로 옮겼습니다');
     // The line sits in the menu's last group, right before 휴지통으로 이동 (design-spec 7.3: what moves to the trash is last).
     const menu = (await recordedPopups(app)).at(-1)!;
     const at = menu.findIndex((i) => i.label === '하나만 남기고 휴지통으로');
@@ -112,7 +112,7 @@ test('중복 N묶음 모두 정리 from the view button and the palette: every g
 
     await specialRow(page, 'duplicates').click();
     await page.getByTestId('keep-all-duplicates').click();
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 3개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 3개를 휴지통으로 옮겼습니다');
     await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
     await expect(specialRow(page, 'duplicates')).toHaveCount(0);
     await expect(page.getByTestId('item-row')).toHaveCount(2);
@@ -130,7 +130,7 @@ test('중복 N묶음 모두 정리 from the view button and the palette: every g
     await expect(page.locator('[data-testid="palette-item"][data-command-id="duplicates.keepOneAll"]')).toContainText('중복 2묶음 모두 정리');
     await expect(page.locator('[data-testid="palette-item"][data-command-id="duplicates.keepOne"]')).toHaveCount(0);
     await page.locator('[data-testid="palette-item"][data-command-id="duplicates.keepOneAll"]').click();
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 3개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 3개를 휴지통으로 옮겼습니다');
     await expect(specialRow(page, 'all')).toHaveAttribute('aria-selected', 'true');
     expect(await liveIds(page)).toEqual(kept);
     await page.getByTestId('undo-action').click();
@@ -140,7 +140,7 @@ test('중복 N묶음 모두 정리 from the view button and the palette: every g
     await specialRow(page, 'duplicates').click();
     await row(page, newestFirst(q)[0]!).click();
     await runPalette(page, app, '하나만', 'duplicates.keepOne');
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
+    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 1개를 휴지통으로 옮겼습니다');
     await expect(page.getByTestId('item-row')).toHaveCount(3);
     await expect(specialRow(page, 'duplicates')).toHaveAttribute('aria-selected', 'true');
   } finally {

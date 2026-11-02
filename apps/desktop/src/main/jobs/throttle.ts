@@ -15,8 +15,14 @@ export function createThrottle(fire: () => void, ms: number): Throttle {
   const run = (): void => {
     clearTimeout(timer);
     timer = undefined;
-    last = now();
-    fire();
+    last = now(); // a request made while the notice is built waits for the period
+    try {
+      fire();
+    } finally {
+      // The period runs from the end of the notice: it is stamped as it leaves, somewhere in its run, so two sends are then
+      // never closer than the period however long one took (a start-to-start period let ten gaps add up to under a second).
+      last = now();
+    }
   };
   const arm = (wait: number): void => {
     timer = setTimeout(() => {

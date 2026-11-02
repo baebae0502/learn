@@ -67,4 +67,26 @@ describe('createThrottle (spec 3.3: progress notices at most 10 a second)', () =
     const busiest = Math.max(...stamps.map((s) => stamps.filter((x) => x >= s && x < s + 1000).length));
     expect(busiest).toBe(10);
   });
+
+  it('the period counts from the end of a notice: one that takes a few milliseconds to send is still a period before the next, so ten gaps are never under a second (Mac all 41387123318, failure 1)', () => {
+    vi.useFakeTimers();
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => Date.now());
+    const sent: number[] = [];
+    // The notice is stamped when it leaves, late in its run (state, serialising, send): the first takes 5 ms, the others 0.
+    let slow = 5;
+    const t = createThrottle(() => {
+      vi.setSystemTime(Date.now() + slow);
+      slow = 0;
+      sent.push(Date.now());
+    }, 100);
+    for (let ms = 0; ms < 3000; ms++) {
+      t.request();
+      vi.advanceTimersByTime(1);
+    }
+    const gaps = sent.slice(1).map((x, i) => x - sent[i]!);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(100);
+    const busiest = Math.max(...sent.map((s) => sent.filter((x) => x >= s && x < s + 1000).length));
+    expect(busiest).toBeLessThanOrEqual(10);
+    clock.mockRestore();
+  });
 });

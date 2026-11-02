@@ -18,10 +18,10 @@ describe('the check sheet\'s rows (spec 7.2, approved mockups recovery and recov
     });
   });
 
-  it('쓰이지 않는 사본: 자료로 되살리기 and 정리…, the size', () => {
+  it('쓰이지 않는 사본: 자료로 되살리기 and 지우기…, the size', () => {
     const v = checkRowView(todo({ kind: 'unreferenced', count: 3, bytes: 96_000 }), HOME, 'darwin');
     expect([v.title, v.text, v.meta, v.tone]).toEqual(['쓰이지 않는 사본 3개', '어느 자료도 쓰지 않는 라이브러리 폴더의 파일입니다.', '96 KB', 'warning']);
-    expect(v.buttons).toEqual([{ key: 'revive', label: '자료로 되살리기' }, { key: 'askClean', label: '정리…' }]);
+    expect(v.buttons).toEqual([{ key: 'revive', label: '자료로 되살리기' }, { key: 'askClean', label: '지우기…' }]);
   });
 
   it('사본이 사라진 자료: two names, each with its own 다시 연결…, then 외 N개; no button on the row', () => {

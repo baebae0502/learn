@@ -28,7 +28,7 @@ export const check = {
   actions: {
     cleanStaging: '임시 파일 정리',
     revive: '자료로 되살리기',
-    clean: '정리…',
+    clean: '지우기…',
     relink: '다시 연결…',
     /** The name a screen reader hears for one name's 다시 연결… (the visible label comes last). */
     relinkFor: (title: string) => `${title} 다시 연결…`,

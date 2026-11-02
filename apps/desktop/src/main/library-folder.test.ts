@@ -133,7 +133,7 @@ describe('refuseLinkedInside (a linked import of a file inside the library folde
   fs.writeFileSync(inside, 'x');
   const outside = path.join(tmp, 'elsewhere.pdf');
   fs.writeFileSync(outside, 'x');
-  const imported = (p: string) => ({ status: 'failed', path: p, code: 'X', message: 'asked' }) as const;
+  const imported = (p: string) => ({ status: 'failed', path: p, code: 'INTERNAL', message: 'asked' }) as const;
 
   it('fails a linked file inside the library folder with the reason, and does not ask the importer', async () => {
     const importOne = vi.fn(async (p: string) => imported(p));

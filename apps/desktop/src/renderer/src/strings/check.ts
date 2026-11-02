@@ -35,7 +35,7 @@ export const check = {
     reveal: { darwin: 'Finder에서 보기', other: '폴더에서 보기' },
     importNew: '새 자료로 가져오기',
   },
-  /** 정리… asks in its row first (no sheet over the sheet); ↩ and esc keep the copies. */
+  /** 지우기… asks in its row first (no sheet over the sheet); ↩ and esc keep the copies. */
   confirm: {
     title: (n: number) => `쓰이지 않는 사본 ${n}개를 지우겠습니까?`,
     text: '되돌릴 수 없습니다. 라이브러리 폴더에서 지웁니다.',

@@ -28,7 +28,7 @@ const focusDone = () => document.querySelector<HTMLElement>('[data-testid="check
 /**
  * 라이브러리 점검 (dialogs.html?scene=recovery, recovery-full, recovery-ok; M6 spec 7.2, P-17, P-26). Rows to act on first, in
  * the table's order, the 자료 기록 row last; a row's action runs in main (sheet:act) and the row turns ok in place. Only
- * the list scrolls. ↩ and esc are 완료 — or, while 정리… asks in its row, they keep the copies.
+ * the list scrolls. ↩ and esc are 완료 — or, while 지우기… asks in its row, they keep the copies.
  */
 export function LibraryCheckSheet({ payload }: { payload: LibraryCheckPayload }) {
   const queryClient = useQueryClient();

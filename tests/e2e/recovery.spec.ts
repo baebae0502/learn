@@ -92,7 +92,7 @@ test('a killed import leaves a .part: the sheet opens by itself after the relaun
   }
 });
 
-test('쓰이지 않는 사본: 자료로 되살리기 brings a copy back as 이름 없는 자료 through the queue and says what stayed; 정리… asks in its row, then removes it', async ({}, testInfo) => {
+test('쓰이지 않는 사본: 자료로 되살리기 brings a copy back as 이름 없는 자료 through the queue and says what stayed; 지우기… asks in its row, then removes it', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');
   const s = await launch(lib, testInfo.outputPath('userdata'));
   try {
@@ -116,7 +116,7 @@ test('쓰이지 않는 사본: 자료로 되살리기 brings a copy back as 이�
     await expect(unused.getByTestId('check-error')).toHaveText('사본 1개는 자료로 되살리지 못했습니다. 지원하지 않는 형식이면 정리할 수 있습니다.');
     await expect(rowByTitle(s.page, '이름 없는 자료')).toBeVisible();
     expect(fs.existsSync(copy)).toBe(true);
-    // 정리… asks in the row first: esc keeps the copy, and the sheet stays.
+    // 지우기… asks in the row first: esc keeps the copy, and the sheet stays.
     await unused.getByTestId('check-askClean').click();
     await expect(unused.locator('.ci-title')).toHaveText('쓰이지 않는 사본 1개를 지우겠습니까?');
     await expect(sheet.getByTestId('check-confirm-cancel')).toBeFocused();

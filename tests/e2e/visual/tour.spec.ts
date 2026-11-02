@@ -403,7 +403,7 @@ test('library check sheet: automatic, every row, a row fixed (M6 spec 7.2, P-26)
       await expect(sheet.getByTestId('check-more')).toHaveText('외 2개');
       await expect.poll(() => sheet.getByTestId('check-scroll').evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(true);
       await shoot(sheet, `check-full-${theme}`, { mask: masks(sheet) });
-      // The one action that cannot be undone asks in its row (Q-8h), right after 정리…; esc keeps the copies.
+      // The one action that cannot be undone asks in its row (Q-8h), right after 지우기…; esc keeps the copies.
       await sheet.getByTestId('check-askClean').click();
       await expect(sheet.getByTestId('check-confirm')).toBeVisible();
       await shoot(sheet, `check-confirm-${theme}`, { mask: masks(sheet) });

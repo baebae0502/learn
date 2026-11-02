@@ -20,7 +20,7 @@ export interface CheckEntryView {
 }
 export interface CheckRowView {
   kind: CheckRowKind;
-  /** What is left (0 on a done row): the 정리… question names it. */
+  /** What is left (0 on a done row): the 지우기… question names it. */
   count: number;
   state: CheckRow['state'];
   tone: CheckTone;

@@ -9,7 +9,7 @@ import type { LibraryItem } from '../../packages/domain/src/library';
 import { expectNoSeriousA11y } from './a11y';
 import {
   FIXTURES, addToCollection, createCollection, distinctPdfs, importPause, importPaths, importResume, importWaiting, launch, organizeSnapshot, runMenuCommand,
-  shellCalls, stubShell,
+  shellCalls, showItemPanel, stubShell,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -45,6 +45,7 @@ test('an edited copy kept aside shows in the item panel when the item is shown a
     const coll = await createCollection(page, '강의');
     await addToCollection(page, coll, [item!.id]);
     await stubShell(app);
+    await showItemPanel(app, page); // the 1024 px macOS runner folds the panel beside the table; folded, its buttons cannot be reached
     await row(page, item!.id).click();
     await expect(page.getByTestId('file-section')).toBeVisible();
     await expect(page.getByTestId('edited-copies')).toHaveCount(0);
@@ -94,6 +95,7 @@ test('a copy saved over while it is imported stays, its bytes checked again afte
   const { app, page } = await launch(lib, testInfo.outputPath('userdata'));
   try {
     const [item] = await importPaths(page, [lecture(testInfo.outputPath('in'))]);
+    await showItemPanel(app, page);
     await row(page, item!.id).click();
     await expect(page.getByTestId('file-section')).toBeVisible();
     // A copy appears while the item is shown: nothing reads it until the window gets the focus back.

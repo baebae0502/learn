@@ -3,7 +3,7 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   addToCollection, assignTag, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, expectWindow, importPaths, launch, mainWindow, menuSnapshot,
-  organizeSnapshot, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, specialRow, stubContextMenu, stubOpenDialog, tagChip, trashItems, treeRow,
+  organizeSnapshot, recordedPopups, rowByTitle, runMenuAccelerator, runMenuCommand, showItemPanel, specialRow, stubContextMenu, stubOpenDialog, tagChip, trashItems, treeRow,
   type MenuNode,
 } from './helpers';
 import { beginDrag, dragTo, hover, marked, release } from './dnd-helpers';
@@ -199,6 +199,7 @@ test('the trash rows’ menu (also by ⇧F10): 복원 · — · 영구 삭제…
     await expect.poll(async () => (await trashed(page))?.items).toEqual(['distinct-02']);
     // The panel's 복원 on the last row: the trash empties and its view goes to 내 라이브러리.
     await rowByTitle(page, 'distinct-02').click();
+    await showItemPanel(app, page); // folded beside the table on the 1024 px macOS runner
     await page.getByTestId('inspector-restore').click();
     await expect(title(page)).toHaveText('내 라이브러리');
     await expect(specialRow(page, 'trash')).toHaveCount(0);

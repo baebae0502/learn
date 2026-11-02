@@ -49,7 +49,7 @@ export function InfoPane() {
   if (scope.kind === 'trash') {
     const trashed = chosen as readonly TrashedItem[];
     const collections = trash ? trash.collections.filter((c) => selected.has(c.id)) : [];
-    if (trashed.length + collections.length === 0) return <NoSelection label={label} items={scoped} stats={list !== undefined} />;
+    if (trashed.length + collections.length === 0) return <NoSelection label={label} items={scoped} collections={trash?.collections.length ?? 0} stats={list !== undefined} />;
     if (trashed.length === 1 && collections.length === 0) return <ItemInfo key={trashed[0]!.id} item={trashed[0]!} trashedAt={trashed[0]!.deletedAt} />;
     return <TrashSelection items={trashed} collections={collections} />;
   }
@@ -68,8 +68,8 @@ export function InfoPane() {
  * library's numbers in tertiary, last, in the slot after the text (no button there). Before the first list has come
  * there are no numbers to give (`stats` false): the text alone.
  */
-function NoSelection({ label, items, stats: withStats }: { label: string; items: readonly LibraryItem[]; stats: boolean }) {
-  const stats = useMemo(() => libraryStats(label, items), [label, items]);
+function NoSelection({ label, items, collections = 0, stats: withStats }: { label: string; items: readonly LibraryItem[]; collections?: number; stats: boolean }) {
+  const stats = useMemo(() => libraryStats(label, items, collections), [label, items, collections]);
   return (
     <PaneEmpty
       icon={MousePointer2}

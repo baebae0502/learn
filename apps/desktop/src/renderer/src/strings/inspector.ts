@@ -14,9 +14,11 @@ export const inspector = {
   noneTitle: '선택한 자료 없음',
   noneBody: '표에서 자료를 고르면 정보가 여기에 보입니다.',
   /** "내 라이브러리 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB"; `kinds` and `size` arrive bound (summary.ts). */
-  stats: (scope: string, count: number, kinds: string, size: string) => `${scope}\u00a0· 자료 ${count}개(${kinds})\u00a0· ${size}`,
+  stats: (scope: string, count: number, kinds: string, size: string, collections = '') => `${scope}\u00a0· 자료 ${count}개(${kinds})${collections}\u00a0· ${size}`,
   /** A view with no items yet (a new collection): no kinds, no size. */
-  statsNone: (scope: string) => `${scope}\u00a0· 자료 0개`,
+  statsNone: (scope: string, collections = '') => `${scope}\u00a0· 자료 0개${collections}`,
+  /** The trash view's part for its trashed collections, after the items: "휴지통 · 자료 3개(…) · 컬렉션 1개 · 4.5 MB". */
+  statsCollections: (n: number) => `\u00a0· 컬렉션 ${n}개`,
   kindCount: (kind: string, n: number) => `${kind} ${n}`,
   kindItems: (kind: string, n: number) => `${kind} ${n}개`,
   total: (size: string) => `합계 ${size}`,

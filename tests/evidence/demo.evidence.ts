@@ -634,7 +634,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      */
     await app.evaluate(({ Menu }, show) => {
       interface LiveItem { label: string; enabled: boolean; visible: boolean; submenu?: { items: LiveItem[] }; click(): void }
-      const g = globalThis as { __learnDemoPick?: { path: string[]; holdMs: number } | null; __learnRealPopup?: Electron.Menu['popup'] };
+      const g = globalThis as { __learnDemoPick?: { path: string[]; holdMs: number } | null; __learnDemoMenuSteps?: number | null; __learnRealPopup?: Electron.Menu['popup'] };
       g.__learnRealPopup ??= Menu.prototype.popup;
       const real = g.__learnRealPopup;
       Menu.prototype.popup = function popup(this: Electron.Menu, options?: Electron.PopupOptions) {
@@ -648,6 +648,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           level = target.submenu?.items ?? [];
         }
         if (target?.submenu) target = undefined; // a path that ends on a submenu's head picks nothing
+        // How many arrow-downs lead from the row under the pointer (the first one a keyboard can reach) to the target:
+        // the rows between them in this menu's template, separators and rows that are disabled or hidden not counted.
+        const reachable = (this.items as unknown as Array<LiveItem & { type?: string }>).filter((i) => i.type !== 'separator' && i.enabled && i.visible);
+        g.__learnDemoMenuSteps = target && (pick?.path.length ?? 0) === 1 ? Math.max(0, reachable.indexOf(target)) : 0;
         if (show) real.call(this, options);
         setTimeout(() => {
           target?.click();
@@ -658,10 +662,34 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     }, IS_MAC);
     /** The row (a label, or a path of labels down the submenus) the next native popup picks, after showing itself `holdMs` on macOS. */
     const pickFromNextPopup = (itemLabel: string | readonly string[], holdMs = 2200) =>
-      app.evaluate((_electron, p) => void ((globalThis as { __learnDemoPick?: unknown }).__learnDemoPick = p), {
+      app.evaluate((_electron, p) => {
+        const g = globalThis as { __learnDemoPick?: unknown; __learnDemoMenuSteps?: number | null };
+        g.__learnDemoPick = p;
+        g.__learnDemoMenuSteps = null;
+      }, {
         path: typeof itemLabel === 'string' ? [itemLabel] : [...itemLabel],
         holdMs: Math.round(holdMs * PACE),
       });
+    /**
+     * macOS: moves the open native menu's highlight from the row under the pointer down to the row the pick is about to
+     * take, with real arrow-down presses, so the menu shows the row the chapter talks about. Nothing elsewhere (no menu is
+     * drawn). A key macOS refuses or that fails is a note: the pick still happens, only without the highlight.
+     */
+    const highlightPickedRow = async () => {
+      if (!IS_MAC) return;
+      const deadline = Date.now() + 3000;
+      let steps: number | null = null;
+      while (steps === null && Date.now() < deadline) {
+        steps = await app.evaluate(() => (globalThis as { __learnDemoMenuSteps?: number | null }).__learnDemoMenuSteps ?? null);
+        if (steps === null) await sleep(100);
+      }
+      if (steps === null) return void notes.push('the item menu did not open in time to move its highlight');
+      try {
+        for (let i = 0; i < steps; i++) await nativeKeyCode(app, KEY_CODE.down);
+      } catch (e) {
+        notes.push(`the item menu's highlight stayed where it was (${errorText(e)})`);
+      }
+    };
 
     if (IS_MAC) await bringAppToFront(app);
     await drawFor(page);
@@ -898,7 +926,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await expect(rows).toHaveCount(6);
     await expect(page.getByTestId('kept-mark')).toHaveCount(3);
     await pause(3000);
-    await pickFromNextPopup(label('duplicates.keepOne'), 3500);
+    await pickFromNextPopup(label('duplicates.keepOne'), 5500);
     await glideClick(page, 'main', page.locator('[data-testid="item-row"]:not(:has([data-testid="kept-mark"]))').first(), { button: 'right' });
     await expect(page.getByTestId('undo-toast')).toContainText('중복 1개를 휴지통으로 옮겼습니다');
     await expect(rows).toHaveCount(4);

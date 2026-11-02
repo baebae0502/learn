@@ -1080,7 +1080,7 @@ export async function nativeKeystroke(app: ElectronApplication, key: string, mod
 }
 
 /** macOS virtual key codes for the keys `nativeKeystroke` cannot type. */
-export const KEY_CODE = { return: 36, escape: 53, delete: 51 } as const;
+export const KEY_CODE = { return: 36, escape: 53, delete: 51, down: 125 } as const;
 
 /**
  * darwin only: a real OS-level press of a non-printable key (System Events `key code`, e.g. KEY_CODE.return), with the

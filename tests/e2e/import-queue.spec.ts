@@ -377,6 +377,9 @@ test('a job toast that closes with no result while 취소 has the focus hands th
     await expect(s.page.getByTestId('backup-progress')).toHaveCount(0);
     expect(await where()).toMatchObject({ body: false, inToasts: true, inBackupToast: false });
     await closeSheet(sheet, 'Enter');
+    // The import starts when the backup lets go of the line, while the sheet is still opening: a resume sent before the
+    // file reaches its hold is lost and the file then waits there for good (Mac all 41387123318, failure 2).
+    await expect.poll(() => importWaiting(s.app)).toBe('beforeCommit');
     await importResume(s.app);
     await waitImportIdle(s.page);
   } finally {

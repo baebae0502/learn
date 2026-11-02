@@ -752,7 +752,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     notes.push('the imports of chapters 1–3 are slowed by the E2E pause hook so that the progress can be read; the file panels are stubbed');
 
     // 1. A big folder: 30 files in one go; past a second the progress toast appears, with the count and the bar.
-    await chapter('폴더 하나에 든 파일 30개를 한꺼번에 가져옵니다. 가져오는 동안 토스트가 진행을 보여 줍니다. (파일 선택 창은 건너뜁니다)', page, 5500);
+    await chapter('폴더 하나에 든 파일 30개를 한꺼번에 가져옵니다. 가져오는 동안 토스트가 진행을 보여 줍니다. (파일 선택 창은 건너뛰고, 진행이 보이게 가져오기를 일부러 늦춥니다)', page, 5500);
     await pause(1500);
     let slow = slowImport(500);
     await importFiles(s!, folderA);
@@ -806,7 +806,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     // 4. The same file again: a sheet asks; one answer for the rest of the duplicates.
     const again = [media.read, media.drop[0]!, media.drop[1]!];
     const dupSheet = await sheetChapter(
-      '이미 있는 파일을 다시 가져오면 시트가 묻습니다. ‘남은 중복 파일에도 같은 선택 적용’을 체크하면 한 번만 답합니다. (파일 선택 창은 건너뜁니다)',
+      '이미 있는 파일을 다시 가져오면 시트가 묻습니다. ‘남은 중복 파일에도 같은 선택 적용’이 처음부터 켜져 있어 한 번만 답하면 됩니다. (파일 선택 창은 건너뜁니다)',
       () => importFiles(s!, again),
     );
     await expect(dupSheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
@@ -831,7 +831,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const countBefore = await rowCount();
     const trashAt = await press('Backspace', ['command'], 'item.trash', async () => (await page.getByTestId('trash-undo').count()) > 0, KEY_CODE.delete);
     await expect(page.getByTestId('trash-undo')).toContainText('자료 2개를 휴지통으로 옮겼습니다');
-    await afterKey(trashAt, 600); // the toast closes by itself after 5 s
+    await afterKey(trashAt, 0); // the toast closes by itself after 5 s: the glide to 실행 취소 starts once the key's pill has gone
     await glideClick(page, 'main', page.getByTestId('trash-undo').getByTestId('undo-action'));
     await expect(page.getByTestId('trash-undo')).toHaveCount(0);
     await expect.poll(rowCount).toBe(countBefore);
@@ -929,7 +929,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await park(page, 'main');
     await pause(1500);
 
-    // 10. The check sheet on a library that holds one leftover temporary file (an import that stopped half way).
+    // 10. The check sheet on a library that holds one leftover temporary file (an import that stopped half way). Planted
+    // here, not before launch, so the automatic check does not open ahead of chapter 1; the sheet opens by its menu command.
+    notes.push('chapter 10: a leftover .part file is planted just before the check, which opens by its menu command');
     fs.writeFileSync(path.join(libraryDir, 'staging', 'demo-import.part'), Buffer.alloc(48 * 1024, 7));
     const checkSheet = await sheetChapter(
       `‘${label('file.checkLibrary')}’\u2060은 가져오다 멈춘 임시 파일 같은 것을 찾아 보여 주고, 지울지는 사용자가 정합니다. (임시 파일 하나를 미리 남겨 두었습니다)`,

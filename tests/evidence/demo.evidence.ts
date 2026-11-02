@@ -164,7 +164,14 @@ function runRestores(notes: string[]): Promise<void> {
   restoring = run.catch(() => {});
   return run;
 }
+/**
+ * Set once the file's afterAll has begun. A test that Playwright has failed (an unhandled rejection, a timeout) keeps running
+ * in the background: when its attempt then ends it must not start the next one, which would switch the display again with
+ * nothing left to put it back (Mac all 41387123318: every suite after the demo ran at 1600 × 900).
+ */
+let testEnded = false;
 test.afterAll(async () => {
+  testEnded = true;
   test.setTimeout(RESTORE_HOOK_MS);
   const notes: string[] = [];
   if (pendingRestores.length > 0) notes.push(`${pendingRestores.length} restores left by an attempt that did not finish (a test timeout)`);
@@ -258,6 +265,7 @@ type CursorMode = 'synthetic' | 'system' | 'warp';
 const overlayMode = (mode: CursorMode) => (mode === 'synthetic' ? 'follow' : 'clicks');
 
 async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<{ lost: string | null }> {
+  if (testEnded) throw new Error('the demo test has already ended (failed or timed out): no further attempt is started');
   lostRecording = null;
   const work = path.join(os.tmpdir(), 'learn-demo');
   fs.mkdirSync(work, { recursive: true });
@@ -277,6 +285,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   const overlayClashes: string[] = [];
   let s: Session | null = null;
   let rec: Recording | null = null;
+  /** The slowed imports of chapters 1–3 that are still going: an attempt that ends early stops them before it closes the app. */
+  const slowRuns = new Set<{ stop(): Promise<void> }>();
   /** x11grab recordings end when told; macOS screencapture after RECORD_SECONDS. */
   let stopRec: StoppableRecording['stop'] | null = null;
   let started = Date.now();
@@ -764,13 +774,22 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         await importPause(app, null);
         await importResume(app);
       })();
-      return {
+      // The loop runs on its own while the chapters go on: an app that is closed under it (a lost recording ends the attempt)
+      // must reach whoever stops it, not the process as an unhandled rejection, which fails the test and so ends the retries.
+      const ended = loop.then(
+        () => null,
+        (e: unknown) => ({ error: e }),
+      );
+      const run = {
         each: (ms: number) => void (eachMs = ms),
         stop: async () => {
           on = false;
-          await loop;
+          const result = await ended;
+          if (result) throw result.error;
         },
       };
+      slowRuns.add(run);
+      return run;
     };
     /** A chapter whose point is a sheet: the caption is read in full and goes, then the sheet comes (as chapter 16 of the M5 demo did). */
     const sheetChapter = async (title: string, open: () => Promise<unknown>): Promise<Page> => {
@@ -1012,6 +1031,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       (e: unknown) => ({ file: null, error: errorText(e) }),
     );
     loss = recordingLoss({ capture: GRAB ? 'x11grab' : plan.capture, end: entry, early: lostRecording });
+    // A slowed import still going (the attempt ended inside chapters 1–3) is let go before the app is closed under it.
+    await within(Promise.all([...slowRuns].map((r) => r.stop().catch(() => {}))), RESTORE_MS, 'stopping the slowed import').catch((e: unknown) => notes.push(errorText(e)));
     await runRestores(notes);
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });

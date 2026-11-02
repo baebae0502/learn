@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
-import { LearnError } from '@learn/domain';
-import { checkLibraryFolder, insideFolder, switchLibrary } from './library-folder';
+import { LearnError, type Prefs } from '@learn/domain';
+import { createQuitGuard } from './jobs/quit-guard';
+import { checkLibraryFolder, createLibrarySwitch, insideFolder, type LibrarySwitch } from './library-folder';
 import { mainStrings } from './strings';
 
 describe('checkLibraryFolder (R4)', () => {
@@ -39,32 +40,86 @@ describe('insideFolder: the folder itself or anything under it', () => {
   });
 });
 
-describe('switchLibrary (app.chooseLibraryFolder and the restore\'s 전환)', () => {
+describe('createLibrarySwitch (app.chooseLibraryFolder and the restore\'s 전환)', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-switch-'));
   afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
-  it('checks the folder, saves it as the library folder, tells every window, then restarts — in that order', () => {
-    const order: string[] = [];
-    switchLibrary(tmp, {
-      prefs: {
-        set: (patch) => {
-          order.push(`set ${patch.libraryRoot}`);
-          return { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: patch.libraryRoot ?? null, backupDir: null };
-        },
+
+  /** A switch with fake prefs and a quit that goes through the real quit guard: `busy` is the lane's job, `stays` the user's answer. */
+  function setup(opts: { busy?: 'import' | null; stays?: boolean } = {}) {
+    const saved: Array<string | null> = [];
+    let root: string | null = '/old/library';
+    const arm = vi.fn();
+    const prefs = {
+      get: () => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: root, backupDir: null }) as Prefs,
+      set: (patch: { libraryRoot?: string | null }) => {
+        if (patch.libraryRoot !== undefined) {
+          root = patch.libraryRoot;
+          saved.push(root);
+        }
+        return prefs.get();
       },
-      announce: (prefs) => void order.push(`announce ${prefs.libraryRoot}`),
-      relaunch: () => void order.push('relaunch'),
+    };
+    const holder: { sw?: LibrarySwitch } = {};
+    const quits: string[] = [];
+    const guard = createQuitGuard<'main'>({
+      lane: { busy: () => opts.busy ?? null, cancelAll: () => {}, idle: () => Promise.resolve() },
+      remaining: () => 3,
+      owner: () => 'main',
+      ask: async () => !opts.stays,
+      quit: () => {
+        quits.push('quit');
+        holder.sw!.apply(); // will-quit of the second, unasked quit
+      },
+      onStay: () => holder.sw!.cancel(),
     });
-    expect(order).toEqual([`set ${tmp}`, `announce ${tmp}`, 'relaunch']);
+    holder.sw = createLibrarySwitch({
+      prefs,
+      arm,
+      quit: () => {
+        const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+        if (!guard.onBeforeQuit(event)) holder.sw!.apply(); // nothing held the quit: it goes ahead at once
+      },
+    });
+    return { sw: holder.sw, saved, arm, root: () => root, quits };
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('saves the folder and arms the restart once the quit goes ahead — not before, and only once', () => {
+    const h = setup();
+    h.sw.request(tmp);
+    expect(h.root()).toBe(tmp);
+    expect(h.arm).toHaveBeenCalledTimes(1);
+    h.sw.apply();
+    expect(h.arm).toHaveBeenCalledTimes(1);
   });
-  it('a folder that is gone is refused with the cause and the next step; prefs that cannot be saved stop it before the restart', () => {
-    const relaunch = vi.fn();
+  it('a busy lane and a user who stays: prefs keep the open library, no restart is armed, and the next quit does not relaunch', async () => {
+    const h = setup({ busy: 'import', stays: true });
+    h.sw.request(tmp);
+    await settle();
+    expect(h.root()).toBe('/old/library');
+    expect(h.arm).not.toHaveBeenCalled();
+    h.sw.apply(); // the next normal quit
+    expect(h.root()).toBe('/old/library');
+    expect(h.arm).not.toHaveBeenCalled();
+  });
+  it('a busy lane and a user who quits: the folder is saved and the restart armed once, after the work stopped', async () => {
+    const h = setup({ busy: 'import', stays: false });
+    h.sw.request(tmp);
+    expect(h.arm).not.toHaveBeenCalled();
+    await settle();
+    expect(h.root()).toBe(tmp);
+    expect(h.arm).toHaveBeenCalledTimes(1);
+  });
+  it('a folder that is gone is refused with the cause and the next step; prefs that cannot be saved stop it before the quit', () => {
+    const quit = vi.fn();
     const set = vi.fn();
-    expect(() => switchLibrary(path.join(tmp, 'gone'), { prefs: { set }, announce: () => {}, relaunch })).toThrow(mainStrings.libraryFolder.missing);
+    const prefs = { get: () => ({ libraryRoot: null }) as Prefs, set };
+    expect(() => createLibrarySwitch({ prefs, arm: vi.fn(), quit }).request(path.join(tmp, 'gone'))).toThrow(mainStrings.libraryFolder.missing);
     expect(set).not.toHaveBeenCalled();
     const readOnly = () => {
       throw new LearnError('PREFS_UNAVAILABLE', mainStrings.prefs.readOnly);
     };
-    expect(() => switchLibrary(tmp, { prefs: { set: readOnly }, announce: () => {}, relaunch })).toThrow(mainStrings.prefs.readOnly);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(() => createLibrarySwitch({ prefs: { get: prefs.get, set: readOnly }, arm: vi.fn(), quit }).request(tmp)).toThrow(mainStrings.prefs.readOnly);
+    expect(quit).not.toHaveBeenCalled();
   });
 });

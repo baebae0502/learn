@@ -57,8 +57,8 @@ export interface IpcDeps {
   theme: { changed(theme: Prefs['theme']): void; shown(sender: WebContents, shade: 'light' | 'dark'): void };
   /** ui.reportIdle: the settings window is made, loaded and measured hidden now; nothing when one exists. */
   prepareSettings(): void;
-  /** Restarts into the library location just saved. Under E2E (LEARN_E2E=1) it only records the request. */
-  relaunch(): void;
+  /** Switches to another library folder: the app quits and restarts on it, unless the user keeps it from quitting. Under E2E (LEARN_E2E=1) it only saves the folder and records the request. */
+  switchLibrary(target: string): void;
 }
 
 /** The request half of LearnApi (everything but `on` / `pathForFile`). */

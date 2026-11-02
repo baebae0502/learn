@@ -44,7 +44,7 @@ fs.mkdirSync(other);
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const saved: unknown[] = [];
-const relaunch = vi.fn();
+const switchLibrary = vi.fn();
 /** Each native dialog runs inside windows.asSheet(owner, …): the owner stays main and is re-read afterwards. */
 const sheetOwners: Array<{ owner: unknown; phase: 'shown' | 'closed' }> = [];
 registerAppIpc(
@@ -63,7 +63,7 @@ registerAppIpc(
         }
       },
     },
-    relaunch,
+    switchLibrary,
     isSettingsWindow: (sender) => sender === (SETTINGS_PAGE as never),
   }),
 );
@@ -80,7 +80,7 @@ beforeEach(() => {
   calls.length = 0;
   saved.length = 0;
   sheetOwners.length = 0;
-  relaunch.mockClear();
+  switchLibrary.mockClear();
   picked = [];
   answer = 0;
   senderWindow = SETTINGS;
@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and relaunches)', () => {
-  it('a confirmed folder: both dialogs are sheets on the settings window, then the path is saved and the app relaunches', async () => {
+  it('a confirmed folder: both dialogs are sheets on the settings window, then the switch is requested', async () => {
     picked = [other];
     expect(await choose()).toEqual({ ok: true, data: { relaunching: true } });
     expect(calls.map((c) => [c.kind, c.parent])).toEqual([['open', SETTINGS], ['confirm', SETTINGS]]);
@@ -98,8 +98,7 @@ describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and r
       { owner: SETTINGS, phase: 'shown' }, { owner: SETTINGS, phase: 'closed' },
       { owner: SETTINGS, phase: 'shown' }, { owner: SETTINGS, phase: 'closed' },
     ]);
-    expect(saved).toEqual([{ libraryRoot: other }]);
-    expect(relaunch).toHaveBeenCalledTimes(1);
+    expect(switchLibrary).toHaveBeenCalledExactlyOnceWith(other);
   });
   it('cancelling either dialog, or picking the current folder, changes nothing', async () => {
     expect(await choose()).toEqual({ ok: true, data: { relaunching: false } }); // the folder dialog cancelled
@@ -110,14 +109,14 @@ describe('app.chooseLibraryFolder (R4: main picks, checks, confirms, saves and r
     expect(await choose()).toEqual({ ok: true, data: { relaunching: false } }); // the library already open
     expect(calls.filter((c) => c.kind === 'confirm')).toHaveLength(1);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
   it('a folder that is missing or not a folder is refused before any confirmation, with the cause and next step', async () => {
     picked = [path.join(tmp, 'missing')];
     expect(await choose()).toMatchObject({ ok: false, code: 'VALIDATION_FAILED', message: '폴더를 찾을 수 없습니다. 다른\u00a0폴더를 고르세요.' });
     expect(calls.map((c) => c.kind)).toEqual(['open']);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
   it('takes no input: the renderer never sends a path', async () => {
     picked = [other];
@@ -133,7 +132,7 @@ describe('only the settings window may ask for the library folder (defence in de
     expect(await invokeFrom(MAIN_PAGE, 'app:showLibraryFolder')).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
     expect(calls).toEqual([]);
     expect(saved).toEqual([]);
-    expect(relaunch).not.toHaveBeenCalled();
+    expect(switchLibrary).not.toHaveBeenCalled();
   });
 });
 

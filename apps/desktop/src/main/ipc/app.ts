@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { BrowserWindow, dialog, shell, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { Channels, LearnError, emptyInput } from '@learn/domain';
-import { broadcast } from '../events';
-import { checkLibraryFolder, switchLibrary } from '../library-folder';
+import { checkLibraryFolder } from '../library-folder';
 import { mainStrings } from '../strings';
 import type { Handle, IpcDeps } from './register';
 
@@ -50,8 +49,8 @@ export function registerAppIpc(handle: Handle, deps: IpcDeps): void {
     };
     const { response } = await onOwner(() => (owner ? dialog.showMessageBox(owner, ask) : dialog.showMessageBox(ask)));
     if (response !== 0) return { relaunching: false };
-    // Saved, every window told, then the restart — the restore's 전환 takes the same path (library-folder.ts).
-    switchLibrary(target, { prefs: deps.prefs, announce: (prefs) => broadcast('prefsChanged', { prefs }), relaunch: () => deps.relaunch() });
+    // Saved and restarted only if the quit goes ahead — the restore's 전환 takes the same path (library-folder.ts).
+    deps.switchLibrary(target);
     return { relaunching: true };
   });
 

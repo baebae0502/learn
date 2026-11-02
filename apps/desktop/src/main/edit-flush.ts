@@ -30,6 +30,8 @@ export interface FlushGateDeps {
   /** app.quit(): the quit again, once the page let go. */
   quit(): void;
   timeoutMs?: number;
+  /** A quit this gate called off because the form is invalid: the app stays. */
+  onStay?(): void;
   /** Every decision, for the E2E log (index.ts). */
   record?(entry: { action: Action; result: FlushOutcome }): void;
   /** How long a quit's own close may come after app.quit() before the pass is dropped (a quit another listener called off). */
@@ -82,7 +84,10 @@ export function createFlushGate(deps: FlushGateDeps): FlushGate {
       const wanted = asking ?? action;
       asking = null;
       deps.record?.({ action: wanted, result });
-      if (result === 'invalid') return; // the window stays, the quit is off: the form shows why
+      if (result === 'invalid') {
+        if (wanted === 'quit') deps.onStay?.();
+        return; // the window stays, the quit is off: the form shows why
+      }
       passing = wanted;
       if (wanted === 'quit') {
         deps.quit();

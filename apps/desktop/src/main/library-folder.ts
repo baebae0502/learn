@@ -45,13 +45,45 @@ export function insideFolder(dir: string, root: string): boolean {
   return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
+export interface LibrarySwitch {
+  /** Checks the folder and remembers the switch, then asks the app to quit. Nothing is saved or armed yet. */
+  request(target: string): void;
+  /** The quit really goes ahead (will-quit): saves the folder and arms the restart. Once per request. */
+  apply(): void;
+  /** The quit was called off (the user stayed): the switch is forgotten. */
+  cancel(): void;
+}
+
 /**
- * Opens another library (설정's 다른 폴더 선택…, the restore's 전환 — spec 9.3): checked, saved as this device's library
- * folder, every window told, then the app restarts on it. The library in use stays as it is.
+ * Opens another library (설정's 다른 폴더 선택…, the restore's 전환 — spec 9.3): the folder is checked and the app asked
+ * to quit, but the folder is saved as this device's library folder and the restart armed only when the quit goes ahead,
+ * so a quit the user calls off leaves the open library and the saved one alike. The library in use stays as it is.
  */
-export function switchLibrary(target: string, deps: { prefs: Pick<PrefsStore, 'set'>; announce(prefs: Prefs): void; relaunch(): void }): void {
-  const check = checkLibraryFolder(target);
-  if (!check.ok) throw new LearnError('VALIDATION_FAILED', check.message);
-  deps.announce(deps.prefs.set({ libraryRoot: target }));
-  deps.relaunch();
+export function createLibrarySwitch(deps: { prefs: Pick<PrefsStore, 'get' | 'set'>; arm(): void; quit(): void }): LibrarySwitch {
+  let pending: string | null = null;
+  return {
+    request(target) {
+      const check = checkLibraryFolder(target);
+      if (!check.ok) throw new LearnError('VALIDATION_FAILED', check.message);
+      // The write that cannot be made is said now, while the user can still read it: the same value is saved back.
+      deps.prefs.set({ libraryRoot: deps.prefs.get().libraryRoot });
+      pending = target;
+      deps.quit();
+    },
+    apply() {
+      const target = pending;
+      pending = null;
+      if (target === null) return;
+      try {
+        deps.prefs.set({ libraryRoot: target });
+      } catch (e) {
+        console.error(`[library] switch not saved: ${(e as { code?: string })?.code ?? 'unknown'}`);
+        return;
+      }
+      deps.arm();
+    },
+    cancel() {
+      pending = null;
+    },
+  };
 }

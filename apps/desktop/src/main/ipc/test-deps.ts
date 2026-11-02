@@ -35,7 +35,7 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
     windows: { openSettings: () => {}, asSheet: (_owner, show) => show() },
     theme: { changed: () => {}, shown: () => {} },
     prepareSettings: () => {},
-    relaunch: () => {},
+    switchLibrary: () => {},
     ...over,
   };
 }

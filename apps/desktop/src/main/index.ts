@@ -27,7 +27,7 @@ import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
-import { switchLibrary } from './library-folder';
+import { createLibrarySwitch, type LibrarySwitch } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuLabelState, menuLabelsChanged, submenuShapeKey } from './menu/app-menu';
@@ -87,11 +87,16 @@ let mainWindow: BrowserWindow | null = null;
 const editFlush = createFlushGate({
   mainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
   quit: () => app.quit(),
+  onStay: () => cancelLibrarySwitch(),
   record: (entry) => {
     // E2E reads what each close or quit was answered.
     if (isE2E(app.isPackaged, process.env)) ((globalThis as { __learnEditFlushLog?: unknown[] }).__learnEditFlushLog ??= []).push(entry);
   },
 });
+
+/** A library switch waiting for the quit to go ahead (library-folder.ts): forgotten when a gate keeps the app, applied in will-quit. */
+let cancelLibrarySwitch = (): void => {};
+let applyLibrarySwitch = (): void => {};
 
 /** The work line (spec 3.1): imports, backups and restores run on it one at a time. */
 const jobs = createJobLane();
@@ -452,17 +457,26 @@ if (!app.requestSingleInstanceLock()) {
       },
     });
     sheets.onAct('libraryCheck', (action, sheet) => checks.act(action, sheet));
-    /** Restarts on the library folder saved last (설정, the restore's 전환). E2E only records the request: Playwright cannot follow a new process. */
-    const relaunch = (): void => {
-      if (isE2E(app.isPackaged, process.env)) {
-        (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
-        return;
-      }
-      setImmediate(() => {
-        app.relaunch();
-        app.quit();
-      });
-    };
+    /**
+     * Another library folder (설정, the restore's 전환): the app is asked to quit, and the folder is saved and the restart
+     * armed in will-quit, when the quit really goes ahead. E2E applies at once and only records the request: Playwright
+     * cannot follow a new process.
+     */
+    const e2e = isE2E(app.isPackaged, process.env);
+    const librarySwitch: LibrarySwitch = createLibrarySwitch({
+      prefs,
+      arm: () => {
+        if (e2e) (globalThis as { __learnRelaunchRequested?: boolean }).__learnRelaunchRequested = true;
+        else app.relaunch();
+      },
+      quit: () => {
+        if (e2e) librarySwitch.apply();
+        else setImmediate(() => app.quit());
+      },
+    });
+    cancelLibrarySwitch = () => librarySwitch.cancel();
+    applyLibrarySwitch = () => librarySwitch.apply();
+    const switchLibrary = (target: string): void => librarySwitch.request(target);
     // 백업 만들기… on the same work line (spec 8.1): the folder panel hangs on the window that asked; the result sheet too.
     const backup = createBackupJob<BrowserWindow>({
       lane: jobs,
@@ -520,7 +534,7 @@ if (!app.requestSingleInstanceLock()) {
         // No window left (macOS): the folder is there all the same, and 설정's 다른 폴더 선택… can switch to it.
         return parent ? sheets.open(parent, payload) : Promise.resolve(null);
       },
-      switchTo: (root) => switchLibrary(root, { prefs, announce: (next) => broadcast('prefsChanged', { prefs: next }), relaunch }),
+      switchTo: switchLibrary,
       switchFailed: (owner, error) => {
         const parent = owner && !owner.isDestroyed() ? owner : liveMainWindow();
         const box: MessageBoxOptions = { type: 'warning', message: restoreWords.switchFailed, detail: error.message, buttons: [restoreWords.ok], defaultId: 0, noLink: true };
@@ -578,7 +592,7 @@ if (!app.requestSingleInstanceLock()) {
         settingsWindow.prepare();
         firstScreenDrawn();
       },
-      relaunch,
+      switchLibrary,
     };
     registerAllIpc(createHandle(devOrigin), deps);
     // A running import, backup or restore is asked about before the edit-flush gate on every quit.
@@ -597,6 +611,7 @@ if (!app.requestSingleInstanceLock()) {
       quit: () => app.quit(),
       // Linux/Windows quit when the last window closes: staying on without one would leave no way back into the app.
       onStay: () => {
+        cancelLibrarySwitch();
         if (process.platform === 'darwin' || liveMainWindow() !== null) return;
         mainWindow = openMainWindow();
         refreshFullScreenItem();
@@ -685,6 +700,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on('will-quit', () => {
+    applyLibrarySwitch();
     checkStopped = true;
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();

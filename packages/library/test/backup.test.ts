@@ -582,3 +582,45 @@ describe('restore: checked first, real copies read back, stoppable, flushed befo
     ]);
   });
 });
+
+describe('two managed rows that share a hash (a library edited by hand or imported by an older version)', () => {
+  /** A second managed asset row for the first managed asset's bytes, with an item of its own. */
+  function addTwin(db: Db, repo: LibraryRepository) {
+    // The schema allows one managed asset per hash; a library edited by hand may not.
+    db.exec('DROP INDEX assets_managed_sha256');
+    const first = repo.assetsByMode('managed')[0]!;
+    const now = nowIso();
+    repo.insertImported({
+      item: { id: newId(), type: 'pdf', title: 'twin', createdAt: now },
+      asset: { ...first, id: newId(), createdAt: now, checkedAt: now },
+      assetIsNew: true,
+      revision: { id: newId(), createdAt: now },
+      job: { id: newId(), kind: 'extract', dedupeKey: `extract:twin:${newId()}`, payload: {} },
+      collectionId: null,
+    });
+    return first;
+  }
+
+  it('backs up one copy for the pair, lists both rows as included, and counts the file once', async () => {
+    const { layout, db, repo } = await populated();
+    const first = addTwin(db, repo);
+    const dest = path.join(tempDir('bk'), 'backup-twin');
+    const { manifest, summary } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const twins = manifest.assets.filter((a) => a.sha256 === first.sha256);
+    expect(twins).toHaveLength(2);
+    expect(twins.every((a) => a.included)).toBe(true);
+    expect(summary.files).toBe(2); // the pair's one copy and the video
+    expect(summary.missingItems).toBe(0);
+  });
+
+  it('restores the pair from its one copy: both rows verified, no failure', async () => {
+    const { layout, db, repo } = await populated();
+    addTwin(db, repo);
+    const dest = path.join(tempDir('bk'), 'backup-twin');
+    await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const progress: RestoreProgress[] = [];
+    const result = await restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library'), onProgress: (p) => progress.push(p) });
+    expect(result).toMatchObject({ verifiedAssets: 3, missingAssets: [], hashMismatches: [], countsMatch: true });
+    expect(progress.at(-1)).toMatchObject({ filesDone: 2, filesTotal: 2 });
+  });
+});

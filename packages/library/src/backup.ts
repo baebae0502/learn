@@ -250,7 +250,8 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
 
     // A managed copy is found from its hash, where the importer put it, never from the path its row claims (spec 8.1).
     const plan = allAssets.map((asset) => ({ asset, rel: asset.storageMode === 'managed' && SHA256_HEX.test(asset.sha256) ? managedRelativePath(asset.sha256) : null }));
-    const copies = includeAssets ? plan.filter((p) => p.rel !== null) : [];
+    // Rows that share a hash share one copy (managedRelativePath): it is written once and the later rows count as covered by it.
+    const copies = includeAssets ? plan.filter((p, i) => p.rel !== null && plan.findIndex((q) => q.rel === p.rel) === i) : [];
     const progress: BackupProgress = { bytesDone: 0, bytesTotal: copies.reduce((n, p) => n + 2 * p.asset.size, 0), filesDone: 0, filesTotal: copies.length };
     const report = (): void => onProgress?.({ ...progress });
     report();
@@ -261,9 +262,12 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
     let bytes = 0;
     let linkedItems = 0;
     let missingItems = 0;
+    const copied = new Map<string, boolean>();
     for (const { asset: a, rel } of plan) {
       let included = false;
-      if (includeAssets && rel !== null) {
+      if (includeAssets && rel !== null && copied.has(rel)) {
+        included = copied.get(rel)!;
+      } else if (includeAssets && rel !== null) {
         signal?.throwIfAborted();
         const share = 2 * a.size;
         const before = progress.bytesDone;
@@ -276,6 +280,7 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
         // The copy and its read-back hold the path: a purge or a re-import of the same file waits (Task 5).
         included = await withManagedPath(rel, () => backUpCopy(layout, tempDir, rel, a.sha256, shards, { signal, onBytes, hooks }));
         progress.bytesDone = before + share;
+        copied.set(rel, included);
         if (included) {
           progress.filesDone += 1;
           files += 1;
@@ -415,7 +420,11 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
     for (const e of included) {
       if (!SHA256_HEX.test(e.sha256) || e.relativePath !== managedRelativePath(e.sha256)) throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedList);
     }
-    const progress: RestoreProgress = { bytesDone: 0, bytesTotal: included.reduce((n, e) => n + 2 * e.size, 0), filesDone: 0, filesTotal: included.length };
+    // Entries that name the same path share one copy: it is restored once and its outcome holds for each of them.
+    const groups = new Map<string, typeof included>();
+    for (const e of included) groups.set(e.relativePath!, [...(groups.get(e.relativePath!) ?? []), e]);
+    const copies = [...groups.values()].map((g) => g[0]!);
+    const progress: RestoreProgress = { bytesDone: 0, bytesTotal: copies.reduce((n, e) => n + 2 * e.size, 0), filesDone: 0, filesTotal: copies.length };
     const report = (): void => onProgress?.({ ...progress });
     report();
 
@@ -423,7 +432,7 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
     const missingAssets = managed.filter((e) => !e.included).map((e) => e.assetId);
     const hashMismatches: string[] = [];
     const shards = new Set<string>();
-    for (const e of included) {
+    for (const e of copies) {
       signal?.throwIfAborted();
       const share = 2 * e.size;
       const before = progress.bytesDone;
@@ -434,9 +443,11 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
         report();
       };
       const outcome = await restoreCopy(backupDir, temp, managedRelativePath(e.sha256), e.sha256, shards, { signal, onBytes, hooks });
-      if (outcome === 'verified') verifiedAssets++;
-      else if (outcome === 'damaged') hashMismatches.push(e.assetId);
-      else missingAssets.push(e.assetId);
+      for (const covered of groups.get(e.relativePath!)!) {
+        if (outcome === 'verified') verifiedAssets++;
+        else if (outcome === 'damaged') hashMismatches.push(covered.assetId);
+        else missingAssets.push(covered.assetId);
+      }
       progress.bytesDone = before + share;
       progress.filesDone += 1;
       report();

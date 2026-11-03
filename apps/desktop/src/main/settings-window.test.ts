@@ -56,6 +56,7 @@ class FakeWindow extends EventEmitter {
     this.contentSize = [w, h];
     this.animated = animate;
   };
+  getContentSize = (): [number, number] => this.contentSize;
   setPosition = (x: number, y: number) => void (this.position = [x, y]);
   /** The frame: the content plus a 28 pt title bar. */
   getBounds = () => ({ x: this.position?.[0] ?? 0, y: this.position?.[1] ?? 0, width: this.contentSize[0], height: this.contentSize[1] + 28 });
@@ -89,7 +90,7 @@ class FakeWindow extends EventEmitter {
 const display = { workArea: { x: 0, y: 25, width: 1920, height: 1150 } };
 const nativeTheme = { shouldUseDarkColors: true };
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme, screen: { getDisplayMatching: () => display } }));
-const { SETTINGS_WIDTH, createSettingsWindow, settingsPosition } = await import('./settings-window');
+const { SETTINGS_WIDTH, createSettingsWindow, settingsContentHeight, settingsPosition } = await import('./settings-window');
 
 const MAIN = { isDestroyed: () => false, getBounds: () => ({ x: 100, y: 40, width: 1440, height: 900 }) } as unknown as BrowserWindow;
 const host = (main: BrowserWindow | null = MAIN) => createSettingsWindow({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=settings', main: () => main });

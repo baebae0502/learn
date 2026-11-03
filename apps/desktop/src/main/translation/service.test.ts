@@ -73,6 +73,15 @@ describe('the translation service', () => {
     expect(await slow2).toMatchObject({ code: 'CANCELLED' });
     expect(engine.calls()).toBe(calls + 1);
   });
+  it('every call ends the one in flight first, also one the service then refuses (R-5)', async () => {
+    const { engine, service } = setup();
+    for (const refused of [' \n ', 'a'.repeat(5001)]) {
+      engine.setMode('slow');
+      const slow = service.translate({ ...input, text: 'Another one.' }).catch((e: unknown) => e);
+      await expect(service.translate({ ...input, text: refused })).rejects.toBeDefined();
+      expect(await slow).toMatchObject({ code: 'CANCELLED' });
+    }
+  });
   it('a new request cancels the one before it; cancel() stops the current one', async () => {
     const { engine, service, rows } = setup();
     engine.setMode('slow');

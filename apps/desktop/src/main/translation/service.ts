@@ -22,14 +22,14 @@ export function createTranslationService(deps: {
 
   return {
     async translate(input) {
+      // The newest request supersedes whatever is in flight, even one that is then refused or answered without the engine.
+      current?.abort();
+      current = null;
       // Nothing leaves the machine before the user has said yes, nor while it is switched off.
       if (deps.prefs().translation.enabled !== true) throw new LearnError('TRANSLATION_DISABLED', ERROR_COPY.translationDisabled);
       const text = prepareText(input.text);
       if (text === '') throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
       if (text.length > TRANSLATION_MAX_CHARS) throw new LearnError('TRANSLATION_TOO_LONG', ERROR_COPY.translationTooLong);
-      // A new request always ends the one before it, even when this one is answered without the engine.
-      current?.abort();
-      current = null;
       const { engine } = deps;
       if (input.to === 'ko' && isMostlyHangul(text)) return { text, detectedFrom: 'ko', engine: engine.id, cached: false, sameLanguage: true };
 

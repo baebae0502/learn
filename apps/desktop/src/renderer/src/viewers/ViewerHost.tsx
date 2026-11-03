@@ -9,10 +9,10 @@ import { useLearnEvent } from '../events';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
-import { PdfViewer } from './PdfViewer';
 import { MissingNotice } from './ReaderNotices';
 import { readerLost, trashedAfter, type TrashedState } from './readerState';
 import { TrashedNotice } from './TrashedNotice';
+import { PdfReader } from './pdf/PdfReader';
 import { VideoViewer } from './VideoViewer';
 
 /** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
@@ -66,7 +66,7 @@ export function ViewerHost({ itemId }: { itemId: string }) {
     if (linkedMissing && detail.isPending) return <div className="reader-stage" aria-hidden="true" />;
     return <MissingNotice item={item.data} externalPath={detail.data?.file.externalPath ?? null} />;
   }
-  return item.data.type === 'pdf' ? <PdfViewer key={item.data.id} item={item.data} /> : <VideoViewer key={item.data.id} item={item.data} />;
+  return item.data.type === 'pdf' ? <PdfReader key={item.data.id} item={item.data} /> : <VideoViewer key={item.data.id} item={item.data} />;
 }
 
 /**

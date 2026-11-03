@@ -207,6 +207,29 @@ export async function stubShell(app: ElectronApplication, opts: { openFails?: bo
 }
 export const shellCalls = (app: ElectronApplication): Promise<ShellCall[]> => app.evaluate(() => (globalThis as { __learnShell?: ShellCall[] }).__learnShell ?? []);
 
+/** Record the URLs main hands to the system (shell.openExternal) instead of opening a browser or a mail program. */
+export async function stubOpenExternal(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as { __learnExternal?: string[] };
+    g.__learnExternal = [];
+    shell.openExternal = async (url: string) => void g.__learnExternal!.push(url);
+  });
+}
+export const openExternalCalls = (app: ElectronApplication): Promise<string[]> => app.evaluate(() => (globalThis as { __learnExternal?: string[] }).__learnExternal ?? []);
+
+/** Zoom the open PDF through the reader's handle (the E2E-only window.__learnReader store): 1 is 100 %. */
+export const setPdfZoom = (page: Page, zoom: number | 'auto' | 'page-width' | 'page-fit'): Promise<void> =>
+  page.evaluate((z) => {
+    const store = (window as unknown as { __learnReader?: { getState(): { handle: { setZoom(z: unknown): void } | null } } }).__learnReader;
+    const handle = store?.getState().handle;
+    if (!handle) throw new Error('no PDF is open');
+    handle.setZoom(z);
+  }, zoom);
+
+/** The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). */
+export const pdfCanvas = (page: Page, pageNumber = 1): Locator => page.getByTestId('pdf-viewer').locator(`.page[data-page-number="${pageNumber}"] canvas`);
+
+
 /** One call of the stubbed save panel: whether it hung on a window (a sheet), and what it was asked to show. */
 export interface SaveDialogCall {
   parent: boolean;

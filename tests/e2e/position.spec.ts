@@ -28,32 +28,36 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
   try {
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
-    const indicator = page.getByTestId('pdf-page-indicator');
-    await expect(indicator).toHaveText('1 / 3쪽');
+    const field = page.getByTestId('pdf-page-field');
+    await expect(field).toHaveValue('1');
+    await expect(page.getByTestId('pdf-page-count')).toHaveText('/ 3');
     await page.getByTestId('pdf-next').click();
-    await expect(indicator).toHaveText('2 / 3쪽');
+    await expect(field).toHaveValue('2');
     await page.waitForTimeout(400); // the brief's scenario wait (> 300 ms debounce); the save itself is confirmed by the poll below
     // Saved by the debounce while the viewer is still open (not only by the unmount flush): (pageIndex + 1) / pageCount.
     await expect.poll(() => progressOf(page, 'sample')).toBeCloseTo(2 / 3, 5);
     await page.getByTestId('viewer-back').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
-    // Every text the page indicator shows while reopening: '…' until the restore is applied, never page 1 first.
+    // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first.
     await page.evaluate(() => {
       const seen: string[] = [];
       (window as unknown as { __indicator: string[] }).__indicator = seen;
-      new MutationObserver(() => {
-        const text = document.querySelector('[data-testid="pdf-page-indicator"]')?.textContent;
+      // The value is a property, which no mutation observer sees: sample it on every frame (a value shown for less is not seen).
+      const sample = () => {
+        const text = (document.querySelector('[data-testid="pdf-page-field"]') as HTMLInputElement | null)?.value;
         if (text && seen.at(-1) !== text) seen.push(text);
-      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+        requestAnimationFrame(sample);
+      };
+      sample();
     });
     await openItem(page, 'sample');
-    await expect(indicator).toHaveText('2 / 3쪽');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(field).toHaveValue('2');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     const shown = await page.evaluate(() => (window as unknown as { __indicator: string[] }).__indicator);
     console.log('[measure] pdf reopen indicator', JSON.stringify(shown));
-    expect(shown.at(-1)).toBe('2 / 3쪽');
-    expect(shown).not.toContain('1 / 3쪽');
+    expect(shown.at(-1)).toBe('2');
+    expect(shown).not.toContain('1');
 
     const item = await listed(page, 'sample');
     expect(item.progress).toBeCloseTo(2 / 3, 5);
@@ -69,7 +73,7 @@ test('opening a PDF records openedAt even when the page never changes', async ({
     const [imported] = await importPaths(page, [PDF]);
     expect((await listed(page, 'sample')).openedAt).toBeNull();
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     await page.getByTestId('viewer-back').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 

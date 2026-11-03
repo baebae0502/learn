@@ -1,0 +1,261 @@
+/* Portions adapted from PDF.js, Copyright 2014 Mozilla Foundation, Apache License 2.0
+ * (https://www.apache.org/licenses/LICENSE-2.0): the viewer, page, canvas wrapper, text layer and link rules of
+ * pdf_viewer.css, with the app's tokens in place of its colours. */
+@layer screens {
+  /* The stage is the positioned box; the viewer's container fills it (pdf.js needs an absolutely positioned container). */
+  .pdf-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: var(--bg-sunken);
+  }
+  .pdf-stage:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .pdf-scroll {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+  }
+  /* Until the saved page is applied the stage is not shown, so the reader never flashes page 1 first. */
+  .pdf-scroll:not([data-restored]) {
+    visibility: hidden;
+  }
+
+  .pdfViewer {
+    --scale-factor: 1;
+    --page-bg-color: var(--page-original-bg);
+    padding-top: var(--space-16);
+    padding-bottom: var(--space-8);
+  }
+  .pdfViewer .page {
+    --user-unit: 1;
+    --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+    --scale-round-x: 1px; /* local: pdf.js */
+    --scale-round-y: 1px; /* local: pdf.js */
+    direction: ltr;
+    position: relative;
+    overflow: visible;
+    width: 816px; /* local: pdf.js sets the real size per page */
+    height: 1056px; /* local: pdf.js sets the real size per page */
+    margin: 0 auto var(--space-16);
+    border: none;
+    background-color: var(--page-bg-color);
+    background-clip: content-box;
+    box-shadow: var(--shadow-page);
+  }
+  .pdfViewer .dummyPage {
+    position: relative;
+    width: 0;
+  }
+
+  .pdfViewer .canvasWrapper {
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+  }
+  .pdfViewer .canvasWrapper canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    contain: content;
+  }
+  .pdfViewer .canvasWrapper canvas.detailView {
+    image-rendering: pixelated;
+  }
+  /* The selection pdf.js draws under the text (enableSelectionRendering): the text layer's own is transparent. */
+  .pdfViewer .canvasWrapper .selection {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--focus) 28%, transparent); /* local: a tint over the page image, readable on every page colour */
+  }
+
+  .textLayer {
+    color-scheme: only light;
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    opacity: 1;
+    text-align: initial;
+    line-height: 1;
+    letter-spacing: normal;
+    word-spacing: normal;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 0;
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+  .textLayer :is(span, br) {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    user-select: text;
+  }
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .textLayer .markedContent {
+    display: contents;
+  }
+  .textLayer span[role='img'] {
+    user-select: none;
+    cursor: default;
+  }
+  .textLayer .highlight {
+    margin: -1px;
+    padding: 1px;
+    border-radius: var(--radius-xs);
+    background-color: var(--find-match);
+  }
+  .textLayer .highlight.appended {
+    position: initial;
+  }
+  .textLayer .highlight.begin {
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+  }
+  .textLayer .highlight.end {
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  }
+  .textLayer .highlight.middle {
+    border-radius: 0;
+  }
+  .textLayer .highlight.selected {
+    background-color: var(--find-match-current);
+    scroll-margin-top: 50px; /* local: pdf.js keeps the current match clear of the stage's edge */
+  }
+  .textLayer ::selection {
+    background: color-mix(in srgb, var(--focus) 28%, transparent); /* local: a tint over the page image */
+    color: transparent;
+  }
+  .textLayer.selectionRendering ::selection {
+    background: transparent;
+    color: transparent;
+  }
+  .textLayer br::selection {
+    background: transparent;
+  }
+  .textLayer .endOfContent {
+    display: block;
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: 0;
+    cursor: default;
+    user-select: none;
+  }
+  .textLayer.selecting .endOfContent {
+    top: 0;
+  }
+
+  .annotationLayer {
+    color-scheme: only light;
+    position: absolute;
+    inset: 0;
+    pointer-events: none; /* the text under it stays selectable; only the links take the pointer */
+    transform-origin: 0 0;
+  }
+  .annotationLayer section {
+    position: absolute;
+    text-align: initial;
+    pointer-events: auto;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    user-select: none;
+  }
+  .textLayer.selecting ~ .annotationLayer section {
+    pointer-events: none;
+  }
+  .annotationLayer .linkAnnotation > a {
+    position: absolute;
+    inset: 0;
+    font-size: 1em;
+    cursor: pointer;
+  }
+
+  /* A page that cannot be drawn: a small notice in its place, the others stay readable. */
+  .pdf-page-error {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-8);
+    padding: var(--space-16);
+    color: var(--page-original-muted);
+    text-align: center;
+    font: var(--type-footnote);
+  }
+  .pdf-page-error strong {
+    color: var(--page-original-text);
+    font: var(--type-headline);
+  }
+
+  .reader-toolbar .page-field {
+    width: var(--space-48);
+    height: var(--control-height-small);
+    padding: 0 var(--space-6);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    text-align: center;
+  }
+  .reader-toolbar .page-field:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .reader-toolbar .page-count {
+    min-width: var(--space-48);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+
+  .password-form {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-8);
+  }
+  .password-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+  .password-input {
+    width: 240px; /* local: the mockup's field width */
+    height: var(--control-height);
+    padding: 0 var(--space-12);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-body);
+  }
+  .password-input:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .password-error {
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
+}

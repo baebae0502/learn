@@ -54,7 +54,7 @@ async function closeSession(s: { app: ElectronApplication; tmp: string }): Promi
 async function tour(page: Page): Promise<void> {
   await sleep(800);
   await openItem(page, 'sample');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await sleep(1200);
   await page.getByTestId('pdf-next').click();
   await sleep(1200);
@@ -256,7 +256,7 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
     }));
     const info = await s.page.evaluate(() => window.learn.app.info());
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await s.page.getByTestId('viewer-back').click();
     await pageShot(s.page, 'spike5-packaged-library', 'packaged app library');
     await focusApp(s.app);

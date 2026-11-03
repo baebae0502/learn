@@ -10,7 +10,7 @@ export function hardenApp(devOrigin: string | null): void {
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+      if (/^(https?:\/\/|mailto:)/i.test(url)) void shell.openExternal(url);
       return { action: 'deny' };
     });
   });

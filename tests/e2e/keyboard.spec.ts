@@ -63,15 +63,20 @@ test('import → open → page → back → palette → settings → shortcuts, 
     expect(await focusedTestId(page)).toBe('item-row');
     await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expectNoSeriousA11y(page, 'PDF reader');
 
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: 다음 쪽 (이전 쪽 is disabled on page 1)
+    await page.keyboard.press('F6'); // content: the toolbar's first control, the page field
+    expect(await focusedTestId(page)).toBe('pdf-page-field');
+    await page.keyboard.press('Tab'); // 이전 쪽: disabled on page 1, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-prev');
+    await page.keyboard.press('Tab'); // 다음 쪽
     expect(await focusedTestId(page)).toBe('pdf-next');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
+    await page.keyboard.press('Shift+Tab'); // 쪽 번호
     await page.keyboard.press('Shift+Tab'); // toolbar: 라이브러리로 돌아가기
     expect(await focusedTestId(page)).toBe('viewer-back');
     await page.keyboard.press('Enter');
@@ -185,15 +190,20 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect.poll(() => focusedTestId(page)).toBe('item-row');
     await expect(row).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
 
     // Back to the library the first journey's way: F6 to the reader's controls, a page on, ⇧⇥ ×2 to 라이브러리로 돌아가기.
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: 다음 쪽
+    await page.keyboard.press('F6'); // content: the page field
+    expect(await focusedTestId(page)).toBe('pdf-page-field');
+    await page.keyboard.press('Tab'); // 이전 쪽: disabled on page 1, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-prev');
+    await page.keyboard.press('Tab'); // 다음 쪽
     expect(await focusedTestId(page)).toBe('pdf-next');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
+    await page.keyboard.press('Shift+Tab'); // 쪽 번호
     await page.keyboard.press('Shift+Tab'); // 라이브러리로 돌아가기
     expect(await focusedTestId(page)).toBe('viewer-back');
     await page.keyboard.press('Enter');
@@ -607,7 +617,7 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
     await expect(page.getByTestId('item-row')).toHaveCount(4);
     // Two rows carry the title now: the first import is opened by its id.
     await page.locator(`[data-testid="item-row"][data-item-id="${sample!.id}"]`).dblclick();
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await runMenuCommand(app, 'nav.back');
     const bio = await createCollection(page, '분자생물학');
     const ch6 = await createCollection(page, '6장 · 신호 전달', bio);
@@ -761,14 +771,14 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.keyboard.press('Shift+F6'); // wraps
     expect(await inPane(page)).toBe('content');
 
-    // Out of a text field (the zoom field is a <select>, where letters would type): F6 is marked inText.
+    // Out of a text field (the page field, where letters would type): F6 is marked inText.
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await page.getByTestId('pdf-zoom').focus();
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('sidebar');
-    await page.getByTestId('pdf-zoom').focus();
+    await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('Shift+F6');
     expect(await inPane(page)).toBe('sidebar');
 

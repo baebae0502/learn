@@ -770,14 +770,14 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
 
   // f. Reader open latency (report only): from the click to the reader or notice, timed in the page.
   const latency: Record<string, unknown> = {};
-  latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-canvas"]');
-  await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-viewer"]');
+  await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await allShots(s.app, s.page, 'm3-05-pdf', 'PDF in the new chrome');
   // n6: a Latin-only title at 600 — SF Semibold (as the Hangul beside it is SemiBold), not Bold?
   results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="viewer-title"]');
   if (IS_MAC) {
     await setTheme(s.page, 'dark');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await nativeWindowShot(s.app, 'm3-05b-pdf-dark', 'PDF, dark');
     await setTheme(s.page, 'light');
   }
@@ -1170,7 +1170,7 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
   // c. PDF at page 1: 이전 쪽 is disabled with a reason, still focusable; the keyboard puts the focus on it.
   await guard('soft-disabled focus ring at full strength', async () => {
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('1');
     const prev = s.page.getByTestId('pdf-prev');
     // What may hold a tooltip back (tooltipGate), and whether the page counts the window as key: before the key, when
     // the tooltip is read, and after the capture (diagnostic run t14-diag3 drew the tooltip in the capture but read

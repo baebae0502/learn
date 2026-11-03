@@ -235,7 +235,7 @@ test('every registry command runs without a page error (library and reader menus
     // A right-click selects the row first (spec 3.3).
     await stubContextMenu(app, '열기');
     await rowByTitle(page, 'sample').click({ button: 'right' });
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     ran.add('item.open');
     await runMenuCommand(app, 'nav.back');
     const before = (await shellCalls(app)).length;

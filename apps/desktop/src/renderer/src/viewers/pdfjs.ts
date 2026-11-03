@@ -26,3 +26,22 @@ export const pdfSource = (assetId: string) => ({
   iccUrl: dataUrl('iccs'),
   enableXfa: false,
 });
+
+let viewerReady: Promise<typeof import('pdfjs-dist/web/pdf_viewer.mjs')> | null = null;
+
+/**
+ * The pdf.js viewer components. pdf_viewer.mjs reads the core from `globalThis.pdfjsLib` when it is evaluated, so the
+ * core is published there first and the viewer is imported only afterwards (a static import would run before it).
+ */
+export function pdfViewerModule(): Promise<typeof import('pdfjs-dist/web/pdf_viewer.mjs')> {
+  viewerReady ??= pdfjs()
+    .then((lib) => {
+      (globalThis as { pdfjsLib?: unknown }).pdfjsLib = lib;
+      return import('pdfjs-dist/web/pdf_viewer.mjs');
+    })
+    .catch((e: unknown) => {
+      viewerReady = null; // a failed load is tried again on the next open
+      throw e;
+    });
+  return viewerReady;
+}

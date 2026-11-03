@@ -3,15 +3,21 @@
 export const reader = {
   prevPage: '이전 쪽',
   nextPage: '다음 쪽',
-  page: (n: number, total: number) => `${n} / ${total}쪽`,
+  /** After the page field: the field holds the current page. */
+  pageOf: (total: number) => `/ ${total}`,
+  pageField: '쪽\u00a0번호',
   /** Disabled-button tooltips (M-2). */
   firstPage: '첫 쪽입니다',
   lastPage: '마지막 쪽입니다',
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',
-  zoom: '배율',
   pdfTools: 'PDF 도구',
   pdfStage: 'PDF 쪽',
+  lockedTitle: '암호로 보호된 PDF입니다',
+  lockedBody: '암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.',
+  password: '암호',
+  passwordOpen: '열기',
+  passwordWrong: '암호가 맞지 않습니다.',
   linkedMeta: '외부 연결',
   pdfErrorTitle: '이\u00a0PDF를 열 수 없습니다',
   // One cause, one next action (design-spec 6), as in reader-pdf.html?state=error.

@@ -69,7 +69,7 @@ test('the field: after 가져오기, 240 wide, clickable in the drag strip, name
     await expect(page.getByTestId('toolbar-count')).toHaveText('4개');
     await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(true);
     await openItem(page, SIGNAL);
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
     await expect(page.getByTestId('search-field')).toHaveCount(0); // the reader's toolbar has none
   } finally {

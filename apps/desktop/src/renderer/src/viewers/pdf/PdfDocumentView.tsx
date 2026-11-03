@@ -76,7 +76,9 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
           eventBus: () => eventBus,
           linkService: () => linkService,
         };
+        let pagesInitialised = false;
         eventBus.on('pagesinit', () => {
+          pagesInitialised = true;
           viewer.currentScaleValue = 'auto';
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
         });
@@ -104,8 +106,12 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
         store.setHandle(handle);
         viewer.setDocument(doc);
         linkService.setDocument(doc);
-        // The first page not coming up leaves no pages to show: the reader says so instead of a blank stage.
-        viewer.firstPagePromise?.catch(fail);
+        // pdf.js rejects its pages promise when the first page or the permissions cannot be read. Before pagesinit there is
+        // nothing to show and the reader says so; later it is only logged, so a view that works is never replaced.
+        viewer.pagesPromise?.catch((e: unknown) => {
+          if (!pagesInitialised) fail(e);
+          else if (!cancelled) console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
+        });
         teardown = () => {
           viewer.setDocument(null);
           store.setHandle(null);

@@ -167,6 +167,8 @@ export function createRestoreJob<W>(deps: RestoreJobDeps<W>): RestoreJob<W> {
       (answer) => answered(answer, target, owner),
       (e: unknown) => {
         console.error(`[restore] result sheet failed: ${toLearnError(e).code}`);
+        // A restore started since owns the one progress channel: writing here would overwrite its state and settle its toast early.
+        if (pending !== null) return;
         // The run's toast closed with it: it opens and settles once more, now naming the folder, so the user still learns
         // that the restore finished and where it is.
         show({ ...IDLE_RESTORE_PROGRESS, state: 'running', name }, true);

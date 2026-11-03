@@ -94,6 +94,28 @@ export class LearnToastQueue<T = ToastData> extends ToastQueue<T> {
   private readonly holdListeners = new Set<() => void>();
   constructor(options?: ConstructorParameters<typeof ToastQueue<T>>[0]) {
     super(options);
+    // RAC shows the newest `maxVisibleToasts`; a job toast (import, backup, restore) is the one the person waits on, so it
+    // keeps its place and the rest fill what is left, newest first. RAC keeps this method private, hence the cast.
+    const inner = this as unknown as {
+      queue: Array<{ key: string; content: T }>;
+      visibleToasts: Array<{ key: string; content: T }>;
+      subscriptions: Set<() => void>;
+      maxVisibleToasts: number;
+      runWithWrapUpdate(fn: () => void, action: string): void;
+      updateVisibleToasts(action: string): void;
+    };
+    inner.updateVisibleToasts = (action) => {
+      const isJob = (t: { content: T }): boolean => (t.content as { kind?: string } | null)?.kind === 'job';
+      const chosen = new Set(inner.queue.filter(isJob).slice(0, inner.maxVisibleToasts));
+      for (const t of inner.queue) {
+        if (chosen.size >= inner.maxVisibleToasts) break;
+        chosen.add(t);
+      }
+      inner.visibleToasts = inner.queue.filter((t) => chosen.has(t));
+      inner.runWithWrapUpdate(() => {
+        for (const fn of inner.subscriptions) fn();
+      }, action);
+    };
     // A safety net (final review m1): with no toast on screen nothing can be hovered or focused, so the hold ends. RAC
     // notices a removed hovered or focused region only on a later pointer or focus event, which may never come (the
     // focus falls to <body>); a hold left behind would keep the next toast from counting down.

@@ -25,6 +25,8 @@ export interface ImportBatch {
   afterCommit?: (outcome: ImportedOutcome) => Promise<void>;
   /** The batch's files come in as new items even when the library holds the same content: nothing is asked (E2E setup). */
   allowDuplicate?: boolean;
+  /** Once, when every file of this batch is over — committed, failed, skipped or dropped by 취소 — whatever else the run still holds. */
+  onSettled?: () => void;
 }
 
 export interface DuplicateQuestion {
@@ -105,6 +107,8 @@ interface Run {
   abort: AbortController;
   cancelled: boolean;
   finished: boolean;
+  /** Files each batch of the run still has to finish (a batch leaves the map when it is settled). */
+  open: Map<ImportBatch, number>;
 }
 
 interface Entry {
@@ -133,13 +137,30 @@ function credit(entry: Entry, bytes: number): void {
   entry.run.bytesFinished += to - entry.credited;
   entry.credited = to;
 }
+function callSettled(batch: ImportBatch): void {
+  try {
+    batch.onSettled?.();
+  } catch {
+    // A batch's own step failing must not stop the queue.
+  }
+}
+/** One file of its batch is over; the batch is told when it was the last. */
+function fileOver(entry: Entry): void {
+  const left = entry.run.open.get(entry.batch);
+  if (left === undefined) return;
+  if (left > 1) entry.run.open.set(entry.batch, left - 1);
+  else {
+    entry.run.open.delete(entry.batch);
+    callSettled(entry.batch);
+  }
+}
 const only = <T>(values: ReadonlySet<T>): T | null => (values.size === 1 ? (values.values().next().value as T) : null);
 const statSize = (file: string): Promise<number> => fs.stat(file).then((s) => (s.isFile() ? s.size : 0), () => 0);
 const newRun = (): Run => ({
   total: 0, done: 0, bytesTotal: 0, bytesFinished: 0,
   report: { imported: 0, filed: 0, filedExisting: 0, failed: [], openItemId: null },
   modes: new Set(), collections: new Set(), duplicates: [], sticky: null, skipped: new Map(), openIn: null, shownName: null,
-  abort: new AbortController(), cancelled: false, finished: false,
+  abort: new AbortController(), cancelled: false, finished: false, open: new Map(),
 });
 
 /**
@@ -220,8 +241,12 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
   function enqueue(batch: ImportBatch): number {
     // The same rule as the import channel's input: a relative path would resolve against main's working folder.
     if (batch.paths.some((p) => !absolutePathSchema.safeParse(p).success)) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
-    if (batch.paths.length === 0) return active?.total ?? 0;
+    if (batch.paths.length === 0) {
+      callSettled(batch);
+      return active?.total ?? 0;
+    }
     const run = (active ??= newRun());
+    run.open.set(batch, batch.paths.length);
     run.modes.add(batch.mode);
     run.collections.add(batch.collectionId);
     const resolvers: Array<() => void> = [];
@@ -339,6 +364,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
     if (outcome.status === 'failed' && outcome.code === 'CANCELLED') return;
     credit(entry, entry.size);
     run.done++;
+    fileOver(entry);
   }
 
   async function importFile(entry: Entry, laneSignal: AbortSignal): Promise<void> {
@@ -386,6 +412,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
         if (entry.retried) {
           credit(entry, entry.size);
           run.done++;
+          fileOver(entry);
           return;
         }
         entry.retried = true;
@@ -422,6 +449,7 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       }
       credit(entry, entry.size);
       run.done++;
+      fileOver(entry);
     } finally {
       current = null;
       if (run.cancelled) finishRun(run);
@@ -443,6 +471,9 @@ export function createImportQueue(deps: ImportQueueDeps): ImportQueue {
       }
     }
     announcer.flush();
+    // Whatever the run did not finish (stopped, dropped) is over for its batch too.
+    for (const batch of [...run.open.keys()]) callSettled(batch);
+    run.open.clear();
     const report: ImportReport = {
       ...run.report,
       failed: [...run.report.failed],

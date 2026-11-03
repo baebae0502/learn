@@ -1,7 +1,7 @@
 @layer screens {
   /* 진행 칸 (M7a): the narrow bar and the percent in tabular figures, both at the cell's end; an unread item's cell is empty. */
   .table-row .td[data-col='progress'] .progress {
-    width: 40px; /* local: the narrow bar of the approved render */
+    width: 44px; /* local: the bar of the approved render */
   }
   .table-row .td[data-col='progress'] .pct {
     display: inline-block;

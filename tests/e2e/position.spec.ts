@@ -257,7 +257,7 @@ test('the progress column shows the furthest page read and does not drop when th
     await expect(cell()).toHaveText('37%');
     await expect(cell().getByTestId('progress-cell')).toHaveAttribute('aria-valuenow', '37');
 
-    // Reading on raises it, and the list follows the saved position without a reload.
+    // Reading on raises it (the list may refetch on the way back; the position notice itself is covered by the unit tests).
     await openItem(page, 'paper-100');
     await field.fill('50');
     await field.press('Enter');
@@ -265,6 +265,19 @@ test('the progress column shows the furthest page read and does not drop when th
     await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBeCloseTo(0.5, 5);
     await backFromReader(page);
     await expect(cell()).toHaveText('50%');
+
+    // The last page: the check and 완료 in place of the bar and "100%".
+    await openItem(page, 'paper-100');
+    await field.fill('100');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '100');
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBe(1);
+    await backFromReader(page);
+    await expect(cell()).toHaveText('완료');
+    await expect(cell().getByTestId('progress-done')).toBeVisible();
+    await expect(cell().getByTestId('progress-cell')).toHaveCount(0);
+    // It fits the column at its default width.
+    expect(await cell().evaluate((td) => td.scrollWidth <= td.clientWidth)).toBe(true);
   } finally {
     await app.close();
   }

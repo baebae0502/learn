@@ -22,10 +22,7 @@ import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
 import { ViewMenu } from './ViewMenu';
 import { ZoomField } from './ZoomField';
-import { ZOOM_MAX, ZOOM_MIN } from './zoom';
-
-/** A zoom the viewer reports can lie a hair outside the range it accepts: the stored value stays valid. */
-const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+import { clampZoom } from './zoom';
 
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
 
@@ -93,6 +90,8 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;
+    // restore() ends in viewer.update(), which dispatches updateviewarea at once (pdf.js 6.4.299), so `place` is the real place here.
+    // Were it not (no visible page), the saver would start from a page-only locator and the first report would write one full row.
     handle.restore(saved, index);
     const start = place.current as LatestPosition | null;
     pos.markRestored(start?.locator ?? { kind: 'pdf', pageIndex: index });

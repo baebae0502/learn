@@ -3,7 +3,7 @@
 // cell reorders the columns (a 2 px accent line, esc cancels, the order is saved on release).
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { LIBRARY_COLUMN_IDS } from '../../packages/domain/src/library-columns';
+import { DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMN_IDS } from '../../packages/domain/src/library-columns';
 import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, importPaths, launch, mainWindow, rowAt, seedLibrary, showItemPanel, stubContextMenu } from './helpers';
 
@@ -90,7 +90,7 @@ test('the header sits above the scroller: the scroll bar starts under it, the he
     expect(await misaligned(page)).toEqual([]);
     await scroller(page).evaluate((e) => (e.scrollLeft = e.scrollWidth));
     await headerFollows(page);
-    const last = (await header(page, 'progress').boundingBox())!;
+    const last = (await header(page, 'createdAt').boundingBox())!;
     const clip = (await page.getByTestId('table-head-clip').boundingBox())!;
     expect(last.x + last.width).toBeCloseTo(clip.x + clip.width, 0); // scrolled to the end: the last cell meets the header's edge
 
@@ -314,7 +314,7 @@ test('a header held in the 32 px at the right edge of a table narrower than its 
   }
 });
 
-const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '추가일', '진행'];
+const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '진행', '추가일'];
 const setting = (page: Page, key: string) => page.evaluate((k) => window.learn.settings.get({ key: k }).then((r) => (r.ok ? r.data : 'failed')), key);
 const storedOrder = async (page: Page) => ((await setting(page, 'library.columns')) as { order: string[] } | null)?.order ?? null;
 /** Presses on a header cell's middle (clear of its 8 px edge) and returns its box and the y of the press. */
@@ -364,7 +364,7 @@ test('a dragged header cell lands where the 2 px accent line showed, saved on re
     expect(await rowAt(s.page, 0).locator('[data-col]').evaluateAll((cells) => cells.map((c) => c.getAttribute('data-col')))).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'progress']);
     await expect(header(s.page, 'createdAt')).toHaveAttribute('aria-sort', 'descending'); // still the default sort
     const rest = LIBRARY_COLUMN_IDS.filter((id) => !['title', 'createdAt', 'creators', 'year', 'type', 'progress'].includes(id));
-    await expect.poll(() => storedOrder(s.page)).toEqual(['title', 'createdAt', 'creators', 'year', 'type', ...rest, 'progress']);
+    await expect.poll(() => storedOrder(s.page)).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'progress', ...rest]);
     expect(await misaligned(s.page)).toEqual([]);
     await s.app.close();
 
@@ -373,7 +373,7 @@ test('a dragged header cell lands where the 2 px accent line showed, saved on re
     await stubContextMenu(s.app, '열 구성 되돌리기');
     await header(s.page, 'title').click({ button: 'right' });
     await expect(s.page.getByTestId('column-header')).toHaveText(DEFAULT_HEADERS);
-    await expect.poll(() => storedOrder(s.page)).toEqual([...LIBRARY_COLUMN_IDS]);
+    await expect.poll(() => storedOrder(s.page)).toEqual([...DEFAULT_COLUMN_CONFIG.order]);
   } finally {
     await s.app.close();
   }
@@ -452,7 +452,7 @@ test('a dragged header cell is carried under the pointer as a raised ghost: side
     // The drop takes it away with the line.
     await page.mouse.move(type.x + type.width, y, { steps: 4 });
     await page.mouse.up();
-    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '추가일', '진행']);
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '진행', '추가일']);
     await expect(ghost(page)).toHaveCount(0);
 
     // esc takes it away while the button is still down, and nothing brings it back.
@@ -473,7 +473,7 @@ test('a dragged header cell is carried under the pointer as a raised ghost: side
     await page.evaluate(() => window.dispatchEvent(new Event('blur')));
     await expect(ghost(page)).toHaveCount(0);
     await page.mouse.up();
-    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '추가일', '진행']);
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '종류', '연도', '진행', '추가일']);
   } finally {
     await app.close();
   }
@@ -604,7 +604,7 @@ test('the title stays first: it cannot be dragged and nothing can be put before 
     const line = (await dropLine(page).boundingBox())!;
     expect(line.x + 1).toBeCloseTo(creators.x, 0);
     await page.mouse.up();
-    await expect(page.getByTestId('column-header')).toHaveText(['제목', '연도', '저자', '종류', '추가일', '진행']);
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '연도', '저자', '종류', '진행', '추가일']);
   } finally {
     await app.close();
   }
@@ -627,7 +627,7 @@ test('a column edge still resizes and never starts a reorder; a header context m
     await expect.poll(async () => ((await setting(page, 'library.columns')) as { widths: object }).widths).toEqual({ creators: 140, year: 104 });
     await stubContextMenu(app, '크기');
     await header(page, 'year').click({ button: 'right' });
-    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '추가일', '크기', '진행']);
+    await expect(page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '진행', '추가일', '크기']);
   } finally {
     await app.close();
   }
@@ -643,13 +643,13 @@ test('in the recent view the column 마지막으로 연 날 stays right after th
     await s.app.close();
 
     s = await launch(lib, ud);
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '추가일', '진행']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '진행', '추가일']);
     const opened = (await header(s.page, 'openedAt').boundingBox())!;
     let { y } = await press(s.page, 'openedAt');
     await s.page.mouse.move(opened.x + opened.width + 200, y, { steps: 6 });
     await expect(dropLine(s.page)).toHaveCount(0);
     await s.page.mouse.up();
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '추가일', '진행']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '진행', '추가일']);
     // 추가일 over 마지막으로 연 날 takes the first boundary it may: after it, before 저자.
     const creators = (await header(s.page, 'creators').boundingBox())!;
     ({ y } = await press(s.page, 'createdAt'));

@@ -4,13 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { Channels } from '../../packages/domain/src/ipc-channels';
-import { LIBRARY_COLUMN_IDS } from '../../packages/domain/src/library-columns';
+import { DEFAULT_COLUMN_CONFIG } from '../../packages/domain/src/library-columns';
 import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, importPaths, launch, mainWindow, recordedPopups, rowAt, rowByTitle, seedLibrary, selectRows, showItemPanel, stubContextMenu } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
-const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '추가일', '진행'];
+const DEFAULT_HEADERS = ['제목', '저자', '연도', '종류', '진행', '추가일'];
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
 
 /** Copies of the sample PDF with distinct content, imported one by one: 추가일 orders them, the last newest. */
@@ -154,7 +154,7 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     await expect(s.page.getByTestId('column-header')).toHaveText(DEFAULT_HEADERS);
     await stubContextMenu(s.app, '크기');
     await header(s.page, 'year').click({ button: 'right' });
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '추가일', '크기', '진행']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '진행', '추가일', '크기']);
     const [menu] = await recordedPopups(s.app);
     expect(menu!.map((i) => [i.type === 'separator' ? '-' : i.label, i.checked, i.enabled])).toEqual([
       ['제목', true, false], ['저자', true, true], ['연도', true, true], ['종류', true, true], ['추가일', true, true],
@@ -164,7 +164,7 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     const size = rowAt(s.page, 0).locator('[data-col="size"]');
     await expect(size).toHaveText(/^\d+(\.\d)? KB$/);
     expect(await size.evaluate((e) => getComputedStyle(e).justifyContent)).toBe('flex-end'); // numbers end-aligned
-    expect(await setting(s.page, 'library.columns')).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'size', 'progress'], order: [...LIBRARY_COLUMN_IDS], widths: {} });
+    expect(await setting(s.page, 'library.columns')).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'size', 'progress'], order: [...DEFAULT_COLUMN_CONFIG.order], widths: {} });
 
     // Drag 저자's right edge 40 px left: 저자 140, 연도 64 + 40 = 104; the boundary after 연도 and the title stay.
     const creators = header(s.page, 'creators');
@@ -182,11 +182,11 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     expect((await header(s.page, 'year').boundingBox())!.width).toBe(104);
     expect((await header(s.page, 'type').boundingBox())!.x).toBe(typeX);
     expect((await header(s.page, 'title').boundingBox())!.width).toBe(titleW);
-    await expect(s.page.locator('[data-testid="column-resizer"][data-col="progress"]')).toHaveCount(0); // the last column has no handle
+    await expect(s.page.locator('[data-testid="column-resizer"][data-col="size"]')).toHaveCount(0); // the last column has no handle
     await s.app.close();
 
     s = await launch(lib, ud);
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '추가일', '크기', '진행']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '진행', '추가일', '크기']);
     await expect.poll(async () => (await header(s.page, 'creators').boundingBox())?.width).toBe(140);
     // An edge also takes ← / → (8 px, saved at once) and a double-click (back to the column's default width), both
     // trading with the next column like a drag.
@@ -203,7 +203,7 @@ test('the column header menu shows and hides columns (제목 stays) and resets t
     await header(s.page, 'title').click({ button: 'right' });
     await expect(s.page.getByTestId('column-header')).toHaveText(DEFAULT_HEADERS);
     await expect.poll(async () => (await header(s.page, 'creators').boundingBox())?.width).toBe(180);
-    expect(await setting(s.page, 'library.columns')).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'progress'], order: [...LIBRARY_COLUMN_IDS], widths: {} });
+    expect(await setting(s.page, 'library.columns')).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'progress'], order: [...DEFAULT_COLUMN_CONFIG.order], widths: {} });
   } finally {
     await s.app.close();
   }

@@ -28,7 +28,7 @@ describe('library table columns (M4 spec 3.1)', () => {
     expect(COLUMN_WIDTH_MAX).toBe(1200);
   });
   it('starts with the five default columns, the catalogue order and no stored widths (frozen)', () => {
-    expect(DEFAULT_COLUMN_CONFIG).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'progress'], order: [...LIBRARY_COLUMN_IDS], widths: {} });
+    expect(DEFAULT_COLUMN_CONFIG).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'progress'], order: ['title', 'creators', 'year', 'type', 'progress', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt'], widths: {} });
     expect(Object.isFrozen(DEFAULT_COLUMN_CONFIG)).toBe(true);
     expect(Object.isFrozen(DEFAULT_COLUMN_CONFIG.visible)).toBe(true);
     expect(columnSpec('size').align).toBe('end');

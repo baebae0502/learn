@@ -301,8 +301,8 @@
   .table-row[data-force~='focused'] {
     background: var(--accent);
   }
-  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .kept-mark),
-  .table-row[data-force~='focused'] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .kept-mark) {
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .c-success, .kept-mark),
+  .table-row[data-force~='focused'] :is(.td, .icon, .item-title, .c-tertiary, .c-warning, .c-success, .kept-mark) {
     color: var(--text-on-accent);
   }
   /* Keyboard cursor (design-spec 6): an inset 2 px focus ring, keyboard only (data-focus-visible, LibraryTable). On the

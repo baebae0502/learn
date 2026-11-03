@@ -72,7 +72,8 @@ export interface ColumnConfig {
 
 export const DEFAULT_COLUMN_CONFIG: Readonly<ColumnConfig> = Object.freeze({
   visible: Object.freeze(LIBRARY_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.id)) as LibraryColumnId[],
-  order: Object.freeze([...LIBRARY_COLUMN_IDS]) as LibraryColumnId[],
+  // 진행 is last in the catalogue (the mask is by position) but shown before 추가일, as the approved render has it.
+  order: Object.freeze(LIBRARY_COLUMN_IDS.filter((id) => id !== 'progress').flatMap((id) => (id === 'createdAt' ? ['progress', id] : [id]))) as LibraryColumnId[],
   widths: Object.freeze({}),
 });
 

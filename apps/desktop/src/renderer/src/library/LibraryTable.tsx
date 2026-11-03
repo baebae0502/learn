@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
@@ -121,6 +121,15 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
 function ProgressCell({ progress }: { progress: number | null }) {
   if (progress === null) return null;
   const percent = Math.round(progress * 100);
+  // Finished: the check and 완료 in place of the bar and "100%" (the approved render's progressCell).
+  if (percent >= 100) {
+    return (
+      <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="progress-done">
+        <Icon icon={Check} size="sm" />
+        {t.library.progressDone}
+      </span>
+    );
+  }
   return (
     <>
       <ProgressBar percent={percent} label={t.library.progressLabel} testId="progress-cell" />

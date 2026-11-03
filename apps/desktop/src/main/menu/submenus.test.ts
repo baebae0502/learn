@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, TAG_COLORS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { isSubmenu, type CommandEntry, type MenuEntries } from './entries';
-import { colorTagGroup, collectionRows, menuNeedsOrganize, menuText, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
+import { colorTagGroup, collectionRows, groupEntry, menuNeedsOrganize, menuText, pageColorGroup, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
 import { ADD_TO_COLLECTION, COLOR_GROUP, ALL_COMMANDS, ALL_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
 
 const CTX: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
@@ -146,6 +146,28 @@ describe('색 태그 ▸ (a group of commands)', () => {
     expect(group({ organize: null })).toBeNull();
     // The real registry has the members now: the group is built from it as from the stand-ins.
     expect(rows(colorTagGroup(COLOR_GROUP, COMMANDS, input())!.submenu).map((r) => r.id)).toEqual(['tag.color1', 'tag.color3']);
+  });
+});
+
+describe('쪽 색 ▸ (the reader\'s page colours)', () => {
+  const PAGE_COLOR = SUBMENUS.find((s) => s.id === 'pageColor')!;
+  const group = (over: Partial<SubmenuInput> = {}) => pageColorGroup(PAGE_COLOR, COMMANDS, input({ organize: null, ...over }))!;
+  it('lists the four colours in order, each its own command, with no mark and without reading the library', () => {
+    expect(group().id).toBe('submenu.pageColor');
+    expect(group().label).toBe('쪽 색');
+    expect(rows(group().submenu).map((r) => [r.id, r.label])).toEqual([
+      ['reader.pageColorAuto', '앱 테마 따르기'], ['reader.pageColorOriginal', '원본'], ['reader.pageColorSepia', '세피아'], ['reader.pageColorDark', '어둡게'],
+    ]);
+    expect(rows(group().submenu).every((r) => r.checked === undefined && r.type === undefined)).toBe(true);
+    expect(groupEntry(PAGE_COLOR, COMMANDS, input({ organize: null }))).toEqual(group());
+  });
+  it('judges each row on its command, and is off when none can run', () => {
+    expect(group({ enabledOf: () => false }).enabled).toBe(false);
+    expect(rows(group({ enabledOf: (c) => c.id === 'reader.pageColorSepia' }).submenu).map((r) => r.enabled)).toEqual([false, false, true, false]);
+    expect(group({ enabledOf: (c) => c.id === 'reader.pageColorSepia' }).enabled).toBe(true);
+  });
+  it('makes no menu read the library', () => {
+    expect(menuNeedsOrganize([], [PAGE_COLOR], 'menu')).toBe(false);
   });
 });
 

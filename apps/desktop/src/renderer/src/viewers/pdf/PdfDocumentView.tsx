@@ -5,7 +5,11 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
+import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { usePageColor } from './usePageColor';
+import { usePinchZoom } from './usePinchZoom';
+import { nextZoom } from './zoom';
 
 type Rotation = 0 | 90 | 180 | 270;
 const PRESETS: readonly string[] = ['auto', 'page-width', 'page-fit'];
@@ -24,6 +28,8 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
   const [rendered, setRendered] = useState(0);
   const pdf = useReader((s) => s.pdf);
+  const { resolved: pageColor } = usePageColor();
+  usePinchZoom(scrollRef);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -66,8 +72,12 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
             if (typeof z === 'number') viewer.currentScale = z;
             else viewer.currentScaleValue = z;
           },
-          zoomIn: () => viewer.increaseScale(),
-          zoomOut: () => viewer.decreaseScale(),
+          zoomIn: () => {
+            viewer.currentScale = nextZoom(viewer.currentScale, 1);
+          },
+          zoomOut: () => {
+            viewer.currentScale = nextZoom(viewer.currentScale, -1);
+          },
           rotate: (delta) => {
             viewer.pagesRotation = (viewer.pagesRotation + delta + 360) % 360;
           },
@@ -112,7 +122,10 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
           if (!pagesInitialised) fail(e);
           else if (!cancelled) console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
         });
+        // The pages are drawn at the display's pixel ratio: moving to another screen draws them again.
+        const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
         teardown = () => {
+          stopWatchingDisplay();
           viewer.setDocument(null);
           store.setHandle(null);
           store.setPdf(null);
@@ -135,6 +148,8 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
           data-pages={pdf?.pagesCount ?? 0}
           data-page={pdf?.pageNumber ?? 1}
           data-scale={pdf?.scale ?? 1}
+          data-zoom={String(pdf?.zoom ?? 'auto')}
+          data-page-color={pageColor}
           data-rotation={pdf?.rotation ?? 0}
           data-rendered={rendered}
         />

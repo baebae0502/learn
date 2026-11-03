@@ -10,10 +10,13 @@ import { PdfErrorNotice } from '../ReaderNotices';
 import { usePosition } from '../usePosition';
 import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
+import { pageFieldRef } from './pageField';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
 import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
+import { ViewMenu } from './ViewMenu';
+import { ZoomField } from './ZoomField';
 
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
 
@@ -94,6 +97,9 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           onPress={() => handle?.next()}
         />
         <span className="spacer" />
+        <ZoomField onEscape={() => stageRef.current?.focus()} />
+        <span className="spacer" />
+        <ViewMenu />
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
@@ -126,6 +132,7 @@ function PageField({ page, total, onGo, onEscape }: { page: number | null; total
   };
   return (
     <input
+      ref={pageFieldRef}
       className="page-field num"
       inputMode="numeric"
       autoComplete="off"

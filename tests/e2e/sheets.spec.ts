@@ -121,7 +121,8 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     await expect(sheet.getByTestId('sheet-root')).toHaveAttribute('data-kind', 'shortcuts');
     // The eight colour keys are one line, 1–8 under 정리, not eight rows.
     for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && !/^tag\.color\d$/.test(x.id))) {
-      await expect(sheet.getByTestId('shortcut-row').filter({ hasText: commandLabel(c, process.platform) }), c.id).toHaveCount(1);
+      // The whole label: 시계 방향으로 회전 is also the end of 반시계 방향으로 회전.
+      await expect(sheet.getByTestId('shortcut-row').filter({ has: sheet.locator('.sr-label').getByText(commandLabel(c, process.platform), { exact: true }) }), c.id).toHaveCount(1);
     }
     await expect(sheet.getByTestId('shortcut-row').filter({ hasText: '색 태그 붙이기/떼기' })).toHaveCount(1);
     // design-spec 7.4's ⌃⌘F 전체 화면(시스템): one static row, marked as the system's (main builds it outside the registry).

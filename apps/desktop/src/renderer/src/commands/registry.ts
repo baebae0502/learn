@@ -1,6 +1,7 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
-import type { StorageMode } from '@learn/domain';
+import type { PageColor, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
+import type { ZoomValue } from '../viewers/pdf/readerStore';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
@@ -72,6 +73,16 @@ export interface CommandEnv extends CommandContextState {
   openSettings(): void;
   /** ⌘+ / ⌘− / ⌘0 (Task 10): the UI text size pref, as a step from the newest size (settings/textSize.ts). */
   setTextSize(update: TextSizeUpdate): void;
+  /** ⌘+ / ⌘− / ⌘0 in the reader (P-9): one step of the zoom steps, or the actual size. */
+  zoom(dir: 'in' | 'out' | 'actual'): void;
+  /** 자동 맞춤 · 너비에 맞춤 · 한 쪽 전체 보기, or a scale (1 is 100 %). */
+  setZoom(zoom: ZoomValue): void;
+  /** ⌘R / ⌘L: every page a quarter turn. */
+  rotate(delta: 90 | -90): void;
+  /** 쪽 색: saved as the reader's setting. */
+  setPageColor(color: PageColor): void;
+  /** ⌥⌘G: the page field takes the focus with its number selected. */
+  goToPage(): void;
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
   cancelImport(): void;
   /** 백업 만들기… (spec 8.1): main asks for a folder and puts the backup on its work line; the window stays in use. */
@@ -186,9 +197,20 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'app.shortcuts': (env) => env.showShortcuts(),
   'app.palette': (env) => env.openPalette(),
   'app.settings': (env) => env.openSettings(),
-  'view.textBigger': (env) => env.setTextSize((size) => clampTextSize(size + 1)),
-  'view.textSmaller': (env) => env.setTextSize((size) => clampTextSize(size - 1)),
-  'view.textReset': (env) => env.setTextSize(() => 13),
+  // The same keys zoom the reader's page (P-9); the registry names them by the view.
+  'view.textBigger': (env) => (env.view === 'viewer' ? env.zoom('in') : env.setTextSize((size) => clampTextSize(size + 1))),
+  'view.textSmaller': (env) => (env.view === 'viewer' ? env.zoom('out') : env.setTextSize((size) => clampTextSize(size - 1))),
+  'view.textReset': (env) => (env.view === 'viewer' ? env.zoom('actual') : env.setTextSize(() => 13)),
+  'reader.zoomAuto': (env) => env.setZoom('auto'),
+  'reader.zoomPageWidth': (env) => env.setZoom('page-width'),
+  'reader.zoomPageFit': (env) => env.setZoom('page-fit'),
+  'reader.rotateCw': (env) => env.rotate(90),
+  'reader.rotateCcw': (env) => env.rotate(-90),
+  'reader.goToPage': (env) => env.goToPage(),
+  'reader.pageColorAuto': (env) => env.setPageColor('auto'),
+  'reader.pageColorOriginal': (env) => env.setPageColor('original'),
+  'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
+  'reader.pageColorDark': (env) => env.setPageColor('dark'),
   'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
@@ -218,6 +240,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     sortDirection: env.sortDirection,
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
+    ...(env.pdfOpen ? { pdfOpen: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),

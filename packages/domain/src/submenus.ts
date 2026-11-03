@@ -20,7 +20,7 @@ export const SUBMENU_SOURCES: Readonly<Record<SubmenuSource, { menuBar: boolean;
  * A group exists only with its members' handlers (a row without a handler cannot exist): the colour keys' are in R/commands/registry.ts.
  */
 export interface SubmenuSpec {
-  id: 'colorTags';
+  id: 'colorTags' | 'pageColor';
   /** Korean, as the menu shows it. */
   label: string;
   /** The members, in menu order. */
@@ -36,6 +36,14 @@ export const SUBMENUS: readonly SubmenuSpec[] = [
     // 파일 group 2 after 컬렉션에 추가 ▸ (4) and 이 컬렉션에서 빼기 (5); the item menu's group 3 after the same two (1, 2).
     menu: { menu: 'file', group: 2, order: 6 },
     contextMenu: { kinds: ['item'], group: 3, order: 3 },
+  },
+  // 쪽 색 ▸ (P-14): the reader's four page colours; 보기 group 5 after the two rotations (1, 2). The native menu shows no check:
+  // the current colour is checked in the toolbar's 보기 menu.
+  {
+    id: 'pageColor',
+    label: '쪽 색',
+    commands: ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'],
+    menu: { menu: 'view', group: 5, order: 3 },
   },
 ];
 

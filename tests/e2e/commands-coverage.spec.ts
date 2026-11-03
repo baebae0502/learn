@@ -114,6 +114,8 @@ test('every registry command runs without a page error (library and reader menus
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const searchInput = page.getByTestId('search-field').getByRole('searchbox');
+  /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
+  const readerOpen = async () => (await page.getByTestId('pdf-viewer').count()) > 0;
   /** Named copies under derived/open/<uuid>/ with the type's extension. */
   const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
   const namedCopy = (file: string) => expect.stringMatching(new RegExp(`^${escaped(openDir)}[\\\\/][0-9a-f-]{36}[\\\\/]${escaped(file)}$`));
@@ -160,9 +162,32 @@ test('every registry command runs without a page error (library and reader menus
     'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
     // 컬렉션에 추가 ▸ 전수 시험: the selected sample is filed there (main has it, not only the screen).
     'collection.addItems': () => expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([filedId]),
-    // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
-    'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
-    'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
+    // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13. In the reader the same keys zoom: the scale is a number, not a fit mode, and the pref stays.
+    'view.textBigger': async () => {
+      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', /^\d/);
+      else await expect.poll(() => fontSize(page)).toBe(14);
+    },
+    'view.textSmaller': async () => {
+      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', /^\d/);
+      else await expect.poll(() => fontSize(page)).toBe(13);
+    },
+    // The reader's own: each does what its name says on the open PDF (run in registry order, so the page colours end on 어둡게).
+    'view.textReset': async () => {
+      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-scale', '1');
+    },
+    'reader.zoomAuto': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'auto'),
+    'reader.zoomPageWidth': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'page-width'),
+    'reader.zoomPageFit': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'page-fit'),
+    'reader.rotateCw': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '90'),
+    'reader.rotateCcw': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '0'),
+    'reader.goToPage': async () => {
+      await expect(page.getByTestId('pdf-page-field')).toBeFocused();
+      await page.getByTestId('pdf-stage').focus();
+    },
+    'reader.pageColorAuto': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', /^(original|dark)$/),
+    'reader.pageColorOriginal': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'original'),
+    'reader.pageColorSepia': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'sepia'),
+    'reader.pageColorDark': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'dark'),
     // The 파일 menu's item commands, on the selected sample.
     'item.showInFolder': () => expect.poll(lastShell).toEqual(['reveal', namedCopy('sample.pdf')]),
     'item.openExternally': () => expect.poll(lastShell).toEqual(['open', namedCopy('sample.pdf')]),
@@ -198,11 +223,18 @@ test('every registry command runs without a page error (library and reader menus
         // The menu is read once below: wait until the reader is up and main's menu has followed.
         await expect(page.getByTestId('viewer-title')).toBeVisible();
         await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+        // The reader's commands follow the PDF's pages, which main hears of a moment after the toolbar shows.
+        await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+        await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(true);
       }
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
+      // The reader's own commands (zoom modes, rotation, page colours, 쪽으로 이동…) are on there and nowhere else.
+      const readerOwn = ids.filter((id) => id.startsWith('reader.'));
+      if (view === 'library') expect(readerOwn).toEqual([]);
+      else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly).toEqual([]);
       for (const id of ids) {

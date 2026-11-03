@@ -6,7 +6,7 @@ import {
 import { mainStrings } from '../strings';
 import { dotIcon } from './dot-icon';
 import { entriesToTemplate, type TemplateOptions } from './entries';
-import { colorTagGroup, valueRows, type SubmenuInput } from './submenus';
+import { groupEntry, valueRows, type SubmenuInput } from './submenus';
 
 /** Pure template builder (type-only Electron import) so the menu tree is unit-tested. */
 export interface AppMenuOptions {
@@ -65,17 +65,17 @@ function fullScreenItems(opts: AppMenuOptions): Item[] {
 type Item = MenuItemConstructorOptions;
 const SEP: Item = { type: 'separator' };
 
-/** The reported state that state labels follow (design-spec 7.4): the pane states, and the view for ⌘⌫ (P-11). */
+/** The reported state that state labels follow (design-spec 7.4): the pane states, the library's scope for ⌘⌫ (P-11) and the view for ⌘+ ⌘− ⌘0 (P-9). */
 export type MenuLabelState = LabelState;
 
 /** The label state of a reported context, without the absent parts (the fatal screen reports no pane). */
 export function menuLabelState<T extends LabelState>(ctx: T): MenuLabelState {
-  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}) };
+  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}) };
 }
 
 /** Whether a new report renames a menu item: a pane state or the view that a state label follows has changed. */
 export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
-  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope;
+  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view;
 }
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
@@ -97,7 +97,7 @@ function placement(at: CommandSpec['menu'], platform: NodeJS.Platform): { menu: 
 }
 
 const DEFAULT_CONTEXT: CommandContextState = Object.freeze({
-  view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
+  view: 'library', blocked: false, pdfOpen: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
 });
 
 /** A pick from a row of a submenu is a command with the row's value. */
@@ -132,7 +132,7 @@ function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
 
 /** A group's head with its members, as one item; nothing when it has no member to show. */
 function groupItems(s: SubmenuSpec, opts: AppMenuOptions): Item[] {
-  const entry = colorTagGroup(s, opts.commands, submenuInput(opts));
+  const entry = groupEntry(s, opts.commands, submenuInput(opts));
   return entry ? entriesToTemplate([entry], picker(opts), barOptions(opts)) : [];
 }
 

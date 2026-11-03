@@ -72,6 +72,8 @@ import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
+import { readerActions } from '../viewers/pdf/readerActions';
+import { useReader } from '../viewers/pdf/readerStore';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
 import { useReportIdle } from './useReportIdle';
@@ -355,6 +357,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
   const textSize = prefs?.fontSize ?? 13;
+  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then.
+  const pdfOpen = useReader((s) => s.pdf?.ready === true);
   const env = useMemo<CommandEnv>(() => ({
     view: viewKind === 'reader' ? 'viewer' : 'library',
     blocked,
@@ -362,6 +366,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     backupRunning,
     restoreRunning,
     held,
+    ...(pdfOpen ? { pdfOpen: true } : {}),
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
@@ -432,6 +437,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     keepAllDuplicates: () => void duplicateActions.keepAll(),
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
+    ...readerActions,
     focusPane,
     focusSearch: focusQuickSearch,
     findEverywhere: () => useLibrary.getState().setScope(SCOPE_ALL),
@@ -440,7 +446,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

@@ -168,11 +168,16 @@ export function MenuIconButton<K extends string>(props: {
   onAction(id: K): void;
   placement?: 'bottom start' | 'bottom end';
   size?: 'regular' | 'small';
+  isDisabled?: boolean;
+  /** Why it is disabled (see MenuButton): the button stays focusable and never opens. */
+  disabledReason?: string;
   testId?: string;
 }) {
+  // Controlled, so a disabled trigger can never open the menu.
+  const [isOpen, setOpen] = useState(false);
   return (
-    <MenuTrigger>
-      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} />
+    <MenuTrigger isOpen={isOpen && !props.isDisabled} onOpenChange={(open) => setOpen(open && !props.isDisabled)}>
+      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} isDisabled={props.isDisabled} disabledReason={props.disabledReason} />
       <Popover className="menu-popover" placement={props.placement ?? 'bottom end'} offset={4}>
         <MenuList entries={props.items} onAction={props.onAction} aria-label={props.label} />
       </Popover>

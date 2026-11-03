@@ -51,15 +51,13 @@ describe('the eight colour keys (spec 4.2)', () => {
 
 describe('색 태그 ▸ (spec 9.2, P-3)', () => {
   it('is one group of the eight keys in slot order: in 파일 after the item commands and in the item menu after 컬렉션에 추가 ▸', () => {
-    expect(SUBMENUS).toEqual([
-      {
-        id: 'colorTags',
-        label: '색 태그',
-        commands: COLOR_SLOTS.map(colorKey),
-        menu: { menu: 'file', group: 2, order: 6 },
-        contextMenu: { kinds: ['item'], group: 3, order: 3 },
-      },
-    ]);
+    expect(SUBMENUS.find((s) => s.id === 'colorTags')).toEqual({
+      id: 'colorTags',
+      label: '색 태그',
+      commands: COLOR_SLOTS.map(colorKey),
+      menu: { menu: 'file', group: 2, order: 6 },
+      contextMenu: { kinds: ['item'], group: 3, order: 3 },
+    });
     expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
   });
   it('counts its members in the menu bar judgement: on with a selection in the library, off without one and in the reader', () => {

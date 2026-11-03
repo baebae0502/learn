@@ -65,6 +65,23 @@
     margin: 0;
     contain: content;
   }
+  /* The page colour (the app theme's, original, sepia or dark): the paper and, as a filter on the drawn page only, the ink.
+     The text layer, the links and the selection above the canvas stay as they are. */
+  .pdfViewer[data-page-color='original'] {
+    --page-bg-color: var(--page-original-bg);
+  }
+  .pdfViewer[data-page-color='sepia'] {
+    --page-bg-color: var(--page-sepia-bg);
+  }
+  .pdfViewer[data-page-color='sepia'] .canvasWrapper canvas {
+    filter: sepia(0.35) saturate(1.1) brightness(0.98); /* local: page filter */
+  }
+  .pdfViewer[data-page-color='dark'] {
+    --page-bg-color: var(--page-dark-bg);
+  }
+  .pdfViewer[data-page-color='dark'] .canvasWrapper canvas {
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.95); /* local: page filter */
+  }
   .pdfViewer .canvasWrapper canvas.detailView {
     image-rendering: pixelated;
   }
@@ -220,6 +237,31 @@
     text-align: center;
   }
   .reader-toolbar .page-field:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .reader-toolbar .zoom-field {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .reader-toolbar .zoom-input {
+    width: 56px; /* local: "400%" in 13 pt with its inset */
+    height: var(--control-height-small);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font: var(--type-body);
+    text-align: center;
+  }
+  .reader-toolbar .zoom-input:hover:not(:disabled),
+  .reader-toolbar .zoom-input:focus {
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .reader-toolbar .zoom-input:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }

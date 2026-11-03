@@ -1,6 +1,6 @@
 import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
-import { COMMANDS, NO_LIBRARY_VIEW, acceleratorLabel, availableMenuCommands, commandById, columnsMask, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
+import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, acceleratorLabel, availableMenuCommands, commandById, columnsMask, platformAccelerator, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { FULL_SCREEN, applyFullScreenItem, applyMenuEnabled, applyMenuLabels, buildAppMenu, menuItemIds, menuLabelState, menuLabelsChanged, submenuShapeKey } from './app-menu';
 import { ALL_COMMANDS, ALL_SUBMENUS, LIBRARY } from './testing';
 
@@ -111,12 +111,31 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-' },
     { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0' },
     SEP,
+    // The reader's: how the page fits, then the rotation and 쪽 색 ▸ (P-14: no checks in the native menu).
+    { id: 'reader.zoomAuto', label: '자동 맞춤' },
+    { id: 'reader.zoomPageWidth', label: '너비에 맞춤' },
+    { id: 'reader.zoomPageFit', label: '한 쪽 전체 보기' },
+    SEP,
+    { id: 'reader.rotateCw', label: '시계 방향으로 회전', accelerator: 'CmdOrCtrl+R' },
+    { id: 'reader.rotateCcw', label: '반시계 방향으로 회전', accelerator: 'CmdOrCtrl+L' },
+    {
+      id: 'submenu.pageColor', label: '쪽 색', submenu: [
+        { id: 'reader.pageColorAuto', label: '앱 테마 따르기' },
+        { id: 'reader.pageColorOriginal', label: '원본' },
+        { id: 'reader.pageColorSepia', label: '세피아' },
+        { id: 'reader.pageColorDark', label: '어둡게' },
+      ],
+    },
+    SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.
     platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
   ],
 });
 const GO: Shape = {
-  id: 'menu.go', label: '이동', submenu: [{ id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' }],
+  id: 'menu.go', label: '이동', submenu: [
+    { id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' },
+    { id: 'reader.goToPage', label: '쪽으로 이동…', accelerator: 'Alt+CmdOrCtrl+G' },
+  ],
 };
 const HELP = (platform: NodeJS.Platform): Shape => ({
   id: 'menu.help', label: '도움말', role: 'help', submenu: [
@@ -203,9 +222,10 @@ describe('buildAppMenu', () => {
 
   it('places each registry command with a menu exactly once, with its label and accelerator', () => {
     const items = walk(build('darwin'));
+    const pageColors = SUBMENUS.find((s) => s.id === 'pageColor')!.commands; // rows of 쪽 색 ▸, which needs nothing from the library
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
-      expect(found, c.id).toHaveLength(c.menu && c.submenu !== 'collections' ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
+      expect(found, c.id).toHaveLength((c.menu && c.submenu !== 'collections') || pageColors.includes(c.id) ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
       if (found[0]) {
         expect(found[0].label).toBe(c.label);
         expect(found[0].accelerator).toBe(c.accelerator);
@@ -339,9 +359,9 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
   const next = (over: Partial<CommandContextState>): CommandContextState => ({ ...base, ...over });
 
   it('keeps the pane states a report names, and only those', () => {
-    expect(menuLabelState(base)).toEqual({ sidebar: 'shown', inspector: 'shown', scope: 'all' });
-    expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown', scope: 'all' }); // the reader has no item panel
-    expect(menuLabelState(next({ sidebar: undefined, inspector: undefined, scope: undefined as never }))).toEqual({}); // the fatal screen
+    expect(menuLabelState(base)).toEqual({ sidebar: 'shown', inspector: 'shown', scope: 'all', view: 'library' });
+    expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown', scope: 'all', view: 'library' }); // the reader has no item panel
+    expect(menuLabelState(next({ sidebar: undefined, inspector: undefined, scope: undefined as never }))).toEqual({ view: 'library' }); // the fatal screen
   });
   it('relabels when the sidebar or the item panel changed, never for a change of counts', () => {
     expect(menuLabelsChanged(base, next({ sidebar: 'hidden' }))).toBe(true);
@@ -349,7 +369,9 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelsChanged(base, next({ inspector: undefined }))).toBe(true);
     expect(menuLabelsChanged(base, next({ scope: 'trash' }))).toBe(true); // ⌘⌫ is 영구 삭제… there (P-11)
     expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, selectionRelinkable: 0 }))).toBe(false);
-    expect(menuLabelsChanged(base, next({ view: 'viewer', blocked: true, textSize: 15 }))).toBe(false);
+    expect(menuLabelsChanged(base, next({ view: 'viewer' }))).toBe(true); // ⌘+ is 확대 in the reader (P-9)
+    expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
+    expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);
   });
   it('builds and relabels each toggle from its own pane state, in place', () => {
     const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: toggles, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown', inspector: 'hidden' } });
@@ -363,6 +385,18 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     applyMenuLabels(lookup, 'darwin', { sidebar: 'hidden' }, toggles);
     expect(byId.get('view.toggleSidebar')?.label).toBe('사이드바 보기');
     expect(byId.get('nav.back')?.label).toBe('항목 패널 보기/가리기'); // no state: the neutral name
+  });
+  it('names ⌘+ ⌘− ⌘0 by the view, on the item and on its ⌘= twin, in place (P-9)', () => {
+    const keys = ['view.textBigger', 'view.textSmaller', 'view.textReset'].map((id) => commandById(id as CommandId));
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: keys, enabled: ALL, onCommand: vi.fn(), labels: { view: 'library' } });
+    const byId = byIdOf(template);
+    const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    const shown = () => ['view.textBigger', 'view.textBigger#1', 'view.textSmaller', 'view.textReset'].map((id) => byId.get(id)?.label);
+    expect(shown()).toEqual(['글자 크게', '글자 크게', '글자 작게', '기본 글자 크기']);
+    applyMenuLabels(lookup, 'darwin', { view: 'viewer' }, keys);
+    expect(shown()).toEqual(['확대', '확대', '축소', '실제 크기']);
+    applyMenuLabels(lookup, 'darwin', { view: 'library' }, keys);
+    expect(shown()).toEqual(['글자 크게', '글자 크게', '글자 작게', '기본 글자 크기']);
   });
   it('enables a menu-bar item command from the reported selection, in place, never in the reader (P-2, spec 6)', () => {
     // No item command has a menu placement yet (the 파일 menu's item commands come later): a variant of the registry stands in.
@@ -453,7 +487,7 @@ describe('in-place enabled toggle (the menu is built once; reports only flip ena
   it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
     const asked: string[] = [];
     applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
-    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags']); // the group's head is placed in 파일 too
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags', 'submenu.pageColor']); // each group's head is placed in its menu too
   });
 });
 

@@ -1,6 +1,6 @@
 import { SUBMENUS, commandAvailable, commandLabel, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ContextMenuKind, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
 import type { ContextEntry, MenuEntries } from './entries';
-import { colorTagGroup, valueRows } from './submenus';
+import { groupEntry, valueRows } from './submenus';
 
 // The entries of a native context menu, without the native part (context-menu.ts pops them up): nothing here imports Electron, so
 // the evidence run can build the same entries in its own process.
@@ -60,7 +60,7 @@ export function contextMenuEntries(
     return [{ group: at.group, order: at.order, entry: rows.length === 0 ? null : { label, enabled, submenu: rows } }];
   });
   const fromGroups = (extras.submenus ?? SUBMENUS).flatMap((s): Placed[] =>
-    s.contextMenu?.kinds.includes(kind) ? [{ group: s.contextMenu.group, order: s.contextMenu.order, entry: colorTagGroup(s, commands, input) }] : [],
+    s.contextMenu?.kinds.includes(kind) ? [{ group: s.contextMenu.group, order: s.contextMenu.order, entry: groupEntry(s, commands, input) }] : [],
   );
   const placed = [...fromCommands, ...fromGroups]
     .filter((p): p is Placed & { entry: ContextEntry } => p.entry !== null)

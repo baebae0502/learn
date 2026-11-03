@@ -52,6 +52,11 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   sortBy: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
+  zoom: vi.fn(),
+  setZoom: vi.fn(),
+  rotate: vi.fn(),
+  setPageColor: vi.fn(),
+  goToPage: vi.fn(),
   focusPane: vi.fn(),
   keepOneOfDuplicates: vi.fn(),
   keepAllDuplicates: vi.fn(),
@@ -239,9 +244,40 @@ describe('renderer command registry', () => {
     expect(runCommand('view.textSmaller', e)).toBe(false);
     expect(runCommand('view.textReset', at(13))).toBe(false);
     e = at(14, 'viewer');
-    expect(runCommand('view.textBigger', e)).toBe(false); // the reader zooms its own content (M7)
+    expect(runCommand('view.textBigger', e)).toBe(false); // no PDF with pages: nothing to zoom
     expect(runCommand('view.textReset', e)).toBe(false);
     expect(e.setTextSize).not.toHaveBeenCalled();
+  });
+  it('zooms the open PDF with the same keys in the reader, and leaves the text size alone (P-9)', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, textSize: 15 });
+    expect(runCommand('view.textBigger', e)).toBe(true); // the text size at its end does not stop the zoom
+    expect(runCommand('view.textSmaller', e)).toBe(true);
+    expect(runCommand('view.textReset', e)).toBe(true);
+    expect(vi.mocked(e.zoom).mock.calls).toEqual([['in'], ['out'], ['actual']]);
+    expect(e.setTextSize).not.toHaveBeenCalled();
+    const lib = env({ pdfOpen: true });
+    expect(runCommand('view.textBigger', lib)).toBe(true);
+    expect(lib.zoom).not.toHaveBeenCalled();
+    expect(lib.setTextSize).toHaveBeenCalledTimes(1);
+  });
+  it('runs the reader commands on the open PDF only', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    const run = (id: CommandId) => runCommand(id, e);
+    expect([run('reader.zoomAuto'), run('reader.zoomPageWidth'), run('reader.zoomPageFit')]).toEqual([true, true, true]);
+    expect(vi.mocked(e.setZoom).mock.calls).toEqual([['auto'], ['page-width'], ['page-fit']]);
+    run('reader.rotateCw');
+    run('reader.rotateCcw');
+    expect(vi.mocked(e.rotate).mock.calls).toEqual([[90], [-90]]);
+    for (const id of ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'] as const) run(id);
+    expect(vi.mocked(e.setPageColor).mock.calls).toEqual([['auto'], ['original'], ['sepia'], ['dark']]);
+    run('reader.goToPage');
+    expect(e.goToPage).toHaveBeenCalledTimes(1);
+    for (const off of [env({ view: 'viewer' }), env({ pdfOpen: true }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {
+      expect(runCommand('reader.rotateCw', off)).toBe(false);
+      expect(off.rotate).not.toHaveBeenCalled();
+    }
+    expect(contextOf(e)).toMatchObject({ view: 'viewer', pdfOpen: true });
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('pdfOpen');
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

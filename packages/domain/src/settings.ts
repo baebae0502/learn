@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMMAND_IDS } from './commands';
+import { COMMAND_IDS, PAGE_COLORS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
@@ -39,6 +39,8 @@ export const SETTINGS = {
   'ui.lastOpenItemId': z.uuid().nullable(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
+  /** The colour of a PDF's pages (spec 8): unset reads as 'auto', the app theme's. */
+  'reader.pageColor': z.enum(PAGE_COLORS),
   /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */
   'recovery.lastShown': z.string().regex(/^[0-9a-f]{64}$/),
   /**

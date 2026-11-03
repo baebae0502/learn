@@ -12,6 +12,12 @@ export const reader = {
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',
   pdfTools: 'PDF 도구',
+  /** The zoom field holds the scale in percent; its ▾ opens the zoom menu (design-spec 7.3). */
+  zoomField: '확대 비율',
+  zoomMenu: '확대 메뉴',
+  /** The toolbar's 보기 menu: the page colour and the rotation. */
+  viewMenu: '보기',
+  pageColor: '쪽 색',
   pdfStage: 'PDF 쪽',
   lockedTitle: '암호로 보호된 PDF입니다',
   lockedBody: '암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.',

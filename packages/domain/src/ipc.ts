@@ -146,6 +146,8 @@ export const commandContextInput = z
     columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
     /** Trashed items and collection rows (OrganizeSnapshot.trashCount): 휴지통 비우기 needs one (P-10). */
     trashCount: contextCount,
+    /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
+    pdfOpen: z.boolean().optional(),
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
     /** A backup is on main's work line: 백업 만들기… is off. */

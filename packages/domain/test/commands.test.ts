@@ -115,6 +115,7 @@ describe('command registry', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
+      'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -132,10 +133,10 @@ describe('command registry', () => {
     });
     // ⌘, (design-spec 7.4): the macOS app menu, the end of 파일 elsewhere; main runs it (MAIN_OWNED_COMMANDS).
     expect(commandById('app.settings')).toMatchObject({ label: '설정…', accelerator: 'CmdOrCtrl+,', menu: { menu: 'app', group: 1, order: 1 }, contexts: ['app'] });
-    // ⌘+ / ⌘− / ⌘0: the library's text size (design-spec 7.4 라이브러리), one 보기 group.
-    expect(commandById('view.textBigger')).toMatchObject({ label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'] });
-    expect(commandById('view.textSmaller')).toMatchObject({ label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'] });
-    expect(commandById('view.textReset')).toMatchObject({ label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'] });
+    // ⌘+ / ⌘− / ⌘0: the library's text size (design-spec 7.4 라이브러리), one 보기 group; the reader's zoom under the same keys (P-9).
+    expect(commandById('view.textBigger')).toMatchObject({ label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library', 'viewer'] });
+    expect(commandById('view.textSmaller')).toMatchObject({ label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library', 'viewer'] });
+    expect(commandById('view.textReset')).toMatchObject({ label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library', 'viewer'] });
     // F6 / ⇧F6 (design-spec 8.3): renderer keymap keys, also from a text field; no menu item and not in the palette.
     expect(commandById('view.nextPane')).toEqual({ id: 'view.nextPane', label: '다음 패널로 이동', key: { code: 'F6', inText: true }, contexts: ['app'], palette: false, duringWork: true });
     expect(commandById('view.previousPane')).toEqual({ id: 'view.previousPane', label: '이전 패널로 이동', key: { code: 'F6', shift: true, inText: true }, contexts: ['app'], palette: false, duringWork: true });
@@ -329,7 +330,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('view.textReset', LIB)).toBe(false);
     expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14 })).toBe(true);
     expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 12 })).toBe(true);
-    expect(isCommandAvailable('view.textBigger', { ...VIEWER, textSize: 13 })).toBe(false); // library scope (design-spec 7.4)
+    expect(isCommandAvailable('view.textBigger', { ...VIEWER, textSize: 13 })).toBe(false); // the reader zooms only with a PDF open (P-9)
     expect(isCommandAvailable('view.textReset', { ...LIB, textSize: 14, blocked: true })).toBe(false);
   });
   it('compares reported contexts field by field (main skips a report that changes nothing)', () => {
@@ -538,5 +539,80 @@ describe('duplicate clean-up (M6 spec 5, 11.1)', () => {
     expect(commandLabel(commandById('item.open'), 'darwin', { duplicateGroups: 3 })).toBe('열기');
     expect(inPalette(c)).toBe(true);
     expect(c.menu ?? c.contextMenu ?? c.accelerator ?? c.key).toBeUndefined();
+  });
+});
+
+describe('the reader commands (P-9, P-14)', () => {
+  const PDF_OPEN: CommandContextState = { ...VIEWER, pdfOpen: true };
+  const SHARED = ['view.textBigger', 'view.textSmaller', 'view.textReset'] as const;
+  const READER = COMMANDS.filter((c) => c.id.startsWith('reader.'));
+
+  it('stateLabels.view names both views: the library keeps its text size names, the reader zooms', () => {
+    const names = Object.fromEntries(SHARED.map((id) => [id, commandById(id).stateLabels?.view]));
+    expect(names).toEqual({
+      'view.textBigger': { library: '글자 크게', viewer: '확대' },
+      'view.textSmaller': { library: '글자 작게', viewer: '축소' },
+      'view.textReset': { library: '기본 글자 크기', viewer: '실제 크기' },
+    });
+    for (const id of SHARED) {
+      const c = commandById(id);
+      expect(c.contexts, id).toEqual(['library', 'viewer']);
+      expect(Object.keys(c.stateLabels!), id).toEqual(['view']); // one key per command (P-3)
+      for (const platform of ['darwin', 'linux', 'win32']) {
+        expect(commandLabel(c, platform, { view: 'library' }), id).toBe(c.stateLabels!.view!.library);
+        expect(commandLabel(c, platform, { view: 'viewer' }), id).toBe(c.stateLabels!.view!.viewer);
+        expect(commandLabel(c, platform), id).toBe(c.label); // the neutral name where no view applies
+      }
+      expect(c.keywords?.some((k) => /[가-힣]/.test(k)), id).toBe(true);
+    }
+    expect(commandLabel(commandById('library.find'), 'darwin', { view: 'viewer' })).toBe('빠른 검색'); // 찾기 is the find task's
+  });
+  it('lets ⌘+ ⌘− ⌘0 run in the reader with a PDF open, by the zoom rule, and in the library by the text size rule', () => {
+    for (const id of SHARED) {
+      expect(isCommandAvailable(id, VIEWER), id).toBe(false);
+      expect(isCommandAvailable(id, PDF_OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, { ...PDF_OPEN, blocked: true }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...PDF_OPEN, textSize: 15 }), id).toBe(true); // the text size does not limit zoom
+    }
+    expect(isCommandAvailable('view.textBigger', { ...LIB, pdfOpen: true, textSize: 15 })).toBe(false);
+    expect(isCommandAvailable('view.textReset', { ...LIB, pdfOpen: true })).toBe(false);
+    expect(availableMenuCommands(PDF_OPEN)).toEqual(expect.arrayContaining(['view.textBigger', 'view.textSmaller', 'view.textReset']));
+  });
+  it('every reader.* command needs pdfOpen in the viewer, and exists nowhere else', () => {
+    expect(READER.map((c) => c.id).sort()).toEqual([
+      'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+    ]);
+    for (const c of READER) {
+      expect(c.contexts, c.id).toEqual(['viewer']);
+      expect(isCommandAvailable(c.id, VIEWER), c.id).toBe(false);
+      expect(isCommandAvailable(c.id, { ...VIEWER, pdfOpen: false }), c.id).toBe(false);
+      expect(isCommandAvailable(c.id, PDF_OPEN), c.id).toBe(true);
+      expect(isCommandAvailable(c.id, { ...PDF_OPEN, blocked: true }), c.id).toBe(false);
+      expect(isCommandAvailable(c.id, { ...LIB, pdfOpen: true }), c.id).toBe(false);
+      expect(inPalette(c), c.id).toBe(true);
+      expect(c.keywords?.some((k) => /[가-힣]/.test(k)), `${c.id}: a Korean keyword`).toBe(true);
+    }
+  });
+  it('names and places the reader commands', () => {
+    expect(commandById('reader.zoomAuto')).toMatchObject({ label: '자동 맞춤', menu: { menu: 'view', group: 4, order: 1 } });
+    expect(commandById('reader.zoomPageWidth')).toMatchObject({ label: '너비에 맞춤', menu: { menu: 'view', group: 4, order: 2 } });
+    expect(commandById('reader.zoomPageFit')).toMatchObject({ label: '한 쪽 전체 보기', menu: { menu: 'view', group: 4, order: 3 } });
+    expect(commandById('reader.rotateCw')).toMatchObject({ label: '시계 방향으로 회전', accelerator: 'CmdOrCtrl+R', menu: { menu: 'view', group: 5, order: 1 } });
+    expect(commandById('reader.rotateCcw')).toMatchObject({ label: '반시계 방향으로 회전', accelerator: 'CmdOrCtrl+L', menu: { menu: 'view', group: 5, order: 2 } });
+    expect(commandById('reader.goToPage')).toMatchObject({ label: '쪽으로 이동…', accelerator: 'Alt+CmdOrCtrl+G', menu: { menu: 'go', group: 1, order: 2 } });
+    const colours = ['Auto', 'Original', 'Sepia', 'Dark'].map((n) => commandById(`reader.pageColor${n}` as never));
+    expect(colours.map((c) => c.label)).toEqual(['앱 테마 따르기', '원본', '세피아', '어둡게']);
+    expect(colours.map((c) => paletteLabel(c, 'darwin'))).toEqual(['쪽 색: 앱 테마 따르기', '쪽 색: 원본', '쪽 색: 세피아', '쪽 색: 어둡게']);
+    for (const c of colours) expect(c.menu, c.id).toBeUndefined(); // the group 쪽 색 ▸ holds the position (P-14)
+  });
+  it('lists 쪽 색 ▸ in 보기 after the rotation, as a group of the four colour commands', () => {
+    const group = SUBMENUS.find((s) => s.id === 'pageColor')!;
+    expect(group).toMatchObject({ label: '쪽 색', menu: { menu: 'view', group: 5, order: 3 } });
+    expect(group.commands).toEqual(['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark']);
+    expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
+    const menu = availableMenuCommands(PDF_OPEN);
+    expect(menu).toEqual(expect.arrayContaining(['reader.zoomAuto', 'reader.rotateCw', 'reader.goToPage', ...group.commands]));
+    expect(availableMenuCommands(VIEWER).filter((id) => id.startsWith('reader.'))).toEqual([]);
+    expect(availableMenuCommands({ ...LIB, pdfOpen: true }).filter((id) => id.startsWith('reader.'))).toEqual([]);
   });
 });

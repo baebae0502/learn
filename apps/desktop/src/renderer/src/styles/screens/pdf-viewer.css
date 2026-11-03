@@ -120,8 +120,8 @@
     cursor: default;
   }
   .textLayer .highlight {
-    margin: -1px;
-    padding: 1px;
+    margin: -1px; /* local: pdf.js grows the highlight by a pixel around its text */
+    padding: 1px; /* local: pdf.js grows the highlight by a pixel around its text */
     border-radius: var(--radius-xs);
     background-color: var(--find-match);
   }
@@ -185,7 +185,7 @@
   .annotationLayer .linkAnnotation > a {
     position: absolute;
     inset: 0;
-    font-size: 1em;
+    font-size: 1em; /* local: pdf.js link anchor */
     cursor: pointer;
   }
 
@@ -208,7 +208,7 @@
   }
 
   .reader-toolbar .page-field {
-    width: var(--space-48);
+    width: 48px; /* local: a page number of up to four digits */
     height: var(--control-height-small);
     padding: 0 var(--space-6);
     border: 0;
@@ -224,7 +224,7 @@
     outline-offset: var(--focus-ring-offset);
   }
   .reader-toolbar .page-count {
-    min-width: var(--space-48);
+    min-width: 48px; /* local: "/ 380" without reflow */
     color: var(--text-secondary);
     font: var(--type-footnote);
   }

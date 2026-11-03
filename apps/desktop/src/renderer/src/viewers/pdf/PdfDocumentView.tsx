@@ -18,7 +18,7 @@ const zoomOf = (presetValue: string | undefined, scale: number): ZoomValue =>
  * Owns the pdf.js viewer for one open document: the scroll container, the pages, the text and link layers. The viewer
  * fills the store (state and handle) for whatever else the reader mounts; React never renders into the pages.
  */
-export function PdfDocumentView({ doc, restored }: { doc: PDFDocumentProxy; restored: boolean }) {
+export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentProxy; restored: boolean; onFailed(): void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
@@ -31,6 +31,11 @@ export function PdfDocumentView({ doc, restored }: { doc: PDFDocumentProxy; rest
     if (!container || !viewerEl) return;
     let cancelled = false;
     let teardown: (() => void) | null = null;
+    const fail = (e: unknown) => {
+      if (cancelled) return;
+      console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
+      onFailed();
+    };
     const store = useReader.getState();
     void Promise.all([pdfViewerModule(), pdfjs()])
       .then(([viewerLib, lib]) => {
@@ -99,21 +104,20 @@ export function PdfDocumentView({ doc, restored }: { doc: PDFDocumentProxy; rest
         store.setHandle(handle);
         viewer.setDocument(doc);
         linkService.setDocument(doc);
+        // The first page not coming up leaves no pages to show: the reader says so instead of a blank stage.
+        viewer.firstPagePromise?.catch(fail);
         teardown = () => {
           viewer.setDocument(null);
           store.setHandle(null);
           store.setPdf(null);
         };
       })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
-      });
+      .catch(fail);
     return () => {
       cancelled = true;
       teardown?.();
     };
-  }, [doc]);
+  }, [doc]); // onFailed is a state setter of the reader
 
   return (
     <>

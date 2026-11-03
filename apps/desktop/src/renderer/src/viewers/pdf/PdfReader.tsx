@@ -8,6 +8,7 @@ import { isComposingKey } from '../../ui/ime';
 import { ratio, restorePageIndex } from '../positionSaver';
 import { PdfErrorNotice } from '../ReaderNotices';
 import { usePosition } from '../usePosition';
+import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
@@ -26,6 +27,8 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const pdf = useReader((s) => s.pdf);
   const handle = useReader((s) => s.handle);
   const [restored, setRestored] = useState(false);
+  /** The document opened but the viewer could not show it. */
+  const [viewFailed, setViewFailed] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const ready = pdf?.ready === true && handle !== null;
 
@@ -48,7 +51,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   }, [restored, pdf?.pageNumber, pdf?.pagesCount, pos.update]);
 
   // A final state (design-spec 6): no reader controls that cannot work, only the notice.
-  if (open.status === 'failed') return <PdfErrorNotice item={item} />;
+  if (open.status === 'failed' || viewFailed) return <PdfErrorNotice item={item} />;
   if (open.status === 'password') return <PasswordPrompt item={item} wrong={open.wrong} checking={open.checking} onSubmit={open.submit} />;
 
   const onStageKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -94,7 +97,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
-        {open.status === 'ready' && <PdfDocumentView doc={open.doc} restored={restored} />}
+        {open.status === 'ready' && <PdfDocumentView doc={open.doc} restored={restored} onFailed={() => setViewFailed(true)} />}
       </div>
     </div>
   );
@@ -111,8 +114,8 @@ function PageField({ page, total, onGo, onEscape }: { page: number | null; total
     if (isComposingKey(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
-      const n = Number(draft);
-      if (draft !== null && draft.trim() !== '' && Number.isInteger(n) && n >= 1 && n <= total) onGo(n);
+      const n = parsePage(draft, total);
+      if (n !== null) onGo(n);
       setDraft(null);
     } else if (e.key === 'Escape') {
       e.preventDefault();

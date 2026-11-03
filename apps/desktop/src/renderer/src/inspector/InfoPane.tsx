@@ -1,14 +1,16 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
-import { useItemDetail } from '../data/queries';
+import { useItem, useItemDetail } from '../data/queries';
 import { sortItems } from '../library/sort';
 import { useScopeView } from '../library/useScopeView';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { EmptyCollectionPanel } from '../sidebar/EmptyCollectionPanel';
 import { useLibrary } from '../state/library-store';
+import { useShell } from '../state/shell-store';
 import { t } from '../strings';
+import { TranslationSection } from '../translation/TranslationSection';
 import { useTrash, useViewItems } from '../trash/useTrashSource';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -30,8 +32,22 @@ const MULTI_TITLES = 8;
 /** A load shorter than this shows nothing (design-spec 6). */
 const LOADING_DELAY_MS = 300;
 
-/** Info mode (spec §5.3–5.4), from the table's selection; an open edit keeps its item on show until it lets go. */
+/** Info mode: in the library from the table's selection (spec §5.3–5.4); in the reader the 번역 section, then the opened item (spec 6.2). */
 export function InfoPane() {
+  const view = useShell((s) => s.view);
+  return view.kind === 'reader' ? <ReaderInfo itemId={view.itemId} /> : <LibraryInfo />;
+}
+
+/** The reader's panel: 번역 first, then the item that is open, with the library's own sections and editing (no 읽기 section). */
+function ReaderInfo({ itemId }: { itemId: string }) {
+  const item = useItem(itemId).data;
+  const translation = <TranslationSection />;
+  if (!item) return <div className="inspector-scroll">{translation}</div>;
+  return <ItemInfo key={item.id} item={item} before={translation} inReader />;
+}
+
+/** The library's info mode, from the table's selection; an open edit keeps its item on show until it lets go. */
+function LibraryInfo() {
   const list = useViewItems();
   const trash = useTrash().data;
   const items = list ?? NO_ITEMS;
@@ -123,7 +139,7 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
 }
 
 /** One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile). */
-export function ItemInfo({ item, probe = true, trashedAt }: { item: LibraryItem; probe?: boolean; trashedAt?: string }) {
+export function ItemInfo({ item, probe = true, trashedAt, before, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; before?: ReactNode; inReader?: boolean }) {
   const detail = useItemDetail(item.id);
   const ids = useMemo(() => [item.id], [item.id]);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
@@ -132,7 +148,8 @@ export function ItemInfo({ item, probe = true, trashedAt }: { item: LibraryItem;
   }, [detail.isError, detail.error]);
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
-      <InfoHead item={item} probe={probe} trashedAt={trashedAt} />
+      {before}
+      <InfoHead item={item} probe={probe} trashedAt={trashedAt} inReader={inReader} />
       {detail.data ? (
         <>
           <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CONTENT_MIN, INSPECTOR, SIDEBAR, afterViewportChange, autoCollapses, clampInspector, clampSidebar, draggedInspectorWidth, hiddenPanes,
+  CONTENT_MIN, INSPECTOR, READER_CONTENT_MIN, inspectorContentMin, SIDEBAR, afterViewportChange, autoCollapses, clampInspector, clampSidebar, draggedInspectorWidth, hiddenPanes,
   inspectorAfterViewportChange, inspectorAutoCollapses, parsePanes, serializePanes, sidebarHidden, toggledInspector, toggledSidebar,
   type PaneState, type PanesState,
 } from './layout';
@@ -98,5 +98,25 @@ describe('layout.panes: one record for both panes', () => {
     expect(serializePanes(panes({ width: 280, collapsed: true, forceShown: true }, { width: 360, forceShown: true }))).toEqual({
       sidebar: 280, sidebarCollapsed: 1, 'inspector.info': 360, inspectorCollapsed: 0,
     });
+  });
+});
+
+describe('the reader keeps the item panel down to 1000 px (owner decision 7)', () => {
+  it('the reader needs 440 of content, the library 520', () => {
+    expect([READER_CONTENT_MIN, inspectorContentMin('reader'), inspectorContentMin('library')]).toEqual([440, 440, 520]);
+  });
+  it('sidebar 240 + panel 320 + reader 440 = 1000: the panel stays at 1000 and 1024, folds first below', () => {
+    expect(hiddenPanes(panes(), 1024, true, READER_CONTENT_MIN)).toEqual({ sidebar: false, inspector: false });
+    expect(hiddenPanes(panes(), 1000, true, READER_CONTENT_MIN)).toEqual({ sidebar: false, inspector: false });
+    expect(hiddenPanes(panes(), 999, true, READER_CONTENT_MIN)).toEqual({ sidebar: false, inspector: true });
+    expect(hiddenPanes(panes(), 960, true, READER_CONTENT_MIN)).toEqual({ sidebar: false, inspector: true });
+    // The library's rule is unchanged at the same width.
+    expect(hiddenPanes(panes(), 1024, true).inspector).toBe(true);
+  });
+  it('the toggle, the viewport change and the drag follow the same minimum', () => {
+    expect(toggledInspector(panes({}, { collapsed: true }), 1024, READER_CONTENT_MIN)).toEqual(i({ forceShown: false }));
+    expect(toggledInspector(panes(), 960, READER_CONTENT_MIN)).toEqual(i({ forceShown: true })); // folded by width: shown on demand
+    expect(inspectorAfterViewportChange(panes({}, { forceShown: true }), 1000, READER_CONTENT_MIN)).toEqual(i());
+    expect(draggedInspectorWidth(panes(), 1024, 400, READER_CONTENT_MIN)).toBe(344);
   });
 });

@@ -89,6 +89,8 @@ export interface CommandEnv extends CommandContextState {
   findAgain(previous: boolean): void;
   /** ⌘E: the selected text becomes the find bar's query. */
   findSelection(): void;
+  /** 선택한 글 번역 (palette): the reader's selection is translated, its pop-up shown again. */
+  translateSelection(): void;
   /** ⌥⌘2 / ⌥⌘3: the reader's sidebar shows the thumbnails or the outline (the sidebar opens if it is folded). */
   showReaderNav(kind: ReaderNav): void;
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
@@ -168,6 +170,7 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.findNext': (env) => env.findAgain(false),
   'reader.findPrevious': (env) => env.findAgain(true),
   'reader.findSelection': (env) => env.findSelection(),
+  'translation.translateSelection': (env) => env.translateSelection(),
   'reader.showThumbnails': (env) => env.showReaderNav('thumbnails'),
   'reader.showOutline': (env) => env.showReaderNav('outline'),
   'library.findEverywhere': (env) => env.findEverywhere(),
@@ -255,6 +258,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.pdfSelection ? { pdfSelection: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),

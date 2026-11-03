@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { Group, Panel, Separator, usePanelRef, type Layout, type LayoutChangedMeta, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { INSPECTOR, SIDEBAR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, sidebarHidden } from './layout';
+import { INSPECTOR, SIDEBAR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, inspectorContentMin, sidebarHidden } from './layout';
 import { SidebarToggle } from './SidebarToggle';
 import { useKeepFocusOnInspectorFold } from './useInspector';
 import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
@@ -28,9 +28,10 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const inspector = useShell((s) => s.inspector);
   const setInspector = useShell((s) => s.setInspector);
   const viewportWidth = useViewportWidth();
+  const contentMin = inspectorContentMin(useShell((s) => s.view.kind));
   const hidden = sidebarHidden(sidebar, viewportWidth);
   const present = props.inspector !== undefined;
-  const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present).inspector;
+  const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present, contentMin).inspector;
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);
   const inspectorSeparatorKey = useSeparatorKeyAfterFirstShow(present, inspectorHidden);
@@ -48,9 +49,9 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     const s = useShell.getState();
     const next = afterViewportChange(s.sidebar, viewportWidth);
     if (next !== s.sidebar) setSidebar(next);
-    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth);
+    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth, inspectorContentMin(s.view.kind));
     if (nextInspector !== s.inspector) setInspector(nextInspector);
-  }, [viewportWidth, setSidebar, setInspector]);
+  }, [viewportWidth, contentMin, setSidebar, setInspector]);
 
   /** Only drags and separator keys count as the user's choice (not window resizes or our own collapse()). */
   const onLayoutChanged = (layout: Layout, meta: LayoutChangedMeta) => {
@@ -77,13 +78,14 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     if (!meta.isUserInteraction || !panel || !group) return;
     const s = useShell.getState();
     const panes = { sidebar: s.sidebar, inspector: s.inspector };
+    const min = inspectorContentMin(s.view.kind);
     if (panel.isCollapsed()) {
-      if (hiddenPanes(panes, innerWidth, true).inspector) return;
+      if (hiddenPanes(panes, innerWidth, true, min).inspector) return;
       setInspector(s.inspector.forceShown ? { ...s.inspector, forceShown: false } : { ...s.inspector, collapsed: true });
       return;
     }
     const px = ((layout['inspector'] ?? panel.getSize().asPercentage) / 100) * group.offsetWidth;
-    const width = draggedInspectorWidth(panes, innerWidth, px);
+    const width = draggedInspectorWidth(panes, innerWidth, px, min);
     setInspector({ ...s.inspector, width, collapsed: false });
     // Dragged wider than leaves the content column its 520: back to the widest that does, rather than folding on release.
     if (Math.abs(width - px) >= 1) panel.resize(width);

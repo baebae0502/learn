@@ -89,10 +89,10 @@ describe('command registry', () => {
     expect(inPalette(commandById('file.importManaged'))).toBe(true);
     expect(inPalette(commandById('app.palette'))).toBe(false); // the palette does not list itself
   });
-  it('⌥⌘I shows or hides the item panel: 보기 after the sidebar toggle, the library with items only, named by what it does', () => {
+  it('⌥⌘I shows or hides the item panel: 보기 after the sidebar toggle, the library with items and the reader with a PDF open, named by what it does', () => {
     const c = commandById('view.toggleInspector');
     expect(c).toMatchObject({
-      label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+      label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
       stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
     });
     expect(inPalette(c)).toBe(true);
@@ -100,7 +100,11 @@ describe('command registry', () => {
     const withItems: CommandContextState = { ...LIB, libraryCount: 3 };
     expect(isCommandAvailable('view.toggleInspector', withItems)).toBe(true);
     expect(isCommandAvailable('view.toggleInspector', LIB)).toBe(false); // libraryCount 0: no panel to show (design-spec 2.4)
-    expect(isCommandAvailable('view.toggleInspector', { ...VIEWER, libraryCount: 3 })).toBe(false); // the reader's right slot is the tutor's
+    expect(isCommandAvailable('view.toggleInspector', { ...VIEWER, libraryCount: 3 })).toBe(false); // no PDF open: no info panel
+    expect(isCommandAvailable('view.toggleInspector', { ...VIEWER, pdfOpen: true })).toBe(true);
+    expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true })).toBe(false);
+    expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true, pdfSelection: true })).toBe(true);
+    expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfSelection: true })).toBe(false);
     expect(isCommandAvailable('view.toggleInspector', { ...withItems, blocked: true })).toBe(false);
     for (const platform of ['darwin', 'linux', 'win32']) {
       expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('항목 패널 가리기');
@@ -116,7 +120,7 @@ describe('command registry', () => {
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
-      'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'trash.empty',
+      'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });

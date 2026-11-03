@@ -1,0 +1,52 @@
+// The reader's translation (M7a spec 6): the selection pop-up, the panel's 번역 section and the consent that comes first.
+// Copy follows the approved mockups (reader-pdf.html, settings.html?section=translation).
+export const translation = {
+  /** The language names of spec 6.3: 자동 감지 only for the original. */
+  langs: { auto: '자동 감지', ko: '한국어', en: '영어', ja: '일본어', 'zh-CN': '중국어(간체)', de: '독일어', fr: '프랑스어', es: '스페인어' },
+  /** The direction button reads "자동 → 한국어"; in a menu the original's 자동 has no 감지. */
+  autoShort: '자동',
+  direction: (from: string, to: string) => `${from} → ${to}`,
+  directionTip: '번역 방향',
+  fromHeader: '원문 언어',
+  toHeader: '대상 언어',
+  title: '번역',
+  popupLabel: '번역',
+  consentText: '선택한 글을 번역하려면 Google로 보냅니다.',
+  consentNote: '언제든 설정에서 바꿀 수 있습니다.',
+  enable: '번역 켜기',
+  decline: '사용 안 함',
+  offText: '번역을 사용하지 않습니다.',
+  offNote: '켜면 선택한 글이 Google로 보내집니다.',
+  pending: '번역하는 중…',
+  retry: '다시 번역',
+  run: '번역',
+  runTip: '번역 ↩',
+  tooLong: '번역하기에 너무 깁니다',
+  tooLongNote: '5,000자까지 번역합니다.',
+  /** The original's length in the label line when it is too long: "영어 · 5,832자". */
+  chars: (n: number) => `${n.toLocaleString('ko-KR')}자`,
+  /** "이미 한국어입니다": the text is already in the target language. */
+  already: (lang: string) => `이미 ${lang}입니다`,
+  copy: '복사',
+  copyTranslated: '번역문 복사',
+  /** The section's 복사 ▾ menu. */
+  copyMenu: '복사 방식',
+  copySource: '원문',
+  copyResult: '번역',
+  copyBoth: '원문과 번역 둘 다',
+  source: '원문',
+  result: '번역',
+  sourcePlaceholder: '글을 선택하거나 붙여 넣으면 번역합니다.',
+  resultPlaceholder: '번역이 여기에 보입니다.',
+  auto: '선택하면 번역',
+  concat: '이어 붙이기',
+  clear: '지우기',
+  clearTip: '원문과 번역 지우기',
+  settingsEnabled: '번역 사용',
+  settingsEnabledHint: '선택한 글이 Google로 보내집니다',
+  settingsAuto: '선택하면 번역',
+  settingsAutoHint: '글을 선택하면 바로 번역합니다',
+  settingsDirection: '방향',
+  on: '켬',
+  off: '끔',
+} as const;

@@ -1,10 +1,14 @@
 @layer screens {
   /* The ⌘, settings window (settings.html; design-spec 6 설정 창): groups of --bg-control on the window colour.
      Every part is scoped to .settings: other screens may use these names for their own things. */
+  .settings-scroll {
+    height: 100vh;
+    overflow-y: auto;
+  }
   .settings {
     display: flex;
     flex-direction: column;
-    gap: var(--space-20);
+    gap: var(--space-16); /* dense group gap (design-spec 10.6): three groups fit a 1024 × 768 work area */
     padding: var(--space-8) var(--space-20) var(--space-20);
   }
   .settings .group-label {
@@ -22,8 +26,8 @@
     display: flex;
     align-items: center;
     gap: var(--space-16);
-    min-height: 44px; /* local: settings row (design-spec 6 설정 창) */
-    padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
+    min-height: 36px; /* local: dense settings row (design-spec 10.6): the 28 px control and 2 × 4 */
+    padding: var(--space-4) var(--space-12) var(--space-4) var(--space-16);
   }
   .settings .form-row + .form-row {
     border-top: 1px solid var(--separator-on-surface);
@@ -42,8 +46,8 @@
   .settings .form-row.stacked {
     flex-direction: column;
     align-items: stretch;
-    gap: var(--space-12);
-    padding: var(--space-12) var(--space-16) var(--space-16);
+    gap: var(--space-8);
+    padding: var(--space-8) var(--space-16) var(--space-12);
   }
   /* A segmented control on a group sits on the grouped track (recessed in dark: its labels keep 4.5:1). */
   .settings .form-group .segmented {
@@ -184,6 +188,13 @@
   .settings .row-actions {
     display: flex;
     gap: var(--space-8);
+  }
+  .settings .row-actions.center {
+    align-items: center;
+  }
+  /* The rows that follow the translation switch while it is off or not yet answered. */
+  .settings .form-row.is-disabled {
+    opacity: 0.45; /* local: as the other disabled controls */
   }
   .settings .field-error {
     color: var(--danger-text);

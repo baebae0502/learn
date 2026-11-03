@@ -56,6 +56,7 @@ export type CommandId =
   | 'tags.clearFilter'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
+  | 'translation.translateSelection'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -386,12 +387,16 @@ export const COMMANDS: readonly CommandSpec[] = [
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
     keywords: ['사이드바', '패널', '가리기', '숨기기', '보기', 'sidebar'],
   },
-  // The item panel: the library only, its right slot (the reader's is the tutor's). Named by what it does now
-  // (stateLabels), like the sidebar toggle.
+  // The item panel: the library's, and the reader's while a PDF is open. Named by what it does now (stateLabels), like the sidebar toggle.
   {
-    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
     stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
     keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
+  },
+  // The selection pop-up's command (M7a): no menu item, no key; the palette offers it while a PDF text is selected.
+  {
+    id: 'translation.translateSelection', label: '선택한 글 번역', contexts: ['viewer'],
+    keywords: ['번역', 'translate', '선택', '선택한 글'],
   },
   // 정렬 기준 ▸ (spec 5.2): the keyboard-only sort. Its rows are the shown columns and the two directions, built by main
   // from the reported context; a pick sets the sort of the view shown. Not in the palette: a run there carries no value.
@@ -587,6 +592,8 @@ export interface CommandContextState {
   trashCount: number;
   /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
   pdfOpen?: boolean;
+  /** Text of the open PDF is selected (the reader's selection pop-up has something to translate): 선택한 글 번역. Absent otherwise. */
+  pdfSelection?: boolean;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
   /** A backup is on main's work line, running or waiting (job:progress): 백업 만들기… is off until it ends. */
@@ -734,7 +741,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   // Only with a search to keep, and only from a view that narrows it (spec 7.1).
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
-  'view.toggleInspector': (c) => c.libraryCount > 0,
+  'view.toggleInspector': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
@@ -743,7 +751,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
-  'item.editInfo': (c, t) => t.items.length === 1 && c.view === 'library',
+  // The reader's panel carries the pencil too (its target is the open item); the palette gives the reader no target.
+  'item.editInfo': (c, t) => t.items.length === 1 && (c.view === 'library' || c.pdfOpen === true),
   // Filing needs the selection only (any file state: the file is not touched); the library view, as the menu bar judges it.
   'collection.addItems': (c) => c.view === 'library',
   // Takes the selection out of the collection viewed and what is below it: nothing to take out of anywhere else.

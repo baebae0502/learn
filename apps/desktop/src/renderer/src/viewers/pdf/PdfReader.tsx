@@ -4,7 +4,11 @@ import type { LibraryItem } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
 import { isEditing } from '../../commands/keymap';
 import { commandById, commandLabel } from '@learn/domain';
+import { InspectorToggle } from '../../inspector/InspectorToggle';
 import { t } from '../../strings';
+import { SelectionPopup, usePopupShown } from '../../translation/SelectionPopup';
+import { useTranslation } from '../../translation/store';
+import { dismissPopup, useSelectionText } from '../../translation/useSelectionText';
 import { currentPlatform } from '../../ui/platform';
 import { IconButton } from '../../ui/Button';
 import { isComposingKey } from '../../ui/ime';
@@ -52,6 +56,32 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     useReader.getState().setNoPages('reader', noPages);
     return () => useReader.getState().setNoPages('reader', null);
   }, [noPages]);
+  // The selection pop-up: the text selected in the pages (translation/); leaving the reader cancels what is in flight.
+  useSelectionText(stageRef, ready);
+  const popupShown = usePopupShown();
+  useEffect(() => () => useTranslation.getState().reset(), []);
+  // The item panel comes with the pages (ready) and takes width from the stage: the saved place is applied once the stage
+  // has stopped changing size, or the resize that follows would read as a move and be saved as one.
+  const [stageSettled, setStageSettled] = useState(false);
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!ready || !stage) {
+      setStageSettled(false);
+      return;
+    }
+    let last = -1;
+    let still = 0;
+    let frame = 0;
+    const tick = () => {
+      const width = stage.clientWidth;
+      still = width === last ? still + 1 : 0;
+      last = width;
+      if (still >= 2) setStageSettled(true);
+      else frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [ready]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
     useFind.getState().closeBar();
@@ -86,7 +116,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
 
   // The restore waits for both the pages and the stored position, and is applied once; saves start from the place it reached.
   useEffect(() => {
-    if (!ready || !pos.loaded || restored || !pdf || !handle) return;
+    if (!ready || !stageSettled || !pos.loaded || restored || !pdf || !handle) return;
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;
@@ -97,13 +127,19 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     pos.markRestored(start?.locator ?? { kind: 'pdf', pageIndex: index });
     restoredRef.current = true;
     setRestored(true);
-  }, [ready, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
+  }, [ready, stageSettled, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
 
   // A final state (design-spec 6): no reader controls that cannot work, only the notice.
   if (open.status === 'failed' || viewFailed) return <PdfErrorNotice item={item} />;
   if (open.status === 'password') return <PasswordPrompt item={item} wrong={open.wrong} checking={open.checking} onSubmit={open.submit} />;
 
   const onStageKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    // esc closes the pop-up first; the find bar keeps its own esc for the next press.
+    if (e.key === 'Escape' && popupShown && !isComposingKey(e.nativeEvent)) {
+      e.preventDefault();
+      dismissPopup();
+      return;
+    }
     if (e.key === 'Escape' && findOpen && !isComposingKey(e.nativeEvent)) {
       e.preventDefault();
       closeFind();
@@ -161,10 +197,12 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           onPress={() => (findOpen ? closeFind() : run('library.find'))}
         />
         <ViewMenu />
+        <InspectorToggle pending={!ready} />
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
         {findOpen && ready && <FindBar onClose={closeFind} />}
+        {ready && <SelectionPopup stageRef={stageRef} />}
         {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} />}
       </div>
     </div>

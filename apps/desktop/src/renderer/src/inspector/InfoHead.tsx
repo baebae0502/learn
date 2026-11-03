@@ -18,7 +18,7 @@ import { RestoreButton, TrashNote } from './TrashInfo';
  * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
  * A trashed item (the trash view, read-only): 복원 is the head's one action, the trash line under it.
  */
-export function InfoHead({ item, probe = true, trashedAt }: { item: LibraryItem; probe?: boolean; trashedAt?: string }) {
+export function InfoHead({ item, probe = true, trashedAt, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; inReader?: boolean }) {
   const { env, run, isEnabled } = useCommands();
   const facts = useFileFacts(item, probe);
   const platform = currentPlatform();
@@ -55,9 +55,12 @@ export function InfoHead({ item, probe = true, trashedAt }: { item: LibraryItem;
               {label('item.relink')}
             </Button>
           )}
+          {/* The reader is the open item: no 열기 there. */}
+          {!inReader && (
           <Button variant={relinkFirst || editing ? 'secondary' : 'primary'} testId="inspector-open" onPress={() => run('item.open', target)} isDisabled={!isEnabled('item.open', target)} disabledReason={t.common.busy}>
             {label('item.open')}
           </Button>
+          )}
           <Button
             icon={FolderSearch}
             testId="inspector-reveal"

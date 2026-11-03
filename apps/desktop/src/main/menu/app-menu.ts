@@ -97,7 +97,7 @@ function placement(at: CommandSpec['menu'], platform: NodeJS.Platform): { menu: 
 }
 
 const DEFAULT_CONTEXT: CommandContextState = Object.freeze({
-  view: 'library', blocked: false, pdfOpen: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
+  view: 'library', blocked: false, pdfOpen: false, pdfSelection: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW,
 });
 
 /** A pick from a row of a submenu is a command with the row's value. */

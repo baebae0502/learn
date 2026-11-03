@@ -5,11 +5,11 @@ import { Icon } from '../ui/Icon';
 import { useSections, type SectionId } from './sections';
 
 /** A panel section (library.html .section): a disclosure head with the section's name, and room at its end (`extra`). */
-export function Section({ id, title, extra, testId, children }: { id: SectionId; title: string; extra?: ReactNode; testId: string; children: ReactNode }) {
+export function Section({ id, title, extra, testId, className, children }: { id: SectionId; title: string; extra?: ReactNode; testId: string; className?: string; children: ReactNode }) {
   const open = useSections((s) => s.open[id]);
   const setOpen = useSections((s) => s.setOpen);
   return (
-    <section className="section" data-testid={testId}>
+    <section className={className ? `section ${className}` : 'section'} data-testid={testId}>
       <Disclosure isExpanded={open} onExpandedChange={(next) => setOpen(id, next)}>
         <div className="section-head">
           <Heading level={3} className="section-title">

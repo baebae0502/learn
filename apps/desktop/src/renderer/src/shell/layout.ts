@@ -11,6 +11,13 @@ export const INSPECTOR = { default: layout.inspectorWidth, min: layout.inspector
  * column between 520 and that the table scrolls sideways inside its own scroll view (.table-scroller), never the window.
  */
 export const CONTENT_MIN = 520;
+/**
+ * The reader's column keeps less: a page at 464 px still reads, and the item panel then stays at 1024 (240 + 320 + 440 = 1000);
+ * below that the panel folds first. Only the item panel's fold uses it — the sidebar keeps CONTENT_MIN.
+ */
+export const READER_CONTENT_MIN = 440;
+/** The content column's minimum that decides the item panel's fold in this view. */
+export const inspectorContentMin = (view: 'library' | 'reader'): number => (view === 'reader' ? READER_CONTENT_MIN : CONTENT_MIN);
 
 export interface PaneState {
   width: number;
@@ -35,15 +42,15 @@ export const sidebarHidden = (s: SidebarState, viewportWidth: number): boolean =
 /** What the content column and the item panel share: the window less a shown sidebar (the toolbar's width too). */
 const mainColumnWidth = (p: PanesState, viewportWidth: number): number => viewportWidth - (sidebarHidden(p.sidebar, viewportWidth) ? 0 : p.sidebar.width);
 /** The item panel does not fit beside the content column's minimum. */
-export const inspectorAutoCollapses = (p: PanesState, viewportWidth: number): boolean => mainColumnWidth(p, viewportWidth) < p.inspector.width + CONTENT_MIN;
+export const inspectorAutoCollapses = (p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN): boolean => mainColumnWidth(p, viewportWidth) < p.inspector.width + contentMin;
 
 /**
  * Which panes are out of sight at this width. The sidebar keeps its own rule (it folds below its width + 520), and the
  * item panel folds whenever it does not fit beside the content column: so it always goes first. `inspectorPresent`:
  * the view has an item panel (the library with its table; spec §5.1).
  */
-export function hiddenPanes(p: PanesState, viewportWidth: number, inspectorPresent: boolean): { sidebar: boolean; inspector: boolean } {
-  const inspector = !inspectorPresent || p.inspector.collapsed || (inspectorAutoCollapses(p, viewportWidth) && !p.inspector.forceShown);
+export function hiddenPanes(p: PanesState, viewportWidth: number, inspectorPresent: boolean, contentMin: number = CONTENT_MIN): { sidebar: boolean; inspector: boolean } {
+  const inspector = !inspectorPresent || p.inspector.collapsed || (inspectorAutoCollapses(p, viewportWidth, contentMin) && !p.inspector.forceShown);
   return { sidebar: sidebarHidden(p.sidebar, viewportWidth), inspector };
 }
 
@@ -55,9 +62,9 @@ export function toggledSidebar(s: SidebarState, viewportWidth: number): SidebarS
 }
 
 /** ⌥⌘I and the toolbar toggle, with the sidebar's rules: on demand in a narrow window, a stored choice otherwise. */
-export function toggledInspector(p: PanesState, viewportWidth: number): PaneState {
+export function toggledInspector(p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN): PaneState {
   const i = p.inspector;
-  if (hiddenPanes(p, viewportWidth, true).inspector) return { ...i, collapsed: false, forceShown: inspectorAutoCollapses(p, viewportWidth) };
+  if (hiddenPanes(p, viewportWidth, true, contentMin).inspector) return { ...i, collapsed: false, forceShown: inspectorAutoCollapses(p, viewportWidth, contentMin) };
   if (i.forceShown) return { ...i, forceShown: false };
   return { ...i, collapsed: true, forceShown: false };
 }
@@ -66,16 +73,16 @@ export function afterViewportChange(s: SidebarState, viewportWidth: number): Sid
   return s.forceShown && !autoCollapses(viewportWidth, s.width) ? { ...s, forceShown: false } : s;
 }
 
-export function inspectorAfterViewportChange(p: PanesState, viewportWidth: number): PaneState {
-  return p.inspector.forceShown && !inspectorAutoCollapses(p, viewportWidth) ? { ...p.inspector, forceShown: false } : p.inspector;
+export function inspectorAfterViewportChange(p: PanesState, viewportWidth: number, contentMin: number = CONTENT_MIN): PaneState {
+  return p.inspector.forceShown && !inspectorAutoCollapses(p, viewportWidth, contentMin) ? { ...p.inspector, forceShown: false } : p.inspector;
 }
 
 /**
  * The width a drag of the item panel's boundary ends at: within 260–480 and no wider than leaves the content column its
  * 520 — wider would fold the panel the moment it is let go. A panel shown on demand is already past that rule.
  */
-export function draggedInspectorWidth(p: PanesState, viewportWidth: number, px: number): number {
-  return clampInspector(p.inspector.forceShown ? px : Math.min(px, mainColumnWidth(p, viewportWidth) - CONTENT_MIN));
+export function draggedInspectorWidth(p: PanesState, viewportWidth: number, px: number, contentMin: number = CONTENT_MIN): number {
+  return clampInspector(p.inspector.forceShown ? px : Math.min(px, mainColumnWidth(p, viewportWidth) - contentMin));
 }
 
 /** layout.panes → both panes; a key that is missing or not a number gives that pane's default (an M3 record has the sidebar only). */

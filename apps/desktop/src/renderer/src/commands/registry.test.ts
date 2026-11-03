@@ -60,6 +60,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   openFind: vi.fn(),
   findAgain: vi.fn(),
   findSelection: vi.fn(),
+  translateSelection: vi.fn(),
   showReaderNav: vi.fn(),
   focusPane: vi.fn(),
   keepOneOfDuplicates: vi.fn(),
@@ -283,6 +284,18 @@ describe('renderer command registry', () => {
     expect(contextOf(e)).toMatchObject({ view: 'viewer', pdfOpen: true });
     expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('pdfOpen');
   });
+  it('선택한 글 번역 runs with a PDF open and a text selected, and is in the palette only there', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, pdfSelection: true });
+    expect(runCommand('translation.translateSelection', e)).toBe(true);
+    expect(e.translateSelection).toHaveBeenCalledTimes(1);
+    for (const over of [{ view: 'viewer' as const, pdfOpen: true }, { view: 'viewer' as const, pdfSelection: true }, { pdfOpen: true, pdfSelection: true, libraryCount: 2 }]) {
+      const off = env(over);
+      expect(runCommand('translation.translateSelection', off), JSON.stringify(over)).toBe(false);
+      expect(off.translateSelection).not.toHaveBeenCalled();
+    }
+    expect(contextOf(e)).toMatchObject({ pdfSelection: true });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfSelection');
+  });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });
     for (const id of ['library.find', 'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline'] as const) expect(runCommand(id, e)).toBe(true);
@@ -368,11 +381,14 @@ describe('renderer command registry', () => {
     expect(runPicked({ commandId: 'file.nope' as CommandId }, env(), { itemIds: [ID] })).toBe(false);
     expect(runPicked({ commandId: 'toString' as CommandId }, env(), { itemIds: [ID] })).toBe(false); // not fooled by Object.prototype
   });
-  it('⌥⌘I toggles the item panel in the library with items, never in the reader, the empty library or while blocked', () => {
+  it('⌥⌘I toggles the item panel in the library with items and in the reader with a PDF open, never in the empty library, a reader without pages or while blocked', () => {
     const e = env({ libraryCount: 2 });
     expect(runCommand('view.toggleInspector', e)).toBe(true);
     expect(e.toggleInspector).toHaveBeenCalledTimes(1);
-    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }]) {
+    const reader = env({ view: 'viewer', pdfOpen: true });
+    expect(runCommand('view.toggleInspector', reader)).toBe(true);
+    expect(reader.toggleInspector).toHaveBeenCalledTimes(1);
+    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }, { view: 'viewer' as const, pdfOpen: true, blocked: true }]) {
       const off = env(over);
       expect(runCommand('view.toggleInspector', off), JSON.stringify(over)).toBe(false);
       expect(off.toggleInspector).not.toHaveBeenCalled();

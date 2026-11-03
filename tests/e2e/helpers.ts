@@ -1509,3 +1509,51 @@ export const seedAssets = (app: ElectronApplication, input: SeedAssetsInput): Pr
   app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.seedAssets(arg), input);
 export const fsyncProbe = (app: ElectronApplication, input: FsyncProbeInput): Promise<FsyncProbeResult> =>
   app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.fsyncProbe(arg), input);
+
+// ---- M7a translation (main's fake engine, main/test-hooks.ts; E2E never reaches the real service) ----------------------------------
+
+export type TranslationFakeMode = 'ok' | 'offline' | 'rateLimited' | 'blocked' | 'unavailable' | 'badResponse' | 'slow';
+type WithTranslationHooks = { __learnTest: { translationFake(mode: TranslationFakeMode): void; translationCalls(): number } };
+/** How the fake engine answers from now on. */
+export const translationFake = (app: ElectronApplication, mode: TranslationFakeMode) =>
+  app.evaluate((_e, mode) => (globalThis as unknown as WithTranslationHooks).__learnTest.translationFake(mode), mode);
+/** Requests the fake engine has taken since launch (a cache hit, a refusal and Korean into Korean take none). */
+export const translationCalls = (app: ElectronApplication): Promise<number> => app.evaluate(() => (globalThis as unknown as WithTranslationHooks).__learnTest.translationCalls());
+
+/** Selects the text of `sentence` in the text layer of page `pageNumber`, across the spans it runs through (a user's drag). */
+export async function selectInPage(page: Page, sentence: string, pageNumber = 1): Promise<void> {
+  const found = await page.evaluate(
+    ({ sentence, pageNumber }) => {
+      const layer = document.querySelector(`.page[data-page-number="${pageNumber}"] .textLayer`);
+      if (!layer) return false;
+      const nodes: Text[] = [];
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
+      // The text as one string with a space between spans (a line break reads as one).
+      let joined = '';
+      const starts = nodes.map((n) => {
+        const at = joined.length;
+        joined += `${n.data} `;
+        return at;
+      });
+      const from = joined.indexOf(sentence);
+      if (from < 0) return false;
+      const to = from + sentence.length;
+      const locate = (offset: number, end: boolean) => {
+        for (let i = nodes.length - 1; i >= 0; i--) if (starts[i]! < offset || (!end && starts[i]! === offset)) return { node: nodes[i]!, at: Math.min(offset - starts[i]!, nodes[i]!.data.length) };
+        return { node: nodes[0]!, at: 0 };
+      };
+      const a = locate(from, false);
+      const b = locate(to, true);
+      const range = document.createRange();
+      range.setStart(a.node, a.at);
+      range.setEnd(b.node, b.at);
+      const selection = getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    },
+    { sentence, pageNumber },
+  );
+  if (!found) throw new Error(`selectInPage: "${sentence}" is not in the text layer of page ${pageNumber}`);
+}

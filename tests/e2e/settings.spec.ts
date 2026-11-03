@@ -480,3 +480,66 @@ test('macOS: closing the main window discards the prepared settings window; the 
   }
 });
 
+
+test('the 번역 group: 켬/끔, 선택하면 번역 and the direction are kept in the preferences and are as they were when the window opens again; the rows follow the switch', async ({}, testInfo) => {
+  const [lib, ud] = dirs(testInfo);
+  const { app } = await launch(lib, ud);
+  try {
+    let settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const enabled = settings.getByTestId('settings-translation-enabled');
+    const row = (testId: string) => settings.getByTestId(testId).locator('xpath=ancestor::div[contains(@class,"form-row")]');
+    // Not asked yet (null): no segment is chosen, and the rows below wait like they do while it is off.
+    await expect(enabled.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(row('settings-translation-auto')).toHaveClass(/is-disabled/);
+    await expect(settings.getByTestId('settings-translation-from')).toHaveAttribute('aria-disabled', 'true');
+    await settings.getByTestId('settings-translation-enabled-on').click();
+    await expect.poll(() => (prefsFile(ud)['translation'] as { enabled: boolean | null }).enabled).toBe(true);
+    await expect(row('settings-translation-auto')).not.toHaveClass(/is-disabled/);
+    await settings.getByTestId('settings-translation-auto-off').click();
+    await settings.getByTestId('settings-translation-from').click();
+    await settings.getByRole('menuitemradio', { name: '영어' }).click();
+    await settings.getByTestId('settings-translation-to').click();
+    await settings.getByRole('menuitemradio', { name: '일본어' }).click();
+    await expect.poll(() => prefsFile(ud)['translation']).toEqual({ enabled: true, autoOnSelect: false, from: 'en', to: 'ja' });
+    // Closed and opened again: the window shows what is saved.
+    await settings.close();
+    await expect.poll(() => windowKinds(app)).toEqual(['main']);
+    settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await expect(settings.getByTestId('settings-translation-enabled-on').locator('input')).toBeChecked();
+    await expect(settings.getByTestId('settings-translation-auto-off').locator('input')).toBeChecked();
+    await expect(settings.getByTestId('settings-translation-from')).toContainText('영어');
+    await expect(settings.getByTestId('settings-translation-to')).toContainText('일본어');
+    await settings.getByTestId('settings-translation-enabled-off').click();
+    await expect.poll(() => (prefsFile(ud)['translation'] as { enabled: boolean | null }).enabled).toBe(false);
+    await expect(row('settings-translation-auto')).toHaveClass(/is-disabled/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('every settings group has the dense metrics (rows 36 px, groups 16 px apart) and the window fits a 1024 × 768 work area (R-4, R-6)', async ({}, testInfo) => {
+  const { app } = await launch(...dirs(testInfo));
+  try {
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    const metrics = await settings.evaluate(() => {
+      const groups = [...document.querySelectorAll('.settings > section')] as HTMLElement[];
+      const rows = [...document.querySelectorAll('.settings .form-row:not(.stacked)')] as HTMLElement[];
+      return {
+        groups: groups.length,
+        gaps: groups.slice(1).map((g, i) => Math.round(g.getBoundingClientRect().top - groups[i]!.getBoundingClientRect().bottom)),
+        minRow: Math.min(...rows.map((r) => Math.round(r.getBoundingClientRect().height))),
+        rootHeight: Math.ceil(document.querySelector('[data-settings-root]')!.getBoundingClientRect().height),
+      };
+    });
+    expect(metrics.groups).toBe(3);
+    expect(metrics.gaps).toEqual([16, 16]);
+    expect(metrics.minRow).toBe(36);
+    // The window is the content's height, within a 1024 × 768 display's work area (less the title bar) at the default text size.
+    expect(metrics.rootHeight).toBeLessThanOrEqual(700);
+    // On a display that cannot hold the content the window takes the work area and the page scrolls inside it.
+    const capped = await (await settingsWindow(app)).evaluate((w) => w.getContentSize()[1]);
+    expect(capped).toBe(metrics.rootHeight);
+  } finally {
+    await app.close();
+  }
+});

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom';
 import { useShell } from '../state/shell-store';
 import { lastInput } from '../ui/inputModality';
 import { quietUntilInput } from '../ui/tooltipGate';
-import { hiddenPanes, toggledInspector } from './layout';
+import { hiddenPanes, inspectorContentMin, toggledInspector } from './layout';
 import { useViewportWidth } from './useViewportWidth';
 
 /** DOM id and test id of the toolbar toggle (inspector/InspectorToggle.tsx): where a fold hands a keyboard focus. */
@@ -13,14 +13,15 @@ export const INSPECTOR_TOGGLE_ID = 'inspector-toggle';
 export function useInspectorHidden(present: boolean): boolean {
   const sidebar = useShell((s) => s.sidebar);
   const inspector = useShell((s) => s.inspector);
-  return hiddenPanes({ sidebar, inspector }, useViewportWidth(), present).inspector;
+  const min = inspectorContentMin(useShell((s) => s.view.kind));
+  return hiddenPanes({ sidebar, inspector }, useViewportWidth(), present, min).inspector;
 }
 
 /** ⌥⌘I and the toolbar toggle (the registry handler), by the sidebar's rules (layout.ts toggledInspector). */
 export function useToggleInspector(): () => void {
   return useCallback(() => {
-    const { sidebar, inspector, setInspector } = useShell.getState();
-    setInspector(toggledInspector({ sidebar, inspector }, innerWidth));
+    const { sidebar, inspector, setInspector, view } = useShell.getState();
+    setInspector(toggledInspector({ sidebar, inspector }, innerWidth, inspectorContentMin(view.kind)));
   }, []);
 }
 
@@ -55,7 +56,8 @@ export function useKeepFocusOnInspectorFold(hidden: boolean): void {
 
 /** Shows the item panel if it is out of sight — folded by the user or by the window — as ⌥⌘I would (정보 편집 needs it). */
 export function revealInspector(): void {
-  const { sidebar, inspector, setInspector } = useShell.getState();
+  const { sidebar, inspector, setInspector, view } = useShell.getState();
   const panes = { sidebar, inspector };
-  if (hiddenPanes(panes, innerWidth, true).inspector) setInspector(toggledInspector(panes, innerWidth));
+  const min = inspectorContentMin(view.kind);
+  if (hiddenPanes(panes, innerWidth, true, min).inspector) setInspector(toggledInspector(panes, innerWidth, min));
 }

@@ -32,6 +32,7 @@ import './screens/check.css';
 import './screens/restore.css';
 import './screens/reader.css';
 import './screens/pdf-viewer.css';
+import './screens/translation.css';
 import './screens/palette.css';
 import './screens/settings.css';
 import './screens/drop.css';

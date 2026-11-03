@@ -60,6 +60,8 @@ test('the arrow keys turn pages and the space bar scrolls inside the page', asyn
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
+    // At 100 % a page is taller than any stage: the item panel narrows the stage of a 1024 px window, where the fitted page would be shorter than a screen.
+    await setPdfZoom(page, 1);
     await field(page).fill('50');
     await field(page).press('Enter');
     await expect(viewer(page)).toHaveAttribute('data-page', '50');

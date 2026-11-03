@@ -148,6 +148,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** Text of the open PDF is selected: 선택한 글 번역 is on; absent otherwise. */
+    pdfSelection: z.boolean().optional(),
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
     /** A backup is on main's work line: 백업 만들기… is off. */

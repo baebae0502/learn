@@ -95,6 +95,8 @@ const DESTRUCTIVE: ReadonlySet<CommandId> = new Set<CommandId>(['item.trash']);
  * the renderer keymap, with no menu item to click.
  */
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
+  // Palette only, and only with text selected in the page: translation.spec selects a sentence, closes the pop-up and brings it back through the palette (R-1).
+  'translation.translateSelection': 'translation.spec.ts › 선택한 글 번역 from the palette shows the pop-up again for the selected text',
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
 };
@@ -152,6 +154,7 @@ test('every registry command runs without a page error (library and reader menus
   /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
   const scale = async () => Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
   let scaleBefore = 0;
+  let inspectorBefore: string | null = null;
   const readerOpen = async () => (await page.getByTestId('pdf-viewer').count()) > 0;
   /** Named copies under derived/open/<uuid>/ with the type's extension. */
   const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
@@ -182,17 +185,17 @@ test('every registry command runs without a page error (library and reader menus
       await runMenuCommand(app, 'view.toggleSidebar');
       await expect.poll(sidebar).toBe('shown');
     },
-    // The item panel, both states as for the sidebar; the menu item says what it will do next. 240 + 520 + 320 fit: the
-    // command hid the panel; in a narrower window (the 1024 px macOS runner) it showed the folded one on demand.
+    // The item panel, both states as for the sidebar; the menu item says what it will do next. The library hides the panel
+    // from where it stood (shown, 1440 wide) and the reader likewise: the command flips the state it found, and a second
+    // run puts it back (a narrower window shows a folded panel on demand instead).
     'view.toggleInspector': async () => {
-      const first = (await page.evaluate(() => innerWidth)) >= 1080 ? 'hidden' : 'shown';
+      const first = inspectorBefore === 'shown' ? 'hidden' : 'shown';
       const next = (state: string) => (state === 'hidden' ? '항목 패널 보기' : '항목 패널 가리기');
       await expect.poll(inspector).toBe(first);
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(first));
       await runMenuCommand(app, 'view.toggleInspector');
-      const second = first === 'hidden' ? 'shown' : 'hidden';
-      await expect.poll(inspector).toBe(second);
-      await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(second));
+      await expect.poll(inspector).toBe(inspectorBefore!);
+      await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(inspectorBefore!));
     },
     // One key, two views (P-9): the library's quick search field, or the reader's find bar with its field focused.
     'library.find': async () => {
@@ -280,16 +283,17 @@ test('every registry command runs without a page error (library and reader menus
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
       // The reader's own commands (zoom modes, rotation, page colours, 쪽으로 이동…, the find keys, the sidebar lists) are on there and nowhere else.
-      // ⌘F is the one library command that is also on in the reader, where it is 찾기.
+      // ⌘F (찾기) and ⌥⌘I (the reader's own panel) are the library commands that are also on in the reader.
       const readerOwn = ids.filter((id) => id.startsWith('reader.'));
       if (view === 'library') expect(readerOwn).toEqual([]);
       else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
-      else expect(libraryOnly).toEqual(['library.find']);
+      else expect(libraryOnly.sort()).toEqual(['library.find', 'view.toggleInspector']); // ⌥⌘I is the reader's too while a PDF is open
       for (const id of ids) {
         if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         if (view === 'reader') scaleBefore = await scale();
+        if (id === 'view.toggleInspector') inspectorBefore = await inspector();
         if (view === 'reader') await prepareFind(id);
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();

@@ -75,6 +75,7 @@ import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
 import { useReader } from '../viewers/pdf/readerStore';
+import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
 import { ViewerHost } from '../viewers/ViewerHost';
 import { useReportIdle } from './useReportIdle';
@@ -352,14 +353,18 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not after a
   // failed first read, and not in the reader, whose right slot is the tutor's.
   const showsTable = view.kind === 'library' && (tableShown || listPending);
-  const inspectorHidden = useInspectorHidden(showsTable);
+  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then, and so is its item panel
+  // (the video and the failure states keep the reader without one).
+  const pdfOpen = useReader((s) => s.pdf?.ready === true);
+  const showsInspector = showsTable || (view.kind === 'reader' && pdfOpen);
+  const inspectorHidden = useInspectorHidden(showsInspector);
+  // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
+  const pdfSelection = useSelection((s) => s.text !== '');
   const toggleInspector = useToggleInspector();
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
   const textSize = prefs?.fontSize ?? 13;
-  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then.
-  const pdfOpen = useReader((s) => s.pdf?.ready === true);
   const env = useMemo<CommandEnv>(() => ({
     view: viewKind === 'reader' ? 'viewer' : 'library',
     blocked,
@@ -368,10 +373,11 @@ export function MainWindow(_props: { info: AppInfo }) {
     restoreRunning,
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
+    ...(pdfSelection ? { pdfSelection: true } : {}),
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
-    inspector: showsTable ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
+    inspector: showsInspector ? (inspectorHidden ? 'hidden' : 'shown') : undefined,
     // ⌘+ / ⌘− stop at 15 / 12 and ⌘0 is off at 13 (prefs.fontSize; the default until prefs are read).
     textSize,
     libraryCount: count,
@@ -439,6 +445,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     openSettings: () => void unwrap(api().ui.openSettings()).catch(actionFailed),
     setTextSize,
     ...readerActions,
+    translateSelection: reopenSelection,
     focusPane,
     focusSearch: focusQuickSearch,
     findEverywhere: () => useLibrary.getState().setScope(SCOPE_ALL),
@@ -447,7 +454,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, sidebarHidden, showsTable, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, pdfSelection, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -560,7 +567,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
-        inspector={showsTable ? <Inspector mode="info" /> : undefined}
+        inspector={showsInspector ? <Inspector mode="info" /> : undefined}
         overlays={
           <>
             <Palette />

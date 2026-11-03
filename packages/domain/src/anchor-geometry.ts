@@ -27,16 +27,29 @@ export function rectsToQuads(rects: readonly ClientRect[], viewport: PdfPointMap
   const boxes = rects
     .filter((r) => r.right - r.left >= 0.5 && r.bottom - r.top >= 0.5)
     .map((r) => rectToBox(r, viewport));
-  boxes.sort((a, b) => (Math.abs(a.maxY - b.maxY) > SAME_LINE ? b.maxY - a.maxY : a.minX - b.minX));
-  const merged: Box[] = [];
+  // Lines first, by a strict order of the top edge, so the tolerance never sits inside a comparator (it is not transitive).
+  boxes.sort((a, b) => b.maxY - a.maxY);
+  const lines: Box[][] = [];
   for (const b of boxes) {
-    const last = merged.at(-1);
-    if (last && Math.abs(last.maxY - b.maxY) <= SAME_LINE && Math.abs(last.minY - b.minY) <= SAME_LINE && b.minX - last.maxX <= SAME_LINE) {
-      last.minX = Math.min(last.minX, b.minX);
-      last.maxX = Math.max(last.maxX, b.maxX);
-      last.minY = Math.min(last.minY, b.minY);
-      last.maxY = Math.max(last.maxY, b.maxY);
-    } else merged.push({ ...b });
+    const line = lines.at(-1);
+    if (line && Math.abs(line[0]!.maxY - b.maxY) <= SAME_LINE) line.push(b);
+    else lines.push([b]);
+  }
+  const merged: Box[] = [];
+  for (const line of lines) {
+    line.sort((a, b) => a.minX - b.minX);
+    let last: Box | undefined;
+    for (const b of line) {
+      if (last && Math.abs(last.minY - b.minY) <= SAME_LINE && b.minX - last.maxX <= SAME_LINE) {
+        last.minX = Math.min(last.minX, b.minX);
+        last.maxX = Math.max(last.maxX, b.maxX);
+        last.minY = Math.min(last.minY, b.minY);
+        last.maxY = Math.max(last.maxY, b.maxY);
+      } else {
+        last = { ...b };
+        merged.push(last);
+      }
+    }
   }
   return merged.map(boxToQuad);
 }

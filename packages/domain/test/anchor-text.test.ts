@@ -19,6 +19,18 @@ describe('page text and quote search', () => {
     expect(findQuote(page.text, 'absent words')).toBeNull();
   });
 
+  it('does not take a dropped line-end hyphen or soft hyphen along when the match stops before it', () => {
+    const text = 'The transduc-\ntion model and co­operate';
+    expect(findQuote(text, 'transduc')).toEqual({ start: 4, end: 12 });
+    expect(findQuote(text, 'transduction')).toEqual({ start: 4, end: 18 });
+    expect(findQuote(text, 'co')).toEqual({ start: 29, end: 31 });
+  });
+
+  it('keeps the hyphen of a range between digits across a line break', () => {
+    expect(matchText('1990-\n2000').norm).toBe('1990- 2000');
+    expect(findQuote('in 1990-\n2000 only', '1990- 2000')).toEqual({ start: 3, end: 13 });
+  });
+
   it('matches across Unicode forms and soft hyphens', () => {
     const nfd = '주의 메커니즘'.normalize('NFD');
     expect(findQuote(nfd, '주의 메커니즘')).toEqual({ start: 0, end: nfd.length });

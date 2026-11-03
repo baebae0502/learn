@@ -61,7 +61,10 @@ export function findQuote(text: string, exact: string, hint = 0): TextSpan | nul
     if (dist < bestDist) { best = at; bestDist = dist; }
   }
   if (best === -1) return null;
-  return { start: map[best]!, end: map[best + needle.length]! };
+  // The next character's offset lies after any soft hyphen or line-end hyphen that was dropped; a match that stops before one does not take it along.
+  const next = map[best + needle.length]!;
+  const dropped = text.slice(map[best + needle.length - 1]!, next).match(/(?:\u00ad|-\n)+$/);
+  return { start: map[best]!, end: next - (dropped?.[0].length ?? 0) };
 }
 
 /** The quote of a span with up to `context` characters on each side. */

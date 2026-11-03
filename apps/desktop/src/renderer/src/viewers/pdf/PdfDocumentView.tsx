@@ -5,6 +5,8 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
+import { readWindowParams } from '../../ui/platform';
+import { installAnchorProbe } from './anchorProbe';
 import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
 import { usePageColor } from './usePageColor';
@@ -22,7 +24,7 @@ const zoomOf = (presetValue: string | undefined, scale: number): ZoomValue =>
  * Owns the pdf.js viewer for one open document: the scroll container, the pages, the text and link layers. The viewer
  * fills the store (state and handle) for whatever else the reader mounts; React never renders into the pages.
  */
-export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentProxy; restored: boolean; onFailed(): void }) {
+export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: PDFDocumentProxy; revisionId: string; restored: boolean; onFailed(): void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
@@ -124,7 +126,10 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
         });
         // The pages are drawn at the display's pixel ratio: moving to another screen draws them again.
         const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
+        // E2E only: the spike's selection and anchor hooks (the window's address carries e2e=1 only in an unpackaged test run).
+        const removeProbe = readWindowParams(window.location.search).e2e ? installAnchorProbe({ doc, viewer, revisionId }) : null;
         teardown = () => {
+          removeProbe?.();
           stopWatchingDisplay();
           viewer.setDocument(null);
           store.setHandle(null);
@@ -136,7 +141,7 @@ export function PdfDocumentView({ doc, restored, onFailed }: { doc: PDFDocumentP
       cancelled = true;
       teardown?.();
     };
-  }, [doc]); // onFailed is a state setter of the reader
+  }, [doc, revisionId]); // onFailed is a state setter of the reader
 
   return (
     <>

@@ -103,7 +103,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
-        {open.status === 'ready' && <PdfDocumentView doc={open.doc} restored={restored} onFailed={() => setViewFailed(true)} />}
+        {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} />}
       </div>
     </div>
   );

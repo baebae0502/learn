@@ -60,6 +60,19 @@ describe('the translation service', () => {
     engine.setMode('ok');
     await expect(service.translate(input)).resolves.toMatchObject({ cached: false });
   });
+  it('a request answered from the cache or without the engine still cancels the one in flight', async () => {
+    const { engine, service } = setup();
+    await service.translate(input); // cached
+    engine.setMode('slow');
+    const slow = service.translate({ ...input, text: 'Another one.' }).catch((e: unknown) => e);
+    const calls = engine.calls();
+    expect(await service.translate(input)).toMatchObject({ cached: true });
+    expect(await slow).toMatchObject({ code: 'CANCELLED' });
+    const slow2 = service.translate({ ...input, text: 'Third one.' }).catch((e: unknown) => e);
+    expect(await service.translate({ ...input, text: '안녕하세요.' })).toMatchObject({ sameLanguage: true });
+    expect(await slow2).toMatchObject({ code: 'CANCELLED' });
+    expect(engine.calls()).toBe(calls + 1);
+  });
   it('a new request cancels the one before it; cancel() stops the current one', async () => {
     const { engine, service, rows } = setup();
     engine.setMode('slow');

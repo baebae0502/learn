@@ -27,6 +27,9 @@ export function createTranslationService(deps: {
       const text = prepareText(input.text);
       if (text === '') throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);
       if (text.length > TRANSLATION_MAX_CHARS) throw new LearnError('TRANSLATION_TOO_LONG', ERROR_COPY.translationTooLong);
+      // A new request always ends the one before it, even when this one is answered without the engine.
+      current?.abort();
+      current = null;
       const { engine } = deps;
       if (input.to === 'ko' && isMostlyHangul(text)) return { text, detectedFrom: 'ko', engine: engine.id, cached: false, sameLanguage: true };
 
@@ -34,7 +37,6 @@ export function createTranslationService(deps: {
       const hit = deps.cache().get(key, now());
       if (hit) return { text: hit.result, detectedFrom: hit.detected, engine: hit.engine, cached: true, sameLanguage: hit.detected === input.to };
 
-      current?.abort();
       const mine = new AbortController();
       current = mine;
       try {

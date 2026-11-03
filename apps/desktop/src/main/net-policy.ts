@@ -14,6 +14,7 @@ export async function remoteFetch(url: string, init: RequestInit): Promise<Respo
   } catch {
     throw new Error('REMOTE_HOST_REFUSED');
   }
-  if (parsed.protocol !== 'https:' || !ALLOWED_REMOTE_HOSTS.includes(parsed.hostname)) throw new Error('REMOTE_HOST_REFUSED');
-  return net.fetch(url, init);
+  if (parsed.protocol !== 'https:' || parsed.port !== '' || !ALLOWED_REMOTE_HOSTS.includes(parsed.hostname)) throw new Error('REMOTE_HOST_REFUSED');
+  // A redirect could carry the request to a host that is not on the list.
+  return net.fetch(url, { ...init, redirect: 'error' });
 }

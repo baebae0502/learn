@@ -67,7 +67,8 @@ export function createGoogleWebEngine(deps: { fetch(url: string, init: RequestIn
         const part = await request(chunk, opts.from, opts.to, signal);
         if (first) detectedFrom = part.detectedFrom;
         // The pieces were cut at sentence ends, where the blank between them was dropped.
-        out += first || /\s$/.test(out) ? part.text : ` ${part.text}`;
+        const spaced = opts.to !== 'ja' && opts.to !== 'zh-CN';
+        out += first || !spaced || /\s$/.test(out) ? part.text : ` ${part.text}`;
         first = false;
       }
       return { text: out, detectedFrom };

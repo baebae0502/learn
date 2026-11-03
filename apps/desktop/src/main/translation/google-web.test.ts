@@ -49,6 +49,16 @@ describe('the google-web engine', () => {
     expect(bodies).toHaveLength(2);
     expect(out).toEqual({ text: 'T1 T2', detectedFrom: 'de' });
   });
+  it('joins pieces with a space, except for targets written without spaces', async () => {
+    const make = () => {
+      let n = 0;
+      return createGoogleWebEngine({ fetch: async () => reply([[[`T${++n}`, 'x']], null, 'en']), isOnline: () => true });
+    };
+    const text = `${'a'.repeat(4000)}. ${'b'.repeat(4000)}.`;
+    expect((await make().translate(text, { from: 'auto', to: 'de' }, signal())).text).toBe('T1 T2');
+    expect((await make().translate(text, { from: 'auto', to: 'ja' }, signal())).text).toBe('T1T2');
+    expect((await make().translate(text, { from: 'auto', to: 'zh-CN' }, signal())).text).toBe('T1T2');
+  });
   const failing = (fetch: (u: string, i: RequestInit) => Promise<Response>, over: { isOnline?: () => boolean; timeoutMs?: number } = {}) =>
     createGoogleWebEngine({ fetch, isOnline: () => true, ...over });
   it.each([[429, 'TRANSLATION_RATE_LIMITED'], [403, 'TRANSLATION_BLOCKED'], [400, 'TRANSLATION_BLOCKED'], [503, 'TRANSLATION_UNAVAILABLE'], [500, 'TRANSLATION_UNAVAILABLE']])(

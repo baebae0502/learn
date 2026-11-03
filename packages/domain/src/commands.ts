@@ -72,6 +72,11 @@ export type CommandId =
   | 'reader.rotateCw'
   | 'reader.rotateCcw'
   | 'reader.goToPage'
+  | 'reader.findNext'
+  | 'reader.findPrevious'
+  | 'reader.findSelection'
+  | 'reader.showThumbnails'
+  | 'reader.showOutline'
   | 'reader.pageColorAuto'
   | 'reader.pageColorOriginal'
   | 'reader.pageColorSepia'
@@ -80,6 +85,10 @@ export type CommandId =
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
 export type PageColor = (typeof PAGE_COLORS)[number];
+/** What the reader's sidebar lists (settings 'reader.nav'). */
+export const READER_NAVS = ['thumbnails', 'outline'] as const;
+export type ReaderNav = (typeof READER_NAVS)[number];
+
 /**
  * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag` / `trash`: needs a
  * target of that kind (judged on the targets handed in; the first of these a command lists decides). `trash` is the trash
@@ -239,8 +248,22 @@ export const COMMANDS: readonly CommandSpec[] = [
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
   {
-    id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'],
+    id: 'library.find', label: '빠른 검색', stateLabels: { view: { library: '빠른 검색', viewer: '찾기' } }, accelerator: 'CmdOrCtrl+F',
+    menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library', 'viewer'],
     keywords: ['검색', '찾기', 'search', 'find'],
+  },
+  // 찾기 in the reader (M7a): ⌘F above is its find bar; these keys go on in the PDF's text and are off without a PDF.
+  {
+    id: 'reader.findNext', label: '다음 찾기', accelerator: 'CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 2 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '다음', 'find next'],
+  },
+  {
+    id: 'reader.findPrevious', label: '이전 찾기', accelerator: 'Shift+CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 3 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '이전', 'find previous'],
+  },
+  {
+    id: 'reader.findSelection', label: '선택한 글로 찾기', accelerator: 'CmdOrCtrl+E', menu: { menu: 'edit', group: 1, order: 4 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '선택', '선택한 글', 'use selection for find'],
   },
   // 내 라이브러리 전체에서 찾기 (spec 7.1): the no-results state's second button and a palette command — the view returns to
   // 내 라이브러리 and the query stays. No menu bar item, key or context menu: the design spec draws none for it.
@@ -418,6 +441,15 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'reader.rotateCcw', label: '반시계 방향으로 회전', accelerator: 'CmdOrCtrl+L', menu: { menu: 'view', group: 5, order: 2 }, contexts: ['viewer'],
     keywords: ['회전', '돌리기', '왼쪽', '반시계', 'rotate', 'counterclockwise'],
+  },
+  // The reader's sidebar shows thumbnails or the outline (보기 group 2, after the library's pane commands).
+  {
+    id: 'reader.showThumbnails', label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2', menu: { menu: 'view', group: 2, order: 4 }, contexts: ['viewer'],
+    keywords: ['썸네일', '미리보기', '쪽 목록', '사이드바', 'thumbnails', 'pages'],
+  },
+  {
+    id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3', menu: { menu: 'view', group: 2, order: 5 }, contexts: ['viewer'],
+    keywords: ['목차', '차례', '장', '절', '사이드바', 'outline', 'contents', 'table of contents'],
   },
   // 쪽 색 ▸ is one group in SUBMENUS (P-14): the four members carry no placement, the group holds it. The palette names each
   // one with the group's word.
@@ -693,7 +725,12 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
 const RULES: Partial<Record<CommandId, Rule>> = {
-  'library.find': (c) => c.libraryCount > 0,
+  'library.find': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  'reader.findNext': pdfOpen,
+  'reader.findPrevious': pdfOpen,
+  'reader.findSelection': pdfOpen,
+  'reader.showThumbnails': pdfOpen,
+  'reader.showOutline': pdfOpen,
   // Only with a search to keep, and only from a view that narrows it (spec 7.1).
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).

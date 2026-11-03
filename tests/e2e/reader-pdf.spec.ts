@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, importPaths, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
+const SAMPLE = path.join(FIXTURES, 'sample.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
 const LOCKED = path.join(FIXTURES, 'locked.pdf');
 const VIDEO = path.join(FIXTURES, 'sample-h264-aac.mp4');
@@ -301,6 +302,174 @@ test('a video has no page to turn: the rotation is off there and on again in a P
     await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(true);
     await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(false);
     await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+// Find, and the reader's sidebar (M7a Task 8).
+const findBar = (page: Page) => page.getByTestId('pdf-find-bar');
+const findInput = (page: Page) => page.getByTestId('pdf-find-field').getByRole('searchbox');
+const findCount = (page: Page) => page.getByTestId('pdf-find-count');
+
+test('⌘F is named 찾기 in the reader and opens the find bar; ⌘G goes on, a word that is not there says so', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await expect.poll(() => menuLabel(app, 'library.find')).toBe('찾기');
+    await expect(findBar(page)).toHaveCount(0);
+    await runMenuCommand(app, 'library.find');
+    await expect(findBar(page)).toBeVisible();
+    await expect(findInput(page)).toBeFocused();
+    await findInput(page).fill('attention');
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+    await runMenuCommand(app, 'reader.findNext');
+    await expect(findCount(page)).toHaveText(/^2 \/ \d+$/);
+    await runMenuCommand(app, 'reader.findPrevious');
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+    await findInput(page).fill('zzqxv');
+    await expect(findCount(page)).toHaveText('찾을 수 없음');
+    await findInput(page).press('Escape');
+    await expect(findBar(page)).toHaveCount(0);
+    await expect(page.getByTestId('pdf-stage')).toBeFocused();
+    await backFromReader(page);
+    await expect.poll(() => menuLabel(app, 'library.find')).toBe('빠른 검색');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a Korean word is found on a page written in NFC and on one written in NFD', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [KOREAN]);
+    await openItem(page, 'korean');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '3');
+    await runMenuCommand(app, 'library.find');
+    await findInput(page).fill('메커니즘');
+    await expect.poll(async () => Number(((await findCount(page).textContent()) ?? '').split('/')[1])).toBeGreaterThanOrEqual(2);
+    // The match on page 2 is reached by going on from page 1's.
+    await runMenuCommand(app, 'reader.findNext');
+    await expect(viewer(page)).toHaveAttribute('data-page', '2');
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘E takes the selected word into the find bar', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const word = await page.evaluate(() => {
+      const span = [...document.querySelectorAll('.page[data-page-number="1"] .textLayer span')].find((s) => /attention/i.test(s.textContent ?? ''))!;
+      const text = span.firstChild as Text;
+      const at = text.data.toLowerCase().indexOf('attention');
+      const range = document.createRange();
+      range.setStart(text, at);
+      range.setEnd(text, at + 'attention'.length);
+      const selection = getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return text.data.slice(at, at + 'attention'.length);
+    });
+    await runMenuCommand(app, 'reader.findSelection');
+    await expect(findBar(page)).toBeVisible();
+    await expect(findInput(page)).toHaveValue(word);
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the thumbnail of page 50 goes to page 50; the outline goes to a chapter and is searched', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await expect(page.getByTestId('reader-sidebar')).toBeVisible();
+    await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+    await expect(page.getByTestId('pdf-thumb').first()).toHaveAttribute('data-current', 'true');
+    // Virtualised: far fewer thumbnails are in the page than the document has.
+    expect(await page.getByTestId('pdf-thumb').count()).toBeLessThan(40);
+    await page.getByTestId('pdf-thumbnails').evaluate((el) => {
+      el.scrollTop = (el.scrollHeight / 100) * 49 - 40;
+    });
+    const fiftieth = page.locator('[data-testid="pdf-thumb"][data-page="50"]');
+    await expect(fiftieth).toBeVisible();
+    await fiftieth.click();
+    await expect(viewer(page)).toHaveAttribute('data-page', '50');
+    await expect(page.locator('[data-testid="pdf-thumb"][data-current="true"]')).toHaveAttribute('data-page', '50');
+    // The thumbnail is drawn: its canvas holds ink.
+    await expect.poll(() =>
+      fiftieth.locator('canvas').evaluate((c: HTMLCanvasElement) => {
+        const px = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        for (let i = 0; i < px.length; i += 4) if (px[i]! < 200) return true;
+        return false;
+      }),
+    ).toBe(true);
+
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
+    await expect.poll(async () => Number(await viewer(page).getAttribute('data-page'))).not.toBe(50);
+    const chapterPage = await viewer(page).getAttribute('data-page');
+    // The mark is on the last entry that starts on or before the page: Chapter 3 or the first of its sections, never another chapter.
+    await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveAttribute('aria-label', /^(Chapter 3|3\.\d)/);
+    expect(Number(chapterPage)).toBeGreaterThan(1);
+
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('3.2');
+    await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^3\.2 / }).first()).toBeVisible();
+    await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^1\.1 / })).toHaveCount(0);
+    // The choice outlives the reader: thumbnails and outline are one setting.
+    await runMenuCommand(app, 'reader.showThumbnails');
+    await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+    await runMenuCommand(app, 'reader.showOutline');
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('a PDF without an outline says so in the sidebar', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [SAMPLE]);
+    await openItem(page, 'sample');
+    await expect(viewer(page)).toHaveAttribute('data-pages', /^[1-9]/);
+    await runMenuCommand(app, 'reader.showOutline');
+    await expect(page.getByTestId('reader-sidebar-empty')).toContainText('이 PDF에는 목차가 없습니다');
+    await expect(page.getByTestId('pdf-outline')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a PDF moved to the trash while it is read leaves the sidebar without pages', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const id = await page.evaluate(async () => {
+      const r = await window.learn.library.list();
+      return r.ok ? (r.data.find((i) => i.title === 'paper-100')?.id ?? null) : null;
+    });
+    await trashItems(page, [id!]);
+    await expect(page.getByTestId('reader-sidebar-empty')).toContainText('복원하면 쪽이 보입니다');
+    await expect(page.getByTestId('pdf-thumbnails')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a protected PDF shows no pages in the sidebar until it is opened', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LOCKED]);
+    await openItem(page, 'locked');
+    await expect(page.getByTestId('reader-sidebar-empty')).toContainText('암호를 입력하면 쪽이 보입니다');
+    await page.getByTestId('pdf-password').fill('learn');
+    await page.getByTestId('pdf-password').press('Enter');
+    await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+    await expect(page.getByTestId('reader-sidebar-empty')).toHaveCount(0);
   } finally {
     await app.close();
   }

@@ -35,4 +35,120 @@
     font: var(--type-footnote);
     text-wrap: pretty;
   }
+
+  /* The reader's sidebar (mockup .reader-nav-head, .thumbs, .outline): the segment on top, the list under it taking the rest. */
+  .reader-sidebar {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    margin: 0 calc(-1 * var(--space-8)); /* the list's own gutters: the sidebar's 8 px are taken back */
+  }
+  .reader-nav-head {
+    flex: none;
+    padding: 0 var(--space-12) var(--space-8);
+  }
+  .nav-search {
+    flex: none;
+    padding: var(--space-8) var(--space-12) var(--space-4);
+  }
+  .outline-wait {
+    flex: 1 1 auto;
+  }
+  .thumbs {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    position: relative;
+    outline: none;
+  }
+  .thumbs:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .thumbs-inner {
+    position: relative;
+    width: 100%;
+  }
+  .thumb {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-6);
+    padding-top: var(--space-12);
+    cursor: default;
+  }
+  .thumb-page {
+    width: 120px; /* local: thumbnail width (ThumbnailList THUMB_WIDTH) */
+    overflow: hidden;
+    position: relative;
+    flex: none;
+    border-radius: 1px; /* local: the page's own hairline corner */
+    background: var(--page-original-bg);
+    box-shadow: var(--shadow-page);
+  }
+  .thumb-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .thumb-canvas:not([data-drawn]) {
+    visibility: hidden;
+  }
+  .thumbs[data-page-color='sepia'] .thumb-page {
+    background: var(--page-sepia-bg);
+  }
+  .thumbs[data-page-color='sepia'] .thumb-canvas {
+    filter: sepia(0.35) saturate(1.1) brightness(0.98); /* local: the page filter of the stage */
+  }
+  .thumbs[data-page-color='dark'] .thumb-page {
+    background: var(--page-dark-bg);
+  }
+  .thumbs[data-page-color='dark'] .thumb-canvas {
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.95); /* local: the page filter of the stage */
+  }
+  .thumb .lbl {
+    padding: 0 var(--space-4);
+    border-radius: var(--radius-xs);
+    color: var(--text-secondary);
+    font: var(--type-caption);
+    font-variant-numeric: tabular-nums;
+  }
+  .thumb:hover .thumb-page {
+    box-shadow: 0 0 0 2px var(--fill-pressed);
+  }
+  /* The current page: a 2 px ring and a filled number (design-spec 7.1's selection). */
+  .thumb[data-current] .thumb-page {
+    box-shadow: 0 0 0 2px var(--accent-ring);
+  }
+  .thumb[data-current] .lbl {
+    background: var(--accent);
+    color: var(--text-on-accent);
+  }
+  .outline {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-4) var(--space-8);
+    outline: none;
+  }
+  .outline .nav-row {
+    font: var(--type-body);
+  }
+  .outline .nav-row .page {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Where the reader is in the outline: the neutral selection fill (the list is not a view chooser). */
+  .outline .nav-row[data-current-page] {
+    background: var(--fill-selected);
+  }
+  .outline .nav-row[data-current-page] .page {
+    color: var(--text-secondary);
+  }
 }

@@ -115,14 +115,14 @@ describe('command registry', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
-      'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
     expect(commandById('file.importManaged')).toMatchObject({ label: '파일 가져오기…', accelerator: 'CmdOrCtrl+O' });
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
     // ⌘F (design-spec 7.4 라이브러리): 편집 › after the system's edit items, while the library has items.
-    expect(commandById('library.find')).toMatchObject({ label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'] });
+    expect(commandById('library.find')).toMatchObject({ label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library', 'viewer'] });
     expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
     expect(commandById('view.toggleSidebar')).toMatchObject({
       label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
@@ -565,7 +565,19 @@ describe('the reader commands (P-9, P-14)', () => {
       }
       expect(c.keywords?.some((k) => /[가-힣]/.test(k)), id).toBe(true);
     }
-    expect(commandLabel(commandById('library.find'), 'darwin', { view: 'viewer' })).toBe('빠른 검색'); // 찾기 is the find task's
+    // ⌘F is the same kind of shared key: the library's quick search, the reader's find bar.
+    const find = commandById('library.find');
+    expect(find.stateLabels).toEqual({ view: { library: '빠른 검색', viewer: '찾기' } });
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(find, platform, { view: 'viewer' })).toBe('찾기');
+      expect(commandLabel(find, platform, { view: 'library' })).toBe('빠른 검색');
+      expect(commandLabel(find, platform)).toBe('빠른 검색');
+    }
+    expect(isCommandAvailable('library.find', VIEWER)).toBe(false);
+    expect(isCommandAvailable('library.find', PDF_OPEN)).toBe(true);
+    expect(isCommandAvailable('library.find', { ...PDF_OPEN, blocked: true })).toBe(false);
+    expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 2 })).toBe(true);
+    expect(isCommandAvailable('library.find', { ...LIB, libraryCount: 0 })).toBe(false);
   });
   it('lets ⌘+ ⌘− ⌘0 run in the reader with a PDF open, by the zoom rule, and in the library by the text size rule', () => {
     for (const id of SHARED) {
@@ -580,7 +592,7 @@ describe('the reader commands (P-9, P-14)', () => {
   });
   it('every reader.* command needs pdfOpen in the viewer, and exists nowhere else', () => {
     expect(READER.map((c) => c.id).sort()).toEqual([
-      'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
     ]);
     for (const c of READER) {
       expect(c.contexts, c.id).toEqual(['viewer']);
@@ -592,6 +604,13 @@ describe('the reader commands (P-9, P-14)', () => {
       expect(inPalette(c), c.id).toBe(true);
       expect(c.keywords?.some((k) => /[가-힣]/.test(k)), `${c.id}: a Korean keyword`).toBe(true);
     }
+  });
+  it('places the find and sidebar commands after ⌘F in 편집 and after the item panel in 보기', () => {
+    expect(commandById('reader.findNext')).toMatchObject({ label: '다음 찾기', accelerator: 'CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 2 } });
+    expect(commandById('reader.findPrevious')).toMatchObject({ label: '이전 찾기', accelerator: 'Shift+CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 3 } });
+    expect(commandById('reader.findSelection')).toMatchObject({ label: '선택한 글로 찾기', accelerator: 'CmdOrCtrl+E', menu: { menu: 'edit', group: 1, order: 4 } });
+    expect(commandById('reader.showThumbnails')).toMatchObject({ label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2', menu: { menu: 'view', group: 2, order: 4 } });
+    expect(commandById('reader.showOutline')).toMatchObject({ label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3', menu: { menu: 'view', group: 2, order: 5 } });
   });
   it('names and places the reader commands', () => {
     expect(commandById('reader.zoomAuto')).toMatchObject({ label: '자동 맞춤', menu: { menu: 'view', group: 4, order: 1 } });

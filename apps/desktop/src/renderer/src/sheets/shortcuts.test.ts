@@ -23,6 +23,12 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(named('library')).toEqual(['글자 크게', '글자 작게', '기본 글자 크기']);
     expect(named()).toEqual(['글자 크게', '글자 작게', '기본 글자 크기']);
   });
+  it('names ⌘F by the view the sheet was opened from: 찾기 in the reader, 빠른 검색 elsewhere', () => {
+    const named = (view?: 'library' | 'viewer') => shortcutGroups('darwin', view).flatMap((g) => g.rows).find((r) => r.spoken === '⌘F')?.label;
+    expect(named('viewer')).toBe('찾기');
+    expect(named('library')).toBe('빠른 검색');
+    expect(named()).toBe('빠른 검색');
+  });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
     expect(app.rows.find((r) => r.label === '사이드바 보기/가리기')?.keys).toEqual(['Ctrl', 'Shift', 'S']);
@@ -80,8 +86,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       const groups = shortcutGroups(platform);
       const [left, right] = shortcutColumns(groups);
       expect([...left, ...right], platform).toEqual(groups); // every group whole, in ORDER
-      expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리']);
-      expect(right.map((g) => g.title), platform).toEqual(['자료', '정리', '리더', '팔레트·대화상자']);
+      expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리', '자료']);
+      expect(right.map((g) => g.title), platform).toEqual(['정리', '리더', '팔레트·대화상자']);
     }
     const group = (rows: number) => ({ title: `${rows}`, rows: Array.from({ length: rows }, (_, i) => ({ label: `${i}`, keys: [], spoken: '' })) });
     expect(shortcutColumns([group(12), group(2), group(2), group(2)]).map((c) => c.length)).toEqual([1, 3]);

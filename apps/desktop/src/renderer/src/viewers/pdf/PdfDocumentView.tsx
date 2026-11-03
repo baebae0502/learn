@@ -6,6 +6,7 @@ import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
+import { useFind } from './findStore';
 import { installAnchorProbe } from './anchorProbe';
 import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
@@ -48,11 +49,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
     void Promise.all([pdfViewerModule(), pdfjs()])
       .then(([viewerLib, lib]) => {
         if (cancelled) return;
-        const { EventBus, PDFLinkService, PDFViewer, LinkTarget } = viewerLib;
+        const { EventBus, PDFFindController, PDFLinkService, PDFViewer, LinkTarget } = viewerLib;
         const eventBus = new EventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
+        // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
+        const findController = new PDFFindController({ linkService, eventBus, updateMatchesCountOnProgress: true });
         const viewer = new PDFViewer({
           container,
+          findController,
           viewer: viewerEl,
           eventBus,
           linkService,
@@ -94,6 +98,17 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           viewer.currentScaleValue = 'auto';
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
         });
+        // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.
+        const reportFind = (e: { state?: number; matchesCount: { current: number; total: number } }) => {
+          const { query } = useFind.getState();
+          const status = query.trim() === '' ? 'idle' : e.state === 1 ? 'notFound' : e.state === 2 ? 'wrapped' : 'found';
+          useFind.getState().report(status, e.matchesCount.total > 0 ? e.matchesCount : null);
+        };
+        eventBus.on('updatefindcontrolstate', reportFind);
+        eventBus.on('updatefindmatchescount', (e: { matchesCount: { current: number; total: number } }) => {
+          // The running count of a search still going keeps the status the control state gave.
+          useFind.getState().report(useFind.getState().status === 'idle' ? 'found' : useFind.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
+        });
         eventBus.on('pagechanging', (e: { pageNumber: number }) => store.setPdf({ pageNumber: e.pageNumber }));
         eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: zoomOf(e.presetValue, e.scale) }));
         eventBus.on('rotationchanging', (e: { pagesRotation: number }) => store.setPdf({ rotation: e.pagesRotation as Rotation }));
@@ -133,7 +148,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           stopWatchingDisplay();
           // A render the queue still has scheduled would draw a page whose document is going away ("pdfPage is not loaded").
           viewer.renderingQueue!.renderView = () => false;
+          // This also detaches the find controller (pdf.js hands it null): its text extraction asks the document for pages.
           viewer.setDocument(null);
+          useFind.getState().reset();
           store.setHandle(null);
           store.setPdf(null);
         };

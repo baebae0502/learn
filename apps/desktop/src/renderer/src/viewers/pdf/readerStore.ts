@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { ReaderNav } from '@learn/domain';
 import { readWindowParams } from '../../ui/platform';
+
+export type { ReaderNav };
 
 /** 1 is 100 %. */
 export type ZoomValue = 'auto' | 'page-width' | 'page-fit' | number;
@@ -32,10 +35,16 @@ export interface PdfViewHandle {
 
 export const INITIAL_PDF: PdfState = { ready: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
 
+/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
+export type NoPages = 'trashed' | 'locked' | 'none';
+
 interface ReaderStore {
   /** null while no PDF is open. */
   pdf: PdfState | null;
   handle: PdfViewHandle | null;
+  /** Said by the host of the reader (the item's state) and by the PDF reader (the password): the sidebar shows the first. */
+  noPages: Readonly<Record<'host' | 'reader', NoPages | null>>;
+  setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
 }
@@ -43,6 +52,8 @@ interface ReaderStore {
 export const useReader = create<ReaderStore>()((set) => ({
   pdf: null,
   handle: null,
+  noPages: { host: null, reader: null },
+  setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
   setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
   setHandle: (handle) => set({ handle }),
 }));

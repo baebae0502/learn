@@ -115,6 +115,7 @@ test('every registry command runs without a page error (library and reader menus
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const searchInput = page.getByTestId('search-field').getByRole('searchbox');
+  const findField = page.getByTestId('pdf-find-field').getByRole('searchbox');
   /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
   const scale = async () => Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
   let scaleBefore = 0;
@@ -160,7 +161,17 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(inspector).toBe(second);
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(second));
     },
-    'library.find': () => expect(searchInput).toBeFocused(),
+    // One key, two views (P-9): the library's quick search field, or the reader's find bar with its field focused.
+    'library.find': async () => {
+      if (await readerOpen()) await expect(findField).toBeFocused();
+      else await expect(searchInput).toBeFocused();
+    },
+    'reader.findNext': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
+    'reader.findPrevious': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
+    'reader.findSelection': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
+    'reader.showThumbnails': () => expect(page.getByTestId('pdf-thumbnails')).toBeVisible(),
+    // sample.pdf has no outline: the sidebar says so.
+    'reader.showOutline': () => expect(page.getByTestId('reader-sidebar-empty')).toContainText('이 PDF에는 목차가 없습니다'),
     // 보기 › 정렬 기준 ▸ 연도: the column row keeps the direction, so the table is sorted by 연도, newest first as it was.
     'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
     // 컬렉션에 추가 ▸ 전수 시험: the selected sample is filed there (main has it, not only the screen).
@@ -225,7 +236,7 @@ test('every registry command runs without a page error (library and reader menus
         await openItem(page, 'sample'); // a double-click: a single click only selects
         // The menu is read once below: wait until the reader is up and main's menu has followed.
         await expect(page.getByTestId('viewer-title')).toBeVisible();
-        await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+        await expect.poll(() => menuLabel(app, 'library.find')).toBe('찾기');
         // The reader's commands follow the PDF's pages, which main hears of a moment after the toolbar shows.
         await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
         await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(true);
@@ -234,12 +245,13 @@ test('every registry command runs without a page error (library and reader menus
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
-      // The reader's own commands (zoom modes, rotation, page colours, 쪽으로 이동…) are on there and nowhere else.
+      // The reader's own commands (zoom modes, rotation, page colours, 쪽으로 이동…, the find keys, the sidebar lists) are on there and nowhere else.
+      // ⌘F is the one library command that is also on in the reader, where it is 찾기.
       const readerOwn = ids.filter((id) => id.startsWith('reader.'));
       if (view === 'library') expect(readerOwn).toEqual([]);
       else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
-      else expect(libraryOnly).toEqual([]);
+      else expect(libraryOnly).toEqual(['library.find']);
       for (const id of ids) {
         if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists

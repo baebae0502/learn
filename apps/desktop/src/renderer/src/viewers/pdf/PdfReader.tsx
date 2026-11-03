@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import type { LibraryItem } from '@learn/domain';
+import { useCommands } from '../../commands/CommandProvider';
 import { isEditing } from '../../commands/keymap';
+import { commandById, commandLabel } from '@learn/domain';
 import { t } from '../../strings';
+import { currentPlatform } from '../../ui/platform';
 import { IconButton } from '../../ui/Button';
 import { isComposingKey } from '../../ui/ime';
 import { ratio, restorePageIndex } from '../positionSaver';
@@ -11,6 +14,8 @@ import { usePosition } from '../usePosition';
 import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
 import { pageFieldRef } from './pageField';
+import { FindBar } from './FindBar';
+import { useFind } from './findStore';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
 import { stageKeyAction } from './stageKeys';
@@ -34,6 +39,19 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const [viewFailed, setViewFailed] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const ready = pdf?.ready === true && handle !== null;
+  const findOpen = useFind((s) => s.open);
+  const { run } = useCommands();
+  const locked = open.status === 'password';
+  // The sidebar has no pages to list while the password is asked for.
+  useEffect(() => {
+    useReader.getState().setNoPages('reader', locked ? 'locked' : null);
+    return () => useReader.getState().setNoPages('reader', null);
+  }, [locked]);
+  const closeFind = () => {
+    handle?.eventBus()?.dispatch('findbarclose', { source: null });
+    useFind.getState().closeBar();
+    stageRef.current?.focus();
+  };
 
   // The saved page is applied once, as soon as the pages exist and the stored position is known; the stage stays
   // hidden until then, so the reader never shows page 1 first.
@@ -99,10 +117,21 @@ export function PdfReader({ item }: { item: LibraryItem }) {
         <span className="spacer" />
         <ZoomField onEscape={() => stageRef.current?.focus()} />
         <span className="spacer" />
+        <IconButton
+          icon={Search}
+          label={commandLabel(commandById('library.find'), currentPlatform(), { view: 'viewer' })}
+          accelerator={commandById('library.find').accelerator}
+          isOn={findOpen}
+          testId="pdf-find"
+          isDisabled={!ready}
+          disabledReason={t.reader.opening}
+          onPress={() => (findOpen ? closeFind() : run('library.find'))}
+        />
         <ViewMenu />
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
+        {findOpen && ready && <FindBar onClose={closeFind} />}
         {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} />}
       </div>
     </div>

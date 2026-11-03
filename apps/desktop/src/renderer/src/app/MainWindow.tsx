@@ -72,6 +72,7 @@ import { afterPaintOr } from '../ui/afterPaint';
 import { clearImportMarks, perfMark } from '../ui/perfMarks';
 import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
+import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
 import { useReader } from '../viewers/pdf/readerStore';
 import { ReaderToolbar } from '../viewers/ReaderToolbar';
@@ -555,7 +556,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={<LibrarySidebar onFilesDrop={onDrop} />}
+        sidebar={view.kind === 'reader' ? <ReaderSidebar /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}

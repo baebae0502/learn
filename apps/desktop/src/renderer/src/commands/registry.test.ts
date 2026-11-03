@@ -57,6 +57,10 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   rotate: vi.fn(),
   setPageColor: vi.fn(),
   goToPage: vi.fn(),
+  openFind: vi.fn(),
+  findAgain: vi.fn(),
+  findSelection: vi.fn(),
+  showReaderNav: vi.fn(),
   focusPane: vi.fn(),
   keepOneOfDuplicates: vi.fn(),
   keepAllDuplicates: vi.fn(),
@@ -278,6 +282,22 @@ describe('renderer command registry', () => {
     }
     expect(contextOf(e)).toMatchObject({ view: 'viewer', pdfOpen: true });
     expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('pdfOpen');
+  });
+  it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    for (const id of ['library.find', 'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline'] as const) expect(runCommand(id, e)).toBe(true);
+    expect(e.openFind).toHaveBeenCalledTimes(1);
+    expect(e.focusSearch).not.toHaveBeenCalled();
+    expect(vi.mocked(e.findAgain).mock.calls).toEqual([[false], [true]]);
+    expect(e.findSelection).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(e.showReaderNav).mock.calls).toEqual([['thumbnails'], ['outline']]);
+    // An empty library has nothing to quick-search; a reader with no PDF has nothing to find in.
+    const lib = env({ libraryCount: 3 });
+    expect(runCommand('library.find', lib)).toBe(true);
+    expect(lib.focusSearch).toHaveBeenCalledTimes(1);
+    expect(lib.openFind).not.toHaveBeenCalled();
+    for (const off of [env({ view: 'viewer' }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) expect(runCommand('library.find', off)).toBe(false);
+    expect(runCommand('reader.findNext', env({ libraryCount: 3 }))).toBe(false);
   });
   it('item commands use the targets of the given items', () => {
     const e = env();

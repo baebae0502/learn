@@ -1,7 +1,7 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
 import type { PageColor, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
-import type { ZoomValue } from '../viewers/pdf/readerStore';
+import type { ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
 /** What the main window can do now: its command context plus the handlers. Rebuilt every render; later tasks add handlers. */
 export interface CommandEnv extends CommandContextState {
@@ -83,6 +83,14 @@ export interface CommandEnv extends CommandContextState {
   setPageColor(color: PageColor): void;
   /** ⌥⌘G: the page field takes the focus with its number selected. */
   goToPage(): void;
+  /** ⌘F in the reader: the find bar opens (or its field is taken again) with its text selected. */
+  openFind(): void;
+  /** ⌘G / ⇧⌘G: the next or the previous match; a bar that is closed opens first. */
+  findAgain(previous: boolean): void;
+  /** ⌘E: the selected text becomes the find bar's query. */
+  findSelection(): void;
+  /** ⌥⌘2 / ⌥⌘3: the reader's sidebar shows the thumbnails or the outline (the sidebar opens if it is folded). */
+  showReaderNav(kind: ReaderNav): void;
   /** 가져오기 취소 (the palette; the progress toast's 취소 does the same): main's queue stops (spec 3.5). */
   cancelImport(): void;
   /** 백업 만들기… (spec 8.1): main asks for a folder and puts the backup on its work line; the window stays in use. */
@@ -155,7 +163,13 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'file.cancelImport': (env) => env.cancelImport(),
   'file.backup': (env) => env.backup(),
   'file.restore': (env) => env.restoreBackup(),
-  'library.find': (env) => env.focusSearch(),
+  // One key, two views (P-9): the reader's field is the find bar.
+  'library.find': (env) => (env.view === 'viewer' ? env.openFind() : env.focusSearch()),
+  'reader.findNext': (env) => env.findAgain(false),
+  'reader.findPrevious': (env) => env.findAgain(true),
+  'reader.findSelection': (env) => env.findSelection(),
+  'reader.showThumbnails': (env) => env.showReaderNav('thumbnails'),
+  'reader.showOutline': (env) => env.showReaderNav('outline'),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
   'item.open': (env, t) => env.open(itemOf(t)),

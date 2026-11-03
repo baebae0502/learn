@@ -83,6 +83,10 @@ const EDIT: Shape = {
     { label: '모두 선택', role: 'selectAll' },
     SEP,
     { id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F' },
+    // The reader's find keys: one command per key, so ⌘F is above and these follow it.
+    { id: 'reader.findNext', label: '다음 찾기', accelerator: 'CmdOrCtrl+G' },
+    { id: 'reader.findPrevious', label: '이전 찾기', accelerator: 'Shift+CmdOrCtrl+G' },
+    { id: 'reader.findSelection', label: '선택한 글로 찾기', accelerator: 'CmdOrCtrl+E' },
   ],
 };
 const VIEW = (platform: NodeJS.Platform): Shape => ({
@@ -104,6 +108,8 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
         { id: 'library.sortBy?direction=desc', label: '내림차순' },
       ],
     },
+    { id: 'reader.showThumbnails', label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2' },
+    { id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3' },
     SEP,
     // ⌘+ / ⌘− / ⌘0; #1 is ⌘+'s hidden ⌘= twin (shape() does not carry `visible`).
     { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus' },
@@ -397,6 +403,17 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(shown()).toEqual(['확대', '확대', '축소', '실제 크기']);
     applyMenuLabels(lookup, 'darwin', { view: 'library' }, keys);
     expect(shown()).toEqual(['글자 크게', '글자 크게', '글자 작게', '기본 글자 크기']);
+  });
+  it('names ⌘F by the view, in place: 빠른 검색 in the library, 찾기 in the reader (P-9)', () => {
+    const find = [commandById('library.find')];
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: find, enabled: ALL, onCommand: vi.fn(), labels: { view: 'library' } });
+    const byId = byIdOf(template);
+    const lookup = { getMenuItemById: (id: string) => byId.get(id) ?? null };
+    expect(byId.get('library.find')?.label).toBe('빠른 검색');
+    applyMenuLabels(lookup, 'darwin', { view: 'viewer' }, find);
+    expect(byId.get('library.find')?.label).toBe('찾기');
+    applyMenuLabels(lookup, 'darwin', { view: 'library' }, find);
+    expect(byId.get('library.find')?.label).toBe('빠른 검색');
   });
   it('enables a menu-bar item command from the reported selection, in place, never in the reader (P-2, spec 6)', () => {
     // No item command has a menu placement yet (the 파일 menu's item commands come later): a variant of the registry stands in.

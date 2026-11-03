@@ -4007,10 +4007,10 @@ h2,
   font: var(--type-footnote);
 }
 .tr-box {
-  min-height: 72px; /* local: three body lines and the box's inset */
-  padding: var(--space-6) var(--space-8);
+  min-height: 76px; /* local: three paragraph lines (3 × 20) and the box's 2 × 8 inset */
+  padding: var(--space-8);
   border-radius: var(--radius-md);
-  font: var(--type-body);
+  font: var(--type-paragraph);
   overflow: hidden;
 }
 .tr-box.src {
@@ -4032,12 +4032,42 @@ h2,
 .tr-box .ph {
   color: var(--text-tertiary);
 }
-.tr-box.clip p {
-  /* A long original shows its first four lines; the box scrolls in the app. */
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.tr-box.src {
+  /* The original grows to six lines (6 × 20 + 2 × 8), then it scrolls inside the box; the translation grows and the
+     inspector scrolls. A line break the user (or 이어 붙이기) makes is a blank line, as in a text area. */
+  max-height: 136px; /* local: six paragraph lines and the inset */
+}
+.tr-box.src p + p {
+  margin-top: var(--space-20);
+}
+.pdf-page.paper .find-hit {
+  /* pdf.js draws its highlight over the text layer: it never moves the text. */
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: 0 0 0 2px var(--find-match);
+}
+.pdf-page.paper .find-hit.current {
+  box-shadow: 0 0 0 2px var(--find-match-current), 0 0 0 3px var(--accent);
+}
+.section.tr + .item-head {
+  border-top: 1px solid var(--separator);
+}
+.settings-window.dense .s-body {
+  gap: var(--space-16);
+}
+.settings-window.dense .form-row {
+  min-height: 36px; /* local: the 28 px control and 2 × 4 */
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.settings-window.dense .form-row.stacked {
+  gap: var(--space-8);
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-12);
+}
+.notice .pw-error {
+  margin-top: calc(var(--space-4) * -1);
 }
 .tr-note {
   display: flex;
@@ -4059,8 +4089,11 @@ h2,
 .tr-toggles {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-4);
   margin-top: var(--space-12);
+}
+.tr-toggles .checkbox {
+  min-height: 24px;
 }
 .tr-actions {
   display: flex;

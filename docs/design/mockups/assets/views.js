@@ -620,9 +620,9 @@
 
   function zoomMenu({ m7a = false } = {}) {
     return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu" ${ms(m7a ? 'M7a' : 'M7', '확대·축소·확대 메뉴')}>
-      ${mi('자동 맞춤', { check: m7a })}${mi('너비에 맞춤')}${mi('한 쪽 전체 보기')}${mi('실제 크기', { shortcut: '⌘0' })}
+      ${mi('자동 맞춤')}${mi('너비에 맞춤')}${mi('한 쪽 전체 보기')}${mi('실제 크기', { shortcut: '⌘0' })}
       <div class="msep"></div>
-      ${mi('75%')}${mi('100%', { check: !m7a })}${mi('125%', { active: true })}${mi('150%')}${mi('200%')}
+      ${mi('75%')}${mi('100%', { check: true })}${mi('125%', { active: true })}${mi('150%')}${mi('200%')}
       <div class="msep"></div>
       ${mi('확대', { shortcut: '⌘+' })}${mi('축소', { shortcut: '⌘−' })}
     </div>`;
@@ -743,11 +743,26 @@
   const KO_SAME = '각 단계에서 활성화된 분자는 다음 단계의 분자를 여러 개 활성화하므로, 처음의 작은 신호는 단계를 거칠수록 커진다.';
 
   /** A page of the paper. Page 3 is the one open; `sel` marks the selected sentence (id sel-0, the pop-up's anchor), `find` the matches of "receptor". */
-  function paperPageV2(n, { sel = false, find = false } = {}) {
-    if (n === 1) return paperPage();
-    const fh = (word, cls = '') => (find ? `<span class="find-hit ${cls}">${word}</span>` : word);
-    const sentence = sel ? `<span class="sel" id="sel-0">${EN1}</span>` : EN1;
-    const hit = (cls) => fh('receptor', cls);
+  /**
+   * Marks every match of "receptor" (case ignored, spec 4.5) over the text of `html`; the `current`-th (1-based) is the
+   * current match. The mark is drawn without moving the text (pdf.js lays its highlight over the text layer).
+   */
+  const markFind = (html, current = 0, from = 0) => {
+    let i = from;
+    return html.replace(/receptor/gi, (m) => `<span class="find-hit ${++i === current ? 'current' : ''}">${m}</span>`);
+  };
+  const countHits = (html) => (html.match(/receptor/gi) || []).length;
+  /** Page 1 of the paper, with its matches marked when the find bar is open (`current`: 1-based index of the current one). */
+  const paperFirst = ({ find = false, current = 0 } = {}) => (find ? markFind(paperPage(), current) : paperPage());
+
+  /**
+   * A page of the paper. Page 3 is the one open. `sel`: 'one' marks the selected sentence (id sel-0, the pop-up's anchor),
+   * 'all' (a selection too long to translate) paints the whole page from the heading to the end of the second column;
+   * `find` marks the matches of "receptor", the first of this page being match number `current`.
+   */
+  function paperPageV2(n, { sel = false, find = false, current = 0 } = {}) {
+    if (n === 1) return paperFirst({ find, current });
+    const sentence = sel === 'one' ? `<span class="sel" id="sel-0">${EN1}</span>` : EN1;
     const p = (t) => `<p>${t}</p>`;
     const filler = [
       'Cells were plated on glass-bottom dishes and imaged within two hours. Receptors carried a small fluorescent tag at the extracellular end.',
@@ -757,13 +772,13 @@
       'Second messenger levels were read out with a genetically encoded sensor in the same cells.',
       'All comparisons use the same exposure and the same field of view.',
     ];
-    const body =
+    let body =
       n === 3
         ? [
-            `<b>2.1 Single-${hit('current')} tracking.</b> Labelled ${hit('')}s were imaged at 20 frames per second for up to 90 seconds. ${sentence} Between these extremes the response rose steadily.`,
+            `<b>2.1 Single-receptor tracking.</b> Labelled receptors were imaged at 20 frames per second for up to 90 seconds. ${sentence} Between these extremes the response rose steadily.`,
             `${EN2} A simple two-step model reproduces the data when G protein coupling is rate limiting.`,
-            `To test whether coupling is rate limiting we tracked ${hit('')}s and G proteins in the same cells. ${hit('')}s that stayed active for more than one second recruited G proteins in 71% of events, compared with 9% for shorter activations.`,
-            `<b>2.2 Dwell time and signal.</b> We next asked how the duration of a single active state relates to the amount of second messenger it produces. Cells were stimulated at four ligand concentrations and each ${hit('')}’s dwell time was matched to the local cAMP signal.`,
+            `To test whether coupling is rate limiting we tracked receptors and G proteins in the same cells. Receptors that stayed active for more than one second recruited G proteins in 71% of events, compared with 9% for shorter activations.`,
+            `<b>2.2 Dwell time and signal.</b> We next asked how the duration of a single active state relates to the amount of second messenger it produces. Cells were stimulated at four ligand concentrations and each receptor’s dwell time was matched to the local cAMP signal.`,
             'Across 2,184 receptors, signal rose with dwell time and was independent of concentration (Figure 2).',
             filler[2],
             'Receptors that never left the first state were counted separately and excluded from the fit. Their number did not change with ligand concentration, which argues against a population of damaged receptors.',
@@ -776,7 +791,10 @@
             'The next section asks which step of the cascade sets this timescale.',
           ]
         : filler.slice(n % 3, (n % 3) + 5);
-    return `<div class="pdf-page paper" aria-label="${n}쪽"><div class="paper-cols">${body.map(p).join('')}</div><div class="folio">${n}</div></div>`;
+    if (n === 3 && sel === 'all') body = body.map((t, i) => `<span class="sel" ${i === body.length - 1 ? 'id="sel-0"' : ''}>${t}</span>`);
+    let html = body.map(p).join('');
+    if (find && n === 3) html = markFind(html, current, current - 1);
+    return `<div class="pdf-page paper" aria-label="${n}쪽"><div class="paper-cols">${html}</div><div class="folio">${n}</div></div>`;
   }
 
   /** Thumbnails (spec 4.7): drawn around the restored page first, the farthest still empty boxes. */
@@ -824,15 +842,17 @@
       <span class="icon-btn ${find ? 'is-on' : ''} ${dis}" title="찾기 ⌘F" ${ms('M7a', '찾기 단추·찾기 막대')}>${icon('search')}</span>
       <span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="보기: 쪽 색·회전" ${ms('M7a', '보기 메뉴(쪽 색·회전)')}>보기${icon('chevron-down', 'xs')}</span>
       <span class="toolbar-sep"></span>
-      <span class="icon-btn ${inspectorOn ? 'is-on' : ''}" title="${inspectorOn ? '항목 패널 가리기' : '항목 패널 보기'} ⌥⌘I" ${ms('M7a', '항목 패널 토글')}>${icon('panel-right')}</span>
+      <span class="icon-btn ${inspectorOn ? 'is-on' : ''} ${dis}" title="${inspectorOn ? '항목 패널 가리기' : '항목 패널 보기'} ⌥⌘I" ${ms('M7a', '항목 패널 토글')}>${icon('panel-right')}</span>
     </div>`;
   }
 
   /** Spec 4.5: the field, "3 / 17", previous, next, close. Case is ignored, so there is no case button. */
-  function findBarV2(kind) {
+  function findBarV2(kind, { current = 3, total = 17 } = {}) {
     const none = kind === 'none';
+    // Past the last match the bar says once that it went round (spec 4.5); the next move or two seconds later it is "1 / n" again.
+    const count = none ? '찾을 수 없음' : kind === 'wrap' ? `처음부터&nbsp;· ${current} / ${total}` : `${current} / ${total}`;
     return `<div class="find-bar" role="search" ${ms('M7a', '찾기 막대')}>
-      <div class="field is-focus">${icon('search', 'sm')}<span class="value">${none ? 'kinase' : 'receptor'}</span><span class="caret"></span><span class="spacer"></span><span class="count ${none ? 'c-secondary' : ''}">${none ? '찾을 수 없음' : '3 / 17'}</span></div>
+      <div class="field is-focus">${icon('search', 'sm')}<span class="value">${none ? 'kinase' : 'receptor'}</span><span class="caret"></span><span class="spacer"></span><span class="count ${none || kind === 'wrap' ? 'c-secondary' : ''}">${count}</span></div>
       <span class="icon-btn sm ${none ? 'is-disabled' : ''}" title="이전 ⇧⌘G">${icon('chevron-up', 'sm')}</span>
       <span class="icon-btn sm ${none ? 'is-disabled' : ''}" title="다음 ⌘G">${icon('chevron-down', 'sm')}</span>
       <span class="icon-btn sm" title="닫기 esc">${icon('x', 'sm')}</span>
@@ -870,7 +890,7 @@
       consent: () =>
         make(
           '',
-          `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><div class="sp-note">언제든 설정에서 바꿀 수 있습니다.</div>`,
+          `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><div class="sp-note">언제든 설정에서 바꿀&nbsp;수 있습니다.</div>`,
           `<span class="btn small primary">번역 켜기</span><span class="btn small">사용 안 함</span>`,
         ),
       translating: () => make('is-compact', `<div class="sp-status"><span class="spinner" aria-hidden="true"></span><span>번역하는 중…</span></div>`),
@@ -889,7 +909,7 @@
     if (kind === 'consent' || kind === 'off') {
       const text =
         kind === 'consent'
-          ? `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><p class="t-footnote c-secondary">언제든 설정에서 바꿀 수 있습니다.</p>`
+          ? `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><p class="t-footnote c-secondary">언제든 설정에서 바꿀&nbsp;수 있습니다.</p>`
           : `<p>번역을 사용하지 않습니다.</p><p class="t-footnote c-secondary">켜면 선택한 글이 Google로 보내집니다.</p>`;
       const actions =
         kind === 'consent'
@@ -902,8 +922,8 @@
     const note = (ic, text, extra = '', tone = '') => `<div class="tr-note">${icon(ic, `sm ${tone}`.trim())}<span>${text}</span></div>${extra}`;
     const korean = kind === 'same';
     const src = {
-      empty: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}>${ph('글을 선택하거나 붙여 넣으면 번역합니다.')}</div>`,
-      long: `<div class="tr-box src clip" ${ms('M7a', '원문 칸(편집)')}><p>Receptor activation is usually described as a switch, yet single-cell imaging shows a continuum of short-lived states. We tracked labelled receptors at the plasma membrane and measured how long each state lasts before G protein coupling. Brief activations were common and rarely produced downstream signals, while longer ones were amplified several hundred fold. The full text of the supplementary methods follows, including the calibration of the sensor and the imaging protocol for every cell line used in this study…</p></div>`,
+      empty: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}>${ph('글을 선택하거나 붙여&nbsp;넣으면 번역합니다.')}</div>`,
+      long: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>Receptor activation is usually described as a switch, yet single-cell imaging shows a continuum of short-lived states. We tracked labelled receptors at the plasma membrane and measured how long each state lasts before G protein coupling. Brief activations were common and rarely produced downstream signals, while longer ones were amplified several hundred fold. The full text of the supplementary methods follows, including the calibration of the sensor and the imaging protocol for every cell line used in this study…</p></div>`,
       concat: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${EN2}</p><p>${EN1}</p></div>`,
       same: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${KO_SAME}</p></div>`,
     }[kind] ?? `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${EN1}</p></div>`;
@@ -923,14 +943,14 @@
       `<label class="checkbox t-footnote" ${ms('M7a', tg)}><span class="box ${on ? 'is-on' : ''}">${on ? icon('check') : ''}</span>${text}</label>`;
     return `<section class="section tr" ${tag}>
       ${sectionHead('번역', dir)}
-      ${label('원문', kind === 'empty' ? '' : korean ? '한국어' : kind === 'long' ? '영어 · 5,832자' : '영어')}${src}
+      ${label('원문', kind === 'empty' ? '' : korean ? '한국어' : kind === 'long' ? '영어&nbsp;· 5,832자' : '영어')}${src}
       ${label('번역', ['translated', 'concat', 'same'].includes(kind) ? '한국어' : '')}${dst}
       <div class="tr-toggles">${check(true, '선택하면 번역', '선택하면 번역 토글')}${check(kind === 'concat', '이어 붙이기', '이어 붙이기 토글')}</div>
       <div class="tr-actions">
         <div class="btn small ${kind === 'empty' ? 'is-disabled' : ''}" title="원문과 번역 지우기" ${ms('M7a', '지우기 단추')}>지우기</div>
         <div class="btn small has-menu ${menu === 'copy' ? 'is-pressed' : ''} ${kind === 'empty' || kind === 'translating' ? 'is-disabled' : ''}" id="tr-copy" title="복사 — 원문 · 번역 · 둘 다" ${ms('M7a', '복사 메뉴 단추')}>복사${icon('chevron-down', 'xs')}</div>
         <span class="spacer"></span>
-        <div class="btn small ${retry ? 'primary' : ''} ${idle ? 'is-disabled' : ''}" title="번역 ↩" ${ms('M7a', '번역 단추')}>${retry ? '다시 번역' : '번역'}</div>
+        <div class="btn small ${idle ? 'is-disabled' : ''}" title="번역 ↩" ${ms('M7a', '번역 단추')}>${retry ? '다시 번역' : '번역'}</div>
       </div>
     </section>`;
   }
@@ -957,10 +977,10 @@
       locked: `<div class="notice" role="status" ${ms('M7a', '암호로 보호된 PDF(암호 입력란)')}>
             <div class="glyph">${icon('lock', 'xl')}</div>
             <h2>암호로 보호된 PDF입니다</h2>
-            <p>암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.</p>
-            <div class="pw-row"><div class="field is-focus" aria-label="암호"><span class="value">••••••</span><span class="caret"></span></div><div class="btn primary" title="↩">열기</div></div>
-            ${pw ? '<div class="pw-error" role="alert">암호가 맞지 않습니다.</div>' : ''}
+            <p>암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열&nbsp;때 다시 묻습니다.</p>
             <div class="file">receptor-tyrosine-kinases.pdf · 5.6 MB</div>
+            <div class="pw-row"><div class="field is-focus" aria-label="암호">${pw ? '<span class="placeholder">암호</span>' : '<span class="value">••••••</span>'}<span class="caret"></span></div><div class="btn primary" title="↩">열기</div></div>
+            ${pw ? '<div class="pw-error" role="alert">암호가 맞지 않습니다.</div>' : ''}
           </div>`,
       missing: `<div class="notice" role="status" ${ms('M3', '원본 없음(다시 연결)')}>
             <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
@@ -982,7 +1002,7 @@
     const pick = (name, allowed) => (allowed.includes(params.get(name)) ? params.get(name) : null);
     const nav = params.get('nav') === 'outline' ? 'outline' : 'thumbs';
     const menu = pick('menu', ['zoom', 'view', 'copy', 'direction']);
-    const find = pick('find', ['open', 'none']);
+    const find = pick('find', ['open', 'none', 'wrap']);
     const select = pick('select', ['consent', 'translating', 'translated', 'error', 'offline', 'long', 'same']);
     const w = Number(params.get('w')) || 1440;
     // The 번역 section follows the pop-up (one result for both); without a selection it is the empty section.
@@ -1040,15 +1060,25 @@
       const loading = state === 'loading';
       const nooutline = state === 'nooutline';
       const thumbPages = doc === PAPER ? [1, 2, 3, 4, 5] : [40, 41, 42, 43, 44];
-      const thumbBody = doc === PAPER ? (n) => paperPageV2(n) : (n) => `<div class="pdf-page">${pageBody(n, { find: false })}</div>`;
-      sidebar = sidebarV2(doc, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
-      const toolbar = toolbarV2({ page: String(doc.page), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn: inspectorOn && !loading, disabled: loading });
+      // The M9 highlight is left out of the thumbnails as of the page.
+      const thumbBody = doc === PAPER ? (n) => paperPageV2(n) : (n) => `<div class="pdf-page">${pageBody(n, { find: false }).replace('class="hl"', 'class=""')}</div>`;
+      // Going round past the last match puts the reader on match 1, which is on page 1.
+      const curPage = find === 'wrap' && doc === PAPER ? 1 : doc.page;
+      const hits1 = countHits(paperPage());
+      const findTotal = hits1 + countHits(paperPageV2(3, { find: true }));
+      const findCurrent = find === 'wrap' ? 1 : hits1 + 1;
+      sidebar = sidebarV2({ ...doc, page: curPage }, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
+      const toolbar = toolbarV2({ page: String(curPage), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn, disabled: loading });
       let stage;
       if (loading) {
         stage = `<div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7a', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>${doc.page}쪽을 여는 중…</div></div></div></div></div>`;
       } else if (doc === PAPER) {
-        const pages = [paperPageV2(3, { sel: !!select, find: !!find && find !== 'none' }), paperPageV2(4)];
-        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px">${pages.join('')}</div>${find ? findBarV2(find) : ''}${select ? selPopup(select) : ''}</div>`;
+        const marked = !!find && find !== 'none';
+        const pages =
+          find === 'wrap'
+            ? [paperFirst({ find: true, current: 1 }), paperPageV2(2)]
+            : [paperPageV2(3, { sel: select ? (select === 'long' ? 'all' : 'one') : false, find: marked, current: findCurrent }), paperPageV2(4)];
+        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px">${pages.join('')}</div>${find ? findBarV2(find, { current: findCurrent, total: findTotal }) : ''}${select ? selPopup(select) : ''}</div>`;
       } else {
         // 이미 한국어입니다: the textbook, a Korean sentence selected.
         const body42 = pageBody(42, { find: false })
@@ -1057,7 +1087,7 @@
         stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px"><div class="pdf-page" aria-label="42쪽">${body42}</div></div>${selPopup('same')}</div>`;
       }
       main = `${toolbar}<div class="reader-body">${stage}</div>`;
-      inspector = inspectorV2(trKind, doc.item);
+      inspector = inspectorV2(trKind, { ...doc.item, reading: { ...doc.item.reading, page: curPage } });
     }
     if (menu === 'zoom') overlays = zoomMenu({ m7a: true });
     else if (menu === 'view') overlays = viewMenuV2();
@@ -1381,7 +1411,7 @@
 
   /** A separate macOS window (Zotero/Things/Raycast convention): no Done/×, changes apply at once. */
   function settingsWindow() {
-    return `<div class="os-window settings-window" role="dialog" aria-label="설정" ${ms('M3', '설정 창')}>
+    return `<div class="os-window settings-window ${params.get('section') === 'translation' ? 'dense' : ''}" role="dialog" aria-label="설정" ${ms('M3', '설정 창')}>
       <div class="os-titlebar"><div class="traffic-lights" aria-hidden="true"><i class="close"></i><i class="min"></i><i class="zoom"></i></div>설정</div>
       <div class="s-body">
         <div>
@@ -1426,16 +1456,19 @@
    * two rows below it follow it, so they dim while it is off (`?tr=off`).
    */
   function translationGroup() {
-    const off = params.get('tr') === 'off';
+    // `tr=unset`: the device has not been asked yet (enabled: null) — no segment chosen, and the rows below dim like 끔
+    // (they do nothing until it is on); the pop-up's consent is what asks.
+    const unset = params.get('tr') === 'unset';
+    const off = params.get('tr') === 'off' || unset;
     const onOff = (on, label) =>
-      `<div class="segmented" role="radiogroup" aria-label="${label}" ${ms('M7a', `${label} 켬·끔`)}><span class="seg ${on ? 'is-on' : ''}">켬</span><span class="seg ${on ? '' : 'is-on'}">끔</span></div>`;
+      `<div class="segmented" role="radiogroup" aria-label="${label}" ${ms('M7a', `${label} 켬·끔`)}><span class="seg ${on === true ? 'is-on' : ''}">켬</span><span class="seg ${on === false ? 'is-on' : ''}">끔</span></div>`;
     const dim = off ? 'is-disabled' : '';
     return `<div>
           <div class="group-label">번역</div>
           <div class="form-group">
             <div class="form-row">
               <span class="fr-label">번역 사용<span class="hint">선택한 글이 Google로 보내집니다</span></span>
-              ${onOff(!off, '번역 사용')}
+              ${onOff(unset ? null : !off, '번역 사용')}
             </div>
             <div class="form-row ${dim}">
               <span class="fr-label">선택하면 번역<span class="hint">글을 선택하면 바로 번역합니다</span></span>

@@ -182,6 +182,30 @@ describe('checkLibrary under a running import queue', () => {
     expect(repo.assetsByMode('managed').map((a) => a.availability)).toEqual(['available']);
   });
 
+  it('skips a row purged while the check runs: not missing, not written', async () => {
+    const { layout, repo, importer } = setup();
+    const item = await imported(importer, writePdf(tempDir('src'), 'gone.pdf', 'gone'));
+    const asset = repo.assetsByMode('managed')[0]!;
+    fs.rmSync(path.join(layout.root, ...asset.relativePath!.split('/')));
+    repo.trash([item.id]);
+    const check = await checkLibrary(layout, repo, {
+      hooks: { afterAssetsListed: () => void repo.purge({ itemIds: [item.id], collectionIds: [] }) },
+    });
+    expect(check.missingManaged.itemIds).toEqual([]);
+    expect(repo.getAsset(asset.id)).toBeUndefined();
+  });
+
+  it('does not list a copy on disk as unused when its row is committed after the listing', async () => {
+    const { layout, repo, importer } = setup();
+    const src = writePdf(tempDir('src'), 'placed.pdf', 'placed');
+    const bytes = fs.readFileSync(src);
+    const key = managedRelativePath(sha256(bytes));
+    put(path.join(layout.root, ...key.split('/')), bytes);
+    const check = await checkLibrary(layout, repo, { hooks: { afterAssetsListed: async () => void (await imported(importer, src)) } });
+    expect(repo.assetsByMode('managed').map((a) => a.relativePath)).toEqual([key]);
+    expect(check.unreferenced.keys).not.toContain(key);
+  });
+
   it('does not write missing for a row whose file is there when asked again', async () => {
     const { layout, repo, importer } = setup();
     await imported(importer, writePdf(tempDir('src'), 'a.pdf', 'a'));

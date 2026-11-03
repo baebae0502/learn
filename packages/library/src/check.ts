@@ -99,7 +99,8 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
 
   const missingAssets: string[] = [];
   for (const a of managed) {
-    if (a.relativePath === null) continue;
+    // A purge may have removed the row since the rows were read: there is nothing left to judge or write.
+    if (a.relativePath === null || repo.getAsset(a.id) === undefined) continue;
     const there = onDisk.has(a.relativePath) || (await fs.access(path.join(layout.root, ...a.relativePath.split('/'))).then(() => true, () => false));
     if (!there) missingAssets.push(a.id);
     if (!there && a.availability !== 'missing') repo.setAvailability(a.id, 'missing', now);

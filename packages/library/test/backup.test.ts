@@ -46,6 +46,14 @@ async function populated() {
   return { layout, db, repo };
 }
 
+/** A test that edits a backup's database on purpose: the manifest is made to agree with the edit, so what is under test is not the hash check. */
+async function rehash(dir: string): Promise<void> {
+  const file = path.join(dir, 'manifest.json');
+  const manifest = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+  manifest.databaseSha256 = await sha256File(path.join(dir, 'library.sqlite'));
+  fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+}
+
 describe('backup and restore (AC15 — files part)', () => {
   it('restores into an empty profile with matching hashes and counts', async () => {
     const { layout, db, repo } = await populated();
@@ -201,6 +209,7 @@ describe('backup and restore (AC15 — files part)', () => {
     const dest = path.join(tempDir('bk'), 'backup-notadb');
     await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
     fs.writeFileSync(path.join(dest, 'library.sqlite'), 'not a database, '.repeat(64));
+    await rehash(dest);
     const probe = openDatabase(':memory:');
     probe.close();
     const close = vi.spyOn(Object.getPrototypeOf(probe) as { close(): unknown }, 'close');
@@ -233,6 +242,7 @@ describe('backup and restore (AC15 — files part)', () => {
       const bytes = Buffer.from(whole);
       bytes.fill(0xff, page * PAGE, (page + 1) * PAGE);
       fs.writeFileSync(path.join(broken, 'library.sqlite'), bytes);
+      await rehash(broken);
       const target = path.join(tempDir('restore'), 'Library');
       const outcome = await restoreBackup({ backupDir: broken, targetRoot: target }).then(
         () => 'restored',
@@ -244,6 +254,50 @@ describe('backup and restore (AC15 — files part)', () => {
       refused.push(page);
     }
     expect(refused.length).toBeGreaterThan(0);
+  });
+
+  it('records the hash of the snapshot it wrote, and a restore refuses a database that no longer matches it before opening it', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-hash');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    expect(manifest.databaseSha256).toBe(await sha256File(path.join(dest, 'library.sqlite')));
+    expect((await readBackupManifest(dest)).databaseSha256).toBe(manifest.databaseSha256);
+
+    const changed = path.join(tempDir('bk'), 'changed');
+    fs.cpSync(dest, changed, { recursive: true });
+    const edit = openDatabase(path.join(changed, 'library.sqlite'));
+    edit.pragma('application_id = 4242');
+    edit.close();
+    const target = path.join(tempDir('restore'), 'Library');
+    await expect(restoreBackup({ backupDir: changed, targetRoot: target })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED', message: RESTORE_COPY.damagedDatabase,
+    });
+    expect(fs.existsSync(target)).toBe(false);
+
+    const old = path.join(tempDir('bk'), 'old');
+    fs.cpSync(dest, old, { recursive: true });
+    const { databaseSha256: _drop, ...without } = manifest;
+    fs.writeFileSync(path.join(old, 'manifest.json'), JSON.stringify(without));
+    const edited = openDatabase(path.join(old, 'library.sqlite'));
+    edited.pragma('application_id = 4242');
+    edited.close();
+    await expect(restoreBackup({ backupDir: old, targetRoot: path.join(tempDir('restore'), 'Library') })).resolves.toBeDefined();
+  });
+
+  it('a backup whose database holds a row pointing nowhere is refused as damaged (foreign_key_check)', async () => {
+    const { layout, db, repo } = await populated();
+    const dest = path.join(tempDir('bk'), 'backup-orphan');
+    const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });
+    const file = path.join(dest, 'library.sqlite');
+    const edit = openDatabase(file);
+    edit.pragma('foreign_keys = OFF');
+    edit.prepare('INSERT INTO collection_items (collection_id, item_id) VALUES (?, ?)').run(newId(), newId());
+    edit.close();
+    // The manifest agrees with the edited file, so only the database's own checks can notice.
+    fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify({ ...manifest, databaseSha256: await sha256File(file) }));
+    await expect(restoreBackup({ backupDir: dest, targetRoot: path.join(tempDir('restore'), 'Library') })).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED', message: RESTORE_COPY.damagedDatabase,
+    });
   });
 
   it('a disk that fills up while the restored database is read is not reported as a damaged backup', async () => {
@@ -329,6 +383,7 @@ describe('backup and restore (AC15 — files part)', () => {
     bdb.prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
                  VALUES (?, ?, 'managed', ?, NULL, 'extra.pdf', 'application/pdf', 1, 'available', ?, ?)`).run(extra, sha, managedRelativePath(sha), nowIso(), nowIso());
     bdb.close();
+    await rehash(dest);
 
     const target = path.join(tempDir('restore'), 'Library');
     const result = await restoreBackup({ backupDir: dest, targetRoot: target });

@@ -39,13 +39,14 @@ describe('migrate', () => {
   it('creates the latest schema on an empty database', () => {
     const { db, file } = tempDb();
     expect(migrate(db, { dbFile: file })).toEqual({ from: 0, to: LATEST_SCHEMA_VERSION, backupFile: null });
-    expect(LATEST_SCHEMA_VERSION).toBe(2);
+    expect(LATEST_SCHEMA_VERSION).toBe(3);
     expect(tables(db)).toContain('reading_positions');
+    expect(tables(db)).toContain('translation_cache');
     const idx = (db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).all() as { name: string }[]).map((r) => r.name);
     expect(idx).toEqual(expect.arrayContaining([
       'collections_parent', 'collection_items_item', 'tags_position', 'tags_name_nocase', 'item_tags_tag',
       'items_deleted_at', 'anchors_revision', 'annotations_anchor', 'jobs_state', 'reading_positions_revision',
-      'source_revisions_parent',
+      'source_revisions_parent', 'translation_cache_used',
     ]));
     expect(tables(db)).toEqual(expect.arrayContaining([
       'items', 'assets', 'item_assets', 'source_revisions', 'collections', 'collection_items',
@@ -162,7 +163,7 @@ describe('migration v2 (organize)', () => {
     seedItem(repo, 2);
     db.prepare(`INSERT INTO tags (id, name) VALUES ('t1', 'old')`).run();
 
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 1, to: 2, backupFile: `${file}.pre-v2.bak` });
+    expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 2) })).toEqual({ from: 1, to: 2, backupFile: `${file}.pre-v2.bak` });
     expect(repo.counts()).toMatchObject({ items: 2, assets: 2, revisions: 2, tags: 1, readingPositions: 0 });
     expect(db.prepare('SELECT position, color FROM tags WHERE id = ?').get('t1')).toEqual({ position: null, color: null });
     const snap = openDatabase(`${file}.pre-v2.bak`);
@@ -186,7 +187,7 @@ describe('migration v2 (organize)', () => {
     db.prepare(`INSERT INTO collections (id, name, parent_id, created_at) VALUES ('c2', '선형대수', 'c1', '2026-01-02T00:00:00.000Z')`).run();
     db.prepare(`INSERT INTO collection_items (collection_id, item_id) VALUES ('c1', ?), ('c2', ?)`).run(i1, i2);
 
-    expect(migrate(db, { dbFile: file })).toMatchObject({ from: 1, to: 2 });
+    expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 2) })).toMatchObject({ from: 1, to: 2 });
 
     expect(db.prepare('SELECT id, name FROM tags ORDER BY rowid').all()).toEqual([{ id: 't1', name: 'Math' }, { id: 't4', name: 'old' }]);
     const pairs = (db.prepare('SELECT item_id AS item, tag_id AS tag FROM item_tags').all() as { item: string; tag: string }[])
@@ -237,5 +238,24 @@ describe('migration v2 (organize)', () => {
     expect(repo.counts().readingPositions).toBe(1);
     db.prepare('DELETE FROM items WHERE id = ?').run(itemId);
     expect(repo.counts().readingPositions).toBe(0);
+  });
+});
+
+describe('migration v3 (anchors-translation)', () => {
+  it('upgrades a real v2 database: old anchors become span anchors, and a v2 snapshot is kept', () => {
+    const { db, file } = tempDb();
+    expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 2) })).toMatchObject({ to: 2 });
+    const { revisionId } = seedItem(new LibraryRepository(db), 4);
+    db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version) VALUES ('a1', ?, 'pdf', '{}', 'q', 1)`).run(revisionId);
+    db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a1', 'highlight', '{}', 'op', 'now', 'now')`).run();
+
+    expect(migrate(db, { dbFile: file })).toEqual({ from: 2, to: 3, backupFile: `${file}.pre-v3.bak` });
+    expect(db.prepare(`SELECT id, precision, text_json, quote FROM anchors`).all()).toEqual([{ id: 'a1', precision: 'span', text_json: null, quote: 'q' }]);
+    expect(db.pragma('foreign_key_check')).toEqual([]);
+    expect(tables(db)).toContain('translation_cache');
+    expect(() => db.prepare(`UPDATE anchors SET precision = 'page'`).run()).toThrow(/CHECK/);
+    const snap = openDatabase(`${file}.pre-v3.bak`);
+    dbs.push(snap);
+    expect(currentVersion(snap)).toBe(2);
   });
 });

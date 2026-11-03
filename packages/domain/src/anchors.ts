@@ -1,20 +1,38 @@
 import { z } from 'zod';
 
 /** Coordinate rules are part of schema v1 — see docs/decisions/0002-anchor-coordinates.md. */
-export const ANCHOR_SCHEMA_VERSION = 1;
+export const ANCHOR_SCHEMA_VERSION = 2;
 
-const quote = z.object({ exact: z.string().min(1), prefix: z.string(), suffix: z.string() });
-const quad = z.array(z.number()).length(8);
+export const anchorPrecision = z.enum(['item', 'span', 'region']);
+
+export const textQuoteSchema = z.object({ exact: z.string().min(1), prefix: z.string(), suffix: z.string() });
+/** UTF-16 offsets into the page text; the W3C target converts them to code points. */
+export const textPositionSchema = z.object({ start: z.number().int().min(0), end: z.number().int().min(0) }).refine((p) => p.end > p.start, {
+  message: 'end must be after start',
+});
+export const anchorTextSchema = z.object({ quote: textQuoteSchema, position: textPositionSchema.optional() });
+export type TextQuote = z.infer<typeof textQuoteSchema>;
+/** UTF-16 offsets into a PageText.text. */
+export interface TextSpan { start: number; end: number }
+
+const quote = textQuoteSchema;
+/** Upper-left, upper-right, lower-left, lower-right, in the page's unrotated space. */
+export type Quad = [number, number, number, number, number, number, number, number];
+const quad = z.tuple([z.number(), z.number(), z.number(), z.number(), z.number(), z.number(), z.number(), z.number()]);
 const unit = z.number().min(0).max(1);
 
-export const pdfAnchor = z.object({
-  kind: z.literal('pdf'),
-  revisionId: z.uuid(),
-  pageIndex: z.number().int().min(0),
-  quads: z.array(quad).min(1),
-  coordinateSpace: z.literal('pdf-user-space'),
-  quote: quote.optional(),
-});
+export const pdfAnchor = z
+  .object({
+    kind: z.literal('pdf'),
+    revisionId: z.uuid(),
+    precision: z.enum(['span', 'region']),
+    pageIndex: z.number().int().min(0),
+    quads: z.array(quad).min(1),
+    coordinateSpace: z.literal('pdf-user-space'),
+    text: anchorTextSchema.optional(),
+  })
+  .refine((a) => a.precision !== 'span' || a.text !== undefined, { message: 'a span anchor carries its text' });
+export type PdfAnchor = z.infer<typeof pdfAnchor>;
 
 export const videoAnchor = z
   .object({

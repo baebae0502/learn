@@ -137,7 +137,7 @@ export function ThumbnailList() {
   return (
     <div
       ref={scrollRef}
-      className="thumbs"
+      className="nav-thumbs"
       role="listbox"
       tabIndex={0}
       aria-label={t.reader.thumbnailList}
@@ -145,7 +145,7 @@ export function ThumbnailList() {
       data-page-color={pageColor}
       onKeyDown={onKeyDown}
     >
-      <div className="thumbs-inner" style={{ height: virtualizer.getTotalSize() }}>
+      <div className="nav-thumbs-inner" style={{ height: virtualizer.getTotalSize() }}>
         {items.map((row) => {
           const page = row.index + 1;
           return (
@@ -155,15 +155,15 @@ export function ThumbnailList() {
               data-index={row.index}
               role="option"
               aria-selected={page === current}
-              aria-label={t.reader.thumbnailOf(page)}
-              className="thumb"
+              aria-label={String(page)}
+              className="nav-thumb"
               data-testid="pdf-thumb"
               data-page={page}
               data-current={page === current ? 'true' : undefined}
               style={{ transform: `translateY(${row.start}px)` }}
               onClick={() => goTo(page)}
             >
-              <div className="thumb-page" style={{ aspectRatio: `1 / ${ratioOf(page)}` }}>
+              <div className="nav-thumb-page" style={{ aspectRatio: `1 / ${ratioOf(page)}` }}>
                 <ThumbnailCanvas page={page} cacheRef={cacheRef} drawn={drawn} />
               </div>
               <span className="lbl num">{page}</span>
@@ -189,8 +189,13 @@ function ThumbnailCanvas({ page, cacheRef, drawn }: { page: number; cacheRef: { 
     }
     el.width = bitmap.width;
     el.height = bitmap.height;
-    el.getContext('2d')?.drawImage(bitmap, 0, 0);
-    setHas(true);
+    try {
+      el.getContext('2d')?.drawImage(bitmap, 0, 0);
+      setHas(true);
+    } catch {
+      // A canvas that gives no context leaves the paper box empty; one page's picture is not worth the reader.
+      setHas(false);
+    }
   }, [page, drawn, cacheRef]);
-  return <canvas ref={canvas} className="thumb-canvas" data-drawn={has ? '' : undefined} aria-hidden="true" />;
+  return <canvas ref={canvas} className="nav-thumb-canvas" data-drawn={has ? '' : undefined} aria-hidden="true" />;
 }

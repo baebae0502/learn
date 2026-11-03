@@ -34,7 +34,7 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
 /** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin), the reader's groups. */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
   // The reader's: how the page fits, the rotation and 쪽 색 ▸ (its rows are the group's, without marks).
   [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], ['-', ''],
@@ -328,6 +328,9 @@ test('menu: 편집 carries the native edit roles with Korean labels', async ({},
       ['selectall', '모두 선택'],
       ['-', ''],
       [null, '빠른 검색'],
+      [null, '다음 찾기'],
+      [null, '이전 찾기'],
+      [null, '선택한 글로 찾기'],
     ]);
   } finally {
     await app.close();

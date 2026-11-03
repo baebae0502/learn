@@ -1177,6 +1177,8 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     const gone = (id: string) => expect(s.page.getByTestId(id)).toHaveCount(0, { timeout: 12_000 });
     await setTheme(s.page, 'light');
     await s.page.evaluate((id) => window.learn.library.restore({ itemIds: [id] }), items[0]!.id);
+    // The reader's sidebar has no way back; the command does (the sidebar of the library returns with the view).
+    await runMenuCommand(s.app, 'nav.back');
     await specialRow(s.page, 'all').click();
     await rowByTitle(s.page, items[0]!.title).click();
     await runMenuCommand(s.app, 'item.trash');

@@ -322,17 +322,17 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
       ),
     );
     // Read down the first column, then the second, in the sheet's order (shortcuts.ts ORDER).
-    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리'], ['자료', '정리', '리더', '팔레트·대화상자']]);
+    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리', '자료'], ['정리', '리더', '팔레트·대화상자']]);
     // A group never splits: every section lies in one column with all its rows; the columns sit side by side.
     for (const g of columns.flat()) expect(g.whole, `${g.title}`).toBe(true);
     expect(new Set(columns[0]!.map((g) => g.left)).size).toBe(1);
     expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
     expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
-    // Short enough for every 1440 × 900 room (≈ 620 px with 자료, ⌘F and ⌥⌘I; Linux room 824, Mac 774): no scrolling.
+    // Short enough for every 1440 × 900 room (≈ 754 px with 자료, ⌘F, ⌥⌘I and the reader's find and sidebar keys; Linux room 824, Mac 774): no scrolling.
     const body = sheet.locator('.d-body');
     expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
     const natural = await sheet.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
-    expect(natural).toBeLessThanOrEqual(700);
+    expect(natural).toBeLessThanOrEqual(770);
     console.log(`[measure] ⌘/ sheet natural height: ${natural} px`);
     await closeSheet(sheet, 'Escape');
   } finally {

@@ -103,6 +103,7 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
         { id: 'library.sortBy?column=year', label: '연도' },
         { id: 'library.sortBy?column=type', label: '종류' },
         { id: 'library.sortBy?column=createdAt', label: '추가일' },
+        { id: 'library.sortBy?column=progress', label: '진행' },
         SEP,
         { id: 'library.sortBy?direction=asc', label: '오름차순' },
         { id: 'library.sortBy?direction=desc', label: '내림차순' },
@@ -566,7 +567,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
   };
 
   it('draws the radios from the reported context: the sort in force is on, the columns drawn are the rows', () => {
-    expect(radios(context())).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○']);
+    expect(radios(context())).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '진행', '-', '오름차순', '내림차순 ○']);
     expect(radios(context({ sortColumn: 'size', sortDirection: 'asc', columnsShown: columnsMask(['title', 'size']) }))).toEqual(['제목', '크기 ○', '-', '오름차순 ○', '내림차순']);
   });
   it('the submenus are a function of the sort, the columns and the shared colour slots only: those are what rebuild the menu bar, the counts flip enabled in place', () => {

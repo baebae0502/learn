@@ -3,7 +3,7 @@ import type { LearnEventMap, LibraryChangeReason, LibraryItem } from '@learn/dom
 /** Ids per notice that are read one by one (spec 10.3); more than this reads the whole list. */
 export const NARROW_LIMIT = 500;
 /** The reasons that change an item's own row and nothing about which items exist. */
-const NARROW: ReadonlySet<LibraryChangeReason> = new Set<LibraryChangeReason>(['metadata', 'relink', 'availability', 'opened']);
+const NARROW: ReadonlySet<LibraryChangeReason> = new Set<LibraryChangeReason>(['metadata', 'relink', 'availability', 'opened', 'position']);
 
 export interface ChangeDeps {
   /** The list in the query cache, or undefined before it was first read. */

@@ -42,6 +42,16 @@ describe('the library list after a change notice (spec 10.3)', () => {
     expect(calls).toMatchObject({ organize: 2, trash: 1, all: 0, getItems: [], put: [] });
   });
 
+  it('a position notice reads those items only, like an opened one', async () => {
+    const read = item('b', { progress: 0.37 });
+    const { handle, calls, list } = setup({ fresh: async () => [read] });
+    handle({ reason: 'position', itemIds: ['b'] });
+    await settle();
+    expect(calls.getItems).toEqual([['b']]);
+    expect(calls.all).toBe(0);
+    expect(list()![1]).toBe(read);
+  });
+
   it('an opened notice reads those items only and patches them into the list, in place', async () => {
     const opened = item('b', { openedAt: '2026-10-25T00:00:00.000Z' });
     const { handle, calls, list } = setup({ fresh: async () => [opened] });

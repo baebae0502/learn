@@ -9,6 +9,7 @@ const SEARCHED_FIELDS = ['제목', '저자', '태그', '출판사', '원래\u00a
 
 export const library = {
   table: '자료 목록',
+  progressLabel: '읽은 만큼',
   listFailed: '자료 목록을 불러오지 못했습니다',
   type: { pdf: 'PDF', video: '동영상' },
   /** 보관 column (spec §3.1): the user's words, never the internal "managed" (design-spec 9). */

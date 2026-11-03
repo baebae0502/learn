@@ -15,6 +15,7 @@ import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
+import { ProgressBar } from '../ui/ProgressBar';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
 import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
@@ -111,7 +112,21 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
       return item.originalName;
     case 'deletedAt':
       return 'deletedAt' in item ? formatDate((item as TrashedItem).deletedAt, now) : '';
+    case 'progress':
+      return item.progress === null ? '' : `${Math.round(item.progress * 100)}%`;
   }
+}
+
+/** The furthest point read: the narrow bar and the percent; nothing for an item never read. */
+function ProgressCell({ progress }: { progress: number | null }) {
+  if (progress === null) return null;
+  const percent = Math.round(progress * 100);
+  return (
+    <>
+      <ProgressBar percent={percent} label={t.library.progressLabel} testId="progress-cell" />
+      <span className="pct">{percent}%</span>
+    </>
+  );
 }
 
 /** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks and the colour dots. */
@@ -200,6 +215,8 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
         >
           {c.id === 'title' ? (
             <TitleCell item={item} match={match} tags={tags} kept={kept} />
+          ) : c.id === 'progress' ? (
+            <ProgressCell progress={item.progress} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}

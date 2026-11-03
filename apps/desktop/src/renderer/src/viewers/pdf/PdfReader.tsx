@@ -10,7 +10,7 @@ import { IconButton } from '../../ui/Button';
 import { isComposingKey } from '../../ui/ime';
 import { ratio, restorePageIndex } from '../positionSaver';
 import { PdfErrorNotice } from '../ReaderNotices';
-import { usePosition } from '../usePosition';
+import { usePosition, type LatestPosition } from '../usePosition';
 import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
 import { pageFieldRef } from './pageField';
@@ -22,6 +22,10 @@ import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
 import { ViewMenu } from './ViewMenu';
 import { ZoomField } from './ZoomField';
+import { ZOOM_MAX, ZOOM_MIN } from './zoom';
+
+/** A zoom the viewer reports can lie a hair outside the range it accepts: the stored value stays valid. */
+const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
 
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
 
@@ -31,7 +35,9 @@ const SCREEN_STEP = 0.9;
 /** The PDF reader: the 44 px toolbar (page field and page turns) over the stage that the pdf.js viewer fills. */
 export function PdfReader({ item }: { item: LibraryItem }) {
   const open = usePdfDocument(item.assetId);
-  const pos = usePosition(item, PAGE_SAVE);
+  /** The viewer's last reported place, kept for the unmount flush: by then the viewer may be gone. */
+  const latestRef = useRef<LatestPosition | null>(null);
+  const pos = usePosition(item, PAGE_SAVE, () => latestRef.current);
   const pdf = useReader((s) => s.pdf);
   const handle = useReader((s) => s.handle);
   const [restored, setRestored] = useState(false);
@@ -57,21 +63,42 @@ export function PdfReader({ item }: { item: LibraryItem }) {
 
   // The saved page is applied once, as soon as the pages exist and the stored position is known; the stage stays
   // hidden until then, so the reader never shows page 1 first.
+  const restoredRef = useRef(false);
+  const place = useRef<LatestPosition | null>(null);
   useEffect(() => {
-    if (!ready || !pos.loaded || restored || !pdf) return;
+    const bus = handle?.eventBus();
+    if (!ready || !bus) return;
+    const onArea = (e: { location: { pageNumber: number; top: number; left: number; rotation: number } }) => {
+      const { pageNumber, top, left, rotation } = e.location;
+      const state = useReader.getState().pdf;
+      if (!state) return;
+      const zoom = state.zoom;
+      const next: LatestPosition = {
+        locator: { kind: 'pdf', pageIndex: pageNumber - 1, top, left, zoom: typeof zoom === 'number' ? clampZoom(zoom) : zoom, rotation: rotation as 0 | 90 | 180 | 270 },
+        progress: ratio(pageNumber, state.pagesCount),
+      };
+      place.current = next;
+      // Before the saved place is applied the viewer reports its own start (page 1): that is never saved.
+      if (!restoredRef.current) return;
+      latestRef.current = next;
+      pos.update(next.locator, next.progress);
+    };
+    bus.on('updateviewarea', onArea);
+    return () => bus.off('updateviewarea', onArea);
+  }, [ready, handle, pos.update]);
+
+  // The restore waits for both the pages and the stored position, and is applied once; saves start from the place it reached.
+  useEffect(() => {
+    if (!ready || !pos.loaded || restored || !pdf || !handle) return;
+    const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
-    pos.markRestored({ kind: 'pdf', pageIndex: index });
-    if (index > 0) {
-      handle.goToPage(index + 1);
-      useReader.getState().setPdf({ pageNumber: index + 1 });
-    }
+    place.current = null;
+    handle.restore(saved, index);
+    const start = place.current as LatestPosition | null;
+    pos.markRestored(start?.locator ?? { kind: 'pdf', pageIndex: index });
+    restoredRef.current = true;
     setRestored(true);
   }, [ready, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
-
-  useEffect(() => {
-    if (!restored || !pdf) return;
-    pos.update({ kind: 'pdf', pageIndex: pdf.pageNumber - 1 }, ratio(pdf.pageNumber, pdf.pagesCount));
-  }, [restored, pdf?.pageNumber, pdf?.pagesCount, pos.update]);
 
   // A final state (design-spec 6): no reader controls that cannot work, only the notice.
   if (open.status === 'failed' || viewFailed) return <PdfErrorNotice item={item} />;

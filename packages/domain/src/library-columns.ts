@@ -1,9 +1,9 @@
 // The library table's column catalogue (M4 spec 3.1). No zod: main builds the column header menu from it and the
 // renderer draws the header and the cells from it, so the menu and the header name every column alike.
-export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt'] as const;
+export const LIBRARY_COLUMN_IDS = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt', 'progress'] as const;
 export type LibraryColumnId = (typeof LIBRARY_COLUMN_IDS)[number];
 
-/** Sortable fields. `progress` has no column until M7; the rest are LIBRARY_COLUMN_IDS (spec §3.1). It lives here, not in settings.ts: command arguments need the type and settings.ts imports the command registry. */
+/** Sortable fields. every column is a sort column, `progress` included; they are LIBRARY_COLUMN_IDS (spec §3.1). It lives here, not in settings.ts: command arguments need the type and settings.ts imports the command registry. */
 export const LIBRARY_SORT_COLUMNS = ['title', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'progress', 'updatedAt', 'storageMode', 'size', 'originalName', 'deletedAt'] as const;
 export type LibrarySortColumn = (typeof LIBRARY_SORT_COLUMNS)[number];
 
@@ -50,6 +50,8 @@ export const LIBRARY_COLUMNS: readonly LibraryColumnSpec[] = Object.freeze([
   { id: 'size', label: '크기', defaultVisible: false, defaultWidth: 80, minWidth: 64, align: 'end' },
   { id: 'originalName', label: '원래 이름', defaultVisible: false, defaultWidth: 200, minWidth: 120, align: 'start' },
   { id: 'deletedAt', label: '삭제한 날짜', defaultVisible: false, defaultWidth: 124, minWidth: 112, align: 'start', trashOnly: true },
+  // Last in the catalogue: the columns mask is by position, so no earlier column's bit moves.
+  { id: 'progress', label: '진행', defaultVisible: true, defaultWidth: 88, minWidth: 72, align: 'end' },
 ] satisfies LibraryColumnSpec[]);
 
 /** The widest a column may be dragged (spec §3.2). */

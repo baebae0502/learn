@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import type { ReaderNav } from '@learn/domain';
+import type { ReadingLocator, ReaderNav } from '@learn/domain';
 import { readWindowParams } from '../../ui/platform';
 
 export type { ReaderNav };
@@ -11,6 +11,8 @@ export type ZoomValue = 'auto' | 'page-width' | 'page-fit' | number;
 
 export interface PdfState {
   ready: boolean;
+  /** The saved place is applied (or there was none): until then the page, the zoom and the rotation are the viewer's own start. */
+  placed: boolean;
   pageNumber: number;
   pagesCount: number;
   scale: number;
@@ -24,6 +26,11 @@ export interface PdfViewHandle {
   next(): void;
   previous(): void;
   setZoom(zoom: ZoomValue): void;
+  /**
+   * Puts the viewer where it was left: the rotation, the zoom, then the page and the place in it (a saved value without
+   * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place.
+   */
+  restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number): void;
   zoomIn(): void;
   zoomOut(): void;
   rotate(delta: 90 | -90): void;
@@ -33,7 +40,7 @@ export interface PdfViewHandle {
   linkService(): PDFLinkService | null;
 }
 
-export const INITIAL_PDF: PdfState = { ready: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
+export const INITIAL_PDF: PdfState = { ready: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
 
 /** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
 export type NoPages = 'trashed' | 'locked' | 'none';

@@ -882,7 +882,7 @@ test('M5 table: a legacy scroll bar starts under the header (스크롤 막대 �
     await t.page.keyboard.press('Escape');
     await t.page.mouse.up();
     pressed = false;
-    check('column drag: esc cancelled it — the headers are as they were and no line is left', JSON.stringify(await t.page.getByTestId('column-header').allTextContents()) === JSON.stringify(['제목', '저자', '연도', '종류', '추가일']) && (await t.page.getByTestId('column-drop-line').count()) === 0, null);
+    check('column drag: esc cancelled it — the headers are as they were and no line is left', JSON.stringify(await t.page.getByTestId('column-header').allTextContents()) === JSON.stringify(['제목', '저자', '연도', '종류', '추가일', '진행']) && (await t.page.getByTestId('column-drop-line').count()) === 0, null);
   } finally {
     if (pressed) await t.page.mouse.up().catch(() => {});
     await t.app.close().catch(() => {});

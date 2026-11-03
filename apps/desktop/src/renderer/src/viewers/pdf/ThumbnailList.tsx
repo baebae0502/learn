@@ -22,10 +22,11 @@ const FALLBACK_RATIO = 1.294;
 export function ThumbnailList() {
   const handle = useReader((s) => s.handle);
   const doc = handle?.document() ?? null;
-  const total = useReader((s) => s.pdf?.pagesCount ?? 0);
+  // The list starts from the restored page: until the saved place is applied it has no rows, so page 1 is never drawn or ringed first.
+  const total = useReader((s) => (s.pdf?.placed ? s.pdf.pagesCount : 0));
   const current = useReader((s) => s.pdf?.pageNumber ?? 1);
   const rotation = useReader((s) => s.pdf?.rotation ?? 0);
-  const ready = useReader((s) => s.pdf?.ready === true);
+  const ready = useReader((s) => s.pdf?.placed === true);
   const { resolved: pageColor } = usePageColor();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [ratios, setRatios] = useState<ReadonlyMap<number, number>>(new Map());

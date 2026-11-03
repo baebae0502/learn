@@ -4,7 +4,7 @@ import { showColumnMenuInput, showContextMenuInput } from '../src/ipc';
 import { COLUMN_WIDTH_MAX, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, columnSpec, columnsMask, columnsOfMask } from '../src/library-columns';
 
 describe('library table columns (M4 spec 3.1)', () => {
-  it('lists the eleven columns in catalogue order with the spec labels, widths and alignment', () => {
+  it('lists the twelve columns in catalogue order with the spec labels, widths and alignment', () => {
     expect(LIBRARY_COLUMNS.map((c) => c.id)).toEqual([...LIBRARY_COLUMN_IDS]);
     expect(LIBRARY_COLUMNS.map((c) => [c.id, c.label, c.defaultWidth, c.minWidth, c.align, c.defaultVisible])).toEqual([
       ['title', '제목', null, 200, 'start', true],
@@ -18,6 +18,7 @@ describe('library table columns (M4 spec 3.1)', () => {
       ['size', '크기', 80, 64, 'end', false],
       ['originalName', '원래 이름', 200, 120, 'start', false],
       ['deletedAt', '삭제한 날짜', 124, 112, 'start', false],
+      ['progress', '진행', 88, 72, 'end', true],
     ]);
   });
   it('only the title is required, and only the title takes the remaining width', () => {
@@ -27,7 +28,7 @@ describe('library table columns (M4 spec 3.1)', () => {
     expect(COLUMN_WIDTH_MAX).toBe(1200);
   });
   it('starts with the five default columns, the catalogue order and no stored widths (frozen)', () => {
-    expect(DEFAULT_COLUMN_CONFIG).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt'], order: [...LIBRARY_COLUMN_IDS], widths: {} });
+    expect(DEFAULT_COLUMN_CONFIG).toEqual({ visible: ['title', 'creators', 'year', 'type', 'createdAt', 'progress'], order: [...LIBRARY_COLUMN_IDS], widths: {} });
     expect(Object.isFrozen(DEFAULT_COLUMN_CONFIG)).toBe(true);
     expect(Object.isFrozen(DEFAULT_COLUMN_CONFIG.visible)).toBe(true);
     expect(columnSpec('size').align).toBe('end');
@@ -38,7 +39,7 @@ describe('library table columns (M4 spec 3.1)', () => {
   it('keeps the columns shown as a bitmask over the catalogue order: the reported context carries no arrays', () => {
     expect(columnsMask([])).toBe(0);
     expect(columnsMask(['title'])).toBe(1);
-    expect(columnsMask(DEFAULT_COLUMN_CONFIG.visible)).toBe(0b11111); // 제목·저자·연도·종류·추가일: the first five of the catalogue
+    expect(columnsMask(DEFAULT_COLUMN_CONFIG.visible)).toBe(0b100000011111); // 제목·저자·연도·종류·추가일, and 진행 at the end: no earlier bit moved
     expect(columnsMask(['createdAt', 'title', 'title'])).toBe(0b10001); // order and repeats do not matter
     for (const id of LIBRARY_COLUMN_IDS) expect(columnsOfMask(columnsMask([id])), id).toEqual([id]);
     expect(columnsOfMask(0b10001)).toEqual(['title', 'createdAt']);

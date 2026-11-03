@@ -20,11 +20,11 @@ const NEW = '새\u00a0컬렉션';
 
 describe('정렬 기준 ▸ (sortColumns)', () => {
   it('lists the shown columns in catalogue order, then the two directions; the sort in force is the radio that is on', () => {
-    expect(lines(sortColumnRows(SORT.id, CTX, true))).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○']);
+    expect(lines(sortColumnRows(SORT.id, CTX, true))).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '진행', '-', '오름차순', '내림차순 ○']);
   });
   it('carries the column or the direction as the row\'s value', () => {
     expect(rows(sortColumnRows(SORT.id, CTX, true)).map((r) => r.args)).toEqual([
-      { column: 'title' }, { column: 'creators' }, { column: 'year' }, { column: 'type' }, { column: 'createdAt' }, { direction: 'asc' }, { direction: 'desc' },
+      { column: 'title' }, { column: 'creators' }, { column: 'year' }, { column: 'type' }, { column: 'createdAt' }, { column: 'progress' }, { direction: 'asc' }, { direction: 'desc' },
     ]);
     expect(rows(sortColumnRows(SORT.id, CTX, true)).every((r) => r.id === 'library.sortBy' && r.type === 'radio')).toBe(true);
   });
@@ -35,11 +35,10 @@ describe('정렬 기준 ▸ (sortColumns)', () => {
   it('the title is always listed; a sort by a hidden column still shows its row, checked, so the menu never contradicts the table', () => {
     expect(lines(sortColumnRows(SORT.id, { ...CTX, columnsShown: 0, sortColumn: 'title' }, true))).toEqual(['제목 ○', '-', '오름차순', '내림차순 ○']);
     expect(lines(sortColumnRows(SORT.id, { ...CTX, columnsShown: columnsMask(['title']), sortColumn: 'updatedAt' }, true))).toEqual(['제목', '수정일 ○', '-', '오름차순', '내림차순 ○']);
-    // progress has no column (M7): nothing is on, and nothing is invented.
-    expect(lines(sortColumnRows(SORT.id, { ...CTX, sortColumn: 'progress' }, true))).toEqual(['제목', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    expect(lines(sortColumnRows(SORT.id, { ...CTX, sortColumn: 'progress' }, true))).toEqual(['제목', '저자', '연도', '종류', '추가일', '진행 ○', '-', '오름차순', '내림차순 ○']);
   });
   it('is dispatched by the command\'s source, and every row is disabled with its command', () => {
-    expect(lines(valueRows(SORT, input(), false))).toEqual(['제목 ✗', '저자 ✗', '연도 ✗', '종류 ✗', '추가일 ○ ✗', '-', '오름차순 ✗', '내림차순 ○ ✗']);
+    expect(lines(valueRows(SORT, input(), false))).toEqual(['제목 ✗', '저자 ✗', '연도 ✗', '종류 ✗', '추가일 ○ ✗', '진행 ✗', '-', '오름차순 ✗', '내림차순 ○ ✗']);
   });
 });
 

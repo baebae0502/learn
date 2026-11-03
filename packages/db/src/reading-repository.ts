@@ -46,7 +46,7 @@ export class ReadingRepository {
     return row && toPosition(row);
   }
 
-  /** Upsert. `openedAt` comes from `markOpened` (or the first save if it is still empty); saves never change it. */
+  /** Upsert. Progress is the furthest point reached: it never drops, and a save without one keeps it. `openedAt` comes from `markOpened` (or the first save if it is still empty); saves never change it. */
   save(input: SaveReadingPosition): ReadingPosition {
     const locator = readingLocatorSchema.safeParse(input.locator);
     if (!locator.success) throw new LearnError('VALIDATION_FAILED', '읽기 위치가 올바르지 않습니다.');
@@ -65,7 +65,9 @@ export class ReadingRepository {
         .prepare(`INSERT INTO reading_positions (item_id, revision_id, locator_json, progress, opened_at, updated_at)
                   VALUES (@itemId, @revisionId, @locator, @progress, @now, @now)
                   ON CONFLICT(item_id) DO UPDATE SET
-                    revision_id = excluded.revision_id, locator_json = excluded.locator_json, progress = excluded.progress,
+                    revision_id = excluded.revision_id, locator_json = excluded.locator_json,
+                    progress = CASE WHEN excluded.progress IS NULL THEN reading_positions.progress
+                                    ELSE MAX(COALESCE(reading_positions.progress, 0), excluded.progress) END,
                     opened_at = COALESCE(reading_positions.opened_at, excluded.opened_at), updated_at = excluded.updated_at`)
         .run({ itemId: input.itemId, revisionId: input.revisionId, locator: JSON.stringify(locator.data), progress, now });
       return this.get(input.itemId)!;

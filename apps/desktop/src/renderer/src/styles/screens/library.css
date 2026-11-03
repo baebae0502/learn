@@ -1,4 +1,23 @@
 @layer screens {
+  /* 진행 칸 (M7a): the narrow bar and the percent in tabular figures, both at the cell's end; an unread item's cell is empty. */
+  .table-row .td[data-col='progress'] .progress {
+    width: 40px; /* local: the narrow bar of the approved render */
+  }
+  .table-row .td[data-col='progress'] .pct {
+    display: inline-block;
+    min-width: 4ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  /* On the accent fill of a focused selected row the track and the fill turn white, as the mockup's. */
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] .progress,
+  .table-row[data-force~='focused'] .progress {
+    background: color-mix(in oklch, var(--text-on-accent) 30%, transparent);
+  }
+  :root:not([data-window-inactive]) .library-table:focus-within .table-row[data-selected] .progress > i,
+  .table-row[data-force~='focused'] .progress > i {
+    background: var(--text-on-accent);
+  }
   /* The table fills the content column. Its header row sits outside the vertical scroller (a classic scroll bar then
      starts under the header instead of crossing it): the header band keeps the scroll bar's width as its right padding
      (--scrollbar-w, measured by LibraryTable; 0 for overlay bars), and the scroller sends its sideways position to the

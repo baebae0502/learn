@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, type ColumnConfig, type LibraryColumnId } from '@learn/domain';
-import { columnTemplates, completeOrder, defaultColumns, TRASH_CREATORS_WIDTH, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
+import { columnTemplates, completeOrder, defaultColumns, TRASH_WIDTHS, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
 
 const spec = (id: LibraryColumnId) => LIBRARY_COLUMNS.find((c) => c.id === id)!;
 const px = (entries: Array<[LibraryColumnId, number]>) => new Map(entries);
@@ -14,7 +14,7 @@ describe('column configuration (M4 spec 3.2)', () => {
   it('drops ids it does not know, keeps the title visible, lists the shown columns in catalogue order', () => {
     const cfg = parseColumnConfig({ visible: ['size', 'tags', 'year', 'year'], order: ['tags', 'size'], widths: {} });
     expect(cfg.visible).toEqual(['title', 'year', 'size']);
-    expect(cfg.order).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt']);
+    expect(cfg.order).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt', 'progress']);
   });
   it('clamps widths to [the column minimum, 1200], rounds them, and never keeps one for the title (it takes the rest)', () => {
     const cfg = parseColumnConfig({ visible: ['title'], order: [], widths: { creators: 20, year: 2000, size: 81.6, title: 400, tags: 50, type: 'wide' } });
@@ -31,14 +31,14 @@ describe('column configuration (M4 spec 3.2)', () => {
   });
   it('toggles a column in and out in catalogue order without changing its input; the title stays', () => {
     const base = defaultColumns();
-    expect(toggleColumn(base, 'size').visible).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'size']);
-    expect(toggleColumn(base, 'year').visible).toEqual(['title', 'creators', 'type', 'createdAt']);
+    expect(toggleColumn(base, 'size').visible).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'size', 'progress']);
+    expect(toggleColumn(base, 'year').visible).toEqual(['title', 'creators', 'type', 'createdAt', 'progress']);
     expect(toggleColumn(base, 'title')).toBe(base);
     expect(base.visible).toEqual(DEFAULT_COLUMN_CONFIG.visible);
   });
   it('gives the shown columns as specs, and each one\'s width: stored, else its default, null for the title', () => {
     const cfg = withWidths(defaultColumns(), px([['creators', 150], ['title', 999]]));
-    expect(visibleColumns(cfg).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
+    expect(visibleColumns(cfg).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'progress']);
     expect(cfg.widths).toEqual({ creators: 150 });
     expect(widthOf(cfg, spec('creators'))).toBe(150);
     expect(widthOf(cfg, spec('year'))).toBe(64);
@@ -46,10 +46,10 @@ describe('column configuration (M4 spec 3.2)', () => {
   });
   it('a forced column is shown whatever the config says, right after the title', () => {
     const cfg = defaultColumns();
-    expect(visibleColumns(cfg, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt']);
-    expect(visibleColumns(cfg).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
+    expect(visibleColumns(cfg, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt', 'progress']);
+    expect(visibleColumns(cfg).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'progress']);
     const shown = toggleColumn(cfg, 'openedAt');
-    expect(visibleColumns(shown, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt']); // not twice
+    expect(visibleColumns(shown, ['openedAt']).map((c) => c.id)).toEqual(['title', 'openedAt', 'creators', 'year', 'type', 'createdAt', 'progress']); // not twice
   });
 });
 
@@ -80,16 +80,16 @@ describe('the grid tracks of the header and the rows (M4 spec 3.1, 3.2)', () => 
   it('gives every column its width and the title the rest at its minimum; the table is never narrower than their sum', () => {
     const cfg = withWidths(defaultColumns(), px([['creators', 140]]));
     const shown = visibleColumns(cfg);
-    expect(fixedWidths(cfg, shown)).toEqual(px([['creators', 140], ['year', 64], ['type', 88], ['createdAt', 132]]));
+    expect(fixedWidths(cfg, shown)).toEqual(px([['creators', 140], ['year', 64], ['type', 88], ['createdAt', 132], ['progress', 88]]));
     expect(columnTemplates(shown, fixedWidths(cfg, shown))).toEqual({
-      head: 'minmax(200px, 1fr) 140px 64px 88px 132px',
-      row: 'minmax(192px, 1fr) 140px 64px 88px 124px', // the row is inset 8 on each side; its cells line up with the header
-      minWidth: 624,
+      head: 'minmax(200px, 1fr) 140px 64px 88px 132px 88px',
+      row: 'minmax(192px, 1fr) 140px 64px 88px 132px 80px', // the row is inset 8 on each side; its cells line up with the header
+      minWidth: 712,
     });
   });
   it('takes the widths it is given over the stored ones (a drag in progress)', () => {
     const shown = visibleColumns(defaultColumns());
-    expect(columnTemplates(shown, px([['creators', 150], ['year', 94]])).head).toBe('minmax(200px, 1fr) 150px 94px 88px 132px');
+    expect(columnTemplates(shown, px([['creators', 150], ['year', 94]])).head).toBe('minmax(200px, 1fr) 150px 94px 88px 132px 88px');
   });
   it('a table of the title alone: one track, inset on both sides in a row', () => {
     const shown = visibleColumns(parseColumnConfig({ visible: ['title'] }));
@@ -102,7 +102,7 @@ describe('column order (M5 spec 5.1)', () => {
   const base = defaultColumns(); // shown: title, creators, year, type, createdAt
 
   it('puts the title first whatever was stored and a column the build added right after its catalogue predecessor', () => {
-    expect(completeOrder(['size', 'title', 'year'])).toEqual(['title', 'creators', 'size', 'originalName', 'deletedAt', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode']);
+    expect(completeOrder(['size', 'title', 'year'])).toEqual(['title', 'creators', 'size', 'originalName', 'deletedAt', 'progress', 'year', 'type', 'createdAt', 'updatedAt', 'openedAt', 'storageMode']);
     // M4 stored nine ids, in catalogue order: 마지막으로 연 날 lands after 수정일, not at the end.
     const m4 = ['title', 'creators', 'year', 'type', 'createdAt', 'updatedAt', 'storageMode', 'size', 'originalName'] as const;
     expect(completeOrder(m4)).toEqual([...LIBRARY_COLUMN_IDS]);
@@ -111,9 +111,9 @@ describe('column order (M5 spec 5.1)', () => {
   });
   it('shows the columns in the stored order; a forced column sits right after the title, the others keep their order', () => {
     const cfg = { ...base, order: completeOrder(['title', 'createdAt', 'creators', 'year', 'type']) };
-    expect(ids(cfg)).toEqual(['title', 'createdAt', 'creators', 'year', 'type']);
-    expect(ids(cfg, ['openedAt'])).toEqual(['title', 'openedAt', 'createdAt', 'creators', 'year', 'type']);
-    expect(ids(base)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
+    expect(ids(cfg)).toEqual(['title', 'createdAt', 'progress', 'creators', 'year', 'type']); // 진행 lands after the last of the columns that lie between 추가일 and it
+    expect(ids(cfg, ['openedAt'])).toEqual(['title', 'openedAt', 'createdAt', 'progress', 'creators', 'year', 'type']);
+    expect(ids(base)).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'progress']);
   });
   it('pins the title and the forced columns shown after it', () => {
     expect(pinnedCount(['title', 'creators'], [])).toBe(1);
@@ -122,21 +122,21 @@ describe('column order (M5 spec 5.1)', () => {
   });
   it('moves a column to a boundary between the shown columns: 0 is before the first, n after the last', () => {
     const left = moveColumn(base, [], 'createdAt', 1);
-    expect(ids(left)).toEqual(['title', 'createdAt', 'creators', 'year', 'type']);
-    expect(left.order).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt']);
-    expect(ids(moveColumn(base, [], 'creators', 5))).toEqual(['title', 'year', 'type', 'createdAt', 'creators']);
-    expect(ids(moveColumn(base, [], 'year', 4))).toEqual(['title', 'creators', 'type', 'year', 'createdAt']);
-    expect(ids(moveColumn(base, [], 'year', 1))).toEqual(['title', 'year', 'creators', 'type', 'createdAt']);
+    expect(ids(left)).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'progress']);
+    expect(left.order).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'updatedAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt', 'progress']);
+    expect(ids(moveColumn(base, [], 'creators', 6))).toEqual(['title', 'year', 'type', 'createdAt', 'progress', 'creators']);
+    expect(ids(moveColumn(base, [], 'year', 4))).toEqual(['title', 'creators', 'type', 'year', 'createdAt', 'progress']);
+    expect(ids(moveColumn(base, [], 'year', 1))).toEqual(['title', 'year', 'creators', 'type', 'createdAt', 'progress']);
     expect(base.order).toEqual([...LIBRARY_COLUMN_IDS]); // the input is not changed
   });
   it('leaves hidden columns where they were, relative to the shown ones', () => {
     const wide = toggleColumn(base, 'updatedAt'); // shown: …, createdAt, updatedAt
     const moved = moveColumn(wide, [], 'updatedAt', 1);
-    expect(ids(moved)).toEqual(['title', 'updatedAt', 'creators', 'year', 'type', 'createdAt']);
-    expect(moved.order).toEqual(['title', 'updatedAt', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt']);
+    expect(ids(moved)).toEqual(['title', 'updatedAt', 'creators', 'year', 'type', 'createdAt', 'progress']);
+    expect(moved.order).toEqual(['title', 'updatedAt', 'creators', 'year', 'type', 'createdAt', 'openedAt', 'storageMode', 'size', 'originalName', 'deletedAt', 'progress']);
   });
   it('changes nothing when the column would land where it is, when it is the title or not shown, or the boundary is not one it may take', () => {
-    for (const [id, slot] of [['year', 2], ['year', 3], ['title', 3], ['size', 1], ['year', 0], ['year', 99], ['year', -1]] as const) {
+    for (const [id, slot] of [['year', 2], ['year', 3], ['title', 3], ['size', 1], ['year', 0], ['year', 99], ['year', -1], ['year', 7]] as const) {
       expect(moveColumn(base, [], id, slot), `${id} → ${slot}`).toBe(base);
     }
   });
@@ -144,8 +144,8 @@ describe('column order (M5 spec 5.1)', () => {
     expect(moveColumn(base, ['openedAt'], 'createdAt', 1)).toBe(base); // before the forced column
     expect(moveColumn(base, ['openedAt'], 'openedAt', 4)).toBe(base);
     const moved = moveColumn(base, ['openedAt'], 'createdAt', 2); // right after it
-    expect(ids(moved, ['openedAt'])).toEqual(['title', 'openedAt', 'createdAt', 'creators', 'year', 'type']);
-    expect(ids(moved)).toEqual(['title', 'createdAt', 'creators', 'year', 'type']); // outside the recent view the order is the same
+    expect(ids(moved, ['openedAt'])).toEqual(['title', 'openedAt', 'createdAt', 'creators', 'year', 'type', 'progress']);
+    expect(ids(moved)).toEqual(['title', 'createdAt', 'creators', 'year', 'type', 'progress']); // outside the recent view the order is the same
   });
   it('열 구성 되돌리기 brings the order back with the widths and the shown columns', () => {
     expect(defaultColumns().order).toEqual([...LIBRARY_COLUMN_IDS]);
@@ -158,7 +158,7 @@ describe('the trash view\'s 삭제한 날짜 (M6 spec 4.3)', () => {
   it('is drawn last only where a view forces it, whatever the stored columns say', () => {
     const stored = { ...defaultColumns(), visible: [...defaultColumns().visible, 'deletedAt' as const] };
     expect(visibleColumns(stored).map((c) => c.id)).not.toContain('deletedAt');
-    expect(visibleColumns(defaultColumns(), forced).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'deletedAt']);
+    expect(visibleColumns(defaultColumns(), forced).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt', 'progress', 'deletedAt']);
   });
   it('stays last: it is not moved, nothing goes after it, and the others still move before it', () => {
     const cfg = defaultColumns();
@@ -166,20 +166,35 @@ describe('the trash view\'s 삭제한 날짜 (M6 spec 4.3)', () => {
     expect(pinnedCount(shown, forced)).toBe(1);
     expect(trailingCount(shown, forced)).toBe(1);
     expect(moveColumn(cfg, forced, 'deletedAt', 1)).toBe(cfg);
-    expect(moveColumn(cfg, forced, 'creators', 6)).toBe(cfg);
-    expect(visibleColumns(moveColumn(cfg, forced, 'creators', 5), forced).map((c) => c.id)).toEqual(['title', 'year', 'type', 'createdAt', 'creators', 'deletedAt']);
+    expect(moveColumn(cfg, forced, 'creators', 7)).toBe(cfg);
+    expect(visibleColumns(moveColumn(cfg, forced, 'creators', 6), forced).map((c) => c.id)).toEqual(['title', 'year', 'type', 'createdAt', 'progress', 'creators', 'deletedAt']);
   });
   it('the default trash columns fit a 1024 window with the panel closed (critique C-2: 776 of 784 + 8)', () => {
     const cfg = defaultColumns();
     const shown = visibleColumns(cfg, forced);
     expect(columnTemplates(shown, fixedWidths(cfg, shown)).minWidth).toBeLessThanOrEqual(776);
   });
-  it('the author column takes the width 삭제한 날짜 needs (124) in the trash only; a dragged width and the other views stay', () => {
+  it('the author and kind columns take the least widths in the trash only; a dragged width and the other views stay', () => {
     const cfg = defaultColumns();
     const trash = visibleColumns(cfg, forced);
     expect(fixedWidths(cfg, trash).get('deletedAt')).toBe(124);
-    expect(fixedWidths(cfg, trash).get('creators')).toBe(TRASH_CREATORS_WIDTH);
+    expect(fixedWidths(cfg, trash).get('type')).toBe(TRASH_WIDTHS.type);
+    expect(fixedWidths(cfg, trash).get('creators')).toBe(TRASH_WIDTHS.creators);
     expect(fixedWidths({ ...cfg, widths: { creators: 200 } }, trash).get('creators')).toBe(200);
     expect(fixedWidths(cfg, visibleColumns(cfg)).get('creators')).toBe(180);
+    expect(fixedWidths(cfg, visibleColumns(cfg)).get('type')).toBe(88);
+  });
+});
+
+describe('the 진행 column (M7a)', () => {
+  it('a stored configuration from before it keeps it hidden; the default shows it last among the defaults', () => {
+    const stored = parseColumnConfig({ visible: ['title', 'creators', 'year', 'type', 'createdAt'], order: ['title', 'creators', 'year', 'type', 'createdAt'], widths: {} });
+    expect(stored.visible).not.toContain('progress');
+    expect(visibleColumns(stored).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
+    expect(stored.order.at(-1)).toBe('progress');
+    expect(visibleColumns(defaultColumns()).map((c) => c.id).at(-1)).toBe('progress');
+  });
+  it('is drawn in the trash view too, before 삭제한 날짜', () => {
+    expect(visibleColumns(defaultColumns(), ['deletedAt']).map((c) => c.id).slice(-2)).toEqual(['progress', 'deletedAt']);
   });
 });

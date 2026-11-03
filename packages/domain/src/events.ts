@@ -22,7 +22,7 @@ export interface WindowState {
 
 /** Why `libraryChanged` was sent; the renderer decides from it what to read again. */
 export type LibraryChangeReason =
-  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'purge' | 'collections' | 'tags' | 'availability' | 'opened';
+  | 'import' | 'relink' | 'metadata' | 'trash' | 'restore' | 'purge' | 'collections' | 'tags' | 'availability' | 'opened' | 'position';
 
 export interface LearnEventMap {
   /** A menu-bar click or accelerator; `args` is the value of a submenu row (정렬 기준 › 연도). */

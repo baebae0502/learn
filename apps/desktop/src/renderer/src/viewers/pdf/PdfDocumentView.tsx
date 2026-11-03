@@ -78,6 +78,16 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             if (typeof z === 'number') viewer.currentScale = z;
             else viewer.currentScaleValue = z;
           },
+          restore: (saved, pageIndex) => {
+            const zoom = saved?.zoom ?? 'auto';
+            viewer.pagesRotation = saved?.rotation ?? 0;
+            if (typeof zoom === 'number') viewer.currentScale = zoom;
+            else viewer.currentScaleValue = zoom;
+            viewer.scrollPageIntoView({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] });
+            // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
+            viewer.update();
+            store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });
+          },
           zoomIn: () => {
             viewer.currentScale = nextZoom(viewer.currentScale, 1);
           },

@@ -29,10 +29,33 @@ describe('ReadingRepository', () => {
     vi.setSystemTime(new Date('2026-10-20T02:00:00.000Z'));
     repo.save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 7 }, progress: null });
     expect(repo.get(itemId)).toEqual({
-      itemId, revisionId, locator: { kind: 'pdf', pageIndex: 7 }, progress: null,
+      itemId, revisionId, locator: { kind: 'pdf', pageIndex: 7 }, progress: 0.1, // a save without progress keeps it
       openedAt: '2026-10-20T01:00:00.000Z', updatedAt: '2026-10-20T02:00:00.000Z',
     });
     expect((db.prepare('SELECT COUNT(*) AS n FROM reading_positions').get() as { n: number }).n).toBe(1);
+  });
+
+  it('progress is the furthest point: a lower save keeps it, a null save leaves it, a higher one raises it; the place still follows', () => {
+    const { itemId, revisionId } = seedItem(db);
+    const at = (pageIndex: number, progress: number | null) => repo.save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex }, progress });
+    expect(at(8, 0.8).progress).toBe(0.8);
+    const back = at(1, 0.2);
+    expect(back.progress).toBe(0.8);
+    expect(back.locator).toEqual({ kind: 'pdf', pageIndex: 1 });
+    expect(at(2, null).progress).toBe(0.8);
+    expect(at(9, 0.9).progress).toBe(0.9);
+  });
+
+  it('a first save with no progress stores none, and a later one sets it', () => {
+    const { itemId, revisionId } = seedItem(db);
+    expect(repo.save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: null }).progress).toBeNull();
+    expect(repo.save({ itemId, revisionId, locator: { kind: 'pdf', pageIndex: 0 }, progress: 0.3 }).progress).toBe(0.3);
+  });
+
+  it('the same rule holds for a video', () => {
+    const { itemId, revisionId } = seedItem(db, { type: 'video' });
+    repo.save({ itemId, revisionId, locator: { kind: 'video', timeMs: 7000 }, progress: 0.7 });
+    expect(repo.save({ itemId, revisionId, locator: { kind: 'video', timeMs: 1000 }, progress: 0.1 }).progress).toBe(0.7);
   });
 
   it('markOpened creates the row of a never-opened item: default locator, latest revision, no progress', () => {
@@ -106,9 +129,9 @@ describe('ReadingRepository', () => {
     for (const progress of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
       expectLearnError(() => repo.save({ itemId, revisionId, locator, progress }), 'VALIDATION_FAILED', '진행률');
     }
-    for (const progress of [0, 1, null]) {
-      expect(repo.save({ itemId, revisionId, locator, progress }).progress).toBe(progress);
-    }
+    expect(repo.save({ itemId, revisionId, locator, progress: null }).progress).toBeNull();
+    expect(repo.save({ itemId, revisionId, locator, progress: 0 }).progress).toBe(0);
+    expect(repo.save({ itemId, revisionId, locator, progress: 1 }).progress).toBe(1);
   });
 
   it('requires an existing item and a revision of that item', () => {

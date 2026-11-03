@@ -195,6 +195,22 @@ describe('checkLibrary under a running import queue', () => {
     expect(repo.getAsset(asset.id)).toBeUndefined();
   });
 
+  it('skips a row purged while its file is being looked for', async () => {
+    const { layout, repo, importer } = setup();
+    const item = await imported(importer, writePdf(tempDir('src'), 'gone2.pdf', 'gone2'));
+    const asset = repo.assetsByMode('managed')[0]!;
+    fs.rmSync(path.join(layout.root, ...asset.relativePath!.split('/')));
+    repo.trash([item.id]);
+    const access = fsp.access.bind(fsp);
+    vi.spyOn(fsp, 'access').mockImplementation(async (...args: Parameters<typeof fsp.access>) => {
+      repo.purge({ itemIds: [item.id], collectionIds: [] });
+      return access(...args);
+    });
+    const check = await checkLibrary(layout, repo);
+    expect(check.missingManaged.itemIds).toEqual([]);
+    expect(repo.getAsset(asset.id)).toBeUndefined();
+  });
+
   it('does not list a copy on disk as unused when its row is committed after the listing', async () => {
     const { layout, repo, importer } = setup();
     const src = writePdf(tempDir('src'), 'placed.pdf', 'placed');

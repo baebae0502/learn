@@ -5,7 +5,7 @@ afterEach(() => {
   for (const toast of [...toastQueue.visibleToasts]) toastQueue.close(toast.key);
 });
 
-describe('which toasts are on screen (M6 m-3)', () => {
+describe('which toasts are on screen', () => {
   it('keeps a job toast visible under three newer ordinary ones, the rest newest first', () => {
     const job = showJobToast('import');
     const keys = ['a', 'b', 'c'].map((title) => showToast({ kind: 'info', title }));

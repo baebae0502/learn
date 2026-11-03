@@ -251,15 +251,14 @@
     padding: 0 var(--space-4);
     border: 0;
     border-radius: var(--radius-sm);
-    background: transparent;
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
     color: var(--text-primary);
     font: var(--type-body);
     text-align: center;
   }
-  .reader-toolbar .zoom-input:hover:not(:disabled),
-  .reader-toolbar .zoom-input:focus {
-    background: var(--bg-field);
-    box-shadow: inset 0 0 0 1px var(--border);
+  .zoom-menu .menu {
+    min-width: 232px; /* local: zoom menu width (design-spec 7.3 mockup) */
   }
   .reader-toolbar .zoom-input:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);

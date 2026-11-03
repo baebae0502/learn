@@ -62,9 +62,9 @@ function colorKeysRow(platform: string): ShortcutRow {
 
 /**
  * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
- * after the app rows, then the palette and dialog keys.
+ * after the app rows, then the palette and dialog keys. `view`: ⌘+ ⌘− ⌘0 are named as that view's menu names them.
  */
-export function shortcutGroups(platform: string): ShortcutGroup[] {
+export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
     rows: COMMANDS.filter((c) => groupOf(c) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
@@ -73,7 +73,7 @@ export function shortcutGroups(platform: string): ShortcutGroup[] {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
         // A single key is spoken like an accelerator: ⇧F6 on macOS, Shift+F6 elsewhere.
         const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');
-        return { label: commandLabel(c, platform), keys, spoken };
+        return { label: commandLabel(c, platform, view ? { view } : {}), keys, spoken };
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))

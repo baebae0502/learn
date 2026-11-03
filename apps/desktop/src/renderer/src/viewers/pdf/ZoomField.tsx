@@ -22,7 +22,9 @@ const named = (id: CommandId): { id: CommandId; label: string; accelerator?: str
 function zoomEntries(zoom: ZoomValue): MenuEntry<ZoomAction>[] {
   const fit = (id: 'reader.zoomAuto' | 'reader.zoomPageWidth' | 'reader.zoomPageFit', mode: ZoomValue) => ({ ...named(id), checked: zoom === mode });
   return [
-    { items: [fit('reader.zoomAuto', 'auto'), fit('reader.zoomPageWidth', 'page-width'), fit('reader.zoomPageFit', 'page-fit'), { ...named('view.textReset'), checked: false }] },
+    { items: [fit('reader.zoomAuto', 'auto'), fit('reader.zoomPageWidth', 'page-width'), fit('reader.zoomPageFit', 'page-fit')] },
+    // Its own section: an action in the fit modes' group would become one of its radio rows.
+    { items: [named('view.textReset')] },
     MENU_SEPARATOR,
     { items: PRESETS.map((p) => ({ id: `preset:${p}` as const, label: zoomPercent(p), checked: typeof zoom === 'number' && Math.abs(zoom - p) < 0.005 })) },
     MENU_SEPARATOR,
@@ -81,6 +83,7 @@ export function ZoomField({ onEscape }: { onEscape(): void }) {
         items={zoomEntries(pdf?.zoom ?? 'auto')}
         onAction={onAction}
         placement="bottom start"
+        popoverClassName="zoom-menu"
         isDisabled={!ready}
         disabledReason={t.reader.opening}
         testId="pdf-zoom-menu"

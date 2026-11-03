@@ -35,6 +35,8 @@ export function ViewMenu() {
       items={items}
       onAction={(id) => run(id)}
       placement="bottom end"
+      variant="plain"
+      size="small"
       isDisabled={!ready}
       disabledReason={t.reader.opening}
       testId="pdf-view-menu"

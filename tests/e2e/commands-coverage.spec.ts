@@ -115,6 +115,8 @@ test('every registry command runs without a page error (library and reader menus
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const searchInput = page.getByTestId('search-field').getByRole('searchbox');
   /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
+  const scale = async () => Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
+  let scaleBefore = 0;
   const readerOpen = async () => (await page.getByTestId('pdf-viewer').count()) > 0;
   /** Named copies under derived/open/<uuid>/ with the type's extension. */
   const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
@@ -164,11 +166,11 @@ test('every registry command runs without a page error (library and reader menus
     'collection.addItems': () => expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([filedId]),
     // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13. In the reader the same keys zoom: the scale is a number, not a fit mode, and the pref stays.
     'view.textBigger': async () => {
-      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', /^\d/);
+      if (await readerOpen()) await expect.poll(scale).toBeGreaterThan(scaleBefore);
       else await expect.poll(() => fontSize(page)).toBe(14);
     },
     'view.textSmaller': async () => {
-      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', /^\d/);
+      if (await readerOpen()) await expect.poll(scale).toBeLessThan(scaleBefore);
       else await expect.poll(() => fontSize(page)).toBe(13);
     },
     // The reader's own: each does what its name says on the open PDF (run in registry order, so the page colours end on 어둡게).
@@ -240,6 +242,7 @@ test('every registry command runs without a page error (library and reader menus
       for (const id of ids) {
         if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
+        if (view === 'reader') scaleBefore = await scale();
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
         await closeTransient(app, page);

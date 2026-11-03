@@ -11,7 +11,7 @@ import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
 /** ⌘/ (design-spec 7.4), generated from the command registry; ↩ or esc closes it. */
-export function ShortcutsSheet() {
+export function ShortcutsSheet({ view }: { view?: 'library' | 'viewer' }) {
   const done = () => resolveSheet({ kind: 'shortcuts' });
   const keys = useSheetKeys(done, done);
   // On a short screen (the 768-tall macOS runner) the list scrolls: then the body is a keyboard stop (scrollRegion.ts).
@@ -38,7 +38,7 @@ export function ShortcutsSheet() {
       </div>
       <div className="d-body" ref={body} {...region}>
         <div className="shortcut-groups">
-          {shortcutColumns(shortcutGroups(currentPlatform())).map((column, i) => (
+          {shortcutColumns(shortcutGroups(currentPlatform(), view)).map((column, i) => (
             <div className="shortcut-column" key={i}>
               {column.map((g) => (
                 <section key={g.title} aria-label={g.title}>

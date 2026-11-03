@@ -148,7 +148,12 @@ export function pageColorGroup(spec: SubmenuSpec, commands: readonly CommandSpec
 
 /** A group of the registry as its menu entry; `null` when it has nothing to list. */
 export function groupEntry(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
-  return spec.id === 'colorTags' ? colorTagGroup(spec, commands, input) : pageColorGroup(spec, commands, input);
+  switch (spec.id) {
+    case 'colorTags':
+      return colorTagGroup(spec, commands, input);
+    case 'pageColor':
+      return pageColorGroup(spec, commands, input);
+  }
 }
 
 /**
@@ -175,6 +180,13 @@ export function menuNeedsOrganize(commands: readonly CommandSpec[], submenus: re
   const fromSource = commands.some(
     (c) => (c.submenu === 'collections' || c.submenu === 'tagColors') && (where === 'menu' ? c.menu !== undefined : placedHere(c.contextMenu)),
   );
-  // 쪽 색 ▸ reads nothing from the library: only the colour-tag group does.
-  return fromSource || submenus.some((s) => s.id === 'colorTags' && (where === 'menu' ? s.menu !== undefined : placedHere(s.contextMenu)));
+  const readsLibrary = (s: SubmenuSpec): boolean => {
+    switch (s.id) {
+      case 'colorTags':
+        return true;
+      case 'pageColor': // reads nothing from the library
+        return false;
+    }
+  };
+  return fromSource || submenus.some((s) => readsLibrary(s) && (where === 'menu' ? s.menu !== undefined : placedHere(s.contextMenu)));
 }

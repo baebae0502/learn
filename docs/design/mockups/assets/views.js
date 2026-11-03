@@ -4,9 +4,14 @@
  *   library        ?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited
  *   library-empty  ?state=drop
  *   reader-pdf     ?page=original|sepia|dark &menu=zoom|view &nav=thumbs|outline &state=loading|error|missing|nooutline|trashed
+ *                  M7a (with &m=7a — no tab strip, the 44 px toolbar of spec 4.2, an info-mode inspector with the 번역 section):
+ *                  &find=open|none &select=consent|translating|translated|error|offline|long|same
+ *                  &inspector=empty|translated|concat|consent|off &menu=zoom|view|copy|direction
+ *                  &state=loading|error|missing|locked|trashed|nooutline (&pw=wrong) &w=1024|960 (a narrower window)
  *   reader-video   ?state=nosubs|nomatch
  *   palette        ?state=none
- *   settings       ?state=nobackup
+ *   settings       ?state=nobackup   ?section=translation (M7a: the 번역 group; &tr=off shows 번역 사용 끔)
+ *   library        ?columns=progress (M7a: the 진행 column right-aligned, unread items blank, sorted by it)
  *   dialogs        ?scene=duplicate|recovery|recovery-full|recovery-ok|backup|backup-missing|restore|restore-issues|purge|empty-trash|jobs|fatal|codec
  *   components     ?part=1|2|3|4|5 (4–5 = tutor)
  *   tutor          ?state=1…10 and the variants listed at the top of tutor.html
@@ -105,13 +110,13 @@
   // The trash adds a last column, 삭제한 날짜 (spec 4.3), the same width as 추가일.
   const TRASH_COLS = `${COLS} 120px`;
 
-  function progressCell(p) {
-    if (p === null) return `<span class="c-tertiary">—</span>`;
+  function progressCell(p, { blankUnread = false } = {}) {
+    if (p === null) return blankUnread ? '' : `<span class="c-tertiary">—</span>`;
     if (p === 100) return `<span class="inline-flag c-success">${icon('check', 'sm')}완료</span>`;
     return `<span class="progress"><i style="width:${p}%"></i></span><span class="pct">${p}%</span>`;
   }
 
-  function tableRow(it, { selected, focused, hover, cursor, firstDots }) {
+  function tableRow(it, { selected, focused, hover, cursor, firstDots, progressEnd = false }) {
     const cls = ['table-row', selected ? 'is-selected' : '', focused ? 'is-focused' : '', hover ? 'is-hover' : '', cursor ? 'is-cursor' : '', it.missing ? 'is-missing' : ''].join(' ');
     const dots = it.tags.length
       ? `<span class="tag-dots" ${firstDots ? ms('M5', '표의 색 점') : ''}>${it.tags.map((n) => `<i style="background:${tagHex(n)}"></i>`).join('')}</span>`
@@ -128,7 +133,7 @@
       <div class="td" role="gridcell">${icon(kindIcon(it.kind))}<span class="title ellipsis">${esc(it.title)}</span>${linked}${dots}${flag}${kept}</div>
       <div class="td" role="gridcell"><span class="ellipsis">${esc(it.authors)}</span></div>
       <div class="td num" role="gridcell">${it.year}</div>
-      <div class="td" role="gridcell">${progressCell(it.progress)}</div>
+      <div class="td ${progressEnd ? 'end' : ''}" role="gridcell">${progressCell(it.progress, { blankUnread: progressEnd })}</div>
       <div class="td num" role="gridcell"><span class="ellipsis">${esc(it.added)}</span></div>
       ${it.deleted ? `<div class="td num" role="gridcell"><span class="ellipsis">${esc(it.deleted)}</span></div>` : ''}
     </div>`;
@@ -147,17 +152,17 @@
     </div>`;
 
   /** `sorted`: the column that sorts the view (its arrow: `dir`); `extra`: columns after 추가일 (the trash's 삭제한 날짜). */
-  function tableHead({ sorted = '추가일', dir = 'desc', extra = [] } = {}) {
+  function tableHead({ sorted = '추가일', dir = 'desc', extra = [], progressEnd = false } = {}) {
     return ['제목', '저자', '연도', '진행', '추가일', ...extra]
       .map((l) => {
         const on = l === sorted;
-        const tag = l === '진행' ? ms('M7', '진행 열') : l === '삭제한 날짜' ? ms('M6', '삭제한 날짜 열(최근순)') : '';
-        return `<div class="th ${on ? 'is-sorted' : ''}" role="columnheader" ${tag}>${l}${on ? icon(dir === 'asc' ? 'chevron-up' : 'chevron-down', 'xs') : ''}</div>`;
+        const tag = l === '진행' ? (progressEnd ? ms('M7a', '진행 열(오른쪽 정렬 · 읽지 않은 자료는 비움 · 정렬)') : ms('M7', '진행 열')) : l === '삭제한 날짜' ? ms('M6', '삭제한 날짜 열(최근순)') : '';
+        return `<div class="th ${on ? 'is-sorted' : ''} ${progressEnd && l === '진행' ? 'end' : ''}" role="columnheader" ${tag}>${l}${on ? icon(dir === 'asc' ? 'chevron-up' : 'chevron-down', 'xs') : ''}</div>`;
       })
       .join('');
   }
 
-  function libraryTable({ selectedIds = [1], focused = true, cursorId = null, body = null, items = D.items, cols = COLS, head = {}, top = '' } = {}) {
+  function libraryTable({ selectedIds = [1], focused = true, cursorId = null, body = null, items = D.items, cols = COLS, head = {}, top = '', progressEnd = false } = {}) {
     let firstDotsDone = false;
     const rows =
       body ??
@@ -168,11 +173,11 @@
             if (firstDots) firstDotsDone = true;
             // A group boundary in 중복 항목 (critique 1-6): a 1 px line between groups.
             const sep = it.groupStart ? '<div class="table-group-sep" role="presentation"></div>' : '';
-            return sep + tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots });
+            return sep + tableRow(it, { selected: selectedIds.includes(it.id), focused, cursor: it.id === cursorId, firstDots, progressEnd });
           })
           .join('');
     return `<div class="table" role="grid" style="--cols:${cols}" ${ms('M4', '항목 표(정렬·열 구성·선택)')}>
-      <div class="table-head" role="row">${tableHead(head)}</div>
+      <div class="table-head" role="row">${tableHead({ ...head, progressEnd })}</div>
       <div class="table-body">${rows}</div>
     </div>`;
   }
@@ -407,6 +412,11 @@
       items.splice(items.findIndex((x) => x.id === 9), 0, D.edited.row);
       table = libraryTable({ items, selectedIds: [D.edited.row.id] });
       insp = inspectorItem(D.edited.selected);
+    } else if (params.get('columns') === 'progress' && !opts.items) {
+      // M7a 진행 열 (spec 5): sorted by it (most read first, unread last); percent right-aligned, unread cells blank.
+      const byProgress = [...D.items].sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
+      table = libraryTable({ ...opts.table, items: byProgress, head: { sorted: '진행', dir: 'desc' }, progressEnd: true });
+      insp = inspectorItem();
     } else {
       // `opts.items`: the rows a scene needs under its sheet (the library check's missing files, critique 1-21).
       table = libraryTable({ ...opts.table, ...(opts.items ? { items: opts.items } : {}) });
@@ -533,8 +543,8 @@
       .join('')}</div></div>`;
   }
 
-  function outline() {
-    return `<div class="outline" role="tree" ${ms('M7', '목차')}>${D.outline
+  function outline(list = D.outline, tag = ['M7', '목차']) {
+    return `<div class="outline" role="tree" ${ms(tag[0], tag[1])}>${list
       .map((o) => {
         const cls = ['nav-row', o.current ? 'is-selected' : ''].join(' ');
         const disc = o.lvl === 0 && o.open ? `<span class="disclosure">${icon('chevron-down', 'xs')}</span>` : '';
@@ -608,11 +618,11 @@
     </div>`;
   }
 
-  function zoomMenu() {
-    return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu" ${ms('M7', '확대·축소·확대 메뉴')}>
-      ${mi('자동 맞춤')}${mi('너비에 맞춤')}${mi('한 쪽 전체 보기')}${mi('실제 크기', { shortcut: '⌘0' })}
+  function zoomMenu({ m7a = false } = {}) {
+    return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu" ${ms(m7a ? 'M7a' : 'M7', '확대·축소·확대 메뉴')}>
+      ${mi('자동 맞춤', { check: m7a })}${mi('너비에 맞춤')}${mi('한 쪽 전체 보기')}${mi('실제 크기', { shortcut: '⌘0' })}
       <div class="msep"></div>
-      ${mi('75%')}${mi('100%', { check: true })}${mi('125%', { active: true })}${mi('150%')}${mi('200%')}
+      ${mi('75%')}${mi('100%', { check: !m7a })}${mi('125%', { active: true })}${mi('150%')}${mi('200%')}
       <div class="msep"></div>
       ${mi('확대', { shortcut: '⌘+' })}${mi('축소', { shortcut: '⌘−' })}
     </div>`;
@@ -676,12 +686,405 @@
     </div>`;
   }
 
+  // ── M7a: PDF reader v2 (reader-pdf?m=7a) ───────────────────────────────────
+  // The chrome M7a ships: the window toolbar (back button, title, kind · size) with no tab strip, the 44 px reader
+  // toolbar of spec 4.2, thumbnails/outline on the left, and the info-mode inspector on the right with the 번역 section
+  // first (spec 6.2). Tabs and back/forward history are M7b.
+  const PAPER = {
+    title: 'G Protein–Coupled Receptor Dynamics in Live Cells',
+    meta: 'PDF · 1.6 MB',
+    pages: 17,
+    page: 3,
+    item: {
+      kind: 'PDF 문서',
+      title: 'G Protein–Coupled Receptor Dynamics in Live Cells',
+      authors: 'Okafor, Lindqvist',
+      year: 2023,
+      pages: 17,
+      info: [
+        ['저자', 'Okafor, Lindqvist'],
+        ['연도', '2023'],
+        ['쪽수', '17쪽'],
+        ['언어', '영어'],
+        ['추가일', '어제 오후 4:41'],
+        ['수정일', '어제 오후 4:41'],
+      ],
+      reading: { page: 3, pages: 17, percent: 18, opened: '어제 오후 4:52' },
+      file: [
+        ['보관', '복사본 · 라이브러리 안'],
+        ['크기', '1.6 MB'],
+        ['원래 이름', 'okafor_gpcr_dynamics.pdf'],
+      ],
+      sha: 'e41b07c9…',
+      shaFull: 'e41b07c93a5d1f0286b4c7e9d03a15f8b62c4e7091d3a8f5c6b20e17d94a3b58',
+      tags: [4],
+      plainTags: ['수용체', '2차 전령'],
+      collections: [['분자생물학']],
+    },
+    outline: [
+      { t: 'Abstract', p: 1, lvl: 0 },
+      { t: '1 Introduction', p: 1, lvl: 0 },
+      { t: '2 Results', p: 3, lvl: 0, open: true },
+      { t: '2.1 Single-receptor tracking', p: 3, lvl: 1, current: true },
+      { t: '2.2 Dwell time and signal', p: 6, lvl: 1 },
+      { t: '2.3 A two-step model', p: 9, lvl: 1 },
+      { t: '3 Discussion', p: 11, lvl: 0 },
+      { t: '4 Methods', p: 13, lvl: 0 },
+      { t: 'References', p: 15, lvl: 0 },
+    ],
+  };
+  const BOOK = { title: '분자생물학 6장 · 신호 전달', meta: 'PDF · 4.2 MB', pages: 68, page: 42, item: D.selectedItem, outline: D.outline };
+
+  // The sentences the translation mockups work on (fictional paper; the Korean is the engine's output).
+  const EN1 = 'Active states shorter than 200 ms produced no detectable second messenger, whereas states longer than one second produced a response that scaled with duration.';
+  const KO1 = '200ms보다 짧은 활성 상태는 검출할 수 있는 2차 전령을 만들지 않았고, 1초보다 긴 상태는 지속 시간에 비례하는 반응을 만들었다.';
+  const EN2 = 'The relationship held across ligand concentrations, suggesting that cells measure time rather than occupancy.';
+  const KO2 = '이 관계는 리간드 농도와 관계없이 유지되었으며, 이는 세포가 점유율이 아니라 시간을 측정함을 시사한다.';
+  const KO_SAME = '각 단계에서 활성화된 분자는 다음 단계의 분자를 여러 개 활성화하므로, 처음의 작은 신호는 단계를 거칠수록 커진다.';
+
+  /** A page of the paper. Page 3 is the one open; `sel` marks the selected sentence (id sel-0, the pop-up's anchor), `find` the matches of "receptor". */
+  function paperPageV2(n, { sel = false, find = false } = {}) {
+    if (n === 1) return paperPage();
+    const fh = (word, cls = '') => (find ? `<span class="find-hit ${cls}">${word}</span>` : word);
+    const sentence = sel ? `<span class="sel" id="sel-0">${EN1}</span>` : EN1;
+    const hit = (cls) => fh('receptor', cls);
+    const p = (t) => `<p>${t}</p>`;
+    const filler = [
+      'Cells were plated on glass-bottom dishes and imaged within two hours. Receptors carried a small fluorescent tag at the extracellular end.',
+      'Trajectories shorter than five frames were discarded, and the remaining tracks were linked with a nearest-neighbour rule.',
+      'Dwell times follow a broad distribution, with most events lasting less than half a second.',
+      'Control cells that lacked the tag showed no signal above background in either channel.',
+      'Second messenger levels were read out with a genetically encoded sensor in the same cells.',
+      'All comparisons use the same exposure and the same field of view.',
+    ];
+    const body =
+      n === 3
+        ? [
+            `<b>2.1 Single-${hit('current')} tracking.</b> Labelled ${hit('')}s were imaged at 20 frames per second for up to 90 seconds. ${sentence} Between these extremes the response rose steadily.`,
+            `${EN2} A simple two-step model reproduces the data when G protein coupling is rate limiting.`,
+            `To test whether coupling is rate limiting we tracked ${hit('')}s and G proteins in the same cells. ${hit('')}s that stayed active for more than one second recruited G proteins in 71% of events, compared with 9% for shorter activations.`,
+            `<b>2.2 Dwell time and signal.</b> We next asked how the duration of a single active state relates to the amount of second messenger it produces. Cells were stimulated at four ligand concentrations and each ${hit('')}’s dwell time was matched to the local cAMP signal.`,
+            'Across 2,184 receptors, signal rose with dwell time and was independent of concentration (Figure 2).',
+            filler[2],
+            'Receptors that never left the first state were counted separately and excluded from the fit. Their number did not change with ligand concentration, which argues against a population of damaged receptors.',
+            filler[0],
+            filler[1],
+            'A model in which activation is a switch predicts a step in signal at a fixed dwell time. We instead observe a smooth rise that starts near 200 ms and saturates near two seconds.',
+            filler[4],
+            'These measurements were repeated in three independent cell lines, and the dependence on dwell time was the same in each.',
+            filler[3],
+            'The next section asks which step of the cascade sets this timescale.',
+          ]
+        : filler.slice(n % 3, (n % 3) + 5);
+    return `<div class="pdf-page paper" aria-label="${n}쪽"><div class="paper-cols">${body.map(p).join('')}</div><div class="folio">${n}</div></div>`;
+  }
+
+  /** Thumbnails (spec 4.7): drawn around the restored page first, the farthest still empty boxes. */
+  function thumbsV2(pages, current, { drawn, body }) {
+    return `<div class="thumbs" ${ms('M7a', '썸네일 목록(불러오는 중 자리 상자 포함)')}><div class="thumbs-inner">${pages
+      .map(
+        (n) =>
+          `<div class="thumb ${n === current ? 'is-current' : ''}">${
+            drawn(n) ? `<div class="thumb-page">${body(n)}</div>` : `<div class="thumb-page placeholder"></div>`
+          }<span class="lbl">${n}</span></div>`,
+      )
+      .join('')}</div></div>`;
+  }
+
+  function sidebarV2(doc, nav, { mode = 'normal', thumbPages, thumbBody }) {
+    const head = `<div class="reader-nav-head">
+        <div class="segmented fill ${mode === 'loading' ? 'is-disabled' : ''}" ${ms('M7a', '썸네일·목차 전환')}><span class="seg ${nav === 'thumbs' ? 'is-on' : ''}" title="썸네일 ⌥⌘2">썸네일</span><span class="seg ${nav === 'outline' ? 'is-on' : ''}" title="목차 ⌥⌘3">목차</span></div>
+      </div>`;
+    if (mode === 'nooutline') {
+      return `${head}<div class="pane-empty top" ${ms('M7a', '목차 없음')}>${icon('list-tree')}<div class="pe-title">이&nbsp;PDF에는 목차가 없습니다</div><div class="pe-text">썸네일에서 쪽을 고르거나 ${kbd('⌥', '⌘', 'G')}로 쪽&nbsp;번호를 입력하세요.</div></div>`;
+    }
+    if (nav === 'outline') {
+      const search = `<div class="nav-search" ${ms('M7a', '목차 검색')}><div class="field small">${icon('search', 'sm')}<span class="placeholder">목차에서 찾기</span></div></div>`;
+      return `${head}${search}${outline(doc.outline, ['M7a', '목차'])}`;
+    }
+    // Thumbnails: while the page loads every box is empty; otherwise the farthest ones are still being drawn.
+    const drawn = mode === 'loading' ? () => false : (n) => Math.abs(n - doc.page) <= 1 || n === 2;
+    return `${head}${thumbsV2(thumbPages, doc.page, { drawn, body: thumbBody })}`;
+  }
+
+  function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false }) {
+    const dis = disabled ? 'is-disabled' : '';
+    return `<div class="reader-toolbar">
+      <span class="icon-btn is-on" title="사이드바 가리기 ⌃⌘S" ${ms('M7a', '사이드바 토글(썸네일·목차)')}>${icon('panel-left')}</span>
+      <span class="toolbar-sep"></span>
+      <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
+        <div class="page-field ${dis}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div><span class="num">/ ${pages}</span></div>
+        <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
+        <span class="icon-btn ${dis}" title="다음 쪽 →">${icon('chevron-down')}</span>
+      </div>
+      <span class="spacer"></span>
+      <div class="zoom-field ${dis}" id="zoom-btn" ${ms('M7a', '확대 필드·확대 메뉴')}>
+        <div class="field" title="확대 비율">${zoom}</div>
+        <span class="icon-btn sm ${menu === 'zoom' ? 'is-pressed' : ''}" title="확대 메뉴">${icon('chevron-down', 'xs')}</span>
+      </div>
+      <span class="spacer"></span>
+      <span class="icon-btn ${find ? 'is-on' : ''} ${dis}" title="찾기 ⌘F" ${ms('M7a', '찾기 단추·찾기 막대')}>${icon('search')}</span>
+      <span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="보기: 쪽 색·회전" ${ms('M7a', '보기 메뉴(쪽 색·회전)')}>보기${icon('chevron-down', 'xs')}</span>
+      <span class="toolbar-sep"></span>
+      <span class="icon-btn ${inspectorOn ? 'is-on' : ''}" title="${inspectorOn ? '항목 패널 가리기' : '항목 패널 보기'} ⌥⌘I" ${ms('M7a', '항목 패널 토글')}>${icon('panel-right')}</span>
+    </div>`;
+  }
+
+  /** Spec 4.5: the field, "3 / 17", previous, next, close. Case is ignored, so there is no case button. */
+  function findBarV2(kind) {
+    const none = kind === 'none';
+    return `<div class="find-bar" role="search" ${ms('M7a', '찾기 막대')}>
+      <div class="field is-focus">${icon('search', 'sm')}<span class="value">${none ? 'kinase' : 'receptor'}</span><span class="caret"></span><span class="spacer"></span><span class="count ${none ? 'c-secondary' : ''}">${none ? '찾을 수 없음' : '3 / 17'}</span></div>
+      <span class="icon-btn sm ${none ? 'is-disabled' : ''}" title="이전 ⇧⌘G">${icon('chevron-up', 'sm')}</span>
+      <span class="icon-btn sm ${none ? 'is-disabled' : ''}" title="다음 ⌘G">${icon('chevron-down', 'sm')}</span>
+      <span class="icon-btn sm" title="닫기 esc">${icon('x', 'sm')}</span>
+    </div>`;
+  }
+
+  function viewMenuV2() {
+    return `<div class="menu" data-anchor="view-btn" data-align="end" style="width:232px" role="menu" ${ms('M7a', '보기 메뉴(쪽 색·회전)')}>
+      <div class="mhead">쪽 색</div>${mi('앱 테마 따르기', { check: true })}${mi('원본')}${mi('세피아')}${mi('어둡게')}
+      <div class="msep"></div>
+      ${mi('시계 방향으로 회전', { shortcut: '⌘R' })}${mi('반시계 방향으로 회전', { shortcut: '⌘L' })}
+    </div>`;
+  }
+
+  // Languages of spec 6.3. The original language can be 자동 (detected); the target cannot.
+  const LANGS = ['한국어', '영어', '일본어', '중국어(간체)', '독일어', '프랑스어', '스페인어'];
+  function directionMenu() {
+    return `<div class="menu" data-anchor="tr-dir" data-align="end" style="width:216px" role="menu" ${ms('M7a', '번역 방향 메뉴')}>
+      <div class="mhead">원문 언어</div>${mi('자동', { check: true })}${LANGS.map((l) => mi(l)).join('')}
+      <div class="msep"></div>
+      <div class="mhead">대상 언어</div>${LANGS.map((l) => mi(l, { check: l === '한국어' })).join('')}
+    </div>`;
+  }
+  const copyMenu = () =>
+    `<div class="menu" data-anchor="tr-copy" style="width:168px" role="menu" ${ms('M7a', '복사 메뉴(원문 · 번역 · 둘 다)')}>${mi('원문')}${mi('번역')}${mi('원문과 번역 둘 다')}</div>`;
+
+  /** The selection pop-up (spec 6.1). It sits at the end of the selection (#sel-0) and never takes the focus. */
+  function selPopup(kind) {
+    const make = (cls, body, foot = '') =>
+      `<div class="sel-popup ${cls}" data-anchor="sel-0" role="dialog" aria-label="번역" ${ms('M7a', `선택 번역 팝업 · ${kind}`)}><div class="sp-body">${body}</div>${foot ? `<div class="sp-foot">${foot}</div>` : ''}</div>`;
+    const status = (ic, text, note = '', tone = '') =>
+      `<div class="sp-status">${icon(ic, tone ? `${tone}` : '')}<div><div>${text}</div>${note ? `<div class="sp-note">${note}</div>` : ''}</div></div>`;
+    const retry = `<span class="spacer"></span><span class="btn small">다시 번역</span>`;
+    return {
+      consent: () =>
+        make(
+          '',
+          `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><div class="sp-note">언제든 설정에서 바꿀 수 있습니다.</div>`,
+          `<span class="btn small primary">번역 켜기</span><span class="btn small">사용 안 함</span>`,
+        ),
+      translating: () => make('is-compact', `<div class="sp-status"><span class="spinner" aria-hidden="true"></span><span>번역하는 중…</span></div>`),
+      translated: () => make('', `<p>${KO1}</p>`, `<span class="sp-lang">영어 → 한국어</span><span class="spacer"></span><span class="btn small has-icon" title="번역문 복사 ⌘C">${icon('copy', 'sm')}복사</span>`),
+      error: () => make('', status('triangle-alert', '번역 서비스가 응답하지 않습니다', '', 'warning'), retry),
+      offline: () => make('', status('wifi-off', '번역할 수 없음 — 인터넷에 연결되어 있지 않습니다'), retry),
+      long: () => make('is-compact', status('circle-alert', '번역하기에 너무 깁니다', '5,000자까지 번역합니다.')),
+      same: () => make('is-compact', status('check', '이미 한국어입니다')),
+    }[kind]();
+  }
+
+  /** The 번역 section (spec 6.2): head with the direction button, 원문 (editable) and 번역 (read-only) boxes, two toggles, three buttons. */
+  function translationSection(kind, { menu = null } = {}) {
+    const dir = `<span class="btn small plain has-menu ${menu === 'direction' ? 'is-pressed' : ''}" id="tr-dir" title="번역 방향" ${ms('M7a', '번역 방향 단추')}>자동 → 한국어${icon('chevron-down', 'xs')}</span>`;
+    const tag = ms('M7a', `번역 절 · ${kind}`);
+    if (kind === 'consent' || kind === 'off') {
+      const text =
+        kind === 'consent'
+          ? `<p>선택한 글을 번역하려면 Google로 보냅니다.</p><p class="t-footnote c-secondary">언제든 설정에서 바꿀 수 있습니다.</p>`
+          : `<p>번역을 사용하지 않습니다.</p><p class="t-footnote c-secondary">켜면 선택한 글이 Google로 보내집니다.</p>`;
+      const actions =
+        kind === 'consent'
+          ? `<div class="btn primary">번역 켜기</div><div class="btn">사용 안 함</div>`
+          : `<div class="btn">번역 켜기</div>`;
+      return `<section class="section tr" ${tag}>${sectionHead('번역')}<div class="tr-consent">${text}<div class="actions">${actions}</div></div></section>`;
+    }
+    const label = (name, lang = '') => `<div class="tr-label"><span>${name}</span><span class="spacer"></span>${lang ? `<span>${lang}</span>` : ''}</div>`;
+    const ph = (t) => `<span class="ph">${t}</span>`;
+    const note = (ic, text, extra = '', tone = '') => `<div class="tr-note">${icon(ic, `sm ${tone}`.trim())}<span>${text}</span></div>${extra}`;
+    const korean = kind === 'same';
+    const src = {
+      empty: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}>${ph('글을 선택하거나 붙여 넣으면 번역합니다.')}</div>`,
+      long: `<div class="tr-box src clip" ${ms('M7a', '원문 칸(편집)')}><p>Receptor activation is usually described as a switch, yet single-cell imaging shows a continuum of short-lived states. We tracked labelled receptors at the plasma membrane and measured how long each state lasts before G protein coupling. Brief activations were common and rarely produced downstream signals, while longer ones were amplified several hundred fold. The full text of the supplementary methods follows, including the calibration of the sensor and the imaging protocol for every cell line used in this study…</p></div>`,
+      concat: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${EN2}</p><p>${EN1}</p></div>`,
+      same: `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${KO_SAME}</p></div>`,
+    }[kind] ?? `<div class="tr-box src" ${ms('M7a', '원문 칸(편집)')}><p>${EN1}</p></div>`;
+    const dst = {
+      empty: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}>${ph('번역이 여기에 보입니다.')}</div>`,
+      translating: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}><div class="loading"><span class="spinner"></span>번역하는 중…</div></div>`,
+      translated: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}><p>${KO1}</p></div>`,
+      concat: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}><p>${KO2}</p><p>${KO1}</p></div>`,
+      error: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}>${note('triangle-alert', '번역 서비스가 응답하지 않습니다', '', 'warning')}</div>`,
+      offline: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}>${note('wifi-off', '번역할 수 없음 — 인터넷에 연결되어 있지 않습니다')}</div>`,
+      long: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}>${note('circle-alert', '번역하기에 너무 깁니다<br>5,000자까지 번역합니다.')}</div>`,
+      same: `<div class="tr-box dst" ${ms('M7a', '번역 칸(읽기 전용)')}>${note('check', '이미 한국어입니다')}</div>`,
+    }[kind];
+    const retry = kind === 'error' || kind === 'offline';
+    const idle = kind === 'empty' || kind === 'translating' || kind === 'long' || kind === 'same';
+    const check = (on, text, tg) =>
+      `<label class="checkbox t-footnote" ${ms('M7a', tg)}><span class="box ${on ? 'is-on' : ''}">${on ? icon('check') : ''}</span>${text}</label>`;
+    return `<section class="section tr" ${tag}>
+      ${sectionHead('번역', dir)}
+      ${label('원문', kind === 'empty' ? '' : korean ? '한국어' : kind === 'long' ? '영어 · 5,832자' : '영어')}${src}
+      ${label('번역', ['translated', 'concat', 'same'].includes(kind) ? '한국어' : '')}${dst}
+      <div class="tr-toggles">${check(true, '선택하면 번역', '선택하면 번역 토글')}${check(kind === 'concat', '이어 붙이기', '이어 붙이기 토글')}</div>
+      <div class="tr-actions">
+        <div class="btn small ${kind === 'empty' ? 'is-disabled' : ''}" title="원문과 번역 지우기" ${ms('M7a', '지우기 단추')}>지우기</div>
+        <div class="btn small has-menu ${menu === 'copy' ? 'is-pressed' : ''} ${kind === 'empty' || kind === 'translating' ? 'is-disabled' : ''}" id="tr-copy" title="복사 — 원문 · 번역 · 둘 다" ${ms('M7a', '복사 메뉴 단추')}>복사${icon('chevron-down', 'xs')}</div>
+        <span class="spacer"></span>
+        <div class="btn small ${retry ? 'primary' : ''} ${idle ? 'is-disabled' : ''}" title="번역 ↩" ${ms('M7a', '번역 단추')}>${retry ? '다시 번역' : '번역'}</div>
+      </div>
+    </section>`;
+  }
+
+  /** The inspector in the reader: the 번역 section on top (when a page is open), then the opened item's info (spec 6.2). */
+  function inspectorV2(trKind, item, { trashed = false } = {}) {
+    let html = inspectorItem(item, { trashed })
+      .replace('<div class="btn primary" title="열기 ↩">열기</div>', '')
+      .replace(/<span class="num">(\d+ \/ \d+쪽)<\/span>에서 멈춤 · [^<]*/, '지금 <span class="num">$1</span>');
+    if (trKind) html = html.replace(/^<div class="inspector-scroll"[^>]*>/, (m) => m + translationSection(trKind, { menu: params.get('menu') }));
+    return html;
+  }
+
+  function stateStageV2(st) {
+    const pw = params.get('pw') === 'wrong';
+    return {
+      error: `<div class="notice" role="status" ${ms('M7a', 'PDF 열기 실패(손상)')}>
+            <div class="glyph">${icon('file-x', 'xl')}</div>
+            <h2>이&nbsp;PDF를 열 수 없습니다</h2>
+            <p>파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본&nbsp;파일은 그대로 보관됩니다. 다른&nbsp;사본이 있으면 다시 가져오세요.</p>
+            <div class="file">ion-channels-excitable.pdf · 2.3 MB</div>
+            <div class="actions"><div class="btn has-icon" title="⇧⌘R">${icon('folder-search')}Finder에서 보기</div><div class="btn has-icon">${icon('external-link')}기본 앱으로 열기</div></div>
+          </div>`,
+      locked: `<div class="notice" role="status" ${ms('M7a', '암호로 보호된 PDF(암호 입력란)')}>
+            <div class="glyph">${icon('lock', 'xl')}</div>
+            <h2>암호로 보호된 PDF입니다</h2>
+            <p>암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.</p>
+            <div class="pw-row"><div class="field is-focus" aria-label="암호"><span class="value">••••••</span><span class="caret"></span></div><div class="btn primary" title="↩">열기</div></div>
+            ${pw ? '<div class="pw-error" role="alert">암호가 맞지 않습니다.</div>' : ''}
+            <div class="file">receptor-tyrosine-kinases.pdf · 5.6 MB</div>
+          </div>`,
+      missing: `<div class="notice" role="status" ${ms('M3', '원본 없음(다시 연결)')}>
+            <div class="glyph warning">${icon('link-2-off', 'xl')}</div>
+            <h2>원본&nbsp;파일을 찾을 수 없습니다</h2>
+            <p>외부 연결 자료입니다. 파일을 옮겼거나 이름을 바꿨다면 새&nbsp;위치를 지정하세요. 필기와&nbsp;태그는 그대로 남아 있습니다.</p>
+            <div class="file mono" title="/Users/seojin/Downloads/papers/calcium-signaling.pdf">~/Downloads/papers/calcium-signaling.pdf</div>
+            <div class="actions"><div class="btn primary">다시 연결…</div><div class="btn">라이브러리로 돌아가기</div></div>
+          </div>`,
+      trashed: `<div class="notice" role="status" ${ms('M6', '리더 휴지통 안내(복원·라이브러리로 돌아가기)')}>
+            <div class="glyph">${icon('trash-2', 'xl')}</div>
+            <h2>이&nbsp;자료는 휴지통에 있습니다</h2>
+            <p>복원하면 이&nbsp;자리에서 다시 엽니다.</p>
+            <div class="actions"><div class="btn primary" title="↩">복원</div><div class="btn">라이브러리로 돌아가기</div></div>
+          </div>`,
+    }[st];
+  }
+
+  function readerV2() {
+    const pick = (name, allowed) => (allowed.includes(params.get(name)) ? params.get(name) : null);
+    const nav = params.get('nav') === 'outline' ? 'outline' : 'thumbs';
+    const menu = pick('menu', ['zoom', 'view', 'copy', 'direction']);
+    const find = pick('find', ['open', 'none']);
+    const select = pick('select', ['consent', 'translating', 'translated', 'error', 'offline', 'long', 'same']);
+    const w = Number(params.get('w')) || 1440;
+    // The 번역 section follows the pop-up (one result for both); without a selection it is the empty section.
+    const trKind = pick('inspector', ['empty', 'translated', 'concat', 'consent', 'off']) ?? select ?? 'empty';
+
+    const dead = ['error', 'missing', 'locked', 'trashed'].includes(state) ? state : null;
+    const doc = select === 'same' ? BOOK : PAPER;
+    const back = `<div class="icon-btn" title="라이브러리로 돌아가기 ⌘1" ${ms('M7a', '뒤로(라이브러리로 돌아가기)')}>${icon('chevron-left')}</div>`;
+
+    // Final states (damaged, source missing, locked, trashed): no reader toolbar — the window toolbar already names the file.
+    const deadItem = (title, authors, year, pages, size, name, linked = false) => ({
+      kind: 'PDF 문서',
+      title,
+      authors,
+      year,
+      pages,
+      info: [['저자', authors], ['연도', String(year)], ['쪽수', `${pages}쪽`], ['언어', '영어'], ['추가일', '2026. 10. 12.']],
+      reading: null,
+      file: [['보관', linked ? '외부 연결 · 원래 위치' : '복사본 · 라이브러리 안'], ['크기', size], ['원래 이름', name]],
+      sha: '5b82d0f1…',
+      shaFull: '5b82d0f1c4a7e3961d08b5f2a49c7e103d6b8f5a02e19c47d3b60a8f15e2c794',
+      tags: [],
+      plainTags: [],
+      collections: [['분자생물학']],
+    });
+    const deadDocs = {
+      error: { title: 'Ion Channels in Excitable Membranes', meta: 'PDF · 2.3 MB', item: deadItem('Ion Channels in Excitable Membranes', 'Lindqvist', 2018, 12, '2.3 MB', 'ion-channels-excitable.pdf') },
+      missing: { title: 'Calcium Signaling Revisited', meta: 'PDF · 3.1 MB · 외부 연결', item: deadItem('Calcium Signaling Revisited', 'Ishikawa, Petrov', 2024, 22, '3.1 MB', 'calcium-signaling.pdf', true) },
+      locked: { title: 'Receptor Tyrosine Kinases: Structure and Function', meta: 'PDF · 5.6 MB', item: deadItem('Receptor Tyrosine Kinases: Structure and Function', 'Brennan, Osei', 2019, 30, '5.6 MB', 'receptor-tyrosine-kinases.pdf') },
+      trashed: { title: BOOK.title, meta: BOOK.meta, item: { ...D.selectedItem, deleted: '오늘 오전 9:12' } },
+    };
+    const shown = dead ? deadDocs[dead] : doc;
+    const unified = { title: shown.title, count: shown.meta, lead: back, ms: 'M7a', msLabel: '창 도구 막대(뒤로 · 제목 · 종류와 크기)' };
+    const tabs = [{ id: 'pdf', title: shown.title, icon: 'file-text', active: true }];
+
+    let sidebar;
+    let main;
+    let inspector;
+    let overlays = '';
+    let zoom = 1;
+    const inspectorOn = w >= 1000;
+    const mainW = w - 240 - (inspectorOn ? 320 : 0);
+    if (w < 1440) zoom = Math.floor(((mainW - 1 - 32) / 794) * 100) / 100;
+
+    if (dead) {
+      sidebar =
+        dead === 'locked'
+          ? `<div class="pane-empty top" ${ms('M7a', '쪽 없음')}>${icon('lock')}<div class="pe-title">암호를 입력하면 쪽이 보입니다</div></div>`
+          : dead === 'trashed'
+            ? `<div class="pane-empty top" ${ms('M7a', '쪽 없음(휴지통)')}>${icon('trash-2')}<div class="pe-title">복원하면 쪽이 보입니다</div></div>`
+            : `<div class="pane-empty top" ${ms('M7a', '쪽 없음')}>${icon('file-x')}<div class="pe-title">표시할 쪽이 없습니다</div></div>`;
+      main = `<div class="reader-body"><div class="pdf-stage"><div class="stage-center">${stateStageV2(dead)}</div></div></div>`;
+      inspector = inspectorV2(null, shown.item, { trashed: dead === 'trashed' });
+    } else {
+      const loading = state === 'loading';
+      const nooutline = state === 'nooutline';
+      const thumbPages = doc === PAPER ? [1, 2, 3, 4, 5] : [40, 41, 42, 43, 44];
+      const thumbBody = doc === PAPER ? (n) => paperPageV2(n) : (n) => `<div class="pdf-page">${pageBody(n, { find: false })}</div>`;
+      sidebar = sidebarV2(doc, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
+      const toolbar = toolbarV2({ page: String(doc.page), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn, disabled: loading });
+      let stage;
+      if (loading) {
+        stage = `<div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7a', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>${doc.page}쪽을 여는 중…</div></div></div></div></div>`;
+      } else if (doc === PAPER) {
+        const pages = [paperPageV2(3, { sel: !!select, find: !!find && find !== 'none' }), paperPageV2(4)];
+        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px">${pages.join('')}</div>${find ? findBarV2(find) : ''}${select ? selPopup(select) : ''}</div>`;
+      } else {
+        // 이미 한국어입니다: the textbook, a Korean sentence selected.
+        const body42 = pageBody(42, { find: false })
+          .replace('class="hl"', 'class=""')
+          .replace(KO_SAME, `<span class="sel" id="sel-0">${KO_SAME}</span>`);
+        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px"><div class="pdf-page" aria-label="42쪽">${body42}</div></div>${selPopup('same')}</div>`;
+      }
+      main = `${toolbar}<div class="reader-body">${stage}</div>`;
+      inspector = inspectorV2(trKind, doc.item);
+    }
+    if (menu === 'zoom') overlays = zoomMenu({ m7a: true });
+    else if (menu === 'view') overlays = viewMenuV2();
+    else if (menu === 'direction') overlays = directionMenu();
+    else if (menu === 'copy') overlays = copyMenu();
+
+    const shell = (extra = {}) =>
+      M.windowShell({ tabs, unified, sidebar, main, inspector: inspectorOn || dead ? inspector : null, overlays, ...extra });
+    if (w >= 1440) return shell();
+    // A narrower window on a simulated desktop (the tutor mockup's state 10 does the same).
+    const notes = {
+      1024: '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 리더 최소 440을 지켜 항목 패널이 펼쳐 있습니다. 1000 아래에서는 항목 패널이 먼저 접힙니다(창 폭에서 다시 계산, 저장하지 않음)',
+      960: '창 960(최소) · 사이드바 240 + 항목 패널 320을 두면 리더가 400이라 최소 440에 못 미쳐 항목 패널이 접혔습니다 — 도구 막대의 단추로 열면 사이드바가 접힙니다',
+    };
+    const win = shell({ style: `--win-w:${w}px;--win-h:${w === 960 ? 640 : 768}px` });
+    return `<div class="desktop">${win}<div class="sim-note">${notes[w] ?? ''}</div></div>`;
+  }
+
   function pdfWindow() {
     const menu = params.get('menu');
     const nav = params.get('nav') === 'outline' ? 'outline' : 'thumbs';
     const pageParam = params.get('page');
     const page = ['original', 'sepia', 'dark'].includes(pageParam) ? pageParam : M.isDark() ? 'dark' : 'original';
     document.documentElement.dataset.page = page;
+    if (params.get('m') === '7a') return readerV2();
 
     // Transient states keep the reader toolbar (disabled); final states replace it with a title
     // row, like the unplayable-video screen (rubric 8: transient = disabled, final = hidden).
@@ -1015,8 +1418,40 @@
             ${lastBackupRow()}
           </div>
         </div>
+        ${params.get('section') === 'translation' ? translationGroup() : ''}
       </div>
     </div>`;
+  }
+
+  /**
+   * M7a 번역 group (spec 6.3). Reading the file as the app does, 켬/끔 is the device's choice (it sends text out); the
+   * two rows below it follow it, so they dim while it is off (`?tr=off`).
+   */
+  function translationGroup() {
+    const off = params.get('tr') === 'off';
+    const onOff = (on, label) =>
+      `<div class="segmented" role="radiogroup" aria-label="${label}" ${ms('M7a', `${label} 켬·끔`)}><span class="seg ${on ? 'is-on' : ''}">켬</span><span class="seg ${on ? '' : 'is-on'}">끔</span></div>`;
+    const dim = off ? 'is-disabled' : '';
+    return `<div>
+          <div class="group-label">번역</div>
+          <div class="form-group">
+            <div class="form-row">
+              <span class="fr-label">번역 사용<span class="hint">선택한 글이 Google로 보내집니다</span></span>
+              ${onOff(!off, '번역 사용')}
+            </div>
+            <div class="form-row ${dim}">
+              <span class="fr-label">선택하면 번역<span class="hint">글을 선택하면 바로 번역합니다</span></span>
+              ${onOff(true, '선택하면 번역')}
+            </div>
+            <div class="form-row ${dim}">
+              <span class="fr-label">방향</span>
+              <div class="row gap-8" ${ms('M7a', '번역 방향(원문 언어 → 대상 언어)')}>
+                <div class="btn has-menu" title="원문 언어">자동${icon('chevron-down', 'xs')}</div>${icon('arrow-right', 'sm')}
+                <div class="btn has-menu" title="대상 언어">한국어${icon('chevron-down', 'xs')}</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
   }
 
   // ── Sheets and toasts ──────────────────────────────────────────────────────

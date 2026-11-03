@@ -1,7 +1,7 @@
 // Which mockup renders exist. Shared by scripts/render-mockups.mjs (Linux, xvfb) and
 // tests/evidence/mockups.evidence.ts (macOS runner, real SF fonts).
 
-/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6', label: string }} Render */
+/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6' | 'm7a', label: string }} Render */
 
 export const SCREENS = [
   ['library', '라이브러리'],
@@ -89,6 +89,42 @@ export const VARIANTS = [
     ['dialogs', { scene: 'jobs' }, 'jobs', '진행 토스트 · 백업과 기다리는 가져오기'],
     ['dialogs', { scene: 'fatal' }, 'fatal', '치명 화면 · Finder에서 보기'],
   ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m6') }))),
+  // M7a (docs/superpowers/specs/2026-11-03-m7a-reader-design.md §10): layout B, both themes. `--only m7a` renders these.
+  // The reader without a tab strip (`m=7a`): the find bar, the selection pop-up, the inspector's 번역 section, the
+  // sidebar and the failure states; the settings 번역 group; the library's 진행 column.
+  ...[
+    ['reader-pdf', { m: '7a' }, 'm7a', 'M7a 리더 · 썸네일 · 번역 절(빈 상태)'],
+    ['reader-pdf', { m: '7a', nav: 'outline' }, 'm7a-outline', 'M7a 리더 · 목차(검색 입력란)'],
+    ['reader-pdf', { m: '7a', find: 'open' }, 'm7a-find', 'M7a 찾기 막대 · 3 / 17'],
+    ['reader-pdf', { m: '7a', find: 'none' }, 'm7a-find-none', 'M7a 찾기 막대 · 찾을 수 없음'],
+    ['reader-pdf', { m: '7a', select: 'consent' }, 'm7a-select-consent', 'M7a 선택 팝업 · 동의'],
+    ['reader-pdf', { m: '7a', select: 'translating' }, 'm7a-select-translating', 'M7a 선택 팝업 · 번역 중'],
+    ['reader-pdf', { m: '7a', select: 'translated' }, 'm7a-select-translated', 'M7a 선택 팝업 · 결과 + 번역 절'],
+    ['reader-pdf', { m: '7a', select: 'error' }, 'm7a-select-error', 'M7a 선택 팝업 · 오류'],
+    ['reader-pdf', { m: '7a', select: 'offline' }, 'm7a-select-offline', 'M7a 선택 팝업 · 오프라인'],
+    ['reader-pdf', { m: '7a', select: 'long' }, 'm7a-select-long', 'M7a 선택 팝업 · 너무 긴 글'],
+    ['reader-pdf', { m: '7a', select: 'same' }, 'm7a-select-same', 'M7a 선택 팝업 · 이미 한국어'],
+    ['reader-pdf', { m: '7a', inspector: 'translated' }, 'm7a-inspector-translated', 'M7a 번역 절 · 결과'],
+    ['reader-pdf', { m: '7a', inspector: 'concat' }, 'm7a-inspector-concat', 'M7a 번역 절 · 이어 붙이기'],
+    ['reader-pdf', { m: '7a', inspector: 'consent' }, 'm7a-inspector-consent', 'M7a 번역 절 · 동의'],
+    ['reader-pdf', { m: '7a', inspector: 'off' }, 'm7a-inspector-off', 'M7a 번역 절 · 사용 안 함'],
+    ['reader-pdf', { m: '7a', inspector: 'translated', menu: 'direction' }, 'm7a-menu-direction', 'M7a 번역 방향 메뉴'],
+    ['reader-pdf', { m: '7a', inspector: 'translated', menu: 'copy' }, 'm7a-menu-copy', 'M7a 복사 메뉴'],
+    ['reader-pdf', { m: '7a', menu: 'zoom' }, 'm7a-menu-zoom', 'M7a 확대 메뉴'],
+    ['reader-pdf', { m: '7a', menu: 'view' }, 'm7a-menu-view', 'M7a 보기 메뉴(쪽 색 · 회전)'],
+    ['reader-pdf', { m: '7a', state: 'loading' }, 'm7a-loading', 'M7a 여는 중 · 썸네일 자리 상자'],
+    ['reader-pdf', { m: '7a', state: 'nooutline', nav: 'outline' }, 'm7a-nooutline', 'M7a 목차 없음'],
+    ['reader-pdf', { m: '7a', state: 'error' }, 'm7a-error', 'M7a 열기 실패'],
+    ['reader-pdf', { m: '7a', state: 'missing' }, 'm7a-missing', 'M7a 원본 없음'],
+    ['reader-pdf', { m: '7a', state: 'locked' }, 'm7a-locked', 'M7a 암호로 보호된 PDF'],
+    ['reader-pdf', { m: '7a', state: 'locked', pw: 'wrong' }, 'm7a-locked-wrong', 'M7a 암호 틀림'],
+    ['reader-pdf', { m: '7a', state: 'trashed' }, 'm7a-trashed', 'M7a 휴지통 자료 · 쪽 사이드바 줄'],
+    ['reader-pdf', { m: '7a', inspector: 'translated', w: '1024' }, 'm7a-w1024', 'M7a 창 1024×768 · 항목 패널 펼침'],
+    ['reader-pdf', { m: '7a', inspector: 'translated', w: '960' }, 'm7a-w960', 'M7a 창 960 · 항목 패널 접힘'],
+    ['settings', { section: 'translation' }, 'm7a-translation', 'M7a 설정 · 번역 그룹'],
+    ['settings', { section: 'translation', tr: 'off' }, 'm7a-translation-off', 'M7a 설정 · 번역 끔'],
+    ['library', { columns: 'progress' }, 'm7a-progress', 'M7a 라이브러리 · 진행 열'],
+  ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m7a') }))),
 ];
 
 /**

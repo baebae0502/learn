@@ -394,11 +394,11 @@
 
 ## 10. 화면 카탈로그
 
-목업은 `docs/design/mockups/*.html`, 렌더는 `pnpm mockups:render`(→ `docs/design/renders/`, 커밋 안 함). 마일스톤: M3 셸·디자인 체계, M4 표·검색·항목 패널, M5 컬렉션·태그·DnD·컨텍스트 메뉴, M6 휴지통·가져오기 큐·복구·백업, M7 PDF 리더 v2·탭·위치 기억, M8 영상 리더 v2·자막, M9 필기.
+목업은 `docs/design/mockups/*.html`, 렌더는 `pnpm mockups:render`(→ `docs/design/renders/`, 커밋 안 함). 마일스톤: M3 셸·디자인 체계, M4 표·검색·항목 패널, M5 컬렉션·태그·DnD·컨텍스트 메뉴, M6 휴지통·가져오기 큐·복구·백업, M7a PDF 리더 v2(탭 없이)·위치 기억·선택 번역·진행 열, M7b 탭·뒤로/앞으로, M8 영상 리더 v2·자막, M9 필기.
 
 이 표는 목업의 `data-ms` 태그와 **같은 목록**이다. 렌더 스크립트가 모든 대화형 요소(버튼, 필드, 탭, 행, 칩, 메뉴 항목, 컨트롤 …)가 태그 안에 있는지 검사하고(`report.json`의 `milestones.missing`, 현재 0건), 태그 목록을 `docs/design/renders/milestones.txt`에 쓴다. `?ms=1`로 열면 같은 태그가 점선 테두리와 배지로 보인다. 공통 셸: M3 사이드바 토글·⌘K 실행기·통합 도구 막대 제목, M7 탭 줄(M3–M6은 탭 하나라 탭 줄 없음).
 
-### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`)
+### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`)
 | 요소 | 마일스톤 |
 |---|---|
 | 창(숨긴 제목 막대, 신호등, 비브런시, 테마, 밀도, 패널 크기 조절·기억), 사이드바 토글, ⌘K 실행기, 가져오기 단추·메뉴 | M3 |
@@ -416,6 +416,7 @@
 | 중복 N묶음 모두 정리(중복 항목 보기 머리, 묶음이 둘 이상일 때만. 묶음은 정렬과 상관없이 붙어 있고 사이에 1px 구분선, 남을 자료의 제목 칸 끝에 3차색 ‘남김’) | M6 |
 | 다른 앱에서 고친 수정본 줄(항목 패널 파일 절 끝, 수정본마다 이름·날짜와 새 자료로 가져오기 · Finder에서 보기) | M6 |
 | 탭 줄, 진행 열, 읽기 절, 다중 선택의 탭 여러 개로 열기 | M7 (영상 진행은 M8부터 채워짐, 그 전에는 "—") |
+| 진행 열(`?columns=progress`: 작은 막대 + 퍼센트 오른쪽 정렬 `tabular-nums`, 읽지 않은 자료는 칸을 비움, 정렬 가능 — 막대 위 퍼센트가 큰 자료부터) | M7a |
 
 ### 10.2 첫 실행·드롭 — `library-empty.html` (`?state=drop`)
 | 요소 | 마일스톤 |
@@ -423,7 +424,7 @@
 | 통합 도구 막대 제목(탭 하나), 빈 라이브러리 안내(설명, 가져오기 두 단추, 단축키 힌트, 지원 형식), 드롭 오버레이(⌥ 외부 연결 전환, 파일 수·종류) | M3 |
 | 컬렉션 없음 안내 | M5 |
 
-### 10.3 PDF 리더 — `reader-pdf.html` (`?page=original|sepia|dark`, `?menu=zoom|view`, `?nav=outline`, `?state=loading|error|locked|missing|nooutline|trashed`)
+### 10.3 PDF 리더 — `reader-pdf.html` (`?page=original|sepia|dark`, `?menu=zoom|view`, `?nav=outline`, `?state=loading|error|locked|missing|nooutline|trashed`; M7a는 `&m=7a`와 함께 `?find=open|none`, `?select=consent|translating|translated|error|offline|long|same`, `?inspector=empty|translated|concat|consent|off`, `?menu=zoom|view|copy|direction`, `?state=…`(`&pw=wrong`), `?nav=thumbs|outline`, `?w=1024|960`)
 | 요소 | 마일스톤 |
 |---|---|
 | 탭 줄, 뒤로·앞으로, 쪽 입력, 확대·축소·확대 메뉴, 찾기 단추·찾기 막대, 보기 메뉴, 썸네일, 썸네일·목차 전환, 목차, 목차 검색, 쪽 색(세피아·어둡게), 위치 기억 | M7 |
@@ -431,6 +432,13 @@
 | 상태: 원본 없음(다시 연결) — 다시 연결은 지금 앱에도 있는 기능이라 디자인만 M3에 적용 | M3 |
 | 필기 도구 묶음(하이라이트·밑줄·노트·펜·지우개·색), 하이라이트·여백 노트, 필기 칸 | M9 |
 | 리더 휴지통 안내(복원 · 라이브러리로 돌아가기, `?state=trashed`) | M6 |
+| (`m=7a`) 창 도구 막대(뒤로 · 제목 · 종류와 크기 — 탭 줄·뒤로/앞으로 없음), 리더 도구 막대 44(사이드바 토글 · 쪽 필드 + 이전·다음 · 확대 필드 24/13 + 메뉴 · 찾기 · 보기 ▾ · 항목 패널 토글), 보기 메뉴(쪽 색 · 회전만) | M7a |
+| (`m=7a`) 찾기 막대(입력란 · "3 / 17" 또는 "찾을 수 없음" · 이전 · 다음 · 닫기, 대소문자 구분 단추 없음) | M7a |
+| (`m=7a`) 사이드바: 썸네일(불러오는 중 자리 상자 포함) · 목차(검색 입력란) 전환, 목차 없음, 여는 중(자리 상자만), 휴지통 자료의 쪽 줄 | M7a |
+| (`m=7a`) 선택 팝업(폭 ≤ 320, 높이 ≤ 240, 선택 끝 아래 8 · 자리가 없으면 위, 포커스를 가져가지 않음): 동의 [번역 켜기] [사용 안 함] · 번역 중 · 결과 + [복사] · 오류 + [다시 번역] · 오프라인 + [다시 번역] · 너무 긴 글 · 이미 한국어 | M7a |
+| (`m=7a`) 인스펙터 정보 모드의 번역 절(맨 위, 방향 단추 · 원문 칸 · 번역 칸 · 선택하면 번역 · 이어 붙이기 · 지우기 · 복사 ▾ · 번역): 빈 상태 · 결과 · 이어 붙이기 · 동의 · 사용 안 함 · 방향 메뉴 · 복사 메뉴 | M7a |
+| (`m=7a`) 상태: 암호로 보호된 PDF(암호 입력란, 틀리면 "암호가 맞지 않습니다."), 열기 실패, 원본 없음, 휴지통 — 창 도구 막대가 이미 제목을 보이므로 리더 도구 막대는 숨기고 인스펙터는 자료 정보만 | M7a |
+| (`m=7a`) 좁은 창: 1024(사이드바 240 + 리더 464 + 항목 패널 320, 리더 최소 440이라 펼침), 960(항목 패널 접힘) | M7a |
 
 ### 10.4 동영상 리더 — `reader-video.html` (`?state=nosubs|nomatch`)
 | 요소 | 마일스톤 |
@@ -452,12 +460,13 @@
 - 초성 예(키 힌트 줄, 결과 없음 설명): M3 앱은 "ㅅㅈ → 설정"이다. 어느 보기에서나 명령 하나(설정…)만 찾는 예라서 고른다("ㄱㅈ → 가져오기"는 M3 Task 10부터 글자 크게·작게가 먼저 나온다). 목업의 "ㅅㅎ → 신호"는 자료 결과가 생기는 M4의 예다. M4 앱은 라이브러리에 맞는 자료 예가 있으면 그 예를, 없으면 "ㅅㅈ → 설정"을 쓴다(M4 명세 4.4).
 - 가져오기나 시트가 창을 잡고 있는 동안: 그때도 실행할 수 있는 명령(main 소유 설정…)만 나열하고, 그 위에 까닭을 알리는 안내(제목·설명, 선택할 수 없는 머리)를 둔다. 나열할 것이 없으면 안내만 보인다.
 
-### 10.6 설정 — `settings.html` (`?state=nobackup`)
+### 10.6 설정 — `settings.html` (`?state=nobackup`, M7a: `?section=translation`, `?section=translation&tr=off`)
 | 요소 | 마일스톤 |
 |---|---|
 | 설정 창(테마 시스템/라이트/다크 미리보기, 밀도, 글자 크기 12·13·14·15pt, 라이브러리 위치 · Finder에서 보기 · 다른 폴더 선택…) | M3 (저장소는 M2 `prefs.ts`) |
 | 마지막 백업 · Finder에서 보기(라이브러리 절의 행: 날짜 · 작은 Finder에서 보기 단추, 툴팁은 백업 폴더 이름) | M6 |
 | 마지막 백업(아직 없음)(값 "아직 없음", 이름 아래 힌트 "파일 › 백업 만들기에서 만들 수 있습니다.") | M6 |
+| 번역 그룹(`?section=translation`): 번역 사용(힌트 "선택한 글이 Google로 보내집니다", 켬/끔), 선택하면 번역(켬/끔), 방향(원문 언어 ▾ → 대상 언어 ▾); 번역 사용이 끔이면 아래 두 줄이 흐려진다(`&tr=off`) | M7a |
 
 ### 10.7 시트·안내 — `dialogs.html` (`?scene=duplicate|recovery|recovery-full|recovery-ok|backup|backup-missing|restore|restore-issues|purge|empty-trash|jobs|fatal|codec`)
 | 요소 | 마일스톤 |
@@ -500,7 +509,7 @@
 - 소유자가 정한 다섯 가지(폭, 말풍선, 동의 카드, 사이드바 세션, 키 B)는 2.6에 옮겼다. 인용 칩 "42쪽"은 잠정이다. 이 절과 2.1·2.5·7.3에서 소유자가 답하지 않은 항목은 표시를 "튜터 목업 — 승인 전"에서 "튜터 목업 — T1에서 확정"으로 바꾸고, 6절 부품 표로 옮기는 일은 T1 계획에서 한다(튜터 목업 명세 5절).
 
 ## 부록 A. 목업 사용법
-- 쿼리: `theme=light|dark`, `layout=A|B`, `font=system|pretendard`, `density=compact|regular|comfortable`, `ms=1`, 그리고 화면별 `state` / `scene` / `page` / `menu` / `nav` / `part`(10절 제목 옆).
+- 쿼리: `theme=light|dark`, `layout=A|B`, `font=system|pretendard`, `density=compact|regular|comfortable`, `ms=1`, 그리고 화면별 `state` / `scene` / `page` / `menu` / `nav` / `part` / `m=7a`(탭 없는 리더, M7a) / `find` / `select` / `inspector` / `w` / `section` / `columns`(10절 제목 옆).
 - 렌더: `pnpm mockups:render` (Linux는 스스로 2880×1800 xvfb에서 실행). `--only <이름>`, `--base`, `--scale 1`. 결과 `docs/design/renders/*.png`, `report.json`(실제 쓰인 글꼴, 마일스톤 태그와 빠진 요소, 한국어 문구 검사 `copyLint`), `milestones.txt`(카탈로그 대조용), 대조표 2장.
 - macOS: `tests/evidence/mockups.evidence.ts`(`@mockups`)가 같은 렌더를 macOS 러너에서 수행하고, 시스템 글꼴(SF/Apple SD Gothic Neo)이 실제로 쓰였는지 CDP로 확인한다.
 - 아이콘을 추가하면 `node scripts/build-mockup-icons.mjs`(목업 스크립트에서 쓰는 lucide 이름을 모아 `icons.js` 생성).

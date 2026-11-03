@@ -2,13 +2,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { LearnError } from '@learn/domain';
+import { DEFAULT_TRANSLATION_PREFS, LearnError } from '@learn/domain';
 import { PREFS_FILE, openPrefsStore, resolveLibraryRoot } from './prefs';
 import { mainStrings } from './strings';
 
 let dir: string;
 const file = () => path.join(dir, PREFS_FILE);
-const DEFAULTS = { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null };
+const DEFAULTS = { theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: DEFAULT_TRANSLATION_PREFS };
 const ABS = path.resolve(os.tmpdir(), 'learn-lib');
 const errno = (code: string) => Object.assign(new Error(code), { code });
 
@@ -150,11 +150,20 @@ describe('prefs store', () => {
     expect(openPrefsStore(dir).get()).toEqual({ ...DEFAULTS, theme: 'dark' });
   });
 
+  it('keeps the translation consent as one object, and an invalid one falls back to undecided', () => {
+    const store = openPrefsStore(dir);
+    const translation = { enabled: true, autoOnSelect: false, from: 'en', to: 'ja' } as const;
+    store.set({ translation });
+    expect(openPrefsStore(dir).get().translation).toEqual(translation);
+    fs.writeFileSync(file(), JSON.stringify({ translation: { enabled: 'yes' } }));
+    expect(openPrefsStore(dir).get().translation).toEqual(DEFAULT_TRANSLATION_PREFS);
+  });
+
   it('an invalid field falls back to its default on its own: the other fields and libraryRoot survive, nothing is moved', () => {
     const body = JSON.stringify({ theme: 'blue', density: 'compact', fontSize: 99, libraryRoot: ABS });
     fs.writeFileSync(file(), body);
     const store = openPrefsStore(dir);
-    expect(store.get()).toEqual({ theme: 'system', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null });
+    expect(store.get()).toEqual({ theme: 'system', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null, translation: DEFAULT_TRANSLATION_PREFS });
     expect(store.readOnly).toBe(false);
     expect(vi.mocked(console.warn).mock.calls).toEqual([['PREFS_FIELD_INVALID theme'], ['PREFS_FIELD_INVALID fontSize']]);
     expect(fs.readdirSync(dir)).toEqual([PREFS_FILE]); // not quarantined
@@ -167,7 +176,7 @@ describe('prefs store', () => {
     const store = openPrefsStore(dir);
     expect(store.set({ density: 'compact' })).toEqual({ ...DEFAULTS, density: 'compact', libraryRoot: ABS });
     expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toEqual({
-      theme: 'sepia', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null, future: { shortcuts: { 'library.import': 'Cmd+I' } },
+      theme: 'sepia', density: 'compact', fontSize: 13, libraryRoot: ABS, backupDir: null, translation: DEFAULT_TRANSLATION_PREFS, future: { shortcuts: { 'library.import': 'Cmd+I' } },
     });
     expect(store.set({ theme: 'dark' }).theme).toBe('dark');
     expect(JSON.parse(fs.readFileSync(file(), 'utf8'))).toMatchObject({ theme: 'dark', future: { shortcuts: { 'library.import': 'Cmd+I' } } });
@@ -272,7 +281,7 @@ describe('prefs store', () => {
 
 describe('resolveLibraryRoot', () => {
   const userData = path.resolve(os.tmpdir(), 'ud');
-  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot, backupDir: null }) as const;
+  const prefs = (libraryRoot: string | null) => ({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot, backupDir: null, translation: DEFAULT_TRANSLATION_PREFS }) as const;
 
   it('LEARN_LIBRARY_DIR wins over prefs.libraryRoot', () => {
     expect(resolveLibraryRoot({ envDir: '/env/lib', prefs: prefs(ABS), userData })).toBe('/env/lib');

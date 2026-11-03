@@ -11,3 +11,4 @@ export * from './tags-repository';
 export * from './organize-query';
 export * from './trash';
 export * from './duplicates';
+export * from './translation-cache-repository';

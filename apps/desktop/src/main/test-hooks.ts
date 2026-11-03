@@ -10,6 +10,7 @@ import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
+import type { FakeMode } from './translation/fake';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -422,6 +423,10 @@ export interface LearnTestHooks {
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
   requestLibraryCheck(): Promise<void>;
+  /** Sets how the fake translation engine answers (E2E always runs on it). */
+  translationFake(mode: FakeMode): void;
+  /** How many requests the fake translation engine has taken since launch (a cache hit or a refusal takes none). */
+  translationCalls(): number;
 }
 
 /**
@@ -449,6 +454,8 @@ export function installTestHooks(deps: {
   seedFiles?: () => SeedAssetsDeps;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
+  /** The fake translation engine (index.ts, E2E only). */
+  translation?: { setMode(mode: FakeMode): void; calls(): number };
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
@@ -596,6 +603,14 @@ export function installTestHooks(deps: {
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();
+    },
+    translationFake(mode) {
+      if (!deps.translation) throw new Error('translationFake: no fake engine');
+      deps.translation.setMode(mode);
+    },
+    translationCalls() {
+      if (!deps.translation) throw new Error('translationCalls: no fake engine');
+      return deps.translation.calls();
     },
     async requestLibraryCheck() {
       if (!deps.check) throw new Error('requestLibraryCheck: no library check');

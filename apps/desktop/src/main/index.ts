@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
+import { app, dialog, Menu, net, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -43,6 +43,10 @@ import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
 import { findUpdateBackup } from './update-backup';
 import { createMainWindow } from './window';
+import { remoteFetch } from './net-policy';
+import { createFakeEngine } from './translation/fake';
+import { createGoogleWebEngine } from './translation/google-web';
+import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
 import { windowUrl } from './window-url';
@@ -554,6 +558,13 @@ if (!app.requestSingleInstanceLock()) {
       const win = liveMainWindow();
       if (win) sendEvent(win.webContents, 'recovery:show', {});
     };
+    // E2E never reaches the network: the app always runs on the fake engine there.
+    const fakeTranslation = isE2E(app.isPackaged, process.env) ? createFakeEngine() : null;
+    const translation = createTranslationService({
+      engine: fakeTranslation ?? createGoogleWebEngine({ fetch: remoteFetch, isOnline: () => net.isOnline() }),
+      cache: () => getContext().translations,
+      prefs: () => prefs.get(),
+    });
     const deps: IpcDeps = {
       getContext,
       appInfo: (): AppInfo => ({
@@ -567,6 +578,7 @@ if (!app.requestSingleInstanceLock()) {
         backupFile: libraryError ? findUpdateBackup(libraryRoot) : null,
       }),
       prefs,
+      translation,
       uiContext: {
         report(sender, ctx) {
           // Only the main window drives the menu (settings and sheet windows report nothing that counts).
@@ -630,6 +642,7 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
+        translation: fakeTranslation ?? undefined,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
         backup,
         restore,

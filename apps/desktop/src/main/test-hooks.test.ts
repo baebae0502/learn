@@ -538,3 +538,23 @@ describe("E2E fsync probe (Q-2c: what one import's flush costs)", () => {
     await expect(fsyncProbe({ dir: os.tmpdir(), files: 1, bytes: 0 })).rejects.toThrow(/bytes/);
   });
 });
+
+describe('the translation hooks (Task 4)', () => {
+  it('translationFake sets the fake engine\'s mode; translationCalls counts its requests', () => {
+    const setMode = vi.fn();
+    installTestHooks({
+      importCommits: () => ({}) as never,
+      repo: () => ({}) as never,
+      organize: () => {
+        throw new Error('not used');
+      },
+      broadcast: vi.fn(),
+      translation: { setMode, calls: () => 3 },
+    });
+    const hooks = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    hooks.translationFake('offline');
+    expect(setMode).toHaveBeenCalledWith('offline');
+    expect(hooks.translationCalls()).toBe(3);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});

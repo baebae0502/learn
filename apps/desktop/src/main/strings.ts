@@ -174,4 +174,14 @@ export const mainStrings = {
   },
   /** An IPC call from a window that may not make it (the settings window's channels, main-window-only channels). */
   callerRefused: '허용되지 않은 호출자입니다.',
+  /** The fake translation engine E2E runs on (translation/fake.ts): a table of the recorded sentences, and a mark for any other. */
+  fakeTranslation: {
+    pairs: [
+      ['Attention is all you need.', '주의가 필요한 전부입니다.'],
+      ['The dominant sequence transduction models are based on complex recurrent neural networks.', '지배적 서열 변환 모델은 복잡한 순환 신경망을 기반으로 합니다.'],
+      ['We propose a new simple network architecture.', '우리는 새롭고 간단한 네트워크 아키텍처를 제안합니다.'],
+      ['It is based solely on attention mechanisms.', '이는 주의 메커니즘에만 기반을 두고 있습니다.'],
+    ],
+    unknownPrefix: '번역: ',
+  },
 } as const;

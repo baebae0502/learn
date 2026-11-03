@@ -11,6 +11,7 @@ import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
 import { mainStrings } from '../strings';
+import type { TranslationService } from '../translation/service';
 import { windowKindOf } from '../window-kinds';
 import { CHANNEL_KINDS } from './channel-kinds';
 
@@ -18,6 +19,7 @@ export interface IpcDeps {
   getContext(): LibraryContext;
   appInfo(): AppInfo;
   prefs: PrefsStore;
+  translation: TranslationService;
   /** The main window's renderer reports its command context; main derives menu availability from it. */
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */

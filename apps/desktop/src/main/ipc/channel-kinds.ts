@@ -86,6 +86,9 @@ export const CHANNEL_KINDS: Readonly<Record<Channel, readonly WindowKind[]>> = {
   'reader:getPosition': MAIN,
   'reader:savePosition': MAIN,
 
+  'translation:translate': MAIN,
+  'translation:cancel': MAIN,
+
   'ui:showContextMenu': MAIN,
   'ui:windowState': MAIN_AND_SETTINGS,
   'ui:reportContext': MAIN,

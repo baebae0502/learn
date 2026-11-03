@@ -3,6 +3,7 @@ import { COMMAND_IDS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
+import { DEFAULT_TRANSLATION_PREFS, translationPrefsSchema } from './translation';
 
 const storedColumnId = z.string().min(1).max(64);
 /**
@@ -84,6 +85,8 @@ export const prefsFields = {
   libraryRoot: z.string().min(1).nullable(),
   /** The folder the last backup was made in (spec 8.1; ADR-0007 (a), a device's value): the folder panel opens there. Main's own. */
   backupDir: z.string().min(1).nullable(),
+  /** The reader's translation (ADR-0012): consent and languages. The merge is shallow, so a patch carries the whole object. */
+  translation: translationPrefsSchema,
 };
 export const prefsSchema = z.object({
   theme: prefsFields.theme.default('system'),
@@ -91,6 +94,7 @@ export const prefsSchema = z.object({
   fontSize: prefsFields.fontSize.default(13),
   libraryRoot: prefsFields.libraryRoot.default(null),
   backupDir: prefsFields.backupDir.default(null),
+  translation: prefsFields.translation.default(DEFAULT_TRANSLATION_PREFS),
 });
 export type Prefs = z.infer<typeof prefsSchema>;
 /** All defaults: what a window falls back to when reading the prefs failed. */

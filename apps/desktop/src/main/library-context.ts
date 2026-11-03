@@ -1,5 +1,5 @@
 import {
-  AnchorsRepository, CollectionsRepository, LibraryRepository, ReadingRepository, SettingsRepository, TagsRepository, migrate, openDatabase, type Db,
+  AnchorsRepository, CollectionsRepository, LibraryRepository, ReadingRepository, SettingsRepository, TagsRepository, TranslationCacheRepository, migrate, openDatabase, type Db,
 } from '@learn/db';
 import type { LibraryCheck } from '@learn/domain';
 import { Importer, ensureLayout, libraryLayout, type LibraryLayout } from '@learn/library';
@@ -13,6 +13,7 @@ export interface LibraryContext {
   settings: SettingsRepository;
   reading: ReadingRepository;
   anchors: AnchorsRepository;
+  translations: TranslationCacheRepository;
   importer: Importer;
   schemaVersion: number;
   /** The newest library check (library-check.ts), null until the first one — it runs once the window exists (P-18). */
@@ -36,6 +37,7 @@ export async function openLibraryContext(root: string): Promise<LibraryContext> 
       settings: new SettingsRepository(db),
       reading: new ReadingRepository(db),
       anchors: new AnchorsRepository(db),
+      translations: new TranslationCacheRepository(db),
       importer: new Importer({ layout, repo }),
       schemaVersion: to,
       check: null,

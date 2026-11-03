@@ -19,4 +19,5 @@ export * from './result';
 export * from './settings';
 export * from './sheets';
 export * from './tag-colors';
+export * from './translation';
 export * from './web-annotation';

@@ -58,7 +58,11 @@ export function usePdfDocument(assetId: string): PdfOpen {
     return () => {
       cancelled = true;
       answer.current = null;
-      void task?.destroy();
+      // The view that shows the document detaches its viewer in its own cleanup, which React runs after this one when the reader
+      // unmounts. Destroying the loading task first would fail a getPage the viewer still has in flight; so the task goes
+      // once the whole cleanup pass is over, and the viewer is always detached before the document is destroyed.
+      const closing = task;
+      queueMicrotask(() => void closing?.destroy());
     };
   }, [assetId]);
 

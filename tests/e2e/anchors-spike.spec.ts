@@ -140,13 +140,15 @@ test('selections become anchors that land back within 2 pt at four zooms and fou
     for (const [combo, v] of Object.entries(kWorst)) Object.assign((worst[combo] ??= {}), v);
     revisions['korean'] = krev.id;
   } finally {
+    const cells = Object.values(worst).reduce((n, v) => n + Object.keys(v).length, 0);
     const max = Math.max(...Object.values(worst).flatMap((v) => Object.values(v)));
     await testInfo.attach('anchor-spike.json', {
-      body: JSON.stringify({ toleranceInPt: TOLERANCE_PT, maxDistanceInPt: max, maxDistanceByCombination: worst, revisions }, null, 2),
+      body: JSON.stringify({ toleranceInPt: TOLERANCE_PT, cells, maxDistanceInPt: max, maxDistanceByCombination: worst, revisions }, null, 2),
       contentType: 'application/json',
     });
     await app.close();
   }
+  expect(Object.values(worst).reduce((n, v) => n + Object.keys(v).length, 0), '4 zooms x 4 rotations x 4 selections').toBe(64);
 });
 
 /** The quads of a quote's anchor against the quads of the same text, picked afresh by its offsets. */

@@ -131,6 +131,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         teardown = () => {
           removeProbe?.();
           stopWatchingDisplay();
+          // A render the queue still has scheduled would draw a page whose document is going away ("pdfPage is not loaded").
+          viewer.renderingQueue!.renderView = () => false;
           viewer.setDocument(null);
           store.setHandle(null);
           store.setPdf(null);

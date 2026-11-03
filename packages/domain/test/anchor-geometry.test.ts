@@ -49,10 +49,10 @@ describe('quad <-> rect', () => {
   });
 
   it('joins the pieces of a line in order, whatever their tops differ by, and keeps the lines top to bottom', () => {
-    // Tops 0.9 pt apart chain three pieces into one line although the first and the last differ by 1.8 pt.
+    // Three pieces whose tops are within 0.9 pt of the line's first piece are one line, whatever order they arrive in.
     const pieces = [r(60, 10.9, 90, 22), r(10, 10, 30, 22), r(30, 10.45, 60, 22), r(10, 40, 50, 52)];
     const quads = rectsToQuads(pieces, { convertToPdfPoint: (x, y) => [x, 100 - y] });
-    expect(quads.length).toBeLessThanOrEqual(3);
+    expect(quads).toHaveLength(2);
     expect(quads.at(-1)![1]).toBe(60);
     expect(quads[0]![0]).toBe(10);
   });

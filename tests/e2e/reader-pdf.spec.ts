@@ -305,3 +305,38 @@ test('a video has no page to turn: the rotation is off there and on again in a P
     await app.close();
   }
 });
+
+/** The one line pdf.js logs for a getPage it had in flight when its document was closed on purpose. */
+const isCloseNoise = (text: string) => /^Unable to get page .*Transport destroyed/s.test(text);
+
+test('leaving a PDF the moment its pages exist leaves no page error and no console error', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(m.text());
+  });
+  try {
+    await importPaths(page, [PAPER]);
+    for (let i = 0; i < 8; i++) {
+      await openItem(page, 'paper-100');
+      await viewer(page).waitFor({ state: 'attached' });
+      // Back is clicked in the very task that sees the page count, while the viewer is still asking for its first pages.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            const el = document.querySelector('[data-testid="pdf-viewer"]')!;
+            const go = () => (document.querySelector('[data-testid="viewer-back"]') as HTMLElement).click();
+            if (el.getAttribute('data-pages') === '100') go();
+            else new MutationObserver((_m, o) => { if (el.getAttribute('data-pages') === '100') { o.disconnect(); go(); } }).observe(el, { attributes: true });
+            resolve();
+          }),
+      );
+      await expect(viewer(page)).toHaveCount(0);
+    }
+    await page.waitForTimeout(500);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});

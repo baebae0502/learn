@@ -105,7 +105,8 @@ test('every registry command runs without a page error (library and reader menus
   const watch = (p: Page) => {
     p.on('pageerror', (e) => errors.push(`${p.url()}: ${e.message}`));
     p.on('console', (m) => {
-      if (m.type() === 'error') errors.push(`${p.url()}: ${m.text()}`);
+      // pdf.js's own line for a getPage in flight when a document is closed on purpose; nothing else is let through.
+      if (m.type() === 'error' && !/^Unable to get page .*Transport destroyed/s.test(m.text())) errors.push(`${p.url()}: ${m.text()}`);
     });
   };
   watch(page);

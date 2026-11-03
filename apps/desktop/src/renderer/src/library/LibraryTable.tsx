@@ -22,7 +22,7 @@ import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { collectionMatch } from '../trash/trashRows';
 import { useNow } from '../useNow';
-import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
+import { columnTemplates, defaultColumns, fixedWidths, progressShown, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
 import { wheelSteps } from './columnDrag';
@@ -120,9 +120,9 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
 /** The furthest point read: the narrow bar and the percent; nothing for an item never read. */
 function ProgressCell({ progress }: { progress: number | null }) {
   if (progress === null) return null;
-  const percent = Math.round(progress * 100);
+  const percent = progressShown(progress);
   // Finished: the check and 완료 in place of the bar and "100%" (the approved render's progressCell).
-  if (percent >= 100) {
+  if (percent === 'done') {
     return (
       <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="progress-done">
         <Icon icon={Check} size="sm" />

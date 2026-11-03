@@ -187,3 +187,9 @@ export function columnTemplates(visible: readonly LibraryColumnSpec[], widths: R
   });
   return { head: head.join(' '), row: row.join(' '), minWidth };
 }
+
+/**
+ * What the 진행 cell shows for a stored progress: 'done' only at the very end, else a whole percent that stays below 100 (a long
+ * document's last-but-one page rounds to 100 and must not read as finished).
+ */
+export const progressShown = (progress: number): number | 'done' => (progress >= 1 ? 'done' : Math.min(99, Math.round(progress * 100)));

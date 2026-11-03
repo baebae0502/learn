@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS, LIBRARY_COLUMN_IDS, type ColumnConfig, type LibraryColumnId } from '@learn/domain';
-import { columnTemplates, completeOrder, defaultColumns, TRASH_WIDTHS, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
+import { columnTemplates, completeOrder, defaultColumns, TRASH_WIDTHS, fixedWidths, moveColumn, parseColumnConfig, pinnedCount, progressShown, toggleColumn, tradeWidths, trailingCount, visibleColumns, widthOf, withWidths } from './columns';
 
 const spec = (id: LibraryColumnId) => LIBRARY_COLUMNS.find((c) => c.id === id)!;
 const px = (entries: Array<[LibraryColumnId, number]>) => new Map(entries);
@@ -187,7 +187,7 @@ describe('the trash view\'s 삭제한 날짜 (M6 spec 4.3)', () => {
 });
 
 describe('the 진행 column (M7a)', () => {
-  it('a stored configuration from before it keeps it hidden; the default shows it last among the defaults', () => {
+  it('a stored configuration from before it keeps it hidden; the default shows it right before 추가일', () => {
     const stored = parseColumnConfig({ visible: ['title', 'creators', 'year', 'type', 'createdAt'], order: ['title', 'creators', 'year', 'type', 'createdAt'], widths: {} });
     expect(stored.visible).not.toContain('progress');
     expect(visibleColumns(stored).map((c) => c.id)).toEqual(['title', 'creators', 'year', 'type', 'createdAt']);
@@ -196,5 +196,11 @@ describe('the 진행 column (M7a)', () => {
   });
   it('is drawn in the trash view too, before 삭제한 날짜', () => {
     expect(visibleColumns(defaultColumns(), ['deletedAt']).map((c) => c.id).slice(-3)).toEqual(['progress', 'createdAt', 'deletedAt']);
+  });
+  it('reads as done only at the very end, and a whole percent below 100 before it', () => {
+    expect(progressShown(1)).toBe('done');
+    expect(progressShown(199 / 200)).toBe(99); // rounds to 100, but the last page is still ahead
+    expect(progressShown(0.37)).toBe(37);
+    expect(progressShown(0.004)).toBe(0);
   });
 });

@@ -258,7 +258,7 @@
       </div>
       ${
         r
-          ? `<section class="section" ${ms('M7', '읽기 절')}>
+          ? `<section class="section" ${ms('M7b', '읽기 절(M7a에서 뺌)')}>
         ${sectionHead('읽기')}
         <div class="row gap-8"><span class="progress wide thick"><i style="width:${r.percent}%"></i></span><span class="pct t-footnote">${r.percent}%</span></div>
         <div class="t-footnote c-secondary" style="margin-top:4px"><span class="num">${r.page} / ${r.pages}쪽</span>에서 멈춤 · ${esc(r.opened)}</div>
@@ -957,9 +957,11 @@
 
   /** The inspector in the reader: the 번역 section on top (when a page is open), then the opened item's info (spec 6.2). */
   function inspectorV2(trKind, item, { trashed = false } = {}) {
-    let html = inspectorItem(item, { trashed })
-      .replace('<div class="btn primary" title="열기 ↩">열기</div>', '')
-      .replace(/<span class="num">(\d+ \/ \d+쪽)<\/span>에서 멈춤 · [^<]*/, '지금 <span class="num">$1</span>');
+    // No 읽기 section in M7a (owner 2026-11-03, decision 5): the page field and the progress column already show it.
+    let html = inspectorItem({ ...item, pages: item.pages ?? item.reading?.pages, reading: null }, { trashed }).replace(
+      '<div class="btn primary" title="열기 ↩">열기</div>',
+      '',
+    );
     if (trKind) html = html.replace(/^<div class="inspector-scroll"[^>]*>/, (m) => m + translationSection(trKind, { menu: params.get('menu') }));
     return html;
   }
@@ -1087,7 +1089,7 @@
         stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px"><div class="pdf-page" aria-label="42쪽">${body42}</div></div>${selPopup('same')}</div>`;
       }
       main = `${toolbar}<div class="reader-body">${stage}</div>`;
-      inspector = inspectorV2(trKind, { ...doc.item, reading: { ...doc.item.reading, page: curPage } });
+      inspector = inspectorV2(trKind, doc.item);
     }
     if (menu === 'zoom') overlays = zoomMenu({ m7a: true });
     else if (menu === 'view') overlays = viewMenuV2();

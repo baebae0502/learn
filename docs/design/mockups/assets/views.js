@@ -810,8 +810,6 @@
   function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false }) {
     const dis = disabled ? 'is-disabled' : '';
     return `<div class="reader-toolbar">
-      <span class="icon-btn is-on" title="사이드바 가리기 ⌃⌘S" ${ms('M7a', '사이드바 토글(썸네일·목차)')}>${icon('panel-left')}</span>
-      <span class="toolbar-sep"></span>
       <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
         <div class="page-field ${dis}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div><span class="num">/ ${pages}</span></div>
         <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
@@ -1044,7 +1042,7 @@
       const thumbPages = doc === PAPER ? [1, 2, 3, 4, 5] : [40, 41, 42, 43, 44];
       const thumbBody = doc === PAPER ? (n) => paperPageV2(n) : (n) => `<div class="pdf-page">${pageBody(n, { find: false })}</div>`;
       sidebar = sidebarV2(doc, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
-      const toolbar = toolbarV2({ page: String(doc.page), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn, disabled: loading });
+      const toolbar = toolbarV2({ page: String(doc.page), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn: inspectorOn && !loading, disabled: loading });
       let stage;
       if (loading) {
         stage = `<div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7a', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>${doc.page}쪽을 여는 중…</div></div></div></div></div>`;
@@ -1067,7 +1065,7 @@
     else if (menu === 'copy') overlays = copyMenu();
 
     const shell = (extra = {}) =>
-      M.windowShell({ tabs, unified, sidebar, main, inspector: inspectorOn || dead ? inspector : null, overlays, ...extra });
+      M.windowShell({ tabs, unified, sidebar, main, inspector: inspectorOn && !dead && state !== 'loading' ? inspector : null, overlays, ...extra });
     if (w >= 1440) return shell();
     // A narrower window on a simulated desktop (the tutor mockup's state 10 does the same).
     const notes = {

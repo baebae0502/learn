@@ -20,8 +20,6 @@ export interface TreeKeyInput {
   target: 'row' | 'rename' | 'other';
   /** ⇧F10 or the menu key (ui/contextMenuKey.ts). */
   contextMenuKey: boolean;
-  /** The reader is showing: the sidebar is a way back, and moving the cursor changes no view. */
-  reader: boolean;
   row: TreeKeyRow | null;
 }
 
@@ -54,8 +52,8 @@ export function treeKeyAction(i: TreeKeyInput): TreeKeyAction {
   if (i.target !== 'row' || row === null) return NONE;
   if (i.contextMenuKey) return row.collection ? { do: 'menu', key: row.key } : { do: 'ignoreMenu' };
   if (i.metaKey || i.ctrlKey || i.altKey || i.shiftKey) return NONE;
-  if (i.key === 'Enter') return row.collection && !i.reader ? { do: 'rename', key: row.key } : NONE;
-  if (!i.reader && row.collection) {
+  if (i.key === 'Enter') return row.collection ? { do: 'rename', key: row.key } : NONE;
+  if (row.collection) {
     if (i.key === 'ArrowRight' && row.hasChildren && row.expanded && row.firstChild !== null) return { do: 'goto', key: row.firstChild };
     if (i.key === 'ArrowLeft' && !(row.hasChildren && row.expanded) && row.parent !== null) return { do: 'goto', key: row.parent };
   }

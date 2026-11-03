@@ -83,7 +83,7 @@
     cursor: default;
   }
   .nav-thumb-page {
-    width: 120px; /* local: thumbnail width (ThumbnailList THUMB_WIDTH) */
+    width: 104px; /* local: thumbnail width (ThumbnailList THUMB_WIDTH) */
     overflow: hidden;
     position: relative;
     flex: none;
@@ -119,11 +119,11 @@
     font-variant-numeric: tabular-nums;
   }
   .nav-thumb:hover .nav-thumb-page {
-    box-shadow: 0 0 0 2px var(--fill-pressed);
+    box-shadow: 0 0 0 2px var(--fill-pressed); /* local: the 2 px ring of the render */
   }
   /* The current page: a 2 px ring and a filled number (design-spec 7.1's selection). */
   .nav-thumb[data-current] .nav-thumb-page {
-    box-shadow: 0 0 0 2px var(--accent-ring);
+    box-shadow: 0 0 0 2px var(--accent-ring); /* local: the current page's 2 px ring (design-spec 7.1) */
   }
   .nav-thumb[data-current] .lbl {
     background: var(--accent);

@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { currentOutlineId, filterOutline, outlineRows, type PdfOutlineNode } from './outline';
+import { describe, expect, it, vi } from 'vitest';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
+import { currentOutlineId, filterOutline, outlinePages, outlineRows, type PdfOutlineNode } from './outline';
 
 const node = (title: string, items: PdfOutlineNode[] = [], extra: Partial<PdfOutlineNode> = {}): PdfOutlineNode =>
   ({ title, bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: null, url: null, unsafeUrl: undefined, newWindow: undefined, count: undefined, items, ...extra }) as PdfOutlineNode;
@@ -72,5 +73,41 @@ describe('currentOutlineId', () => {
   it('is none before the first entry and without resolved pages', () => {
     expect(currentOutlineId(rows, new Map([['0', 3]]), 2)).toBeNull();
     expect(currentOutlineId(rows, new Map(), 5)).toBeNull();
+  });
+});
+
+describe('outlinePages', () => {
+  const rows = outlineRows([
+    node('Named', [], { dest: 'chapter' }),
+    node('Explicit', [], { dest: [{ num: 7, gen: 0 }, { name: 'XYZ' }] }),
+    node('Index', [], { dest: [4, { name: 'Fit' }] }),
+    node('Link', [], { url: 'https://example.org' }),
+    node('Broken', [], { dest: 'missing' }),
+  ]);
+  const doc = (over: Partial<Record<'getDestination' | 'getPageIndex', unknown>> = {}) =>
+    ({
+      getDestination: vi.fn(async (name: string) => (name === 'chapter' ? [{ num: 3, gen: 0 }, { name: 'Fit' }] : null)),
+      getPageIndex: vi.fn(async (ref: { num: number }) => ref.num * 10),
+      ...over,
+    }) as unknown as PDFDocumentProxy;
+
+  it('resolves named, explicit and page-index destinations to page numbers, and skips links and unknown names', async () => {
+    const pages = await outlinePages(doc(), rows, () => false);
+    expect([...pages]).toEqual([['0', 31], ['1', 71], ['2', 5]]);
+  });
+  it('leaves out an entry whose lookup fails, and says nothing when the document is going away', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const failing = doc({ getPageIndex: vi.fn(async () => { throw new Error('Transport destroyed'); }) });
+    expect([...(await outlinePages(failing, rows, () => true))]).toEqual([]);
+    expect(warn).not.toHaveBeenCalled();
+    expect([...(await outlinePages(failing, rows, () => false))]).toEqual([['2', 5]]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
+  it('stops asking once cancelled', async () => {
+    const d = doc();
+    let calls = 0;
+    await outlinePages(d, rows, () => ++calls > 1);
+    expect(vi.mocked(d.getDestination)).toHaveBeenCalledTimes(1);
   });
 });

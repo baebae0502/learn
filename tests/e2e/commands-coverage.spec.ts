@@ -116,6 +116,39 @@ test('every registry command runs without a page error (library and reader menus
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const searchInput = page.getByTestId('search-field').getByRole('searchbox');
   const findField = page.getByTestId('pdf-find-field').getByRole('searchbox');
+  const findCount = page.getByTestId('pdf-find-count');
+  let selectedWord = '';
+  /** The state a reader find command acts on: a query with its first match current (⇧⌘G: its second), or a word selected in the page (⌘E). */
+  const prepareFind = async (id: CommandId) => {
+    if (id === 'reader.findSelection') {
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached(); // the text layer is drawn after the canvas
+      selectedWord = await page.evaluate(() => {
+        const text = [...document.querySelectorAll('.page[data-page-number="1"] .textLayer span')].map((s) => s.firstChild).find((n): n is Text => n instanceof Text && /\w{4,}/.test(n.data))!;
+        const at = text.data.search(/\w{4,}/);
+        const word = /\w+/.exec(text.data.slice(at))![0];
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + word.length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+        return word;
+      });
+      return;
+    }
+    if (id !== 'reader.findNext' && id !== 'reader.findPrevious') return;
+    // A search starts from the page in view: back to page 1 first, so its first match is the first one.
+    await page.getByTestId('pdf-page-field').fill('1');
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', '1');
+    await runMenuCommand(app, 'library.find');
+    await findField.fill(''); // a new search each time: the same text again would keep the match it was on
+    await findField.fill('page');
+    await expect(findCount).toHaveText(/^1 \/ \d+$/);
+    if (id === 'reader.findPrevious') {
+      await runMenuCommand(app, 'reader.findNext');
+      await expect(findCount).toHaveText(/^2 \/ \d+$/);
+    }
+  };
   /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
   const scale = async () => Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
   let scaleBefore = 0;
@@ -166,9 +199,10 @@ test('every registry command runs without a page error (library and reader menus
       if (await readerOpen()) await expect(findField).toBeFocused();
       else await expect(searchInput).toBeFocused();
     },
-    'reader.findNext': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
-    'reader.findPrevious': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
-    'reader.findSelection': () => expect(page.getByTestId('pdf-find-bar')).toBeVisible(),
+    // Each find command is run from a state it can change (see `prepareFind`): the current match moves, or the word is taken.
+    'reader.findNext': () => expect(page.getByTestId('pdf-find-count')).toHaveText(/^2 \/ \d+$/),
+    'reader.findPrevious': () => expect(page.getByTestId('pdf-find-count')).toHaveText(/^1 \/ \d+$/),
+    'reader.findSelection': () => expect(findField).toHaveValue(selectedWord),
     'reader.showThumbnails': () => expect(page.getByTestId('pdf-thumbnails')).toBeVisible(),
     // sample.pdf has no outline: the sidebar says so.
     'reader.showOutline': () => expect(page.getByTestId('reader-sidebar-empty')).toContainText('이 PDF에는 목차가 없습니다'),
@@ -256,6 +290,7 @@ test('every registry command runs without a page error (library and reader menus
         if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         if (view === 'reader') scaleBefore = await scale();
+        if (view === 'reader') await prepareFind(id);
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
         await closeTransient(app, page);

@@ -2,25 +2,17 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import type { RenderTask } from 'pdfjs-dist';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { t } from '../../strings';
+import { drawOrder } from './drawOrder';
 import { createThumbnailCache, type ThumbnailCache } from './thumbnailCache';
 import { useReader } from './readerStore';
 import { usePageColor } from './usePageColor';
 
-/** A thumbnail's width in px (the sidebar's 240 minus its gutters leaves room for it). */
-const THUMB_WIDTH = 120; /* local: thumbnail width */
-/** The page number under the thumbnail and the gap to the next one, in px (the row's height besides the page). */
-const ROW_EXTRA = 38; /* local: 14 px label + 6 px gap + 12 px + the ring's room */
+/** A thumbnail's width in px: the render's (mockup .thumb-page), 147 tall for an A4 page. */
+const THUMB_WIDTH = 104; /* local: thumbnail width */
+/** The row's height besides the page, in px: the 12 px gap above, the 6 px gap and the 14 px number (--space-12, --space-6, --type-caption). */
+const ROW_EXTRA = 32; /* local: 12 + 6 + 14 */
 /** A page that is not known yet is drawn as the first page is, or as a letter page. */
 const FALLBACK_RATIO = 1.294;
-/** The pages around the current one that are drawn before the others on screen. */
-const NEAR = 3;
-
-/** The pages to draw, the nearest to the current page first: ±3 around it, then the rest of what is on screen. */
-export function drawOrder(visible: readonly number[], current: number): number[] {
-  const near = (n: number) => Math.abs(n - current) <= NEAR;
-  return [...visible].sort((a, b) => Number(near(b)) - Number(near(a)) || Math.abs(a - current) - Math.abs(b - current));
-}
-
 /**
  * The pages as small pictures (spec 4.7), virtualised: only the rows in view exist, and only they are drawn, one at a time, the
  * ones around the current page first. A picture is kept as an ImageBitmap in a cache of 60; whatever leaves the cache or the
@@ -32,6 +24,8 @@ export function ThumbnailList() {
   const doc = handle?.document() ?? null;
   const total = useReader((s) => s.pdf?.pagesCount ?? 0);
   const current = useReader((s) => s.pdf?.pageNumber ?? 1);
+  const rotation = useReader((s) => s.pdf?.rotation ?? 0);
+  const ready = useReader((s) => s.pdf?.ready === true);
   const { resolved: pageColor } = usePageColor();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [ratios, setRatios] = useState<ReadonlyMap<number, number>>(new Map());
@@ -40,7 +34,11 @@ export function ThumbnailList() {
   const wantRef = useRef<number[]>([]);
   const wakeRef = useRef<(() => void) | null>(null);
 
-  const ratioOf = (page: number) => ratios.get(page) ?? ratios.get(1) ?? FALLBACK_RATIO;
+  /** Height over width as the view shows the page: a quarter turn swaps the two. */
+  const ratioOf = (page: number) => {
+    const upright = ratios.get(page) ?? ratios.get(1) ?? FALLBACK_RATIO;
+    return rotation === 90 || rotation === 270 ? 1 / upright : upright;
+  };
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => scrollRef.current,
@@ -63,21 +61,24 @@ export function ThumbnailList() {
   }, [current, total]);
 
   useEffect(() => {
-    if (!doc) return;
+    // The viewer asks for its pages first; the pictures start once it has them.
+    if (!doc || !ready) return;
     const cache = createThumbnailCache();
     cacheRef.current = cache;
     let cancelled = false;
     let task: RenderTask | null = null;
     const failed = new Set<number>();
-    setRatios(new Map());
-    setDrawn(0);
+    // The pictures of the old rotation (or document) are gone: every cell reads the new cache.
+    setDrawn((n) => n + 1);
 
     const draw = async (pageNumber: number) => {
       const page = await doc.getPage(pageNumber);
       if (cancelled) return;
       const natural = page.getViewport({ scale: 1 });
       setRatios((before) => (before.get(pageNumber) === natural.height / natural.width ? before : new Map(before).set(pageNumber, natural.height / natural.width)));
-      const viewport = page.getViewport({ scale: (THUMB_WIDTH / natural.width) * window.devicePixelRatio });
+      // The view's rotation is added to the page's own, so a thumbnail turns with its page.
+      const turned = page.getViewport({ scale: 1, rotation: (page.rotate + rotation) % 360 });
+      const viewport = page.getViewport({ scale: (THUMB_WIDTH / turned.width) * window.devicePixelRatio, rotation: (page.rotate + rotation) % 360 });
       const canvas = window.document.createElement('canvas');
       canvas.width = Math.max(1, Math.ceil(viewport.width));
       canvas.height = Math.max(1, Math.ceil(viewport.height));
@@ -107,7 +108,8 @@ export function ThumbnailList() {
           await draw(next);
         } catch (e) {
           // A render cancelled or a page asked of a closing document is the list going away, not a failure to report.
-          if (cancelled) return;
+          // The list or the document going away (a render cancelled, a page asked of a destroyed transport) is not a failure.
+          if (cancelled || doc.loadingTask.destroyed || (e as Error)?.name === 'RenderingCancelledException') return;
           failed.add(next);
           console.warn(`[pdf] thumbnail failed: ${(e as Error)?.name ?? 'Error'}`);
         }
@@ -123,7 +125,11 @@ export function ThumbnailList() {
       cache.clear();
       cacheRef.current = null;
     };
-  }, [doc]);
+  }, [doc, ready, rotation]);
+
+  // A new document starts with no page sizes.
+  useEffect(() => setRatios(new Map()), [doc]);
+  useLayoutEffect(() => virtualizer.measure(), [rotation, virtualizer]);
 
   const goTo = (page: number) => handle?.goToPage(page);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {

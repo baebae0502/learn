@@ -42,11 +42,13 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const findOpen = useFind((s) => s.open);
   const { run } = useCommands();
   const locked = open.status === 'password';
-  // The sidebar has no pages to list while the password is asked for.
+  const broken = open.status === 'failed' || viewFailed;
+  const noPages = locked ? 'locked' : broken ? 'none' : null;
+  // The sidebar has no pages to list while the password is asked for or the document cannot be shown.
   useEffect(() => {
-    useReader.getState().setNoPages('reader', locked ? 'locked' : null);
+    useReader.getState().setNoPages('reader', noPages);
     return () => useReader.getState().setNoPages('reader', null);
-  }, [locked]);
+  }, [noPages]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
     useFind.getState().closeBar();
@@ -76,6 +78,11 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   if (open.status === 'password') return <PasswordPrompt item={item} wrong={open.wrong} checking={open.checking} onSubmit={open.submit} />;
 
   const onStageKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape' && findOpen && !isComposingKey(e.nativeEvent)) {
+      e.preventDefault();
+      closeFind();
+      return;
+    }
     if (!handle) return;
     const action = stageKeyAction(e.nativeEvent, isEditing(e.target as Element));
     if (!action) return;

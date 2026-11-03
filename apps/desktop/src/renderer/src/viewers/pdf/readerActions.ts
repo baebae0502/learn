@@ -28,8 +28,9 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
   findAgain: (previous) => {
     const bus = useReader.getState().handle?.eventBus();
     if (!bus) return;
-    const { query, openBar } = useFind.getState();
-    openBar();
+    const { query, open, openBar } = useFind.getState();
+    // The focus goes to the field only when the bar had to open: while it is open ⌘G leaves it where it is.
+    if (!open) openBar();
     if (query.trim() !== '') dispatchFind(bus, query, 'again', previous);
   },
   findSelection: () => {

@@ -360,6 +360,7 @@ test('⌘E takes the selected word into the find bar', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
+    await expect(page.locator('.page[data-page-number="1"] .textLayer span', { hasText: /attention/i }).first()).toBeAttached(); // the text layer is drawn after the canvas
     const word = await page.evaluate(() => {
       const span = [...document.querySelectorAll('.page[data-page-number="1"] .textLayer span')].find((s) => /attention/i.test(s.textContent ?? ''))!;
       const text = span.firstChild as Text;
@@ -410,8 +411,9 @@ test('the thumbnail of page 50 goes to page 50; the outline goes to a chapter an
     await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
     await expect(page.getByTestId('pdf-outline')).toBeVisible();
     await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
-    await expect.poll(async () => Number(await viewer(page).getAttribute('data-page'))).not.toBe(50);
-    const chapterPage = await viewer(page).getAttribute('data-page');
+    // paper-100's outline puts chapter n on page 10 n − 9 (fixtures/generate.mjs).
+    await expect(viewer(page)).toHaveAttribute('data-page', '21');
+    const chapterPage = '21';
     // The mark is on the last entry that starts on or before the page: Chapter 3 or the first of its sections, never another chapter.
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveAttribute('aria-label', /^(Chapter 3|3\.\d)/);
@@ -420,11 +422,108 @@ test('the thumbnail of page 50 goes to page 50; the outline goes to a chapter an
     await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('3.2');
     await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^3\.2 / }).first()).toBeVisible();
     await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^1\.1 / })).toHaveCount(0);
-    // The choice outlives the reader: thumbnails and outline are one setting.
+    // The setting is one: the menu changes it both ways.
     await runMenuCommand(app, 'reader.showThumbnails');
     await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
     await runMenuCommand(app, 'reader.showOutline');
     await expect(page.getByTestId('pdf-outline')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the list the sidebar shows is kept for the next start', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  try {
+    await openPaper(page);
+    await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+    await runMenuCommand(app, 'reader.showOutline');
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(async () => { const r = await window.learn.settings.get({ key: 'reader.nav' }); return r.ok ? r.data : null; }))
+      .toBe('outline');
+    await app.close();
+    ({ app, page } = await launch(lib, ud));
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await expect(page.getByTestId('pdf-thumbnails')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('typing in the find field keeps Space and the arrows: the page does not turn or scroll', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await runMenuCommand(app, 'library.find');
+    await expect(findInput(page)).toBeFocused();
+    const scroll = page.getByTestId('pdf-scroll');
+    const top = await scroll.evaluate((el) => el.scrollTop);
+    await page.keyboard.type('self attention');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('End');
+    await page.keyboard.type(' ');
+    await expect(findInput(page)).toHaveValue('self attention ');
+    await expect(viewer(page)).toHaveAttribute('data-page', '1');
+    expect(await scroll.evaluate((el) => el.scrollTop)).toBe(top);
+    // esc on the stage closes the bar too (focus moved there while it is open).
+    await page.getByTestId('pdf-stage').focus();
+    await page.keyboard.press('Escape');
+    await expect(findBar(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('going round past the first match says so for a moment and speaks it; ⌘G with the bar open leaves the focus where it is', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await runMenuCommand(app, 'library.find');
+    await findInput(page).fill('attention');
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+    await page.getByTestId('pdf-stage').focus();
+    await runMenuCommand(app, 'reader.findNext');
+    await expect(findCount(page)).toHaveText(/^2 \/ \d+$/);
+    await expect(page.getByTestId('pdf-stage')).toBeFocused();
+    await runMenuCommand(app, 'reader.findPrevious');
+    await runMenuCommand(app, 'reader.findPrevious');
+    await expect(findCount(page)).toHaveText(/^처음부터\s· \d+ \/ \d+$/);
+    await expect(findBar(page).locator('[aria-live="polite"]')).toHaveText('처음부터 다시 찾았습니다');
+    await expect(findCount(page)).toHaveText(/^\d+ \/ \d+$/, { timeout: 5_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test('↑ and ↓ on the thumbnail list move the page; a quarter turn turns the thumbnails', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const list = page.getByTestId('pdf-thumbnails');
+    await list.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(viewer(page)).toHaveAttribute('data-page', '2');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowUp');
+    await expect(viewer(page)).toHaveAttribute('data-page', '2');
+    await expect(page.locator('[data-testid="pdf-thumb"][data-current="true"]')).toHaveAttribute('data-page', '2');
+    const box = () => page.locator('[data-testid="pdf-thumb"][data-page="2"] .nav-thumb-page').evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }));
+    const upright = await box();
+    expect(upright.h).toBeGreaterThan(upright.w);
+    expect(Math.round(upright.w)).toBe(104);
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '90');
+    await expect.poll(async () => (await box()).w > (await box()).h).toBe(true);
+    // The turned picture is drawn again, not the upright one stretched.
+    await expect.poll(() =>
+      page.locator('[data-testid="pdf-thumb"][data-page="2"] canvas').evaluate((c: HTMLCanvasElement) => c.hasAttribute('data-drawn') && c.width > c.height),
+    ).toBe(true);
   } finally {
     await app.close();
   }
@@ -481,9 +580,11 @@ const isCloseNoise = (text: string) => /^Unable to get page .*Transport destroye
 test('leaving a PDF the moment its pages exist leaves no page error and no console error', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}\n${e.stack ?? ''}`));
   page.on('console', (m) => {
     if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(m.text());
+    // A thumbnail that was being drawn when the document went away is not worth a line in the log.
+    if (m.type() === 'warning' && /thumbnail/i.test(m.text())) errors.push(`warning: ${m.text()}`);
   });
   try {
     await importPaths(page, [PAPER]);
@@ -501,6 +602,32 @@ test('leaving a PDF the moment its pages exist leaves no page error and no conso
             resolve();
           }),
       );
+      await expect(viewer(page)).toHaveCount(0);
+    }
+    await page.waitForTimeout(500);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('leaving a PDF while its thumbnails are being drawn leaves no page error, no console error and no thumbnail warning', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}\n${e.stack ?? ''}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(m.text());
+    // A thumbnail that was being drawn when the document went away is not worth a line in the log.
+    if (m.type() === 'warning' && /thumbnail/i.test(m.text())) errors.push(`warning: ${m.text()}`);
+  });
+  try {
+    await importPaths(page, [PAPER]);
+    for (let i = 0; i < 5; i++) {
+      await openItem(page, 'paper-100');
+      await viewer(page).waitFor({ state: 'attached' });
+      // The first picture is on screen, the others are still on their way.
+      await expect(page.locator('[data-testid="pdf-thumb"] canvas[data-drawn]').first()).toBeAttached();
+      await page.getByTestId('viewer-back').click();
       await expect(viewer(page)).toHaveCount(0);
     }
     await page.waitForTimeout(500);

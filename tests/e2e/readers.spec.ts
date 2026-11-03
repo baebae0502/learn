@@ -155,6 +155,9 @@ test('a PDF that cannot be opened: the notice with the file and Finder에서 보
     await expect(notice.locator('h2')).toHaveText('이 PDF를 열 수 없습니다');
     await expect(notice.locator('p')).toHaveText('파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본 파일은 그대로 보관됩니다. 다른 사본이 있으면 다시 가져오세요.');
     await expect(notice.locator('.file')).toHaveText('broken.pdf · 37 B');
+    // The sidebar has no pages to list, and no segment to choose between (reader-pdf.html ?state=error).
+    await expect(s.page.getByTestId('reader-sidebar-empty')).toContainText('표시할 쪽이 없습니다');
+    await expect(s.page.getByTestId('reader-nav')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');
     // m1 / C-1 as amended: both file actions are notice buttons, through the registry.
     await expect(s.page.getByTestId('pdf-reveal')).toHaveText(REVEAL);
@@ -424,6 +427,8 @@ test('a missing managed copy: the notice says to import the original again, with
     // The window is still named after the item (design-spec 2.1), not left at the library's title.
     await expect.poll(async () => (await mainWindow(s.app)).evaluate((w) => w.getTitle())).toBe('sample');
     await expect(notice.locator('.file')).toHaveCount(0); // the path inside the library means nothing to the user
+    await expect(s.page.getByTestId('reader-sidebar-empty')).toContainText('표시할 쪽이 없습니다');
+    await expect(s.page.getByTestId('reader-nav')).toHaveCount(0);
     await expect(s.page.getByTestId('relink')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');
   } finally {

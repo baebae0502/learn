@@ -64,6 +64,22 @@ describe('a change of the preferences while the reader is open (final review m-5
     expect(useTranslation.getState().view).toEqual({ kind: 'idle' });
     expect(translate).not.toHaveBeenCalled();
   });
+  it('번역 켜기 whose save is still on its way, met by the preference change: one request, not two (re-review N-2)', async () => {
+    setTranslationPrefs({ enabled: null });
+    useTranslation.getState().select('Attention.');
+    expect(useTranslation.getState().view).toEqual({ kind: 'consent' });
+    const saved = later<Result<Prefs>>();
+    setPrefs.mockReturnValue(saved.promise);
+    translate.mockResolvedValue(done('주의'));
+    const enabling = useTranslation.getState().enable();
+    // The change is announced before the save's reply arrives.
+    setTranslationPrefs({ enabled: true, autoOnSelect: true });
+    useTranslation.getState().prefsChanged(true);
+    saved.resolve({ ok: true, data: prefs({ enabled: true, autoOnSelect: true }) });
+    await enabling;
+    await vi.waitFor(() => expect(useTranslation.getState().view.kind).toBe('done'));
+    expect(translate).toHaveBeenCalledTimes(1);
+  });
   it('a result on screen is kept when translation stays on', async () => {
     translate.mockResolvedValue(done('주의'));
     useTranslation.getState().select('Attention.');

@@ -148,6 +148,9 @@ export const useTranslation = create<TranslationState>()((set, get) => {
     save: savePrefs,
     async enable() {
       if (!(await savePrefs({ enabled: true }))) return;
+      // The change may have been announced first (prefsChanged): the consent is answered once, by whichever comes first.
+      const { kind } = get().view;
+      if (kind !== 'consent' && kind !== 'off' && kind !== 'idle') return;
       await proceed();
     },
     prefsChanged(enabled) {

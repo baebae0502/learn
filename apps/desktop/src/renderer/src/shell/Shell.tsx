@@ -49,9 +49,11 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     const s = useShell.getState();
     const next = afterViewportChange(s.sidebar, viewportWidth);
     if (next !== s.sidebar) setSidebar(next);
-    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth, inspectorContentMin(s.view.kind));
+    // A panel shown on demand stays so until the window is wide enough for the library's column: a visit to the reader, whose
+    // column needs less, is no reason to fold it again on the way back.
+    const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth);
     if (nextInspector !== s.inspector) setInspector(nextInspector);
-  }, [viewportWidth, contentMin, setSidebar, setInspector]);
+  }, [viewportWidth, setSidebar, setInspector]);
 
   /** Only drags and separator keys count as the user's choice (not window resizes or our own collapse()). */
   const onLayoutChanged = (layout: Layout, meta: LayoutChangedMeta) => {

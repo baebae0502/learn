@@ -419,6 +419,8 @@ test('showing the row you came back to scrolls the table vertically only, even w
       )
       .toBe(true);
     expect(await table.evaluate((g) => g.scrollTop)).toBeGreaterThan(0);
+    // The panel shown on demand at 1024 is still shown after the visit to the reader (whose column needs less).
+    expect(await page.getByTestId('inspector-panel').evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBeGreaterThan(0);
     expect(await table.evaluate((g) => g.scrollWidth - g.clientWidth)).toBeGreaterThan(0);
     expect(await table.evaluate((g) => g.scrollLeft)).toBe(0);
   } finally {

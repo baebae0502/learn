@@ -1,6 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, windowKinds } from './helpers';
@@ -187,20 +187,6 @@ const tokenIn = (page: Page, name: string) =>
   }, name);
 
 /**
- * main's `sheetMaxHeight`, read from its source rather than copied: main/sheets.ts imports electron's classes, which
- * a spec running in node cannot import, so the two constants and the function are taken from the file's text.
- */
-const sheetMaxHeight: (roomHeight: number, platform: string) => number = (() => {
-  const src = fs.readFileSync(path.join(import.meta.dirname, '../../apps/desktop/src/main/sheets.ts'), 'utf8');
-  const top = /export const SHEET_TOP = (\d+);/.exec(src);
-  const margin = /export const SHEET_MARGIN = (\d+);/.exec(src);
-  const fn = /export function sheetMaxHeight\([^)]*\)[^{]*\{([\s\S]*?)\n\}/.exec(src);
-  if (!top || !margin || !fn) throw new Error('main/sheets.ts no longer has SHEET_TOP, SHEET_MARGIN and sheetMaxHeight in the shape this spec reads');
-  const body = new Function('roomHeight', 'platform', 'SHEET_TOP', 'SHEET_MARGIN', fn[1]!) as (room: number, platform: string, sheetTop: number, sheetMargin: number) => number;
-  return (roomHeight, platform) => body(roomHeight, platform, Number(top[1]), Number(margin[1]));
-})();
-
-/**
  * The ⌘/ sheet's rule, stated for any screen: its body scrolls exactly when its natural height is over the cap main
  * gives it (`sheetMaxHeight` of the parent's content height). The runner's 1024 × 768 screen clamps a 1440 × 900
  * window to 1024 × 684 (room 652), a real 1440 × 900 Mac has 774 and Linux 824. The natural height is the sheet's
@@ -208,6 +194,7 @@ const sheetMaxHeight: (roomHeight: number, platform: string) => number = (() => 
  */
 async function sheetRule(app: ElectronApplication, sheet: Page, parentHeight: number): Promise<{ natural: number; cap: number; scrolls: boolean }> {
   const platform = await app.evaluate(() => process.platform);
+  // main's own rule (sheet-geometry.ts), so the cap here is the cap the sheet got.
   const cap = sheetMaxHeight(parentHeight, platform);
   const { natural, scrolls } = await sheet.evaluate(() => {
     const body = document.querySelector('.d-body')!;

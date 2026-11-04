@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, expectWindow, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake } from './helpers';
+import { FIXTURES, expectWindow, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
@@ -360,6 +360,38 @@ test('the panel: 번역 켜기 gives the focus to the 원문 box, 사용 안 함
     } finally {
       await app.close();
     }
+  }
+});
+
+test('the real engine and net.fetch run in the app: one request to the translation host with the text in the POST body, and the same selection again is answered by the cache (final review I-4, R-17)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { env: TRANSLATION_NET_ENV });
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    await setTranslation(page, { enabled: true });
+    await selectInPage(page, S1);
+    await expect(popup(page)).toHaveAttribute('data-state', 'done');
+    await expect(popup(page)).toContainText(K1);
+    await expect(page.getByTestId('translation-result')).toHaveText(K1);
+    let net = await translationNet(app);
+    expect(net.requests).toHaveLength(1);
+    const [req] = net.requests;
+    expect(req).toMatchObject({ method: 'POST', host: 'translate.googleapis.com', path: '/translate_a/single' });
+    expect(req!.contentType).toBe('application/x-www-form-urlencoded;charset=UTF-8');
+    const query = new URLSearchParams(req!.search);
+    expect([query.get('client'), query.get('sl'), query.get('tl'), query.get('dt')]).toEqual(['gtx', 'auto', 'ko', 't']);
+    // The text travels in the body, never in the address.
+    expect(new URLSearchParams(req!.body).get('q')).toBe(S1);
+    expect(req!.search).not.toContain('Attention');
+    expect(net.refused).toEqual([]);
+    // The same selection again: the cache answers, nothing is sent.
+    await unselect(page);
+    await selectInPage(page, S1);
+    await expect(popup(page)).toContainText(K1);
+    net = await translationNet(app);
+    expect(net.requests).toHaveLength(1);
+    expect(net.refused).toEqual([]);
+  } finally {
+    await app.close();
   }
 });
 

@@ -1524,6 +1524,21 @@ export const translationFake = (app: ElectronApplication, mode: TranslationFakeM
 /** Requests the fake engine has taken since launch (a cache hit, a refusal and Korean into Korean take none). */
 export const translationCalls = (app: ElectronApplication): Promise<number> => app.evaluate(() => (globalThis as unknown as WithTranslationHooks).__learnTest.translationCalls());
 
+/** One request the test's translation host took (main/translation/net-intercept.ts). */
+export interface TranslationNetRequest {
+  method: string;
+  host: string;
+  path: string;
+  search: string;
+  contentType: string | null;
+  body: string;
+}
+/** Launch options for the real translation engine over net.fetch, answered by the test's handler on the default session (R-17). */
+export const TRANSLATION_NET_ENV = { LEARN_TRANSLATION_NET: 'intercept' } as const;
+/** What that host took and what it refused (every other https request). */
+export const translationNet = (app: ElectronApplication): Promise<{ requests: TranslationNetRequest[]; refused: string[] }> =>
+  app.evaluate(() => (globalThis as unknown as { __learnTest: { translationNet(): { requests: TranslationNetRequest[]; refused: string[] } } }).__learnTest.translationNet());
+
 /** Selects the text of `sentence` in the text layer of page `pageNumber`, across the spans it runs through (a user's drag). */
 export async function selectInPage(page: Page, sentence: string, pageNumber = 1): Promise<void> {
   const found = await page.evaluate(

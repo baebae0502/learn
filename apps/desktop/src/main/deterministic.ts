@@ -14,3 +14,10 @@ export const DETERMINISTIC_SWITCHES: ReadonlyArray<readonly [string, string?]> =
  */
 export const isDeterministic = (isPackaged: boolean, env: NodeJS.ProcessEnv): boolean => !isPackaged && env['LEARN_DETERMINISTIC'] === '1';
 export const isE2E = (isPackaged: boolean, env: NodeJS.ProcessEnv): boolean => !isPackaged && env['LEARN_E2E'] === '1';
+
+/**
+ * LEARN_TRANSLATION_NET=intercept: the real translation engine runs over net.fetch and a handler of the test's answers the
+ * translation host (translation/net-intercept.ts). It needs LEARN_E2E=1 as well, and an unpackaged build: a packaged build
+ * (and a plain run, and a CI that sets neither) never installs the handler and never reaches the fake engine's replacement.
+ */
+export const isTranslationNetIntercept = (isPackaged: boolean, env: NodeJS.ProcessEnv): boolean => isE2E(isPackaged, env) && env['LEARN_TRANSLATION_NET'] === 'intercept';

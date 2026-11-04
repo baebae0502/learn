@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, net, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
+import { app, dialog, Menu, net, session, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -14,7 +14,7 @@ import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
-import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E } from './deterministic';
+import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E, isTranslationNetIntercept } from './deterministic';
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
@@ -46,6 +46,7 @@ import { createMainWindow } from './window';
 import { remoteFetch } from './net-policy';
 import { createFakeEngine } from './translation/fake';
 import { createGoogleWebEngine } from './translation/google-web';
+import { createTranslationNetIntercept } from './translation/net-intercept';
 import { createTranslationService } from './translation/service';
 import { applyChromeTheme, shouldUseVibrancy, type ChromeOptions } from './window-options';
 import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './window-state';
@@ -559,7 +560,11 @@ if (!app.requestSingleInstanceLock()) {
       if (win) sendEvent(win.webContents, 'recovery:show', {});
     };
     // E2E never reaches the network: the app always runs on the fake engine there.
-    const fakeTranslation = isE2E(app.isPackaged, process.env) ? createFakeEngine() : null;
+    // Unless a test asks for the real engine over its own network end (R-17: the engine and remoteFetch → net.fetch run,
+    // a handler on the default session answers the translation host and refuses every other https request).
+    const translationNet = isTranslationNetIntercept(app.isPackaged, process.env) ? createTranslationNetIntercept() : null;
+    if (translationNet) session.defaultSession.protocol.handle('https', (request) => translationNet.handle(request));
+    const fakeTranslation = isE2E(app.isPackaged, process.env) && !translationNet ? createFakeEngine() : null;
     const translation = createTranslationService({
       engine: fakeTranslation ?? createGoogleWebEngine({ fetch: remoteFetch, isOnline: () => net.isOnline() }),
       cache: () => getContext().translations,
@@ -643,6 +648,7 @@ if (!app.requestSingleInstanceLock()) {
         },
         broadcast,
         translation: fakeTranslation ?? undefined,
+        translationNet: translationNet ?? undefined,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
         backup,
         restore,

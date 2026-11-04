@@ -402,6 +402,38 @@ test('the real engine and net.fetch run in the app: one request to the translati
   }
 });
 
+test('a change of the choice in the settings reaches the open reader: off ends the request and the pop-up, on answers an open consent (final review m-5)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    await setTranslation(page, { enabled: true });
+    await translationFake(app, 'slow');
+    await selectInPage(page, S1);
+    await expect(popup(page)).toHaveAttribute('data-state', 'pending');
+    await setTranslation(page, { enabled: false });
+    await expect(popup(page)).toHaveCount(0);
+    await expect(section(page)).toContainText('번역을 사용하지 않습니다.');
+    // The slow answer would have come by now; it is dropped, and the command is off while translation is.
+    await page.waitForTimeout(2000);
+    await expect(popup(page)).toHaveCount(0);
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('번역');
+    await expect(page.locator('[data-testid="palette-item"][data-command-id="translation.translateSelection"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    // Not chosen yet: the command is on (it shows the consent), and the choice made elsewhere answers the consent.
+    await translationFake(app, 'ok');
+    await setTranslation(page, { enabled: null });
+    await unselect(page);
+    await selectInPage(page, S3);
+    await expect(popup(page)).toHaveAttribute('data-state', 'consent');
+    await setTranslation(page, { enabled: true });
+    await expect(popup(page)).toHaveAttribute('data-state', 'done');
+    await expect(popup(page)).toContainText(K3);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a request still on its way when the reader closes is cancelled and leaves no error; the next reader starts empty', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const errors = errorsOf(page);

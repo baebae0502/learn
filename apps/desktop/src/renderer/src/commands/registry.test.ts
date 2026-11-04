@@ -295,6 +295,12 @@ describe('renderer command registry', () => {
     }
     expect(contextOf(e)).toMatchObject({ pdfSelection: true });
     expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfSelection');
+    // The bit travels only when translation is switched off (final review m-5).
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true }))).toMatchObject({ translationOff: true });
+    expect(contextOf(e)).not.toHaveProperty('translationOff');
+    const off = env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true });
+    expect(runCommand('translation.translateSelection', off)).toBe(false);
+    expect(off.translateSelection).not.toHaveBeenCalled();
   });
   it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

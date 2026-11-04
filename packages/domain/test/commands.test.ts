@@ -105,6 +105,9 @@ describe('command registry', () => {
     expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true })).toBe(false);
     expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true, pdfSelection: true })).toBe(true);
     expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfSelection: true })).toBe(false);
+    // Off while translation is switched off; on while the choice is not made yet (running it shows the consent) (final review m-5).
+    expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true, pdfSelection: true, translationOff: true })).toBe(false);
+    expect(isCommandAvailable('translation.translateSelection', { ...VIEWER, pdfOpen: true, pdfSelection: true, translationOff: false })).toBe(true);
     expect(isCommandAvailable('view.toggleInspector', { ...withItems, blocked: true })).toBe(false);
     for (const platform of ['darwin', 'linux', 'win32']) {
       expect(commandLabel(c, platform, { inspector: 'shown' })).toBe('항목 패널 가리기');

@@ -150,6 +150,8 @@ export const commandContextInput = z
     pdfOpen: z.boolean().optional(),
     /** Text of the open PDF is selected: 선택한 글 번역 is on; absent otherwise. */
     pdfSelection: z.boolean().optional(),
+    /** Translation is switched off: 선택한 글 번역 is off; absent otherwise. */
+    translationOff: z.boolean().optional(),
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
     /** A backup is on main's work line: 백업 만들기… is off. */

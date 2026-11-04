@@ -32,6 +32,8 @@ interface TranslationState {
   /** 번역 켜기 / 사용 안 함, from the pop-up and the section alike. */
   enable(): Promise<void>;
   decline(): Promise<void>;
+  /** The translation preference changed while the reader is open (the settings window, the other side of a button): off ends what runs; on goes on from the consent. */
+  prefsChanged(enabled: boolean | null): void;
   /** The reader closed: whatever is in flight is cancelled and no late reply is kept. */
   reset(): void;
 }
@@ -105,6 +107,12 @@ export const useTranslation = create<TranslationState>()((set, get) => {
     }
   };
 
+  /** The consent is given: the selection that is there is translated, or the view waits for one. */
+  const proceed = async (): Promise<void> => {
+    if (get().source.trim() !== '') await start();
+    else set({ view: { kind: 'idle' } });
+  };
+
   return {
     source: '',
     view: { kind: 'idle' },
@@ -140,8 +148,18 @@ export const useTranslation = create<TranslationState>()((set, get) => {
     save: savePrefs,
     async enable() {
       if (!(await savePrefs({ enabled: true }))) return;
-      if (get().source.trim() !== '') await start();
-      else set({ view: { kind: 'idle' } });
+      await proceed();
+    },
+    prefsChanged(enabled) {
+      const { view } = get();
+      if (enabled === false) {
+        // The request in flight is ended at main and its late reply dropped; the pop-up has nothing to say while off.
+        cancelInFlight();
+        if (view.kind !== 'off') set({ view: { kind: 'off' } });
+      } else if (enabled === true) {
+        if (view.kind === 'consent') void proceed();
+        else if (view.kind === 'off') set({ view: { kind: 'idle' } });
+      }
     },
     async decline() {
       if (!(await savePrefs({ enabled: false }))) return;

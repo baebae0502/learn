@@ -594,6 +594,8 @@ export interface CommandContextState {
   pdfOpen?: boolean;
   /** Text of the open PDF is selected (the reader's selection pop-up has something to translate): 선택한 글 번역. Absent otherwise. */
   pdfSelection?: boolean;
+  /** Translation is switched off (the choice is made and it is no): 선택한 글 번역 does nothing then. Absent while on or not yet chosen (running it asks). */
+  translationOff?: boolean;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
   /** A backup is on main's work line, running or waiting (job:progress): 백업 만들기… is off until it ends. */
@@ -742,7 +744,7 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
   'view.toggleInspector': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
-  'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true,
+  'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true && c.translationOff !== true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.

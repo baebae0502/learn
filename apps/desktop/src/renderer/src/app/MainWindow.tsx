@@ -360,6 +360,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   const inspectorHidden = useInspectorHidden(showsInspector);
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
+  // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
+  const translationOff = prefs?.translation.enabled === false;
   const toggleInspector = useToggleInspector();
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
@@ -374,6 +376,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
     ...(pdfSelection ? { pdfSelection: true } : {}),
+    ...(translationOff ? { translationOff: true } : {}),
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
     sidebar: sidebarHidden ? 'hidden' : 'shown',
     // The 보기 menu names what ⌥⌘I does now; where there is no panel no state is reported, so it says the neutral name.
@@ -454,7 +457,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, pdfSelection, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

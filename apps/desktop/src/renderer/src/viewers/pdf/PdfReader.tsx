@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, ChevronUp, Search } from 'lucide-react';
 import type { LibraryItem } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
+import { usePrefs } from '../../data/queries';
 import { isEditing } from '../../commands/keymap';
 import { commandById, commandLabel } from '@learn/domain';
 import { InspectorToggle } from '../../inspector/InspectorToggle';
@@ -62,6 +63,14 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   useSelectionText(stageRef, ready);
   const popupShown = usePopupShown();
   useEffect(() => () => useTranslation.getState().reset(), []);
+  // The choice changed elsewhere while this reader is open (the settings window): off ends what runs, on goes on from the consent.
+  const translationEnabled = usePrefs().data?.translation.enabled;
+  const knownEnabled = useRef(translationEnabled);
+  useEffect(() => {
+    if (translationEnabled === undefined || translationEnabled === knownEnabled.current) return;
+    knownEnabled.current = translationEnabled;
+    useTranslation.getState().prefsChanged(translationEnabled);
+  }, [translationEnabled]);
   // The item panel comes with the pages (ready) and takes width from the stage: the saved place is applied once the stage
   // has stopped changing size, or the resize that follows would read as a move and be saved as one.
   const [stageSettled, setStageSettled] = useState(false);

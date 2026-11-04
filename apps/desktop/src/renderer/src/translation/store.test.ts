@@ -29,6 +29,50 @@ beforeEach(() => {
   setTranslationPrefs({ enabled: true, autoOnSelect: true });
 });
 
+describe('a change of the preferences while the reader is open (final review m-5)', () => {
+  it('switched off: the request in flight is cancelled and its late answer dropped, and the view is off', async () => {
+    const pending = later<Result<TranslationResult>>();
+    translate.mockReturnValue(pending.promise);
+    useTranslation.getState().select('Attention.');
+    expect(useTranslation.getState().view).toEqual({ kind: 'pending' });
+    setTranslationPrefs({ enabled: false });
+    useTranslation.getState().prefsChanged(false);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(useTranslation.getState().view).toEqual({ kind: 'off' });
+    pending.resolve(done('늦은 답'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(useTranslation.getState().view).toEqual({ kind: 'off' });
+  });
+  it('switched on while the consent is asked: goes on as 번역 켜기 does, with the selection that is there', async () => {
+    setTranslationPrefs({ enabled: null });
+    useTranslation.getState().select('Attention.');
+    expect(useTranslation.getState().view).toEqual({ kind: 'consent' });
+    translate.mockResolvedValue(done('주의'));
+    setTranslationPrefs({ enabled: true, autoOnSelect: true });
+    useTranslation.getState().prefsChanged(true);
+    expect(useTranslation.getState().view).toEqual({ kind: 'pending' });
+    await vi.waitFor(() => expect(useTranslation.getState().view).toMatchObject({ kind: 'done', text: '주의' }));
+  });
+  it('switched on with nothing selected, or while not asking: nothing starts; an off view clears', () => {
+    useTranslation.getState().prefsChanged(true);
+    expect(useTranslation.getState().view).toEqual({ kind: 'idle' });
+    setTranslationPrefs({ enabled: false });
+    useTranslation.getState().select('x');
+    expect(useTranslation.getState().view).toEqual({ kind: 'off' });
+    useTranslation.getState().prefsChanged(true);
+    expect(useTranslation.getState().view).toEqual({ kind: 'idle' });
+    expect(translate).not.toHaveBeenCalled();
+  });
+  it('a result on screen is kept when translation stays on', async () => {
+    translate.mockResolvedValue(done('주의'));
+    useTranslation.getState().select('Attention.');
+    await vi.waitFor(() => expect(useTranslation.getState().view.kind).toBe('done'));
+    useTranslation.getState().prefsChanged(true);
+    expect(useTranslation.getState().view.kind).toBe('done');
+  });
+});
+
 describe('what a selection does by the consent', () => {
   it('asks first while the choice is not made, and sends nothing', () => {
     setTranslationPrefs({ enabled: null });

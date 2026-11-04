@@ -259,6 +259,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
     ...(env.pdfSelection ? { pdfSelection: true } : {}),
+    ...(env.translationOff ? { translationOff: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
     ...(env.inspector ? { inspector: env.inspector } : {}),
     ...(env.importRunning ? { importRunning: true } : {}),

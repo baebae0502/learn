@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, mainWindow, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { PDFDocument } from 'pdf-lib';
+import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -259,6 +260,38 @@ test('a fit mode is computed again when the stage changes size; a number stays a
     await page.waitForTimeout(300);
     await expect(viewer(page)).toHaveAttribute('data-scale', '1.5');
     await expect(viewer(page)).toHaveAttribute('data-zoom', '1.5');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the stage\'s own scroll bar appearing and going away does not re-fit again and again (final re-review N-1)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    // A one-page document at 자동 맞춤: its fitted height can sit within a scroll-bar width of the stage's height.
+    const doc = await PDFDocument.create();
+    doc.addPage([612, 792]).drawText('One page.', { x: 72, y: 700, size: 24 });
+    const file = testInfo.outputPath('onepage.pdf');
+    fs.writeFileSync(file, await doc.save());
+    await importPaths(page, [file]);
+    await openItem(page, 'onepage');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '1');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
+    await page.waitForTimeout(500); // the first fit has settled
+    await page.evaluate(() => {
+      const store = (window as unknown as { __learnReader: { getState(): { handle: { eventBus(): { on(n: string, f: () => void): void } } } } }).__learnReader;
+      const seen: number[] = [];
+      (window as unknown as { __scaleChanges: number[] }).__scaleChanges = seen;
+      store.getState().handle.eventBus().on('scalechanging', () => seen.push(performance.now()));
+      // The stage a few px taller than the page fitted beside a scroll bar, and shorter than the page fitted without one: the bar appears, which narrows the stage, which shrinks the page, which takes the bar away.
+      const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+      scroll.style.height = `${scroll.scrollHeight + 5}px`;
+      scroll.style.flex = 'none';
+    });
+    await page.waitForTimeout(1500);
+    const changes = await page.evaluate(() => (window as unknown as { __scaleChanges: number[] }).__scaleChanges.length);
+    expect(changes).toBeLessThanOrEqual(1);
   } finally {
     await app.close();
   }
@@ -615,7 +648,6 @@ test('a protected PDF shows no pages in the sidebar until it is opened', async (
   }
 });
 
-/** The one line pdf.js logs for a getPage it had in flight when its document was closed on purpose. */
 
 test('leaving a PDF the moment its pages exist leaves no page error and no console error', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));

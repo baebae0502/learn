@@ -166,10 +166,20 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           viewer.currentScaleValue = zoom;
           viewer.update();
         };
-        const stageObserver = new ResizeObserver(() => {
+        // The border box: the stage's own size. Its content box shrinks by the scroll bar, and a fit that changes the page's height
+        // toggles the bar, which would fit again without end (final re-review N-1). A callback for the same size is skipped as well.
+        let lastWidth = -1;
+        let lastHeight = -1;
+        const stageObserver = new ResizeObserver((entries) => {
+          const box = entries[entries.length - 1]?.borderBoxSize?.[0];
+          if (box && box.inlineSize === lastWidth && box.blockSize === lastHeight) return;
+          if (box) {
+            lastWidth = box.inlineSize;
+            lastHeight = box.blockSize;
+          }
           if (!fitFrame) fitFrame = requestAnimationFrame(refit);
         });
-        stageObserver.observe(container);
+        stageObserver.observe(container, { box: 'border-box' });
         teardown = () => {
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();

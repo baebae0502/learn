@@ -329,6 +329,44 @@ test('세피아 at 400 %: the detail canvas pdf.js lays over a capped page is mu
   }
 });
 
+test('a quarter turn keeps the place in the page too: 40 % into page 21 stays 40 % (review Minor 5)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await setPdfZoom(page, 1);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '1');
+    await field(page).fill('21');
+    await field(page).press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-page', '21');
+    await page.evaluate(() => {
+      const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+      const pg = document.querySelector<HTMLElement>('.pdfViewer .page[data-page-number="21"]')!;
+      sc.scrollTop += pg.getBoundingClientRect().top - sc.getBoundingClientRect().top + pg.getBoundingClientRect().height * 0.4;
+    });
+    await expect(viewer(page)).toHaveAttribute('data-page', '21');
+    const share = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!.getBoundingClientRect();
+        const pg = document.querySelector('.pdfViewer .page[data-page-number="21"]')!.getBoundingClientRect();
+        return (sc.top - pg.top) / pg.height;
+      });
+    await page.waitForTimeout(300);
+    const before = await share();
+    expect(before).toBeGreaterThan(0.35);
+    expect(before).toBeLessThan(0.45);
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '90');
+    await expect.poll(async () => Math.abs((await share()) - before)).toBeLessThanOrEqual(0.02);
+    await expect(field(page)).toHaveValue('21');
+    await runMenuCommand(app, 'reader.rotateCcw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '0');
+    await expect.poll(async () => Math.abs((await share()) - before)).toBeLessThanOrEqual(0.02);
+    await expect(field(page)).toHaveValue('21');
+  } finally {
+    await app.close();
+  }
+});
+
 test('a one-page PDF keeps 24 on both sides of the page after any fit, bar or no bar, and does not scroll sideways (review Important 1)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

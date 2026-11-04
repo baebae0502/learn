@@ -275,6 +275,32 @@ test('a PDF opened in a 1024 window from the library shows its panel at 320, the
   }
 });
 
+test('a drag that shuts the reader panel leaves the toggle off and the state hidden; the toggle brings it back at 320 (review Minor 4)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1440, 900));
+    await expect.poll(() => page.evaluate(() => Math.abs(innerWidth - 1440))).toBeLessThanOrEqual(1);
+    await openReader(page, PAPER, 'paper-100');
+    const shell = page.getByTestId('shell');
+    await expect(shell).toHaveAttribute('data-inspector', 'shown');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
+    const sep = (await page.getByRole('separator', { name: '항목 패널' }).boundingBox())!;
+    const y = sep.y + sep.height / 2;
+    await page.mouse.move(sep.x + sep.width / 2, y);
+    await page.mouse.down();
+    await page.mouse.move(sep.x + sep.width / 2 + 150, y, { steps: 10 });
+    await page.mouse.move(sep.x + sep.width / 2 + 400, y, { steps: 10 });
+    await page.mouse.up();
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 0, expanded: 'false' });
+    await expect(shell).toHaveAttribute('data-inspector', 'hidden');
+    await page.getByTestId('inspector-toggle').click();
+    await expect(shell).toHaveAttribute('data-inspector', 'shown');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
+  } finally {
+    await app.close();
+  }
+});
+
 test('esc closes the pop-up first and leaves the find bar its own esc; a click outside closes it too', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

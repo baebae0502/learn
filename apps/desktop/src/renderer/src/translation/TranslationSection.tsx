@@ -10,7 +10,7 @@ import { MenuButton } from '../ui/MenuButton';
 import { Spinner } from '../ui/Spinner';
 import { ConsentPrompt } from './ConsentPrompt';
 import { directionEntries, directionLabel, langName, parseDirection } from './languages';
-import { readTranslationPrefs, saveTranslationPrefs } from './prefs';
+import { readTranslationPrefs } from './prefs';
 import { paragraphs } from './SelectionPopup';
 import { useTranslation, type TranslationView } from './store';
 
@@ -27,7 +27,7 @@ export function TranslationSection() {
       size="small"
       placement="bottom end"
       items={directionEntries(prefs)}
-      onAction={(id) => void saveTranslationPrefs(parseDirection(id)).catch(() => {})}
+      onAction={(id) => void useTranslation.getState().save(parseDirection(id))}
       testId="translation-direction"
     />
   );
@@ -86,7 +86,7 @@ function Boxes() {
         <Result view={view} toName={toName} />
       </div>
       <div className="tr-toggles">
-        <Checkbox className="checkbox" isSelected={prefs.autoOnSelect} onChange={(autoOnSelect) => void saveTranslationPrefs({ autoOnSelect }).catch(() => {})} data-testid="translation-auto">
+        <Checkbox className="checkbox" isSelected={prefs.autoOnSelect} onChange={(autoOnSelect) => void useTranslation.getState().save({ autoOnSelect })} data-testid="translation-auto">
           {({ isSelected }) => (
             <>
               <span className="box" aria-hidden="true">

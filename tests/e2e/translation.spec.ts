@@ -300,3 +300,47 @@ test('a request still on its way when the reader closes is cancelled and leaves 
     await app.close();
   }
 });
+
+/** The bottom and top edges of the selection's last line, in the page's coordinates. */
+const lastLine = (page: Page) =>
+  page.evaluate(() => {
+    const rects = getSelection()!.getRangeAt(0).getClientRects();
+    const r = rects[rects.length - 1]!;
+    return { top: r.top, bottom: r.bottom };
+  });
+
+test('the pop-up sits 8 px under the selection, flips above it near the stage bottom, and closes when the selection is scrolled out of view', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    await setTranslation(page, { enabled: true });
+    await selectInPage(page, S1);
+    await expect(popup(page)).toContainText(K1);
+    const under = await lastLine(page);
+    const box = (await popup(page).boundingBox())!;
+    expect(Math.abs(box.y - (under.bottom + 8))).toBeLessThanOrEqual(1);
+
+    // The selection near the bottom of the stage: no room below, so the pop-up goes above it.
+    await unselect(page);
+    const scroll = page.getByTestId('pdf-scroll');
+    const stage = (await page.getByTestId('pdf-stage').boundingBox())!;
+    // A line of page 2 scrolled to 40 px above the stage's bottom edge: no room under it for the pop-up.
+    const second = page.locator('.page[data-page-number="2"] .textLayer span').first();
+    await scroll.evaluate((el, n) => document.querySelector(`.page[data-page-number="${n}"]`)!.scrollIntoView({ block: 'start' }), 2);
+    await expect(second).toBeAttached();
+    const y = (await second.boundingBox())!.y;
+    await scroll.evaluate((el, delta) => el.scrollBy({ top: delta }), y - (stage.y + stage.height - 40));
+    const text = ((await second.textContent()) ?? '').trim();
+    await selectInPage(page, text, 2);
+    await expect(popup(page)).toHaveAttribute('data-state', 'done');
+    const low = await lastLine(page);
+    const flipped = (await popup(page).boundingBox())!;
+    expect(flipped.y + flipped.height).toBeLessThanOrEqual(low.top - 8 + 1);
+
+    // Scrolled out of view: the pop-up is gone with it.
+    await scroll.evaluate((el) => el.scrollBy({ top: 3000 }));
+    await expect(popup(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

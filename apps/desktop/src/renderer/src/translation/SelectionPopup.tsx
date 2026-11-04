@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Check, CircleAlert, Copy, TriangleAlert, WifiOff } from 'lucide-react';
+import type { TranslationFrom, TranslationLang } from '@learn/domain';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
@@ -29,6 +30,8 @@ export const paragraphs = (text: string) => text.split('\n').filter((line) => li
 export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement | null> }) {
   const shown = usePopupShown();
   const view = useTranslation((s) => s.view);
+  // A selection extended or moved (shift + arrows) moves the pop-up with its end.
+  const text = useSelection((s) => s.text);
   const retry = useTranslation((s) => s.translate);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
@@ -58,7 +61,7 @@ export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement |
   useLayoutEffect(() => {
     if (shown) place();
     else setPos(null);
-  }, [shown, view, place]);
+  }, [shown, view, text, place]);
   useLayoutEffect(() => {
     const stage = stageRef.current;
     const el = ref.current;
@@ -98,7 +101,7 @@ export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement |
   );
 }
 
-function Result({ view, from, to, onRetry }: { view: TranslationView; from: string; to: string; onRetry(): void }) {
+function Result({ view, from, to, onRetry }: { view: TranslationView; from: TranslationFrom; to: TranslationLang; onRetry(): void }) {
   const status = (glyph: typeof Check, text: string, note?: string, tone?: 'warning') => (
     <div className="sp-status">
       <Icon icon={glyph} className={tone} />
@@ -148,7 +151,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: stri
       </div>
     );
   }
-  const source = view.detectedFrom !== null && langName(view.detectedFrom) !== null ? langName(view.detectedFrom)! : from === 'auto' ? null : fromName(from as never);
+  const source = view.detectedFrom !== null && langName(view.detectedFrom) !== null ? langName(view.detectedFrom)! : from === 'auto' ? null : fromName(from);
   return (
     <>
       <div className="sp-body" aria-live="polite" data-testid="selection-popup-text">

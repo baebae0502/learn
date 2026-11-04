@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ERROR_COPY, TRANSLATION_MAX_CHARS, type ErrorCode } from '@learn/domain';
+import { ERROR_COPY, TRANSLATION_MAX_CHARS, type ErrorCode, type TranslationPrefs } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { readTranslationPrefs, saveTranslationPrefs } from './prefs';
 
@@ -27,6 +27,8 @@ interface TranslationState {
   resume(): void;
   clear(): void;
   setConcat(on: boolean): void;
+  /** Saves a change to the translation prefs; a refusal is shown as the error state. True when saved. */
+  save(patch: Partial<TranslationPrefs>): Promise<boolean>;
   /** 번역 켜기 / 사용 안 함, from the pop-up and the section alike. */
   enable(): Promise<void>;
   decline(): Promise<void>;
@@ -91,10 +93,10 @@ export const useTranslation = create<TranslationState>()((set, get) => {
     }
   };
 
-  /** Saves the choice; a refusal from the preferences store is said where the question was asked. */
-  const savePrefs = async (enabled: boolean): Promise<boolean> => {
+  /** A refusal from the preferences store is said where the control is, as the error state. */
+  const savePrefs = async (patch: Partial<TranslationPrefs>): Promise<boolean> => {
     try {
-      await saveTranslationPrefs({ enabled });
+      await saveTranslationPrefs(patch);
       return true;
     } catch (e) {
       cancelInFlight();
@@ -135,13 +137,14 @@ export const useTranslation = create<TranslationState>()((set, get) => {
       set({ source: '', view: { kind: 'idle' } });
     },
     setConcat: (concat) => set({ concat }),
+    save: savePrefs,
     async enable() {
-      if (!(await savePrefs(true))) return;
+      if (!(await savePrefs({ enabled: true }))) return;
       if (get().source.trim() !== '') await start();
       else set({ view: { kind: 'idle' } });
     },
     async decline() {
-      if (!(await savePrefs(false))) return;
+      if (!(await savePrefs({ enabled: false }))) return;
       cancelInFlight();
       set({ view: { kind: 'off' } });
     },

@@ -71,6 +71,7 @@ export function useSelectionText(stageRef: RefObject<HTMLElement | null>, active
     if (!active || !stage) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pointerDown = false;
+    let upTimer: ReturnType<typeof setTimeout> | undefined;
     const read = () => {
       // A field has the focus (the palette, the panel's original): the selection is in it, and what was selected stays.
       if (typing(document.activeElement)) return;
@@ -81,7 +82,11 @@ export function useSelectionText(stageRef: RefObject<HTMLElement | null>, active
         clearSelection();
         return;
       }
-      if (!inTextLayer(range.startContainer, stage) || !inTextLayer(range.endContainer, stage)) return;
+      // Moved out of the page's text (the panel's result box): the held selection is gone, and so is the command's context.
+      if (!inTextLayer(range.startContainer, stage) || !inTextLayer(range.endContainer, stage)) {
+        clearSelection();
+        return;
+      }
       liveRange = range.cloneRange();
       if (text === lastText) return;
       lastText = text;
@@ -104,7 +109,7 @@ export function useSelectionText(stageRef: RefObject<HTMLElement | null>, active
       if (!pointerDown) return;
       pointerDown = false;
       clearTimeout(timer);
-      setTimeout(read, 0);
+      upTimer = setTimeout(read, 0);
     };
     // esc with the focus on the page (or nowhere): the pop-up goes. Focus in the stage is the reader's own handler, which runs first.
     const onKeyDown = (e: KeyboardEvent) => {
@@ -125,6 +130,7 @@ export function useSelectionText(stageRef: RefObject<HTMLElement | null>, active
       document.removeEventListener('pointerup', onPointerUp, true);
       document.removeEventListener('pointercancel', onPointerUp, true);
       clearTimeout(timer);
+      clearTimeout(upTimer);
       clearSelection();
     };
   }, [stageRef, active]);

@@ -13,7 +13,7 @@ import { useReader } from './readerStore';
 const WRAP_NOTE_MS = 2000;
 
 /**
- * The find bar (spec 4.5), over the stage's top right: the field, "3 / 17", previous, next, close. The search itself is the
+ * The find bar (spec 4.5), over the stage's top right: the field with "3 / 17" at its end, previous, next, close. The search itself is the
  * pdf.js find controller's; this only asks (events on the viewer's bus) and shows what it answers (findStore).
  */
 export function FindBar({ onClose }: { onClose(): void }) {
@@ -73,15 +73,18 @@ export function FindBar({ onClose }: { onClose(): void }) {
         inputRef={input}
         testId="pdf-find-field"
         className="find-field"
+        clearable={false}
+        trailing={
+          <span className="find-count num" data-testid="pdf-find-count" data-status={status} aria-hidden="true">
+            {visible}
+          </span>
+        }
         onKeyDown={(e) => {
           if (e.key !== 'Enter') return;
           e.preventDefault();
           again(e.shiftKey);
         }}
       />
-      <span className="find-count num" data-testid="pdf-find-count" data-status={status} aria-hidden="true">
-        {visible}
-      </span>
       {/* What is read out: a miss and a wrap, not the count at every key. */}
       <span className="visually-hidden" aria-live="polite">
         {status === 'wrapped' ? t.reader.findWrappedSpoken : status === 'notFound' ? t.reader.findNone : ''}

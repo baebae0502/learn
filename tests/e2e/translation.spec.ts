@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, backFromReader, dragAlong, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
@@ -365,6 +366,7 @@ test('the consent buttons: regular (28 high, body 13) in the panel, small (22) i
     await selectInPage(page, S1);
     await expect(popup(page)).toHaveAttribute('data-state', 'consent');
     for (const id of ['consent-enable', 'consent-decline']) expect((await sizeOf(popup(page), id)).height).toBe(22);
+    await expectNoSeriousA11y(page, 'the reader with the consent pop-up open');
   } finally {
     await app.close();
   }

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
+import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, backFromReader, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
@@ -1039,6 +1040,63 @@ test('the toolbar groups as the mockup has them: "/ 100" takes its own width wit
     const toggle = await page.locator('.reader-toolbar [aria-controls="inspector"]').evaluate((el) => el.getBoundingClientRect().left);
     expect(s.left - view.right).toBeCloseTo(8, 0);
     expect(toggle - s.right).toBeCloseTo(8, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the find bar as the mockup draws it: the count sits inside the field on the right in the tertiary colour, there is no clear button, and the bar is about 304 wide (Mac critique 7)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await runMenuCommand(app, 'library.find');
+    await findInput(page).fill('attention');
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+    const geometry = () =>
+      page.evaluate(() => {
+        const box = (id: string) => document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+        const count = document.querySelector('[data-testid="pdf-find-count"]')!;
+        const cs = getComputedStyle(count);
+        return { field: box('pdf-find-field'), count: box('pdf-find-count'), bar: box('pdf-find-bar'), input: document.querySelector('[data-testid="pdf-find-field"] input')!.getBoundingClientRect(), nums: cs.fontVariantNumeric };
+      });
+    const g = await geometry();
+    expect(g.count.left).toBeGreaterThanOrEqual(g.field.left);
+    expect(g.count.right).toBeLessThanOrEqual(g.field.right);
+    expect(g.field.right - g.count.right).toBeLessThanOrEqual(12);
+    expect(g.count.left).toBeGreaterThanOrEqual(g.input.right - 1); // after the text box, not over it
+    expect(g.nums).toContain('tabular-nums');
+    expect(g.bar.width).toBeGreaterThanOrEqual(300);
+    expect(g.bar.width).toBeLessThanOrEqual(308);
+    await expect(page.getByTestId('pdf-find-field-clear')).toHaveCount(0);
+    // The colour is --text-tertiary (the probe's `background` is that token resolved the same way).
+    const sameColour = await findCount(page).evaluate((el) => {
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--text-tertiary)';
+      document.body.append(probe);
+      const want = getComputedStyle(probe).color;
+      probe.remove();
+      return getComputedStyle(el).color === want;
+    });
+    expect(sameColour).toBe(true);
+    // Every text the count has keeps that place: a miss, and a wrap past the last match (R-8).
+    await findInput(page).fill('zzqxv');
+    await expect(findCount(page)).toHaveText('찾을 수 없음');
+    let n = await geometry();
+    expect(n.count.left).toBeGreaterThanOrEqual(n.field.left);
+    expect(n.count.right).toBeLessThanOrEqual(n.field.right + 0.5);
+    expect(n.bar.width).toBeCloseTo(g.bar.width, 0);
+    await findInput(page).fill('attention');
+    await expect(findCount(page)).toHaveText(/^1 \/ \d+$/);
+    await runMenuCommand(app, 'reader.findPrevious');
+    await expect(findCount(page)).toHaveText(/^처음부터\s· \d+ \/ \d+$/);
+    n = await geometry();
+    expect(n.count.right).toBeLessThanOrEqual(n.field.right + 0.5);
+    expect(n.count.left).toBeGreaterThanOrEqual(n.input.right - 1);
+    expect(n.bar.width).toBeCloseTo(g.bar.width, 0);
+    // Still read out: a wrap and a miss are spoken by the bar's one live region, the count itself stays out of the reading order.
+    await expect(findBar(page).locator('[aria-live="polite"]')).toHaveText('처음부터 다시 찾았습니다');
+    await expect(findCount(page)).toHaveAttribute('aria-hidden', 'true');
+    await expectNoSeriousA11y(page, 'the reader with the find bar open');
   } finally {
     await app.close();
   }

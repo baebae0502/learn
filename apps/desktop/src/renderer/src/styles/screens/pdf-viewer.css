@@ -342,13 +342,13 @@
   .find-bar .find-field {
     width: 220px; /* local: the field's width in the mockup */
   }
+  /* The count is the field's last child (mockup .find-bar .count): tertiary, tabular, and it never wraps or shrinks. */
   .find-bar .find-count {
-    min-width: 7ch; /* local: "3 / 17" does not move the buttons as it counts */
-    padding: 0 var(--space-4);
-    color: var(--text-secondary);
+    flex: none;
+    margin-left: auto;
+    color: var(--text-tertiary);
     font: var(--type-footnote);
     font-variant-numeric: tabular-nums;
-    text-align: end;
     white-space: nowrap;
   }
   .textLayer .highlight.selected {

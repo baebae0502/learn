@@ -85,6 +85,17 @@ const M6_COMMANDS: readonly CommandId[] = [
 ] as CommandId[];
 
 /**
+ * Every command the PDF reader v2 and the selection translation put in the registry (M7a; `git diff bede719 HEAD -- packages/domain/src/commands.ts`):
+ * the fifteen reader.* commands run in the menu loop's reader pass, 선택한 글 번역 is the palette's and is named in COVERED_ELSEWHERE.
+ */
+const M7A_COMMANDS: readonly CommandId[] = [
+  'reader.zoomAuto', 'reader.zoomPageWidth', 'reader.zoomPageFit', 'reader.rotateCw', 'reader.rotateCcw', 'reader.goToPage',
+  'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline',
+  'reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark',
+  'translation.translateSelection',
+] as CommandId[];
+
+/**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
  * (and the reader pass) needs: ⌘⌫ is 휴지통으로 이동. Their test is the COVERED_ELSEWHERE entry of the same id.
  */
@@ -605,6 +616,10 @@ test('every registry command runs without a page error (library and reader menus
     expect(M6_COMMANDS.filter((id) => !all.includes(id)), 'M6 commands gone from the registry').toEqual([]);
     expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
+    // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it, and the list is the whole set (reader.* and the pop-up's command).
+    expect(all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort(), 'the M7a commands in the registry').toEqual([...M7A_COMMANDS].sort());
+    expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7A_COMMANDS.includes(id as CommandId)), 'M7a commands named as covered elsewhere').toEqual(['translation.translateSelection']);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
     // The backstop for M5 commands outside the prefix filter above: they still have to run here or be covered elsewhere.
     expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);

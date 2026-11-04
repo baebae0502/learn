@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, selectRows,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
 import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
@@ -874,6 +874,120 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// PDF reader v2 and the selection translation (M7a; spec 6, 7.4): outline, find bar, the 확대 and 보기 menus, the password,
+// the selection pop-up (consent, result, error) and the panel's 번역 section (result, 이어 붙이기). The page canvases and the thumbnail
+// canvases are hidden while the picture is taken (the text of paper-100 is drawn with the system's font, which differs between
+// Debian and Ubuntu); the boxes, the shadows, the selection and the pop-up stay compared. Fake engine, nothing leaves the machine.
+const CANVASES_OFF = '[data-testid="pdf-viewer"] .canvasWrapper, [data-testid="pdf-thumbnails"] canvas { visibility: hidden !important; }';
+test('reader v2: outline, find bar, zoom and view menus, password, the selection pop-up (consent, result, error), the 번역 section (result, 이어 붙이기)', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const S1 = 'Attention is all you need.';
+  const S3 = 'We propose a new simple network architecture.';
+  const S4 = 'It is based solely on attention mechanisms.';
+  const popup = page.getByTestId('selection-popup');
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF });
+  /** A selection the user lets go of, and the pop-up with it. */
+  const unselect = async () => {
+    await page.evaluate(() => getSelection()!.removeAllRanges());
+    await expect(popup).toHaveCount(0);
+  };
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'locked.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // The choice is not made yet in each theme's pass: the pop-up asks first.
+      await page.evaluate(async () => {
+        const r = await window.learn.prefs.get();
+        if (!r.ok) throw new Error(r.code);
+        await window.learn.prefs.set({ translation: { ...r.data.translation, enabled: null, autoOnSelect: true } });
+      });
+      await translationFake(s.app, 'ok');
+
+      await openItem(page, 'locked');
+      await expect(page.getByTestId('pdf-password')).toBeVisible();
+      await shootReader(`reader-password-${theme}`);
+      await page.getByTestId('viewer-back').click();
+
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached();
+      // 목차: the segment, the chapters of the fixture.
+      await page.getByTestId('reader-nav-outline').click();
+      await expect(page.getByTestId('pdf-outline')).toBeVisible();
+      await shootReader(`reader-outline-${theme}`);
+      await page.getByTestId('reader-nav-thumbnails').click();
+      await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+      // 확대 ▾ and 보기 ▾.
+      await page.getByTestId('pdf-zoom-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '너비에 맞춤' })).toBeVisible();
+      await shootReader(`reader-zoom-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.getByTestId('pdf-view-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세피아' })).toBeVisible();
+      await shootReader(`reader-view-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      // The find bar: a word with its count (the first result is the one in view).
+      await runMenuCommand(s.app, 'library.find');
+      await page.getByTestId('pdf-find-field').getByRole('searchbox').fill('attention');
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(/^1 \/ \d+$/);
+      await expect.poll(async () => Number((await page.getByTestId('pdf-find-count').textContent())!.split(' / ')[1])).toBeGreaterThan(20); // the whole document searched
+      await shootReader(`reader-find-${theme}`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);
+      // The pop-up asks first (the panel too), then the answer.
+      await page.getByTestId('pdf-stage').focus();
+      await selectInPage(page, S1);
+      await expect(popup).toHaveAttribute('data-state', 'consent');
+      await shootReader(`reader-popup-consent-${theme}`);
+      await popup.getByTestId('consent-enable').click();
+      await expect(popup).toHaveAttribute('data-state', 'done');
+      await expect(page.getByTestId('translation-result')).toHaveText('주의가 필요한 전부입니다.');
+      await shootReader(`reader-popup-result-${theme}`);
+      // The panel's 번역 section alone: esc closes the pop-up, the section keeps the sentence and its translation.
+      await page.keyboard.press('Escape');
+      await expect(popup).toHaveCount(0);
+      await shootReader(`reader-translation-result-${theme}`);
+      // 이어 붙이기: the next sentence is added under the first, the translation holds both.
+      await page.getByTestId('translation-concat').click();
+      await unselect();
+      await selectInPage(page, S3);
+      await expect(page.getByTestId('translation-source')).toHaveValue(`${S1}\n${S3}`);
+      await expect(page.getByTestId('translation-result')).toContainText('우리는 새롭고 간단한 네트워크 아키텍처를 제안합니다.');
+      await unselect(); // the focus is in the panel now: the selection goes, and the pop-up with it
+      await shootReader(`reader-translation-concat-${theme}`);
+      // The failure with its next step, in the pop-up (offline).
+      await page.getByTestId('translation-concat').click(); // off again
+      await translationFake(s.app, 'offline');
+      await selectInPage(page, S4);
+      await expect(popup).toHaveAttribute('data-state', 'error');
+      await shootReader(`reader-popup-error-${theme}`);
+      await translationFake(s.app, 'ok');
+      await unselect();
+      await page.getByTestId('viewer-back').click();
+      await expect(page.getByTestId('library-table')).toBeVisible();
+    }
+    // The settings window at the 번역 group: chosen on, light and dark.
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.evaluate(async () => {
+        const r = await window.learn.prefs.get();
+        if (!r.ok) throw new Error(r.code);
+        await window.learn.prefs.set({ translation: { ...r.data.translation, enabled: true, autoOnSelect: true } });
+      });
+      const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
+      await settings.getByTestId('settings-translation-enabled').scrollIntoViewIfNeeded();
+      await expect(settings.getByTestId('settings-translation-enabled-on').locator('input')).toBeChecked();
+      await shoot(settings, `settings-translation-${theme}`);
+      await settings.close();
+      await (await mainWindow(s.app)).evaluate((w) => w.focus());
     }
   } finally {
     await s.app.close();

@@ -1201,7 +1201,7 @@ test('a menu button keeps the pressed fill while its menu is open, whatever the 
 });
 
 /** The width of the classic scroll bar of the stage: what this runner shows (Xvfb Chromium) and a Mac with a mouse does; 0 where bars overlay. */
-const stageBar = (page: Page) => page.getByTestId('pdf-scroll').evaluate((el) => el.offsetWidth - el.clientWidth);
+const stageBar = (page: Page) => page.getByTestId('pdf-scroll').evaluate((el) => (el as HTMLElement).offsetWidth - el.clientWidth);
 
 test('classic scroll bars (Mac critique 11): the find bar keeps 16 from the stage\'s visible right edge, also after the zoom changes the pages under it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -1244,7 +1244,7 @@ test('classic scroll bars (Mac critique 11): the thumbnails stay centred under t
     const bar = await stageBar(page);
     expect(bar).toBeGreaterThan(0);
     await showItemPanel(app, page);
-    const panel = await page.locator('.inspector-scroll').first().evaluate((el) => ({ gutter: getComputedStyle(el).scrollbarGutter, reserved: el.offsetWidth - el.clientWidth }));
+    const panel = await page.locator('.inspector-scroll').first().evaluate((el) => ({ gutter: getComputedStyle(el).scrollbarGutter, reserved: (el as HTMLElement).offsetWidth - el.clientWidth }));
     expect(panel.gutter).toBe('stable');
     expect(panel.reserved).toBe(bar); // the room is there before the scroll bar is
   } finally {

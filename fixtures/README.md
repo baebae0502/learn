@@ -13,3 +13,14 @@
 | `sample-h264-aac.mp4` | ffmpeg `testsrc2` + `sine`, 1280×720 30fps 10초, H.264 High/AAC, GOP 60, faststart | 재생·seek 정확도(AC05) |
 | `sample-mpeg4part2.mp4` | ffmpeg `testsrc2`, MPEG-4 Part 2 | Chromium 미지원 코덱 안내 |
 | `sample-hevc.mp4` | ffmpeg `libx265`(있을 때만) | 플랫폼 의존 코덱 기록용(판정 기준 아님) |
+
+## 커밋하는 고정 자료
+
+생성기가 만들 수 없는 것은 저장소에 커밋한다. 모두 이 저장소의 시험용 영어 문장으로 만들어서 제3자 저작물과 소유자 자료가 없다.
+
+| 파일 | 출처 | 용도 |
+|---|---|---|
+| `static/locked.pdf` | `mutool convert -O encrypt=aes-128,user-password=learn`(명령은 `static/README.md`). 생성기가 `generated/`로 복사한다 | 암호 입력(위 `locked.pdf`) |
+| `translation/google-en-ko.json` | `translate.googleapis.com`의 실제 응답(2026-11-03, ADR-0012): 영어 두 문장·줄바꿈, `sl=en&tl=ko` | 응답 해석 단위 시험 |
+| `translation/google-auto.json` | 같은 요청, `sl=auto`, 영어 두 문장 | 감지한 원문 언어(`r[2]`) |
+| `translation/google-ko.json` | 같은 요청, 한국어 입력 `tl=ko`(같은 글과 `"ko"`) | 같은 언어 응답 |

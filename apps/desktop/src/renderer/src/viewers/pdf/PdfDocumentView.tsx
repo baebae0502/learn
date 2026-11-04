@@ -12,10 +12,12 @@ import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
+import { fitScale, type FitMode } from './fit';
 import { nextZoom } from './zoom';
 
 type Rotation = 0 | 90 | 180 | 270;
 const PRESETS: readonly string[] = ['auto', 'page-width', 'page-fit'];
+const isFitMode = (z: unknown): z is FitMode => typeof z === 'string' && PRESETS.includes(z);
 
 /** The zoom a scalechanging event stands for: a preset keeps its name, anything else is the number. */
 const zoomOf = (presetValue: string | undefined, scale: number): ZoomValue =>
@@ -65,12 +67,29 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           linkService,
           textLayerMode: 1,
           annotationMode: lib.AnnotationMode.ENABLE,
-          removePageBorders: true,
         });
         linkService.setViewer(viewer);
         const doneOnce = new Set<number>();
         /** One host element per page that failed: pdf.js empties a page's div when it redraws it, so React renders into a host it can still find. */
         const failed = new Map<number, HTMLElement>();
+        /**
+         * A fit mode is sized here, not by pdf.js: its fit keeps no room round the page when page borders are off, and the mockup
+         * keeps 24 on every side (fit.ts). The number goes in as the viewer's scale; the preset keeps its name in the store, and
+         * the scalechanging of this very assignment (it carries no preset) is not read as a zoom the reader chose.
+         */
+        let fitting: FitMode | null = null;
+        const fitTo = (mode: FitMode) => {
+          const view = viewer.getPageView(viewer.currentPageNumber - 1);
+          if (!view?.width || !view.scale) return;
+          const scale = fitScale(mode, { width: container.clientWidth, height: container.clientHeight }, { width: view.width / view.scale, height: view.height / view.scale });
+          fitting = mode;
+          try {
+            viewer.currentScale = scale;
+          } finally {
+            fitting = null;
+          }
+          store.setPdf({ scale: viewer.currentScale, zoom: mode });
+        };
         const handle: PdfViewHandle = {
           goToPage: (n) => {
             if (Number.isInteger(n) && n >= 1 && n <= viewer.pagesCount) viewer.currentPageNumber = n;
@@ -79,14 +98,17 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           previous: () => void viewer.previousPage(),
           setZoom: (z) => {
             if (typeof z === 'number') viewer.currentScale = z;
-            else viewer.currentScaleValue = z;
+            else fitTo(z);
           },
           restore: (saved, pageIndex) => {
             const zoom = saved?.zoom ?? 'auto';
             viewer.pagesRotation = saved?.rotation ?? 0;
             if (typeof zoom === 'number') viewer.currentScale = zoom;
-            else viewer.currentScaleValue = zoom;
+            else fitTo(zoom);
             viewer.scrollPageIntoView({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] });
+            // A place at the top of a page keeps the room above it (24 over the first page, 12 between pages), as the mockup draws it.
+            const pageDiv = viewer.getPageView(pageIndex)?.div;
+            if (pageDiv && Math.abs(container.scrollTop - (pageDiv.offsetTop + pageDiv.clientTop)) <= 1) container.scrollTop -= pageIndex === 0 ? 24 : 12;
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
             store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });
@@ -108,7 +130,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         let pagesInitialised = false;
         eventBus.on('pagesinit', () => {
           pagesInitialised = true;
-          viewer.currentScaleValue = 'auto';
+          fitTo('auto');
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
         });
         // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.
@@ -123,8 +145,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           useFind.getState().report(useFind.getState().status === 'idle' ? 'found' : useFind.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
         });
         eventBus.on('pagechanging', (e: { pageNumber: number }) => store.setPdf({ pageNumber: e.pageNumber }));
-        eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: zoomOf(e.presetValue, e.scale) }));
-        eventBus.on('rotationchanging', (e: { pagesRotation: number }) => store.setPdf({ rotation: e.pagesRotation as Rotation }));
+        eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: fitting ?? zoomOf(e.presetValue, e.scale) }));
+        eventBus.on('rotationchanging', (e: { pagesRotation: number }) => {
+          store.setPdf({ rotation: e.pagesRotation as Rotation });
+          if (!restoredRef.current) return;
+          // A fit mode is sized for the turned page.
+          const zoom = useReader.getState().pdf?.zoom;
+          if (isFitMode(zoom)) fitTo(zoom);
+        });
         eventBus.on('pagerendered', (e: { pageNumber: number; source: { div: HTMLElement }; error?: unknown }) => {
           if (e.error) {
             console.warn(`[pdf] open/render failed: ${(e.error as Error)?.name ?? 'Error'}`);
@@ -163,7 +191,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           fitFrame = 0;
           const zoom = useReader.getState().pdf?.zoom;
           if (!restoredRef.current || typeof zoom !== 'string') return;
-          viewer.currentScaleValue = zoom;
+          fitTo(zoom);
           viewer.update();
         };
         // The border box: the stage's own size. Its content box shrinks by the scroll bar, and a fit that changes the page's height

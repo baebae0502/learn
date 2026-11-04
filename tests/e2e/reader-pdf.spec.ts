@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -219,6 +219,77 @@ test('the zoom field takes a percent; the zoom menu fits the page to the stage',
     await page.getByTestId('pdf-zoom-menu').click();
     await page.getByRole('menuitemradio', { name: '125%' }).click();
     await expect(viewer(page)).toHaveAttribute('data-scale', '1.25');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page, the whole page in view at 한 쪽 전체 보기 (Mac critique 1)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const scroll = page.getByTestId('pdf-scroll');
+    const sunken = await resolveColor(page, 'var(--bg-sunken)');
+    const geometry = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector<HTMLElement>('.pdfViewer .page[data-page-number="1"]')!.getBoundingClientRect();
+        const box = sc.getBoundingClientRect();
+        return { stageLeft: box.left, stageTop: box.top, client: { w: sc.clientWidth, h: sc.clientHeight }, page: { left: pg.left, top: pg.top, w: pg.width, h: pg.height } };
+      });
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
+    const auto = await geometry();
+    // 자동 맞춤: the page is narrower than the stage by the two margins, and the stage's own colour shows beside it.
+    expect(auto.client.w - auto.page.w).toBeGreaterThanOrEqual(46);
+    expect(auto.client.w - auto.page.w).toBeLessThanOrEqual(50);
+    const side = await pixelAt(page, auto.stageLeft + 4, auto.stageTop + auto.client.h / 2);
+    for (let i = 0; i < 3; i++) expect(Math.abs(side[i]! - sunken[i]!), `side pixel ${side} vs --bg-sunken ${sunken}`).toBeLessThanOrEqual(2);
+    // The room above the first page is on the screen when the document opens.
+    expect(auto.page.top - auto.stageTop).toBeGreaterThanOrEqual(22);
+    // The preset keeps its name: the number our own fit sets does not turn it into a zoom.
+    await page.getByTestId('pdf-zoom-menu').click();
+    await expect(page.getByRole('menuitemradio', { name: '자동 맞춤' })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
+    // 한 쪽 전체 보기: the whole current page, with its margin, fits the stage's height.
+    await field(page).fill('3');
+    await field(page).press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-page', '3');
+    await page.getByTestId('pdf-zoom-menu').click();
+    await page.getByRole('menuitemradio', { name: '한 쪽 전체 보기' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-fit');
+    await expect(viewer(page)).toHaveAttribute('data-page', '3');
+    const fit = await page.evaluate(() => {
+      const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+      const pg = document.querySelector<HTMLElement>('.pdfViewer .page[data-page-number="3"]')!;
+      return { client: sc.clientHeight, height: pg.getBoundingClientRect().height };
+    });
+    expect(fit.height + 48).toBeLessThanOrEqual(fit.client + 1);
+    await expect.poll(() => scroll.evaluate((el) => {
+      const sc = el.getBoundingClientRect();
+      const pg = document.querySelector('.pdfViewer .page[data-page-number="3"]')!.getBoundingClientRect();
+      return pg.top >= sc.top - 1 && pg.bottom <= sc.bottom + 1;
+    }), 'page 3 is wholly in the stage').toBe(true);
+    await page.getByTestId('pdf-zoom-menu').click();
+    await expect(page.getByRole('menuitemradio', { name: '한 쪽 전체 보기' })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the pages sit 12 apart, as in the mockup (Mac critique 10)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await setPdfZoom(page, 0.5);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '0.5');
+    const gap = await page.evaluate(() => {
+      const a = document.querySelector('.pdfViewer .page[data-page-number="1"]')!.getBoundingClientRect();
+      const b = document.querySelector('.pdfViewer .page[data-page-number="2"]')!.getBoundingClientRect();
+      return b.top - a.bottom;
+    });
+    expect(gap).toBeCloseTo(12, 0);
   } finally {
     await app.close();
   }

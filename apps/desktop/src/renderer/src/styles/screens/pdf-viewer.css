@@ -26,8 +26,8 @@
   .pdfViewer {
     --scale-factor: 1;
     --page-bg-color: var(--page-original-bg);
-    padding-top: var(--space-16);
-    padding-bottom: var(--space-8);
+    /* The mockup's room round the pages: 24 above the first, beside them and below the last, 12 between (.pdf-scroll gap). */
+    padding: var(--space-24) var(--space-24) var(--space-12);
   }
   .pdfViewer .page {
     --user-unit: 1;
@@ -39,7 +39,7 @@
     overflow: visible;
     width: 816px; /* local: pdf.js sets the real size per page */
     height: 1056px; /* local: pdf.js sets the real size per page */
-    margin: 0 auto var(--space-16);
+    margin: 0 auto var(--space-12);
     border: none;
     background-color: var(--page-bg-color);
     background-clip: content-box;

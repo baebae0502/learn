@@ -244,6 +244,39 @@ export const setPdfZoom = (page: Page, zoom: number | 'auto' | 'page-width' | 'p
   }, zoom);
 
 /**
+ * The colour the screen shows at a point of the window (a 1 x 1 screenshot, decoded in the page), as [r, g, b].
+ * `x` and `y` are CSS px from the window's top left.
+ */
+export async function pixelAt(page: Page, x: number, y: number): Promise<[number, number, number]> {
+  const shot = await page.screenshot({ clip: { x, y, width: 1, height: 1 }, animations: 'disabled', caret: 'hide' });
+  return page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    return [d[0]!, d[1]!, d[2]!] as [number, number, number];
+  }, shot.toString('base64'));
+}
+
+/**
+ * What a colour expression of the page's own CSS (`var(--bg-sunken)`, a light-dark() token) comes out as in sRGB, as [r, g, b]:
+ * a probe element resolves it as the stage computes it, and a canvas converts what it computed.
+ */
+export const resolveColor = (page: Page, expression: string): Promise<[number, number, number]> =>
+  page.evaluate((expr) => {
+    const probe = document.createElement('div');
+    probe.style.background = expr;
+    document.body.append(probe);
+    const css = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    const ctx = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    return [d[0]!, d[1]!, d[2]!] as [number, number, number];
+  }, expression);
+
+/**
  * The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). Not the detail canvas pdf.js
  * adds over the visible part when the screen area caps the page's canvas (capCanvasAreaFactor; the 1024 × 768 macOS
  * runner at 200 %, Mac run 41797171352): that one is aria-hidden, the page's own has role presentation.

@@ -775,9 +775,10 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The reader has its item panel now (a PDF is open): sidebar → content → item panel.
     await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('F6');
-    expect(await inPane(page)).toBe('sidebar');
+    expect(await inPane(page)).toBe('inspector');
     await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('Shift+F6');
     expect(await inPane(page)).toBe('sidebar');
@@ -787,7 +788,9 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('content');
     await page.keyboard.press('F6');
-    expect(await inPane(page)).toBe('content');
+    expect(await inPane(page)).toBe('inspector');
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('content'); // the folded sidebar is skipped
   } finally {
     await app.close();
   }

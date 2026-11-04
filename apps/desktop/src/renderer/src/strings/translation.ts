@@ -6,7 +6,6 @@ export const translation = {
   /** The direction button reads "자동 → 한국어"; in a menu the original's 자동 has no 감지. */
   autoShort: '자동',
   direction: (from: string, to: string) => `${from} → ${to}`,
-  directionTip: '번역 방향',
   fromHeader: '원문 언어',
   toHeader: '대상 언어',
   title: '번역',
@@ -20,7 +19,6 @@ export const translation = {
   pending: '번역하는 중…',
   retry: '다시 번역',
   run: '번역',
-  runTip: '번역 ↩',
   tooLong: '번역하기에 너무 깁니다',
   tooLongNote: '5,000자까지 번역합니다.',
   /** The original's length in the label line when it is too long: "영어 · 5,832자". */
@@ -29,8 +27,6 @@ export const translation = {
   already: (lang: string) => `이미 ${lang}입니다`,
   copy: '복사',
   copyTranslated: '번역문 복사',
-  /** The section's 복사 ▾ menu. */
-  copyMenu: '복사 방식',
   copySource: '원문',
   copyResult: '번역',
   copyBoth: '원문과 번역 둘 다',

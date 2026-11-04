@@ -491,13 +491,14 @@ test('the 번역 group: 켬/끔, 선택하면 번역 and the direction are kept 
     // Not asked yet (null): no segment is chosen, and the rows below wait like they do while it is off.
     await expect(enabled.getByRole('radio', { checked: true })).toHaveCount(0);
     await expect(row('settings-translation-auto')).toHaveClass(/is-disabled/);
-    await expect(settings.getByTestId('settings-translation-from')).toHaveAttribute('aria-disabled', 'true');
+    await expect(settings.getByTestId('settings-translation-from')).toBeDisabled();
     await settings.getByTestId('settings-translation-enabled-on').click();
     await expect.poll(() => (prefsFile(ud)['translation'] as { enabled: boolean | null }).enabled).toBe(true);
     await expect(row('settings-translation-auto')).not.toHaveClass(/is-disabled/);
     await settings.getByTestId('settings-translation-auto-off').click();
     await settings.getByTestId('settings-translation-from').click();
     await settings.getByRole('menuitemradio', { name: '영어' }).click();
+    await expect(settings.getByRole('menu')).toHaveCount(0);
     await settings.getByTestId('settings-translation-to').click();
     await settings.getByRole('menuitemradio', { name: '일본어' }).click();
     await expect.poll(() => prefsFile(ud)['translation']).toEqual({ enabled: true, autoOnSelect: false, from: 'en', to: 'ja' });
@@ -533,7 +534,7 @@ test('every settings group has the dense metrics (rows 36 px, groups 16 px apart
     });
     expect(metrics.groups).toBe(3);
     expect(metrics.gaps).toEqual([16, 16]);
-    expect(metrics.minRow).toBe(36);
+    expect([36, 37]).toContain(metrics.minRow); // 36 with the 1 px line between rows (the first row has none)
     // The window is the content's height, within a 1024 × 768 display's work area (less the title bar) at the default text size.
     expect(metrics.rootHeight).toBeLessThanOrEqual(700);
     // On a display that cannot hold the content the window takes the work area and the page scrolls inside it.

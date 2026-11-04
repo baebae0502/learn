@@ -20,6 +20,8 @@ export function registerSettingsIpc(handle: Handle, deps: IpcDeps): void {
     const prefs = deps.prefs.set(patch);
     // The pages change first, both on this one broadcast; the native theme follows their reports.
     if (prefs.theme !== before) deps.theme.changed(prefs.theme);
+    // Switched off (or taken back to not asked): the request in flight goes no further, and its answer is not shown or cached.
+    if (prefs.translation.enabled !== true) deps.translation.cancel();
     broadcast('prefsChanged', { prefs });
     return prefs;
   });

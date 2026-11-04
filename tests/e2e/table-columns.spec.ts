@@ -640,10 +640,21 @@ test('in the recent view the column 마지막으로 연 날 stays right after th
     const [item] = await importPaths(s.page, [PDF]);
     expect((await s.page.evaluate((itemId) => window.learn.reader.open({ itemId }), item!.id)).ok).toBe(true); // opened now: the recent view has it
     expect((await s.page.evaluate(() => window.learn.settings.set({ key: 'library.view', value: { kind: 'recent' } }))).ok).toBe(true);
+    // The geometry must not depend on the screen: the runner's 1024 × 768 screen clamps the 1440 × 900 window to 1024 wide
+    // (the item panel folds, the table has ≈ 784 px), where the default widths (884 px with 진행) push 추가일 out of the page.
+    // So the columns are stored at their minimum widths (200 + 112 + 96 + 56 + 72 + 72 + 112 = 720 <= 784), and every
+    // screen runs the 1024 geometry.
+    const narrow = { openedAt: 112, creators: 96, year: 56, type: 72, progress: 72, createdAt: 112 };
+    expect((await s.page.evaluate(({ config, widths }) => window.learn.settings.set({ key: 'library.columns', value: { ...config, widths } }), { config: structuredClone(DEFAULT_COLUMN_CONFIG), widths: narrow })).ok).toBe(true);
     await s.app.close();
 
     s = await launch(lib, ud);
+    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await expect.poll(() => s.page.evaluate(() => innerWidth)).toBeLessThan(1100);
     await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '진행', '추가일']);
+    const viewport = await s.page.evaluate(() => innerWidth);
+    const added = (await header(s.page, 'createdAt').boundingBox())!;
+    expect(added.x + added.width, '추가일 is inside the page').toBeLessThanOrEqual(viewport);
     const opened = (await header(s.page, 'openedAt').boundingBox())!;
     let { y } = await press(s.page, 'openedAt');
     await s.page.mouse.move(opened.x + opened.width + 200, y, { steps: 6 });

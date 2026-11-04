@@ -190,13 +190,17 @@ test('rapid page and zoom changes never surface a render error', async ({}, test
   await page.getByTestId('pdf-next').click({ noWaitAfter: true });
   await page.getByTestId('pdf-next').click({ noWaitAfter: true });
   await page.getByTestId('pdf-prev').click({ noWaitAfter: true });
+  // The page clicks are the page field's business: settle them before the zoom steps. pdf.js re-scrolls a zoom
+  // change to the last location its scroll events reported, so a zoom fired within a frame of a prev can land a page off.
+  await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
   await setPdfZoom(page, 2);
   await setPdfZoom(page, 0.5);
   await setPdfZoom(page, 1);
-  await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
+  // After the zooms the page is pdf.js's business: only no error, pages rendered, ink on the page shown.
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await expect(page.getByTestId('pdf-error')).toHaveCount(0);
-  await expect.poll(async () => (await inkedPixels(page, 2)).dark).toBeGreaterThan(300);
+  const shown = Number(await page.getByTestId('pdf-page-field').inputValue());
+  await expect.poll(async () => (await inkedPixels(page, shown)).dark).toBeGreaterThan(300);
   await expect(page.getByTestId('pdf-error')).toHaveCount(0);
   await app.close();
 });

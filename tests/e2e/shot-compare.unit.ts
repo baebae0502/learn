@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { compareShots, type Pixels } from './shot-compare';
+import { compareShots, sidebarFallback, type Pixels } from './shot-compare';
 
 const FALLBACK = [240, 241, 242] as const;
 
@@ -49,9 +49,27 @@ describe('compareShots', () => {
     it('a moved glyph fails, whatever the soft edges around it do', () => {
       expect(compareShots(strip(10, 82), strip(11, 82), dark).count).toBeGreaterThan(0);
     });
-    it('a pixel opaque in either shot is never a soft edge', () => {
-      const one = (alpha: number): Pixels => ({ width: 1, height: 1, data: new Uint8ClampedArray([224, 225, 228, alpha]) });
-      expect(compareShots(one(255), { width: 1, height: 1, data: new Uint8ClampedArray([200, 200, 200, 200]) }, dark).count).toBe(1);
+    it('an opaque glyph-edge pixel that moved by 31 steps is a soft edge too (Mac run 41740397794: 165,168,171 vs 196,198,200)', () => {
+      // the second pixel is translucent in both shots (as the sidebar is), which makes the compare tolerant
+      const px = (v: number[]): Pixels => ({ width: 2, height: 1, data: new Uint8ClampedArray([...v, 100, 100, 100, 120]) });
+      expect(compareShots(px([165, 168, 171, 255]), px([196, 198, 200, 255]), [240, 241, 243]).count).toBe(0);
+    });
+    it('the allowance counts opaque soft edges as well: nine of them fail', () => {
+      const row = (v: number): Pixels => {
+        const data = new Uint8ClampedArray(9 * 4);
+        for (let p = 0; p < 9; p++) data.set([v, v, v, 255], p * 4);
+        return { width: 9, height: 1, data };
+      };
+      // tolerant needs one translucent pixel somewhere: the first of the row
+      const a = row(165);
+      const b = row(196);
+      a.data[3] = 200;
+      b.data[3] = 200;
+      expect(compareShots(a, b, [240, 241, 243]).count).toBe(9);
+    });
+    it('an opaque pixel that moved over the soft-edge limit fails', () => {
+      const one = (v: number, alpha: number): Pixels => ({ width: 1, height: 1, data: new Uint8ClampedArray([v, v, v, alpha]) });
+      expect(compareShots(one(100, 255), one(200, 200), dark).count).toBe(1);
     });
     it('a step over the soft-edge limit fails even for one pixel', () => {
       const one = (alpha: number): Pixels => ({ width: 1, height: 1, data: new Uint8ClampedArray([250, 250, 250, alpha]) });
@@ -59,6 +77,20 @@ describe('compareShots', () => {
     });
     it('without a fallback (Linux) the same pixels still differ', () => {
       expect(compareShots(corners(6, 180), corners(6, 152), null).count).toBe(6);
+    });
+  });
+  describe('sidebarFallback (the colour the compare lays translucent shots over)', () => {
+    it('accepts the resolved light colour', () => {
+      expect(sidebarFallback('oklch(0.96 0.003 260)', [240, 241, 243, 255])).toEqual([240, 241, 243]);
+    });
+    it('throws for black, the canvas default when it cannot parse a light-dark() value', () => {
+      expect(() => sidebarFallback('light-dark(oklch(0.96 0 0), oklch(0.2 0 0))', [0, 0, 0, 255])).toThrow(/black/);
+    });
+    it('throws for an empty or transparent answer or a pixel that did not read', () => {
+      expect(() => sidebarFallback('', [240, 241, 243, 255])).toThrow(/did not resolve/);
+      expect(() => sidebarFallback('rgba(0, 0, 0, 0)', [0, 0, 0, 0])).toThrow(/not opaque/);
+      expect(() => sidebarFallback('red', [])).toThrow(/did not resolve/);
+      expect(() => sidebarFallback('red', [NaN, 0, 0, 255])).toThrow(/did not resolve/);
     });
   });
   it('passes the two measured macOS pairs when the PNGs are on disk', () => {

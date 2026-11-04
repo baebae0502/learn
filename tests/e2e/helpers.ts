@@ -9,7 +9,7 @@ import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, Storage
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
-import { compareShots, isTranslucent, type Pixels } from './shot-compare';
+import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 
 declare global {
   interface Window {
@@ -851,12 +851,16 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
       return { width, height, data: btoa(binary) };
     };
     // The sidebar's opaque colour without the window material: the token the sidebar paints when it is not clear.
-    const token = getComputedStyle(document.documentElement).getPropertyValue('--bg-sidebar').trim();
+    // It is a light-dark() value, which a canvas cannot parse: a probe element resolves it, and the canvas paints what it computed.
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--bg-sidebar)';
+    document.body.append(probe);
+    const css = getComputedStyle(probe).backgroundColor;
+    probe.remove();
     const swatch = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
-    swatch.fillStyle = token === '' ? '#000' : token;
+    swatch.fillStyle = css;
     swatch.fillRect(0, 0, 1, 1);
-    const [r, g, bl] = swatch.getImageData(0, 0, 1, 1).data;
-    return { x: await decode(a!), y: await decode(b!), fallback: [r!, g!, bl!] };
+    return { x: await decode(a!), y: await decode(b!), css, swatch: Array.from(swatch.getImageData(0, 0, 1, 1).data) };
   }, [shot.toString('base64'), reference.toString('base64')] as const);
   const pixels = (d: { width: number; height: number; data: string }): Pixels => ({ width: d.width, height: d.height, data: Buffer.from(d.data, 'base64') });
   const [x, y] = [pixels(decoded.x), pixels(decoded.y)];
@@ -866,7 +870,7 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
   else {
     // Over the macOS window material the shots are translucent and the renderer's soft edges vary by a few steps from
     // shot to shot, and so do a rounded corner's anti-aliased pixels; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
-    const result = compareShots(x, y, process.platform === 'darwin' ? decoded.fallback : null);
+    const result = compareShots(x, y, process.platform === 'darwin' ? sidebarFallback(decoded.css, decoded.swatch) : null);
     if (result.count === 0) {
       if (process.platform === 'darwin' && (isTranslucent(x) || isTranslucent(y))) return;
       report = 'same pixels, different PNG bytes (encoder)';

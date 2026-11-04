@@ -12,7 +12,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { FIXTURES, backFromReader, importPaths, launch, openItem, runMenuCommand, translationCalls, translationFake } from '../e2e/helpers';
 import { limitFailures } from './budget';
 import { EVIDENCE_ROOT, writeJson } from './capture';
-import { READER_BUDGET_MS, allDone, frameGaps, readerLimits } from './reader-perf-math';
+import { READER_BUDGET_MS, frameGaps, readerLimits } from './reader-perf-math';
 import { spread, summary, tenth } from './p1-perf-math';
 
 const linuxCi = process.platform === 'linux' && Boolean(process.env['CI']);

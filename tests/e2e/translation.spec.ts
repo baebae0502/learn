@@ -326,7 +326,7 @@ test('the pop-up sits 8 px under the selection, flips above it near the stage bo
     const stage = (await page.getByTestId('pdf-stage').boundingBox())!;
     // A line of page 2 scrolled to 40 px above the stage's bottom edge: no room under it for the pop-up.
     const second = page.locator('.page[data-page-number="2"] .textLayer span').first();
-    await scroll.evaluate((el, n) => document.querySelector(`.page[data-page-number="${n}"]`)!.scrollIntoView({ block: 'start' }), 2);
+    await scroll.evaluate((_el, n) => document.querySelector(`.page[data-page-number="${n}"]`)!.scrollIntoView({ block: 'start' }), 2);
     await expect(second).toBeAttached();
     const y = (await second.boundingBox())!.y;
     await scroll.evaluate((el, delta) => el.scrollBy({ top: delta }), y - (stage.y + stage.height - 40));

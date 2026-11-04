@@ -9,11 +9,6 @@ export function frameGaps(times: readonly number[]): number[] {
   return times.slice(1).map((t, i) => t - times[i]!);
 }
 
-/** Every wanted page is in `done`; an empty wish is not done (nothing was in view, nothing has been shown). */
-export function allDone(wanted: readonly number[], done: ReadonlySet<number>): boolean {
-  return wanted.length > 0 && wanted.every((p) => done.has(p));
-}
-
 const WHAT: Record<keyof typeof READER_BUDGET_MS, string> = {
   firstPage: 'first page (median of 5)',
   scrollFrameP95: 'scroll frame gap p95',

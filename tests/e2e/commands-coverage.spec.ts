@@ -7,7 +7,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, importResume, importWaiting, launch, makeTags,
+  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, launch, makeTags,
   menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
   stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
@@ -119,7 +119,7 @@ test('every registry command runs without a page error (library and reader menus
     p.on('pageerror', (e) => errors.push(`${p.url()}: ${e.message}`));
     p.on('console', (m) => {
       // pdf.js's own line for a getPage in flight when a document is closed on purpose; nothing else is let through.
-      if (m.type() === 'error' && !/^Unable to get page .*Transport destroyed/s.test(m.text())) errors.push(`${p.url()}: ${m.text()}`);
+      if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(`${p.url()}: ${m.text()}`);
     });
   };
   watch(page);

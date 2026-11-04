@@ -137,7 +137,11 @@ export function ThumbnailList() {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (e.key === 'ArrowDown') goTo(Math.min(total, current + 1));
     else if (e.key === 'ArrowUp') goTo(Math.max(1, current - 1));
-    else return;
+    else if (e.key === 'Enter') {
+      // The page is already shown (the arrows move it); Enter takes the reader to it: the focus goes to the stage, where the arrows turn pages.
+      goTo(current);
+      handle?.viewer()?.container.closest<HTMLElement>('.pdf-stage')?.focus({ preventScroll: true });
+    } else return;
     e.preventDefault();
   };
 

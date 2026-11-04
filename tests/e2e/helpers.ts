@@ -1576,3 +1576,10 @@ export async function selectInPage(page: Page, sentence: string, pageNumber = 1)
   );
   if (!found) throw new Error(`selectInPage: "${sentence}" is not in the text layer of page ${pageNumber}`);
 }
+
+/**
+ * The one console line a test lets through: pdf.js's own error for a getPage still in flight when a document is closed on
+ * purpose (leaving the reader). Nothing else is allowed; the value is the same in every spec that watches the console.
+ */
+export const CLOSE_NOISE = /^Unable to get page .*Transport destroyed/s;
+export const isCloseNoise = (text: string): boolean => CLOSE_NOISE.test(text);

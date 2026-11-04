@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, mainWindow, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -461,11 +461,9 @@ test('the thumbnail of page 50 goes to page 50; the outline goes to a chapter an
     await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
     // paper-100's outline puts chapter n on page 10 n − 9 (fixtures/generate.mjs).
     await expect(viewer(page)).toHaveAttribute('data-page', '21');
-    const chapterPage = '21';
     // The mark is on the last entry that starts on or before the page: Chapter 3 or the first of its sections, never another chapter.
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveAttribute('aria-label', /^(Chapter 3|3\.\d)/);
-    expect(Number(chapterPage)).toBeGreaterThan(1);
 
     await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('3.2');
     await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^3\.2 / }).first()).toBeVisible();
@@ -623,7 +621,6 @@ test('a protected PDF shows no pages in the sidebar until it is opened', async (
 });
 
 /** The one line pdf.js logs for a getPage it had in flight when its document was closed on purpose. */
-const isCloseNoise = (text: string) => /^Unable to get page .*Transport destroyed/s.test(text);
 
 test('leaving a PDF the moment its pages exist leaves no page error and no console error', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));

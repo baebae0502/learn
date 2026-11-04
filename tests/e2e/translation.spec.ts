@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, expectWindow, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
+import { FIXTURES, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
@@ -51,7 +51,7 @@ const errorsOf = (page: Page) => {
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
     // pdf.js's own line for a getPage in flight when a document is closed on purpose; nothing else is let through.
-    if (m.type() === 'error' && !/^Unable to get page .*Transport destroyed/s.test(m.text())) errors.push(m.text());
+    if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(m.text());
   });
   return errors;
 };

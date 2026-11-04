@@ -1112,12 +1112,18 @@ test('the reader v2 and its translation by keyboard: toolbar → page field → 
     await page.keyboard.press('ArrowLeft');
     await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
 
-    // ↓ on the thumbnails goes to the next one, Enter to its page.
+    // ↓ on the thumbnails goes to the next one; Enter takes the reader to that page (the focus goes to the stage, where the arrows turn pages).
     await page.keyboard.press('Tab'); // out of the segment into the list
     expect(await focusedTestId(page)).toBe('pdf-thumbnails');
     const current = Number(await viewer.getAttribute('data-page'));
     await page.keyboard.press('ArrowDown');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 1));
     await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 1));
+    await expect.poll(() => focusedTestId(page)).toBe('pdf-stage');
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 2));
+    await page.keyboard.press('ArrowLeft');
     await expect(viewer).toHaveAttribute('data-page', String(current + 1));
 
     // The reader's panel: its 번역 section, in the order Tab takes it: the original box, 선택하면 번역, 이어 붙이기, 지우기, 복사 ▾, 번역.

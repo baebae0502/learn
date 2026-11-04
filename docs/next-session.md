@@ -321,7 +321,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 
 ## M7a 리더 결과 (2026-11-04)
 
-계획 [`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md), 명세 [`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md), 브랜치 `m7a-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7a 완료 조건"과 AC03·AC06·AC14, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7a". 결정은 [ADR-0009](decisions/0009-anchor-hub-and-links.md)(채택, 스파이크 결과), [ADR-0012](decisions/0012-translation.md)(채택). 명세 정정과 컨트롤러 판정 R-1…R-17은 [`spec-amendments.md`](spec-amendments.md) 12절.
+계획 [`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md), 명세 [`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md), 브랜치 `m7a-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7a 완료 조건"과 AC03·AC06·AC14, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7a". 결정은 [ADR-0009](decisions/0009-anchor-hub-and-links.md)(채택, 스파이크 결과), [ADR-0012](decisions/0012-translation.md)(채택). 명세 정정과 컨트롤러 판정 R-1…R-18은 [`spec-amendments.md`](spec-amendments.md) 12절.
 
 ### M7a에서 해결한 것
 - **앵커 스파이크와 ADR-0009 채택**: 실제 pdf.js 뷰어에서 확대 4 × 회전 4 × 선택 넷을 쟀다. 최대 1.51 pt(Linux @1x, 50%), 허용 2 pt. 쪽 인용(두 줄·하이픈·NFD)도 통과. 마이그레이션 003은 `anchors`에 `precision`·`text_json` 열만 더한다(P-11).

@@ -241,9 +241,10 @@ test('scrolled to the end with several pages on screen, the progress is 100 % an
     const viewer = page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-pages', '100');
     // 25 %: several pages fit the stage, so the page at its top is not the last one when the end of the document is reached.
+    const scroll = page.getByTestId('pdf-scroll');
+    await expect(scroll).toHaveAttribute('data-restored', ''); // the saved place is applied first; a zoom set before it would be overwritten by it
     await setPdfZoom(page, 0.25);
     await expect(viewer).toHaveAttribute('data-scale', '0.25');
-    const scroll = page.getByTestId('pdf-scroll');
     await scroll.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
     });

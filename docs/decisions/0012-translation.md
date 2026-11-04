@@ -52,7 +52,8 @@
 
 ## 검증 (M7a)
 - 선택 → 팝업에 번역문, 같은 글은 캐시에서(원격 요청 0회).
-- 끈 상태와 동의 전에는 원격 요청이 없다(요청을 가로채 세는 E2E).
+- 끈 상태와 동의 전에는 원격 요청이 없다(엔진 호출 수를 센다: 가짜 엔진의 `translationCalls`).
+- **실제 경로는 가로챈 호스트로 한 번 돈다**(판정 R-17): `LEARN_E2E=1`에 `LEARN_TRANSLATION_NET=intercept`를 더하면 가짜 엔진 대신 실제 google-web 엔진과 `remoteFetch → net.fetch`가 돌고, 기본 세션의 `protocol.handle('https')`가 번역 호스트만 기록된 형식의 고정 응답으로 답한다(다른 https는 403으로 거절하고 센다). 시험은 요청이 정확히 한 번, POST·호스트·경로·본문(글은 본문에만)임을 확인하고 같은 선택은 캐시에서 온다는 것을 본다. 포장한 빌드에서는 켜지지 않는다. 실제 Google의 응답 형식과 망은 이 시험이 보증하지 않는다 — 소유자가 손으로 한 번 해 본다.
 - 오프라인에서 표시가 뜨고 자동 재전송이 없다(AC14).
 - **가짜 엔진이 정정한 부분**(계획 사전 판정 P-6): E2E(`LEARN_E2E=1`)에서는 **언제나** 가짜 엔진을 쓴다. 환경 변수 `LEARN_TRANSLATION_ENGINE`은 두지 않는다 — 시험이 실수로 Google을 부를 길이 없다. 가짜 엔진은 내장한 실제 번역 표(P-3 응답의 문장)를 먼저 찾고, 없으면 `번역: ` + 정리한 원문을 돌려준다. 시험 훅 `translationFake(mode)`가 모드를 바꾼다(`ok | offline | rateLimited | blocked | unavailable | badResponse | slow`). 요청 수는 엔진 호출 수다(캐시 적중은 세지 않는다). 데모도 이 엔진의 내장 표를 쓴다. CI에서는 실제 URL을 부르지 않는다.
 - 실제 Google 호출은 `google-web.live.test.ts` 하나이고 `LEARN_TRANSLATION_LIVE=1`일 때만 돈다(손으로, CI 밖).

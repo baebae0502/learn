@@ -1152,3 +1152,50 @@ test('the stage\'s focus ring is an overlay of four sides, not the half a scroll
     await app.close();
   }
 });
+
+test('a menu button keeps the pressed fill while its menu is open, whatever the pointer does; the zoom menu opens at the left edge of the field and chevron (Mac critique 9)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    /** Whether the element's fill is --fill-pressed, compared with a probe painted the same way. */
+    const pressedFill = (testId: string) =>
+      page.getByTestId(testId).evaluate((el) => {
+        const probe = document.createElement('div');
+        probe.style.background = 'var(--fill-pressed)';
+        document.body.append(probe);
+        const want = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        const cs = getComputedStyle(el);
+        // .btn paints a hover/pressed fill as a gradient layer, .icon-btn as its background colour.
+        return cs.backgroundColor === want || cs.backgroundImage.includes(want);
+      });
+    for (const [button, firstItem] of [
+      ['pdf-view-menu', page.getByRole('menuitemradio', { name: '앱 테마 따르기' })],
+      ['pdf-zoom-menu', page.getByRole('menuitemradio', { name: '125%' })],
+    ] as const) {
+      expect(await pressedFill(button), `${button} closed`).toBe(false);
+      await page.getByTestId(button).click();
+      await expect(page.getByTestId(button)).toHaveAttribute('aria-expanded', 'true');
+      // The pointer goes down onto an item: the button is neither hovered nor pressed any more.
+      await firstItem.hover();
+      await expect(firstItem).toHaveAttribute('data-hovered', 'true');
+      expect(await pressedFill(button), `${button} open, pointer on an item`).toBe(true);
+      // Whatever state attributes the library puts on or takes off (a Mac run lost them, Mac critique 9), the open menu itself holds the fill.
+      await page.getByTestId(button).evaluate((el) => {
+        el.removeAttribute('data-pressed');
+        el.removeAttribute('data-hovered');
+      });
+      expect(await pressedFill(button), `${button} open, without state attributes`).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await page.mouse.move(5, 400);
+      expect(await pressedFill(button), `${button} closed again`).toBe(false);
+    }
+    // The zoom menu is lined up with the field and chevron as one group.
+    await page.getByTestId('pdf-zoom-menu').click();
+    const left = await page.evaluate(() => ({ menu: document.querySelector('.zoom-menu .menu')!.getBoundingClientRect().left, group: document.querySelector('.reader-toolbar .zoom-field')!.getBoundingClientRect().left }));
+    expect(Math.abs(left.menu - left.group)).toBeLessThanOrEqual(1);
+  } finally {
+    await app.close();
+  }
+});

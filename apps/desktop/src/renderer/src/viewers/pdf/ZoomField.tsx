@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { commandById, commandLabel, type CommandId } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
@@ -41,6 +41,7 @@ export function ZoomField({ onEscape }: { onEscape(): void }) {
   const handle = useReader((s) => s.handle);
   const { run } = useCommands();
   const [draft, setDraft] = useState<string | null>(null);
+  const group = useRef<HTMLDivElement>(null);
   const ready = pdf?.ready === true && handle !== null;
   const shown = draft ?? (ready ? zoomPercent(pdf.scale) : '');
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -62,7 +63,7 @@ export function ZoomField({ onEscape }: { onEscape(): void }) {
     else run(id as CommandId);
   };
   return (
-    <div className="zoom-field">
+    <div ref={group} className="zoom-field">
       <input
         className="zoom-input num"
         autoComplete="off"
@@ -83,6 +84,7 @@ export function ZoomField({ onEscape }: { onEscape(): void }) {
         items={zoomEntries(pdf?.zoom ?? 'auto')}
         onAction={onAction}
         placement="bottom start"
+        anchorRef={group}
         popoverClassName="zoom-menu"
         isDisabled={!ready}
         disabledReason={t.reader.opening}

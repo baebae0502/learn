@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type RefObject } from 'react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
@@ -173,6 +173,8 @@ export function MenuIconButton<K extends string>(props: {
   size?: 'regular' | 'small';
   /** Extra class on the popover, for a menu that needs its own width. */
   popoverClassName?: string;
+  /** The box the menu lines up with in place of the button (a field and its chevron are one group). */
+  anchorRef?: RefObject<Element | null>;
   isDisabled?: boolean;
   /** Why it is disabled (see MenuButton): the button stays focusable and never opens. */
   disabledReason?: string;
@@ -183,7 +185,7 @@ export function MenuIconButton<K extends string>(props: {
   return (
     <MenuTrigger isOpen={isOpen && !props.isDisabled} onOpenChange={(open) => setOpen(open && !props.isDisabled)}>
       <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} isDisabled={props.isDisabled} disabledReason={props.disabledReason} />
-      <Popover className={cx('menu-popover', props.popoverClassName)} placement={props.placement ?? 'bottom end'} offset={4}>
+      <Popover className={cx('menu-popover', props.popoverClassName)} placement={props.placement ?? 'bottom end'} offset={4} triggerRef={props.anchorRef}>
         <MenuList entries={props.items} onAction={props.onAction} aria-label={props.label} />
       </Popover>
     </MenuTrigger>

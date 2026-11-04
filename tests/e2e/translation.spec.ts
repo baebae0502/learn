@@ -146,8 +146,9 @@ test('이어 붙이기 adds the next selection under the original, and the trans
     // 복사 ▾: the original, the translation, or both with a blank line between.
     await page.getByTestId('translation-copy').click();
     await page.getByRole('menuitemradio', { name: '원문과 번역 둘 다' }).or(page.getByRole('menuitem', { name: '원문과 번역 둘 다' })).click();
+    // The copy goes through main: read the clipboard once it has changed (Mac run 41806531028 read it before).
+    await expect.poll(async () => (await readClipboard(app)).startsWith(`${S1}\n${S3}\n\n`)).toBe(true);
     const both = await readClipboard(app);
-    expect(both.startsWith(`${S1}\n${S3}\n\n`)).toBe(true);
     expect(both).toContain(K3);
     // 지우기 empties both boxes.
     await page.getByTestId('translation-clear').click();

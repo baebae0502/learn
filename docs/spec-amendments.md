@@ -206,5 +206,5 @@
   - R-22 세피아는 `mix-blend-mode`가 아니라 SVG `feColorMatrix` 필터(채널마다 `--page-sepia-bg`를 곱함)다 — 불투명한 pdf.js 세부 캔버스가 저해상도 쪽 그림을 계속 덮어야 한다.
   - R-23 찾기 개수는 모든 상태에서 `--text-secondary`다(12px에서 4.5:1). 소유자가 M4에서 라이브러리 통계 줄에 고른 것과 같다 — 목업의 3차색보다 조금 진하다.
   - R-24 `scrollbar-gutter: stable`은 공유하는 `.inspector-scroll`(라이브러리와 리더)에 둔다 — 같은 패널이 선택에 따라 길이가 바뀔 때 같은 흔들림이 있다. 고전 스크롤 막대의 Mac에서는 항목 패널 내용이 15px 좁다.
-  - R-25 Mac 재비평의 N1(쪽이 무대보다 넓을 때 다시 열기·쪽 이동 뒤 왼쪽 여백 24가 사라짐)은 M7b로 넘긴다 — 맞춤 모드의 세로 문서에는 나타나지 않고, M7b의 탭·뒤로/앞으로가 같은 스크롤 자리 코드를 다룬다 — 그때까지 그 경우에 왼쪽 여백이 없다.
+  - R-25 Mac 재비평의 N1(쪽이 무대보다 넓을 때 다시 열기·쪽 이동 뒤 왼쪽 여백 24가 사라짐) 중 **쪽 이동**은 M7b로 넘긴다 — 맞춤 모드의 세로 문서에는 나타나지 않고, M7b의 탭·뒤로/앞으로가 같은 스크롤 자리 코드를 다룬다 — 그때까지 그 경우에 왼쪽 여백이 없다. **다시 열기**는 M7a에서 고쳤다: PR의 CI(run 41866507324)에서 투어의 `reader-pdf-dark`가 24px 왼쪽으로 밀려 나왔다. `sample.pdf`의 가로 2쪽이 문서를 무대보다 넓게 해, 2쪽 크기가 위치 복원 전에 오면 pdf.js가 1쪽 왼쪽 끝으로 스크롤했다. `restore`가 위 여백처럼 왼쪽 24를 되돌린다.
 - 추적: [`acceptance.md`](acceptance.md) AC03·AC14·"M7a 완료 조건", [ADR-0009](decisions/0009-anchor-hub-and-links.md) "M7a 스파이크 결과", [ADR-0012](decisions/0012-translation.md), [`next-session.md`](next-session.md) "M7a 리더 결과".

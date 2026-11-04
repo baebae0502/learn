@@ -196,6 +196,8 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
         throw new Error('injected render failure');
       } as typeof real;
     });
+    // A narrow stage (the item panel takes its share) already shows and draws every page of this three-page file: a zoom step makes pdf.js draw them again, now failing.
+    await setPdfZoom(s.page, 1.25);
     await s.page.getByTestId('pdf-next').click();
     const notice = s.page.getByTestId('pdf-page-error').first();
     await expect(notice.locator('strong')).toHaveText('이\u00a0쪽을 표시할 수 없습니다');

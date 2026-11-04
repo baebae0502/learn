@@ -1,10 +1,13 @@
 import { BrowserWindow, screen } from 'electron';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
+import { settingsContentHeight } from './settings-geometry';
 import { mainStrings } from './strings';
 import { currentTheme } from './theme';
 import { registerWindowKind } from './window-kinds';
 import { trackWindowState } from './window-state';
+
+export { settingsContentHeight };
 
 export const SETTINGS_WIDTH = 600;
 /** Off a main window, the settings window opens this far below its top edge (centred across it). */
@@ -30,16 +33,6 @@ export function settingsPosition(main: Rect, size: { width: number; height: numb
     y: Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - size.height)),
   };
 }
-
-/** Never shorter than this, whatever the display: a work area that small shows less than the first group anyway. */
-const MIN_CONTENT_HEIGHT = 240;
-
-/**
- * The height the window takes: its content's, but no taller than the display's work area leaves below the title bar (`chrome`),
- * so it fits a 1024 × 768 work area and its content scrolls (R-4). The page scrolls inside .settings-scroll.
- */
-export const settingsContentHeight = (measured: number, workAreaHeight: number, chrome: number): number =>
-  Math.max(MIN_CONTENT_HEIGHT, Math.min(measured, workAreaHeight - chrome));
 
 export interface SettingsWindow {
   /** ⌘, : shows the settings window — the one prepared hidden, when there is one — or brings the open one to the front. */

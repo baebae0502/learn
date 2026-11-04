@@ -19,6 +19,7 @@ import {
   type Session,
 } from '../e2e/helpers';
 import { COMMANDS } from '../../packages/domain/src/commands';
+import { SUBMENUS } from '../../packages/domain/src/submenus';
 import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/src/renderer/src/design/color';
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
@@ -292,10 +293,11 @@ function tooltipInCapture(shot: string, box: { x: number; y: number; width: numb
 }
 
 /**
- * 보기's own registry items (명령 팔레트…, the sidebar toggle, 글자 크게 / 작게 / 기본 글자 크기 — ⌘+'s hidden ⌘= twin
- * is no row): every other text row in it is a full-screen row.
+ * 보기's own registry rows (명령 팔레트…, the sidebar toggle, 글자 크게 / 작게 / 기본 글자 크기 — ⌘+'s hidden ⌘= twin
+ * is no row — and the reader's, with 쪽 색 ▸, a SUBMENUS group whose members carry no placement): every other text
+ * row in it is a full-screen row.
  */
-const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length;
+const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length + SUBMENUS.filter((s) => s.menu?.menu === 'view').length;
 /**
  * Rows of an open 보기 menu counted from its click capture (Task 8 R2-1): the panel is found from a seed in its top
  * padding (from System Events' frame of the open menu when it gave one), and every text row past the registry's is a

@@ -8,6 +8,7 @@ import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
+import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 
@@ -143,6 +144,22 @@ export async function settingsPrepared(app: ElectronApplication): Promise<boolea
 }
 
 /**
+ * The shown settings window is as tall as its content (design-spec 6), also after a message appeared in it; on a display
+ * whose work area cannot hold that, as tall as the work area leaves below its title bar, the page scrolling inside it
+ * (R-4). The macOS runner's 1024 × 768 with the Dock leaves 656 px for 681 (Mac run 41797171352).
+ */
+export async function settingsFitsContent(app: ElectronApplication, settings: Page): Promise<boolean> {
+  const content = await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height));
+  const shown = await app.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings'));
+    if (!w?.isVisible()) return null;
+    const height = w.getContentSize()[1]!;
+    return { height, chrome: w.getBounds().height - height, room: screen.getDisplayMatching(w.getBounds()).workArea.height };
+  });
+  return shown !== null && shown.height === settingsContentHeight(content, shown.room, shown.chrome);
+}
+
+/**
  * Replace the native file dialog in the main process for the next calls; resets the call counter. The real dialog is
  * kept the first time (`restoreOpenDialog` puts it back): a stub otherwise stays for the rest of the session, and a later
  * step that needs the real panel gets the stub's files instead (Mac run 39779536146: the settings folder panel got a PDF).
@@ -226,8 +243,13 @@ export const setPdfZoom = (page: Page, zoom: number | 'auto' | 'page-width' | 'p
     handle.setZoom(z);
   }, zoom);
 
-/** The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). */
-export const pdfCanvas = (page: Page, pageNumber = 1): Locator => page.getByTestId('pdf-viewer').locator(`.page[data-page-number="${pageNumber}"] canvas`);
+/**
+ * The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). Not the detail canvas pdf.js
+ * adds over the visible part when the screen area caps the page's canvas (capCanvasAreaFactor; the 1024 × 768 macOS
+ * runner at 200 %, Mac run 41797171352): that one is aria-hidden, the page's own has role presentation.
+ */
+export const pdfCanvas = (page: Page, pageNumber = 1): Locator =>
+  page.getByTestId('pdf-viewer').locator(`.page[data-page-number="${pageNumber}"] canvas[role="presentation"]`);
 
 
 /** One call of the stubbed save panel: whether it hung on a window (a sheet), and what it was asked to show. */

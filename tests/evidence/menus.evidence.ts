@@ -54,7 +54,7 @@ test('M5 menus: 보기 › 정렬 기준 ▸ open — the sort in force on, then
   const first = await open('m5-04-menu-view-sort', '보기 › 정렬 기준 ▸ open: 추가일 and 내림차순 on');
   results['first'] = first;
   expect(first.opened, 'the submenu opened').toBe(true);
-  expect.soft((first.rows ?? []).map((r) => r.name), 'the rows').toEqual(['제목', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순']);
+  expect.soft((first.rows ?? []).map((r) => r.name), 'the rows').toEqual(['제목', '저자', '연도', '종류', '추가일', '진행', '-', '오름차순', '내림차순']);
   expect.soft(on(first.rows), 'the marks').toEqual(['추가일', '내림차순']);
 
   await runMenuCommand(s.app, 'library.sortBy', { direction: 'asc' });

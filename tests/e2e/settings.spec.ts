@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { mainWindowChrome, shouldUseVibrancy } from '../../apps/desktop/src/main/window-options';
-import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand, settingsPrepared, windowKinds } from './helpers';
+import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand, settingsFitsContent, settingsPrepared, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -31,10 +31,8 @@ const token = (page: Page, name: string) =>
   }, name);
 /** The selection ring of a theme tile: its frame's border colour (critic T10-m1: a 2 px gap that shows the group). */
 const ring = (settings: Page, theme: string) => settings.getByTestId(`theme-tile-${theme}`).locator('.frame').evaluate((el) => getComputedStyle(el).borderTopColor);
-/** The settings window is shown exactly as tall as its content (design-spec 6), also after a message appeared in it. */
-const fitsContent = async (app: ElectronApplication, settings: Page) =>
-  (await (await settingsWindow(app)).evaluate((w) => w.isVisible() && w.getContentSize()[1])) ===
-  (await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height)));
+/** The settings root's height: the content, which the window follows (settingsFitsContent). */
+const rootHeight = (settings: Page) => settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height));
 
 test('⌘, opens one 600 px settings window; theme, density and text size apply at once to the main window only', async ({}, testInfo) => {
   const [lib, ud] = dirs(testInfo);
@@ -49,7 +47,7 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     expect(await (await settingsWindow(app)).evaluate((w) => w.isResizable())).toBe(false);
     await runMenuCommand(app, 'app.settings'); // brings the same window forward
     expect(await windowCount(app)).toBe(2);
-    await expect.poll(() => fitsContent(app, settings)).toBe(true);
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
 
     // Each window has its own window state: the settings window is key, the main window is not (and the reverse).
     await (await settingsWindow(app)).evaluate((w) => w.focus());
@@ -199,10 +197,14 @@ test('⌘, shows the settings window main prepared hidden once the main window w
     expect(settings).toBe(prepared);
     expect(await app.evaluate(() => (globalThis as { __made?: number }).__made)).toBe(0);
     expect(await windowKinds(app)).toEqual(['main', 'settings']);
-    await expect.poll(() => fitsContent(app, settings)).toBe(true);
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
     const [main, own] = await Promise.all([(await mainWindow(app)).evaluate((w) => w.getBounds()), (await settingsWindow(app)).evaluate((w) => w.getBounds())]);
+    const room = await app.evaluate(({ screen }, b) => screen.getDisplayMatching(b).workArea, own);
     expect(Math.abs(own.x + own.width / 2 - (main.x + main.width / 2))).toBeLessThanOrEqual(1);
-    expect(own.y).toBeGreaterThan(main.y);
+    // Below the main window's top as far as the work area lets it, and wholly inside it: on the macOS runner a window
+    // as tall as the work area (R-4) can only be at its top.
+    expect(own.y).toBeGreaterThan(Math.min(main.y, room.y + room.height - own.height - 1));
+    expect(own.y + own.height).toBeLessThanOrEqual(room.y + room.height);
     // Closed by the user, it is gone; the next ⌘, makes a new one (none is prepared behind it).
     await settings.close();
     await expect.poll(() => windowKinds(app)).toEqual(['main']);
@@ -357,13 +359,13 @@ test('R4: a folder that is not writable is refused in the settings window', asyn
     await app.evaluate(({ dialog }, dir) => {
       dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [dir] })) as typeof dialog.showOpenDialog;
     }, ro);
-    await expect.poll(() => fitsContent(app, settings)).toBe(true);
-    const before = await settings.evaluate(() => innerHeight);
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
+    const before = await rootHeight(settings);
     await settings.getByTestId('library-choose').click();
     await expect(settings.getByTestId('library-error')).toHaveText('이\u00a0폴더에는 쓸 수 없습니다. 쓰기 권한이 있는 폴더를 고르세요.');
-    // The window grows by the message: nothing is cut off (it cannot be resized by hand).
-    await expect.poll(() => fitsContent(app, settings)).toBe(true);
-    expect(await settings.evaluate(() => innerHeight)).toBeGreaterThan(before);
+    // The window grows by the message, as far as the work area lets it: nothing is cut off (it cannot be resized by hand).
+    expect(await rootHeight(settings)).toBeGreaterThan(before);
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
     await expect(settings.getByTestId('library-error')).toBeInViewport({ ratio: 1 });
     expect(fs.existsSync(path.join(ud, 'preferences.json')) ? prefsFile(ud)['libraryRoot'] ?? null : null).toBeNull();
   } finally {
@@ -537,9 +539,12 @@ test('every settings group has the dense metrics (rows 36 px, groups 16 px apart
     expect([36, 37]).toContain(metrics.minRow); // 36 with the 1 px line between rows (the first row has none)
     // The window is the content's height, within a 1024 × 768 display's work area (less the title bar) at the default text size.
     expect(metrics.rootHeight).toBeLessThanOrEqual(700);
-    // On a display that cannot hold the content the window takes the work area and the page scrolls inside it.
-    const capped = await (await settingsWindow(app)).evaluate((w) => w.getContentSize()[1]);
-    expect(capped).toBe(metrics.rootHeight);
+    // On a display that cannot hold the content the window takes the work area and the page scrolls inside it (R-4):
+    // the macOS runner's Dock leaves 684 of its 768 px.
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
+    const shown = await (await settingsWindow(app)).evaluate((w) => w.getContentSize()[1]!);
+    const scrolls = await settings.locator('.settings-scroll').evaluate((el) => el.scrollHeight > el.clientHeight);
+    expect(scrolls).toBe(shown < metrics.rootHeight);
   } finally {
     await app.close();
   }

@@ -279,10 +279,20 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
+  /* The count takes its text's width (the mockup's "/ 17"), so the page chevrons stand one gap after it. */
   .reader-toolbar .page-count {
-    min-width: 48px; /* local: "/ 380" without reflow */
     color: var(--text-secondary);
     font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* The mockup's .toolbar-sep: 8 from each neighbour (the toolbar's 4 gap and this 4). */
+  .reader-toolbar .toolbar-sep {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin: 0 var(--space-4);
+    background: var(--separator);
   }
 
   .password-form {

@@ -221,6 +221,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           onPress={() => (findOpen ? closeFind() : run('library.find'))}
         />
         <ViewMenu />
+        <span className="toolbar-sep" role="separator" aria-orientation="vertical" />
         <InspectorToggle pending={!ready} />
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}

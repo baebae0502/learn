@@ -999,3 +999,47 @@ test('leaving a PDF while its thumbnails are being drawn leaves no page error, n
     await app.close();
   }
 });
+
+const rectOf = (page: Page, testId: string) =>
+  page.getByTestId(testId).evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height };
+  });
+
+test('the toolbar groups as the mockup has them: "/ 100" takes its own width with the page chevrons 4 after it, and a 16 px separator stands before the panel toggle (Mac critique 5)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const count = await page.getByTestId('pdf-page-count').evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return { box: el.getBoundingClientRect().width, text: range.getBoundingClientRect().width, nums: getComputedStyle(el).fontVariantNumeric };
+    });
+    expect(Math.abs(count.box - count.text)).toBeLessThanOrEqual(1);
+    expect(count.nums).toContain('tabular-nums');
+    const c = await rectOf(page, 'pdf-page-count');
+    const prev = await rectOf(page, 'pdf-prev');
+    expect(prev.left - c.right).toBeCloseTo(4, 0);
+    // The mockup's .toolbar-sep: 1 × 16 in --separator, 8 from the 보기 menu and 8 from the toggle.
+    const sep = page.locator('.reader-toolbar [role="separator"]');
+    await expect(sep).toHaveCount(1);
+    const s = await sep.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const probe = document.createElement('div');
+      probe.style.background = 'var(--separator)';
+      document.body.append(probe);
+      const token = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return { left: r.left, right: r.right, width: r.width, height: r.height, isSeparator: getComputedStyle(el).backgroundColor === token, orientation: el.getAttribute('aria-orientation') };
+    });
+    expect([s.width, s.height]).toEqual([1, 16]);
+    expect(s.orientation).toBe('vertical');
+    expect(s.isSeparator).toBe(true);
+    const view = await rectOf(page, 'pdf-view-menu');
+    const toggle = await page.locator('.reader-toolbar [aria-controls="inspector"]').evaluate((el) => el.getBoundingClientRect().left);
+    expect(s.left - view.right).toBeCloseTo(8, 0);
+    expect(toggle - s.right).toBeCloseTo(8, 0);
+  } finally {
+    await app.close();
+  }
+});

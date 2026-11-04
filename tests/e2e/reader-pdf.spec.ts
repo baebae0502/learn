@@ -239,6 +239,8 @@ test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page
       });
     await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
     const auto = await geometry();
+    // The page and its margins fit beside the scroll bar too: no sideways scrolling in a fit mode.
+    expect(await scroll.evaluate((el) => el.scrollWidth - el.clientWidth), '자동 맞춤 scrolls sideways').toBeLessThanOrEqual(0);
     // 자동 맞춤: the page is narrower than the stage by the two margins, and the stage's own colour shows beside it.
     expect(auto.client.w - auto.page.w).toBeGreaterThanOrEqual(46);
     expect(auto.client.w - auto.page.w).toBeLessThanOrEqual(50);
@@ -259,6 +261,14 @@ test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page
     await page.getByRole('menuitemradio', { name: '한 쪽 전체 보기' }).click();
     await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-fit');
     await expect(viewer(page)).toHaveAttribute('data-page', '3');
+    expect(await scroll.evaluate((el) => el.scrollWidth - el.clientWidth), '한 쪽 전체 보기 scrolls sideways').toBeLessThanOrEqual(0);
+    await page.getByTestId('pdf-zoom-menu').click();
+    await page.getByRole('menuitemradio', { name: '너비에 맞춤' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-width');
+    expect(await scroll.evaluate((el) => el.scrollWidth - el.clientWidth), '너비에 맞춤 scrolls sideways').toBeLessThanOrEqual(0);
+    await page.getByTestId('pdf-zoom-menu').click();
+    await page.getByRole('menuitemradio', { name: '한 쪽 전체 보기' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-fit');
     const fit = await page.evaluate(() => {
       const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
       const pg = document.querySelector<HTMLElement>('.pdfViewer .page[data-page-number="3"]')!;

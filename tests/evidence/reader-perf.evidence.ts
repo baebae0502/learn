@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, launch, openItem, runMenuCommand, translationCalls, translationFake } from '../e2e/helpers';
+import { FIXTURES, backFromReader, dragAlong, importPaths, launch, openItem, runMenuCommand, translationCalls, translationFake } from '../e2e/helpers';
 import { limitFailures } from './budget';
 import { EVIDENCE_ROOT, writeJson } from './capture';
 import { READER_BUDGET_MS, frameGaps, readerLimits } from './reader-perf-math';
@@ -335,11 +335,10 @@ test('reader budgets @3: the same sentence selected again → the pop-up shows i
         });
       });
       const box = (await line.boundingBox())!;
-      const y = box.y + box.height / 2;
-      await page.mouse.move(box.x + 1, y);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.width - 1, y, { steps: 8 });
-      await page.mouse.up();
+      // As a hand drags, to past the line's end: a drag that stops on the last glyph's edge lost the full stop on the Mac
+      // runner's smaller page (run 41828758808), and the pop-up then waited for another sentence's translation.
+      await dragAlong(page, box.x + 1, box.x + box.width + 6, box.y + box.height / 2);
+      expect(await page.evaluate(() => getSelection()!.toString().trim()), 'the drag selected the whole sentence').toBe(S1);
       return page.evaluate(async () => (await (window as unknown as { __painted: Promise<number> }).__painted) - (window as unknown as { __up: number }).__up);
     };
     const unselect = async () => {

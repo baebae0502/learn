@@ -1088,14 +1088,16 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
       // Whatever failed: out of full screen, not zoomed, back at a frame of the window's own (bounded waits, never a
       // throw). A frame equal to the work area is AppKit's zoomed frame, which keeps this test's user frame (40, 65,
       // 960 × 604) for the next un-zoom: a later full-screen round trip would come back there. So a frame from before that
-      // filled the work area comes back inset by 20 on each side.
+      // filled the work area comes back inset by 20 on each side. AppKit counts a frame within a few points of the work area
+      // as zoomed too (run 41828758808: 1024 × 681 in a 1024 × 684 work area), so "fills" allows 8 on each edge.
       await leaveFullScreen(win);
       if (await zoomed().catch(() => false)) {
         await win.evaluate((w) => w.unmaximize()).catch(() => {});
         await sleep(800);
       }
       const { workArea: a } = await boundsNow();
-      const fills = restore.x === a.x && restore.y === a.y && restore.width === a.width && restore.height === a.height;
+      const near = (p: number, q: number) => Math.abs(p - q) <= 8;
+      const fills = near(restore.x, a.x) && near(restore.y, a.y) && near(restore.x + restore.width, a.x + a.width) && near(restore.y + restore.height, a.y + a.height);
       const width = Math.max(layout.windowMinWidth, a.width - 40);
       const height = Math.max(layout.windowMinHeight, a.height - 40);
       const frame = fills ? { x: a.x + Math.floor((a.width - width) / 2), y: a.y + Math.floor((a.height - height) / 2), width, height } : restore;

@@ -859,7 +859,8 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
       // The page's own text: the sample's non-embedded standard font is drawn with the system's fallback font, which
       // differs between Debian and Ubuntu (CI). The page box, its shadow, the stage and both toolbars stay compared.
-      await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.locator('[data-testid="pdf-viewer"] .canvasWrapper')] });
+      // The thumbnails draw the same text; the item panel's dates and the fixture's SHA-256 change between runs (CI 41772935706).
+      await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.locator('[data-testid="pdf-viewer"] .canvasWrapper'), s.page.locator('[data-testid="pdf-thumbnails"] canvas'), ...panelMasks(s.page)] });
       await s.page.getByTestId('viewer-back').click();
       await openItem(s.page, 'sample-mpeg4part2');
       await expect(s.page.getByTestId('video-error')).toContainText('이 동영상은 재생할 수 없습니다');
@@ -893,7 +894,8 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
   const S3 = 'We propose a new simple network architecture.';
   const S4 = 'It is based solely on attention mechanisms.';
   const popup = page.getByTestId('selection-popup');
-  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF });
+  // The item panel's dates and the fixture's SHA-256 change between runs (CI 41772935706): masked, the pop-up never reaches the panel.
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
   /** A selection the user lets go of, and the pop-up with it. */
   const unselect = async () => {
     await page.evaluate(() => getSelection()!.removeAllRanges());
@@ -938,7 +940,15 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await runMenuCommand(s.app, 'library.find');
       await page.getByTestId('pdf-find-field').getByRole('searchbox').fill('attention');
       await expect(page.getByTestId('pdf-find-count')).toHaveText(/^1 \/ \d+$/);
-      await expect.poll(async () => Number((await page.getByTestId('pdf-find-count').textContent())!.split(' / ')[1])).toBeGreaterThan(20); // the whole document searched
+      // The whole document searched: pdf.js counts page by page, so the shot waits for the total of every page's text
+      // (CI 41772935706 took it at 1648 where the baseline had caught 839 on the way).
+      const total = await page.evaluate(async () => {
+        const probe = window.__learnPdf!;
+        let n = 0;
+        for (let i = 0; i < 100; i++) n += ((await probe.pageText(i)).toLowerCase().match(/attention/g) ?? []).length;
+        return n;
+      });
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(`1 / ${total}`);
       await shootReader(`reader-find-${theme}`);
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);

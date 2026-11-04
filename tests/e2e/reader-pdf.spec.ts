@@ -285,6 +285,42 @@ test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page
   }
 });
 
+test('a one-page PDF keeps 24 on both sides of the page after any fit, bar or no bar, and does not scroll sideways (review Important 1)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const doc = await PDFDocument.create();
+    doc.addPage([612, 792]).drawText('One page.', { x: 72, y: 700, size: 24 });
+    const file = testInfo.outputPath('one-fit.pdf');
+    fs.writeFileSync(file, await doc.save());
+    await importPaths(page, [file]);
+    await openItem(page, 'one-fit');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '1');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    const scroll = page.getByTestId('pdf-scroll');
+    const sideways = () => scroll.evaluate((el) => el.scrollWidth - el.clientWidth);
+    // The room beside the page, inside what the scroll bar leaves.
+    const room = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector('.pdfViewer .page')!.getBoundingClientRect();
+        const box = sc.getBoundingClientRect();
+        return { left: pg.left - box.left, right: box.left + sc.clientWidth - pg.right };
+      });
+    // 한 쪽 전체 has no bar; the width fit that follows makes the page taller than the stage, the bar comes, and the page must still have its 24 on both sides of what is left.
+    for (const zoom of ['page-fit', 'page-width', 'page-fit', 'auto', 'page-width'] as const) {
+      await setPdfZoom(page, zoom);
+      await expect(viewer(page)).toHaveAttribute('data-zoom', zoom);
+      await page.waitForTimeout(250);
+      expect(await sideways(), `${zoom} scrolls sideways`).toBeLessThanOrEqual(0);
+      const r = await room();
+      expect(r.left, `${zoom}: room on the left`).toBeGreaterThanOrEqual(23);
+      expect(r.right, `${zoom}: room on the right`).toBeGreaterThanOrEqual(23);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 test('the pages sit 12 apart, as in the mockup (Mac critique 10)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -414,7 +450,8 @@ test('the stage\'s own scroll bar appearing and going away does not re-fit again
     });
     await page.waitForTimeout(1500);
     const changes = await page.evaluate(() => (window as unknown as { __scaleChanges: number[] }).__scaleChanges.length);
-    expect(changes).toBeLessThanOrEqual(1);
+    // The fit and, because the bar came or went with it, one more for the size the stage has then (fitTo's single retry): never a run of them.
+    expect(changes).toBeLessThanOrEqual(2);
   } finally {
     await app.close();
   }

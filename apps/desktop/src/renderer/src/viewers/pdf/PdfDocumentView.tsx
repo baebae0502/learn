@@ -90,10 +90,11 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           return { pageNumber: viewer.currentPageNumber, share: Math.max(0, into) / div.clientHeight, above: Math.min(0, into) };
         };
         let turningFrom: { pageNumber: number; share: number; above: number } | null = null;
-        const fitTo = (mode: FitMode) => {
+        const fitTo = (mode: FitMode, again = true) => {
           const view = viewer.getPageView(viewer.currentPageNumber - 1);
           if (!view?.width || !view.scale) return;
-          const scale = fitScale(mode, { width: container.clientWidth, height: container.clientHeight }, { width: view.width / view.scale, height: view.height / view.scale });
+          const [width, height] = [container.clientWidth, container.clientHeight];
+          const scale = fitScale(mode, { width, height }, { width: view.width / view.scale, height: view.height / view.scale });
           fitting = mode;
           try {
             viewer.currentScale = scale;
@@ -101,6 +102,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             fitting = null;
           }
           store.setPdf({ scale: viewer.currentScale, zoom: mode });
+          // The new scale can bring the stage's scroll bar (or take it away), which changes the room the fit was computed for: once more,
+          // for the size the stage has now. Only once: the bar cannot depend on this second scale in a way the first did not settle.
+          if (again && (container.clientWidth !== width || container.clientHeight !== height)) fitTo(mode, false);
         };
         const handle: PdfViewHandle = {
           goToPage: (n) => {
@@ -116,6 +120,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             const zoom = saved?.zoom ?? 'auto';
             viewer.pagesRotation = saved?.rotation ?? 0;
             if (typeof zoom === 'number') viewer.currentScale = zoom;
+            // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
             else fitTo(zoom);
             viewer.scrollPageIntoView({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] });
             // A place at the top of a page keeps the room above it (24 over the first page, 12 between pages), as the mockup draws it.
@@ -144,7 +149,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         let pagesInitialised = false;
         eventBus.on('pagesinit', () => {
           pagesInitialised = true;
-          fitTo('auto');
+          fitTo('auto'); // page 1 is the current page here (R-21)
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
         });
         // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.

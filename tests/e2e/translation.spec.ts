@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
+import { FIXTURES, backFromReader, dragAlong, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
@@ -64,10 +64,7 @@ test('before the consent a selection asks and sends nothing; 사용 안 함 clos
     const line = page.locator('.page[data-page-number="1"] .textLayer span', { hasText: S1 }).first();
     const box = (await line.boundingBox())!;
     const y = box.y + box.height / 2;
-    await page.mouse.move(box.x + 1, y);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width - 0.25, y, { steps: 8 }); // in the right half of the last glyph: a full stop is 2 px wide at 1024, and its middle is 1 px in
-    await page.mouse.up();
+    await dragAlong(page, box.x + 1, box.x + box.width + 6, y); // to 6 px past the line's end, as a hand drags
     await expect(popup(page)).toHaveAttribute('data-state', 'consent');
     await expect(popup(page)).toContainText('선택한 글을 번역하려면 Google로 보냅니다.');
     await expect(popup(page).getByTestId('consent-enable')).toHaveText('번역 켜기');

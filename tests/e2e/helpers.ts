@@ -291,6 +291,24 @@ export const resolveColor = (page: Page, expression: string): Promise<[number, n
   }, expression);
 
 /**
+ * A mouse drag along a text line as a hand makes it: one pointer position per frame, a few px apart. The selection follows the
+ * positions the pointer was seen at; a single jump onto the text layer's endOfContent (user-select none, Chromium 152) leaves it
+ * where the last text position put it, so a burst of Playwright's `steps` (coalesced to a frame) loses the line's last glyphs.
+ */
+export async function dragAlong(page: Page, fromX: number, toX: number, y: number): Promise<void> {
+  await page.mouse.move(fromX, y);
+  await page.mouse.down();
+  const dir = toX >= fromX ? 1 : -1;
+  for (let x = fromX + 3 * dir; dir * (toX - x) > 0; x += 3 * dir) {
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(16);
+  }
+  await page.mouse.move(toX, y);
+  await page.waitForTimeout(16);
+  await page.mouse.up();
+}
+
+/**
  * The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). Not the detail canvas pdf.js
  * adds over the visible part when the screen area caps the page's canvas (capCanvasAreaFactor; the 1024 × 768 macOS
  * runner at 200 %, Mac run 41797171352): that one is aria-hidden, the page's own has role presentation.

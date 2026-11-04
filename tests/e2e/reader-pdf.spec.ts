@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { FIXTURES, backFromReader, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -118,10 +118,7 @@ test('a line dragged with the mouse is copied as its text', async ({}, testInfo)
     await expect(line).toBeVisible();
     const box = (await line.boundingBox())!;
     const y = box.y + box.height / 2;
-    await page.mouse.move(box.x + 1, y);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width - 0.25, y, { steps: 8 }); // in the right half of the last glyph: a full stop is 2 px wide at 1024, and its middle is 1 px in
-    await page.mouse.up();
+    await dragAlong(page, box.x + 1, box.x + box.width + 6, y); // to 6 px past the line's end, as a hand drags
     await page.keyboard.press('ControlOrMeta+c');
     await expect.poll(async () => (await readClipboard(app)).trim()).toBe('Attention is all you need.');
   } finally {

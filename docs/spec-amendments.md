@@ -150,7 +150,7 @@
 - 추적: [`acceptance.md`](acceptance.md) "M6 완료 조건"·AC15·AC16·AC18 행, [ADR-0003](decisions/0003-storage-layout.md) "M6 점검·백업·복원", [ADR-0006](decisions/0006-trash.md), [ADR-0007](decisions/0007-settings-and-preferences.md) 1절의 M6 키.
 
 ## 12. 리더 v2 · 위치 기억 · 선택 번역(M7a)
-- 날짜: 2026-11-04 · 근거: M7a 명세([`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md) 0절, 14절), 소유자가 승인한 목업(2026-11-03, "모두 추천대로"), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md)), 구현 중 컨트롤러 판정 R-1…R-16
+- 날짜: 2026-11-04 · 근거: M7a 명세([`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md) 0절, 14절), 소유자가 승인한 목업(2026-11-03, "모두 추천대로"), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md)), 구현 중 컨트롤러 판정 R-1…R-17
 - 원본: 7절의 M7 줄, 디자인 명세 2.5·6·7.3·7.4·10.1·10.3·10.6, ADR-0009 7절(채택 조건), ADR-0012.
 - **A. M7을 둘로 나눈다**: M7a = 앵커 스파이크와 ADR-0009 채택, PDF 리더 핵심(연속 스크롤·글 선택·찾기·확대·회전·썸네일·목차·쪽 색), 위치 기억과 진행 열, 선택 번역, 백업·점검에서 남은 고침. M7b = 탭과 뒤로/앞으로, 이미지, PDF 본문 검색, 성능 항목(M5·M6에서 넘어온 것과 토스트 그리기), 스크롤·펼침 보기. 각각 PR 하나·병합 한 번. 이미지 포맷(1절)은 M7b로 간다.
 - **B. 소유자 결정**(2026-11-03):

@@ -66,7 +66,7 @@ test('before the consent a selection asks and sends nothing; 사용 안 함 clos
     const y = box.y + box.height / 2;
     await page.mouse.move(box.x + 1, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width - 1, y, { steps: 8 });
+    await page.mouse.move(box.x + box.width - 0.25, y, { steps: 8 }); // in the right half of the last glyph: a full stop is 2 px wide at 1024, and its middle is 1 px in
     await page.mouse.up();
     await expect(popup(page)).toHaveAttribute('data-state', 'consent');
     await expect(popup(page)).toContainText('선택한 글을 번역하려면 Google로 보냅니다.');

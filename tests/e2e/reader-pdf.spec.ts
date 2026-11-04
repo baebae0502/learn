@@ -455,6 +455,55 @@ test('rotation turns every page by a quarter, clockwise and back', async ({}, te
   }
 });
 
+test('⌘R and ⌘L keep the page in view: page 21 stays page 21, and so does the saved place (Mac critique 3)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '100');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // At 100 % a turned page is a different height, so the scroll position in pixels names another page.
+    await setPdfZoom(page, 1);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '1');
+    await field(page).fill('21');
+    await field(page).press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-page', '21');
+    const pageInView = (n: number) =>
+      page.evaluate((num) => {
+        const sc = document.querySelector('[data-testid="pdf-scroll"]')!.getBoundingClientRect();
+        const pg = document.querySelector(`.pdfViewer .page[data-page-number="${num}"]`)!.getBoundingClientRect();
+        return pg.bottom > sc.top && pg.top < sc.bottom;
+      }, n);
+    const stored = async () => {
+      const r = await page.evaluate((id) => window.learn.reader.getPosition({ itemId: id }), imported!.id);
+      return r.ok && r.data?.locator.kind === 'pdf' ? { pageIndex: r.data.locator.pageIndex, rotation: r.data.locator.rotation } : null;
+    };
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '90');
+    await expect(field(page)).toHaveValue('21');
+    await expect(viewer(page)).toHaveAttribute('data-page', '21');
+    expect(await pageInView(21)).toBe(true);
+    await expect.poll(stored).toEqual({ pageIndex: 20, rotation: 90 });
+    await runMenuCommand(app, 'reader.rotateCcw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '0');
+    await expect(field(page)).toHaveValue('21');
+    expect(await pageInView(21)).toBe(true);
+    await expect.poll(stored).toEqual({ pageIndex: 20, rotation: 0 });
+    // A fit mode is sized again for the turned page, on the same page, and keeps its name.
+    await setPdfZoom(page, 'page-width');
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-width');
+    await field(page).fill('21');
+    await field(page).press('Enter');
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(viewer(page)).toHaveAttribute('data-rotation', '90');
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'page-width');
+    await expect(field(page)).toHaveValue('21');
+    expect(await pageInView(21)).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('the page colour is chosen in the 보기 menu and kept for the next start', async ({}, testInfo) => {
   const lib = testInfo.outputPath('library');
   const ud = testInfo.outputPath('userdata');

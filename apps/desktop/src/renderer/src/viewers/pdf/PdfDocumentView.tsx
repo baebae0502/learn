@@ -78,6 +78,18 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
          * the scalechanging of this very assignment (it carries no preset) is not read as a zoom the reader chose.
          */
         let fitting: FitMode | null = null;
+        /**
+         * The place the stage's top edge is at: the page and how far down it, as a share of the page's height. A point of the page
+         * does not do for a quarter turn (the corner at the stage's top left is another corner afterwards); a share of the height
+         * is the same on a turned page. Room above the page (its margin showing) is kept in pixels.
+         */
+        const placeInPage = (): { pageNumber: number; share: number; above: number } | null => {
+          const div = viewer.getPageView(viewer.currentPageNumber - 1)?.div;
+          if (!div?.clientHeight) return null;
+          const into = container.scrollTop - (div.offsetTop + div.clientTop);
+          return { pageNumber: viewer.currentPageNumber, share: Math.max(0, into) / div.clientHeight, above: Math.min(0, into) };
+        };
+        let turningFrom: { pageNumber: number; share: number; above: number } | null = null;
         const fitTo = (mode: FitMode) => {
           const view = viewer.getPageView(viewer.currentPageNumber - 1);
           if (!view?.width || !view.scale) return;
@@ -120,6 +132,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             viewer.currentScale = nextZoom(viewer.currentScale, -1);
           },
           rotate: (delta) => {
+            // The place in view before the pages change shape: rotationchanging puts the reader back on it.
+            turningFrom = placeInPage();
             viewer.pagesRotation = (viewer.pagesRotation + delta + 360) % 360;
           },
           document: () => doc,
@@ -146,12 +160,18 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         });
         eventBus.on('pagechanging', (e: { pageNumber: number }) => store.setPdf({ pageNumber: e.pageNumber }));
         eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: fitting ?? zoomOf(e.presetValue, e.scale) }));
-        eventBus.on('rotationchanging', (e: { pagesRotation: number }) => {
+        eventBus.on('rotationchanging', (e: { pagesRotation: number; pageNumber: number }) => {
           store.setPdf({ rotation: e.pagesRotation as Rotation });
+          const from = turningFrom;
+          turningFrom = null;
           if (!restoredRef.current) return;
-          // A fit mode is sized for the turned page.
+          // A fit mode is sized for the turned page; the scroll position stays in pixels, which names another page once the pages change height.
           const zoom = useReader.getState().pdf?.zoom;
           if (isFitMode(zoom)) fitTo(zoom);
+          const div = viewer.getPageView((from?.pageNumber ?? e.pageNumber) - 1)?.div;
+          if (!div) return;
+          container.scrollTop = div.offsetTop + div.clientTop + (from?.share ?? 0) * div.clientHeight + (from?.above ?? 0);
+          viewer.update();
         });
         eventBus.on('pagerendered', (e: { pageNumber: number; source: { div: HTMLElement }; error?: unknown }) => {
           if (e.error) {

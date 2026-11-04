@@ -28,9 +28,13 @@ describe('the furthest page seen', () => {
     expect(furthestPageSeen(1, 100, box, pages(100).slice(0, 2))).toBe(1);
     expect(furthestPageSeen(9, 100, box, [])).toBe(9);
   });
-  it('counts a page that touches the edge by a rounding pixel', () => {
-    const box = { scrollTop: 0, clientHeight: 400.4, scrollHeight: 41_000 };
-    expect(furthestPageSeen(1, 100, box, pages(100).slice(0, 2))).toBe(1);
-    expect(furthestPageSeen(1, 100, { ...box, clientHeight: 810 }, pages(100).slice(0, 2))).toBe(2);
+  it('counts a page that touches the edge by a rounding pixel (page 2 ends at 810)', () => {
+    const box = { scrollTop: 0, clientHeight: 809.5, scrollHeight: 41_000 };
+    expect(furthestPageSeen(1, 100, box, pages(100).slice(0, 2))).toBe(2);
+    expect(furthestPageSeen(1, 100, { ...box, clientHeight: 808 }, pages(100).slice(0, 2))).toBe(1);
+  });
+  it('reaches the end within a rounding pixel', () => {
+    expect(furthestPageSeen(29, 30, { scrollTop: 1000, clientHeight: 500, scrollHeight: 1500.5 }, pages(30).slice(28))).toBe(30);
+    expect(furthestPageSeen(29, 30, { scrollTop: 1000, clientHeight: 500, scrollHeight: 1502 }, pages(30).slice(28))).toBe(29);
   });
 });

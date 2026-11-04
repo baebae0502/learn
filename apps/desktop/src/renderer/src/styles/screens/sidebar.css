@@ -103,7 +103,7 @@
     background: var(--page-sepia-bg);
   }
   .nav-thumbs[data-page-color='sepia'] .nav-thumb-canvas {
-    filter: sepia(0.35) saturate(1.1) brightness(0.98); /* local: the page filter of the stage */
+    mix-blend-mode: multiply; /* the stage's rule: the canvas multiplies with the page's cream */
   }
   .nav-thumbs[data-page-color='dark'] .nav-thumb-page {
     background: var(--page-dark-bg);

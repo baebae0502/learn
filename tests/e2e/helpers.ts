@@ -258,6 +258,20 @@ export async function pixelAt(page: Page, x: number, y: number): Promise<[number
   }, shot.toString('base64'));
 }
 
+/** The darkest colour on the screen inside a rectangle of the window (CSS px), as [r, g, b]: whether ink stays ink. */
+export async function darkestPixel(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<[number, number, number]> {
+  const shot = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
+  return page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let best: [number, number, number] = [255, 255, 255];
+    for (let i = 0; i < d.length; i += 4) if (d[i]! + d[i + 1]! + d[i + 2]! < best[0] + best[1] + best[2]) best = [d[i]!, d[i + 1]!, d[i + 2]!];
+    return best;
+  }, shot.toString('base64'));
+}
+
 /**
  * What a colour expression of the page's own CSS (`var(--bg-sunken)`, a light-dark() token) comes out as in sRGB, as [r, g, b]:
  * a probe element resolves it as the stage computes it, and a canvas converts what it computed.

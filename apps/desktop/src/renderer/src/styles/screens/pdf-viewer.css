@@ -65,7 +65,7 @@
     margin: 0;
     contain: content;
   }
-  /* The page colour (the app theme's, original, sepia or dark): the paper and, as a filter on the drawn page only, the ink.
+  /* The page colour (the app theme's, original, sepia or dark): the paper and, as a blend or a filter on the drawn page only, the ink.
      The text layer, the links and the selection above the canvas stay as they are. */
   .pdfViewer[data-page-color='original'] {
     --page-bg-color: var(--page-original-bg);
@@ -74,7 +74,9 @@
     --page-bg-color: var(--page-sepia-bg);
   }
   .pdfViewer[data-page-color='sepia'] .canvasWrapper canvas {
-    filter: sepia(0.35) saturate(1.1) brightness(0.98); /* local: page filter */
+    /* Multiplied with the page's own paper (--page-sepia-bg): white paper becomes the cream, black ink stays black. The blend
+       needs the page to share the canvas's stacking context: nothing between them may isolate it. */
+    mix-blend-mode: multiply;
   }
   .pdfViewer[data-page-color='dark'] {
     --page-bg-color: var(--page-dark-bg);

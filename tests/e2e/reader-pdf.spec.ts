@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { FIXTURES, backFromReader, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -290,6 +290,51 @@ test('the pages sit 12 apart, as in the mockup (Mac critique 10)', async ({}, te
       return b.top - a.bottom;
     });
     expect(gap).toBeCloseTo(12, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('세피아 is the approved paper: the page and its thumbnail multiply to --page-sepia-bg, ink stays dark, 원본 stays white (Mac critique 2)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'original');
+    await expect(pdfCanvas(page, 1)).toBeVisible();
+    const near = (got: number[], want: number[], tol: number, what: string) => {
+      for (let i = 0; i < 3; i++) expect(Math.abs(got[i]! - want[i]!), `${what}: ${got} vs ${want}`).toBeLessThanOrEqual(tol);
+    };
+    /** An empty spot on the canvas's right edge, and the darkest pixel over the upper part of what shows of it (the title and the text). */
+    const probe = async (selector: string) => {
+      const box = await page.locator(selector).evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: Math.max(0, r.left), top: Math.max(0, r.top), right: Math.min(innerWidth, r.right), bottom: Math.min(innerHeight, r.bottom) };
+      });
+      const height = box.bottom - box.top;
+      const empty = await pixelAt(page, Math.floor(box.right - 3), Math.floor(box.top + height * 0.6));
+      const ink = await darkestPixel(page, { x: Math.ceil(box.left), y: Math.ceil(box.top), width: Math.floor(box.right - box.left) - 1, height: Math.floor(height * 0.4) });
+      return { empty, ink };
+    };
+    const stageCanvas = '.pdfViewer .page[data-page-number="1"] canvas[role="presentation"]';
+    const thumbCanvas = '[data-testid="pdf-thumb"][data-page="1"] canvas';
+    await expect(page.locator(thumbCanvas)).toHaveAttribute('data-drawn', /.*/);
+    const original = await probe(stageCanvas);
+    near(original.empty, [253, 253, 253], 6, 'original paper');
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByRole('menuitemradio', { name: '세피아' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'sepia');
+    const paper = await resolveColor(page, 'var(--page-sepia-bg)');
+    const stage = await probe(stageCanvas);
+    near(stage.empty, paper, 3, 'sepia page');
+    expect(Math.max(...stage.ink), 'ink on the sepia page').toBeLessThan(90);
+    const thumb = await probe(thumbCanvas);
+    near(thumb.empty, paper, 3, 'sepia thumbnail');
+    // 어둡게 is not touched: a dark page with light ink.
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByRole('menuitemradio', { name: '어둡게' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'dark');
+    const dark = await probe(stageCanvas);
+    expect(Math.max(...dark.empty), 'dark page background').toBeLessThan(90);
   } finally {
     await app.close();
   }

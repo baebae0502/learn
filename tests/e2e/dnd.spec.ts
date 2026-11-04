@@ -967,15 +967,19 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
         const late = await page.evaluate(() => (window as unknown as { __late: string[] }).__late);
         // No other row takes the view meanwhile, nor in the while after the move was drawn: looked at all along, not once before
         // React has drawn.
+        // Any row, not only the ones focused here: React Aria's own late moves go to rows of their own (Mac run 41846187098 ended with
+        // the view on a row the message could not name).
+        const selectedRows = () => page.locator('.sidebar-tree [role="row"][aria-selected="true"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-key')!));
         let took: string | undefined;
-        for (const until = Date.now() + 2000; Date.now() < until; await frames(page, 2))
-          for (const other of [...others, ...late]) if (!took && (await treeRow(page, other).getAttribute('aria-selected')) === 'true') took = other;
-        expect(took, `${how}: a focus on another row in the drop's own task, a frame later, after a transition, or as the late move is drawn does not move the view`).toBeUndefined();
+        for (const until = Date.now() + 2000; Date.now() < until; await frames(page, 2)) took ??= (await selectedRows()).find((key) => key !== leaf);
+        const moved = took === undefined ? '' : ` (to ${took}: ${others.includes(took) ? 'focused in the drop' : late.includes(took) ? 'focused as the move was drawn' : 'a row of no focus here'}; focus ${await rowFocus(page)})`;
+        expect(took, `${how}: a focus on another row in the drop's own task, a frame later, after a transition, or as the late move is drawn does not move the view${moved}`).toBeUndefined();
         await holdReplies(s.app, ['collections:move'], 0);
         for (const other of [...others, ...late]) expect(await rowFocus(page), `${how}: the other row ${other} did take the focus`).toContain(other);
         // Not a focus that bounces between the rows (a screen reader reads each one): React Aria's cursor never went to the target.
         expect(await rowFocus(page), `${how}: the focus never went to the dropped-on row`).not.toContain(target);
-        await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row`).toHaveAttribute('data-key', leaf);
+        const state = `selected ${await selectedRows()}; focus ${await rowFocus(page)}`;
+        await expect(page.locator('.sidebar-tree [role="row"][tabindex="0"]'), `${how}: the cursor is back on the viewed row (${state})`).toHaveAttribute('data-key', leaf);
         await expect(treeRow(page, leaf), `${how}: the focus is on the viewed row`).toBeFocused();
         await expect(treeRow(page, target), `${how}: the dropped-on row is not the view`).not.toHaveAttribute('aria-selected', 'true');
         await page.keyboard.press('Tab');

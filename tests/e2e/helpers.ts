@@ -234,14 +234,20 @@ export async function stubOpenExternal(app: ElectronApplication): Promise<void> 
 }
 export const openExternalCalls = (app: ElectronApplication): Promise<string[]> => app.evaluate(() => (globalThis as { __learnExternal?: string[] }).__learnExternal ?? []);
 
-/** Zoom the open PDF through the reader's handle (the E2E-only window.__learnReader store): 1 is 100 %. */
-export const setPdfZoom = (page: Page, zoom: number | 'auto' | 'page-width' | 'page-fit'): Promise<void> =>
-  page.evaluate((z) => {
+/**
+ * Zoom the open PDF through the reader's handle (the E2E-only window.__learnReader store): 1 is 100 %. It waits for the saved place:
+ * the reader applies it once the stage has settled and the position has come, and a zoom set before that is overwritten by it (on the
+ * Mac runner that can be after the first page is drawn, run 41846187098).
+ */
+export const setPdfZoom = async (page: Page, zoom: number | 'auto' | 'page-width' | 'page-fit'): Promise<void> => {
+  await expect(page.locator('[data-testid="pdf-scroll"][data-restored]')).toBeAttached();
+  await page.evaluate((z) => {
     const store = (window as unknown as { __learnReader?: { getState(): { handle: { setZoom(z: unknown): void } | null } } }).__learnReader;
     const handle = store?.getState().handle;
     if (!handle) throw new Error('no PDF is open');
     handle.setZoom(z);
   }, zoom);
+};
 
 /**
  * The colour the screen shows at a point of the window (a 1 x 1 screenshot, decoded in the page), as [r, g, b].

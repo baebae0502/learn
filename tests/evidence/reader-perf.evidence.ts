@@ -366,10 +366,13 @@ test('reader budgets @3: the same sentence selected again → the pop-up shows i
       findFirstMatch: all['findFirstMatch']?.median, thumbnailsVisible: all['thumbnailsVisible']?.median, popupCachedPaint: all['popupCachedPaint']?.p95,
     };
     for (const [k, v] of Object.entries(values)) expect(typeof v, `${k} was measured`).toBe('number');
-    const failures = limitFailures(readerLimits(values as Record<keyof typeof READER_BUDGET_MS, number>));
-    save({ values, overBudgetOnLinuxCiLine: failures });
+    const limits = readerLimits(values as Record<keyof typeof READER_BUDGET_MS, number>);
+    const failures = limitFailures(limits);
+    // Report-only: a value over its own budget but inside the 2x line (the scroll p95 sits at the 60 Hz frame) is said, not hidden.
+    const overBudget = limits.filter((l) => l.value > l.budget).map((l) => `${l.what}: ${l.value} ms over its budget ${l.budget} ms`);
+    save({ values, overBudget, overBudgetOnLinuxCiLine: failures });
+    console.log('[measure] reader', JSON.stringify(values), overBudget.length ? `over budget: ${overBudget.join('; ')}` : 'within budget', failures.length ? `| over the 2x line: ${failures.join('; ')}` : '| within the 2x line');
     if (linuxCi) expect(failures).toEqual([]);
-    else console.log('[measure] reader', JSON.stringify(values), failures.length ? `over the 2x line: ${failures.join('; ')}` : 'within the 2x line');
   } finally {
     await app.close();
   }

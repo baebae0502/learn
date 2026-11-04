@@ -150,7 +150,7 @@
 - 추적: [`acceptance.md`](acceptance.md) "M6 완료 조건"·AC15·AC16·AC18 행, [ADR-0003](decisions/0003-storage-layout.md) "M6 점검·백업·복원", [ADR-0006](decisions/0006-trash.md), [ADR-0007](decisions/0007-settings-and-preferences.md) 1절의 M6 키.
 
 ## 12. 리더 v2 · 위치 기억 · 선택 번역(M7a)
-- 날짜: 2026-11-04 · 근거: M7a 명세([`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md) 0절, 14절), 소유자가 승인한 목업(2026-11-03, "모두 추천대로"), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md)), 구현 중 컨트롤러 판정 R-1…R-24
+- 날짜: 2026-11-04 · 근거: M7a 명세([`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md) 0절, 14절), 소유자가 승인한 목업(2026-11-03, "모두 추천대로"), 계획의 사전 판정 P-*([`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md)), 구현 중 컨트롤러 판정 R-1…R-25
 - 원본: 7절의 M7 줄, 디자인 명세 2.5·6·7.3·7.4·10.1·10.3·10.6, ADR-0009 7절(채택 조건), ADR-0012.
 - **A. M7을 둘로 나눈다**: M7a = 앵커 스파이크와 ADR-0009 채택, PDF 리더 핵심(연속 스크롤·글 선택·찾기·확대·회전·썸네일·목차·쪽 색), 위치 기억과 진행 열, 선택 번역, 백업·점검에서 남은 고침. M7b = 탭과 뒤로/앞으로, 이미지, PDF 본문 검색, 성능 항목(M5·M6에서 넘어온 것과 토스트 그리기), 스크롤·펼침 보기. 각각 PR 하나·병합 한 번. 이미지 포맷(1절)은 M7b로 간다.
 - **B. 소유자 결정**(2026-11-03):
@@ -162,7 +162,7 @@
   - P-11 마이그레이션 003은 열 더하기만: `anchors`를 다시 만들면 `annotations.anchor_id … ON DELETE RESTRICT`가 행이 있는 라이브러리에서 막힌다. `kind` CHECK 변경(`'slide'` → `'slides'`, 새 kind)은 처음 새 kind를 더하는 M7b가 한 번에 한다(ADR-0009 스파이크 결과).
   - P-12 바깥 링크: 새 IPC 없이 pdf.js 링크를 `window.open`으로 보내고 기존 `setWindowOpenHandler`가 `http(s)`(와 `mailto:`)만 연다.
 - **D. 디자인 명세를 바꾼 것**(본문도 고쳤다, 명세 14절): 1. M7을 M7a·M7b로 나눔(10.3의 탭 줄·뒤로·앞으로는 M7b). 2. 7.3 PDF 보기 ▾의 스크롤·펼침은 M7b. 3. 7.4 ⌘[ / ⌘]는 M7b. 4. 바깥 링크는 시트 없이 주소 툴팁 + 스킴 검사. 5. 2.5 리더의 정보 인스펙터와 맨 위 번역 절, 7.3 선택 팝업의 단추, 10.3 팝업·번역 절 상태, 10.6 설정 번역 그룹. 6. 10.1·6의 진행 열과 기본 열 구성 규칙. 7. 6 진행 표시의 "—"를 "칸을 비움"에 맞추고, 7.3에 번역 방향 ▾와 복사 ▾("원문과 번역 둘 다"). 8. 설정 창 높이는 작업 영역을 넘지 않고 본문이 스크롤한다(명세 14절은 "여섯 줄"이라 했지만 줄이 여덟이고 모두 반영했다).
-- **E. 컨트롤러 판정 R-1…R-24**(근거는 한 줄, R-19…R-24는 아래 E-3의 Mac 실행과 Mac 비평에서):
+- **E. 컨트롤러 판정 R-1…R-25**(근거는 한 줄, R-19…R-25는 아래 E-3의 Mac 실행과 Mac 비평에서):
   - R-1 `translation.translateSelection`은 `commands-coverage.spec.ts`에서 실행한다 — 이 장부는 실행하지 않은 명령을 실패로 본다.
   - R-2 사이드바 토글은 셸의 것 하나뿐이다(리더 도구 막대에 두지 않는다) — 창이 이미 토글을 갖고 있어 하나의 창에 둘은 결함이다.
   - R-3 리더는 PDF가 열려 그려진 동안에만 정보 인스펙터를 둔다(동영상 리더와 실패 상태는 지금 그대로) — 번역은 PDF를 요구하고 실패 상태에는 토글을 놓을 도구 막대가 없다.
@@ -206,4 +206,5 @@
   - R-22 세피아는 `mix-blend-mode`가 아니라 SVG `feColorMatrix` 필터(채널마다 `--page-sepia-bg`를 곱함)다 — 불투명한 pdf.js 세부 캔버스가 저해상도 쪽 그림을 계속 덮어야 한다.
   - R-23 찾기 개수는 모든 상태에서 `--text-secondary`다(12px에서 4.5:1). 소유자가 M4에서 라이브러리 통계 줄에 고른 것과 같다 — 목업의 3차색보다 조금 진하다.
   - R-24 `scrollbar-gutter: stable`은 공유하는 `.inspector-scroll`(라이브러리와 리더)에 둔다 — 같은 패널이 선택에 따라 길이가 바뀔 때 같은 흔들림이 있다. 고전 스크롤 막대의 Mac에서는 항목 패널 내용이 15px 좁다.
+  - R-25 Mac 재비평의 N1(쪽이 무대보다 넓을 때 다시 열기·쪽 이동 뒤 왼쪽 여백 24가 사라짐)은 M7b로 넘긴다 — 맞춤 모드의 세로 문서에는 나타나지 않고, M7b의 탭·뒤로/앞으로가 같은 스크롤 자리 코드를 다룬다 — 그때까지 그 경우에 왼쪽 여백이 없다.
 - 추적: [`acceptance.md`](acceptance.md) AC03·AC14·"M7a 완료 조건", [ADR-0009](decisions/0009-anchor-hub-and-links.md) "M7a 스파이크 결과", [ADR-0012](decisions/0012-translation.md), [`next-session.md`](next-session.md) "M7a 리더 결과".

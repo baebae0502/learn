@@ -16,5 +16,6 @@ export async function remoteFetch(url: string, init: RequestInit): Promise<Respo
   }
   if (parsed.protocol !== 'https:' || parsed.port !== '' || !ALLOWED_REMOTE_HOSTS.includes(parsed.hostname)) throw new Error('REMOTE_HOST_REFUSED');
   // A redirect could carry the request to a host that is not on the list.
-  return net.fetch(url, { ...init, redirect: 'error' });
+  // credentials 'omit': the app's default session neither sends the host a cookie nor keeps the one it answers with.
+  return net.fetch(url, { ...init, redirect: 'error', credentials: 'omit' });
 }

@@ -19,7 +19,12 @@ describe('remoteFetch', () => {
     const res = new Response('x');
     vi.mocked(net.fetch).mockResolvedValueOnce(res);
     await expect(remoteFetch('https://translate.googleapis.com/translate_a/single?client=gtx', { method: 'POST' })).resolves.toBe(res);
-    expect(net.fetch).toHaveBeenCalledWith('https://translate.googleapis.com/translate_a/single?client=gtx', { method: 'POST', redirect: 'error' });
+    expect(net.fetch).toHaveBeenCalledWith('https://translate.googleapis.com/translate_a/single?client=gtx', { method: 'POST', redirect: 'error', credentials: 'omit' });
+  });
+  it('sends and keeps no cookies of the host, whatever the caller asked (final review m-7)', async () => {
+    vi.mocked(net.fetch).mockResolvedValueOnce(new Response('x'));
+    await remoteFetch('https://translate.googleapis.com/x', { credentials: 'include' });
+    expect(vi.mocked(net.fetch).mock.lastCall?.[1]).toMatchObject({ credentials: 'omit' });
   });
   it('never follows a redirect, whatever the caller asked', async () => {
     vi.mocked(net.fetch).mockResolvedValueOnce(new Response('x'));

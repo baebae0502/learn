@@ -59,6 +59,8 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    /* A classic bar's room on both sides, so the pictures stay under the segment; an overlay bar takes none. */
+    scrollbar-gutter: stable both-edges;
     position: relative;
     outline: none;
   }

@@ -339,7 +339,7 @@
     position: absolute;
     z-index: 20; /* local: above the page layers pdf.js stacks inside the scroller */
     top: var(--space-8);
-    right: var(--space-16);
+    right: calc(var(--space-16) + var(--stage-scrollbar, 0px)); /* 16 from the visible edge: a classic scroll bar is the stage's (PdfReader) */
     display: flex;
     align-items: center;
     gap: var(--space-4);

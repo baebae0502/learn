@@ -1199,3 +1199,55 @@ test('a menu button keeps the pressed fill while its menu is open, whatever the 
     await app.close();
   }
 });
+
+/** The width of the classic scroll bar of the stage: what this runner shows (Xvfb Chromium) and a Mac with a mouse does; 0 where bars overlay. */
+const stageBar = (page: Page) => page.getByTestId('pdf-scroll').evaluate((el) => el.offsetWidth - el.clientWidth);
+
+test('classic scroll bars (Mac critique 11): the find bar keeps 16 from the stage\'s visible right edge, also after the zoom changes the pages under it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await runMenuCommand(app, 'library.find');
+    await expect(findBar(page)).toBeVisible();
+    const gap = () =>
+      page.evaluate(() => {
+        const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const bar = document.querySelector('[data-testid="pdf-find-bar"]')!.getBoundingClientRect();
+        const visibleRight = scroll.getBoundingClientRect().right - (scroll.offsetWidth - scroll.clientWidth);
+        return { gap: visibleRight - bar.right, scrollbar: scroll.offsetWidth - scroll.clientWidth };
+      });
+    const tall = await gap();
+    expect(tall.scrollbar).toBeGreaterThan(0); // this runner shows classic bars; where it does not, the test is not about anything
+    expect(tall.gap).toBeCloseTo(16, 0);
+    // The pages change size under the bar: the 16 is measured again, not remembered.
+    await setPdfZoom(page, 0.1);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '0.1');
+    await expect.poll(async () => (await gap()).gap).toBeCloseTo(16, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('classic scroll bars (Mac critique 11): the thumbnails stay centred under the segment, and the item panel keeps room for a bar so a long translation does not narrow it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await expect(page.getByTestId('pdf-thumb').first()).toBeVisible();
+    const centres = await page.evaluate(() => {
+      const mid = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return r.left + r.width / 2;
+      };
+      return { segment: mid(document.querySelector('[data-testid="reader-nav"] [role="radiogroup"]')!), thumb: mid(document.querySelector('[data-testid="pdf-thumb"] .nav-thumb-page')!) };
+    });
+    expect(Math.abs(centres.thumb - centres.segment)).toBeLessThanOrEqual(1);
+    const bar = await stageBar(page);
+    expect(bar).toBeGreaterThan(0);
+    await showItemPanel(app, page);
+    const panel = await page.locator('.inspector-scroll').first().evaluate((el) => ({ gutter: getComputedStyle(el).scrollbarGutter, reserved: el.offsetWidth - el.clientWidth }));
+    expect(panel.gutter).toBe('stable');
+    expect(panel.reserved).toBe(bar); // the room is there before the scroll bar is
+  } finally {
+    await app.close();
+  }
+});

@@ -94,6 +94,21 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [ready]);
+  // A classic scroll bar (a Mac with a mouse, Windows, Linux) takes room from the scroller's right edge: what floats over the stage
+  // keeps its 16 from the visible edge, so the find bar is offset by that width (an overlay bar is 0). Read again whenever the scroller resizes.
+  useEffect(() => {
+    const stage = stageRef.current;
+    const scroll = stage?.querySelector<HTMLElement>('.pdf-scroll');
+    if (!ready || !stage || !scroll) return;
+    const measure = () => stage.style.setProperty('--stage-scrollbar', `${scroll.offsetWidth - scroll.clientWidth}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scroll);
+    return () => {
+      observer.disconnect();
+      stage.style.removeProperty('--stage-scrollbar');
+    };
+  }, [ready]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
     useFind.getState().closeBar();

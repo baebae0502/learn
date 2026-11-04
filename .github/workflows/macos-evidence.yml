@@ -83,8 +83,8 @@ jobs:
   mac:
     needs: fixtures
     runs-on: ${{ inputs.runner }}
-    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 37 + functional E2E ≤ 32 + 5 = 79 min.
-    timeout-minutes: 79
+    # Setup ≤ 5 (69 s in M3's last run, the display spike capped at 3) + evidence ≤ 37 + functional E2E ≤ 40 + 5 = 87 min.
+    timeout-minutes: 87
     env:
       SUITE: ${{ inputs.suite }}
       PACKAGED: ${{ inputs.packaged }}
@@ -216,10 +216,12 @@ jobs:
       - name: Functional E2E
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(fromJSON('["e2e","all"]'), inputs.suite) }}
         # M5 ran in 1406 s at most; M6's specs added 268 s on the Linux job (E2E step 783 s at M5's last CI, 1051 s now), times 1.5.
-        timeout-minutes: 32
+        # M7a: 1413–1578 s on the runner, and a slow runner took 1.7–2.3 times as long per spec (run 41876033771 stopped at 31 min
+        # with 314 of 457 run): 40, the global timeout a minute under it.
+        timeout-minutes: 40
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: evidence-results/e2e-report.json
-        run: pnpm exec playwright test --reporter=list,json --global-timeout 1860000
+        run: pnpm exec playwright test --reporter=list,json --global-timeout 2340000
 
       - name: Upload evidence
         if: always()

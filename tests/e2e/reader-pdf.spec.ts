@@ -1101,3 +1101,54 @@ test('the find bar as the mockup draws it: the count sits inside the field on th
     await app.close();
   }
 });
+
+test('the stage\'s focus ring is an overlay of four sides, not the half a scrolled page leaves; a return after the mouse stays ringless (Mac critique 8)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const stage = page.getByTestId('pdf-stage');
+    const focus = await resolveColor(page, 'var(--focus)');
+    /** The pixel one inside each side's middle, and what the stage says about its ring. */
+    const sides = async () => {
+      const b = (await stage.boundingBox())!;
+      const at = async (x: number, y: number) => (await pixelAt(page, x, y)).map((c, i) => Math.abs(c - focus[i]!));
+      return {
+        top: await at(b.x + b.width / 2, b.y + 1),
+        bottom: await at(b.x + b.width / 2, b.y + b.height - 2),
+        left: await at(b.x + 1, b.y + b.height / 2),
+        right: await at(b.x + b.width - 2, b.y + b.height / 2),
+      };
+    };
+    const ring = () =>
+      stage.evaluate((el) => {
+        const after = getComputedStyle(el, '::after');
+        return { visible: el.matches(':focus-visible'), outline: getComputedStyle(el).outlineStyle, shadow: after.boxShadow, events: after.pointerEvents, position: after.position, scrolls: el.scrollHeight > el.clientHeight || el.scrollTop !== 0 };
+      });
+    // The way back from the find bar by the keyboard: esc.
+    await runMenuCommand(app, 'library.find');
+    await findInput(page).press('Escape');
+    await expect(stage).toBeFocused();
+    const keyboard = await ring();
+    expect(keyboard.visible).toBe(true);
+    expect(keyboard.outline).toBe('none'); // no outline on the stage: the pages (positioned) would cover most of it
+    expect(keyboard.shadow).toMatch(/inset/);
+    expect(keyboard.events).toBe('none');
+    expect(keyboard.position).toBe('absolute');
+    expect(keyboard.scrolls).toBe(false); // the overlay's box is the stage's, which does not scroll
+    for (const [side, diff] of Object.entries(await sides())) expect(Math.max(...diff), `the ${side} side`).toBeLessThanOrEqual(3);
+    // Scrolled, the ring stays where it is: the same four sides.
+    await page.getByTestId('pdf-scroll').evaluate((el) => el.scrollBy(0, 700));
+    for (const [side, diff] of Object.entries(await sides())) expect(Math.max(...diff), `the ${side} side, scrolled`).toBeLessThanOrEqual(3);
+    // After a mouse action the stage takes the focus back without a ring (the find button, pressed twice).
+    await page.getByTestId('pdf-find').click();
+    await expect(findBar(page)).toBeVisible();
+    await page.getByTestId('pdf-find').click();
+    await expect(findBar(page)).toHaveCount(0);
+    await expect(stage).toBeFocused();
+    const mouse = await ring();
+    expect(mouse.visible).toBe(false);
+    expect(mouse.shadow).toBe('none');
+  } finally {
+    await app.close();
+  }
+});

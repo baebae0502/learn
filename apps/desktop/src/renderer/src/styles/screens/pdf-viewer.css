@@ -9,9 +9,18 @@
     min-height: 0;
     background: var(--bg-sunken);
   }
+  /* The ring is an overlay on the stage, which does not scroll: an outline would sit under the scroller and its pages, and show as a
+     line under the toolbar and a stub at the left. Under the pop-up (10) and the find bar (20). */
   .pdf-stage:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: calc(var(--focus-ring-width) * -1);
+    outline: none;
+  }
+  .pdf-stage:focus-visible::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5; /* local: over the pages inside the scroller */
+    pointer-events: none;
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus);
   }
   .pdf-scroll {
     position: absolute;

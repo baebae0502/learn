@@ -180,19 +180,26 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
   const { panelRef, hidden, width } = props;
   const [initialSize] = useState(() => (hidden ? 0 : width));
   // The group derives a late-mounted panel's constraints after this effect first runs (the handle throws until then),
-  // and the first size already says what is wanted: only a change after the mount goes through the handle.
+  // and the first size already says what is wanted: only a change after the mount goes through the handle at once.
   const mounted = useRef(false);
   // Development's StrictMode unmounts and re-runs every effect on mount: the skip must start over with it.
   useEffect(() => () => void (mounted.current = false), []);
   useEffect(() => {
+    const follow = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (hidden && !panel.isCollapsed()) panel.collapse();
+      else if (!hidden && panel.isCollapsed()) panel.resize(width);
+    };
     if (!mounted.current) {
       mounted.current = true;
-      return;
+      // The group keeps the layout of a panel that left it (the reader's panel gone while the PDF loads, the library's folded one):
+      // a panel mounted again takes that size, not its defaultSize. A frame later, once the constraints exist, it is brought to what
+      // the shell says (hiddenPanes), so the toggle and the drawn panel never disagree (Mac critique 4).
+      const frame = requestAnimationFrame(follow);
+      return () => cancelAnimationFrame(frame);
     }
-    const panel = panelRef.current;
-    if (!panel) return;
-    if (hidden && !panel.isCollapsed()) panel.collapse();
-    else if (!hidden && panel.isCollapsed()) panel.resize(width);
+    follow();
   }, [hidden, width, panelRef]);
   return (
     <Panel

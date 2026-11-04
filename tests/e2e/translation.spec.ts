@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
+import { FIXTURES, backFromReader, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
@@ -214,6 +214,8 @@ test('⌥⌘I folds and shows the reader panel; at 1024 wide it stays, below 100
     await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, 768));
     await expect.poll(() => page.evaluate(() => Math.abs(innerWidth - 1024))).toBeLessThanOrEqual(1); // a 1024 px screen may take a pixel of frame
     await expect(shell).toHaveAttribute('data-inspector', 'shown');
+    // toBeVisible lets a panel that is cut off pass: its drawn width and place are what count.
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
     const stage = (await page.getByTestId('pdf-stage').boundingBox())!;
     expect(stage.width).toBeGreaterThanOrEqual(440);
     expect(stage.width).toBeLessThanOrEqual(464);
@@ -223,6 +225,53 @@ test('⌥⌘I folds and shows the reader panel; at 1024 wide it stays, below 100
     await expect(shell).toHaveAttribute('data-sidebar', 'shown');
     await toggle.click();
     await expect(shell).toHaveAttribute('data-inspector', 'shown');
+  } finally {
+    await app.close();
+  }
+});
+
+/** The item panel as it is drawn: its width, whether it lies inside the window, and whether the toolbar's toggle says it is shown. */
+const panelState = (page: Page) =>
+  page.evaluate(() => {
+    const r = document.querySelector('[data-testid="inspector-panel"]')!.getBoundingClientRect();
+    const toggle = document.querySelector('[data-testid="inspector-toggle"]')!;
+    return { width: Math.round(r.width), inside: r.width > 0 && r.left >= 0 && r.right <= innerWidth + 0.5, expanded: toggle.getAttribute('aria-expanded') };
+  });
+
+test('a PDF opened in a 1024 window from the library shows its panel at 320, the stage keeps 440; the toggle tells what is drawn (Mac critique 4)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(1024, 768));
+    await expect.poll(() => page.evaluate(() => Math.abs(innerWidth - 1024))).toBeLessThanOrEqual(1);
+    // As on a 1024 px screen: the window opens at that width, so the item panel is first laid out folded.
+    await page.reload();
+    const shell = page.getByTestId('shell');
+    await importPaths(page, [PAPER]);
+    // The library at 1024 folds the panel by itself (240 + 320 + 520 does not fit)...
+    await expect(shell).toHaveAttribute('data-inspector', 'hidden');
+    await openItem(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '100');
+    // ...the reader keeps 440 for the stage, so the panel is there, whole, and the toggle says so.
+    await expect(shell).toHaveAttribute('data-inspector', 'shown');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
+    const stage = (await page.getByTestId('pdf-stage').boundingBox())!;
+    expect(stage.width).toBeGreaterThanOrEqual(440);
+    await expect(page.getByTestId('inspector-panel')).toBeInViewport({ ratio: 1 });
+    // Folded by the toggle: width 0 and the toggle off.
+    await page.getByTestId('inspector-toggle').click();
+    await expect(shell).toHaveAttribute('data-inspector', 'hidden');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 0, expanded: 'false' });
+    await page.getByTestId('inspector-toggle').click();
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
+    // Back in the library the width folds it again, as before.
+    await backFromReader(page);
+    await expect(shell).toHaveAttribute('data-inspector', 'hidden');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 0, expanded: 'false' });
+    // And again: the second visit draws it as the first did.
+    await openItem(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '100');
+    await expect(shell).toHaveAttribute('data-inspector', 'shown');
+    await expect.poll(() => panelState(page)).toMatchObject({ width: 320, inside: true, expanded: 'true' });
   } finally {
     await app.close();
   }

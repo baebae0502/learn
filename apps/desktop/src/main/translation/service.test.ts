@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_PREFS, type Prefs } from '@learn/domain';
 import type { CachedTranslation } from '@learn/db';
 import { createFakeEngine } from './fake';
@@ -17,6 +17,47 @@ function setup(enabled: boolean | null = true) {
   return { engine, service, rows };
 }
 const input = { text: 'Attention is all you need.', from: 'auto', to: 'ko' } as const;
+
+describe('the cache is best effort (final review m-4)', () => {
+  const failing = (over: { get?: boolean; put?: boolean }) => {
+    const engine = createFakeEngine();
+    const stored: string[] = [];
+    const service = createTranslationService({
+      engine,
+      cache: () =>
+        ({
+          get: () => {
+            if (over.get) throw Object.assign(new Error('database is locked: SECRET text of the user'), { code: 'SQLITE_BUSY' });
+            return undefined;
+          },
+          put: () => {
+            if (over.put) throw Object.assign(new Error('disk I/O error'), { code: 'SQLITE_IOERR' });
+            stored.push('put');
+          },
+        }) as never,
+      prefs: () => prefsOn(true),
+      now: () => '2026-11-03T00:00:00.000Z',
+    });
+    return { engine, service, stored };
+  };
+  it.each([[{ get: true }], [{ put: true }], [{ get: true, put: true }]])('a failing cache %j does not stop the translation, and only the code is logged', async (over) => {
+    const { engine, service } = failing(over);
+    const logged: string[] = [];
+    const warn = vi.spyOn(console, 'warn').mockImplementation((...args) => void logged.push(args.join(' ')));
+    try {
+      await expect(service.translate(input)).resolves.toMatchObject({ text: '주의가 필요한 전부입니다.', cached: false });
+    } finally {
+      warn.mockRestore();
+    }
+    expect(engine.calls()).toBe(1);
+    expect(logged.length).toBeGreaterThan(0);
+    for (const line of logged) {
+      expect(line).toMatch(/SQLITE_(BUSY|IOERR)/);
+      expect(line).not.toContain('SECRET');
+      expect(line).not.toContain('Attention');
+    }
+  });
+});
 
 describe('the translation service', () => {
   it.each([null, false])('asks nothing while the switch is %s', async (enabled) => {

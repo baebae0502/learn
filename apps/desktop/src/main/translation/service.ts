@@ -11,6 +11,17 @@ export interface TranslationService {
   cancel(): void;
 }
 
+/** The cache is a convenience: a failure in it is logged by its code (never its message, which may carry text) and the translation goes on. */
+function bestEffort<T>(what: 'get' | 'put', fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch (e) {
+    const code = (e as { code?: unknown } | null)?.code;
+    console.warn(`[translation] cache ${what} failed: ${typeof code === 'string' ? code : ((e as Error | null)?.name ?? 'Error')}`);
+    return undefined;
+  }
+}
+
 export function createTranslationService(deps: {
   engine: TranslationEngine;
   cache(): Pick<TranslationCacheRepository, 'get' | 'put'>;
@@ -34,7 +45,7 @@ export function createTranslationService(deps: {
       if (input.to === 'ko' && isMostlyHangul(text)) return { text, detectedFrom: 'ko', engine: engine.id, cached: false, sameLanguage: true };
 
       const key = createHash('sha256').update(`${engine.id}\n${input.from}\n${input.to}\n${text}`).digest('hex');
-      const hit = deps.cache().get(key, now());
+      const hit = bestEffort('get', () => deps.cache().get(key, now()));
       if (hit) return { text: hit.result, detectedFrom: hit.detected, engine: hit.engine, cached: true, sameLanguage: hit.detected === input.to };
 
       const mine = new AbortController();
@@ -43,7 +54,7 @@ export function createTranslationService(deps: {
         const out = await engine.translate(text, { from: input.from, to: input.to }, mine.signal);
         if (mine.signal.aborted) throw new LearnError('CANCELLED', ERROR_COPY.translationCancelled);
         const at = now();
-        deps.cache().put({ key, engine: engine.id, from: input.from, to: input.to, detected: out.detectedFrom, result: out.text, createdAt: at, usedAt: at });
+        bestEffort('put', () => deps.cache().put({ key, engine: engine.id, from: input.from, to: input.to, detected: out.detectedFrom, result: out.text, createdAt: at, usedAt: at }));
         return { text: out.text, detectedFrom: out.detectedFrom, engine: engine.id, cached: false, sameLanguage: out.detectedFrom === input.to };
       } finally {
         if (current === mine) current = null;

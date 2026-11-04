@@ -105,6 +105,12 @@ test('turned on in the settings window, a selection is translated in the pop-up 
     await expect(page.getByTestId('translation-result')).toHaveText(K1);
     await expect(page.getByTestId('translation-source')).toHaveValue(S1);
     expect(await translationCalls(app)).toBe(1);
+    // One polite live region says the result, once: the pop-up and the panel's box are plain content (final review m-2).
+    await expect(page.getByTestId('translation-status')).toHaveText(K1);
+    await expect(page.getByTestId('translation-status')).toHaveAttribute('aria-live', 'polite');
+    await expect(page.locator('[aria-live="polite"]').filter({ hasText: K1 })).toHaveCount(1);
+    await expect(popup(page).locator('[aria-live]')).toHaveCount(0);
+    await expect(page.getByTestId('translation-result')).not.toHaveAttribute('aria-live', /./);
     await expect(popup(page).getByTestId('selection-popup-copy')).toBeVisible();
     await popup(page).getByTestId('selection-popup-copy').click();
     await expect.poll(() => readClipboard(app)).toBe(K1);
@@ -270,7 +276,8 @@ test('the panel asks for the consent too, and 번역 켜기 there turns it on', 
     await expect(section(page)).toContainText('선택한 글을 번역하려면 Google로 보냅니다.');
     expect(await translationCalls(app)).toBe(0);
     await section(page).getByTestId('consent-enable').click();
-    await expect(page.getByTestId('translation-source')).toBeVisible();
+    await expect(page.getByTestId('translation-source')).toBeFocused(); // the focus is in the 원문 box (I-2); a selection in the page is made from the page
+    await page.getByTestId('pdf-stage').focus();
     await selectInPage(page, S1);
     await expect(page.getByTestId('translation-result')).toHaveText(K1);
   } finally {

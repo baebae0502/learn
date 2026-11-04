@@ -7,6 +7,7 @@ import { commandById, commandLabel } from '@learn/domain';
 import { InspectorToggle } from '../../inspector/InspectorToggle';
 import { t } from '../../strings';
 import { SelectionPopup, usePopupShown } from '../../translation/SelectionPopup';
+import { TranslationStatus } from '../../translation/TranslationStatus';
 import { useTranslation } from '../../translation/store';
 import { dismissPopup, useSelectionText } from '../../translation/useSelectionText';
 import { currentPlatform } from '../../ui/platform';
@@ -172,6 +173,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const total = pdf?.pagesCount ?? 0;
   return (
     <div className="reader">
+      <TranslationStatus />
       <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
         <PageField page={page} total={total} onGo={(n) => handle?.goToPage(n)} onEscape={() => stageRef.current?.focus()} />
         <span className="page-count num" data-testid="pdf-page-count">

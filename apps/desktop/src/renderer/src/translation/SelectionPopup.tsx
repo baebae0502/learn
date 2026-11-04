@@ -132,7 +132,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: Tran
   );
   if (view.kind === 'pending') {
     return (
-      <div className="sp-body" aria-live="polite">
+      <div className="sp-body">
         <div className="sp-status">
           <Spinner />
           <span>{t.translation.pending}</span>
@@ -142,7 +142,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: Tran
   }
   if (view.kind === 'tooLong') {
     return (
-      <div className="sp-body" aria-live="polite">
+      <div className="sp-body">
         {status(CircleAlert, t.translation.tooLong, t.translation.tooLongNote)}
       </div>
     );
@@ -150,7 +150,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: Tran
   if (view.kind === 'error') {
     return (
       <>
-        <div className="sp-body" aria-live="polite">
+        <div className="sp-body">
           {view.code === 'TRANSLATION_OFFLINE' ? status(WifiOff, view.message) : status(TriangleAlert, view.message, undefined, 'warning')}
         </div>
         <div className="sp-foot">
@@ -165,7 +165,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: Tran
   if (view.kind !== 'done') return null;
   if (view.sameLanguage) {
     return (
-      <div className="sp-body" aria-live="polite" data-testid="selection-popup-text">
+      <div className="sp-body" data-testid="selection-popup-text">
         {status(Check, t.translation.already(langName(to) ?? ''))}
       </div>
     );
@@ -173,7 +173,7 @@ function Result({ view, from, to, onRetry }: { view: TranslationView; from: Tran
   const source = view.detectedFrom !== null && langName(view.detectedFrom) !== null ? langName(view.detectedFrom)! : from === 'auto' ? null : fromName(from);
   return (
     <>
-      <div className="sp-body" aria-live="polite" data-testid="selection-popup-text">
+      <div className="sp-body" data-testid="selection-popup-text">
         {paragraphs(view.text).map((line, i) => (
           <p key={i}>{line}</p>
         ))}

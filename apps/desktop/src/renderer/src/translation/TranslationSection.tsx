@@ -102,7 +102,7 @@ function Boxes() {
         <span className="spacer" />
         {done && <span>{toName}</span>}
       </div>
-      <div className="tr-box dst" aria-live="polite" data-testid="translation-result" data-state={view.kind}>
+      <div className="tr-box dst" data-testid="translation-result" data-state={view.kind}>
         <Result view={view} toName={toName} />
       </div>
       <div className="tr-toggles">

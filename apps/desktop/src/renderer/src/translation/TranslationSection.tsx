@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { Check, CircleAlert, TriangleAlert, WifiOff } from 'lucide-react';
 import { Checkbox, TextArea, TextField } from 'react-aria-components';
 import { preparedLength } from '@learn/domain';
@@ -24,9 +24,12 @@ export function TranslationSection() {
   // The answer replaces the button that was pressed. The focus goes where the person works next: 번역 켜기 to the 원문 box,
   // 사용 안 함 to the section's own head (not to the document).
   const held = useRef(false);
+  const consentRef = useRef<HTMLDivElement>(null);
+  const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const track = (e: FocusEvent) => {
-      held.current = e.target instanceof Element && e.target.closest('[data-testid="translation-section"] .tr-consent') !== null;
+      held.current = e.target instanceof Node && (consentRef.current?.contains(e.target) ?? false);
     };
     document.addEventListener('focusin', track);
     return () => document.removeEventListener('focusin', track);
@@ -35,8 +38,7 @@ export function TranslationSection() {
     if (!held.current) return;
     const active = document.activeElement;
     if (active && active !== document.body) return;
-    const section = document.querySelector('[data-testid="translation-section"]');
-    const target = prefs.enabled === true ? section?.querySelector<HTMLElement>('[data-testid="translation-source"]') : section?.querySelector<HTMLElement>('.section-toggle');
+    const target = prefs.enabled === true ? sourceRef.current : toggleRef.current;
     if (!target) return;
     held.current = false;
     target.focus({ preventScroll: true });
@@ -53,17 +55,17 @@ export function TranslationSection() {
     />
   );
   return (
-    <Section id="translation" title={t.translation.title} extra={direction || undefined} testId="translation-section" className="tr">
-      {prefs.enabled === null ? <ConsentPrompt where="panel" /> : prefs.enabled === false ? <ConsentPrompt where="panel" off /> : <Boxes />}
+    <Section id="translation" title={t.translation.title} extra={direction || undefined} testId="translation-section" className="tr" toggleRef={toggleRef}>
+      {prefs.enabled === null ? <ConsentPrompt where="panel" rootRef={consentRef} /> : prefs.enabled === false ? <ConsentPrompt where="panel" off rootRef={consentRef} /> : <Boxes areaRef={sourceRef} />}
     </Section>
   );
 }
 
-function Boxes() {
+function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) {
   const prefs = usePrefs().data?.translation ?? readTranslationPrefs();
   const { source, view, concat } = useTranslation();
   const { setSource, translate, clear, setConcat } = useTranslation.getState();
-  const area = useRef<HTMLTextAreaElement>(null);
+  const area = areaRef;
   // The original grows with its text up to its own limit (CSS), then scrolls in its box.
   useLayoutEffect(() => {
     const el = area.current;

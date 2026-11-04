@@ -321,13 +321,14 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 
 ## M7a 리더 결과 (2026-11-04)
 
-계획 [`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md), 명세 [`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md), 브랜치 `m7a-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7a 완료 조건"과 AC03·AC06·AC14, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7a". 결정은 [ADR-0009](decisions/0009-anchor-hub-and-links.md)(채택, 스파이크 결과), [ADR-0012](decisions/0012-translation.md)(채택). 명세 정정과 컨트롤러 판정 R-1…R-18은 [`spec-amendments.md`](spec-amendments.md) 12절.
+계획 [`superpowers/plans/2026-11-03-m7a-reader.md`](superpowers/plans/2026-11-03-m7a-reader.md), 명세 [`superpowers/specs/2026-11-03-m7a-reader-design.md`](superpowers/specs/2026-11-03-m7a-reader-design.md), 브랜치 `m7a-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7a 완료 조건"과 AC03·AC06·AC14, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7a". 결정은 [ADR-0009](decisions/0009-anchor-hub-and-links.md)(채택, 스파이크 결과), [ADR-0012](decisions/0012-translation.md)(채택). 명세 정정과 컨트롤러 판정 R-1…R-24는 [`spec-amendments.md`](spec-amendments.md) 12절.
 
 ### M7a에서 해결한 것
 - **앵커 스파이크와 ADR-0009 채택**: 실제 pdf.js 뷰어에서 확대 4 × 회전 4 × 선택 넷을 쟀다. 최대 1.51 pt(Linux @1x, 50%), 허용 2 pt. 쪽 인용(두 줄·하이픈·NFD)도 통과. 마이그레이션 003은 `anchors`에 `precision`·`text_json` 열만 더한다(P-11).
 - **PDF 리더 v2**: pdf.js 부품을 감싼 연속 스크롤·글 선택·복사, 쪽 필드와 이전·다음, 확대(메뉴 · ⌘+/−/0 · 맞춤 셋), 회전, 찾기 막대(⌘F, 겹쳐 뜸), 링크(쪽 안 이동, 바깥은 `http(s)`·`mailto:`만), 사이드바 썸네일·목차, 쪽 색, 암호 PDF와 상태 화면. 보기마다 이름이 바뀌는 공유 단축키(P-9).
 - **위치 기억과 진행 열**: SIGKILL 뒤 같은 쪽·쪽 안 위치·확대·회전으로 돌아온다. 표의 진행 열은 가장 멀리 본 쪽 기준이다(100%만 "✓ 완료").
 - **선택 번역**: main의 `translation/`(엔진 `google-web`, E2E용 가짜 엔진), 동의 먼저(`enabled: null` → 팝업이 묻고 번역 켜기 전에는 아무것도 보내지 않음), 선택 팝업과 인스펙터 번역 절이 요청 한 번을 나눔, 새 선택이 이전 요청을 취소(R-5), 캐시(`translation_cache`, 2,000행), 설정 창의 번역 그룹.
+- **Mac 실행과 Mac 디자인 비평**(12절 E-3): Mac `all`의 실패는 모두 시험 쪽이었다(러너의 1024×684 작업 영역에서 높이가 제한된 설정 창, 작은 화면에서 pdf.js가 더하는 세부 캔버스, 메뉴 줄, 경합 둘). 실제 Mac 데모 프레임의 비평(major 넷)으로 맞춤 모드의 쪽 여백(위 24 · 사이 12 · 양옆 24), 세피아의 종이색(채널 곱하기 필터), 회전 뒤 같은 쪽, 1024에서 라이브러리 → PDF의 오른쪽 패널을 고쳤고 minor 여섯(도구 막대 묶음, 패널 동의 단추, 찾기 개수 자리, 무대 포커스 링, 열린 메뉴 단추, 고전 스크롤 막대)도 고쳤다. Linux 투어는 쪽 캔버스를 가리고 찍어 맞춤 여백과 세피아를 보지 못했다 — Mac 데모 프레임이 그 빈틈을 메운다.
 - **M5·M6에서 남은 고침**: 점검 N-3·N-4, 백업 manifest `databaseSha256`(m-8), 복원 `integrity_check` + `foreign_key_check`, m-9, 작업 토스트 고정(m-3), 배치별 정착 콜백(m-2).
 - **검증**: 단위 2376개, Linux 전체 E2E 428 통과 · 4 건너뜀(6ee4b3f), 증거(`CI=1`) 70 통과 · 8 건너뜀. 투어 M7a 장면 22장(라이트·다크), axe 심각 0건, 키보드 여정, 명령 전수 `M7A_COMMANDS`, 데모 11장(Linux 보조 녹화 126.6초). 중간 Mac `e2e` run 41740397794(a2e2969): 375 통과 · 5 실패(모두 시험 쪽, 러너 1024×768 기하 — 31dd54d · 0facac3에서 고침). 성능은 `acceptance.md` M7a 5번(스크롤 p95 16.8ms는 예산 16.7을 0.1ms 넘었다).
 
@@ -342,6 +343,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **라이브러리 목업의 "읽기" 표시**(R-7): 항목 패널의 읽기 절은 M7a에서 뺐고 목업 태그는 M7b다. 둘지 M7b에서 다시 정한다.
 - **그 밖에 미룬 작은 것**: 그리기에 실패한 쪽은 pdf.js가 다시 그릴 때까지 실패로 남는다(Task 5) · pagesinit 전의 뷰어 실패에 자동 시험이 없다(Task 5) · 쪽 색 저장값이 읽히기 전 한 프레임 깜빡일 수 있다(Task 6) · `PdfDocumentView`가 `setHandle`과 정리 사이에서 던지면 낡은 핸들이 남는다(Task 6) · ⌘/ 시트 높이 캐시 키가 보기를 보지 않는다(Task 6) · `toasts.tsx`가 RAC 비공개 필드에 기댄다(Task 3, 의존성 고정) · 스파이크의 탐침은 `e2e=1`일 때만 켜지지만 번들에 들어 있다(Task 7).
 - **데모**: 2:06으로 머리글의 3–4분보다 짧다(Task 12a).
+- **Mac 비평에서 남은 것**: 가로·세로가 섞인 문서의 자동 맞춤은 지금 쪽에 맞춰 가로 쪽이 옆으로 스크롤된다(R-21 — 가장 넓은 쪽 기준 맞춤) · 쪽 필드나 이전·다음으로 간 쪽은 무대 맨 위에 붙는다(열 때와 회전 뒤에는 위 24 · 사이 12를 남긴다) · 같은 `ready`에서 PDF 보기가 다시 붙으면 찾기 막대의 스크롤 막대 오프셋 관찰자가 옛 노드를 본다 · 아주 빠른 드래그가 줄 끝의 `endOfContent`로 한 번에 뛰면 마지막 글자가 빠진다(pdf.js 6 + Chromium 152, 사람의 보통 드래그는 온전하다) · PDF를 열 때 오른쪽 패널이 한 프레임 폭 0으로 그려진다.
 
 ### 소유자 결정 (M7a, 2026-11-03)
 [M7a 명세 0절](superpowers/specs/2026-11-03-m7a-reader-design.md)의 표가 정본이다. 요약: M7을 M7a·M7b로 나눈다("진행해줘"), 번역은 선택 팝업 + 인스펙터 번역 절, 목업은 "모두 추천대로" 승인 — ⑤ 오른쪽 패널의 "읽기" 절은 M7a에서 뺀다, ⑥ 설정 창은 창 전체를 촘촘한 간격으로. R-8·R-11·R-12·R-13·R-15는 컨트롤러 판정이다 — 소유자가 "그린 대로" 승인한 렌더를 따랐고, 소유자가 항목마다 확인한 것은 아니다. 맞지 않으면 바꾼다(`spec-amendments.md` 12절 E).
@@ -355,12 +357,15 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
   - I-3은 pdf.js의 밑줄 API `_getVisiblePages()`를 쓴다 — `pdfjs-dist` 6.4.299 고정 동안 안전하다. 올릴 때 확인한다.
   - `redirect: 'error'`와 `credentials: 'omit'`은 프로토콜 처리기에서 보이지 않아 단위 시험만 지킨다(R-17).
   - 부정 확인 두 곳이 고정 시간을 기다린다(`reader-pdf.spec` 300 ms, `translation.spec` 2,000 ms) — 거짓 통과만 가능하고 흔들리지는 않는다.
+  - Mac 디자인 비평은 라이트 테마의 데모 프레임으로 했다. 다크 테마의 리더, 팝업의 오류·오프라인·너무 긴 글, 쪽 색 "어둡게"는 Mac 렌더로 비평하지 않았다(Linux 투어에는 있다).
+  - 이어 붙이기는 앱이 디자인 명세대로 원문을 줄바꿈 하나로 잇고 번역은 한 문단이다. 목업의 두 문단과 다르다(R-20) — 문단으로 나누길 원하면 알려 주세요.
 
 ### 실기에서만 확인할 것 (M7a)
 - **Retina 앵커 위치**: Mac 러너는 1024×768 @1x라 DPR 2를 잴 수 없다. 오차는 1/DPR로 줄기만 하므로 안전 쪽이지만, 실기에서 50% 확대의 앵커 어긋남이 2 pt 안인지 한 번 본다(ADR-0009).
 - **실제 1440×900 Mac에서 ⌘/ 시트가 맞는지**: 자연 높이는 754(상한 770)이고 러너는 1024×684로 줄어 스크롤이 맞게 동작한다. 실기에서는 스크롤 없이 들어가야 한다(R-10, R-14).
 - **VoiceOver로 선택 팝업**: 팝업은 포커스를 가져가지 않고 Tab으로 들어간다. 동의·결과·오류가 읽히는지, 찾기에서 돌아갈 때 "처음부터 다시 찾았습니다"가 읽히는지.
 - **트랙패드 핀치 확대**: 시험은 합성 입력뿐이다.
+- **트랙패드 Mac(오버레이 스크롤 막대)**: 시험과 러너는 고전 스크롤 막대다. 오버레이 막대에서 찾기 막대가 무대 오른쪽 끝에서 16, 썸네일이 가운데인지 본다(R-24).
 - **실제 번역 한 번(R-17)**: 시험은 실제 엔진과 `remoteFetch` → `net.fetch` 경로를 돌리지만 번역 주소의 답은 시험 처리기가 준다. 앱에서 영어 문장 하나를 골라 번역 켜기 → 번역이 나오는지, 같은 문장을 다시 고르면 바로 나오는지(캐시) 한 번 본다.
 
 ## P1 첫 작업 후보 (명세 13절 P1 게이트: "가져오기 중 종료 복구와 빈 프로필 restore")

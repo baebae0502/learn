@@ -233,6 +233,35 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
   }
 });
 
+test('scrolled to the end with several pages on screen, the progress is 100 % and the column says 완료 (final review I-3)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-pages', '100');
+    // 25 %: several pages fit the stage, so the page at its top is not the last one when the end of the document is reached.
+    await setPdfZoom(page, 0.25);
+    await expect(viewer).toHaveAttribute('data-scale', '0.25');
+    const scroll = page.getByTestId('pdf-scroll');
+    await scroll.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => scroll.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
+    // The reading place stays the top page (the restore needs it); the progress counts what was seen.
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBe(1);
+    const place = (await storedPosition(page, imported!.id))?.locator;
+    expect(place).toMatchObject({ kind: 'pdf' });
+    expect((place as { pageIndex: number }).pageIndex).toBeLessThan(99);
+    await backFromReader(page);
+    const cell = rowByTitle(page, 'paper-100').locator('[data-col="progress"]');
+    await expect(cell).toHaveText('완료');
+    await expect(cell.getByTestId('progress-done')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
 test('the progress column shows the furthest page read and does not drop when the reader goes back', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

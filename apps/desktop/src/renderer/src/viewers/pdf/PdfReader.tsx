@@ -20,6 +20,7 @@ import { PasswordPrompt } from './PasswordPrompt';
 import { pageFieldRef } from './pageField';
 import { FindBar } from './FindBar';
 import { useFind } from './findStore';
+import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
 import { stageKeyAction } from './stageKeys';
@@ -94,15 +95,25 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const place = useRef<LatestPosition | null>(null);
   useEffect(() => {
     const bus = handle?.eventBus();
-    if (!ready || !bus) return;
+    if (!ready || !bus || !handle) return;
     const onArea = (e: { location: { pageNumber: number; top: number; left: number; rotation: number } }) => {
       const { pageNumber, top, left, rotation } = e.location;
       const state = useReader.getState().pdf;
       if (!state) return;
       const zoom = state.zoom;
+      // The location is the page at the top of the stage; the progress counts the furthest page in view (spec 5).
+      const viewer = handle.viewer();
+      const container = viewer?.container;
+      const visible: PageSpan[] = [];
+      if (viewer && container) {
+        for (const v of (viewer._getVisiblePages() as { views: Array<{ id: number; view: { div: HTMLElement } }> }).views) {
+          visible.push({ number: v.id, top: v.view.div.offsetTop + v.view.div.clientTop, bottom: v.view.div.offsetTop + v.view.div.clientTop + v.view.div.clientHeight });
+        }
+      }
+      const furthest = container ? furthestPageSeen(pageNumber, state.pagesCount, container, visible) : pageNumber;
       const next: LatestPosition = {
         locator: { kind: 'pdf', pageIndex: pageNumber - 1, top, left, zoom: typeof zoom === 'number' ? clampZoom(zoom) : zoom, rotation: rotation as 0 | 90 | 180 | 270 },
-        progress: ratio(pageNumber, state.pagesCount),
+        progress: ratio(furthest, state.pagesCount),
       };
       place.current = next;
       // Before the saved place is applied the viewer reports its own start (page 1): that is never saved.

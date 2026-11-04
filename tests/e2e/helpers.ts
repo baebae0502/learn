@@ -258,6 +258,21 @@ export async function pixelAt(page: Page, x: number, y: number): Promise<[number
   }, shot.toString('base64'));
 }
 
+/** The RGBA pixels of a rectangle of the window (CSS px), row by row. */
+export async function shotPixels(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<{ width: number; height: number; data: Uint8Array }> {
+  const shot = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
+  const r = await page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let binary = '';
+    for (let i = 0; i < d.length; i += 0x8000) binary += String.fromCharCode(...d.subarray(i, i + 0x8000));
+    return { width: bitmap.width, height: bitmap.height, data: btoa(binary) };
+  }, shot.toString('base64'));
+  return { width: r.width, height: r.height, data: Buffer.from(r.data, 'base64') };
+}
+
 /** The darkest colour on the screen inside a rectangle of the window (CSS px), as [r, g, b]: whether ink stays ink. */
 export async function darkestPixel(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<[number, number, number]> {
   const shot = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });

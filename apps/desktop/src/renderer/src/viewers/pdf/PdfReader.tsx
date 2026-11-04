@@ -27,6 +27,7 @@ import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
 import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
+import { SepiaFilter } from './SepiaFilter';
 import { ViewMenu } from './ViewMenu';
 import { ZoomField } from './ZoomField';
 import { clampZoom } from './zoom';
@@ -182,6 +183,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const total = pdf?.pagesCount ?? 0;
   return (
     <div className="reader">
+      <SepiaFilter />
       <TranslationStatus />
       <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
         <PageField page={page} total={total} onGo={(n) => handle?.goToPage(n)} onEscape={() => stageRef.current?.focus()} />

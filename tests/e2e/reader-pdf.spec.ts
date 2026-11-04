@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { FIXTURES, backFromReader, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -280,6 +280,50 @@ test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page
     await page.getByTestId('pdf-zoom-menu').click();
     await expect(page.getByRole('menuitemradio', { name: '한 쪽 전체 보기' })).toHaveAttribute('aria-checked', 'true');
     await page.keyboard.press('Escape');
+  } finally {
+    await app.close();
+  }
+});
+
+test('세피아 at 400 %: the detail canvas pdf.js lays over a capped page is multiplied like the page, ink is not drawn twice (review Important 2)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await setPdfZoom(page, 4);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '4');
+    const canvases = page.locator('.pdfViewer .page[data-page-number="1"] canvas');
+    // The screen area caps the page's own canvas at this zoom and pdf.js draws the visible part again over it; a few frames for it to arrive.
+    await page.waitForTimeout(1500);
+    const detail = await canvases.evaluateAll((all) => all.filter((c) => c.getAttribute('aria-hidden') === 'true').length);
+    console.log(`[measure] detail canvases at 400 %: ${detail}`);
+    const region = async () => {
+      const r = await page.evaluate(() => {
+        const sc = document.querySelector('[data-testid="pdf-scroll"]')!.getBoundingClientRect();
+        const pg = document.querySelector('.pdfViewer .page[data-page-number="1"]')!.getBoundingClientRect();
+        const left = Math.max(sc.left, pg.left) + 2;
+        const top = Math.max(sc.top, pg.top) + 2;
+        return { x: Math.ceil(left), y: Math.ceil(top), width: Math.floor(Math.min(sc.right - 20, pg.right) - left), height: Math.floor(Math.min(sc.bottom, pg.bottom) - top) };
+      });
+      return shotPixels(page, r);
+    };
+    const original = await region();
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByRole('menuitemradio', { name: '세피아' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'sepia');
+    await page.waitForTimeout(500);
+    const paper = await resolveColor(page, 'var(--page-sepia-bg)');
+    const sepia = await region();
+    expect(sepia.width).toBe(original.width);
+    expect(sepia.height).toBe(original.height);
+    // Every pixel is the original's times the paper colour; ink drawn twice would come out darker than that.
+    let darker = 0;
+    let ink = 0;
+    for (let i = 0; i < original.data.length; i += 4) {
+      if (original.data[i]! < 128) ink++;
+      for (let c = 0; c < 3; c++) if (sepia.data[i + c]! < (original.data[i + c]! * paper[c]!) / 255 - 6) darker++;
+    }
+    expect(ink, 'the region shows ink').toBeGreaterThan(200);
+    expect(darker, 'pixels darker than the original times the paper').toBeLessThanOrEqual(original.data.length / 4 / 500);
   } finally {
     await app.close();
   }

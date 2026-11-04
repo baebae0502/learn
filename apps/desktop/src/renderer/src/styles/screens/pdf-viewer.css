@@ -351,11 +351,12 @@
   .find-bar .find-field {
     width: 220px; /* local: the field's width in the mockup */
   }
-  /* The count is the field's last child (mockup .find-bar .count): tertiary, tabular, and it never wraps or shrinks. */
+  /* The count is the field's last child (mockup .find-bar .count): tabular, and it never wraps or shrinks. Secondary, not the
+     mockup's tertiary: 12 px text keeps 4.5:1, as the library's stats line does. */
   .find-bar .find-count {
     flex: none;
     margin-left: auto;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font: var(--type-footnote);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

@@ -1045,7 +1045,7 @@ test('the toolbar groups as the mockup has them: "/ 100" takes its own width wit
   }
 });
 
-test('the find bar as the mockup draws it: the count sits inside the field on the right in the tertiary colour, there is no clear button, and the bar is about 304 wide (Mac critique 7)', async ({}, testInfo) => {
+test('the find bar as the mockup draws it: the count sits inside the field on the right in the secondary colour, there is no clear button, and the bar is about 304 wide (Mac critique 7)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
@@ -1068,10 +1068,10 @@ test('the find bar as the mockup draws it: the count sits inside the field on th
     expect(g.bar.width).toBeGreaterThanOrEqual(300);
     expect(g.bar.width).toBeLessThanOrEqual(308);
     await expect(page.getByTestId('pdf-find-field-clear')).toHaveCount(0);
-    // The colour is --text-tertiary (the probe's `background` is that token resolved the same way).
+    // The colour is --text-secondary, 4.5:1 at 12 px (the probe resolves that token the same way).
     const sameColour = await findCount(page).evaluate((el) => {
       const probe = document.createElement('span');
-      probe.style.color = 'var(--text-tertiary)';
+      probe.style.color = 'var(--text-secondary)';
       document.body.append(probe);
       const want = getComputedStyle(probe).color;
       probe.remove();

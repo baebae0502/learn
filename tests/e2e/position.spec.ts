@@ -235,6 +235,45 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
   }
 });
 
+test('a page wider than the stage reopens with its 24 on the left, as it was left (R-25; CI 41866507324 caught the tour without it)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await setPdfZoom(page, 2);
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    const scroll = page.getByTestId('pdf-scroll');
+    // The room left of the page and how far the stage scrolls sideways: at 200 % the page is wider than the stage.
+    const left = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector('[data-testid="pdf-viewer"] .page[data-page-number="1"]')!.getBoundingClientRect();
+        return { room: pg.left - sc.getBoundingClientRect().left, overflow: sc.scrollWidth - sc.clientWidth };
+      });
+    await scroll.evaluate((el) => void (el.scrollLeft = 0));
+    expect((await left()).overflow).toBeGreaterThan(24);
+    expect((await left()).room).toBeCloseTo(24, 0);
+    // The place saved with the room showing: pdf.js's left is then inside the margin, below 0.
+    await expect
+      .poll(async () => {
+        const l = (await storedPosition(page, imported!.id))?.locator;
+        return l?.kind === 'pdf' && l.pageIndex === 0 && l.zoom === 2 && typeof l.left === 'number' && l.left < 0;
+      })
+      .toBe(true);
+    await backFromReader(page);
+    await openItem(page, 'paper-100');
+    await expect(scroll).toHaveAttribute('data-restored', '');
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    // pdf.js scrolls a place to the page's left edge (it drops a left inside the margin): the room beside the page comes back,
+    // as the room above it does.
+    expect((await left()).room).toBeCloseTo(24, 0);
+  } finally {
+    await app.close();
+  }
+});
+
 test('scrolled to the end with several pages on screen, the progress is 100 % and the column says 완료 (final review I-3)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

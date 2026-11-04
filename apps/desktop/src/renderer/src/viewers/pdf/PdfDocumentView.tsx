@@ -126,6 +126,10 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             // A place at the top of a page keeps the room above it (24 over the first page, 12 between pages), as the mockup draws it.
             const pageDiv = viewer.getPageView(pageIndex)?.div;
             if (pageDiv && Math.abs(container.scrollTop - (pageDiv.offsetTop + pageDiv.clientTop)) <= 1) container.scrollTop -= pageIndex === 0 ? 24 : 12;
+            // So does a place at the page's left edge: pdf.js drops a negative left (the room beside the page) and scrolls to the edge,
+            // so when the stage scrolls sideways (a page wider than it, at a zoom or in a mixed-size document) the 24 beside the page
+            // shows again (R-25).
+            if (pageDiv && container.scrollLeft > 0 && Math.abs(container.scrollLeft - (pageDiv.offsetLeft + pageDiv.clientLeft)) <= 1) container.scrollLeft -= 24;
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
             store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });

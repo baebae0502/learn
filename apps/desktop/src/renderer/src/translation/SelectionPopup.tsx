@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Check, CircleAlert, Copy, TriangleAlert, WifiOff } from 'lucide-react';
 import type { TranslationFrom, TranslationLang } from '@learn/domain';
 import { t } from '../strings';
@@ -56,6 +56,25 @@ export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement |
     if (top + height > box.height - EDGE) top = Math.max(EDGE, last.top - box.top - GAP - height);
     setPos((p) => (p && Math.abs(p.left - left) < 0.5 && Math.abs(p.top - top) < 0.5 ? p : { left, top }));
   }, [stageRef]);
+
+  // The pop-up never takes the focus, but a person can Tab into it or press a button. When what it says changes and the button that
+  // had the focus is gone (번역 켜기 → pending, 다시 번역 → pending, 사용 안 함 or esc → closed), the focus would drop to the
+  // document: the stage gets it, where the arrows turn pages and the selection stays.
+  const held = useRef(false);
+  useEffect(() => {
+    const track = (e: FocusEvent) => {
+      held.current = ref.current?.contains(e.target as Node) ?? false;
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, []);
+  useLayoutEffect(() => {
+    if (!held.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    held.current = false;
+    stageRef.current?.focus({ preventScroll: true });
+  }, [shown, view, stageRef]);
 
   // Placed before the frame is drawn, and again whenever what it says changes its size or the page moves under it.
   useLayoutEffect(() => {

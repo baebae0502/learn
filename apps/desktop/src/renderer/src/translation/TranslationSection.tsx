@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Check, CircleAlert, TriangleAlert, WifiOff } from 'lucide-react';
 import { Checkbox, TextArea, TextField } from 'react-aria-components';
 import { usePrefs } from '../data/queries';
@@ -20,6 +20,26 @@ type CopyKind = 'source' | 'result' | 'both';
 export function TranslationSection() {
   const prefs = usePrefs().data?.translation ?? readTranslationPrefs();
   const enabled = prefs.enabled === true;
+  // The answer replaces the button that was pressed. The focus goes where the person works next: 번역 켜기 to the 원문 box,
+  // 사용 안 함 to the section's own head (not to the document).
+  const held = useRef(false);
+  useEffect(() => {
+    const track = (e: FocusEvent) => {
+      held.current = e.target instanceof Element && e.target.closest('[data-testid="translation-section"] .tr-consent') !== null;
+    };
+    document.addEventListener('focusin', track);
+    return () => document.removeEventListener('focusin', track);
+  }, []);
+  useLayoutEffect(() => {
+    if (!held.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const section = document.querySelector('[data-testid="translation-section"]');
+    const target = prefs.enabled === true ? section?.querySelector<HTMLElement>('[data-testid="translation-source"]') : section?.querySelector<HTMLElement>('.section-toggle');
+    if (!target) return;
+    held.current = false;
+    target.focus({ preventScroll: true });
+  }, [prefs.enabled]);
   const direction = enabled && (
     <MenuButton
       label={directionLabel(prefs)}

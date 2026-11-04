@@ -278,6 +278,91 @@ test('the panel asks for the consent too, and 번역 켜기 there turns it on', 
   }
 });
 
+const activeId = (page: Page) => page.evaluate(() => document.activeElement?.closest('[data-testid]')?.getAttribute('data-testid') ?? document.activeElement?.tagName ?? null);
+
+test('Tab goes from the stage into the pop-up; 번역 켜기 by the keyboard or by the mouse gives the focus back to the stage, and → turns the page (final review I-2)', async ({}, testInfo) => {
+  for (const how of ['keyboard', 'mouse'] as const) {
+    const { app, page } = await launch(testInfo.outputPath(`library-${how}`), testInfo.outputPath(`userdata-${how}`));
+    try {
+      await openReader(page, PAPER, 'paper-100');
+      await page.getByTestId('pdf-stage').focus();
+      await selectInPage(page, S1);
+      await expect(popup(page)).toHaveAttribute('data-state', 'consent');
+      if (how === 'keyboard') {
+        await page.keyboard.press('Tab');
+        await expect(popup(page).getByTestId('consent-enable')).toBeFocused();
+        await page.keyboard.press('Enter');
+      } else {
+        await popup(page).getByTestId('consent-enable').click();
+      }
+      await expect(popup(page)).toHaveAttribute('data-state', 'done');
+      expect(await activeId(page)).toBe('pdf-stage');
+      await page.keyboard.press('ArrowRight');
+      await expect(viewer(page)).toHaveAttribute('data-page', '2');
+    } finally {
+      await app.close();
+    }
+  }
+});
+
+test('esc on a pop-up button closes the pop-up and the stage has the focus; 다시 번역 and 사용 안 함 leave no dead end either (final review I-2)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    await page.getByTestId('pdf-stage').focus();
+    await selectInPage(page, S1);
+    await expect(popup(page)).toHaveAttribute('data-state', 'consent');
+    await page.keyboard.press('Tab');
+    await expect(popup(page).getByTestId('consent-enable')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(popup(page)).toHaveCount(0);
+    expect(await activeId(page)).toBe('pdf-stage');
+    // 사용 안 함, by the keyboard: the pop-up goes and the stage has the focus.
+    await unselect(page);
+    await selectInPage(page, S3);
+    await expect(popup(page)).toHaveAttribute('data-state', 'consent');
+    await page.getByTestId('pdf-stage').focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(popup(page).getByTestId('consent-decline')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(popup(page)).toHaveCount(0);
+    expect(await activeId(page)).toBe('pdf-stage');
+    // 다시 번역: the retry button is replaced by the pending state.
+    await setTranslation(page, { enabled: true });
+    await translationFake(app, 'offline');
+    await unselect(page);
+    await selectInPage(page, S4);
+    await expect(popup(page)).toHaveAttribute('data-state', 'error');
+    await page.getByTestId('pdf-stage').focus();
+    await page.keyboard.press('Tab');
+    await expect(popup(page).getByTestId('translation-retry')).toBeFocused();
+    await translationFake(app, 'slow');
+    await page.keyboard.press('Enter');
+    await expect(popup(page)).toHaveAttribute('data-state', 'pending');
+    expect(await activeId(page)).toBe('pdf-stage');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the panel: 번역 켜기 gives the focus to the 원문 box, 사용 안 함 to the section (final review I-2)', async ({}, testInfo) => {
+  for (const answer of ['enable', 'decline'] as const) {
+    const { app, page } = await launch(testInfo.outputPath(`library-${answer}`), testInfo.outputPath(`userdata-${answer}`));
+    try {
+      await openReader(page, PAPER, 'paper-100');
+      await section(page).getByTestId(answer === 'enable' ? 'consent-enable' : 'consent-decline').click();
+      if (answer === 'enable') await expect(page.getByTestId('translation-source')).toBeFocused();
+      else {
+        await expect(section(page)).toContainText('번역을 사용하지 않습니다.');
+        await expect(section(page).locator('.section-toggle')).toBeFocused();
+      }
+    } finally {
+      await app.close();
+    }
+  }
+});
+
 test('a request still on its way when the reader closes is cancelled and leaves no error; the next reader starts empty', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const errors = errorsOf(page);

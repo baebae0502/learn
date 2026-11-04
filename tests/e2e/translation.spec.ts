@@ -2,7 +2,7 @@
 // (main/translation/fake.ts) — nothing here reaches the real service.
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { FIXTURES, backFromReader, dragAlong, expectWindow, isCloseNoise, importPaths, launch, mainWindow, openItem, readClipboard, runMenuCommand, runPalette, selectInPage, translationCalls, translationFake, translationNet, TRANSLATION_NET_ENV } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
@@ -337,6 +337,34 @@ test('선택한 글 번역 from the palette shows the pop-up again for the selec
     await expect(popup(page)).toHaveCount(0);
     await runPalette(page, app, '번역', 'translation.translateSelection');
     await expect(popup(page)).toContainText(K1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the consent buttons: regular (28 high, body 13) in the panel, small (22) in the pop-up (Mac critique 6)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    const sizeOf = (root: Locator, id: string) =>
+      root.getByTestId(id).evaluate((el) => ({ height: el.getBoundingClientRect().height, font: getComputedStyle(el).fontSize }));
+    await expect(section(page).getByTestId('consent-enable')).toBeVisible();
+    const body = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.style.font = 'var(--type-body)';
+      document.body.append(probe);
+      const size = getComputedStyle(probe).fontSize;
+      probe.remove();
+      return size;
+    });
+    for (const id of ['consent-enable', 'consent-decline']) {
+      const panel = await sizeOf(section(page), id);
+      expect(panel.height).toBe(28);
+      expect(panel.font).toBe(body);
+    }
+    await selectInPage(page, S1);
+    await expect(popup(page)).toHaveAttribute('data-state', 'consent');
+    for (const id of ['consent-enable', 'consent-decline']) expect((await sizeOf(popup(page), id)).height).toBe(22);
   } finally {
     await app.close();
   }

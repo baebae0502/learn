@@ -12,13 +12,15 @@ export function ConsentPrompt({ where, off = false, rootRef }: { where: 'popup' 
   const decline = useTranslation((s) => s.decline);
   const text = off ? t.translation.offText : t.translation.consentText;
   const note = off ? t.translation.offNote : t.translation.consentNote;
+  // The pop-up's buttons are small (22); the panel's are regular (28, body 13) as in the approved inspector render.
+  const size = where === 'popup' ? 'small' : 'regular';
   const answers = (
     <>
-      <Button variant={off ? 'secondary' : 'primary'} size="small" testId="consent-enable" onPress={() => void enable()}>
+      <Button variant={off ? 'secondary' : 'primary'} size={size} testId="consent-enable" onPress={() => void enable()}>
         {t.translation.enable}
       </Button>
       {!off && (
-        <Button size="small" testId="consent-decline" onPress={() => void decline()}>
+        <Button size={size} testId="consent-decline" onPress={() => void decline()}>
           {t.translation.decline}
         </Button>
       )}

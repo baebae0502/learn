@@ -172,8 +172,17 @@ test('PDF zoom levels keep rendering', async ({}, testInfo) => {
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   const widthOf = () => pdfCanvas(page, 1).evaluate((c: HTMLCanvasElement) => c.clientWidth);
   await setPdfZoom(page, 1);
-  await expect.poll(widthOf).toBeGreaterThan(0);
-  const width100 = await widthOf();
+  // The width at 100 % once it holds still: a read while pdf.js swaps the page's canvas can see the new one before it is
+  // laid out (0 on Mac run 41837267944, which then compared 0.5 × against 0).
+  let width100 = 0;
+  await expect
+    .poll(async () => {
+      const first = await widthOf();
+      await page.waitForTimeout(100);
+      width100 = (await widthOf()) === first ? first : 0;
+      return width100;
+    })
+    .toBeGreaterThan(0);
   await setPdfZoom(page, 2);
   await expect.poll(widthOf).toBeGreaterThan(width100 * 1.9);
   await setPdfZoom(page, 0.5);

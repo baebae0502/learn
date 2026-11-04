@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { LibraryItem } from '../../packages/domain/src/library';
-import { FIXTURES, backFromReader, hardKill, importPaths, launch, openItem, rowByTitle, runMenuCommand, setPdfZoom } from './helpers';
+import { FIXTURES, backFromReader, hardKill, importPaths, launch, mainWindow, openItem, rowByTitle, runMenuCommand, setPdfZoom } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf'); // 3 pages
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
@@ -40,7 +40,9 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
     await page.getByTestId('viewer-back').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
-    // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first.
+    // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first. The sampler
+    // runs on animation frames, which stop while the window counts as hidden (Mac run 41837267944 saw none): keep it awake.
+    await (await mainWindow(app)).evaluate((w) => w.webContents.setBackgroundThrottling(false));
     await page.evaluate(() => {
       const seen: string[] = [];
       (window as unknown as { __indicator: string[] }).__indicator = seen;

@@ -25,7 +25,11 @@ const CANNED = new Map<string, string>(mainStrings.fakeTranslation.pairs);
 /** The recorded answer shape: [[[translated, original, null, null, 3], ...], null, detectedLanguage, ...]. */
 export function cannedGoogleBody(text: string): unknown {
   const sentences = splitSentences(text);
-  const segments = sentences.map((s) => [CANNED.get(s) ?? `${mainStrings.fakeTranslation.unknownPrefix}${s}`, s, null, null, 3]);
+  // As recorded (fixtures/translation/google-auto.json): every segment but the last keeps the blank that followed its sentence.
+  const segments = sentences.map((s, i) => {
+    const gap = i < sentences.length - 1 ? ' ' : '';
+    return [`${CANNED.get(s) ?? `${mainStrings.fakeTranslation.unknownPrefix}${s}`}${gap}`, `${s}${gap}`, null, null, 3, null, null, [[]], [[['', 'en_ko_2023q1.md']]]];
+  });
   return [segments, null, isMostlyHangul(text) ? 'ko' : 'en', null, null, null, null, []];
 }
 

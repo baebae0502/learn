@@ -31,16 +31,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
-import { commandById, commandLabel, type CommandId } from '../../packages/domain/src/commands';
+import { type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, ROOT, bringAppToFront, clickToCloseSheet, drag, dropSource, expectWindow, importFiles, importPause, importQueueState, importResume, importWaiting,
-  launch, nativeKeyCode, nativeKeystroke, osascript, osascriptLimits, rowAt, rowByTitle, runMenuCommand, selectInPage, specialRow, stubFolderPicker, stubFolderPicks, waitImportIdle,
+  FIXTURES, NativeInputNotPermitted, ROOT, bringAppToFront, importFiles,
+  launch, nativeKeyCode, nativeKeystroke, osascriptLimits, rowByTitle, runMenuCommand, selectInPage, waitImportIdle,
   type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
-import { captionBottom, captionSpot, parkSpot as parkAt } from './demo-geometry';
+import { captionBottom, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron } from './demo-mac';
 import { PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
@@ -77,17 +77,6 @@ const GRAB = (() => {
 /** The English paper the reader chapters open (fixtures/generated/paper-100.pdf, copied under a readable name). */
 const PAPER_TITLE = 'Attention Is All You Need';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** The platform's add-to-selection modifier for a click (⌘ on macOS, Ctrl elsewhere). */
-const MOD = IS_MAC ? 'Meta' : 'Control';
-/** The size of a copy in the demo's big folder: sized so that 30 of them take a while to hash and place. */
-const FILLER_BYTES = 1_000_000;
-/** A PDF of about FILLER_BYTES that differs from every other by its name (a comment after %%EOF, then blanks); returns its path. */
-function fillerPdf(file: string, base: Buffer): string {
-  const tag = Buffer.from(`\n% Learn demo ${path.basename(file)}\n`);
-  fs.writeFileSync(file, Buffer.concat([base, tag, Buffer.alloc(Math.max(0, FILLER_BYTES - base.length - tag.length), 0x20)]));
-  return file;
-}
-
 /**
  * One way to take the recording. Mac run 39779536146 lost it: screencapture exited 8 s in, at 1600 × 900 ("capture
  * error"), while the same image recorded 280 s in that mode before (run 39729419115) and 10 s at 1024 × 768 later the
@@ -188,13 +177,10 @@ const STOP_MS = 30_000;
  * consecutive F6 stops) may be read together with their pill.
  */
 const afterKey = (pressedAt: number, result = 2500) => sleep(Math.max(0, pressedAt + (PILL_GONE_MS + result) * PACE - Date.now()));
-/** The caption of a chapter that opens a sheet: two lines left of the sheet (final critique minor 5: it hid the caption's end). */
-const SHEET_CAPTION_WIDTH = 400;
 /** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second, 3.5–6.5 s. */
 const captionMs = (text: string) => Math.min(6500, Math.max(3500, Math.round((text.length / 12) * 1000)));
 /** A shortcut as this platform's menus write it (⌘O on macOS, Ctrl+O elsewhere). */
 const key = (accelerator: string) => acceleratorLabel(accelerator, process.platform);
-const label = (id: CommandId) => commandLabel(commandById(id), process.platform);
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
@@ -560,25 +546,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       lastCaptioned = 'target' in where ? where : { target: where };
       await caption(lastCaptioned, title, holdMs);
     };
-    /**
-     * Where a settings chapter is captioned (mac1 m3, concern 4; demo-geometry.ts): in the main window (it shows a
-     * caption while not key) where the settings window leaves its caption box free, else there at a narrower width,
-     * left of the settings window; only when even that leaves no room, at the top of the settings window. A chapter
-     * that clicks a theme tile (`clicksTiles`) then has it under the tiles, never over 외관 or a tile.
-     */
-    const captionFor = async (settings: Page, opts: { clicksTiles?: boolean } = {}): Promise<Captioned> => {
-      // Its bounds once it is shown: before that it still has the height it was created with (measured, then sized).
-      await expect
-        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings') && x.isVisible())))
-        .toBe(true);
-      const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
-      const spot = captionSpot(m, w, await mainCaptionBottom());
-      if (spot.target === 'main') return { target: page, ...(spot.maxWidth !== undefined ? { maxWidth: spot.maxWidth } : {}) };
-      notes.push('a settings chapter is captioned in the settings window (it covers the main window\'s caption room)');
-      if (!opts.clicksTiles) return { target: settings, place: 'top' };
-      const tiles = (await settings.locator('.theme-tiles').boundingBox())!;
-      return { target: settings, place: 'top', top: Math.round(tiles.y + tiles.height + 12) };
-    };
     /** The lasting "스크립트로 재현" tag while a scripted gesture is on screen (T13R2-m3). */
     const scriptedTag = async (text: string | null) => {
       await page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
@@ -617,75 +584,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       input[how === 'menu' ? 'menu' : 'native']++;
       return at;
     };
-    const rows = page.getByTestId('item-row');
-    /** A settings window or a sheet is on screen (the settings window may wait hidden beforehand). */
-    const windowUp = (kind: 'settings' | 'sheet') => () =>
-      app.evaluate(({ BrowserWindow }, kind) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes(`window=${kind}`)), kind);
-    /**
-     * Native popups (the collection and tag menus, the item menu) as the camera should see them: on macOS the real menu opens
-     * and stays up for a moment, then the script picks the row (its own click(), as stubContextMenu does) — a path of labels
-     * down the submenus (['색 지정', '1 노랑']) — and closes the menu; the chapter's caption says the pick is scripted. Elsewhere
-     * nothing is drawn and the pick is at once. A popup with no pick waiting closes after 1.5 s: no menu is ever left open on camera.
-     */
-    await app.evaluate(({ Menu }, show) => {
-      interface LiveItem { label: string; enabled: boolean; visible: boolean; submenu?: { items: LiveItem[] }; click(): void }
-      const g = globalThis as { __learnDemoPick?: { path: string[]; holdMs: number } | null; __learnDemoMenuSteps?: number | null; __learnRealPopup?: Electron.Menu['popup'] };
-      g.__learnRealPopup ??= Menu.prototype.popup;
-      const real = g.__learnRealPopup;
-      Menu.prototype.popup = function popup(this: Electron.Menu, options?: Electron.PopupOptions) {
-        const pick = g.__learnDemoPick ?? null;
-        g.__learnDemoPick = null;
-        let level = this.items as unknown as LiveItem[];
-        let target: LiveItem | undefined;
-        for (const name of pick?.path ?? []) {
-          target = level.find((i) => i.label === name && i.enabled && i.visible);
-          if (!target) break;
-          level = target.submenu?.items ?? [];
-        }
-        if (target?.submenu) target = undefined; // a path that ends on a submenu's head picks nothing
-        // How many arrow-downs lead from the row under the pointer (the first one a keyboard can reach) to the target:
-        // the rows between them in this menu's template, separators and rows that are disabled or hidden not counted.
-        const reachable = (this.items as unknown as Array<LiveItem & { type?: string }>).filter((i) => i.type !== 'separator' && i.enabled && i.visible);
-        g.__learnDemoMenuSteps = target && (pick?.path.length ?? 0) === 1 ? Math.max(0, reachable.indexOf(target)) : 0;
-        if (show) real.call(this, options);
-        setTimeout(() => {
-          target?.click();
-          if (show) this.closePopup();
-          else options?.callback?.();
-        }, show ? (pick?.holdMs ?? 1500) : 0);
-      };
-    }, IS_MAC);
-    /** The row (a label, or a path of labels down the submenus) the next native popup picks, after showing itself `holdMs` on macOS. */
-    const pickFromNextPopup = (itemLabel: string | readonly string[], holdMs = 2200) =>
-      app.evaluate((_electron, p) => {
-        const g = globalThis as { __learnDemoPick?: unknown; __learnDemoMenuSteps?: number | null };
-        g.__learnDemoPick = p;
-        g.__learnDemoMenuSteps = null;
-      }, {
-        path: typeof itemLabel === 'string' ? [itemLabel] : [...itemLabel],
-        holdMs: Math.round(holdMs * PACE),
-      });
-    /**
-     * macOS: moves the open native menu's highlight from the row under the pointer down to the row the pick is about to
-     * take, with real arrow-down presses, so the menu shows the row the chapter talks about. Nothing elsewhere (no menu is
-     * drawn). A key macOS refuses or that fails is a note: the pick still happens, only without the highlight.
-     */
-    const highlightPickedRow = async () => {
-      if (!IS_MAC) return;
-      const deadline = Date.now() + 3000;
-      let steps: number | null = null;
-      while (steps === null && Date.now() < deadline) {
-        steps = await app.evaluate(() => (globalThis as { __learnDemoMenuSteps?: number | null }).__learnDemoMenuSteps ?? null);
-        if (steps === null) await sleep(100);
-      }
-      if (steps === null) return void notes.push('the item menu did not open in time to move its highlight');
-      try {
-        for (let i = 0; i < steps; i++) await nativeKeyCode(app, KEY_CODE.down);
-      } catch (e) {
-        notes.push(`the item menu's highlight stayed where it was (${errorText(e)})`);
-      }
-    };
-
     if (IS_MAC) await bringAppToFront(app);
     await drawFor(page);
     await park(page, 'main');
@@ -886,6 +784,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     page = s.page;
     await drawFor(page);
     await park(page, 'main');
+    // The new window has its own overlay, which starts empty: the caption is shown again here.
     await caption({ target: page }, '앱을 종료했다가 다시 열고 같은 논문을 열면, 읽던 쪽과 배율과 쪽 색이 그대로입니다.', 5000);
     await pause(2500);
     await glideClick(page, 'main', rowByTitle(page, PAPER_TITLE));

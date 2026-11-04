@@ -10,6 +10,20 @@ export const TRANSLATION_MAX_CHARS = 5000;
 export const TRANSLATION_CHUNK_CHARS = 4500;
 export const TRANSLATION_CACHE_MAX = 2000;
 
+/** What a PDF selection becomes before it is sent (and cached under): a word broken at a line end is joined, the rest is one line. */
+export function prepareText(raw: string): string {
+  return raw
+    .normalize('NFC')
+    .replace(/(?<=\p{L})-\r?\n(?=\p{L})/gu, '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** The length the limit is judged by: the prepared text's, whoever asks (main refuses by it; the reader says "too long" by it). */
+export const preparedLength = (raw: string): number => prepareText(raw).length;
+export const isTranslationTooLong = (raw: string): boolean => preparedLength(raw) > TRANSLATION_MAX_CHARS;
+
 export const translationFromSchema = z.enum(['auto', ...TRANSLATION_LANGS]);
 export const translationToSchema = z.enum(TRANSLATION_LANGS);
 

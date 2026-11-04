@@ -1,14 +1,7 @@
 import { TRANSLATION_CHUNK_CHARS } from '@learn/domain';
 
-/** What a PDF selection becomes before it is sent (and cached under): a word broken at a line end is joined, the rest is one line. */
-export function prepareText(raw: string): string {
-  return raw
-    .normalize('NFC')
-    .replace(/(?<=\p{L})-\r?\n(?=\p{L})/gu, '')
-    .replace(/\r?\n/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
+// The preparation is shared with the reader, which judges the length by it (domain translation.ts).
+export { prepareText } from '@learn/domain';
 
 const SENTENCE_END = /(?<=[.!?。！？])\s+/;
 

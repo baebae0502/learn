@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Check, CircleAlert, TriangleAlert, WifiOff } from 'lucide-react';
 import { Checkbox, TextArea, TextField } from 'react-aria-components';
+import { preparedLength } from '@learn/domain';
 import { usePrefs } from '../data/queries';
 import { Section } from '../inspector/Section';
 import { t } from '../strings';
@@ -74,7 +75,7 @@ function Boxes() {
   const done = view.kind === 'done' ? view : null;
   const toName = langName(prefs.to) ?? '';
   const sourceLang = done?.detectedFrom != null && langName(done.detectedFrom) !== null ? langName(done.detectedFrom) : prefs.from !== 'auto' ? langName(prefs.from) : null;
-  const length = view.kind === 'tooLong' ? t.translation.chars(source.trim().length) : null;
+  const length = view.kind === 'tooLong' ? t.translation.chars(preparedLength(source)) : null;
   const sourceNote = [sourceLang, length].filter((x): x is string => Boolean(x)).join(' · ');
   const failed = view.kind === 'error';
   const empty = source.trim() === '';

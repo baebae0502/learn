@@ -66,6 +66,14 @@ describe('what a selection does by the consent', () => {
     useTranslation.getState().select('a'.repeat(5000));
     expect(useTranslation.getState().view).toEqual({ kind: 'pending' });
   });
+  it('judges the length as main does, by the prepared text: NFD Korean just over 5,000 code units raw is within the limit (final review m-3)', () => {
+    translate.mockResolvedValue(done('t'));
+    const nfd = '가'.repeat(2500).normalize('NFD') + '나'.repeat(1000).normalize('NFD');
+    expect(nfd.trim().length).toBeGreaterThan(5000);
+    useTranslation.getState().select(nfd);
+    expect(useTranslation.getState().view).toEqual({ kind: 'pending' });
+    expect(translate).toHaveBeenCalledTimes(1);
+  });
   it('carries what the engine says about the language', async () => {
     translate.mockResolvedValue(done('이미', { sameLanguage: true, detectedFrom: 'ko', cached: true }));
     useTranslation.getState().select('이미 한국어입니다.');

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ERROR_COPY, TRANSLATION_MAX_CHARS, type ErrorCode, type TranslationPrefs } from '@learn/domain';
+import { ERROR_COPY, isTranslationTooLong, type ErrorCode, type TranslationPrefs } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { readTranslationPrefs, saveTranslationPrefs } from './prefs';
 
@@ -70,7 +70,7 @@ export const useTranslation = create<TranslationState>()((set, get) => {
       set({ view: { kind: 'idle' } });
       return;
     }
-    if (text.length > TRANSLATION_MAX_CHARS) {
+    if (isTranslationTooLong(text)) {
       cancelInFlight();
       set({ view: { kind: 'tooLong' } });
       return;

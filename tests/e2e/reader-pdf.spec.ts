@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, importPaths, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, readClipboard, runMenuCommand, setPdfZoom, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -218,6 +218,52 @@ test('the zoom field takes a percent; the zoom menu fits the page to the stage',
     await page.getByTestId('pdf-zoom-menu').click();
     await page.getByRole('menuitemradio', { name: '125%' }).click();
     await expect(viewer(page)).toHaveAttribute('data-scale', '1.25');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a fit mode is computed again when the stage changes size; a number stays as it is (final review I-1)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await field(page).fill('5');
+    await field(page).press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-page', '5');
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
+    const scale = async () => Number(await viewer(page).getAttribute('data-scale'));
+    const stageWidth = () => page.getByTestId('pdf-scroll').evaluate((el) => el.clientWidth);
+    const before = await scale();
+    const wide = await stageWidth();
+    // The window narrower (any screen can give that): the fitted page follows the stage.
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(Math.round(w.getContentSize()[0]! * 0.7), w.getContentSize()[1]!));
+    await expect.poll(stageWidth).toBeLessThan(wide);
+    await expect.poll(scale).toBeLessThan(before);
+    const narrow = await scale();
+    // The stage wider again by folding the panel or by the window: the scale grows once more.
+    await (await mainWindow(app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), Math.round((await page.evaluate(() => innerWidth)) / 0.7));
+    await expect.poll(scale).toBeGreaterThan(narrow);
+    await expect(viewer(page)).toHaveAttribute('data-zoom', 'auto');
+    await page.getByTestId('pdf-zoom-menu').click();
+    await expect(page.getByRole('menuitemradio', { name: '자동 맞춤' })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
+    await expect(viewer(page)).toHaveAttribute('data-page', '5');
+    // Folding the item panel widens the stage as well.
+    const folded = await page.getByTestId('shell').getAttribute('data-inspector');
+    const withPanel = await stageWidth();
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(() => page.getByTestId('shell').getAttribute('data-inspector')).not.toBe(folded);
+    await expect.poll(stageWidth).not.toBe(withPanel);
+    const settled = await stageWidth();
+    await expect(viewer(page)).toHaveAttribute('data-page', '5');
+    // A number is left alone.
+    await setPdfZoom(page, 1.5);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '1.5');
+    await (await mainWindow(app)).evaluate((w) => w.setContentSize(Math.round(w.getContentSize()[0]! * 0.8), w.getContentSize()[1]!));
+    await expect.poll(stageWidth).toBeLessThan(settled);
+    await page.waitForTimeout(300);
+    await expect(viewer(page)).toHaveAttribute('data-scale', '1.5');
+    await expect(viewer(page)).toHaveAttribute('data-zoom', '1.5');
   } finally {
     await app.close();
   }

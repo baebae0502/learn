@@ -33,6 +33,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
   const pdf = useReader((s) => s.pdf);
   const { resolved: pageColor } = usePageColor();
   usePinchZoom(scrollRef);
+  /** The saved place is applied (PdfReader): until then a change of the stage's size is the stage settling, not a reason to fit again. */
+  const restoredRef = useRef(restored);
+  restoredRef.current = restored;
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -153,7 +156,24 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
         // E2E only: the spike's selection and anchor hooks (the window's address carries e2e=1 only in an unpackaged test run).
         const removeProbe = readWindowParams(window.location.search).e2e ? installAnchorProbe({ doc, viewer, revisionId }) : null;
+        // A fit mode (auto, page width, whole page) follows the stage when it changes size (the item panel, the window, full screen);
+        // a number stays. One fit per frame; assigning the preset again keeps the page and the place in it (pdf.js keeps its location).
+        let fitFrame = 0;
+        const refit = () => {
+          fitFrame = 0;
+          const zoom = useReader.getState().pdf?.zoom;
+          if (!restoredRef.current || typeof zoom !== 'string') return;
+          viewer.currentScaleValue = zoom;
+          viewer.update();
+        };
+        const stageObserver = new ResizeObserver(() => {
+          if (!fitFrame) fitFrame = requestAnimationFrame(refit);
+        });
+        stageObserver.observe(container);
         teardown = () => {
+          // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
+          stageObserver.disconnect();
+          cancelAnimationFrame(fitFrame);
           removeProbe?.();
           stopWatchingDisplay();
           // A render the queue still has scheduled would draw a page whose document is going away ("pdfPage is not loaded").

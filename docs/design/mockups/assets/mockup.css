@@ -4162,6 +4162,7 @@ h2,
   gap: var(--space-4);
   flex: 1 1 auto;
   min-width: 0;
+  margin-left: -2px; /* local: the padding below must not widen the gap after the separator (4 on both sides) */
   padding-inline: 2px; /* local: room for the active tab's e0 ring */
   scroll-padding-inline: 24px; /* local: the neighbour tab shows a little when the active one is scrolled in */
   overflow-x: auto;

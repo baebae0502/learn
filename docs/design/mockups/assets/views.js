@@ -262,7 +262,7 @@
       </div>
       ${
         r
-          ? `<section class="section" ${ms('M7b', '읽기 절(M7a에서 뺌)')}>
+          ? `<section class="section" ${ms('M7b', '읽기 절')}>
         ${sectionHead('읽기')}
         <div class="row gap-8"><span class="progress wide thick"><i style="width:${r.percent}%"></i></span><span class="pct t-footnote">${r.percent}%</span></div>
         <div class="t-footnote c-secondary reading-line" style="margin-top:4px"><span class="num">${r.time ?? (r.pages ? `${r.page}\u00a0/\u00a0${r.pages}쪽` : `${r.page}쪽`)}</span>에서\u00a0멈춤\u00a0· ${esc(r.opened).replace(/ /g, '\u00a0')}</div>
@@ -1243,9 +1243,9 @@
     // A narrower window on a simulated desktop (the tutor mockup's state 10 does the same).
     const notes = {
       1024: is7b
-        ? '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 탭 줄은 내용 열 폭(784)에서 최소 폭 120의 탭이 넘치면 가로로 스크롤하고 활성 탭을 보이게 합니다. 라이브러리 탭은 줄 맨 앞에 고정됩니다. 리더 도구 막대는 쪽 필드의 "/ N"을 숨겨 15pt에서도 한 줄에 듭니다'
+        ? '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 탭 줄은 내용 열 폭(784)에서 최소 폭 120의 탭이 넘치면 가로로 스크롤하고 활성 탭을 보이게 합니다. 라이브러리 탭은 줄 맨 앞에 고정됩니다. 리더 도구 막대는 쪽 필드의 ‘/ N’을 숨겨 15pt에서도 한 줄에 듭니다'
         : '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 리더 최소 440을 지켜 항목 패널이 펼쳐 있습니다. 1000 아래에서는 항목 패널이 먼저 접힙니다(창 폭에서 다시 계산, 저장하지 않음)',
-      1000: '창 1000 · 사이드바 240 + 리더 440 + 항목 패널 320 — 정보가 펼쳐지는 가장 좁은 창입니다. 도구 막대는 15pt에서도 423이라 440에 들고, 480보다 좁은 리더는 쪽 필드의 "/ N"을 숨깁니다',
+      1000: '창 1000 · 사이드바 240 + 리더 440 + 항목 패널 320 — 정보가 펼쳐지는 가장 좁은 창입니다. 도구 막대는 15pt에서도 423이라 440에 들고, 480보다 좁은 리더는 쪽 필드의 ‘/ N’을 숨깁니다',
       960: '창 960(최소) · 사이드바 240 + 항목 패널 320을 두면 리더가 400이라 최소 440에 못 미쳐 항목 패널이 접혔습니다 — 도구 막대의 단추로 열면 사이드바가 접힙니다',
     };
     const win = shell({ style: `--win-w:${w}px;--win-h:${w === 960 ? 640 : 768}px` });

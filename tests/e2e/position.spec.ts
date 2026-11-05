@@ -204,9 +204,10 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
     killed = true;
     ({ app, page } = await launch(lib, ud));
     killed = false;
-    await backFromReader(page); // the session reopened the reader; the reopen below is the one measured
-    // Every page the thumbnail list rings or lists while the document reopens: the restored page only, never page 1 first.
-    await page.evaluate(() => {
+    // The session reopens the reader at launch. Every page the thumbnail list rings or lists while the document comes up
+    // from a cold renderer: the restored page only, never page 1 first. The sampler is an init script of a fresh load
+    // of the window, so it runs from the first frame of the restore.
+    await page.addInitScript(() => {
       const seen = new Set<string>();
       (window as unknown as { __thumbs: Set<string> }).__thumbs = seen;
       const sample = () => {
@@ -215,7 +216,7 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
       };
       sample();
     });
-    await openItem(page, 'paper-100');
+    await page.reload();
     const reopened = page.getByTestId('pdf-viewer');
     await expect(reopened).toHaveAttribute('data-page', '37');
     await expect(reopened).toHaveAttribute('data-scale', '1.5');

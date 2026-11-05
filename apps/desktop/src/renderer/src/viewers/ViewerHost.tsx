@@ -42,18 +42,31 @@ function Viewer({ itemId }: { itemId: string }) {
   // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
   // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
   const item = useItem(itemId, true);
-  // An item deleted for good takes its tab with it. Only the read this tab opens with counts: an item moved to the trash
-  // while open reads as gone afterwards too, and its tab stays for the reader's notice.
+  // Spec 4.6: moved to the trash while open — the notice; restored, it stays until the item reads again, then the reader opens here.
+  const [trashed, setTrashed] = useState<TrashedState>('no');
+  useLearnEvent('libraryChanged', (change) => setTrashed((s) => trashedAfter(s, change, itemId)));
+  // Only the read this tab opens with counts (one moved to the trash while open reads as gone afterwards too). library.get
+  // hides the trash, so a NOT_FOUND is asked again where the trash is visible: an item there keeps its tab and shows
+  // the trash notice; one gone for good takes its tab with it.
   const removeTab = useShell((s) => s.removeTab);
   const firstReadSeen = useRef(false);
   useEffect(() => {
     if (firstReadSeen.current || !item.isFetchedAfterMount) return;
     firstReadSeen.current = true;
-    if (item.isError && item.error instanceof ApiError && item.error.code === 'NOT_FOUND') removeTab(itemId);
+    if (!(item.isError && item.error instanceof ApiError && item.error.code === 'NOT_FOUND')) return;
+    let live = true;
+    api().library.detail({ itemId }).then(
+      (r) => {
+        if (!live) return;
+        if (r.ok) setTrashed('yes');
+        else if (r.code === 'NOT_FOUND') removeTab(itemId);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
   }, [item.isFetchedAfterMount, item.isError, item.error, itemId, removeTab]);
-  // Spec 4.6: moved to the trash while open — the notice; restored, it stays until the item reads again, then the reader opens here.
-  const [trashed, setTrashed] = useState<TrashedState>('no');
-  useLearnEvent('libraryChanged', (change) => setTrashed((s) => trashedAfter(s, change, itemId)));
   const readAgain = trashed === 'back' && item.isSuccess && !item.isFetching;
   useEffect(() => {
     if (readAgain) setTrashed('no');

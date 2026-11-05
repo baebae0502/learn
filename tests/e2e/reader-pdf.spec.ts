@@ -646,8 +646,7 @@ test('the page colour is chosen in the 보기 menu and kept for the next start',
       .poll(() => page.evaluate(async () => { const r = await window.learn.settings.get({ key: 'reader.pageColor' }); return r.ok ? r.data : null; }))
       .toBe('sepia');
     await app.close();
-    ({ app, page } = await launch(lib, ud));
-    await openItem(page, 'paper-100');
+    ({ app, page } = await launch(lib, ud)); // the window reopens on the reader it was left on
     await expect(viewer(page)).toHaveAttribute('data-page-color', 'sepia');
     await page.getByTestId('pdf-view-menu').click();
     await expect(page.getByRole('menuitemradio', { name: '세피아' })).toHaveAttribute('aria-checked', 'true');
@@ -811,8 +810,7 @@ test('the list the sidebar shows is kept for the next start', async ({}, testInf
       .poll(() => page.evaluate(async () => { const r = await window.learn.settings.get({ key: 'reader.nav' }); return r.ok ? r.data : null; }))
       .toBe('outline');
     await app.close();
-    ({ app, page } = await launch(lib, ud));
-    await openItem(page, 'paper-100');
+    ({ app, page } = await launch(lib, ud)); // the window reopens on the reader it was left on
     await expect(page.getByTestId('pdf-outline')).toBeVisible();
     await expect(page.getByTestId('pdf-thumbnails')).toHaveCount(0);
   } finally {

@@ -787,9 +787,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     // The new window has its own overlay, which starts empty: the caption is shown again here.
     await caption({ target: page }, '앱을 종료했다가 다시 열고 같은 논문을 열면, 읽던 쪽과 배율과 쪽 색이 그대로입니다.', 5000);
     await pause(2500);
-    await glideClick(page, 'main', rowByTitle(page, PAPER_TITLE));
-    await pause(500);
-    await rowByTitle(page, PAPER_TITLE).dblclick();
+    // The window reopens on the paper it was left on (the saved tabs): nothing to open.
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     // The room above the page grew with the zoom (12 px at 100 % is 18 at 150 %) and shows the end of page 20: pdf.js names the first page in view.

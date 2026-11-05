@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
-import type { AppInfo } from '@learn/domain';
+import { SETTINGS, type AppInfo } from '@learn/domain';
 import { ApiError } from '../api';
 import { FatalScreen } from '../components/FatalScreen';
-import { useAppInfo, usePanes, usePrefs, usePrefsSync } from '../data/queries';
+import { useAppInfo, usePanes, usePrefs, usePrefsSync, useSavedTabs } from '../data/queries';
 import { parsePanes } from '../shell/layout';
 import { useShell } from '../state/shell-store';
+import { fromSaved } from '../state/tabs';
 import { MainWindow } from './MainWindow';
 import { RenderBoundary } from './RenderBoundary';
 
@@ -32,14 +33,18 @@ export function Boot() {
 
 function PanesGate({ info }: { info: AppInfo }) {
   const panes = usePanes();
+  const savedTabs = useSavedTabs();
   const seeded = useRef(false);
-  if (panes.isPending) return null;
+  if (panes.isPending || savedTabs.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
     // Both panes before the first paint: the item panel has its width in its first frame too.
     const seed = parsePanes(panes.data ?? null);
     useShell.getState().setSidebar(seed.sidebar);
     useShell.getState().setInspector(seed.inspector);
+    // The tabs open at the last quit; a missing, unreadable or failed read opens on the library alone.
+    const tabs = SETTINGS['ui.tabs'].safeParse(savedTabs.data);
+    useShell.getState().restoreTabs(fromSaved(tabs.success ? tabs.data : undefined));
   }
   return (
     <RenderBoundary>

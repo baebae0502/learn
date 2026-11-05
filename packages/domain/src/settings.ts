@@ -37,6 +37,8 @@ export const SETTINGS = {
   'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
+  /** The reader tabs open at quit, in order, and the one that was shown (null = the library): the window reopens them. */
+  'ui.tabs': z.object({ items: z.array(z.uuid()).max(50), active: z.uuid().nullable() }).strict(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
   /** The colour of a PDF's pages (spec 8): unset reads as 'auto', the app theme's. */

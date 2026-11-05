@@ -127,7 +127,8 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   await page.screenshot({ path: testInfo.outputPath('04-unsupported.png') });
   await page.getByTestId('viewer-back').click();
 
-  // Crash and restart (AC06 partial: saved state survives a hard kill)
+  // Crash and restart (AC06 partial: saved state survives a hard kill). The session is saved 300 ms after the last tab change.
+  await page.waitForTimeout(450);
   const proc = app.process();
   const exited = new Promise((r) => proc.once('exit', r));
   proc.kill('SIGKILL');

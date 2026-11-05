@@ -25,6 +25,17 @@ describe('settings registry', () => {
   });
 });
 
+describe('ui.tabs', () => {
+  it('accepts a list with an active tab or none, and rejects more than fifty and unknown keys', () => {
+    const ids = Array.from({ length: 50 }, () => newId());
+    expect(parseSetting('ui.tabs', { items: ids, active: ids[0]! })).toEqual({ items: ids, active: ids[0] });
+    expect(parseSetting('ui.tabs', { items: [], active: null })).toEqual({ items: [], active: null });
+    expect(code(() => parseSetting('ui.tabs', { items: [...ids, newId()], active: null }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: [], active: null, extra: 1 }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: ['x'], active: null }))).toBe('VALIDATION_FAILED');
+  });
+});
+
 describe('prefs', () => {
   it('has defaults', () => {
     expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' } });

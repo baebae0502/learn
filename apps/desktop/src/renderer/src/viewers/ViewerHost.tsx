@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commandById, type LibraryItem } from '@learn/domain';
 import { FileX } from 'lucide-react';
-import { api, unwrap } from '../api';
+import { ApiError, api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { keys, useItem } from '../data/queries';
 import { useLearnEvent } from '../events';
+import { useShell } from '../state/shell-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
@@ -41,6 +42,15 @@ function Viewer({ itemId }: { itemId: string }) {
   // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
   // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
   const item = useItem(itemId, true);
+  // An item deleted for good takes its tab with it. Only the read this tab opens with counts: an item moved to the trash
+  // while open reads as gone afterwards too, and its tab stays for the reader's notice.
+  const removeTab = useShell((s) => s.removeTab);
+  const firstReadSeen = useRef(false);
+  useEffect(() => {
+    if (firstReadSeen.current || !item.isFetchedAfterMount) return;
+    firstReadSeen.current = true;
+    if (item.isError && item.error instanceof ApiError && item.error.code === 'NOT_FOUND') removeTab(itemId);
+  }, [item.isFetchedAfterMount, item.isError, item.error, itemId, removeTab]);
   // Spec 4.6: moved to the trash while open — the notice; restored, it stays until the item reads again, then the reader opens here.
   const [trashed, setTrashed] = useState<TrashedState>('no');
   useLearnEvent('libraryChanged', (change) => setTrashed((s) => trashedAfter(s, change, itemId)));

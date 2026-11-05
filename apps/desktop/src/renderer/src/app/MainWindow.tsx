@@ -50,6 +50,7 @@ import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
 import { duplicateActions, membershipCommands } from '../organize/actions';
@@ -101,6 +102,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useLibrarySync();
   const scopeReady = useRestoreView();
   usePanePersistence();
+  useTabsPersistence();
   const items = useItems();
   // The trash view (spec 4.3): its own list and collection rows; an emptied trash closes it.
   const inTrash = useInTrash();
@@ -113,7 +115,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   // Once the first list has settled and the page is idle, main prepares the settings window hidden.
   useReportIdle(items.isSuccess || items.isError);
   const view = useShell((s) => s.view);
-  const setView = useShell((s) => s.setView);
+  const selectTab = useShell((s) => s.selectTab);
+  const openTab = useShell((s) => s.openTab);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
   const sidebarHidden = useSidebarHidden();
@@ -427,9 +430,9 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagColor: (tagId) => void tagActions.clearColor(tagId),
     deleteTag: (tagId) => void tagActions.remove(tagId),
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
-    back: () => setView({ kind: 'library' }),
+    back: () => selectTab('library'),
     // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
-    open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
+    open: (itemId) => afterEditing(() => openTab(itemId)),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     toggleInspector,
@@ -457,7 +460,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openTab, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

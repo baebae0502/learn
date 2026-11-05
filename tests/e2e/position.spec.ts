@@ -130,6 +130,7 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     killed = true;
     ({ app, page } = await launch(lib, ud));
     killed = false;
+    await backFromReader(page); // the session reopened the reader; the reopen below is the one measured
 
     // The stored position survived the kill (it was never flushed by a quit or unload).
     expect((await listed(page, 'sample-h264-aac')).progress).toBeCloseTo(pausedAt / duration, 2);
@@ -203,6 +204,7 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
     killed = true;
     ({ app, page } = await launch(lib, ud));
     killed = false;
+    await backFromReader(page); // the session reopened the reader; the reopen below is the one measured
     // Every page the thumbnail list rings or lists while the document reopens: the restored page only, never page 1 first.
     await page.evaluate(() => {
       const seen = new Set<string>();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIT_MARGIN, FIT_MAX_AUTO, fitScale } from './fit';
+import { FIT_MARGIN, FIT_MAX_AUTO, fitScale, widestPage } from './fit';
 
 const stage = { width: 880, height: 700 };
 const a4 = { width: 794, height: 1123 };
@@ -31,5 +31,20 @@ describe('fitScale (the mockup margins: 24 on every side of the page)', () => {
     const s = fitScale('page-fit', { width: 40, height: 40 }, a4);
     expect(s).toBeGreaterThan(0);
     expect(s).toBeGreaterThanOrEqual(0.1);
+  });
+});
+
+describe('widestPage (R-21: auto and page width fit the widest page)', () => {
+  const portrait = { width: 794, height: 1123 };
+  const landscape = { width: 1123, height: 794 };
+  it('picks the page with the greatest width', () => {
+    expect(widestPage([portrait, landscape], 0)).toEqual(landscape);
+    expect(widestPage([portrait, portrait], 0)).toEqual(portrait);
+  });
+  it('compares the turned sizes at 90 and 270 degrees, and gives the size as shown', () => {
+    expect(widestPage([portrait, landscape], 90)).toEqual({ width: 1123, height: 794 });
+    expect(widestPage([portrait, landscape], 270)).toEqual({ width: 1123, height: 794 });
+    expect(widestPage([portrait, portrait], 90)).toEqual({ width: 1123, height: 794 });
+    expect(widestPage([portrait, landscape], 180)).toEqual(landscape);
   });
 });

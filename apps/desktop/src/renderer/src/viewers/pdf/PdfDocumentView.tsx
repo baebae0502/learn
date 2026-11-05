@@ -11,7 +11,8 @@ import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './re
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
 import { useReaderScope } from '../readerScope';
-import { fitScale, type FitMode } from './fit';
+import { fitScale, widestPage, type FitMode } from './fit';
+import { roomAfterJump } from './placement';
 import { nextZoom } from './zoom';
 
 type Rotation = 0 | 90 | 180 | 270;
@@ -90,11 +91,27 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           return { pageNumber: viewer.currentPageNumber, share: Math.max(0, into) / div.clientHeight, above: Math.min(0, into) };
         };
         let turningFrom: { pageNumber: number; share: number; above: number } | null = null;
+        /** Every page's size is known from pagesloaded on; before it the views hold the first page's size. */
+        let pagesLoaded = false;
+        const widestShown = () => {
+          const turned = viewer.pagesRotation % 180 !== 0;
+          const sizes: { width: number; height: number }[] = [];
+          for (let i = 0; i < viewer.pagesCount; i++) {
+            const v = viewer.getPageView(i);
+            if (!v?.width || !v.scale) continue;
+            const [w, h] = [v.width / v.scale, v.height / v.scale];
+            sizes.push(turned ? { width: h, height: w } : { width: w, height: h });
+          }
+          return widestPage(sizes, viewer.pagesRotation as Rotation);
+        };
         const fitTo = (mode: FitMode, again = true) => {
           const view = viewer.getPageView(viewer.currentPageNumber - 1);
           if (!view?.width || !view.scale) return;
           const [width, height] = [container.clientWidth, container.clientHeight];
-          const scale = fitScale(mode, { width, height }, { width: view.width / view.scale, height: view.height / view.scale });
+          // Auto and page width are sized to the widest page once every page's size is known, so no page needs the stage to scroll
+          // sideways; before that, and for the whole-page fit, it is the page in view.
+          const size = pagesLoaded && mode !== 'page-fit' ? widestShown() : { width: view.width / view.scale, height: view.height / view.scale };
+          const scale = fitScale(mode, { width, height }, size);
           fitting = mode;
           try {
             viewer.currentScale = scale;
@@ -106,12 +123,52 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           // for the size the stage has now. Only once: the bar cannot depend on this second scale in a way the first did not settle.
           if (again && (container.clientWidth !== width || container.clientHeight !== height)) fitTo(mode, false);
         };
+        /**
+         * Every jump to a page runs through here: pdf.js lands the page flush at the stage's edge and the room the mockup draws
+         * round it (placement.ts) is added after. The viewer's own calls that pass allowNegativeOffset (a zoom keeping its place)
+         * are left as they are; links and the outline reach this through the link service.
+         */
+        const scrollPageIntoView = viewer.scrollPageIntoView.bind(viewer);
+        let jumped: { pageNumber: number; scrollTop: number; scrollLeft: number } | null = null;
+        const jump = (args: Parameters<typeof scrollPageIntoView>[0], keepTop: boolean, keepLeft: boolean) => {
+          scrollPageIntoView({ ...args, allowNegativeOffset: true });
+          const div = viewer.getPageView(args.pageNumber - 1)?.div;
+          const first = viewer.getPageView(0)?.div;
+          if (!div || !first) return;
+          const top = div.offsetTop + div.clientTop;
+          const left = div.offsetLeft + div.clientLeft;
+          const next = roomAfterJump({
+            flow: 'vertical',
+            page: { top, left, width: div.clientWidth, height: div.clientHeight },
+            firstRow: Math.abs(top - (first.offsetTop + first.clientTop)) <= 1,
+            stage: { scrollTop: container.scrollTop, scrollLeft: container.scrollLeft, width: container.clientWidth, height: container.clientHeight },
+            keepTop,
+            keepLeft,
+          });
+          if (next.scrollTop !== container.scrollTop) container.scrollTop = next.scrollTop;
+          if (next.scrollLeft !== container.scrollLeft) container.scrollLeft = next.scrollLeft;
+          jumped = { pageNumber: args.pageNumber, scrollTop: container.scrollTop, scrollLeft: container.scrollLeft };
+        };
+        /** A link that names a point of the page (an XYZ with a top or a left) is kept at that point. */
+        const pointOf = (dest: unknown): { top: boolean; left: boolean } => {
+          const d = Array.isArray(dest) ? (dest as unknown[]) : null;
+          const xyz = (d?.[1] as { name?: string } | undefined)?.name === 'XYZ';
+          return { top: xyz && d![3] != null, left: xyz && d![2] != null };
+        };
+        viewer.scrollPageIntoView = (args) => {
+          if (args.allowNegativeOffset) return scrollPageIntoView(args);
+          const keep = pointOf(args.destArray);
+          jump(args, keep.top, keep.left);
+        };
+        const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
+          if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
+          viewer.scrollPageIntoView({ pageNumber, destArray: destArray ?? undefined });
+        };
         const handle: PdfViewHandle = {
-          goToPage: (n) => {
-            if (Number.isInteger(n) && n >= 1 && n <= viewer.pagesCount) viewer.currentPageNumber = n;
-          },
-          next: () => void viewer.nextPage(),
-          previous: () => void viewer.previousPage(),
+          place,
+          goToPage: (n) => place({ pageNumber: n }),
+          next: () => place({ pageNumber: viewer.currentPageNumber + 1 }),
+          previous: () => place({ pageNumber: viewer.currentPageNumber - 1 }),
           setZoom: (z) => {
             if (typeof z === 'number') viewer.currentScale = z;
             else fitTo(z);
@@ -122,14 +179,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             if (typeof zoom === 'number') viewer.currentScale = zoom;
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
             else fitTo(zoom);
-            viewer.scrollPageIntoView({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] });
-            // A place at the top of a page keeps the room above it (24 over the first page, 12 between pages), as the mockup draws it.
-            const pageDiv = viewer.getPageView(pageIndex)?.div;
-            if (pageDiv && Math.abs(container.scrollTop - (pageDiv.offsetTop + pageDiv.clientTop)) <= 1) container.scrollTop -= pageIndex === 0 ? 24 : 12;
-            // So does a place at the page's left edge: pdf.js drops a negative left (the room beside the page) and scrolls to the edge,
-            // so when the stage scrolls sideways (a page wider than it, at a zoom or in a mixed-size document) the 24 beside the page
-            // shows again (R-25).
-            if (pageDiv && container.scrollLeft > 0 && Math.abs(container.scrollLeft - (pageDiv.offsetLeft + pageDiv.clientLeft)) <= 1) container.scrollLeft -= 24;
+            // Not a link: a place at the top or left edge of a page gets the room the mockup draws there (placement.ts), and one inside
+            // the margin, which a saved place can be, comes back exactly.
+            jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
             store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });
@@ -155,6 +207,27 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           pagesInitialised = true;
           fitTo('auto'); // page 1 is the current page here (R-21)
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
+        });
+        // Every page's size is known now: a mixed-size document is fitted once to its widest page (a fit before this had the page in view).
+        eventBus.on('pagesloaded', () => {
+          pagesLoaded = true;
+          const zoom = scope.reader.getState().pdf?.zoom;
+          if (zoom === 'auto' || zoom === 'page-width') {
+            fitTo(zoom);
+            viewer.update();
+          }
+          store.setPdf({ sized: true });
+        });
+        // pdf.js focuses a link's target page once its text is drawn, and the browser scrolls the page's top to the stage's edge to do
+        // it, which takes back the room the jump left above the page. The room is put back (once, and only when the page sits flush).
+        eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
+          const kept = jumped;
+          if (!kept || kept.pageNumber !== e.pageNumber) return;
+          jumped = null;
+          const div = viewer.getPageView(e.pageNumber - 1)?.div;
+          if (!div || Math.abs(container.scrollTop - (div.offsetTop + div.clientTop)) > 1 || kept.scrollTop === container.scrollTop) return;
+          container.scrollTop = kept.scrollTop;
+          container.scrollLeft = kept.scrollLeft;
         });
         // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.
         const reportFind = (e: { state?: number; matchesCount: { current: number; total: number } }) => {

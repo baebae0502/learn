@@ -274,6 +274,99 @@ test('a page wider than the stage reopens with its 24 on the left, as it was lef
   }
 });
 
+/** The room between the stage's top edge and a page's top edge, in px. */
+const roomAbove = (page: Page, pageNumber: number) =>
+  page.evaluate((n) => {
+    const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+    const el = document.querySelector<HTMLElement>(`[data-testid="pdf-viewer"] .page[data-page-number="${n}"]`)!;
+    return el.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+  }, pageNumber);
+
+test('a page jump keeps 12 above the page (24 for the first)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    const jumped = async (n: number) => {
+      await expect(viewer).toHaveAttribute('data-page', String(n));
+      // The viewer settles (pages above it take their size) before the room is read.
+      await expect.poll(() => roomAbove(page, n).then(Math.round)).toBeGreaterThanOrEqual(0);
+    };
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('7');
+    await field.press('Enter');
+    await jumped(7);
+    expect(await roomAbove(page, 7)).toBeCloseTo(12, 0);
+
+    await runMenuCommand(app, 'reader.showThumbnails');
+    // The list draws the thumbnails near the page in view only: at a small window page 1 is not drawn until the list is scrolled up.
+    await page.getByTestId('pdf-thumbnails').evaluate((el) => {
+      for (let e: HTMLElement | null = el; e; e = e.parentElement) e.scrollTop = 0;
+    });
+    await page.locator('[data-testid="pdf-thumb"][data-page="1"]').click();
+    await jumped(1);
+    expect(await roomAbove(page, 1)).toBeCloseTo(24, 0);
+
+    // A link to a page without a point (XYZ with no top).
+    await page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a').nth(0).click();
+    await jumped(50);
+    expect(await roomAbove(page, 50)).toBeCloseTo(12, 0);
+
+    await runMenuCommand(app, 'reader.showOutline');
+    await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
+    await jumped(21);
+    expect(await roomAbove(page, 21)).toBeCloseTo(12, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a page wider than the stage keeps its 24 on the left after a page jump (R-25)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await setPdfZoom(page, 2);
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('2');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '2');
+    const left = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector('[data-testid="pdf-viewer"] .page[data-page-number="2"]')!.getBoundingClientRect();
+        return { room: pg.left - sc.getBoundingClientRect().left, overflow: sc.scrollWidth - sc.clientWidth };
+      });
+    expect((await left()).overflow).toBeGreaterThan(24);
+    await expect.poll(async () => Math.round((await left()).room)).toBe(24);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a mixed-size document fits its widest page (R-21)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PDF]);
+    await openItem(page, 'sample');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(viewer).toHaveAttribute('data-zoom', 'auto');
+    // Page 2 is turned a quarter: at the first page's fit it would be wider than the stage.
+    await expect
+      .poll(() => page.getByTestId('pdf-scroll').evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('scrolled to the end with several pages on screen, the progress is 100 % and the column says 완료 (final review I-3)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

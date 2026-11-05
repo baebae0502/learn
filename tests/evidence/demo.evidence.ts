@@ -792,7 +792,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await rowByTitle(page, PAPER_TITLE).dblclick();
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', '21');
+    // The room above the page grew with the zoom (12 px at 100 % is 18 at 150 %) and shows the end of page 20: pdf.js names the first page in view.
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', /^(20|21)$/);
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-scale', scaleBefore!);
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'sepia');
     await park(page, 'main');

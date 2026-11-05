@@ -25,3 +25,17 @@ export function fitScale(mode: FitMode, stage: Size, page: Size): number {
   const scale = mode === 'page-width' ? width : mode === 'page-fit' ? whole : Math.min(FIT_MAX_AUTO, page.width > page.height ? whole : width);
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
 }
+
+/**
+ * The page a fit is sized to: the widest of the document at the current rotation (a quarter turn swaps width and height before
+ * the comparison), so no page of a mixed-size document needs the stage to scroll sideways. `sizes` are unrotated.
+ */
+export function widestPage(sizes: readonly Size[], rotation: 0 | 90 | 180 | 270): Size {
+  const turned = rotation % 180 !== 0;
+  let best: Size = { width: 0, height: 0 };
+  for (const s of sizes) {
+    const shown = turned ? { width: s.height, height: s.width } : { width: s.width, height: s.height };
+    if (shown.width > best.width) best = shown;
+  }
+  return best;
+}

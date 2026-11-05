@@ -153,7 +153,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
 
   // The restore waits for both the pages and the stored position, and is applied once; saves start from the place it reached.
   useEffect(() => {
-    if (!ready || !stageSettled || !pos.loaded || restored || !pdf || !handle) return;
+    if (!ready || !pdf?.sized || !stageSettled || !pos.loaded || restored || !handle) return;
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;

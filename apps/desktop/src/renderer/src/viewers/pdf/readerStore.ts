@@ -10,6 +10,8 @@ export type ZoomValue = 'auto' | 'page-width' | 'page-fit' | number;
 
 export interface PdfState {
   ready: boolean;
+  /** Every page's size is known (pagesloaded): the fit is for the widest page, so the saved place is applied after it. */
+  sized: boolean;
   /** The saved place is applied (or there was none): until then the page, the zoom and the rotation are the viewer's own start. */
   placed: boolean;
   pageNumber: number;
@@ -21,6 +23,8 @@ export interface PdfState {
 
 /** What the toolbar, the sidebar and the panels do to the open document, whoever mounts them. */
 export interface PdfViewHandle {
+  /** The one way to a page: pdf.js lands it flush and the room the mockup draws round it is added (viewers/pdf/placement). */
+  place(target: { pageNumber: number; destArray?: unknown[] | null }): void;
   goToPage(pageNumber: number): void;
   next(): void;
   previous(): void;
@@ -39,7 +43,7 @@ export interface PdfViewHandle {
   linkService(): PDFLinkService | null;
 }
 
-export const INITIAL_PDF: PdfState = { ready: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
+export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
 
 /** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
 export type NoPages = 'trashed' | 'locked' | 'none';

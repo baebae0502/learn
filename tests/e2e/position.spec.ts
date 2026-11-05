@@ -304,7 +304,7 @@ test('a page jump keeps 12 above the page (24 for the first)', async ({}, testIn
     await runMenuCommand(app, 'reader.showThumbnails');
     // The list draws the thumbnails near the page in view only: at a small window page 1 is not drawn until the list is scrolled up.
     await page.getByTestId('pdf-thumbnails').evaluate((el) => {
-      for (let e: HTMLElement | null = el; e; e = e.parentElement) e.scrollTop = 0;
+      for (let e: Element | null = el; e; e = e.parentElement) e.scrollTop = 0;
     });
     await page.locator('[data-testid="pdf-thumb"][data-page="1"]').click();
     await jumped(1);

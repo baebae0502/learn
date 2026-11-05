@@ -1,8 +1,7 @@
-import { create } from 'zustand';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav } from '@learn/domain';
-import { readWindowParams } from '../../ui/platform';
 
 export type { ReaderNav };
 
@@ -45,7 +44,7 @@ export const INITIAL_PDF: PdfState = { ready: false, placed: false, pageNumber: 
 /** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
 export type NoPages = 'trashed' | 'locked' | 'none';
 
-interface ReaderStore {
+export interface ReaderStore {
   /** null while no PDF is open. */
   pdf: PdfState | null;
   handle: PdfViewHandle | null;
@@ -56,19 +55,16 @@ interface ReaderStore {
   setHandle(h: PdfViewHandle | null): void;
 }
 
-export const useReader = create<ReaderStore>()((set) => ({
-  pdf: null,
-  handle: null,
-  noPages: { host: null, reader: null },
-  setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
-  setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
-  setHandle: (handle) => set({ handle }),
-}));
-
-declare global {
-  interface Window {
-    /** E2E only (the page's address carries e2e=1 in an unpackaged test run): lets tests drive the reader's handle. */
-    __learnReader?: typeof useReader;
-  }
+/** One reader's state; the store of each document is made with its scope (viewers/readerScope). */
+export function createReaderStore(): StoreApi<ReaderStore> {
+  return createStore<ReaderStore>()((set) => ({
+    pdf: null,
+    handle: null,
+    noPages: { host: null, reader: null },
+    setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
+    setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
+    setHandle: (handle) => set({ handle }),
+  }));
 }
-if (typeof window !== 'undefined' && readWindowParams(window.location.search).e2e) window.__learnReader = useReader;
+
+export { useReader } from '../readerScope';

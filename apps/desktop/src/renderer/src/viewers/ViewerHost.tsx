@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commandById, type LibraryItem } from '@learn/domain';
 import { FileX } from 'lucide-react';
@@ -13,11 +13,30 @@ import { MissingNotice } from './ReaderNotices';
 import { readerLost, trashedAfter, type TrashedState } from './readerState';
 import { TrashedNotice } from './TrashedNotice';
 import { PdfReader } from './pdf/PdfReader';
-import { useReader, type NoPages } from './pdf/readerStore';
+import { type NoPages } from './pdf/readerStore';
+import { ReaderScopeProvider, createReaderScope, activeReaderScope, setActiveReaderScope, useReaderScope } from './readerScope';
 import { VideoViewer } from './VideoViewer';
 
-/** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
+/** One reader scope for the document, shown to everything the reader mounts and, while it is open, to the shell around it. */
 export function ViewerHost({ itemId }: { itemId: string }) {
+  const scope = useMemo(() => createReaderScope(itemId), [itemId]);
+  // Before the first paint, so the sidebar and the toolbar never draw a frame from another reader's state.
+  useLayoutEffect(() => {
+    setActiveReaderScope(scope);
+    return () => {
+      if (activeReaderScope() === scope) setActiveReaderScope(null);
+    };
+  }, [scope]);
+  return (
+    <ReaderScopeProvider scope={scope}>
+      <Viewer itemId={itemId} />
+    </ReaderScopeProvider>
+  );
+}
+
+/** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
+function Viewer({ itemId }: { itemId: string }) {
+  const scope = useReaderScope();
   // Every open re-checks the file (as M2 did), and nothing is decided from the cache until that read lands: a cached
   // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
   // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
@@ -41,9 +60,9 @@ export function ViewerHost({ itemId }: { itemId: string }) {
   const noPages: NoPages | null =
     trashed !== 'no' ? 'trashed' : !item.isFetchedAfterMount ? null : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf' ? 'none' : null;
   useEffect(() => {
-    useReader.getState().setNoPages('host', noPages);
-    return () => useReader.getState().setNoPages('host', null);
-  }, [noPages]);
+    scope.reader.getState().setNoPages('host', noPages);
+    return () => scope.reader.getState().setNoPages('host', null);
+  }, [noPages, scope]);
   if (trashed !== 'no') return <TrashedNotice itemId={itemId} />;
   if (!item.isFetchedAfterMount) return <ReaderFrame type={cachedType} />; // transient: one IPC round trip
   if (readerLost(item)) {

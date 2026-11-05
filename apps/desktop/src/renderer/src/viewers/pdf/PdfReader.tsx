@@ -9,7 +9,6 @@ import { InspectorToggle } from '../../inspector/InspectorToggle';
 import { t } from '../../strings';
 import { SelectionPopup, usePopupShown } from '../../translation/SelectionPopup';
 import { TranslationStatus } from '../../translation/TranslationStatus';
-import { useTranslation } from '../../translation/store';
 import { dismissPopup, useSelectionText } from '../../translation/useSelectionText';
 import { currentPlatform } from '../../ui/platform';
 import { IconButton } from '../../ui/Button';
@@ -19,12 +18,12 @@ import { PdfErrorNotice } from '../ReaderNotices';
 import { usePosition, type LatestPosition } from '../usePosition';
 import { parsePage } from './parsePage';
 import { PasswordPrompt } from './PasswordPrompt';
-import { pageFieldRef } from './pageField';
 import { FindBar } from './FindBar';
 import { useFind } from './findStore';
 import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
+import { useReaderScope } from '../readerScope';
 import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
 import { SepiaFilter } from './SepiaFilter';
@@ -39,6 +38,7 @@ const SCREEN_STEP = 0.9;
 
 /** The PDF reader: the 44 px toolbar (page field and page turns) over the stage that the pdf.js viewer fills. */
 export function PdfReader({ item }: { item: LibraryItem }) {
+  const scope = useReaderScope();
   const open = usePdfDocument(item.assetId);
   /** The viewer's last reported place, kept for the unmount flush: by then the viewer may be gone. */
   const latestRef = useRef<LatestPosition | null>(null);
@@ -57,20 +57,20 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const noPages = locked ? 'locked' : broken ? 'none' : null;
   // The sidebar has no pages to list while the password is asked for or the document cannot be shown.
   useEffect(() => {
-    useReader.getState().setNoPages('reader', noPages);
-    return () => useReader.getState().setNoPages('reader', null);
+    scope.reader.getState().setNoPages('reader', noPages);
+    return () => scope.reader.getState().setNoPages('reader', null);
   }, [noPages]);
   // The selection pop-up: the text selected in the pages (translation/); leaving the reader cancels what is in flight.
   useSelectionText(stageRef, ready);
   const popupShown = usePopupShown();
-  useEffect(() => () => useTranslation.getState().reset(), []);
+  useEffect(() => () => scope.translation.getState().reset(), []);
   // The choice changed elsewhere while this reader is open (the settings window): off ends what runs, on goes on from the consent.
   const translationEnabled = usePrefs().data?.translation.enabled;
   const knownEnabled = useRef(translationEnabled);
   useEffect(() => {
     if (translationEnabled === undefined || translationEnabled === knownEnabled.current) return;
     knownEnabled.current = translationEnabled;
-    useTranslation.getState().prefsChanged(translationEnabled);
+    scope.translation.getState().prefsChanged(translationEnabled);
   }, [translationEnabled]);
   // The item panel comes with the pages (ready) and takes width from the stage: the saved place is applied once the stage
   // has stopped changing size, or the resize that follows would read as a move and be saved as one.
@@ -111,7 +111,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   }, [ready]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
-    useFind.getState().closeBar();
+    scope.find.getState().closeBar();
     stageRef.current?.focus();
   };
 
@@ -124,7 +124,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     if (!ready || !bus || !handle) return;
     const onArea = (e: { location: { pageNumber: number; top: number; left: number; rotation: number } }) => {
       const { pageNumber, top, left, rotation } = e.location;
-      const state = useReader.getState().pdf;
+      const state = scope.reader.getState().pdf;
       if (!state) return;
       const zoom = state.zoom;
       // The location is the page at the top of the stage; the progress counts the furthest page in view (spec 5).
@@ -174,7 +174,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     // esc closes the pop-up first; the find bar keeps its own esc for the next press.
     if (e.key === 'Escape' && popupShown && !isComposingKey(e.nativeEvent)) {
       e.preventDefault();
-      dismissPopup();
+      dismissPopup(scope);
       return;
     }
     if (e.key === 'Escape' && findOpen && !isComposingKey(e.nativeEvent)) {
@@ -254,6 +254,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
  * and esc gives the focus back to the stage.
  */
 function PageField({ page, total, onGo, onEscape }: { page: number | null; total: number; onGo(n: number): void; onEscape(): void }) {
+  const scope = useReaderScope();
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? (page === null ? '' : String(page));
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -272,7 +273,7 @@ function PageField({ page, total, onGo, onEscape }: { page: number | null; total
   };
   return (
     <input
-      ref={pageFieldRef}
+      ref={scope.pageField}
       className="page-field num"
       inputMode="numeric"
       autoComplete="off"

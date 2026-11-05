@@ -11,6 +11,7 @@ import { readTranslationPrefs } from './prefs';
 import { useTranslation, type TranslationView } from './store';
 import { POPUP_STATES, dismissPopup, selectionRange, useSelection } from './useSelectionText';
 import { usePrefs } from '../data/queries';
+import { useReaderScope } from '../viewers/readerScope';
 
 /** The gap under (or over) the selection's last line (spec 6.1). */
 const GAP = 8;
@@ -28,6 +29,7 @@ export const paragraphs = (text: string) => text.split('\n').filter((line) => li
 
 /** The selection pop-up (spec 6.1): over the stage, at the selection's end, never taking the focus. */
 export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement | null> }) {
+  const scope = useReaderScope();
   const shown = usePopupShown();
   const view = useTranslation((s) => s.view);
   // A selection extended or moved (shift + arrows) moves the pop-up with its end.
@@ -39,23 +41,23 @@ export function SelectionPopup({ stageRef }: { stageRef: RefObject<HTMLElement |
 
   const place = useCallback(() => {
     const stage = stageRef.current;
-    const range = selectionRange();
+    const range = selectionRange(scope);
     const el = ref.current;
     if (!stage || !range || !el) return;
     // The text layer redrew (a zoom): what was selected is gone from the page.
-    if (!range.startContainer.isConnected || !range.endContainer.isConnected) return dismissPopup();
+    if (!range.startContainer.isConnected || !range.endContainer.isConnected) return dismissPopup(scope);
     const rects = range.getClientRects();
     const last = rects.length > 0 ? rects[rects.length - 1]! : range.getBoundingClientRect();
     const box = stage.getBoundingClientRect();
     // Scrolled out of sight: the pop-up goes with it.
-    if (last.bottom < box.top || last.top > box.bottom) return dismissPopup();
+    if (last.bottom < box.top || last.top > box.bottom) return dismissPopup(scope);
     const width = el.offsetWidth;
     const height = el.offsetHeight;
     const left = Math.max(EDGE, Math.min(last.right - box.left - width / 2, box.width - width - EDGE));
     let top = last.bottom - box.top + GAP;
     if (top + height > box.height - EDGE) top = Math.max(EDGE, last.top - box.top - GAP - height);
     setPos((p) => (p && Math.abs(p.left - left) < 0.5 && Math.abs(p.top - top) < 0.5 ? p : { left, top }));
-  }, [stageRef]);
+  }, [stageRef, scope]);
 
   // The pop-up never takes the focus, but a person can Tab into it or press a button. When what it says changes and the button that
   // had the focus is gone (번역 켜기 → pending, 다시 번역 → pending, 사용 안 함 or esc → closed), the focus would drop to the

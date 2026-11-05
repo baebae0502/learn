@@ -260,3 +260,6 @@ export function installAnchorProbe(o: { doc: PDFDocumentProxy; viewer: PDFViewer
     window.getSelection()?.removeAllRanges();
   };
 }
+
+/** The default export is what the reader loads on demand (it does not name the probe, so the product's bundle does not either). */
+export default installAnchorProbe;

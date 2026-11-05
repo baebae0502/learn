@@ -6,12 +6,11 @@ import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
-import { useFind } from './findStore';
-import { installAnchorProbe } from './anchorProbe';
 import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
+import { useReaderScope } from '../readerScope';
 import { fitScale, type FitMode } from './fit';
 import { nextZoom } from './zoom';
 
@@ -32,6 +31,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
   const viewerRef = useRef<HTMLDivElement>(null);
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
   const [rendered, setRendered] = useState(0);
+  const scope = useReaderScope();
   const pdf = useReader((s) => s.pdf);
   const { resolved: pageColor } = usePageColor();
   usePinchZoom(scrollRef);
@@ -50,7 +50,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
       console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
       onFailed();
     };
-    const store = useReader.getState();
+    const store = scope.reader.getState();
     void Promise.all([pdfViewerModule(), pdfjs()])
       .then(([viewerLib, lib]) => {
         if (cancelled) return;
@@ -158,14 +158,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         });
         // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.
         const reportFind = (e: { state?: number; matchesCount: { current: number; total: number } }) => {
-          const { query } = useFind.getState();
+          const { query } = scope.find.getState();
           const status = query.trim() === '' ? 'idle' : e.state === 1 ? 'notFound' : e.state === 2 ? 'wrapped' : 'found';
-          useFind.getState().report(status, e.matchesCount.total > 0 ? e.matchesCount : null);
+          scope.find.getState().report(status, e.matchesCount.total > 0 ? e.matchesCount : null);
         };
         eventBus.on('updatefindcontrolstate', reportFind);
         eventBus.on('updatefindmatchescount', (e: { matchesCount: { current: number; total: number } }) => {
           // The running count of a search still going keeps the status the control state gave.
-          useFind.getState().report(useFind.getState().status === 'idle' ? 'found' : useFind.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
+          scope.find.getState().report(scope.find.getState().status === 'idle' ? 'found' : scope.find.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
         });
         eventBus.on('pagechanging', (e: { pageNumber: number }) => store.setPdf({ pageNumber: e.pageNumber }));
         eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: fitting ?? zoomOf(e.presetValue, e.scale) }));
@@ -175,7 +175,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           turningFrom = null;
           if (!restoredRef.current) return;
           // A fit mode is sized for the turned page; the scroll position stays in pixels, which names another page once the pages change height.
-          const zoom = useReader.getState().pdf?.zoom;
+          const zoom = scope.reader.getState().pdf?.zoom;
           if (isFitMode(zoom)) fitTo(zoom);
           const div = viewer.getPageView((from?.pageNumber ?? e.pageNumber) - 1)?.div;
           if (!div) return;
@@ -212,13 +212,19 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         // The pages are drawn at the display's pixel ratio: moving to another screen draws them again.
         const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
         // E2E only: the spike's selection and anchor hooks (the window's address carries e2e=1 only in an unpackaged test run).
-        const removeProbe = readWindowParams(window.location.search).e2e ? installAnchorProbe({ doc, viewer, revisionId }) : null;
+        // Loaded on demand, so the product's bundle does not hold them.
+        let removeProbe: (() => void) | null = null;
+        if (readWindowParams(window.location.search).e2e) {
+          void import('./anchorProbe').then(({ default: installProbe }) => {
+            if (!cancelled) removeProbe = installProbe({ doc, viewer, revisionId });
+          });
+        }
         // A fit mode (auto, page width, whole page) follows the stage when it changes size (the item panel, the window, full screen);
         // a number stays. One fit per frame; assigning the preset again keeps the page and the place in it (pdf.js keeps its location).
         let fitFrame = 0;
         const refit = () => {
           fitFrame = 0;
-          const zoom = useReader.getState().pdf?.zoom;
+          const zoom = scope.reader.getState().pdf?.zoom;
           if (!restoredRef.current || typeof zoom !== 'string') return;
           fitTo(zoom);
           viewer.update();
@@ -247,7 +253,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           viewer.renderingQueue!.renderView = () => false;
           // This also detaches the find controller (pdf.js hands it null): its text extraction asks the document for pages.
           viewer.setDocument(null);
-          useFind.getState().reset();
+          scope.find.getState().reset();
           store.setHandle(null);
           store.setPdf(null);
         };

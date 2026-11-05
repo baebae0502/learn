@@ -52,8 +52,8 @@ window.Mockup = (() => {
     return `<div ${idAttr} ${drag} class="${cls}" role="tab" aria-selected="${!!t.active}" title="${esc(t.title)}">${icon(t.icon)}<span class="title ellipsis">${esc(t.title)}</span>${close}</div>`;
   }
 
-  const toggle = (cls) =>
-    `<div class="icon-btn ${cls}" title="사이드바 가리기 ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
+  const toggle = (cls, hidden = false) =>
+    `<div class="icon-btn ${cls}" title="${hidden ? '사이드바 보기' : '사이드바 가리기'} ⌃⌘S" ${ms('M3', '사이드바 토글')}>${icon('panel-left')}</div>`;
 
   /**
    * Window shell. Same DOM for both layouts; CSS grid areas place the sidebar under the
@@ -67,12 +67,15 @@ window.Mockup = (() => {
       single && unified
         ? `${unified.lead || ''}<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
            <div class="tb-actions">${unified.actions || ''}</div>`
-        : `<div class="tabs ${tabsCls}" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
+        : tabsCls.includes('m7b')
+          ? // M7b: the library tab stays at the start; the reader tabs scroll in their own box (spec 3.2).
+            `<div class="tabs ${tabsCls}" role="tablist" ${ms('M7b', '탭 줄')}>${tabs.filter((t) => t.home).map(tab).join('')}<span class="tabs-sep" aria-hidden="true"></span><div class="tabs-scroll">${tabs.filter((t) => !t.home).map(tab).join('')}</div></div>`
+          : `<div class="tabs ${tabsCls}" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
     return `
     <div class="${cls}" ${style ? `style="${style}"` : ''}>
       <div class="traffic-lights" aria-hidden="true"><i class="close"></i><i class="min"></i><i class="zoom"></i></div>
       <header class="titlebar">
-        ${toggle('tb-toggle')}
+        ${toggle('tb-toggle', !sidebar)}
         ${middle}
         <div class="tb-launcher">${launcher()}</div>
       </header>
@@ -131,13 +134,36 @@ window.Mockup = (() => {
       pop.style.top = `${Math.round(fits ? below : above)}px`;
       pop.style.left = `${Math.round(Math.max(8, Math.min(r.right - host.left - w / 2, host.width - w - 8)))}px`;
     }
-    // M7b: a strip that overflows scrolls the active tab to the middle of the visible part (spec 3.2: it is always seen).
-    for (const strip of document.querySelectorAll('.tabs.m7b')) {
+    // M7b: a strip that overflows scrolls the active tab to the middle of the visible part (spec 3.2: it is always seen);
+    // the edge with more tabs behind it fades (the strip has no scroll bar).
+    for (const strip of document.querySelectorAll('.tabs-scroll')) {
       const a = strip.querySelector('.tab.is-active');
-      if (!a || strip.scrollWidth <= strip.clientWidth) continue;
-      const s = strip.getBoundingClientRect();
-      const r = a.getBoundingClientRect();
-      strip.scrollLeft += r.left + r.width / 2 - (s.left + s.width / 2);
+      if (strip.scrollWidth <= strip.clientWidth) continue;
+      if (a) {
+        const sr = strip.getBoundingClientRect();
+        const r = a.getBoundingClientRect();
+        strip.scrollLeft += r.left + r.width / 2 - (sr.left + sr.width / 2);
+      }
+      strip.dataset.fadeStart = strip.scrollLeft > 1 ? '1' : '0';
+      strip.dataset.fadeEnd = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1 ? '1' : '0';
+    }
+    // M7b: a native context menu opens with its top-left corner at the pointer, which sits inside the tab.
+    for (const menu of document.querySelectorAll('.menu[data-pointer-in]')) {
+      const tab = document.getElementById(menu.dataset.pointerIn);
+      const host = menu.offsetParent.getBoundingClientRect();
+      const r = tab.getBoundingClientRect();
+      const x = Math.round(r.left - host.left + 72);
+      const y = Math.round(r.top - host.top + 20);
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+      for (const ptr of document.querySelectorAll('.pointer')) {
+        ptr.style.left = `${x}px`;
+        ptr.style.top = `${y}px`;
+      }
+      for (const note of document.querySelectorAll('.native-note')) {
+        note.style.left = `${x}px`;
+        note.style.top = `${y + menu.offsetHeight + 8}px`;
+      }
     }
     for (const menu of document.querySelectorAll('.menu[data-anchor]')) {
       const anchor = document.getElementById(menu.dataset.anchor);
@@ -222,7 +248,9 @@ window.Mockup = (() => {
     // M6
     '.trash-note, .ec-head, .restore-issues, ' +
     // M7a
-    '.sp-body, .sp-note, .sp-status, .tr-consent p, .tr-note, .pw-error';
+    '.sp-body, .sp-note, .sp-status, .tr-consent p, .tr-note, .pw-error, ' +
+    // M7b
+    '.reading-line, .native-note';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];

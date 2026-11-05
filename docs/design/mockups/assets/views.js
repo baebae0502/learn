@@ -7,7 +7,7 @@
  *                  M7a (with &m=7a — no tab strip, the 44 px toolbar of spec 4.2, an info-mode inspector with the 번역 section):
  *                  &find=open|none &select=consent|translating|translated|error|offline|long|same
  *                  &inspector=empty|translated|concat|consent|off &menu=zoom|view|copy|direction
- *                  &state=loading|error|missing|locked|trashed|nooutline (&pw=wrong) &w=1024|960 (a narrower window)
+ *                  &state=loading|error|missing|locked|trashed|nooutline (&pw=wrong) &w=1024|960 (a narrower window; M7b: 1024|1000)
  *                  M7b (with &m=7b — the tab strip of layout B, ‹ › in the reader toolbar, scroll and spread in the view menu):
  *                  &tabs=2|many|drag (one reader tab, 12 tabs that overflow, a tab being dragged)  &history=none|back|both
  *                  &view=menu|menu-scroll|menu-spread  &scroll=horizontal|page  &spread=odd  &menu=tab  &sidebar=hidden  &w=1024
@@ -265,7 +265,7 @@
           ? `<section class="section" ${ms('M7b', '읽기 절(M7a에서 뺌)')}>
         ${sectionHead('읽기')}
         <div class="row gap-8"><span class="progress wide thick"><i style="width:${r.percent}%"></i></span><span class="pct t-footnote">${r.percent}%</span></div>
-        <div class="t-footnote c-secondary" style="margin-top:4px"><span class="num">${r.time ?? (r.pages ? `${r.page} / ${r.pages}쪽` : `${r.page}쪽`)}</span>에서 멈춤 · ${esc(r.opened)}</div>
+        <div class="t-footnote c-secondary reading-line" style="margin-top:4px"><span class="num">${r.time ?? (r.pages ? `${r.page}\u00a0/\u00a0${r.pages}쪽` : `${r.page}쪽`)}</span>에서\u00a0멈춤\u00a0· ${esc(r.opened).replace(/ /g, '\u00a0')}</div>
       </section>`
           : ''
       }
@@ -297,12 +297,12 @@
   const VIDEO_ITEM = {
     video: true,
     kind: '동영상',
-    length: '48:20',
+    length: '52:10',
     title: '강의 04 · 세포 신호',
     authors: '윤재하',
     year: 2025,
-    info: [['강의자', '윤재하'], ['연도', '2025'], ['길이', '48:20'], ['언어', '한국어'], ['추가일', '어제 오후 8:38']],
-    reading: { time: '12:34', percent: 35, opened: '어제' },
+    info: [['강의자', '윤재하'], ['연도', '2025'], ['길이', '52:10'], ['언어', '한국어'], ['추가일', '어제 오후 8:38']],
+    reading: { time: '18:20', percent: 35, opened: '어제' },
     file: [['보관', '복사본 · 라이브러리 안'], ['크기', '312 MB'], ['원래 이름', 'lecture04_cell_signaling.mp4']],
     sha: '4d03be71…',
     shaFull: '4d03be71a96c2e50f8173b4da09e5c6f1827d3a4b05e9f26c7d18a3e04b5f692',
@@ -859,18 +859,18 @@
     return `${head}${thumbsV2(thumbPages, doc.page, { drawn, body: thumbBody })}`;
   }
 
-  function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false, history = null }) {
+  function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false, history = null, narrow = false }) {
     const dis = disabled ? 'is-disabled' : '';
-    // M7b: back and forward before the page field; off while the tab's history has nothing in that direction.
+    // M7b: back and forward join the page group at its start (arrows, so they do not read as the page chevrons); off while
+    // the tab's history has nothing in that direction. A reader narrower than 480 drops the "/ N" of the page field.
     const nav7b = history
-      ? `<div class="group" ${ms('M7b', '뒤로·앞으로(탭의 이동 기록)')}>
-        <span class="icon-btn ${history === 'none' || disabled ? 'is-disabled' : ''}" title="뒤로 ⌘[">${icon('chevron-left')}</span>
-        <span class="icon-btn ${history !== 'both' || disabled ? 'is-disabled' : ''}" title="앞으로 ⌘]">${icon('chevron-right')}</span>
-      </div><span class="toolbar-sep"></span>`
+      ? `<span class="icon-btn ${history === 'none' || disabled ? 'is-disabled' : ''}" title="뒤로 ⌘[" ${ms('M7b', '뒤로(탭의 이동 기록)')}>${icon('arrow-left')}</span>
+        <span class="icon-btn ${history !== 'both' || disabled ? 'is-disabled' : ''}" title="앞으로 ⌘]" ${ms('M7b', '앞으로(탭의 이동 기록)')}>${icon('arrow-right')}</span>`
       : '';
     return `<div class="reader-toolbar">
-      ${nav7b}<div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
-        <div class="page-field ${dis}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div><span class="num">/ ${pages}</span></div>
+      <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
+        ${nav7b}
+        <div class="page-field ${dis} ${history ? 'after-nav' : ''}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div>${narrow ? '' : `<span class="num">/ ${pages}</span>`}</div>
         <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
         <span class="icon-btn ${dis}" title="다음 쪽 →">${icon('chevron-down')}</span>
       </div>
@@ -881,7 +881,7 @@
       </div>
       <span class="spacer"></span>
       <span class="icon-btn ${find ? 'is-on' : ''} ${dis}" title="찾기 ⌘F" ${ms('M7a', '찾기 단추·찾기 막대')}>${icon('search')}</span>
-      <span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="보기: 쪽 색·회전" ${ms('M7a', '보기 메뉴(쪽 색·회전)')}>보기${icon('chevron-down', 'xs')}</span>
+      <span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="${history ? '보기' : '보기: 쪽 색·회전'}" ${history ? ms('M7b', '보기 메뉴(쪽 색 · 스크롤 · 펼침 · 회전)') : ms('M7a', '보기 메뉴(쪽 색·회전)')}>보기${icon('chevron-down', 'xs')}</span>
       <span class="toolbar-sep"></span>
       <span class="icon-btn ${inspectorOn ? 'is-on' : ''} ${dis}" title="${inspectorOn ? '항목 패널 가리기' : '항목 패널 보기'} ⌥⌘I" ${ms('M7a', '항목 패널 토글')}>${icon('panel-right')}</span>
     </div>`;
@@ -1099,13 +1099,18 @@
     return [home, open];
   }
 
-  /** Tab context menu (design-spec 7.3): opens under the pointer, on the open tab. 다른 탭 닫기 needs another reader tab. */
+  /**
+   * Tab context menu (design-spec 7.3): native, so it opens with its top-left corner at the pointer and its look is the
+   * system's. It is drawn here only to show what it holds. The shortcuts belong to the active tab, on which it is opened.
+   */
   function tabMenu7b() {
-    return `<div class="menu" data-anchor="tab-r-open" style="width:232px;margin-left:40px" role="menu" ${ms('M7b', '탭 컨텍스트 메뉴')}>
+    return `<span class="pointer" aria-hidden="true">${icon('mouse-pointer-2', 'sm')}</span>
+    <div class="menu" data-pointer-in="tab-r-open" style="width:232px" role="menu" ${ms('M7b', '탭 컨텍스트 메뉴(네이티브)')}>
       ${mi('탭 닫기', { shortcut: '⌘W' })}${mi('다른 탭 닫기')}
       <div class="msep"></div>
       ${mi('라이브러리에서 보기')}${mi('Finder에서 보기', { shortcut: '⇧⌘R' })}
-    </div>`;
+    </div>
+    <div class="native-note">네이티브 메뉴입니다. 모양은 시스템이 그립니다.</div>`;
   }
 
   /**
@@ -1114,9 +1119,11 @@
    */
   function stage7b(scroll, spread, zoom) {
     const pg = (n) => paperPageV2(n);
+    const w = 794 * zoom;
     let inner;
-    if (spread === 'odd') inner = `<div class="pdf-scroll row spread" style="top:12px">${pg(3)}${pg(4)}</div>`;
-    else if (scroll === 'horizontal') inner = `<div class="pdf-scroll row hscroll" style="top:12px">${pg(3)}${pg(4)}${pg(5)}</div>`;
+    if (spread === 'odd') inner = `<div class="pdf-scroll" style="top:12px"><div class="srow">${pg(3)}${pg(4)}</div><div class="srow">${pg(5)}${pg(6)}</div></div>`;
+    // Page 3 sits 12 from the left edge with the end of page 2 just outside it (the spec 6 counterpart of 12 above).
+    else if (scroll === 'horizontal') inner = `<div class="pdf-scroll row hscroll" style="top:12px;left:-${Math.round(w)}px;right:auto">${pg(2)}${pg(3)}${pg(4)}${pg(5)}</div>`;
     else inner = `<div class="pdf-scroll" style="top:12px">${pg(3)}</div>`;
     return `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}" ${ms('M7b', scroll === 'horizontal' ? '가로 스크롤 장면' : spread === 'odd' ? '펼침 보기 장면' : '한 쪽씩 장면')}>${inner}</div>`;
   }
@@ -1176,8 +1183,9 @@
     const mainW = w - 240 - (inspectorOn ? 320 : 0);
     if (w < 1440) zoom = Math.floor(((mainW - 1 - 32) / 794) * 100) / 100;
     // Spread: two pages and the 12 px gap between them fill the stage; horizontal: pages fit the stage's height.
-    if (spreadQ === 'odd') zoom = Math.floor(((mainW - 1 - 24) / (2 * 794 + 12)) * 100) / 100;
-    if (scrollQ === 'horizontal') zoom = 0.7;
+    // (the stage is 804 high at 900: page height fit with 12 above and below = 69 %; one page at a time fits the same way.)
+    if (spreadQ === 'odd') zoom = Math.floor(((mainW - 1 - 48) / (2 * 794 + 12)) * 100) / 100;
+    if (scrollQ === 'horizontal' || scrollQ === 'page') zoom = Math.floor(((900 - 52 - 44 - 24) / 1123) * 100) / 100;
 
     if (dead) {
       sidebar =
@@ -1200,7 +1208,7 @@
       const findTotal = hits1 + countHits(paperPageV2(3, { find: true }));
       const findCurrent = find === 'wrap' ? 1 : hits1 + 1;
       sidebar = sidebarV2({ ...doc, page: curPage }, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
-      const toolbar = toolbarV2({ page: String(curPage), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu: menu === 'tab' ? null : menu, find: !!find, inspectorOn, disabled: loading, history });
+      const toolbar = toolbarV2({ page: String(curPage), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu: menu === 'tab' ? null : menu, find: !!find, inspectorOn, disabled: loading, history, narrow: is7b && mainW < 480 });
       let stage;
       if (loading) {
         stage = `<div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7a', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>${doc.page}쪽을 여는 중…</div></div></div></div></div>`;
@@ -1212,7 +1220,7 @@
           find === 'wrap'
             ? [paperFirst({ find: true, current: 1 }), paperPageV2(2)]
             : [paperPageV2(3, { sel: select ? (select === 'long' ? 'all' : 'one') : false, find: marked, current: findCurrent }), paperPageV2(4)];
-        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:24px">${pages.join('')}</div>${find ? findBarV2(find, { current: findCurrent, total: findTotal }) : ''}${select ? selPopup(select) : ''}</div>`;
+        stage = `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}"><div class="pdf-scroll" style="top:${is7b ? 12 : 24}px">${pages.join('')}</div>${find ? findBarV2(find, { current: findCurrent, total: findTotal }) : ''}${select ? selPopup(select) : ''}</div>`;
       } else {
         // 이미 한국어입니다: the textbook, a Korean sentence selected.
         const body42 = pageBody(42, { find: false })
@@ -1235,8 +1243,9 @@
     // A narrower window on a simulated desktop (the tutor mockup's state 10 does the same).
     const notes = {
       1024: is7b
-        ? '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 탭 줄은 내용 열 폭(784)에서 최소 폭 120의 탭이 넘치면 가로로 스크롤하고 활성 탭을 보이게 합니다. 리더 도구 막대는 ‹ › 단추가 더해져도 한 줄에 듭니다'
+        ? '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 탭 줄은 내용 열 폭(784)에서 최소 폭 120의 탭이 넘치면 가로로 스크롤하고 활성 탭을 보이게 합니다. 라이브러리 탭은 줄 맨 앞에 고정됩니다. 리더 도구 막대는 쪽 필드의 "/ N"을 숨겨 15pt에서도 한 줄에 듭니다'
         : '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 리더 최소 440을 지켜 항목 패널이 펼쳐 있습니다. 1000 아래에서는 항목 패널이 먼저 접힙니다(창 폭에서 다시 계산, 저장하지 않음)',
+      1000: '창 1000 · 사이드바 240 + 리더 440 + 항목 패널 320 — 정보가 펼쳐지는 가장 좁은 창입니다. 도구 막대는 15pt에서도 423이라 440에 들고, 480보다 좁은 리더는 쪽 필드의 "/ N"을 숨깁니다',
       960: '창 960(최소) · 사이드바 240 + 항목 패널 320을 두면 리더가 400이라 최소 440에 못 미쳐 항목 패널이 접혔습니다 — 도구 막대의 단추로 열면 사이드바가 접힙니다',
     };
     const win = shell({ style: `--win-w:${w}px;--win-h:${w === 960 ? 640 : 768}px` });

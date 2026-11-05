@@ -146,11 +146,12 @@ export const VARIANTS = [
     ['reader-pdf', { m: '7b', tabs: '2', spread: 'odd' }, 'm7b-spread-odd', 'M7b 펼침 보기 · 홀수 쪽부터'],
     ['reader-pdf', { m: '7b', menu: 'tab' }, 'm7b-menu-tab', 'M7b 탭 컨텍스트 메뉴'],
     ['reader-pdf', { m: '7b', tabs: '2', sidebar: 'hidden' }, 'm7b-sidebar-hidden', 'M7b 사이드바 접힘 · 탭 줄에 신호등 인셋·토글·실행기'],
+    ['reader-pdf', { m: '7b', tabs: '2', w: '1000' }, 'm7b-w1000', 'M7b 창 1000×768 · 항목 패널이 펼쳐지는 가장 좁은 창'],
     ['reader-pdf', { m: '7b', tabs: 'many', w: '1024' }, 'm7b-w1024', 'M7b 창 1024×768 · 탭 줄과 리더 도구 막대'],
     ['library', { m: '7b', tabs: '2' }, 'm7b-library-tabs', 'M7b 라이브러리 탭 활성 · 리더 탭 하나'],
-    ['library', { reading: 'pdf' }, 'm7b-reading-pdf', 'M7b 항목 패널 읽기 절 · PDF'],
-    ['library', { reading: 'video' }, 'm7b-reading-video', 'M7b 항목 패널 읽기 절 · 동영상'],
-    ['library', { reading: 'legacy' }, 'm7b-reading-legacy', 'M7b 항목 패널 읽기 절 · 쪽 수 없는 옛 값'],
+    ['library', { m: '7b', tabs: '2', reading: 'pdf' }, 'm7b-reading-pdf', 'M7b 항목 패널 읽기 절 · PDF'],
+    ['library', { m: '7b', tabs: '2', reading: 'video' }, 'm7b-reading-video', 'M7b 항목 패널 읽기 절 · 동영상'],
+    ['library', { m: '7b', tabs: '2', reading: 'legacy' }, 'm7b-reading-legacy', 'M7b 항목 패널 읽기 절 · 쪽 수 없는 옛 값'],
   ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m7b') }))),
 ];
 

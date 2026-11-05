@@ -380,7 +380,7 @@ test('the reader lists reader commands and not library ones; its folded toolbar 
     expect(ids).not.toContain('app.palette'); // the palette does not list itself
     await page.keyboard.press('Escape');
     await runMenuCommand(app, 'view.toggleSidebar');
-    await expect(page.getByTestId('toolbar').getByTestId('launcher')).toHaveCount(1);
+    await expect(page.getByTestId('tab-bar').getByTestId('launcher')).toHaveCount(1);
   } finally {
     await app.close();
   }
@@ -505,7 +505,7 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await expect(results.first()).toHaveAttribute('data-focused', 'true');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
-    await expect(page.getByTestId('viewer-title')).toHaveText('신호 증폭');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('신호 증폭');
   } finally {
     await app.close();
   }
@@ -575,7 +575,7 @@ test('↓ and ↑ cross from 자료 into 명령 and back; ↩ on a command row r
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect.poll(textSize).not.toBe(before); // the command ran
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0); // and no item was opened
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0); // and no item was opened
   } finally {
     await app.close();
   }

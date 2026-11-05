@@ -37,7 +37,7 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
     await page.waitForTimeout(400); // the brief's scenario wait (> 300 ms debounce); the save itself is confirmed by the poll below
     // Saved by the debounce while the viewer is still open (not only by the unmount flush): (pageIndex + 1) / pageCount.
     await expect.poll(() => progressOf(page, 'sample')).toBeCloseTo(2 / 3, 5);
-    await page.getByTestId('viewer-back').click();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
     // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first. The sampler
@@ -77,7 +77,7 @@ test('opening a PDF records openedAt even when the page never changes', async ({
     expect((await listed(page, 'sample')).openedAt).toBeNull();
     await openItem(page, 'sample');
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
-    await page.getByTestId('viewer-back').click();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
     await expect.poll(async () => (await listed(page, 'sample')).openedAt).not.toBeNull();
@@ -171,6 +171,8 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
     await openItem(page, 'paper-100');
     const viewer = page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The saved place (none yet) is applied once the stage has settled and it sets the rotation: a turn made before would be undone by it.
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
     await runMenuCommand(app, 'reader.rotateCw');
     await expect(viewer).toHaveAttribute('data-rotation', '90');
     await setPdfZoom(page, 1.5);

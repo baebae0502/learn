@@ -67,6 +67,7 @@ import { tagActions } from '../tags/actions';
 import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
+import { TabBar } from '../shell/TabBar';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
@@ -77,8 +78,7 @@ import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
 import { useReader } from '../viewers/pdf/readerStore';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
-import { ReaderToolbar } from '../viewers/ReaderToolbar';
-import { ViewerHost } from '../viewers/ViewerHost';
+import { ReaderTabs } from '../viewers/ReaderTabs';
 import { useReportIdle } from './useReportIdle';
 import { useWarmUp } from './useWarmUp';
 
@@ -115,6 +115,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   // Once the first list has settled and the page is idle, main prepares the settings window hidden.
   useReportIdle(items.isSuccess || items.isError);
   const view = useShell((s) => s.view);
+  // Reader tabs make the tab strip the window's top bar; the library's own head then moves under it.
+  const tabsOpen = useShell((s) => s.tabs.tabs.length > 0);
   const selectTab = useShell((s) => s.selectTab);
   const openTab = useShell((s) => s.openTab);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
@@ -522,28 +524,27 @@ export function MainWindow(_props: { info: AppInfo }) {
   const dndOpen = view.kind === 'library' && !blocked && !held;
   useEffect(() => setDndGate(dndOpen), [dndOpen]);
   useEffect(() => installDndEvents(), []);
-  const toolbar =
-    view.kind === 'reader' ? (
-      <ReaderToolbar itemId={view.itemId} />
-    ) : (
-      <LibraryToolbar
-        title={scopeView.label}
-        titleTip={scopeView.tooltip}
-        items={viewList}
-        scoped={scopeView.scoped.length}
-        filtered={scopeView.filtered}
-        actions={
-          <>
-            <KeepAllDuplicatesButton />
-            {/* The trash view's head (approved mockup): 휴지통 비우기… in 가져오기's place — what is imported goes to 내 라이브러리. */}
-            {inTrash ? <EmptyTrashButton /> : <ImportMenuButton />}
-            {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}
-            {showsTable && <InspectorToggle pending={listPending} />}
-          </>
-        }
-        trailing={<Launcher />}
-      />
-    );
+  const libraryBar = (place: 'toolbar' | 'head') => (
+    <LibraryToolbar
+      place={place}
+      title={scopeView.label}
+      titleTip={scopeView.tooltip}
+      items={viewList}
+      scoped={scopeView.scoped.length}
+      filtered={scopeView.filtered}
+      actions={
+        <>
+          <KeepAllDuplicatesButton />
+          {/* The trash view's head (approved mockup): 휴지통 비우기… in 가져오기's place — what is imported goes to 내 라이브러리. */}
+          {inTrash ? <EmptyTrashButton /> : <ImportMenuButton />}
+          {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}
+          {showsTable && <InspectorToggle pending={listPending} />}
+        </>
+      }
+      trailing={<Launcher />}
+    />
+  );
+  const toolbar = tabsOpen ? <TabBar trailing={<Launcher />} /> : libraryBar('toolbar');
   // N-5: until the first list has arrived the count is unknown, not 0 — show neither the first-run screen nor the
   // list (no empty-library flash). A first read that failed says so where the list would be, with a retry.
   const library = inTrash ? (
@@ -573,6 +574,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
+        head={view.kind === 'library' && tabsOpen ? libraryBar('head') : undefined}
         inspector={showsInspector ? <Inspector mode="info" /> : undefined}
         overlays={
           <>
@@ -585,7 +587,8 @@ export function MainWindow(_props: { info: AppInfo }) {
           </>
         }
       >
-        {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
+        {view.kind === 'library' && library}
+        <ReaderTabs />
       </Shell>
       {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
       <ImportQueueMarker />

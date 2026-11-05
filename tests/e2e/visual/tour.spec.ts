@@ -861,15 +861,15 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       // differs between Debian and Ubuntu (CI). The page box, its shadow, the stage and both toolbars stay compared.
       // The thumbnails draw the same text; the item panel's dates and the fixture's SHA-256 change between runs (CI 41772935706).
       await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.locator('[data-testid="pdf-viewer"] .canvasWrapper'), s.page.locator('[data-testid="pdf-thumbnails"] canvas'), ...panelMasks(s.page)] });
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'sample-mpeg4part2');
       await expect(s.page.getByTestId('video-error')).toContainText('이 동영상은 재생할 수 없습니다');
       await shoot(s.page, `reader-codec-${theme}`);
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'broken');
       await expect(s.page.getByTestId('pdf-error')).toBeVisible();
       await shoot(s.page, `reader-error-${theme}`);
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'gone');
       await expect(s.page.getByTestId('missing-notice').locator('.file')).toHaveText('~/Downloads/gone.pdf');
       await shoot(s.page, `reader-missing-${theme}`);
@@ -916,7 +916,7 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await openItem(page, 'locked');
       await expect(page.getByTestId('pdf-password')).toBeVisible();
       await shootReader(`reader-password-${theme}`);
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
       await openItem(page, 'paper-100');
       await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
@@ -981,7 +981,7 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await shootReader(`reader-popup-error-${theme}`);
       await translationFake(s.app, 'ok');
       await unselect();
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await expect(page.getByTestId('library-table')).toBeVisible();
     }
     // The settings window at the 번역 group: chosen on, light and dark.
@@ -1209,7 +1209,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'all').click();
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await runMenuCommand(s.app, 'nav.back');
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')], { allowDuplicate: true });
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
@@ -1288,7 +1288,7 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'all').click();
     await openItem(s.page, items[0]!.title);
-    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await trashItems(s.page, [items[0]!.id]);
     await expect(s.page.getByTestId('reader-trashed')).toBeVisible();
     for (const theme of THEMES) {

@@ -23,11 +23,42 @@ export function createReaderScope(id: string): ReaderScope {
   return { id, reader: createReaderStore(), find: createFindStore(), selection: createSelectionStore(), translation: createTranslationStore(), pageField: { current: null } };
 }
 
-const Context = createContext<ReaderScope | null>(null);
+/**
+ * The scope of each tab's document, made on first ask and kept while the tab is open: a reader that left the mounted set and
+ * comes back finds its find query and translation as it left them (the view itself is made again, at the saved place).
+ */
+export const readerScopes = (() => {
+  const all = new Map<string, ReaderScope>();
+  return {
+    get(id: string): ReaderScope {
+      let scope = all.get(id);
+      if (!scope) all.set(id, (scope = createReaderScope(id)));
+      return scope;
+    },
+    /** The tab was closed or its item is gone for good. */
+    drop(id: string): void {
+      const scope = all.get(id);
+      if (!scope) return;
+      all.delete(id);
+      if (active === scope) setActiveReaderScope(null);
+    },
+    ids: (): string[] => [...all.keys()],
+  };
+})();
 
-export function ReaderScopeProvider({ scope, children }: { scope: ReaderScope; children: ReactNode }) {
-  return <Context.Provider value={scope}>{children}</Context.Provider>;
+const Context = createContext<ReaderScope | null>(null);
+/** Whether the reader around the component has the screen: a kept tab that is not shown stops watching sizes and playing. */
+const ShownContext = createContext(true);
+
+export function ReaderScopeProvider({ scope, shown = true, children }: { scope: ReaderScope; shown?: boolean; children: ReactNode }) {
+  return (
+    <Context.Provider value={scope}>
+      <ShownContext.Provider value={shown}>{children}</ShownContext.Provider>
+    </Context.Provider>
+  );
 }
+
+export const useReaderShown = (): boolean => useContext(ShownContext);
 
 let active: ReaderScope | null = null;
 const listeners = new Set<() => void>();

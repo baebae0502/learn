@@ -51,7 +51,7 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
 
   sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [a]));
   await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
-  await expect(s.page.getByTestId('viewer-title')).toHaveText('Chapter 06');
+  await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('Chapter 06');
   await backFromReader(s.page);
 
   const notes = path.join(src, 'notes.txt');
@@ -135,8 +135,8 @@ test('while an import runs the window stays in use: its controls stay enabled, m
     expect(await node!.evaluate((e) => e.isConnected)).toBe(true);
     // The list opens an item meanwhile: the registry's item.open is not refused.
     await rowByTitle(s.page, 'kept').dblclick();
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('kept');
-    await s.page.getByTestId('viewer-back').click();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('kept');
+    await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await importResume(s.app);
     await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
     expect(await node!.evaluate((e) => (e.isConnected ? e.getAttribute('data-testid') : null))).toBe('import-done'); // the same toast, now the result
@@ -159,7 +159,7 @@ test('while an import runs the window stays in use: its controls stay enabled, m
     const opensNothing = async (how: () => Promise<void>) => {
       await how();
       await frames(s);
-      await expect(s.page.getByTestId('viewer-title')).toHaveCount(0);
+      await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
       await expect(s.page.getByTestId('library-table')).toBeVisible();
     };
     await opensNothing(() => row.dblclick());
@@ -172,7 +172,7 @@ test('while an import runs the window stays in use: its controls stay enabled, m
     await expectDisabledReason(managed, null);
     await waitImportIdle(s.page);
     await row.dblclick();
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('held');
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('held');
   } finally {
     await s.app.close();
   }

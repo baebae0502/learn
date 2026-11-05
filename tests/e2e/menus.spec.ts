@@ -138,7 +138,7 @@ test('⇧F10 and the menu key open the focused row\'s menu under it, once, for t
     await stubContextMenu(app, '열기');
     await rowByTitle(page, 'gamma').click();
     await page.keyboard.press('Shift+F10');
-    await expect(page.getByTestId('viewer-title')).toHaveText('gamma');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('gamma');
   } finally {
     await app.close();
   }

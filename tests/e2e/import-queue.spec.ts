@@ -148,7 +148,7 @@ test('the duplicates of a window\'s import are asked at the end: 확인을 기�
     await expect(toast(s.page)).toContainText('확인을 기다리는 중 · 0 / 3');
     await expect(toast(s.page).locator('.t-file')).toHaveText('distinct-01.pdf');
     await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
-    await expect(s.page.getByTestId('viewer-title')).toHaveText(items[0]!.title);
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText(items[0]!.title);
     await expect(toast(s.page)).toHaveCount(0); // nothing came in: the toast goes
     await waitImportIdle(s.page);
     expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]); // the rest: skipped, unasked

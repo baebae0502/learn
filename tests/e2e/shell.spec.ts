@@ -673,7 +673,7 @@ test('the window is named after its view: the library title, then the open item 
     await expect.poll(title).toBe(await page.getByTestId('toolbar-title').textContent());
     expect(await title()).toBe('내 라이브러리');
     await openItem(page, 'sample');
-    await expect(page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
     await expect.poll(title).toBe('sample');
     await runMenuCommand(app, 'nav.back');
     await expect.poll(title).toBe('내 라이브러리');

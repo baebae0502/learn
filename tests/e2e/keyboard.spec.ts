@@ -78,8 +78,9 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
     await page.keyboard.press('Shift+Tab'); // 쪽 번호
-    await page.keyboard.press('Shift+Tab'); // toolbar: 라이브러리로 돌아가기
-    expect(await focusedTestId(page)).toBe('viewer-back');
+    await page.keyboard.press('Shift+Tab'); // the tab strip: the reader's own tab
+    expect(await focusedTestId(page)).toBe('tab');
+    await page.keyboard.press('ArrowLeft'); // the library tab (an arrow moves the focus, ↩ chooses)
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('library-table')).toBeVisible();
 
@@ -205,8 +206,9 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
     await page.keyboard.press('Shift+Tab'); // 쪽 번호
-    await page.keyboard.press('Shift+Tab'); // 라이브러리로 돌아가기
-    expect(await focusedTestId(page)).toBe('viewer-back');
+    await page.keyboard.press('Shift+Tab'); // the tab strip: the reader's own tab
+    expect(await focusedTestId(page)).toBe('tab');
+    await page.keyboard.press('ArrowLeft'); // the library tab (an arrow moves the focus, ↩ chooses)
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('library-table')).toBeVisible();
 
@@ -564,7 +566,7 @@ test('axe at every M6 state: the import toast running and waiting for the answer
 
     // The reader, its item moved to the trash.
     await rowByTitle(page, 'distinct-03').dblclick();
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     const open = (await page.evaluate(async () => {
       const r = await window.learn.library.list();
       return r.ok ? r.data.find((i) => i.title === 'distinct-03')?.id : null;
@@ -1079,6 +1081,8 @@ test('the reader v2 and its translation by keyboard: toolbar → page field → 
     const viewer = page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-pages', '100');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The page field is disabled until the saved place has been applied: F6 lands on it only after that.
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
 
     // The toolbar: F6 from the sidebar reaches the content pane, whose first control is the page field.
     await f6To(page, 'content');

@@ -23,6 +23,9 @@ async function openPaper(page: Page) {
   await openItem(page, 'paper-100');
   await expect(viewer(page)).toHaveAttribute('data-pages', '100');
   await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  // The saved place (none for a new item) is applied once the stage has settled, and it sets the rotation and the zoom: what a test
+  // does to the view before that is undone by it.
+  await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
 }
 
 test('a 100-page paper opens on its first page with the page field and the page count', async ({}, testInfo) => {
@@ -228,6 +231,8 @@ test('the fit modes keep the mockup\'s margins: 24 of --bg-sunken round the page
     await openPaper(page);
     const scroll = page.getByTestId('pdf-scroll');
     const sunken = await resolveColor(page, 'var(--bg-sunken)');
+    // The saved place is applied once the stage has stopped changing size (the item panel opens with the pages): the margins are read after it.
+    await expect(scroll).toHaveAttribute('data-restored', /.*/);
     const geometry = () =>
       page.evaluate(() => {
         const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
@@ -665,7 +670,7 @@ test('a video has no page to turn: the rotation is off there and on again in a P
     await backFromReader(page);
     await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(false);
     await openItem(page, 'sample-h264-aac');
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(true);
     await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(false);
     await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(false);
@@ -958,7 +963,7 @@ test('leaving a PDF the moment its pages exist leaves no page error and no conso
         () =>
           new Promise<void>((resolve) => {
             const el = document.querySelector('[data-testid="pdf-viewer"]')!;
-            const go = () => (document.querySelector('[data-testid="viewer-back"]') as HTMLElement).click();
+            const go = () => (document.querySelector('[data-testid="tab"][data-item-id="library"]') as HTMLElement).click();
             if (el.getAttribute('data-pages') === '100') go();
             else new MutationObserver((_m, o) => { if (el.getAttribute('data-pages') === '100') { o.disconnect(); go(); } }).observe(el, { attributes: true });
             resolve();
@@ -989,7 +994,7 @@ test('leaving a PDF while its thumbnails are being drawn leaves no page error, n
       await viewer(page).waitFor({ state: 'attached' });
       // The first picture is on screen, the others are still on their way.
       await expect(page.locator('[data-testid="pdf-thumb"] canvas[data-drawn]').first()).toBeAttached();
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await expect(viewer(page)).toHaveCount(0);
     }
     await page.waitForTimeout(500);

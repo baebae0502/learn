@@ -75,7 +75,7 @@ test('a duplicate import asks in a sheet: ↩ skips (whichever button has focus)
 
     sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
     await clickToCloseSheet(sheet, sheet.getByTestId('dup-open'));
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
   } finally {
     await s.app.close();
   }

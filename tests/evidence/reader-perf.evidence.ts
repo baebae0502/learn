@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, dragAlong, importPaths, launch, openItem, runMenuCommand, translationCalls, translationFake } from '../e2e/helpers';
+import { FIXTURES, closeReaderTab, dragAlong, importPaths, launch, openItem, runMenuCommand, translationCalls, translationFake } from '../e2e/helpers';
 import { limitFailures } from './budget';
 import { EVIDENCE_ROOT, writeJson } from './capture';
 import { READER_BUDGET_MS, frameGaps, readerLimits } from './reader-perf-math';
@@ -128,12 +128,12 @@ test('reader budgets @1: the first page (5 opens), the first find match (5) and 
     // 1. First page: the open command (the double click) → the first `pagerendered` of page 1. One open first, unmeasured: the
     //    cold start of pdf.js's worker and module is not a reader's open.
     await openReader(page);
-    await backFromReader(page);
+    await closeReaderTab(page);
     const first: number[] = [];
     for (let i = 0; i < RUNS.firstPage; i++) {
       first.push(await openFirstPage(page));
       await expect(viewer(page)).toHaveAttribute('data-pages', '100');
-      await backFromReader(page);
+      await closeReaderTab(page);
     }
     save({ firstPage: { ...summary(first), runs: first.map(tenth) } });
 
@@ -162,7 +162,7 @@ test('reader budgets @1: the first page (5 opens), the first find match (5) and 
       await input.fill('attention');
       find.push(await page.evaluate(async () => (await (window as unknown as { __shown: Promise<number> }).__shown) - (window as unknown as { __typed: number }).__typed));
       await input.press('Escape');
-      await backFromReader(page);
+      await closeReaderTab(page);
     }
     save({ findFirstMatch: summary(find) });
 
@@ -173,7 +173,7 @@ test('reader budgets @1: the first page (5 opens), the first find match (5) and 
     await openReader(page);
     if ((await shell(page).getAttribute('data-sidebar')) !== 'shown') await runMenuCommand(app, 'view.toggleSidebar');
     await expect(shell(page)).toHaveAttribute('data-sidebar', 'shown');
-    await backFromReader(page);
+    await closeReaderTab(page);
     for (let i = 0; i < RUNS.thumbnails; i++) {
       await openReader(page);
       await page.getByTestId('reader-nav-outline').click();
@@ -203,7 +203,7 @@ test('reader budgets @1: the first page (5 opens), the first find match (5) and 
       });
       await page.getByTestId('reader-nav-thumbnails').click();
       thumbs.push(await page.evaluate(async () => (await (window as unknown as { __thumbsShown: Promise<number> }).__thumbsShown) - (window as unknown as { __clicked: number }).__clicked));
-      await backFromReader(page);
+      await closeReaderTab(page);
     }
     save({ thumbnailsVisible: summary(thumbs) });
   } finally {

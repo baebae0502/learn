@@ -128,18 +128,18 @@ test('a single click only selects; double-click or ↩ opens the one selected ro
     await importInOrder(page, testInfo.outputPath('src'), ['alpha', 'beta']);
     await rowByTitle(page, 'alpha').click();
     await frames(page);
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     await rowByTitle(page, 'alpha').dblclick();
-    await expect(page.getByTestId('viewer-title')).toHaveText('alpha');
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('alpha');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await rowByTitle(page, 'beta').click();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toHaveText('beta');
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('beta');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await selectRows(page, ['alpha', 'beta']);
     await page.keyboard.press('Enter');
     await frames(page);
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     await expect(page.getByTestId('library-table')).toBeVisible();
   } finally {
     await app.close();
@@ -406,8 +406,8 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await page.keyboard.press('End');
     await expect(rowAt(page, 150)).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     // Shown vertically (the row is wider than the table, so the viewport ratio says nothing): inside the view's top and bottom.
     await expect
       .poll(() =>

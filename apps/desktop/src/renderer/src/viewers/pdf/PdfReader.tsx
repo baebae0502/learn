@@ -23,7 +23,7 @@ import { useFind } from './findStore';
 import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
-import { useReaderScope } from '../readerScope';
+import { useReaderScope, useReaderShown } from '../readerScope';
 import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
 import { SepiaFilter } from './SepiaFilter';
@@ -39,6 +39,7 @@ const SCREEN_STEP = 0.9;
 /** The PDF reader: the 44 px toolbar (page field and page turns) over the stage that the pdf.js viewer fills. */
 export function PdfReader({ item }: { item: LibraryItem }) {
   const scope = useReaderScope();
+  const shown = useReaderShown();
   const open = usePdfDocument(item.assetId);
   /** The viewer's last reported place, kept for the unmount flush: by then the viewer may be gone. */
   const latestRef = useRef<LatestPosition | null>(null);
@@ -60,8 +61,10 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     scope.reader.getState().setNoPages('reader', noPages);
     return () => scope.reader.getState().setNoPages('reader', null);
   }, [noPages]);
-  // The selection pop-up: the text selected in the pages (translation/); leaving the reader cancels what is in flight.
-  useSelectionText(stageRef, ready);
+  // The selection pop-up: the text selected in the pages (translation/); leaving the reader cancels what is in flight. A hidden tab
+  // closes its pop-up and leaves the selection alone (the translation section keeps its text): clearing the selection here asks
+  // nothing of main, whose cancel is for the whole window.
+  useSelectionText(stageRef, ready && shown);
   const popupShown = usePopupShown();
   useEffect(() => () => scope.translation.getState().reset(), []);
   // The choice changed elsewhere while this reader is open (the settings window): off ends what runs, on goes on from the consent.
@@ -77,7 +80,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const [stageSettled, setStageSettled] = useState(false);
   useEffect(() => {
     const stage = stageRef.current;
-    if (!ready || !stage) {
+    if (!ready || !stage || !shown) {
       setStageSettled(false);
       return;
     }
@@ -93,13 +96,13 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [ready]);
+  }, [ready, shown]);
   // A classic scroll bar (a Mac with a mouse, Windows, Linux) takes room from the scroller's right edge: what floats over the stage
   // keeps its 16 from the visible edge, so the find bar is offset by that width (an overlay bar is 0). Read again whenever the scroller resizes.
   useEffect(() => {
     const stage = stageRef.current;
     const scroll = stage?.querySelector<HTMLElement>('.pdf-scroll');
-    if (!ready || !stage || !scroll) return;
+    if (!ready || !stage || !scroll || !shown) return;
     const measure = () => stage.style.setProperty('--stage-scrollbar', `${scroll.offsetWidth - scroll.clientWidth}px`);
     measure();
     const observer = new ResizeObserver(measure);
@@ -108,7 +111,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       observer.disconnect();
       stage.style.removeProperty('--stage-scrollbar');
     };
-  }, [ready]);
+  }, [ready, shown]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
     scope.find.getState().closeBar();

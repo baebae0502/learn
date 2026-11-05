@@ -99,7 +99,7 @@ function frameStats(page: Page) {
 }
 
 async function backToLibrary(page: Page): Promise<void> {
-  const back = page.getByTestId('viewer-back');
+  const back = page.locator('[data-testid="tab"][data-item-id="library"]');
   if (await back.isVisible()) await back.click();
   await expect(page.getByTestId('library-table')).toBeVisible();
 }

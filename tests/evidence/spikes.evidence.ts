@@ -58,7 +58,7 @@ async function tour(page: Page): Promise<void> {
   await sleep(1200);
   await page.getByTestId('pdf-next').click();
   await sleep(1200);
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
   await sleep(600);
   await openItem(page, 'sample-h264-aac');
   const video = page.getByTestId('video');
@@ -69,7 +69,7 @@ async function tour(page: Page): Promise<void> {
   });
   await sleep(3000);
   await video.evaluate((v: HTMLVideoElement) => v.pause());
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
   await sleep(600);
 }
 
@@ -257,7 +257,7 @@ test('spike 5: packaged app (electron-builder --dir) via executablePath', TAG, a
     const info = await s.page.evaluate(() => window.learn.app.info());
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await s.page.getByTestId('viewer-back').click();
+    await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await pageShot(s.page, 'spike5-packaged-library', 'packaged app library');
     await focusApp(s.app);
     const win = await nativeWindowShot(s.app, 'spike5-packaged', 'packaged app window');

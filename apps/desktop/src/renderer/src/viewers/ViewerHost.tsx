@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commandById, type LibraryItem } from '@learn/domain';
 import { FileX } from 'lucide-react';
@@ -15,21 +15,14 @@ import { readerLost, trashedAfter, type TrashedState } from './readerState';
 import { TrashedNotice } from './TrashedNotice';
 import { PdfReader } from './pdf/PdfReader';
 import { type NoPages } from './pdf/readerStore';
-import { ReaderScopeProvider, createReaderScope, activeReaderScope, setActiveReaderScope, useReaderScope } from './readerScope';
+import { ReaderScopeProvider, readerScopes, useReaderScope, useReaderShown } from './readerScope';
 import { VideoViewer } from './VideoViewer';
 
-/** One reader scope for the document, shown to everything the reader mounts and, while it is open, to the shell around it. */
-export function ViewerHost({ itemId }: { itemId: string }) {
-  const scope = useMemo(() => createReaderScope(itemId), [itemId]);
-  // Before the first paint, so the sidebar and the toolbar never draw a frame from another reader's state.
-  useLayoutEffect(() => {
-    setActiveReaderScope(scope);
-    return () => {
-      if (activeReaderScope() === scope) setActiveReaderScope(null);
-    };
-  }, [scope]);
+/** One tab's reader: the document's scope shown to everything the reader mounts; `active` says whether the tab has the screen. */
+export function ViewerHost({ itemId, active }: { itemId: string; active: boolean }) {
+  const scope = readerScopes.get(itemId);
   return (
-    <ReaderScopeProvider scope={scope}>
+    <ReaderScopeProvider scope={scope} shown={active}>
       <Viewer itemId={itemId} />
     </ReaderScopeProvider>
   );
@@ -42,6 +35,15 @@ function Viewer({ itemId }: { itemId: string }) {
   // item can be stale (invalidated since, or the file vanished without any libraryChanged), and deciding from it
   // would flash the reader's error or a missing notice before the fresh answer (review minor 1).
   const item = useItem(itemId, true);
+  // A kept tab shown again re-checks the file as an open does (the file can vanish without any announcement); what the tab shows
+  // stays until the answer, which only changes it when the file is gone or back.
+  const shown = useReaderShown();
+  const wasShown = useRef(shown);
+  const { refetch } = item;
+  useEffect(() => {
+    if (shown && !wasShown.current) void refetch();
+    wasShown.current = shown;
+  }, [shown, refetch]);
   // Spec 4.6: moved to the trash while open — the notice; restored, it stays until the item reads again, then the reader opens here.
   const [trashed, setTrashed] = useState<TrashedState>('no');
   useLearnEvent('libraryChanged', (change) => setTrashed((s) => trashedAfter(s, change, itemId)));

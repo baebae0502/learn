@@ -19,6 +19,7 @@ import './components/notice.css';
 import './components/list.css';
 import './components/chip.css';
 import './components/pane-empty.css';
+import './components/tabs.css';
 import './screens/gallery.css';
 import './screens/shell.css';
 import './screens/library.css';

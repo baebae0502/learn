@@ -91,12 +91,12 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // Page 2 is rotated 90°.
   await expect.poll(() => pdfCanvas(page, 2).evaluate((c: HTMLCanvasElement) => c.width > c.height)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('02-pdf.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Korean path PDF
   await openItem(page, '한글 경로 (테스트) #1');
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Video: play + seek accuracy (AC05 target ≤ 500 ms)
   await openItem(page, 'sample-h264-aac');
@@ -119,13 +119,13 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // Fullscreen must be permitted for our own pages (enter, then leave cleanly)
   await toggleFullscreen(app, page, video);
   await page.screenshot({ path: testInfo.outputPath('03-video.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Unsupported codec → explained, not silent
   await openItem(page, 'sample-mpeg4part2');
   await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   await page.screenshot({ path: testInfo.outputPath('04-unsupported.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Crash and restart (AC06 partial: saved state survives a hard kill). The session is saved 300 ms after the last tab change.
   await page.waitForTimeout(450);

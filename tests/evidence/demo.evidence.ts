@@ -610,7 +610,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       await field.press('Enter');
       await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', String(toLast ? total : 2));
       await expect.poll(() => progressOf(title), { timeout: 15_000 }).toBeGreaterThan(0.4);
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await expect(page.getByTestId('library-table')).toBeVisible();
     }
     await park(page, 'main');
@@ -799,7 +799,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
     // 11. The library's 진행 column: how far each item has been read.
     await chapter('목록의 ‘진행’ 열에는 자료마다 어디까지 읽었는지가 보이고, 끝까지 읽은 자료에는 ‘완료’가 표시됩니다.', page, 5500);
-    await glideClick(page, 'main', page.getByTestId('viewer-back'));
+    await glideClick(page, 'main', page.locator('[data-testid="tab"][data-item-id="library"]'));
     await expect(page.getByTestId('library-table')).toBeVisible();
     await pause(1000);
     const progressHeader = page.locator('[data-testid="column-header"][data-col="progress"]');

@@ -42,7 +42,7 @@ test('special views appear with content and 내 라이브러리 always; the one 
 
     // 최근 연 자료: once an item was opened (the reader reports it); no number on its row.
     await openItem(page, pdf!.title);
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await runMenuCommand(app, 'nav.back');
     await expect(specialRow(page, 'recent')).toBeVisible();
     await expect(specialRow(page, 'recent').locator('.count')).toHaveCount(0);
@@ -298,7 +298,7 @@ test('in the reader the sidebar lists the pages, not the collections; the way ba
     await addToCollection(page, a, [pdf!.id]);
     await specialRow(page, 'all').click();
     await openItem(page, pdf!.title);
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await expect(page.getByTestId('reader-sidebar')).toBeVisible();
     await expect(page.getByTestId('sidebar-tree')).toHaveCount(0);
     await expect(specialRow(page, 'all')).toHaveCount(0);
@@ -310,7 +310,7 @@ test('in the reader the sidebar lists the pages, not the collections; the way ba
     await treeRow(page, a).click();
     await openItem(page, pdf!.title);
     await expect(page.getByTestId('reader-sidebar')).toBeVisible();
-    await page.getByTestId('viewer-back').click();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(title(page)).toHaveText('가');
     await expect(page.getByTestId('item-row')).toHaveCount(1);
   } finally {

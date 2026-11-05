@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
 import { ratio, restoreVideoSeconds } from './positionSaver';
 import { CodecNotice } from './ReaderNotices';
+import { useReaderShown } from './readerScope';
 import { usePosition } from './usePosition';
 
 const TIME_SAVE = { kind: 'throttle', ms: 2000 } as const;
@@ -18,6 +19,11 @@ export function VideoViewer({ item }: { item: LibraryItem }) {
   useEffect(() => () => clearTimeout(metadataAt.current ?? undefined), []);
   const videoRef = useRef<HTMLVideoElement | null>(null); // kept after unmount so the final time can still be read
   const restored = useRef(false);
+  // A kept tab that is not shown does not play on behind the one that is (the pause also saves the place: onPause).
+  const shown = useReaderShown();
+  useEffect(() => {
+    if (!shown) videoRef.current?.pause();
+  }, [shown]);
 
   const pos = usePosition(item, TIME_SAVE, () => {
     const v = videoRef.current;

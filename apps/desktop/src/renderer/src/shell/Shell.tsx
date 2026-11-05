@@ -15,10 +15,10 @@ const CLIP = { overflow: 'hidden' } as const;
  * Layout B (design-spec 2.3): a full-height sidebar whose top 88 px (traffic lights + toggle, ⌘K launcher, 8 gap)
  * is identical in every view, a 1 px boundary with a ±4 px resize handle, and the main column: the 52 px toolbar over
  * the content and, in the library, the item panel (design-spec 2.5) — a nested group whose boundary works as the
- * sidebar's does, so the toolbar spans both. `sidebarFoot` sits under the scrolling part of the sidebar, as tall as it is
+ * sidebar's does, so the toolbar spans both. With reader tabs the toolbar is the tab strip and `head` is the view's own bar over its column. `sidebarFoot` sits under the scrolling part of the sidebar, as tall as it is
  * (the tag selector).
  */
-export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; launcher?: ReactNode; toolbar: ReactNode; children: ReactNode; inspector?: ReactNode; overlays?: ReactNode }) {
+export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; launcher?: ReactNode; toolbar: ReactNode; head?: ReactNode; children: ReactNode; inspector?: ReactNode; overlays?: ReactNode }) {
   const panelRef = usePanelRef();
   const groupRef = useRef<HTMLDivElement>(null);
   const inspectorRef = usePanelRef();
@@ -131,6 +131,8 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
           {props.toolbar}
           <Group orientation="horizontal" className="main-panes" elementRef={mainGroupRef} onLayoutChanged={onMainLayoutChanged} resizeTargetMinimumSize={{ fine: 9, coarse: 20 }}>
             <Panel id="content-pane" className="content-pane" style={CLIP}>
+              {/* The view's own head under the tab strip (the library's, while reader tabs exist): over the content column only, outside the pane F6 visits. */}
+              {props.head}
               <main className="content" data-testid="content" data-pane="content">
                 {props.children}
               </main>

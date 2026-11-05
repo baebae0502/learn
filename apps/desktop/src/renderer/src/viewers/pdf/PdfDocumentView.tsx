@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileX } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -10,7 +10,7 @@ import { watchDevicePixelRatio } from './displayChange';
 import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
-import { useReaderScope } from '../readerScope';
+import { useReaderScope, useReaderShown } from '../readerScope';
 import { fitScale, widestPage, type FitMode } from './fit';
 import { roomAfterJump } from './placement';
 import { nextZoom } from './zoom';
@@ -39,6 +39,16 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
   /** The saved place is applied (PdfReader): until then a change of the stage's size is the stage settling, not a reason to fit again. */
   const restoredRef = useRef(restored);
   restoredRef.current = restored;
+  /**
+   * A kept tab that is not shown is display: none: its stage measures 0 and its scroll offset is lost with its box. Read by the
+   * observers (set while rendering, so a callback in the same frame as the change already sees it) and by the view's own
+   * hook, which the effect below calls when the tab is hidden or shown.
+   */
+  const shown = useReaderShown();
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const onShown = useRef<((shown: boolean) => void) | null>(null);
+  useLayoutEffect(() => onShown.current?.(shown), [shown]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -104,7 +114,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           }
           return widestPage(sizes, viewer.pagesRotation as Rotation);
         };
+        /** A fit asked for while the tab is hidden (its stage measures nothing): done once it is shown. */
+        let fitWhenShown: FitMode | null = null;
         const fitTo = (mode: FitMode, again = true) => {
+          if (!shownRef.current) {
+            fitWhenShown = mode;
+            return;
+          }
           const view = viewer.getPageView(viewer.currentPageNumber - 1);
           if (!view?.width || !view.scale) return;
           const [width, height] = [container.clientWidth, container.clientHeight];
@@ -286,7 +302,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
         // E2E only: the spike's selection and anchor hooks (the window's address carries e2e=1 only in an unpackaged test run).
         // Loaded on demand, so the product's bundle does not hold them.
-        let removeProbe: (() => void) | null = null;
+        let removeProbe: ((() => void) & { claim(): void }) | null = null;
         if (readWindowParams(window.location.search).e2e) {
           void import('./anchorProbe').then(({ default: installProbe }) => {
             if (!cancelled) removeProbe = installProbe({ doc, viewer, revisionId });
@@ -297,6 +313,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         let fitFrame = 0;
         const refit = () => {
           fitFrame = 0;
+          if (!shownRef.current) return;
           const zoom = scope.reader.getState().pdf?.zoom;
           if (!restoredRef.current || typeof zoom !== 'string') return;
           fitTo(zoom);
@@ -307,6 +324,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         let lastWidth = -1;
         let lastHeight = -1;
         const stageObserver = new ResizeObserver((entries) => {
+          // Hidden, the stage is 0 by 0: that is neither a size to fit to nor one to remember (the size from before the hiding is what a
+          // later callback is compared with, so a stage that comes back the same size does not fit again).
+          if (!shownRef.current) return;
           const box = entries[entries.length - 1]?.borderBoxSize?.[0];
           if (box && box.inlineSize === lastWidth && box.blockSize === lastHeight) return;
           if (box) {
@@ -316,7 +336,32 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           if (!fitFrame) fitFrame = requestAnimationFrame(refit);
         });
         stageObserver.observe(container, { box: 'border-box' });
+        // The scroll offset of the shown stage, kept to put back: a box that was display: none starts at 0 when it is shown again.
+        let scrolled = { top: 0, left: 0 };
+        container.addEventListener('scroll', () => {
+          if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
+        });
+        let wasHidden = false;
+        onShown.current = (visible) => {
+          if (!visible) {
+            wasHidden = true;
+            // The jump's target belongs to the stage as it was: text layers drawn again on showing must not pull the scroll to it.
+            jumped = null;
+            return;
+          }
+          if (!wasHidden) return;
+          wasHidden = false;
+          container.scrollTop = scrolled.top;
+          container.scrollLeft = scrolled.left;
+          removeProbe?.claim();
+          const mode = fitWhenShown;
+          fitWhenShown = null;
+          if (mode) fitTo(mode);
+          // Once, for what the pages need to draw at this size; a stage that changed size is fitted by its observer in this frame.
+          viewer.update();
+        };
         teardown = () => {
+          onShown.current = null;
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();
           cancelAnimationFrame(fitFrame);

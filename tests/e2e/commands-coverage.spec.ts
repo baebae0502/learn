@@ -283,7 +283,7 @@ test('every registry command runs without a page error (library and reader menus
         await sheetReleased(page);
         await openItem(page, 'sample'); // a double-click: a single click only selects
         // The menu is read once below: wait until the reader is up and main's menu has followed.
-        await expect(page.getByTestId('viewer-title')).toBeVisible();
+        await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
         await expect.poll(() => menuLabel(app, 'library.find')).toBe('찾기');
         // The reader's commands follow the PDF's pages, which main hears of a moment after the toolbar shows.
         await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);

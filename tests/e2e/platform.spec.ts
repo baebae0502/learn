@@ -243,11 +243,11 @@ test('menu command 라이브러리로 돌아가기 returns from the PDF viewer t
   try {
     await importOnePdf(page);
     await openItem(page, 'sample');
-    await expect(page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     await runMenuCommand(app, 'nav.back');
     await expect(page.getByTestId('library-table')).toBeVisible();
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     await expect(page.getByTestId('item-row')).toHaveCount(1);
   } finally {
     await app.close();
@@ -260,7 +260,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     await importOnePdf(page);
     await stubContextMenu(app, '열기');
     await page.getByTestId('item-row').click({ button: 'right' });
-    await expect(page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);

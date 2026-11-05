@@ -86,6 +86,7 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
   };
   try {
     const page = await app.firstWindow();
+    shownTestIds(page);
     await expect(page.getByTestId('app-ready')).toBeAttached();
     // The menu bar stays disabled until the renderer's first ui:reportContext (M3 Task 2).
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuStateVersion?: number }).__learnMenuStateVersion ?? 0)).toBeGreaterThan(0);
@@ -97,6 +98,15 @@ export async function launch(libraryDir: string | null, userDataDir: string | nu
     await app.close().catch(() => {}); // don't leak the process (and its single-instance lock) on a failed start
     throw e;
   }
+}
+
+/**
+ * Reader tabs that are not shown stay in the page, hidden (spec 3.7): their test ids are there too. A test id on this page
+ * names the one the user sees: whatever is inside a hidden tab panel is left out. The panels themselves (`tab-panel`) are counted as they are.
+ */
+function shownTestIds(page: Page): void {
+  const own = page.getByTestId.bind(page);
+  page.getByTestId = (id) => (typeof id === 'string' ? page.locator(`[data-testid=${JSON.stringify(id)}]:not([data-active="false"] *)`) : own(id));
 }
 
 /**
@@ -1035,8 +1045,20 @@ export async function sheetReleased(page: Page): Promise<void> {
 /** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
 export async function backFromReader(page: Page): Promise<void> {
   await sheetReleased(page);
-  await page.getByTestId('viewer-back').click();
+  await libraryTab(page).click();
 }
+
+/** Leaves the reader by closing its tab, so the next open of the item builds its reader afresh (a tab left open is kept mounted and shows at once). */
+export async function closeReaderTab(page: Page): Promise<void> {
+  await sheetReleased(page);
+  await page.locator('.tab-item.is-active [data-testid="tab-close"]').click();
+}
+
+/** The tab strip's first tab: the library (a window with no reader tab has no strip, so none). */
+export const libraryTab = (page: Page): Locator => page.locator('[data-testid="tab"][data-item-id="library"]');
+
+/** The reader tab of an item, by its id. */
+export const readerTab = (page: Page, itemId: string): Locator => page.locator(`[data-testid="tab"][data-item-id="${itemId}"]`);
 
 /** One item of a native popup menu, as recorded by `stubContextMenu`. */
 export interface PopupItem {
@@ -1651,7 +1673,9 @@ export const translationNet = (app: ElectronApplication): Promise<{ requests: Tr
 export async function selectInPage(page: Page, sentence: string, pageNumber = 1): Promise<void> {
   const found = await page.evaluate(
     ({ sentence, pageNumber }) => {
-      const layer = document.querySelector(`.page[data-page-number="${pageNumber}"] .textLayer`);
+      // The shown reader's: a kept tab that is not shown has its pages in the document too.
+      const shown = document.querySelector('[data-testid="tab-panel"][data-active="true"]') ?? document;
+      const layer = shown.querySelector(`.page[data-page-number="${pageNumber}"] .textLayer`);
       if (!layer) return false;
       const nodes: Text[] = [];
       const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);

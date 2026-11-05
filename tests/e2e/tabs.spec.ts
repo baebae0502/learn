@@ -1,7 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, hardKill, importPaths, launch, libraryTab, mainWindow, openItem, readerTab, runMenuCommand, trashItems } from './helpers';
+import {
+  FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
+  rowByTitle, runMenuCommand, runPalette, selectRows, stubConfirm, stubContextMenu, trashItems,
+} from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const PAGE = 7;
@@ -76,10 +79,17 @@ for (const gone of ['trashed', 'purged'] as const) {
       if (gone === 'purged') {
         const r = await page.evaluate((id) => window.learn.library.purge({ itemIds: [id], collectionIds: [] }), imported!.id);
         expect(r.ok).toBe(true);
+        // Deleted for good while open: the tab goes at once, and the session record with it.
+        await expect(page.getByTestId('tab-bar')).toHaveCount(0);
       }
-      await expect
-        .poll(async () => JSON.stringify(await tabsSetting(page)))
-        .toBe(JSON.stringify({ items: [imported!.id], active: imported!.id }));
+      if (gone === 'trashed') {
+        await expect
+          .poll(async () => JSON.stringify(await tabsSetting(page)))
+          .toBe(JSON.stringify({ items: [imported!.id], active: imported!.id }));
+      } else {
+        // Nothing to keep (the record may never have been written: the tab was gone within the 300 ms before the save).
+        await expect.poll(async () => JSON.stringify(await tabsSetting(page))).toMatch(/^(null|\{"items":\[\],"active":null\})$/);
+      }
       await app.close();
       closed = true;
       ({ app, page } = await launch(lib, ud));
@@ -91,9 +101,7 @@ for (const gone of ['trashed', 'purged'] as const) {
         expect(r.ok && r.data).toEqual({ items: [imported!.id], active: imported!.id });
       } else {
         // The library is empty, so it shows its empty state: what matters is that no reader is left.
-        await expect
-          .poll(async () => JSON.stringify(await tabsSetting(page)))
-          .toBe(JSON.stringify({ items: [], active: null }));
+        await expect.poll(async () => JSON.stringify(await tabsSetting(page))).toMatch(/^(null|\{"items":\[\],"active":null\})$/);
         await expect(page.getByTestId('tab-bar')).toHaveCount(0);
       }
     } finally {
@@ -377,6 +385,454 @@ test('the empty part of the tab strip drags the window; the tabs do not', async 
       };
     });
     expect(regions).toEqual({ empty: 'drag', emptyIsStrip: true, tab: 'no-drag', list: 'drag' });
+  } finally {
+    await app.close();
+  }
+});
+
+
+// ---- Task 6: tab commands, the tab menu, dragging ------------------------------------------------------------------
+
+/** The tab strip's tabs, left to right (the library tab first). */
+const order = (page: Page) => readerTabIds(page);
+const activeTab = (page: Page) => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id');
+/** Opens the items as tabs behind the library with ⌘↩ (the menu item), so the library stays shown. */
+async function openBehind(app: Parameters<typeof runMenuCommand>[0], page: Page, titles: readonly string[]) {
+  await selectRows(page, titles);
+  await runMenuCommand(app, 'item.openInBackground');
+}
+/** Three PDFs imported and opened as tabs, in the order doc-01, doc-02, doc-03, the last one shown. */
+async function threeTabs(app: Parameters<typeof runMenuCommand>[0], page: Page, dir: string) {
+  const items = await importPaths(page, pdfCopies(dir, 3));
+  for (const title of ['doc-01', 'doc-02', 'doc-03']) await openBehind(app, page, [title]);
+  await readerTab(page, items.find((i) => i.title === 'doc-03')!.id).click();
+  await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+  return items;
+}
+
+test('⌘↩ opens behind: the shown tab stays, a second ⌘↩ on an open item does nothing, several go to the end in table order', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 3));
+    const id = (title: string) => items.find((i) => i.title === title)!.id;
+    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
+    await openBehind(app, page, ['doc-02']);
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    await expect.poll(() => order(page)).toEqual(['library', id('doc-02')]);
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    // The same item again: nothing new.
+    await openBehind(app, page, ['doc-02']);
+    await expect.poll(() => order(page)).toEqual(['library', id('doc-02')]);
+    // Two at once, to the end, in the order the table shows them (newest first).
+    await selectRows(page, ['doc-01', 'doc-03']);
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect.poll(() => order(page)).toEqual(['library', id('doc-02'), id('doc-03'), id('doc-01')]);
+    await expect.poll(() => activeTab(page)).toBe('library');
+    // The reader's menu has no table selection: off there.
+    await readerTab(page, id('doc-02')).click();
+    await expect.poll(() => menuItemEnabled(app, 'item.openInBackground')).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
+
+test('↩ on several selected rows opens a tab each and shows the first one; the item menu names the number', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 4));
+    const id = (title: string) => items.find((i) => i.title === title)!.id;
+    await selectRows(page, ['doc-01', 'doc-03', 'doc-04']);
+    // The item menu (right-click inside the selection acts on all three): "탭 3개로 열기", "새 탭 3개로 열기".
+    await stubContextMenu(app, null);
+    await rowByTitle(page, 'doc-03').click({ button: 'right' });
+    await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
+    const labels = (await recordedPopups(app))[0]!.map((i) => i.label);
+    expect(labels.slice(0, 2)).toEqual(['탭 3개로 열기', '새\u00a0탭 3개로 열기']);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-testid="tab"]')).toHaveCount(4);
+    // Table order is newest first: doc-04, doc-03, doc-01; the first of them is shown.
+    await expect.poll(() => order(page)).toEqual(['library', id('doc-04'), id('doc-03'), id('doc-01')]);
+    await expect.poll(() => activeTab(page)).toBe(id('doc-04'));
+    await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('eleven items ask first; cancelling opens nothing, confirming opens them all', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 11));
+    await rowByTitle(page, 'doc-01').click();
+    await page.keyboard.press('Control+a');
+    await stubConfirm(app, 'cancel');
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
+    expect((await confirmCalls(app))[0]).toMatchObject({ message: '자료 11개를 탭으로 열겠습니까?', buttons: ['열기', '취소'] });
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
+
+    await stubConfirm(app, 'confirm');
+    await expect.poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null)))).toBe(false);
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect(page.locator('[data-testid="tab"]')).toHaveCount(12);
+    await expect.poll(() => activeTab(page)).toBe('library');
+    // Ten do not ask.
+    expect((await confirmCalls(app)).length).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘W closes the shown reader tab and goes to the one seen before; on the library tab it closes the window; ⇧⌘T reopens', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    // Nothing closed yet: ⇧⌘T is off.
+    await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(false);
+    // Seen in the order a (never shown), b, c; c is shown. Choose b, then c again: closing c goes back to b.
+    await readerTab(page, b).click();
+    await readerTab(page, c).click();
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => order(page)).toEqual(['library', a, b]);
+    await expect.poll(() => activeTab(page)).toBe(b);
+    await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(true);
+    // ⇧⌘T puts it back, shown, right of the shown tab.
+    await runMenuCommand(app, 'tab.reopenClosed');
+    await expect.poll(() => order(page)).toEqual(['library', a, b, c]);
+    await expect.poll(() => activeTab(page)).toBe(c);
+    await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(false);
+    // Nothing seen before c and b but those: closing c, then b, leaves the library (a was never shown, it stays).
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => activeTab(page)).toBe(b);
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await expect.poll(() => order(page)).toEqual(['library', a]);
+    // The last reader tab closed: the strip goes with it.
+    await readerTab(page, a).click();
+    await runMenuCommand(app, 'tab.close');
+    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    // Reopened newest closed first: a, then b.
+    await runMenuCommand(app, 'tab.reopenClosed');
+    await expect.poll(() => activeTab(page)).toBe(a);
+    // On the library tab ⌘W closes the window.
+    await libraryTab(page).click();
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => page.isClosed()).toBe(true);
+  } finally {
+    await app.close().catch(() => {});
+  }
+});
+
+test('⌃⇥ and ⌃⇧⇥ go round through the library tab; ⌘2…⌘8 pick by place and ⌘9 the last', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    await expect.poll(() => order(page)).toEqual(['library', a, b, c]);
+    await expect.poll(() => activeTab(page)).toBe(c);
+    await runMenuCommand(app, 'tab.next');
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await runMenuCommand(app, 'tab.next');
+    await expect.poll(() => activeTab(page)).toBe(a);
+    await runMenuCommand(app, 'tab.previous');
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await runMenuCommand(app, 'tab.previous');
+    await expect.poll(() => activeTab(page)).toBe(c);
+    await runMenuCommand(app, 'tab.goTo2');
+    await expect.poll(() => activeTab(page)).toBe(a);
+    await runMenuCommand(app, 'tab.goTo3');
+    await expect.poll(() => activeTab(page)).toBe(b);
+    await runMenuCommand(app, 'tab.last');
+    await expect.poll(() => activeTab(page)).toBe(c);
+    // ⌘1 is the library's; a place nobody holds is off.
+    await runMenuCommand(app, 'nav.back');
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await expect.poll(() => menuItemEnabled(app, 'tab.goTo5', { hidden: true })).toBe(false);
+    await expect.poll(() => menuItemEnabled(app, 'tab.goTo4', { hidden: true })).toBe(true);
+    // Next and previous work from the library tab too.
+    await runMenuCommand(app, 'tab.next');
+    await expect.poll(() => activeTab(page)).toBe(a);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a tab menu opens at the pointer without choosing the tab; 다른 탭 닫기 keeps one, 라이브러리에서 보기 selects its row', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    // Dismissed: the menu's rows, with 탭 닫기 and the others; the shown tab is still c.
+    await stubContextMenu(app, null);
+    await readerTab(page, a).click({ button: 'right' });
+    await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
+    const rows = (await recordedPopups(app))[0]!;
+    expect(rows.map((r) => r.label)).toEqual(['탭 닫기', '다른\u00a0탭 닫기', '', '라이브러리에서 보기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기']);
+    expect(rows.filter((r) => r.type !== 'separator').every((r) => r.enabled)).toBe(true);
+    const at = (await recordedPopupPoints(app))[0]!;
+    const box = (await readerTab(page, a).boundingBox())!;
+    expect(at.x).toBeGreaterThanOrEqual(box.x);
+    expect(at.x).toBeLessThanOrEqual(box.x + box.width);
+    await expect.poll(() => activeTab(page)).toBe(c);
+    // The library tab has no menu.
+    await libraryTab(page).click({ button: 'right' });
+    await page.waitForTimeout(200);
+    expect((await recordedPopups(app)).length).toBe(1);
+
+    // 탭 닫기 on a tab that is not shown closes that one.
+    await stubContextMenu(app, '탭 닫기');
+    await readerTab(page, a).click({ button: 'right' });
+    await expect(readerTab(page, a)).toHaveCount(0);
+    await expect.poll(() => activeTab(page)).toBe(c);
+    // 다른 탭 닫기 keeps the tab it was opened on, and shows it.
+    await stubContextMenu(app, '다른\u00a0탭 닫기');
+    await readerTab(page, b).click({ button: 'right' });
+    await expect.poll(() => order(page)).toEqual(['library', b]);
+    await expect.poll(() => activeTab(page)).toBe(b);
+
+    // 라이브러리에서 보기: the library tab, the row selected.
+    await stubContextMenu(app, '라이브러리에서 보기');
+    await readerTab(page, b).click({ button: 'right' });
+    await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
+    await expect(rowByTitle(page, 'doc-02')).toHaveAttribute('aria-selected', 'true');
+    await expect(rowByTitle(page, 'doc-02')).toBeInViewport();
+    void c;
+  } finally {
+    await app.close();
+  }
+});
+
+test('라이브러리에서 보기 leaves a collection that hides the item, and the trash has none to show', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 2));
+    const id = (title: string) => items.find((i) => i.title === title)!.id;
+    const folder = await createCollection(page, '묶음');
+    await addToCollection(page, folder, [id('doc-01')]);
+    await openBehind(app, page, ['doc-02']);
+    await page.getByTestId(`nav-collection-${folder}`).click();
+    await expect(rowByTitle(page, 'doc-02')).toHaveCount(0);
+    await stubContextMenu(app, '라이브러리에서 보기');
+    await readerTab(page, id('doc-02')).click({ button: 'right' });
+    await expect(rowByTitle(page, 'doc-02')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('nav-scope-all')).toHaveAttribute('aria-selected', 'true');
+
+    // In the trash the item has no row to show: the entry is off (the tab stays).
+    await trashItems(page, [id('doc-02')]);
+    await stubContextMenu(app, null);
+    await readerTab(page, id('doc-02')).click({ button: 'right' });
+    await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
+    const popup = (await recordedPopups(app))[0]!;
+    expect(popup.find((r) => r.label === '라이브러리에서 보기')).toMatchObject({ enabled: false });
+    expect(popup.find((r) => r.label === '탭 닫기')).toMatchObject({ enabled: true });
+  } finally {
+    await app.close();
+  }
+});
+
+/** Presses at the middle of a tab and drags to `x` in steps, as a hand does; `release: false` leaves the button down. */
+async function dragTab(page: Page, itemId: string, toX: number, opts: { release?: boolean } = {}) {
+  const box = (await readerTab(page, itemId).locator('xpath=..').boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + (toX < box.x ? -8 : 8), y, { steps: 2 });
+  await page.mouse.move(toX, y, { steps: 12 });
+  if (opts.release !== false) await page.mouse.up();
+}
+
+test('dragging a reader tab reorders it; the library tab cannot be passed; esc puts it back; the release does not choose the tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    await expect.poll(() => activeTab(page)).toBe(c);
+    // The third tab onto the first reader slot.
+    const first = (await readerTab(page, a).locator('xpath=..').boundingBox())!;
+    await dragTab(page, c, first.x + 8);
+    await expect.poll(() => order(page)).toEqual(['library', c, a, b]);
+    // Dragging does not choose: c was shown and still is; dragging b (not shown) leaves c shown.
+    await expect.poll(() => activeTab(page)).toBe(c);
+    const lib = (await libraryTab(page).locator('xpath=..').boundingBox())!;
+    await dragTab(page, b, lib.x - 40);
+    await expect.poll(() => order(page)).toEqual(['library', b, c, a]);
+    await expect.poll(() => activeTab(page)).toBe(c);
+
+    // esc while dragging: nothing moves.
+    const last = (await readerTab(page, a).locator('xpath=..').boundingBox())!;
+    await dragTab(page, b, last.x + last.width - 4, { release: false });
+    await expect(page.locator('.tab-item.is-dragging')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page.locator('.tab-item.is-dragging')).toHaveCount(0);
+    await expect.poll(() => order(page)).toEqual(['library', b, c, a]);
+    expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.tab-item')].every((e) => e.style.transform === ''))).toBe(true);
+    // A click without a drag still chooses.
+    await readerTab(page, a).click();
+    await expect.poll(() => activeTab(page)).toBe(a);
+  } finally {
+    await app.close();
+  }
+});
+
+test('while a tab is dragged its neighbours step aside', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, , c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    const first = (await readerTab(page, a).locator('xpath=..').boundingBox())!;
+    await dragTab(page, c, first.x + 8, { release: false });
+    const shifted = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.tabs-scroll > .tab-item')].map((e) => e.style.transform !== ''));
+    expect(shifted).toEqual([true, true, true]); // the dragged one moves with the pointer, a and b make room
+    await page.mouse.up();
+    await expect.poll(() => order(page)).toEqual(['library', c, a, expect.any(String)]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌥⇧← and ⌥⇧→ move the tab that has the focus, which keeps it; the palette moves the shown tab; Delete and Backspace close the focused tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    await readerTab(page, b).focus();
+    await page.keyboard.press('Alt+Shift+ArrowLeft');
+    await expect.poll(() => order(page)).toEqual(['library', b, a, c]);
+    await expect(readerTab(page, b)).toBeFocused();
+    await page.keyboard.press('Alt+Shift+ArrowLeft'); // at the start of the readers: nothing, the library tab is not passed
+    await page.keyboard.press('Alt+Shift+ArrowRight');
+    await expect.poll(() => order(page)).toEqual(['library', a, b, c]);
+    await expect(readerTab(page, b)).toBeFocused();
+
+    // The palette moves the shown tab (c).
+    await runPalette(page, app, '탭을 왼쪽으로', 'tab.moveLeft');
+    await expect.poll(() => order(page)).toEqual(['library', a, c, b]);
+    await expect.poll(() => activeTab(page)).toBe(c);
+
+    // Delete closes the focused tab and hands the focus to its neighbour; Backspace does the same.
+    await readerTab(page, a).focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => order(page)).toEqual(['library', c, b]);
+    await expect(readerTab(page, c)).toBeFocused();
+    await page.keyboard.press('Backspace');
+    await expect.poll(() => order(page)).toEqual(['library', b]);
+    await expect(readerTab(page, b)).toBeFocused();
+    // The library tab has no key to close it.
+    await libraryTab(page).focus();
+    await page.keyboard.press('Delete');
+    await expect.poll(() => order(page)).toEqual(['library', b]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a tab chosen by a command while the focus is in the strip takes the focus; the library tab by the pointer hands it to the table; the close mark names its key', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    await expect(page.locator(`[data-item-id="${c}"] ~ [data-testid="tab-close"]`)).toHaveAttribute('title', /^탭 닫기 (⌘|Ctrl\+)W$/);
+    await readerTab(page, c).focus();
+    await page.keyboard.press('ArrowLeft'); // the focus on b, which is not chosen
+    await expect(readerTab(page, b)).toBeFocused();
+    await runMenuCommand(app, 'tab.goTo2');
+    await expect.poll(() => activeTab(page)).toBe(a);
+    await expect(readerTab(page, a)).toBeFocused();
+    await runMenuCommand(app, 'tab.next');
+    await expect(readerTab(page, b)).toBeFocused();
+
+    await libraryTab(page).click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(page.locator('[data-testid="library-table"]:focus-within')).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('an item moved to the trash keeps its tab with the trash notice; one deleted for good loses it, and ⇧⌘T skips it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    await expect.poll(() => activeTab(page)).toBe(c);
+    await trashItems(page, [b]);
+    await expect.poll(() => order(page)).toEqual(['library', a, b, c]);
+    await readerTab(page, b).click();
+    await expect(page.getByTestId('reader-trashed')).toBeVisible();
+    // A trashed item cannot be reopened after its tab is closed.
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(false);
+    await readerTab(page, a).click();
+    // Deleted for good (a tab that is not shown too): the tab goes without a place among the closed.
+    await trashItems(page, [c]);
+    await expect.poll(() => order(page)).toEqual(['library', a, c]); // in the trash it keeps its tab
+    const gone = await page.evaluate((id) => window.learn.library.purge({ itemIds: [id], collectionIds: [] }), c);
+    expect(gone.ok).toBe(true);
+    await expect.poll(() => order(page)).toEqual(['library', a]);
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
+test("a title edited in the item panel renames the item's tab at once", async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 2));
+    const a = items.find((i) => i.title === 'doc-01')!.id;
+    await openBehind(app, page, ['doc-01']);
+    await expect(readerTab(page, a)).toContainText('doc-01');
+    const r = await page.evaluate((id) => window.learn.library.updateMetadata({ itemId: id, title: '새 이름의 논문' }), a);
+    expect(r.ok).toBe(true);
+    await expect(readerTab(page, a)).toContainText('새 이름의 논문');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the order of the tabs and the shown one come back after a restart', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  let closed = false;
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const [a, b, c] = ['doc-01', 'doc-02', 'doc-03'].map((t) => items.find((i) => i.title === t)!.id) as [string, string, string];
+    const first = (await readerTab(page, a).locator('xpath=..').boundingBox())!;
+    await dragTab(page, c, first.x + 8);
+    await expect.poll(() => order(page)).toEqual(['library', c, a, b]);
+    await readerTab(page, a).click();
+    await expect
+      .poll(async () => JSON.stringify(await tabsSetting(page)))
+      .toBe(JSON.stringify({ items: [c, a, b], active: a }));
+    await app.close();
+    closed = true;
+    ({ app, page } = await launch(lib, ud));
+    closed = false;
+    await expect.poll(() => order(page)).toEqual(['library', c, a, b]);
+    await expect.poll(() => activeTab(page)).toBe(a);
+  } finally {
+    if (!closed) await app.close().catch(() => {});
+  }
+});
+
+test('the library head dims its panel toggle in a window that is not main', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 1));
+    await openBehind(app, page, ['doc-01']);
+    const toggle = page.locator('.pane-header .icon-btn > .icon').last();
+    await expect(toggle).toBeVisible();
+    const lit = await toggle.evaluate((e) => getComputedStyle(e).opacity);
+    expect(lit).toBe('1');
+    await page.evaluate(() => document.documentElement.setAttribute('data-window-not-main', ''));
+    expect(Number(await toggle.evaluate((e) => getComputedStyle(e).opacity))).toBeLessThan(1);
   } finally {
     await app.close();
   }

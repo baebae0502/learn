@@ -15,9 +15,9 @@ const fileMenu = (labels = {}, onCommand: (...a: unknown[]) => void = () => {}) 
   buildAppMenu({ isDev: false, platform: 'darwin', commands: COMMANDS, enabled: new Set(['item.trash', 'trash.empty']), onCommand, labels }).find((m) => m.id === 'menu.file')!.submenu as MenuItemConstructorOptions[];
 
 describe('파일 menu (spec 11.2) and ⌘⌫ named by the view (P-11)', () => {
-  it('ends with 휴지통 비우기… · 휴지통으로 이동 ⌘⌫ in a group of their own, before 창 닫기', () => {
+  it('ends with 휴지통 비우기… · 휴지통으로 이동 ⌘⌫ in a group of their own, before the tab commands and 창 닫기', () => {
     const items = fileMenu();
-    expect(items.slice(-5).map((i) => (i.type === 'separator' ? '-' : (i.id ?? i.role)))).toEqual(['-', 'trash.empty', 'item.trash', '-', 'close']);
+    expect(items.slice(-7).map((i) => (i.type === 'separator' ? '-' : (i.id ?? i.role)))).toEqual(['-', 'trash.empty', 'item.trash', '-', 'tab.close', 'tab.reopenClosed', 'close']);
     expect(items.find((i) => i.id === 'item.trash')).toMatchObject({ label: '휴지통으로 이동', accelerator: 'CmdOrCtrl+Backspace' });
     expect(items.find((i) => i.id === 'trash.empty')).toMatchObject({ label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace' });
   });

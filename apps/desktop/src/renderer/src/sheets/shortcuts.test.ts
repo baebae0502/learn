@@ -6,13 +6,26 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   it('lists every registry shortcut exactly once, app → library → reader, then the palette and dialog keys', () => {
     const groups = shortcutGroups('darwin');
     const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
-    for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && tagSlot(x.id) === null)) expect(labels.filter((l) => l === c.label), c.id).toHaveLength(1);
-    expect(groups.map((g) => g.title)).toEqual(['앱', '라이브러리', '자료', '정리', '리더', '팔레트·대화상자']);
+    // ⌘2…⌘9 are hidden menu items and share one line (below).
+    for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && tagSlot(x.id) === null && !x.menu?.hidden)) expect(labels.filter((l) => l === c.label), c.id).toHaveLength(1);
+    expect(groups.map((g) => g.title)).toEqual(['앱', '라이브러리', '자료', '탭', '정리', '리더', '팔레트·대화상자']);
     expect(groups[1]!.rows[0]).toEqual({ label: '파일 가져오기…', keys: ['⌘', 'O'], spoken: '⌘O' });
     // The one row that is not a registry command: the system's 전체 화면 (design-spec 7.4), marked as such.
     const system = groups.flatMap((g) => g.rows).filter((r) => r.system);
     expect(system).toEqual([{ label: '전체 화면', keys: ['⌃', '⌘', 'F'], spoken: '⌃⌘F', system: true }]);
     expect(COMMANDS.some((c) => c.label === '전체 화면')).toBe(false);
+  });
+  it('lists the tab keys in their own 탭 group, the numbered tabs as one line (⌘2…⌘9)', () => {
+    const tabs = (platform: string) => shortcutGroups(platform).find((g) => g.title === '탭')!.rows;
+    expect(tabs('darwin')).toEqual([
+      { label: '탭 닫기', keys: ['⌘', 'W'], spoken: '⌘W' },
+      { label: '닫은 탭 다시 열기', keys: ['⇧', '⌘', 'T'], spoken: '⇧⌘T' },
+      { label: '다음 탭', keys: ['⌃', '⇥'], spoken: '⌃⇥' },
+      { label: '이전 탭', keys: ['⌃', '⇧', '⇥'], spoken: '⌃⇧⇥' },
+      { label: '2…8번째 탭 / 마지막 탭', keys: ['⌘', '2–9'], spoken: '⌘2부터 ⌘9' },
+    ]);
+    expect(tabs('linux').at(-1)).toEqual({ label: '2…8번째 탭 / 마지막 탭', keys: ['Ctrl', '2–9'], spoken: 'Ctrl+2부터 Ctrl+9' });
+    expect(tabs('linux')[0]).toEqual({ label: '탭 닫기', keys: ['Ctrl', 'W'], spoken: 'Ctrl+W' });
   });
   it('names ⌘+ ⌘− ⌘0 by the view the sheet was opened from (P-9)', () => {
     const named = (view?: 'library' | 'viewer') => {
@@ -41,10 +54,10 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(where('library')).toMatchObject({ 라이브러리: 4, 리더: 0 });
     expect(where()).toMatchObject({ 라이브러리: 4, 리더: 0 });
   });
-  it('keeps the sheet within the 770 px bound in both views (the natural height is the taller column plus 136 px of title, foot and padding: 754 px for 618)', () => {
+  it('keeps the sheet within the 860 px bound in both views (the natural height is the taller column plus 136 px of title, foot and padding: 859 px for 723; past the window the sheet scrolls)', () => {
     const height = (view?: 'library' | 'viewer') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
     expect(height()).toBe(height('library'));
-    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(770);
+    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(860);
   });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
@@ -80,8 +93,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
   });
   it('lists the selected item\'s shortcuts (⇧⌘R, ⌘⌫) in their own 자료 group, after 라이브러리 (design-spec 7.4)', () => {
     const item = (platform: string) => shortcutGroups(platform).find((g) => g.title === '자료')!.rows;
-    expect(item('darwin')).toEqual([{ label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }, { label: '휴지통으로 이동', keys: ['⌘', '⌫'], spoken: '⌘⌫' }]);
-    expect(item('linux')).toEqual([{ label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }, { label: '휴지통으로 이동', keys: ['Ctrl', 'Backspace'], spoken: 'Ctrl+Backspace' }]);
+    expect(item('darwin')).toEqual([{ label: '새\u00a0탭에서 열기', keys: ['⌘', '↩'], spoken: '⌘↩' }, { label: 'Finder에서 보기', keys: ['⇧', '⌘', 'R'], spoken: '⇧⌘R' }, { label: '휴지통으로 이동', keys: ['⌘', '⌫'], spoken: '⌘⌫' }]);
+    expect(item('linux')).toEqual([{ label: '새\u00a0탭에서 열기', keys: ['Ctrl', 'Enter'], spoken: 'Ctrl+Enter' }, { label: '폴더에서 보기', keys: ['Ctrl', 'Shift', 'R'], spoken: 'Ctrl+Shift+R' }, { label: '휴지통으로 이동', keys: ['Ctrl', 'Backspace'], spoken: 'Ctrl+Backspace' }]);
   });
   it('lists 새 컬렉션 and folds the eight colour keys into one line, 1–8, under 정리 after 자료 (M5 spec 9.3, spec 4.2)', () => {
     const organize = (platform: string) => shortcutGroups(platform).find((g) => g.title === '정리')!.rows;
@@ -94,7 +107,7 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       { label: '색 태그 붙이기/떼기', keys: ['1–8'], spoken: '1부터 8' },
     ]);
     const titles = shortcutGroups('darwin').map((g) => g.title);
-    expect(titles.indexOf('정리')).toBe(titles.indexOf('자료') + 1);
+    expect(titles.indexOf('정리')).toBe(titles.indexOf('탭') + 1);
     // The eight registry rows are not listed apart, in 자료 or anywhere.
     expect(shortcutGroups('darwin').flatMap((g) => g.rows).filter((r) => /^색 태그 \d$/.test(r.label))).toEqual([]);
   });
@@ -104,7 +117,7 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       const [left, right] = shortcutColumns(groups);
       expect([...left, ...right], platform).toEqual(groups); // every group whole, in ORDER
       expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리', '자료']);
-      expect(right.map((g) => g.title), platform).toEqual(['정리', '리더', '팔레트·대화상자']);
+      expect(right.map((g) => g.title), platform).toEqual(['탭', '정리', '리더', '팔레트·대화상자']);
     }
     const group = (rows: number) => ({ title: `${rows}`, rows: Array.from({ length: rows }, (_, i) => ({ label: `${i}`, keys: [], spoken: '' })) });
     expect(shortcutColumns([group(12), group(2), group(2), group(2)]).map((c) => c.length)).toEqual([1, 3]);

@@ -52,7 +52,8 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     { id: 'file.importLinked', label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' },
     { id: 'collection.new', label: '새\u00a0컬렉션', accelerator: 'Shift+CmdOrCtrl+N' },
     SEP,
-    // The selected item's commands (design-spec 7.3, 7.4 ⇧⌘R), in the 파일 menu's order.
+    // The selected item's commands (design-spec 7.3, 7.4 ⇧⌘R), in the 파일 menu's order; ⌘↩ opens a tab behind first.
+    { id: 'item.openInBackground', label: '새\u00a0탭에서 열기', accelerator: 'CmdOrCtrl+Enter' },
     { id: 'item.showInFolder', label: platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R' },
     { id: 'item.exportCopy', label: '사본 내보내기…' },
     { id: 'item.openExternally', label: '기본 앱으로 열기' },
@@ -68,8 +69,11 @@ const FILE = (platform: NodeJS.Platform): Shape => ({
     { id: 'item.trash', label: '휴지통으로 이동', accelerator: 'CmdOrCtrl+Backspace' },
     SEP,
     ...(platform === 'darwin' ? [] : [SETTINGS, SEP]),
+    // The last group: 탭 닫기 ⌘W, 닫은 탭 다시 열기 ⇧⌘T and the window's own close under them, ⇧⌘W.
+    { id: 'tab.close', label: '탭 닫기', accelerator: 'CmdOrCtrl+W' },
+    { id: 'tab.reopenClosed', label: '닫은 탭 다시 열기', accelerator: 'Shift+CmdOrCtrl+T' },
     // Apple Korean on macOS (the menu bar title is 윈도우); 창 elsewhere.
-    { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' },
+    { label: platform === 'darwin' ? '윈도우 닫기' : '창 닫기', role: 'close', accelerator: 'Shift+CmdOrCtrl+W' },
   ],
 });
 const EDIT: Shape = {
@@ -138,9 +142,16 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
     platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
   ],
 });
+/** 윈도우's registry items: next and previous tab, then ⌘2…⌘8 and ⌘9 as hidden items (the menu lists no tabs). */
+const TAB_ITEMS: Shape[] = [
+  { id: 'tab.next', label: '다음 탭', accelerator: 'Ctrl+Tab' },
+  { id: 'tab.previous', label: '이전 탭', accelerator: 'Ctrl+Shift+Tab' },
+  ...[2, 3, 4, 5, 6, 7, 8].map((n): Shape => ({ id: `tab.goTo${n}`, label: `${n}번째 탭`, accelerator: `CmdOrCtrl+${n}` })),
+  { id: 'tab.last', label: '마지막 탭', accelerator: 'CmdOrCtrl+9' },
+];
 const GO: Shape = {
   id: 'menu.go', label: '이동', submenu: [
-    { id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1' },
+    { id: 'nav.back', label: '라이브러리', accelerator: 'CmdOrCtrl+1' },
     { id: 'reader.goToPage', label: '쪽으로 이동…', accelerator: 'Alt+CmdOrCtrl+G' },
   ],
 };
@@ -179,6 +190,8 @@ describe('buildAppMenu', () => {
           { label: '확대/축소', role: 'zoom' },
           SEP,
           { label: '모두 앞으로 가져오기', role: 'front' },
+          SEP,
+          ...TAB_ITEMS,
         ],
       },
       HELP('darwin'),
@@ -192,7 +205,7 @@ describe('buildAppMenu', () => {
         EDIT,
         VIEW(platform),
         GO,
-        { id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [{ label: '최소화', role: 'minimize' }] },
+        { id: 'menu.window', label: '윈도우', role: 'windowMenu', submenu: [{ label: '최소화', role: 'minimize' }, SEP, ...TAB_ITEMS] },
         HELP(platform),
       ]);
     }
@@ -240,6 +253,22 @@ describe('buildAppMenu', () => {
     }
   });
 
+  it('draws the tab commands of 윈도우 and 파일 as the table says: ⌘2…⌘9 are hidden items that keep their keys, the window menu lists no tabs', () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      const items = walk(build(platform));
+      for (const c of COMMANDS.filter((x) => x.id.startsWith('tab.go') || x.id === 'tab.last')) {
+        expect(items.find((i) => i.id === c.id), `${platform} ${c.id}`).toMatchObject({ visible: false, accelerator: c.accelerator, enabled: true });
+      }
+      for (const id of ['tab.next', 'tab.previous', 'tab.close', 'tab.reopenClosed', 'item.openInBackground']) expect(items.find((i) => i.id === id)!.visible, id).toBeUndefined();
+      const windowMenu = shape(build(platform).find((m) => m.id === 'menu.window')!.submenu as MenuItemConstructorOptions[]);
+      expect(windowMenu.filter((i) => i.id).map((i) => i.id)).toEqual(['tab.next', 'tab.previous', ...[2, 3, 4, 5, 6, 7, 8].map((n) => `tab.goTo${n}`), 'tab.last']);
+      // The file menu ends with the tab commands and the window's own close, in one group.
+      const file = shape(build(platform).find((m) => m.id === 'menu.file')!.submenu as MenuItemConstructorOptions[]);
+      expect(file.slice(-3).map((i) => i.id ?? i.role)).toEqual(['tab.close', 'tab.reopenClosed', 'close']);
+      expect(file.at(-4)).toEqual(SEP);
+      expect(file.at(-1)!.accelerator).toBe('Shift+CmdOrCtrl+W');
+    }
+  });
   it('a registry item click dispatches its command id (and nothing else)', () => {
     const onCommand = vi.fn();
     const items = walk(build('linux', false, onCommand));
@@ -274,7 +303,7 @@ describe('buildAppMenu', () => {
     expect(edit.slice(-2).map((i) => i.label ?? i.type)).toEqual(['separator', '편집 명령']);
     // No registry items → the file menu has no leading separator.
     const file = shape(menu.find((m) => m.id === 'menu.file')!.submenu as MenuItemConstructorOptions[]);
-    expect(file).toEqual([{ label: '창 닫기', role: 'close', accelerator: 'CmdOrCtrl+W' }]);
+    expect(file).toEqual([{ label: '창 닫기', role: 'close', accelerator: 'Shift+CmdOrCtrl+W' }]);
   });
 });
 
@@ -515,7 +544,7 @@ describe('shortcut collisions per platform (registry items, hidden twins, Electr
     const mac = platform === 'darwin';
     const win = platform === 'win32';
     const table: Record<string, string | null> = {
-      close: 'CommandOrControl+W', undo: 'CommandOrControl+Z', redo: win ? 'Control+Y' : 'Shift+CommandOrControl+Z',
+      close: 'Shift+CommandOrControl+W', undo: 'CommandOrControl+Z', redo: win ? 'Control+Y' : 'Shift+CommandOrControl+Z',
       cut: 'CommandOrControl+X', copy: 'CommandOrControl+C', paste: 'CommandOrControl+V', selectall: 'CommandOrControl+A',
       minimize: 'CommandOrControl+M', hide: 'Command+H', hideothers: 'Command+Alt+H', quit: win ? null : 'CommandOrControl+Q',
       togglefullscreen: mac ? 'Control+Command+F' : 'F11', toggledevtools: mac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
@@ -546,7 +575,7 @@ describe('shortcut collisions per platform (registry items, hidden twins, Electr
     const focus: CommandSpec = { id: 'nav.back', label: '집중', accelerator: 'Ctrl+Cmd+F', menu: { menu: 'view', group: 1, order: 1 }, contexts: ['app'] };
     expect(clashes(shortcuts('darwin', [focus]))).toEqual(['⌃⌘F']); // 전체 화면's ⌃⌘F on macOS
     expect(clashes(shortcuts('linux', [focus]))).toEqual([]); // Ctrl+Shift+F against F11
-    const closeTab: CommandSpec = { ...focus, accelerator: 'CmdOrCtrl+W' };
+    const closeTab: CommandSpec = { ...focus, accelerator: 'Shift+CmdOrCtrl+W' }; // the window's own close keeps ⇧⌘W
     for (const platform of PLATFORMS) expect(clashes(shortcuts(platform, [closeTab])), platform).toHaveLength(1);
   });
   it('⌥⌘I is the item panel\'s; the developer tools take ⌥⌘J instead of the role default', () => {
@@ -596,11 +625,11 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     it('puts 색 태그 ▸ and 컬렉션에 추가 ▸ in 파일 after the file commands (by order), from the library read for the menu bar, with no marks', () => {
       expect(labels(file(build2(ONE)))).toEqual([
         '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator',
-        'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
+        '새\u00a0탭에서 열기', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기',
         { '컬렉션에 추가': ['새\u00a0컬렉션', 'separator', { 분자생물학: ['분자생물학', 'separator', '2장', '10장', '유전학'] }, '시험'] },
         '이\u00a0컬렉션에서 빼기',
         { '색 태그': ['시험 범위', '중요'] },
-        'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
+        'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '탭 닫기', '닫은 탭 다시 열기', '윈도우 닫기',
       ]);
     });
     const colorRows = (platform: NodeJS.Platform, onCommand = vi.fn()) =>
@@ -638,7 +667,7 @@ describe('value submenus and grouped submenus in the menu bar (spec 9.1, 9.3)', 
     });
     it('leaves a submenu out when the library was not read or has nothing to list, with the separator it needed', () => {
       expect(file(build2(ONE, null)).map((i) => i.label ?? i.type)).toEqual([
-        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '윈도우 닫기',
+        '파일 가져오기…', '외부 파일 연결…', '새\u00a0컬렉션', 'separator', '새\u00a0탭에서 열기', 'Finder에서 보기', '사본 내보내기…', '기본 앱으로 열기', '이\u00a0컬렉션에서 빼기', 'separator', '라이브러리 점검…', '백업 만들기…', '백업에서 복원…', 'separator', '휴지통 비우기…', '휴지통으로 이동', 'separator', '탭 닫기', '닫은 탭 다시 열기', '윈도우 닫기',
       ]);
       expect(file(build2(ONE, { ...LIBRARY, tags: [] })).map((i) => i.label)).not.toContain('색 태그');
     });

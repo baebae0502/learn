@@ -88,7 +88,7 @@ describe('target kinds (P-4)', () => {
   it('the item rules read the item targets and no others', () => {
     expect(isCommandAvailable('item.open', LIB, [COLLECTION])).toBe(false);
     expect(isCommandAvailable('item.open', LIB, [FILE, COLLECTION, TAG])).toBe(true); // one item among the targets
-    expect(isCommandAvailable('item.open', LIB, [FILE, FILE, TAG])).toBe(false);
+    expect(isCommandAvailable('item.open', LIB, [FILE, FILE, TAG])).toBe(true); // several items open as several tabs
     expect(isCommandAvailable('item.exportCopy', LIB, [TAG, FILE])).toBe(true);
     expect(isCommandAvailable('item.relink', LIB, [{ kind: 'item', storageMode: 'linked', availability: 'missing' }, COLLECTION])).toBe(true);
   });

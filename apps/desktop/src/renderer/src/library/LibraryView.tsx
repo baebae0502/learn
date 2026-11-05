@@ -18,7 +18,7 @@ import { usePaintMark } from './usePaintMark';
 const OPENS_NOTHING = (): void => {};
 
 /** The library view's content area: the table in the stored columns and sort, in the scope shown, filtered by the tags and the quick search. */
-export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly LibraryItem[]; onOpen(itemId: string): void; onItemMenu(ids: readonly string[], x: number, y: number): void }) {
+export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly LibraryItem[]; onOpen(itemIds: readonly string[]): void; onItemMenu(ids: readonly string[], x: number, y: number): void }) {
   // Where a long frame's script time goes (the drop stall profile): this view's render began here.
   perfMarkLatest('table:render');
   countRender('LibraryView');

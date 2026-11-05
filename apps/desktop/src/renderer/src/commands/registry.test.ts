@@ -30,7 +30,15 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   deleteTag: vi.fn(),
   clearTagFilter: vi.fn(),
   back: vi.fn(),
-  open: vi.fn(),
+  openItems: vi.fn(),
+  closeTab: vi.fn(),
+  reopenClosedTab: vi.fn(),
+  selectRelativeTab: vi.fn(),
+  selectTabAt: vi.fn(),
+  selectLastTab: vi.fn(),
+  moveTab: vi.fn(),
+  closeOtherTabs: vi.fn(),
+  revealInLibrary: vi.fn(),
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   toggleInspector: vi.fn(),
@@ -323,7 +331,7 @@ describe('renderer command registry', () => {
     expect(isCommandEnabled('item.relink', e, { itemIds: [ID] })).toBe(true);
     expect(isCommandEnabled('item.relink', env({ targetsOf: available }), { itemIds: [ID] })).toBe(false);
     expect(runCommand('item.open', e, { itemIds: [ID] })).toBe(true);
-    expect(e.open).toHaveBeenCalledWith(ID);
+    expect(e.openItems).toHaveBeenCalledWith([ID]);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 run for one item whose file exists, in any view, never while blocked', () => {
     for (const view of ['library', 'viewer'] as const) {
@@ -442,7 +450,7 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
   it('a value picked from a menu is added to the target it was opened for, and replaces none of it', () => {
     const e = env({ libraryCount: 3, targetsOf: () => [] });
     expect(runPicked({ commandId: 'item.open', args: { column: 'year' } }, e, { itemIds: [ID], collectionIds: ['c1'] })).toBe(true);
-    expect(e.open).toHaveBeenCalledWith(ID);
+    expect(e.openItems).toHaveBeenCalledWith([ID]);
   });
   it('judges a command on every kind of the target it is given', () => {
     const targetsOf = vi.fn(() => [] as CommandTargetInfo[]);
@@ -559,5 +567,57 @@ describe('the trash commands (P-10, P-11)', () => {
     const picked = env({ scope: 'duplicates' });
     expect(runPicked({ commandId: 'duplicates.keepOne' }, picked, { itemIds: [OTHER] })).toBe(true);
     expect(picked.keepOneOfDuplicates).toHaveBeenCalledWith([OTHER]);
+  });
+});
+
+describe('tab commands (M7b)', () => {
+  const tabs = (over: Partial<CommandEnv> = {}) => env({ tabCount: 3, closedOpenable: true, targetsOf: () => [{ kind: 'item', storageMode: 'managed', availability: 'available' }], ...over });
+  it('opens the whole selection as tabs, in the background with ⌘↩', () => {
+    const e = tabs({ libraryCount: 3 });
+    expect(runCommand('item.open', e, { itemIds: [ID, 'b', 'c'] })).toBe(true);
+    expect(e.openItems).toHaveBeenLastCalledWith([ID, 'b', 'c']);
+    expect(runCommand('item.openInBackground', e, { itemIds: [ID] })).toBe(true);
+    expect(e.openItems).toHaveBeenLastCalledWith([ID], { background: true });
+    expect(runCommand('item.openInBackground', tabs({ view: 'viewer' }), { itemIds: [ID] })).toBe(false); // the reader has no table selection
+  });
+  it('closes the shown tab, or the tab a menu names', () => {
+    const e = tabs();
+    expect(runCommand('tab.close', e)).toBe(true);
+    expect(e.closeTab).toHaveBeenLastCalledWith(undefined);
+    expect(runPicked({ commandId: 'tab.close' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.closeTab).toHaveBeenLastCalledWith(ID);
+    expect(runPicked({ commandId: 'tab.closeOthers' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.closeOtherTabs).toHaveBeenLastCalledWith(ID);
+    expect(runPicked({ commandId: 'tab.revealInLibrary' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.revealInLibrary).toHaveBeenCalledWith(ID);
+  });
+  it('switches by place: ⌘2 is the second place (index 1), ⌘9 the last, ⌃⇥ goes round', () => {
+    const e = tabs();
+    expect(runCommand('tab.goTo2', e)).toBe(true);
+    expect(e.selectTabAt).toHaveBeenLastCalledWith(1);
+    expect(runCommand('tab.goTo4', e)).toBe(true);
+    expect(e.selectTabAt).toHaveBeenLastCalledWith(3);
+    expect(runCommand('tab.goTo5', e)).toBe(false); // three reader tabs: no fifth place
+    expect(runCommand('tab.last', e)).toBe(true);
+    expect(e.selectLastTab).toHaveBeenCalledTimes(1);
+    expect(runCommand('tab.next', e)).toBe(true);
+    expect(e.selectRelativeTab).toHaveBeenLastCalledWith(1);
+    expect(runCommand('tab.previous', e)).toBe(true);
+    expect(e.selectRelativeTab).toHaveBeenLastCalledWith(-1);
+    expect(runCommand('tab.next', env())).toBe(false); // the library alone
+  });
+  it('reopens only with something to reopen; moves the shown tab from the palette and the focused one from the strip', () => {
+    expect(runCommand('tab.reopenClosed', tabs({ closedOpenable: false }))).toBe(false);
+    const e = tabs({ view: 'viewer' });
+    expect(runCommand('tab.reopenClosed', e)).toBe(true);
+    expect(e.reopenClosedTab).toHaveBeenCalledTimes(1);
+    expect(runCommand('tab.moveLeft', e)).toBe(true);
+    expect(e.moveTab).toHaveBeenLastCalledWith(-1, undefined);
+    expect(runPicked({ commandId: 'tab.moveRight' }, tabs(), { itemIds: [ID] })).toBe(true); // the strip: the tab with the focus, whichever tab shows
+  });
+  it('reports the tab facts only when there are some', () => {
+    expect(contextOf(env())).not.toHaveProperty('tabCount');
+    expect(contextOf(env())).not.toHaveProperty('closedOpenable');
+    expect(contextOf(tabs())).toMatchObject({ tabCount: 3, closedOpenable: true });
   });
 });

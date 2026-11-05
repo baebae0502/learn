@@ -53,6 +53,22 @@
   .tab-item.is-active .icon {
     color: var(--text-secondary);
   }
+  /* Dragging (spec 3.2, 3.5): the tab in hand is lifted, the others step aside in --duration-move (0 under reduced motion). */
+  .tabs-scroll.is-reordering {
+    user-select: none;
+  }
+  .tabs-scroll.is-reordering .tab-item:not(.is-dragging) {
+    transition: transform var(--duration-move) var(--ease-standard);
+  }
+  .tab-item.is-dragging {
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--text-primary);
+    z-index: 1;
+  }
+  .tab-item.is-dragging::before {
+    display: none;
+  }
   .tab-item.home {
     flex: none;
     min-width: 0;

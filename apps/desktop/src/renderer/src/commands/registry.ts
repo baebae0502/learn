@@ -34,7 +34,24 @@ export interface CommandEnv extends CommandContextState {
   /** 태그 선택 해제. */
   clearTagFilter(): void;
   back(): void;
-  open(itemId: string): void;
+  /** ↩, a double-click and ⌘↩: one tab per item (the first one's shown unless `background`); eleven or more ask first. */
+  openItems(itemIds: readonly string[], opts?: { background?: boolean }): void;
+  /** ⌘W and the tab menu: the reader tab of this item, or the shown one (the library's tab closes the window). */
+  closeTab(itemId?: string): void;
+  /** ⇧⌘T. */
+  reopenClosedTab(): void;
+  /** ⌃⇥ / ⌃⇧⇥. */
+  selectRelativeTab(delta: 1 | -1): void;
+  /** ⌘2…⌘8: the tab at this place in the strip (0 is the library's). */
+  selectTabAt(index: number): void;
+  /** ⌘9. */
+  selectLastTab(): void;
+  /** ⌥⇧← / ⌥⇧→ and the palette: this item's tab, or the shown one, a place left or right. */
+  moveTab(delta: -1 | 1, itemId?: string): void;
+  /** 다른 탭 닫기: all reader tabs but this item's (or the shown one). */
+  closeOtherTabs(itemId?: string): void;
+  /** 라이브러리에서 보기: the library tab shows, with the item's row selected and in view. */
+  revealInLibrary(itemId: string): void;
   relink(itemId: string): void;
   /** ⌃⌘S (Task 4). */
   toggleSidebar(): void;
@@ -175,7 +192,25 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.showOutline': (env) => env.showReaderNav('outline'),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
-  'item.open': (env, t) => env.open(itemOf(t)),
+  'item.open': (env, t) => env.openItems(t.itemIds ?? []),
+  'item.openInBackground': (env, t) => env.openItems(t.itemIds ?? [], { background: true }),
+  // A target names the tab a menu was opened on; without one the shown tab is meant (⌘W, the palette).
+  'tab.close': (env, t) => env.closeTab(t.itemIds?.[0]),
+  'tab.reopenClosed': (env) => env.reopenClosedTab(),
+  'tab.next': (env) => env.selectRelativeTab(1),
+  'tab.previous': (env) => env.selectRelativeTab(-1),
+  'tab.goTo2': (env) => env.selectTabAt(1),
+  'tab.goTo3': (env) => env.selectTabAt(2),
+  'tab.goTo4': (env) => env.selectTabAt(3),
+  'tab.goTo5': (env) => env.selectTabAt(4),
+  'tab.goTo6': (env) => env.selectTabAt(5),
+  'tab.goTo7': (env) => env.selectTabAt(6),
+  'tab.goTo8': (env) => env.selectTabAt(7),
+  'tab.last': (env) => env.selectLastTab(),
+  'tab.moveLeft': (env, t) => env.moveTab(-1, t.itemIds?.[0]),
+  'tab.moveRight': (env, t) => env.moveTab(1, t.itemIds?.[0]),
+  'tab.closeOthers': (env, t) => env.closeOtherTabs(t.itemIds?.[0]),
+  'tab.revealInLibrary': (env, t) => env.revealInLibrary(itemOf(t)),
   'item.showInFolder': (env, t) => env.showInFolder(itemOf(t)),
   'item.openExternally': (env, t) => env.openExternally(itemOf(t)),
   'item.exportCopy': (env, t) => env.exportCopy(itemOf(t)),
@@ -266,6 +301,8 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),
     ...(env.duplicateGroups !== undefined ? { duplicateGroups: env.duplicateGroups } : {}),
+    ...(env.tabCount ? { tabCount: env.tabCount } : {}),
+    ...(env.closedOpenable ? { closedOpenable: true } : {}),
   };
 }
 

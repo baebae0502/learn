@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, net, session, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreferences, webContents, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -305,6 +305,14 @@ function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs, byKey?: t
     return;
   }
   const target = mainWindow;
+  // ⌘W in the settings window closes that window, as the window menu's role did before ⌘W became 탭 닫기.
+  if (commandId === 'tab.close') {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && focused !== target) {
+      focused.close();
+      return;
+    }
+  }
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
   sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}), ...(byKey ? { byKey } : {}) });

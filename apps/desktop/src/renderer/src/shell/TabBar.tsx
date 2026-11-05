@@ -1,6 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Clapperboard, FileText, LibraryBig, X } from 'lucide-react';
+import { acceleratorLabel, commandById, commandLabel, type CommandId } from '@learn/domain';
+import { unwrap, api } from '../api';
+import { useCommands } from '../commands/CommandProvider';
+import { runPicked } from '../commands/registry';
 import { useItem, useItems } from '../data/queries';
+import { currentPlatform } from '../ui/platform';
+import { showToast } from '../ui/toasts';
+import { useTabReorder } from './useTabReorder';
 import { readerWindowTitle } from '../viewers/readerTitle';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
@@ -21,6 +28,12 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
   const tabs = useShell((s) => s.tabs);
   const selectTab = useShell((s) => s.selectTab);
   const closeTab = useShell((s) => s.closeTab);
+  const moveTab = useShell((s) => s.moveTab);
+  const { env } = useCommands();
+  const envRef = useRef(env);
+  envRef.current = env;
+  /** The tab that takes the focus once the strip has been redrawn: a moved tab keeps it, a closed one passes it on. */
+  const refocus = useRef<string | null>(null);
   const hidden = useSidebarHidden();
   const listRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -54,10 +67,71 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
     measure();
   }, [tabs.active, tabs.tabs.length]);
 
+  const reorder = useTabReorder(scrollRef, (id, to) => {
+    refocus.current = id;
+    moveTab(id, to);
+  });
+
+  /** The focus was just given to a tab by a close or a move: the next effect must not take it for a command's switch. */
+  const handedOver = useRef(false);
+  useLayoutEffect(() => {
+    const id = refocus.current;
+    if (id === null) return;
+    refocus.current = null;
+    handedOver.current = true;
+    listRef.current?.querySelector<HTMLElement>(`[role="tab"][data-item-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+  }, [tabs.tabs]);
+
+  // A tab chosen by a command (⌘2, ⌃⇥) while the focus is on a tab of the strip takes the focus with it; a reader that took the
+  // focus for itself (a tab chosen with the pointer) is left alone.
+  useEffect(() => {
+    if (handedOver.current) return;
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement) || !focused.matches('[role="tab"]') || !listRef.current?.contains(focused)) return;
+    const next = listRef.current.querySelector<HTMLElement>(`[role="tab"][data-item-id="${CSS.escape(tabs.active)}"]`);
+    if (next && next !== focused) next.focus({ preventScroll: true });
+  }, [tabs.active]);
+
+  useEffect(() => {
+    handedOver.current = false;
+  });
+
+  /** A tab command run for the tab with the focus (the strip's keys; its menu): not the shown tab, which a command would take. */
+  const runFor = (commandId: CommandId, itemId: string) => runPicked({ commandId }, envRef.current, { itemIds: [itemId] });
+  const showMenu = useCallback(async (itemId: string, e: MouseEvent) => {
+    e.preventDefault();
+    try {
+      const picked = await unwrap(api().ui.showContextMenu({ kind: 'tab', itemId, active: useShell.getState().tabs.active === itemId, x: e.clientX, y: e.clientY }));
+      if (picked) runPicked(picked, envRef.current, { itemIds: [itemId] });
+    } catch (err) {
+      showToast({ kind: 'error', title: t.toast.actionFailed, body: (err as Error).message, testId: 'action-error' });
+    }
+  }, []);
+
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const all = [...(listRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
     const at = all.indexOf(document.activeElement as HTMLElement);
     if (at < 0) return;
+    const itemId = all[at]!.dataset['itemId'];
+    const plain = !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey);
+    if (itemId !== undefined && itemId !== 'library') {
+      // ⌥⇧← / ⌥⇧→ move the tab (tab.moveLeft / tab.moveRight); the key is the strip's, as the command has no menu item.
+      if (e.altKey && e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        refocus.current = itemId;
+        runFor(e.key === 'ArrowLeft' ? 'tab.moveLeft' : 'tab.moveRight', itemId);
+        return;
+      }
+      // Delete and Backspace close the tab (the tabs-with-deletion pattern); the focus goes to its neighbour.
+      if (plain && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        const readers = tabs.tabs;
+        refocus.current = readers[readers.indexOf(itemId) + 1] ?? readers[readers.indexOf(itemId) - 1] ?? 'library';
+        runFor('tab.close', itemId);
+        return;
+      }
+    }
+    if (!plain) return;
     const to = e.key === 'ArrowRight' ? at + 1 : e.key === 'ArrowLeft' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : null;
     if (to === null) return;
     e.preventDefault();
@@ -69,12 +143,12 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
   return (
     <header className="titlebar tab-bar" data-testid="tab-bar">
       {hidden && <SidebarToggle place="toolbar" />}
-      <div ref={listRef} className="tabs" role="tablist" aria-label={t.shell.tabs} aria-orientation="horizontal" onKeyDown={onKeyDown}>
+      <div ref={listRef} className="tabs" role="tablist" aria-label={t.shell.tabs} aria-orientation="horizontal" onKeyDown={onKeyDown} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
         <Tab id="library" selected={active === 'library'} title={t.shell.libraryTab} icon={LibraryBig} home onChoose={() => selectTab('library')} />
         <span className="tabs-sep" aria-hidden="true" />
         <div ref={scrollRef} className="tabs-scroll" data-testid="tab-scroll" data-fade-start={fade.start ? 1 : undefined} data-fade-end={fade.end ? 1 : undefined} onScroll={measure}>
           {tabs.tabs.map((id) => (
-            <ReaderTab key={id} itemId={id} selected={active === id} onChoose={() => selectTab(id)} onClose={() => closeTab(id)} />
+            <ReaderTab key={id} itemId={id} selected={active === id} onChoose={() => selectTab(id)} onClose={() => closeTab(id)} onMenu={(e) => void showMenu(id, e)} />
           ))}
         </div>
       </div>
@@ -94,16 +168,22 @@ function ActiveTitle({ itemId }: { itemId: string }) {
   return null;
 }
 
-function ReaderTab({ itemId, selected, onChoose, onClose }: { itemId: string; selected: boolean; onChoose(): void; onClose(): void }) {
+function ReaderTab({ itemId, selected, onChoose, onClose, onMenu }: { itemId: string; selected: boolean; onChoose(): void; onClose(): void; onMenu(e: MouseEvent): void }) {
   const query = useItem(itemId);
   // A trashed item no longer reads from the library; its row in the list (or the last read) still names it.
   const listed = useItems().data?.find((i) => i.id === itemId);
   const item = query.data ?? listed;
   const title = item?.title ?? '';
-  return <Tab id={itemId} selected={selected} title={title} icon={item?.type === 'video' ? Clapperboard : FileText} onChoose={onChoose} onClose={onClose} />;
+  return <Tab id={itemId} selected={selected} title={title} icon={item?.type === 'video' ? Clapperboard : FileText} onChoose={onChoose} onClose={onClose} onMenu={onMenu} />;
 }
 
-function Tab(props: { id: string; selected: boolean; title: string; icon: typeof FileText; home?: boolean; onChoose(): void; onClose?(): void }) {
+/** 탭 닫기 ⌘W: the command's name and its key as this platform spells it. */
+function closeHint(): string {
+  const c = commandById('tab.close');
+  return `${commandLabel(c, currentPlatform())} ${acceleratorLabel(c.accelerator!, currentPlatform())}`;
+}
+
+function Tab(props: { id: string; selected: boolean; title: string; icon: typeof FileText; home?: boolean; onChoose(): void; onClose?(): void; onMenu?(e: MouseEvent): void }) {
   const { id, selected, title, home } = props;
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
@@ -115,7 +195,7 @@ function Tab(props: { id: string; selected: boolean; title: string; icon: typeof
   // The close mark is the tab's neighbour inside the same box, a pointer affordance only: a tab list may own tabs and nothing else
   // (a button in it, or in a tab, is a serious axe violation), so the keyboard and assistive technology close a tab by its command.
   return (
-    <div className={cx('tab-item', home && 'home', selected && 'is-active')}>
+    <div className={cx('tab-item', home && 'home', selected && 'is-active')} onContextMenu={props.onMenu}>
       <div
         role="tab"
         className="tab"
@@ -131,7 +211,7 @@ function Tab(props: { id: string; selected: boolean; title: string; icon: typeof
         <span className="title ellipsis">{title}</span>
       </div>
       {props.onClose && (
-        <span className="close" aria-hidden="true" title={t.shell.closeTab(title)} data-testid="tab-close" onClick={props.onClose}>
+        <span className="close" aria-hidden="true" title={closeHint()} data-testid="tab-close" onClick={props.onClose}>
           <Icon icon={X} size="sm" />
         </span>
       )}

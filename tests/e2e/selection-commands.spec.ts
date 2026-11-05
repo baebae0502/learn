@@ -126,11 +126,11 @@ test('the ⌘/ sheet lists the selected row’s shortcuts (⇧⌘R, ⌘⌫) unde
   try {
     const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));
     const group = sheet.locator('section[aria-label="자료"]');
-    await expect(group.getByTestId('shortcut-row')).toHaveText([new RegExp(`^${REVEAL}`), /^휴지통으로 이동/]);
-    await expect(group.locator('.visually-hidden')).toHaveText([IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R', IS_MAC ? '⌘⌫' : 'Ctrl+Backspace']);
+    await expect(group.getByTestId('shortcut-row')).toHaveText([/^새\u00a0탭에서 열기/, new RegExp(`^${REVEAL}`), /^휴지통으로 이동/]);
+    await expect(group.locator('.visually-hidden')).toHaveText([IS_MAC ? '⌘↩' : 'Ctrl+Enter', IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R', IS_MAC ? '⌘⌫' : 'Ctrl+Backspace']);
     // 자료 follows 라이브러리 (design-spec 7.4 lists ⇧⌘R with the library keys).
     const titles = await sheet.locator('section[aria-label]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
-    expect(titles).toEqual(['앱', '라이브러리', '자료', '정리', '리더', '팔레트·대화상자']);
+    expect(titles).toEqual(['앱', '라이브러리', '자료', '탭', '정리', '리더', '팔레트·대화상자']);
     await closeSheet(sheet, 'Escape');
   } finally {
     await app.close();

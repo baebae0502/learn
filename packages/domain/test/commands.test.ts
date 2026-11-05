@@ -121,8 +121,9 @@ describe('command registry', () => {
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
-      'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
+      'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
     ]);
@@ -130,7 +131,7 @@ describe('command registry', () => {
     expect(commandById('file.importLinked')).toMatchObject({ label: '외부 파일 연결…', accelerator: 'Alt+CmdOrCtrl+O' });
     // ⌘F (design-spec 7.4 라이브러리): 편집 › after the system's edit items, while the library has items.
     expect(commandById('library.find')).toMatchObject({ label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library', 'viewer'] });
-    expect(commandById('nav.back')).toMatchObject({ label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
+    expect(commandById('nav.back')).toMatchObject({ label: '라이브러리', accelerator: 'CmdOrCtrl+1', contexts: ['viewer'] });
     expect(commandById('view.toggleSidebar')).toMatchObject({
       label: '사이드바 보기/가리기', accelerator: 'Ctrl+Cmd+S', menu: { menu: 'view', group: 2, order: 1 }, contexts: ['app'],
       stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
@@ -187,10 +188,10 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(inPalette(c)).toBe(true);
     expect(c.keywords!.some((k) => /[가-힣]/.test(k))).toBe(true);
   });
-  it('item commands need targets: 열기 one item, 다시 연결… one linked item whose file is missing', () => {
+  it('item commands need targets: 열기 one item or several (a tab each), 다시 연결… one linked item whose file is missing', () => {
     expect(isCommandAvailable('item.open', LIB)).toBe(false);
     expect(isCommandAvailable('item.open', LIB, [managedOk])).toBe(true);
-    expect(isCommandAvailable('item.open', LIB, [managedOk, managedOk])).toBe(false);
+    expect(isCommandAvailable('item.open', LIB, [managedOk, managedOk])).toBe(true);
     // 열기 also for a missing file — the reader's 원본 없음 notice is where it is relinked.
     expect(isCommandAvailable('item.open', LIB, [linkedMissing])).toBe(true);
     expect(isCommandAvailable('item.open', LIB, [managedMissing])).toBe(true);
@@ -227,7 +228,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     // ⇧⌘R and 파일 › act on the table selection (design-spec 7.4); the palette lists them while the selection allows.
     expect(commandById('item.showInFolder')).toMatchObject({
       accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 }, contexts: ['item'],
-      contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+      contextMenu: { kinds: ['item', 'tab'], group: 2, order: 1 }, palette: true,
     });
     expect(commandById('item.openExternally')).toMatchObject({ label: '기본 앱으로 열기', menu: { menu: 'file', group: 2, order: 3 }, contexts: ['item'], palette: true });
     // Still no item context-menu entry (design-spec 7.3 lists none) and no shortcut of its own.
@@ -261,15 +262,15 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(availableMenuCommands({ ...one, blocked: true })).not.toContain('item.exportCopy');
   });
   it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
-    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.restore', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
-    expect(availableMenuCommands(VIEWER)).toEqual(['file.checkLibrary', 'file.restore', 'nav.back', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
+    expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.restore', 'tab.close', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
+    expect(availableMenuCommands(VIEWER)).toEqual(['file.checkLibrary', 'file.restore', 'nav.back', 'tab.close', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
     expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
   });
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
     expect(availableMenuCommands(one)).toEqual([
-      'file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.backup', 'file.restore', 'library.find', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'collection.addItems', 'item.trash', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
+      'file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.backup', 'file.restore', 'library.find', 'item.openInBackground', 'tab.close', 'item.showInFolder', 'item.openExternally', 'item.exportCopy', 'collection.addItems', 'item.trash', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'view.toggleSidebar', 'view.toggleInspector', 'library.sortBy', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette',
     ]);
     const refused: CommandContextState[] = [
       LIB, // nothing selected
@@ -369,7 +370,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     }
     // The sidebar state never decides availability.
     expect(isCommandAvailable('view.toggleSidebar', { ...LIB, sidebar: 'hidden' })).toBe(true);
-    expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리로 돌아가기');
+    expect(commandLabel(commandById('nav.back'), 'darwin', { sidebar: 'hidden' })).toBe('라이브러리');
   });
 
   it('names a toggle after its own pane: exactly one state-label key per command (P-3)', () => {
@@ -396,7 +397,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     // Platform names and state names come through as commandLabel gives them; a label without "…" is unchanged.
     expect(commandMention(commandById('item.showInFolder'), 'linux')).toBe('폴더에서 보기');
     expect(commandMention(commandById('view.toggleSidebar'), 'darwin', { sidebar: 'shown' })).toBe('사이드바 가리기');
-    expect(commandMention(commandById('nav.back'), 'darwin')).toBe('라이브러리로 돌아가기');
+    expect(commandMention(commandById('nav.back'), 'darwin')).toBe('라이브러리');
   });
   it('names macOS apps only on macOS', () => {
     const c = { ...commandById('file.importManaged'), labelOff: '다른 이름' };
@@ -509,11 +510,12 @@ describe('collection.addItems and collection.removeItems (M5 spec 9.2, 9.3)', ()
   });
   it('both follow 기본 앱으로 열기 in 파일, and sit in their own group of the item menu after 사본 내보내기… (7.3 order: 추가 · 빼기)', () => {
     const file = COMMANDS.filter((c) => c.menu?.menu === 'file').sort((a, b) => a.menu!.group - b.menu!.group || a.menu!.order - b.menu!.order).map((c) => c.id);
-    expect(file.slice(-10, -5)).toEqual(['item.showInFolder', 'item.exportCopy', 'item.openExternally', 'collection.addItems', 'collection.removeItems']);
-    expect(file.slice(-5, -2)).toEqual(['file.checkLibrary', 'file.backup', 'file.restore']); // 파일's third group, before the trash's
+    expect(file.slice(-2)).toEqual(['tab.close', 'tab.reopenClosed']); // the last group, above 창 닫기
+    expect(file.slice(-12, -7)).toEqual(['item.showInFolder', 'item.exportCopy', 'item.openExternally', 'collection.addItems', 'collection.removeItems']);
+    expect(file.slice(-7, -4)).toEqual(['file.checkLibrary', 'file.backup', 'file.restore']); // 파일's third group, before the trash's
     const item = COMMANDS.filter((c) => c.contextMenu?.kinds.includes('item')).sort((a, b) => a.contextMenu!.group - b.contextMenu!.group || a.contextMenu!.order - b.contextMenu!.order);
     expect(item.map((c) => [c.id, c.contextMenu!.group])).toEqual([
-      ['item.relink', 0], ['item.open', 1], ['item.showInFolder', 2], ['item.exportCopy', 2], ['collection.addItems', 3], ['collection.removeItems', 3], ['duplicates.keepOne', 4], ['item.trash', 4],
+      ['item.relink', 0], ['item.open', 1], ['item.openInBackground', 1], ['item.showInFolder', 2], ['item.exportCopy', 2], ['collection.addItems', 3], ['collection.removeItems', 3], ['duplicates.keepOne', 4], ['item.trash', 4],
     ]);
     expect(commandById('collection.removeItems').contextMenu?.onlyWhenAvailable).toBe(true); // absent outside a collection, not greyed
     expect(commandById('collection.addItems').contextMenu?.onlyWhenAvailable).toBeUndefined();
@@ -640,5 +642,101 @@ describe('the reader commands (P-9, P-14)', () => {
     expect(menu).toEqual(expect.arrayContaining(['reader.zoomAuto', 'reader.rotateCw', 'reader.goToPage', ...group.commands]));
     expect(availableMenuCommands(VIEWER).filter((id) => id.startsWith('reader.'))).toEqual([]);
     expect(availableMenuCommands({ ...LIB, pdfOpen: true }).filter((id) => id.startsWith('reader.'))).toEqual([]);
+  });
+});
+
+describe('tab commands (M7b spec 3.4, 9)', () => {
+  const TABS = ['tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary'] as const;
+  const withTabs = (n: number, over: Partial<CommandContextState> = {}): CommandContextState => ({ ...VIEWER, tabCount: n, ...over });
+
+  it('names the keys and places the commands as the table says', () => {
+    expect(commandById('item.openInBackground')).toMatchObject({ label: '새\u00a0탭에서 열기', accelerator: 'CmdOrCtrl+Enter', contexts: ['item'], menu: { menu: 'file' }, contextMenu: { kinds: ['item'] } });
+    expect(commandById('tab.close')).toMatchObject({ label: '탭 닫기', accelerator: 'CmdOrCtrl+W', menu: { menu: 'file' }, contexts: ['app'], contextMenu: { kinds: ['tab'], group: 1 } });
+    expect(commandById('tab.reopenClosed')).toMatchObject({ label: '닫은 탭 다시 열기', accelerator: 'Shift+CmdOrCtrl+T', menu: { menu: 'file' } });
+    expect(commandById('tab.next')).toMatchObject({ label: '다음 탭', accelerator: 'Ctrl+Tab', menu: { menu: 'window' } });
+    expect(commandById('tab.previous')).toMatchObject({ label: '이전 탭', accelerator: 'Ctrl+Shift+Tab', menu: { menu: 'window' } });
+    for (let n = 2; n <= 8; n++) expect(commandById(`tab.goTo${n}` as never), String(n)).toMatchObject({ label: `${n}번째 탭`, accelerator: `CmdOrCtrl+${n}`, menu: { menu: 'window', hidden: true } });
+    expect(commandById('tab.last')).toMatchObject({ label: '마지막 탭', accelerator: 'CmdOrCtrl+9', menu: { menu: 'window', hidden: true } });
+    expect(commandById('tab.closeOthers')).toMatchObject({ label: '다른\u00a0탭 닫기', contextMenu: { kinds: ['tab'] } });
+    expect(commandById('tab.revealInLibrary')).toMatchObject({ label: '라이브러리에서 보기', contextMenu: { kinds: ['tab'] } });
+    expect(commandById('item.showInFolder').contextMenu!.kinds).toEqual(['item', 'tab']);
+    expect(acceleratorLabel('Ctrl+Tab', 'darwin')).toBe('⌃⇥');
+    expect(acceleratorLabel('Shift+CmdOrCtrl+T', 'darwin')).toBe('⇧⌘T');
+    expect(acceleratorLabel('CmdOrCtrl+Enter', 'darwin')).toBe('⌘↩');
+  });
+  it('moves a tab by keys of the tab strip: no accelerator, no menu item (R2), but the palette runs it', () => {
+    for (const id of ['tab.moveLeft', 'tab.moveRight'] as const) {
+      const c = commandById(id);
+      expect(c.accelerator, id).toBeUndefined();
+      expect(c.key, id).toBeUndefined();
+      expect(c.menu, id).toBeUndefined();
+      expect(inPalette(c), id).toBe(true);
+    }
+  });
+  it('keeps every new accelerator unique on all three platforms, and ⌘1 the library\'s', () => {
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      const accels = COMMANDS.flatMap((c) => (c.accelerator ? [acceleratorLabel(c.accelerator, platform)] : []));
+      expect(accels.filter((a, i) => accels.indexOf(a) !== i), platform).toEqual([]);
+      for (const id of TABS) {
+        const c = commandById(id);
+        if (c.accelerator) expect(accels.filter((a) => a === acceleratorLabel(c.accelerator!, platform)), `${platform} ${id}`).toHaveLength(1);
+      }
+    }
+    expect(commandById('nav.back').accelerator).toBe('CmdOrCtrl+1');
+  });
+  it('hides a menu item only in 윈도우, and a tab-kind context menu command is an app-context command', () => {
+    const hidden = COMMANDS.filter((c) => c.menu?.hidden);
+    expect(hidden.map((c) => c.id)).toEqual(['tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last']);
+    for (const c of hidden) expect(c.menu!.menu, c.id).toBe('window');
+    for (const c of COMMANDS.filter((x) => x.contextMenu?.kinds.includes('tab') && x.id !== 'item.showInFolder')) expect(c.contexts, c.id).toEqual(['app']);
+    expect(CONTEXT_MENU_KINDS).toContain('tab');
+  });
+  it('switches only to tabs that exist (the library tab is the first; reader tabs are 2…)', () => {
+    expect(isCommandAvailable('tab.next', LIB)).toBe(false);
+    expect(isCommandAvailable('tab.next', withTabs(1))).toBe(true);
+    expect(isCommandAvailable('tab.previous', withTabs(1, { view: 'library' }))).toBe(true); // also from the library tab
+    expect(isCommandAvailable('tab.last', withTabs(1))).toBe(true);
+    expect(isCommandAvailable('tab.last', LIB)).toBe(false);
+    expect(isCommandAvailable('tab.goTo2', withTabs(1))).toBe(true);
+    expect(isCommandAvailable('tab.goTo3', withTabs(1))).toBe(false);
+    expect(isCommandAvailable('tab.goTo3', withTabs(2))).toBe(true);
+    expect(isCommandAvailable('tab.goTo8', withTabs(6))).toBe(false);
+    expect(isCommandAvailable('tab.goTo8', withTabs(7))).toBe(true);
+  });
+  it('closes any time, closes the others with two tabs, reopens only what can open, moves with two tabs in the reader', () => {
+    expect(isCommandAvailable('tab.close', LIB)).toBe(true); // the library tab closes the window
+    expect(isCommandAvailable('tab.close', withTabs(1, { blocked: true }))).toBe(false);
+    expect(isCommandAvailable('tab.closeOthers', withTabs(1))).toBe(false);
+    expect(isCommandAvailable('tab.closeOthers', withTabs(2))).toBe(true);
+    expect(isCommandAvailable('tab.reopenClosed', withTabs(0))).toBe(false);
+    expect(isCommandAvailable('tab.reopenClosed', { ...LIB, closedOpenable: true })).toBe(true);
+    expect(isCommandAvailable('tab.moveLeft', withTabs(1))).toBe(false);
+    expect(isCommandAvailable('tab.moveLeft', withTabs(2))).toBe(true);
+    expect(isCommandAvailable('tab.moveRight', withTabs(2, { view: 'library' }))).toBe(false);
+  });
+  it('shows an item in the library unless it is in the trash', () => {
+    expect(isCommandAvailable('tab.revealInLibrary', withTabs(1), [managedOk])).toBe(true);
+    expect(isCommandAvailable('tab.revealInLibrary', withTabs(1), [{ ...managedOk, trashed: true }])).toBe(false);
+    expect(isCommandAvailable('tab.revealInLibrary', withTabs(1), [])).toBe(false);
+  });
+  it('opens several items as tabs, in the background too, but not from the trash view or without a selection', () => {
+    expect(isCommandAvailable('item.open', selecting(3, 3), [managedOk, managedOk, managedOk])).toBe(true);
+    expect(isCommandAvailable('item.openInBackground', selecting(1, 1), [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.openInBackground', selecting(3, 3), [managedOk, managedOk, managedOk])).toBe(true);
+    expect(isCommandAvailable('item.openInBackground', selecting(0, 0), [])).toBe(false);
+    expect(isCommandAvailable('item.openInBackground', { ...selecting(1, 1), scope: 'trash' }, [managedOk])).toBe(false);
+    expect(isCommandAvailable('item.openInBackground', selecting(1, 1, 0, 'viewer'), [managedOk])).toBe(false);
+    expect(availableMenuCommands(selecting(2, 2))).toContain('item.openInBackground');
+    expect(availableMenuCommands(selecting(0, 0))).not.toContain('item.openInBackground');
+  });
+  it('names the open commands with the number when several items are chosen', () => {
+    expect(commandLabel(commandById('item.open'), 'darwin', { selectionCount: 1 })).toBe('열기');
+    expect(commandLabel(commandById('item.open'), 'darwin', { selectionCount: 3 })).toBe('탭 3개로 열기');
+    expect(commandLabel(commandById('item.openInBackground'), 'darwin')).toBe('새\u00a0탭에서 열기');
+    expect(commandLabel(commandById('item.openInBackground'), 'darwin', { selectionCount: 12 })).toBe('새\u00a0탭 12개로 열기');
+  });
+  it('lists the tab commands for the palette with Korean words, except the numbered ones', () => {
+    for (const id of ['tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous', 'tab.moveLeft', 'tab.moveRight'] as const) expect(inPalette(commandById(id)), id).toBe(true);
+    for (const id of ['tab.goTo2', 'tab.last', 'tab.closeOthers', 'tab.revealInLibrary'] as const) expect(inPalette(commandById(id)), id).toBe(false);
   });
 });

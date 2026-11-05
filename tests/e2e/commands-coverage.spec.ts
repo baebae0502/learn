@@ -8,7 +8,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
   FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, launch, makeTags,
-  menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
+  libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
   stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
@@ -93,6 +93,17 @@ const M7A_COMMANDS: readonly CommandId[] = [
   'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline',
   'reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark',
   'translation.translateSelection',
+] as CommandId[];
+
+/**
+ * Every command the tabs put in the registry (M7b; the history and view-mode commands join it with their tasks): the menu loop leaves them
+ * to a block of their own at its end, because running them in the loop would change what the loop runs on (a tab switch, a closed
+ * window, a new tab). Each ran there, from the menu, the tab menu or the palette (`tab.moveLeft` / `tab.moveRight`).
+ */
+const M7B_COMMANDS: readonly CommandId[] = [
+  'item.openInBackground', 'tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous',
+  'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last',
+  'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary',
 ] as CommandId[];
 
 /**
@@ -298,10 +309,10 @@ test('every registry command runs without a page error (library and reader menus
       const readerOwn = ids.filter((id) => id.startsWith('reader.'));
       if (view === 'library') expect(readerOwn).toEqual([]);
       else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
-      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
+      if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.openInBackground', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly.sort()).toEqual(['library.find', 'view.toggleInspector']); // ⌥⌘I is the reader's too while a PDF is open
       for (const id of ids) {
-        if (DESTRUCTIVE.has(id)) continue;
+        if (DESTRUCTIVE.has(id) || M7B_COMMANDS.includes(id)) continue; // the tab commands have a block of their own below
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
         if (view === 'reader') scaleBefore = await scale();
         if (id === 'view.toggleInspector') inspectorBefore = await inspector();
@@ -604,6 +615,79 @@ test('every registry command runs without a page error (library and reader menus
       ran.add('file.checkLibrary');
     }
 
+    // The tab commands (M7b): eight more items opened behind the library with ⌘↩, then each tab command from its menu item, the tab
+    // menu or the palette. The rows are the sample file again with a byte more each, so none is a duplicate.
+    {
+      const tabsDir = testInfo.outputPath('tabs-src');
+      fs.mkdirSync(tabsDir, { recursive: true });
+      const copies = Array.from({ length: 8 }, (_, i) => {
+        const file = path.join(tabsDir, `tabs-${String(i + 1).padStart(2, '0')}.pdf`);
+        fs.copyFileSync(PDF, file);
+        fs.appendFileSync(file, `\n% tab copy ${i + 1}\n`);
+        return file;
+      });
+      const added = await importPaths(page, copies);
+      const tabId = (n: number) => added.find((i) => i.title === `tabs-${String(n).padStart(2, '0')}`)!.id;
+      const strip = () => page.locator('[data-testid="tab"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-item-id')!));
+      const shown = () => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id');
+      await specialRow(page, 'all').click();
+      if (await libraryTab(page).count()) await libraryTab(page).click();
+      await expect(page.getByTestId('library-table')).toBeVisible();
+      const before = (await strip()).filter((id) => id !== 'library');
+      await rowByTitle(page, 'tabs-01').click();
+      await rowByTitle(page, 'tabs-08').click({ modifiers: ['Shift'] });
+      await runMenuCommand(app, 'item.openInBackground');
+      ran.add('item.openInBackground');
+      await expect.poll(async () => (await strip()).length).toBe(1 + before.length + 8);
+      expect(await shown()).toBe('library');
+      const readers = (await strip()).slice(1);
+      expect(readers.slice(before.length)).toEqual(Array.from({ length: 8 }, (_, i) => tabId(8 - i))); // newest first, as the table lists them
+      // Next and previous go round through the library tab; ⌘2…⌘8 pick by place, ⌘9 the last.
+      await runMenuCommand(app, 'tab.next');
+      expect(await shown()).toBe(readers[0]);
+      ran.add('tab.next');
+      await runMenuCommand(app, 'tab.previous');
+      expect(await shown()).toBe('library');
+      ran.add('tab.previous');
+      for (let n = 2; n <= 8; n++) {
+        const id = `tab.goTo${n}` as CommandId;
+        await runMenuCommand(app, id);
+        expect(await shown(), id).toBe(readers[n - 2]);
+        ran.add(id);
+      }
+      await runMenuCommand(app, 'tab.last');
+      expect(await shown()).toBe(readers.at(-1));
+      ran.add('tab.last');
+      // The palette moves the shown tab a place each way.
+      await runPalette(page, app, '탭을 왼쪽으로', 'tab.moveLeft');
+      await expect.poll(async () => (await strip()).slice(1)).toEqual([...readers.slice(0, -2), readers.at(-1)!, readers.at(-2)!]);
+      ran.add('tab.moveLeft');
+      await runPalette(page, app, '탭을 오른쪽으로', 'tab.moveRight');
+      await expect.poll(async () => (await strip()).slice(1)).toEqual(readers);
+      ran.add('tab.moveRight');
+      // The tab menu: 라이브러리에서 보기 selects the row, 다른 탭 닫기 keeps one tab, 탭 닫기 closes a tab that is not shown.
+      const mid = readers[3]!;
+      await stubContextMenu(app, '라이브러리에서 보기');
+      await readerTab(page, mid).click({ button: 'right' });
+      await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('[data-testid="item-row"][aria-selected="true"]')).toHaveCount(1);
+      ran.add('tab.revealInLibrary');
+      await stubContextMenu(app, '탭 닫기');
+      await readerTab(page, mid).click({ button: 'right' });
+      await expect(readerTab(page, mid)).toHaveCount(0);
+      await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(true);
+      ran.add('tab.close');
+      await runMenuCommand(app, 'tab.reopenClosed');
+      expect(await shown()).toBe(mid);
+      ran.add('tab.reopenClosed');
+      await stubContextMenu(app, '다른\u00a0탭 닫기');
+      await readerTab(page, mid).click({ button: 'right' });
+      await expect.poll(strip).toEqual(['library', mid]);
+      ran.add('tab.closeOthers');
+      await runMenuCommand(app, 'tab.close'); // and from the menu bar: the shown tab
+      await expect.poll(strip).toEqual([]); // the last reader tab gone: no strip
+    }
+
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.
     const all = COMMANDS.map((c) => c.id);
@@ -616,6 +700,10 @@ test('every registry command runs without a page error (library and reader menus
     expect(M6_COMMANDS.filter((id) => !all.includes(id)), 'M6 commands gone from the registry').toEqual([]);
     expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
+    // The M7b commands (the tabs): each ran in the block above, none is left to another test, and the list is the whole set.
+    expect(all.filter((id) => id.startsWith('tab.') || id === 'item.openInBackground').sort(), 'the M7b commands in the registry').toEqual([...M7B_COMMANDS].sort());
+    expect(M7B_COMMANDS.filter((id) => !ran.has(id)), 'M7b commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7B_COMMANDS.includes(id as CommandId)), 'M7b commands left to another test').toEqual([]);
     // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it, and the list is the whole set (reader.* and the pop-up's command).
     expect(all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort(), 'the M7a commands in the registry').toEqual([...M7A_COMMANDS].sort());
     expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);

@@ -20,11 +20,13 @@ export interface ShortcutGroup {
  * Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). 정리 holds
  * the collection and tag commands whatever their context (M5 spec 9.3), then the colour keys.
  */
-const ORDER = ['app', 'library', 'item', 'organize', 'viewer'] as const;
+const ORDER = ['app', 'library', 'item', 'tabs', 'organize', 'viewer'] as const;
 const groupOf = (c: (typeof COMMANDS)[number], view?: 'library' | 'viewer'): (typeof ORDER)[number] =>
   /^(collection|tags?)\./.test(c.id)
     ? 'organize'
-    : // A key the library and the reader share (named by the view: stateLabels.view) is listed once, under the view the sheet was opened from.
+    : c.id.startsWith('tab.')
+      ? 'tabs'
+      : // A key the library and the reader share (named by the view: stateLabels.view) is listed once, under the view the sheet was opened from.
       view === 'viewer' && c.stateLabels?.view
       ? 'viewer'
       : (c.contexts[0] as (typeof ORDER)[number]);
@@ -57,6 +59,19 @@ const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
   return [{ label: t.sheets.fullScreen, keys: acceleratorKeys(accelerator, platform), spoken: acceleratorLabel(accelerator, platform), system: true }];
 };
 
+/** The numbered tabs as one line: ⌘2…⌘9 (2…8번째 탭 / 마지막 탭), spelled the way the platform spells the chord. */
+function tabNumbersRow(platform: string): ShortcutRow {
+  const hidden = COMMANDS.filter((c) => c.menu?.hidden && c.accelerator !== undefined);
+  const first = hidden[0]!.accelerator!;
+  const keys = acceleratorKeys(first, platform);
+  const last = acceleratorKeys(hidden.at(-1)!.accelerator!, platform).at(-1)!;
+  return {
+    label: t.sheets.tabNumbers,
+    keys: [...keys.slice(0, -1), `${keys.at(-1)!}–${last}`],
+    spoken: `${acceleratorLabel(first, platform)}${t.sheets.tabNumbersTo}${acceleratorLabel(hidden.at(-1)!.accelerator!, platform)}`,
+  };
+}
+
 /** The colour keys as one line (spec 4.2): the first and last slot's key, spelled the way the platform spells a key. */
 function colorKeysRow(platform: string): ShortcutRow {
   const slots = COMMANDS.filter((c) => tagSlot(c.id) !== null && c.key !== undefined);
@@ -73,7 +88,7 @@ function colorKeysRow(platform: string): ShortcutRow {
 export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
+    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null && !c.menu?.hidden)
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .map((c): ShortcutRow => {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
@@ -83,6 +98,8 @@ export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): S
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))
+    // ⌘2…⌘9 are hidden menu items: one line for the numbered tabs, last in 탭.
+    .map((g, i) => (ORDER[i] === 'tabs' ? { ...g, rows: [...g.rows, tabNumbersRow(platform)] } : g))
     // The eight colour keys are one line, last in 정리 (spec 4.2).
     .map((g, i) => (ORDER[i] === 'organize' ? { ...g, rows: [...g.rows, colorKeysRow(platform)] } : g))
     .filter((g) => g.rows.length > 0);

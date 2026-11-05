@@ -1,4 +1,4 @@
-import { SUBMENUS, commandAvailable, commandLabel, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ContextMenuKind, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
+import { SUBMENUS, commandAvailable, commandLabel, platformAccelerator, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ContextMenuKind, type OrganizeSnapshot, type SubmenuSpec } from '@learn/domain';
 import type { ContextEntry, MenuEntries } from './entries';
 import { groupEntry, valueRows } from './submenus';
 
@@ -15,6 +15,8 @@ export interface MenuExtras {
   tagId?: string;
   /** The grouped submenus; the registry's by default. */
   submenus?: readonly SubmenuSpec[];
+  /** A tab menu opened on the shown tab names the keys of its commands; on another tab it shows none (spec 3.4). */
+  activeTab?: boolean;
 }
 
 /** Whether some registry command (or group) lists this kind: a kind nothing lists answers null without a database read. */
@@ -54,8 +56,10 @@ export function contextMenuEntries(
     if (!at?.kinds.includes(kind)) return [];
     const enabled = commandAvailable(c, ctx, targets);
     if (!enabled && at.onlyWhenAvailable) return [];
-    const label = commandLabel(c, platform, ctx); // ⌘⌫ is 영구 삭제… on a trash row (P-11)
-    if (c.submenu === undefined) return [{ group: at.group, order: at.order, entry: { id: c.id, label, enabled } }];
+    // ⌘⌫ is 영구 삭제… on a trash row (P-11); 열기 says how many tabs when the menu is for several items.
+    const label = commandLabel(c, platform, kind === 'item' ? { ...ctx, selectionCount: targets.length } : ctx);
+    const hint = kind === 'tab' && extras.activeTab === true && c.accelerator !== undefined ? { hint: platformAccelerator(c.accelerator, platform) } : {};
+    if (c.submenu === undefined) return [{ group: at.group, order: at.order, entry: { id: c.id, label, enabled, ...hint } }];
     const rows = valueRows(c, input, enabled);
     return [{ group: at.group, order: at.order, entry: rows.length === 0 ? null : { label, enabled, submenu: rows } }];
   });

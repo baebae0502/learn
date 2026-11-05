@@ -12,6 +12,8 @@ export const shell = {
   /** The tab strip's name for assistive technology, and the library's own tab. */
   tabs: '탭',
   libraryTab: '라이브러리',
-  closeTab: (title: string) => `‘${title}’ 탭 닫기`,
+  /** The sheet that asks before eleven or more items open as tabs. */
+  openMany: (n: number) => `자료 ${n}개를 탭으로 열겠습니까?`,
+  openManyConfirm: '열기',
   listFailed: '목록을 새로 고치지 못했습니다',
 } as const;

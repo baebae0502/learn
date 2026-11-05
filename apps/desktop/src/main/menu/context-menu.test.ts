@@ -29,9 +29,9 @@ beforeEach(() => {
 
 describe('context menu entries (registry + isCommandAvailable)', () => {
   it('an available file: 열기, then Finder에서 보기 and 사본 내보내기…; a missing linked file: 다시 연결… first (기본 앱으로 열기 never)', () => {
-    expect(ids(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'darwin'))).toEqual(['item.open', '-', 'item.showInFolder', 'item.exportCopy', '-', 'item.trash']);
+    expect(ids(contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available')], 'darwin'))).toEqual(['item.open', 'item.openInBackground', '-', 'item.showInFolder', 'item.exportCopy', '-', 'item.trash']);
     const missing = contextMenuEntries('item', COMMANDS, LIB, [target('linked', 'missing')], 'darwin');
-    expect(ids(missing)).toEqual(['item.relink', '-', 'item.open', '-', 'item.showInFolder', 'item.exportCopy', '-', 'item.trash']);
+    expect(ids(missing)).toEqual(['item.relink', '-', 'item.open', 'item.openInBackground', '-', 'item.showInFolder', 'item.exportCopy', '-', 'item.trash']);
     // No file to reveal or copy; the item can still go to the trash.
     expect(missing.slice(-4)).toEqual([
       { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false },
@@ -41,9 +41,13 @@ describe('context menu entries (registry + isCommandAvailable)', () => {
     ]);
   });
   it('disables (not hides) the other commands that cannot run, and everything while blocked', () => {
-    const disabled = [{ id: 'item.open', label: '열기', enabled: false }, 'separator', { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }, { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false }];
+    const disabled = [{ id: 'item.open', label: '열기', enabled: false }, { id: 'item.openInBackground', label: '새\u00a0탭에서 열기', enabled: false }, 'separator', { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }, { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false }];
     const two = contextMenuEntries('item', COMMANDS, LIB, [target('managed', 'available'), target('managed', 'available')], 'darwin');
-    expect(two).toEqual([...disabled, 'separator', { id: 'item.trash', label: '휴지통으로 이동', enabled: true }]);
+    // Several items open as several tabs (named with the number); Finder and the copy take one.
+    expect(two).toEqual([
+      { id: 'item.open', label: '탭 2개로 열기', enabled: true }, { id: 'item.openInBackground', label: '새\u00a0탭 2개로 열기', enabled: true }, 'separator',
+      { id: 'item.showInFolder', label: 'Finder에서 보기', enabled: false }, { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false }, 'separator', { id: 'item.trash', label: '휴지통으로 이동', enabled: true },
+    ]);
     expect(contextMenuEntries('item', COMMANDS, { ...LIB, blocked: true }, [target('linked', 'missing')], 'darwin')).toEqual([...disabled, 'separator', { id: 'item.trash', label: '휴지통으로 이동', enabled: false }]);
   });
   it('names the file manager off macOS (labelOff)', () => {
@@ -127,7 +131,7 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
 
   it('the item menu: 열기, the file commands, then 컬렉션에 추가 ▸ and 색 태그 ▸ in the group after them (spec 9.2)', () => {
     expect(lines(item(['i1']))).toEqual([
-      '열기', '-', 'Finder에서 보기', '사본 내보내기…', '-',
+      '열기', '새\u00a0탭에서 열기', '-', 'Finder에서 보기', '사본 내보내기…', '-',
       { '컬렉션에 추가': [NEW, '-', { 분자생물학: ['분자생물학 ✓ ✗', '-', '2장', '10장', '유전학'] }, '시험 ✓ ✗'] },
       { '색 태그': ['시험 범위 [1] ✓', '중요 [3] ✓'] },
       '-', '휴지통으로 이동',
@@ -145,13 +149,13 @@ describe('submenus, marks and values in a context menu (spec 9.1, 9.2)', () => {
     expect(blocked.at(-4)).toEqual({ '컬렉션에 추가 ✗': [`${NEW} ✗`, '-', { '분자생물학 ✗': ['분자생물학 ✓ ✗', '-', '2장 ✗', '10장 ✗', '유전학 ✗'] }, '시험 ✓ ✗'] });
     expect(blocked.at(-3)).toEqual({ '색 태그 ✗': ['시험 범위 [1] ✓ ✗', '중요 [3] ✓ ✗'] });
     expect(lines(item(['i1'], {}, available, { ...LIBRARY, tags: [] }))).toEqual([
-      '열기', '-', 'Finder에서 보기', '사본 내보내기…', '-',
+      '열기', '새\u00a0탭에서 열기', '-', 'Finder에서 보기', '사본 내보내기…', '-',
       { '컬렉션에 추가': [NEW, '-', { 분자생물학: ['분자생물학 ✓ ✗', '-', '2장', '10장', '유전학'] }, '시험 ✓ ✗'] },
       '-', '휴지통으로 이동',
     ]);
   });
   it('a library that was not read gives no 컬렉션에 추가 ▸ and no 색 태그 ▸, and no stray separator', () => {
-    expect(lines(item(['i1'], {}, available, null))).toEqual(['열기', '-', 'Finder에서 보기', '사본 내보내기…', '-', '휴지통으로 이동']);
+    expect(lines(item(['i1'], {}, available, null))).toEqual(['열기', '새\u00a0탭에서 열기', '-', 'Finder에서 보기', '사본 내보내기…', '-', '휴지통으로 이동']);
   });
   it('a tag menu: 색 지정 ▸ for the one tag, the colours as radios with a dot', () => {
     const entries = contextMenuEntries('tag', ALL_COMMANDS, LIB, [{ kind: 'tag', id: 't-key', hasColor: true }], 'darwin', { organize: LIBRARY, tagId: 't-key' });

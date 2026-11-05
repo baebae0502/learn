@@ -41,6 +41,24 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
       }
       targets = facts.map((f) => itemTarget(f));
       itemIds = facts.map((f) => f.id);
+    } else if (input.kind === 'tab') {
+      // The tab's item: a live one with its file re-checked, or one the trash holds (its tab stays, spec 3.8); a purged one has no menu.
+      const live = ctx.repo.targetFacts([input.itemId])[0];
+      if (live) {
+        let facts = live;
+        try {
+          const item = await refreshItemAvailability(ctx, live.id);
+          facts = { id: item.id, storageMode: item.storageMode, availability: item.availability };
+        } catch (e) {
+          console.warn(`[ui] availability check failed: ${toLearnError(e).code}`);
+        }
+        targets = [itemTarget(facts)];
+      } else {
+        const trashed = ctx.repo.trashView().items.find((i) => i.id === input.itemId);
+        if (!trashed) return null;
+        targets = [itemTarget({ storageMode: trashed.storageMode, availability: trashed.availability, trashed: true })];
+      }
+      itemIds = [input.itemId];
     } else if (input.kind === 'trash') {
       // The rows the trash still holds (P-10): one restored or purged since the right-click has no menu.
       const view = ctx.repo.trashView();
@@ -62,6 +80,7 @@ export function registerUiIpc(handle: Handle, deps: IpcDeps): void {
       organize,
       itemIds,
       ...(tagId !== undefined ? { tagId } : {}),
+      ...(input.kind === 'tab' && input.active ? { activeTab: true } : {}),
     });
     if (entries.length === 0) return null;
     return popupCommandMenu(entries, { window, x: input.x, y: input.y });

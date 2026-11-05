@@ -365,6 +365,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     expect(items!.filter((i) => i.type !== 'separator').map((i) => [i.label, i.enabled])).toEqual([
       ['다시 연결…', true],
       ['열기', true],
+      ['새\u00a0탭에서 열기', true],
       [REVEAL, false],
       ['사본 내보내기…', false],
       ['컬렉션에 추가', true], // filing needs no file

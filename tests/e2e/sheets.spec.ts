@@ -121,7 +121,7 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
     await expect(sheet.getByTestId('sheet-root')).toHaveAttribute('data-kind', 'shortcuts');
     // The eight colour keys are one line, 1–8 under 정리, not eight rows.
-    for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && !/^tag\.color\d$/.test(x.id))) {
+    for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && !/^tag\.color\d$/.test(x.id) && !x.menu?.hidden)) {
       // The whole label: 시계 방향으로 회전 is also the end of 반시계 방향으로 회전.
       await expect(sheet.getByTestId('shortcut-row').filter({ has: sheet.locator('.sr-label').getByText(commandLabel(c, process.platform), { exact: true }) }), c.id).toHaveCount(1);
     }
@@ -351,16 +351,16 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
       ),
     );
     // Read down the first column, then the second, in the sheet's order (shortcuts.ts ORDER).
-    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리', '자료'], ['정리', '리더', '팔레트·대화상자']]);
+    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리', '자료'], ['탭', '정리', '리더', '팔레트·대화상자']]);
     // A group never splits: every section lies in one column with all its rows; the columns sit side by side.
     for (const g of columns.flat()) expect(g.whole, `${g.title}`).toBe(true);
     expect(new Set(columns[0]!.map((g) => g.left)).size).toBe(1);
     expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
     expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
-    // Short enough for every real 1440 × 900 room (Mac ≈ 806-tall parent, room 774): the bound below. Whether the body
+    // The tab keys made the sheet 859 tall (it was 754): past a real 1440 × 900 Mac room (774) its body scrolls; the bound below is the new natural height. Whether the body
     // scrolls on THIS screen follows the rule (the runner's 1024 × 684 clamp has room 652 and scrolls).
     const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
-    expect(natural).toBeLessThanOrEqual(770);
+    expect(natural).toBeLessThanOrEqual(860);
     await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();

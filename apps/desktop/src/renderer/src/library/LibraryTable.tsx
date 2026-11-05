@@ -31,7 +31,7 @@ import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
 import { KeptMark, LinkMark, StatusFlags } from './ItemMarks';
 import type { DuplicateMarks } from '../organize/duplicates';
-import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
+import { inOrder, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
 
@@ -50,7 +50,8 @@ export interface LibraryTableProps {
   onSortChange(sort: LibrarySort): void;
   /** Resize release, column-menu toggle / reset. */
   onColumnsChange(next: ColumnConfig): void;
-  onOpen(itemId: string): void;
+  /** ↩ opens the whole selection (in table order), a double-click its row: one tab each. */
+  onOpen(itemIds: readonly string[]): void;
   onContextMenu(itemIds: readonly string[], x: number, y: number): void;
   /** Matched range per title, for <mark> (the quick search's). */
   titleMatches?: ReadonlyMap<string, Match> | null;
@@ -511,9 +512,9 @@ export function LibraryTable(props: LibraryTableProps) {
       case 'clear':
         return apply(key);
       case 'open': {
-        // ↩ opens one selected item; with several it does nothing (several tabs are M7, spec §3.3).
-        const id = openTarget(useLibrary.getState().selected);
-        if (id !== null) latest.current.props.onOpen(id);
+        // ↩ opens every selected item, one tab each (spec 3.3).
+        const ids = inOrder(useLibrary.getState().selected, latest.current.order);
+        if (ids.length > 0) latest.current.props.onOpen(ids);
         return;
       }
       case 'swallow':
@@ -561,7 +562,7 @@ export function LibraryTable(props: LibraryTableProps) {
   const onBodyDoubleClick = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
     const id = rowIdOf(e.target);
-    if (id !== null) latest.current.props.onOpen(id);
+    if (id !== null) latest.current.props.onOpen([id]);
   }, []);
   // Right-click selects first (design-spec 7.1, Finder): a row outside the selection becomes the selection; inside it,
   // the menu acts on every selected item, in table order.

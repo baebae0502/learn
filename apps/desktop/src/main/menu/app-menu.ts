@@ -125,7 +125,8 @@ function commandItems(c: CommandSpec, opts: AppMenuOptions): Item[] {
   // A key press says so (Q-6e): the page lets a focused text field keep the keys it edits with (⌘⌫).
   const click: NonNullable<Item['click']> = (_item, _window, event) => (event?.triggeredByAccelerator ? opts.onCommand(c.id, undefined, true) : opts.onCommand(c.id));
   const [id, ...twinIds] = menuItemIds(c);
-  const item: Item = { id, label, enabled, click };
+  // A hidden item (⌘2…⌘9) is not drawn and its key works.
+  const item: Item = { id, label, enabled, click, ...(c.menu?.hidden ? { visible: false } : {}) };
   if (c.accelerator) item.accelerator = platformAccelerator(c.accelerator, opts.platform);
   return [item, ...twinAccelerators(c).map((acc, i): Item => ({ id: twinIds[i], label, enabled, visible: false, accelerator: platformAccelerator(acc, opts.platform), click }))];
 }
@@ -185,8 +186,12 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
       [{ role: 'quit', label: copy.app.quit }],
     ),
   };
-  const close: Item = { role: 'close', label: mac ? copy.close.mac : copy.close.other, accelerator: 'CmdOrCtrl+W' };
-  const file: Item = { id: 'menu.file', label: copy.top.file, submenu: join(reg('file'), [close]) };
+  // ⌘W is 탭 닫기 (the library's tab closes the window itself); the window's own close keeps a key of its own.
+  const close: Item = { role: 'close', label: mac ? copy.close.mac : copy.close.other, accelerator: 'Shift+CmdOrCtrl+W' };
+  // 창 닫기 joins the group of the tab commands it belongs with; without them (a test's own registry) it stands apart as before.
+  const fileItems = reg('file');
+  const withTabClose = opts.commands.some((c) => c.id === 'tab.close' && c.menu?.menu === 'file');
+  const file: Item = { id: 'menu.file', label: copy.top.file, submenu: withTabClose ? [...fileItems, close] : join(fileItems, [close]) };
   const edit: Item = {
     id: 'menu.edit',
     label: copy.top.edit,

@@ -90,6 +90,9 @@ async function importOnePdf(page: Page): Promise<string> {
   return item!.id;
 }
 
+/** 윈도우's registry items: the tabs next and previous, then ⌘2…⌘8 and ⌘9 as hidden items (menuSnapshot lists them; the menu draws none). */
+const TAB_ENTRIES: Array<[string | null, string]> = [[null, '다음 탭'], [null, '이전 탭'], ...[2, 3, 4, 5, 6, 7, 8].map((n): [string | null, string] => [null, `${n}번째 탭`]), [null, '마지막 탭']];
+
 test('menu: Korean top-level menus built from the registry, no reload or developer tools', async ({}, testInfo) => {
   const { app } = await session(testInfo);
   try {
@@ -137,10 +140,10 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     // 설정… ends 파일 off macOS (S-2); on macOS it follows Learn에 관하여 in the app menu.
     expect(entries(topMenu(menu, '파일'))).toEqual([
       [null, '파일 가져오기…'], [null, '외부 파일 연결…'], [null, '새\u00a0컬렉션'], ['-', ''],
-      [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], [null, '컬렉션에 추가'], [null, '이 컬렉션에서 빼기'], ['-', ''],
+      [null, '새\u00a0탭에서 열기'], [null, IS_MAC ? 'Finder에서 보기' : '폴더에서 보기'], [null, '사본 내보내기…'], [null, '기본 앱으로 열기'], [null, '컬렉션에 추가'], [null, '이 컬렉션에서 빼기'], ['-', ''],
       [null, '라이브러리 점검…'], [null, '백업 만들기…'], [null, '백업에서 복원…'], ['-', ''],
       [null, '휴지통 비우기…'], [null, '휴지통으로 이동'], ['-', ''],
-      ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
+      ...(IS_MAC ? [] : [[null, '설정…'], ['-', '']]), [null, '탭 닫기'], [null, '닫은 탭 다시 열기'], ['close', IS_MAC ? '윈도우 닫기' : '창 닫기'],
     ]);
     if (IS_MAC) expect(entries(topMenu(menu, 'Learn')).slice(0, 4)).toEqual([['about', 'Learn에 관하여'], ['-', ''], [null, '설정…'], ['-', '']]);
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
@@ -160,11 +163,11 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
       ['library.sortBy?direction=asc', '오름차순', 'radio', false],
       ['library.sortBy?direction=desc', '내림차순', 'radio', true],
     ]);
-    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기'], [null, '쪽으로 이동…']]);
+    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리'], [null, '쪽으로 이동…']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
-        ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기']]
-        : [['minimize', '최소화']],
+        ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기'], ['-', ''], ...TAB_ENTRIES]
+        : [['minimize', '최소화'], ['-', ''], ...TAB_ENTRIES],
     );
     expect(entries(topMenu(menu, '도움말'))).toEqual(IS_MAC ? [[null, '단축키 도움말']] : [[null, '단축키 도움말'], ['-', ''], ['about', 'Learn 정보']]);
   } finally {
@@ -238,7 +241,7 @@ test('⌘O (파일 가져오기…) opens the dialog exactly once', async ({}, t
   }
 });
 
-test('menu command 라이브러리로 돌아가기 returns from the PDF viewer to the library', async ({}, testInfo) => {
+test('menu command 라이브러리 (⌘1) returns from the PDF viewer to the library', async ({}, testInfo) => {
   const { app, page } = await session(testInfo);
   try {
     await importOnePdf(page);
@@ -265,7 +268,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
-    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…', '컬렉션에 추가', '휴지통으로 이동']);
+    expect(popups[0]!.filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual(['열기', '새\u00a0탭에서 열기', process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', '사본 내보내기…', '컬렉션에 추가', '휴지통으로 이동']);
   } finally {
     await app.close();
   }

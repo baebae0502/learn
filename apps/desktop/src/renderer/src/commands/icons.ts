@@ -1,4 +1,4 @@
-import { ArchiveRestore, ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArchiveRestore, ArrowLeftRight, AppWindow, ArrowRightFromLine, ListX, Undo2, ChevronsRight, ChevronsLeft, X,  ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -14,6 +14,23 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'nav.back': ArrowLeft,
   'item.relink': Link,
   'item.open': FolderOpen,
+  'item.openInBackground': ArrowRightFromLine,
+  'tab.close': X,
+  'tab.reopenClosed': Undo2,
+  'tab.next': ChevronsRight,
+  'tab.previous': ChevronsLeft,
+  'tab.goTo2': AppWindow,
+  'tab.goTo3': AppWindow,
+  'tab.goTo4': AppWindow,
+  'tab.goTo5': AppWindow,
+  'tab.goTo6': AppWindow,
+  'tab.goTo7': AppWindow,
+  'tab.goTo8': AppWindow,
+  'tab.last': AppWindow,
+  'tab.moveLeft': ArrowLeftRight,
+  'tab.moveRight': ArrowLeftRight,
+  'tab.closeOthers': ListX,
+  'tab.revealInLibrary': FolderSearch,
   'item.showInFolder': FolderSearch,
   'item.openExternally': ExternalLink,
   'item.editInfo': Pencil,

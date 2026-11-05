@@ -1,6 +1,6 @@
 # M7b — 탭 · 뒤로/앞으로 · 보기 모드 · 리더 마무리 설계
 
-- 상태: 소유자 승인 (2026-11-05, 채팅 설계안 1–5절 — "맞다", "진행해")
+- 상태: 소유자 승인 (2026-11-05, 채팅 설계안 1–5절 — "맞다", "진행해"; 명세 문서 "승인한다")
 - 관련: [M7a 명세](2026-11-03-m7a-reader-design.md)(리더 v2의 앞 절반), [디자인 명세](../../design/design-spec.md) 2.2(탭 줄, 레이아웃 B)·7.1(선택 모델)·7.3(보기 ▾)·7.4(키)·7.5(컨텍스트 메뉴)·10.3, [ADR-0007](../../decisions/0007-settings-and-preferences.md)(설정), [`next-session.md`](../../next-session.md) "M7a에서 나온 M7b 입력"·"PR 남은 것 (M7a …)", `spec-amendments.md` 12절(M7a)
 - 브랜치 `m7b-reader`, 워크트리 `.worktrees/m7b`
 

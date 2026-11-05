@@ -340,6 +340,35 @@ describe('the restore on the work line (spec 9.1, P-20)', () => {
     expect(h.switched).toEqual([]);
   });
 
+  it('a result sheet that fails after a second restore began leaves the second run\'s progress alone', async () => {
+    const lib = await backedUp();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let refuse!: (e: unknown) => void;
+    let first = true;
+    const h = harness(lib, {
+      showResult: () => {
+        if (!first) return Promise.resolve(null);
+        first = false;
+        return new Promise((_, reject) => (refuse = reject));
+      },
+    });
+    await h.job.start(null);
+    await vi.waitFor(() => expect(typeof refuse).toBe('function'));
+    const held = holdFirst();
+    h.job.setHooks(held.hooks);
+    await expect(h.job.start(null)).resolves.toEqual({ started: true });
+    await vi.waitFor(() => expect(held.held()).toBe(true));
+    const during = h.job.state();
+    expect(during.state).toBe('running');
+    const seen = h.notices.length;
+    refuse(new LearnError('INTERNAL', 'x'));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(h.job.state()).toEqual(during);
+    expect(h.notices.slice(seen).filter((n) => n.state === 'idle')).toEqual([]);
+    held.release();
+    await h.ended('done');
+  });
+
   it('a backup whose database is broken ends failed with its own sentence and the code alone in the log: no folder, no sheet', async () => {
     const lib = await backedUp();
     fs.writeFileSync(path.join(lib.backup, 'library.sqlite'), 'not a database, '.repeat(64));

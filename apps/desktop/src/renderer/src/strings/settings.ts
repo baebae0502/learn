@@ -15,6 +15,7 @@ export const settings = {
   /** Each size's value, in its segment's tooltip (settings.html, design-spec 10.6 "12·13·14·15pt"). */
   fontSizePt: (size: number) => `${size}pt`,
   library: '라이브러리',
+  translation: '번역',
   location: '위치',
   locationHint: '자료 사본과 데이터베이스가 있는 폴더입니다. 다른\u00a0폴더를 고르면 Learn을 다시 시작하고 그\u00a0폴더의 라이브러리를 엽니다.',
   reveal: { darwin: 'Finder에서 보기', other: '폴더에서 보기' },

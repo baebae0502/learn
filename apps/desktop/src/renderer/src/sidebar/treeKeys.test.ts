@@ -7,7 +7,7 @@ const LEAF: TreeKeyRow = { key: 'lab', collection: true, expanded: false, hasChi
 const CHILD: TreeKeyRow = { key: 'c6', collection: true, expanded: false, hasChildren: true, firstChild: 'lab', parent: 'bio' };
 const ALL: TreeKeyRow = { key: 'scope:all', collection: false, expanded: false, hasChildren: false, firstChild: null, parent: null };
 const press = (key: string, over: Partial<TreeKeyInput> = {}) =>
-  treeKeyAction({ key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, composing: false, target: 'row', contextMenuKey: false, reader: false, row: OPEN, ...over });
+  treeKeyAction({ key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false, composing: false, target: 'row', contextMenuKey: false, row: OPEN, ...over });
 const NONE = { do: 'none' };
 
 describe('the name field inside a row (spec 3.4: IME-safe)', () => {
@@ -63,12 +63,5 @@ describe('a collection row', () => {
   it('a key that is not on a row (a button inside it, the heading) is not ours', () => {
     expect(press('Enter', { target: 'other', row: null })).toEqual(NONE);
     expect(press('a', { target: 'other', row: null })).toEqual(NONE);
-  });
-  it('in the reader the sidebar is a way back: ↩ and the arrows are RAC\'s (press, move), typing is still held back', () => {
-    expect(press('Enter', { reader: true })).toEqual(NONE);
-    expect(press('ArrowRight', { reader: true })).toEqual(NONE);
-    expect(press('ArrowLeft', { reader: true, row: LEAF })).toEqual(NONE);
-    expect(press('a', { reader: true })).toEqual({ do: 'block' });
-    expect(press('F10', { shiftKey: true, contextMenuKey: true, reader: true })).toEqual({ do: 'menu', key: 'bio' });
   });
 });

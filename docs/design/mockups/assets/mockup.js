@@ -63,7 +63,7 @@ window.Mockup = (() => {
     const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', inactive ? 'is-inactive' : '', single ? 'single-tab' : '', extra].join(' ');
     const middle =
       single && unified
-        ? `<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
+        ? `${unified.lead || ''}<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
            <div class="tb-actions">${unified.actions || ''}</div>`
         : `<div class="tabs" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
     return `
@@ -111,6 +111,23 @@ window.Mockup = (() => {
       const left = Math.max(4, Math.min(r.left + r.width / 2 - w / 2 - host.left, host.width - w - 4));
       tip.style.top = `${Math.round(r.bottom - host.top + 6)}px`;
       tip.style.left = `${Math.round(left)}px`;
+    }
+    // M7a selection pop-up: 8 px under the end of the selection (above it when there is no room), centred on that end
+    // and kept inside the stage; it never takes the focus, so it is only placed here.
+    for (const pop of document.querySelectorAll('.sel-popup[data-anchor]')) {
+      const anchor = document.getElementById(pop.dataset.anchor);
+      if (!anchor) continue;
+      const rects = anchor.getClientRects();
+      const r = rects[rects.length - 1];
+      const host = pop.offsetParent.getBoundingClientRect();
+      const w = pop.offsetWidth;
+      const h = pop.offsetHeight;
+      const below = r.bottom - host.top + 8;
+      const above = rects[rects.length - 1].top - host.top - 8 - h;
+      const fits = below + h <= host.height - 8;
+      pop.dataset.placed = fits ? 'below' : 'above';
+      pop.style.top = `${Math.round(fits ? below : above)}px`;
+      pop.style.left = `${Math.round(Math.max(8, Math.min(r.right - host.left - w / 2, host.width - w - 8)))}px`;
     }
     for (const menu of document.querySelectorAll('.menu[data-anchor]')) {
       const anchor = document.getElementById(menu.dataset.anchor);
@@ -183,7 +200,9 @@ window.Mockup = (() => {
   const COPY = '.pe-text, .pe-title, .d-text, .ci-text, .ci-title, .notice p, .notice h2, .empty-state p, .empty-state h1, .hint, .sidebar-empty-hint, .dm-text, .t-body, .codec-notice p, .files, ' +
     '.tu-text, .tu-notice .nt, .tu-notice .nt-text, .tu-facts .f-title, .tu-facts .f-text, .tu-consent h2, .agent-row .a-text, .tu-banner, .sim-note, .tu-scope-list dd, .tu-learn-note, ' +
     // M6
-    '.trash-note, .ec-head, .restore-issues';
+    '.trash-note, .ec-head, .restore-issues, ' +
+    // M7a
+    '.sp-body, .sp-note, .sp-status, .tr-consent p, .tr-note, .pw-error';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];

@@ -53,7 +53,7 @@ function timeOpen(page: Page, title: string, ready: Ready): Promise<number> {
         if (!row) return reject(new Error(`no item-row for ${title}`));
         const isReady = () => {
           if (ready === 'pdf') {
-            const c = document.querySelector('[data-testid="pdf-canvas"]');
+            const c = document.querySelector('[data-testid="pdf-viewer"]');
             return !!c && Number(c.getAttribute('data-rendered')) >= 1;
           }
           if (ready === 'video') {
@@ -160,10 +160,10 @@ test('PDF: time to first rendered page', TAG, async () => {
     await backToLibrary(page);
     runs.push(await timeOpen(page, 'sample', 'pdf'));
   }
-  await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+  await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
   await allShots(app, page, '02-pdf', 'PDF viewer, page 1 at 100%');
   await page.getByTestId('pdf-next').click();
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[2-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[2-9]\d*$/);
   await allShots(app, page, '03-pdf-rotated', 'PDF viewer, page 2 (rotated 90°)');
   const ko = [];
   await backToLibrary(page);

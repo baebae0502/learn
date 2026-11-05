@@ -19,6 +19,7 @@ import {
   type Session,
 } from '../e2e/helpers';
 import { COMMANDS } from '../../packages/domain/src/commands';
+import { SUBMENUS } from '../../packages/domain/src/submenus';
 import { composite, contrast, parseColor, type Rgba } from '../../apps/desktop/src/renderer/src/design/color';
 import { colors, colorsVibrancySidebar, layout } from '../../apps/desktop/src/renderer/src/design/tokens';
 import { themeHex } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
@@ -292,10 +293,11 @@ function tooltipInCapture(shot: string, box: { x: number; y: number; width: numb
 }
 
 /**
- * 보기's own registry items (명령 팔레트…, the sidebar toggle, 글자 크게 / 작게 / 기본 글자 크기 — ⌘+'s hidden ⌘= twin
- * is no row): every other text row in it is a full-screen row.
+ * 보기's own registry rows (명령 팔레트…, the sidebar toggle, 글자 크게 / 작게 / 기본 글자 크기 — ⌘+'s hidden ⌘= twin
+ * is no row — and the reader's, with 쪽 색 ▸, a SUBMENUS group whose members carry no placement): every other text
+ * row in it is a full-screen row.
  */
-const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length;
+const VIEW_REGISTRY_ROWS = COMMANDS.filter((c) => c.menu?.menu === 'view').length + SUBMENUS.filter((s) => s.menu?.menu === 'view').length;
 /**
  * Rows of an open 보기 menu counted from its click capture (Task 8 R2-1): the panel is found from a seed in its top
  * padding (from System Events' frame of the open menu when it gave one), and every text row past the registry's is a
@@ -770,14 +772,14 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
 
   // f. Reader open latency (report only): from the click to the reader or notice, timed in the page.
   const latency: Record<string, unknown> = {};
-  latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-canvas"]');
-  await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  latency['pdf'] = await timedOpen(s.page, 'sample', '[data-testid="pdf-viewer"]');
+  await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await allShots(s.app, s.page, 'm3-05-pdf', 'PDF in the new chrome');
   // n6: a Latin-only title at 600 — SF Semibold (as the Hangul beside it is SemiBold), not Bold?
   results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="viewer-title"]');
   if (IS_MAC) {
     await setTheme(s.page, 'dark');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await nativeWindowShot(s.app, 'm3-05b-pdf-dark', 'PDF, dark');
     await setTheme(s.page, 'light');
   }
@@ -1086,14 +1088,16 @@ test('M3 chrome: Korean menu bar, the 보기 menu in both sidebar states and in 
       // Whatever failed: out of full screen, not zoomed, back at a frame of the window's own (bounded waits, never a
       // throw). A frame equal to the work area is AppKit's zoomed frame, which keeps this test's user frame (40, 65,
       // 960 × 604) for the next un-zoom: a later full-screen round trip would come back there. So a frame from before that
-      // filled the work area comes back inset by 20 on each side.
+      // filled the work area comes back inset by 20 on each side. AppKit counts a frame within a few points of the work area
+      // as zoomed too (run 41828758808: 1024 × 681 in a 1024 × 684 work area), so "fills" allows 8 on each edge.
       await leaveFullScreen(win);
       if (await zoomed().catch(() => false)) {
         await win.evaluate((w) => w.unmaximize()).catch(() => {});
         await sleep(800);
       }
       const { workArea: a } = await boundsNow();
-      const fills = restore.x === a.x && restore.y === a.y && restore.width === a.width && restore.height === a.height;
+      const near = (p: number, q: number) => Math.abs(p - q) <= 8;
+      const fills = near(restore.x, a.x) && near(restore.y, a.y) && near(restore.x + restore.width, a.x + a.width) && near(restore.y + restore.height, a.y + a.height);
       const width = Math.max(layout.windowMinWidth, a.width - 40);
       const height = Math.max(layout.windowMinHeight, a.height - 40);
       const frame = fills ? { x: a.x + Math.floor((a.width - width) / 2), y: a.y + Math.floor((a.height - height) / 2), width, height } : restore;
@@ -1170,7 +1174,7 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
   // c. PDF at page 1: 이전 쪽 is disabled with a reason, still focusable; the keyboard puts the focus on it.
   await guard('soft-disabled focus ring at full strength', async () => {
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('1');
     const prev = s.page.getByTestId('pdf-prev');
     // What may hold a tooltip back (tooltipGate), and whether the page counts the window as key: before the key, when
     // the tooltip is read, and after the capture (diagnostic run t14-diag3 drew the tooltip in the capture but read

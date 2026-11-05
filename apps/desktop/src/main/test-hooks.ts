@@ -10,6 +10,8 @@ import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
+import type { FakeMode } from './translation/fake';
+import type { RecordedRequest, TranslationNetIntercept } from './translation/net-intercept';
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -422,6 +424,12 @@ export interface LearnTestHooks {
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
   requestLibraryCheck(): Promise<void>;
+  /** Sets how the fake translation engine answers (E2E always runs on it). */
+  translationFake(mode: FakeMode): void;
+  /** How many requests the fake translation engine has taken since launch (a cache hit or a refusal takes none). */
+  translationCalls(): number;
+  /** What the test's translation host took and refused (only when the app runs the real engine over it, LEARN_TRANSLATION_NET=intercept). */
+  translationNet(): { requests: RecordedRequest[]; refused: string[] };
 }
 
 /**
@@ -449,6 +457,10 @@ export function installTestHooks(deps: {
   seedFiles?: () => SeedAssetsDeps;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
+  /** The fake translation engine (index.ts, E2E only). */
+  translation?: { setMode(mode: FakeMode): void; calls(): number };
+  /** The test's translation host (index.ts, E2E with LEARN_TRANSLATION_NET=intercept only). */
+  translationNet?: Pick<TranslationNetIntercept, 'requests' | 'refused'>;
   organize(): OrganizeSeedDeps;
   broadcast(name: 'libraryChanged', payload: LearnEventMap['libraryChanged']): void;
 }): void {
@@ -596,6 +608,18 @@ export function installTestHooks(deps: {
     libraryCheck() {
       if (!deps.check) throw new Error('libraryCheck: no library check');
       return deps.check.state();
+    },
+    translationFake(mode) {
+      if (!deps.translation) throw new Error('translationFake: no fake engine');
+      deps.translation.setMode(mode);
+    },
+    translationCalls() {
+      if (!deps.translation) throw new Error('translationCalls: no fake engine');
+      return deps.translation.calls();
+    },
+    translationNet() {
+      if (!deps.translationNet) throw new Error('translationNet: the app does not run on the test host');
+      return { requests: [...deps.translationNet.requests()], refused: [...deps.translationNet.refused()] };
     },
     async requestLibraryCheck() {
       if (!deps.check) throw new Error('requestLibraryCheck: no library check');

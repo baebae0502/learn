@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CheckAction, ImportReport, LibraryCheck, LibraryCheckPayload, SheetPayload } from '@learn/domain';
 import { managedRelativePath, resolveAssetPath } from '@learn/library';
 import type { ImportBatch } from './jobs/import-queue';
-import { AUTO_POLL_MS, LAST_SHOWN, autoShowDue, checkPayload, clearToShow, createCheckSheets, runCheck, startLibraryCheck, type AutoGate, type CheckSheetsDeps } from './library-check';
+import { AUTO_POLL_MS, LAST_SHOWN, autoShowDue, checkPayload, clearToShow, createCheckSheets, importAndWait, runCheck, startLibraryCheck, type AutoGate, type CheckSheetsDeps } from './library-check';
 import { openLibraryContext, type LibraryContext } from './library-context';
 
 const dirs: string[] = [];
@@ -67,6 +67,7 @@ function queueOf(ctx: LibraryContext) {
         }
         const report: ImportReport = { imported, filed: 0, filedExisting: 0, failed: [], openItemId: null, requested: batch.paths.length, cancelled: false, untouched: 0, mode: batch.mode, collectionId: null };
         for (const cb of [...finished]) cb(report, null);
+        batch.onSettled?.();
       })();
       return batch.paths.length;
     },
@@ -360,5 +361,26 @@ describe('checkPayload: rows keep their place (spec 7.2 "그 자리에서 ok로"
     expect(p2.rows.map((r) => [r.kind, r.state, r.fix])).toEqual([['staging', 'done', 'cleaned'], ['corrupt', 'done', 'none'], ['orphanEdits', 'todo', null]]);
     const p3 = checkPayload(await runCheck(ctx, () => {}), ctx.repo, { ...input, prev: p2, acted: null });
     expect(p3.rows.map((r) => [r.kind, r.state, r.fix])).toEqual([['staging', 'done', 'cleaned'], ['corrupt', 'done', 'none'], ['orphanEdits', 'todo', null]]);
+  });
+});
+
+describe('importAndWait', () => {
+  it('is answered when its own batch settles, not when a run it shares ends', async () => {
+    let settle: (() => void) | undefined;
+    const imports = {
+      enqueue: (b: ImportBatch): number => {
+        settle = b.onSettled;
+        return b.paths.length;
+      },
+      // The run this batch joined has other files: its end never comes in this test.
+      onFinished: () => () => {},
+    };
+    let answered = false;
+    const waiting = importAndWait(imports, { paths: ['/in/a.pdf'], mode: 'managed', collectionId: null, owner: 1 }).then(() => void (answered = true));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(answered).toBe(false);
+    settle!();
+    await waiting;
+    expect(answered).toBe(true);
   });
 });

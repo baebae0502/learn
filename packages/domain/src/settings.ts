@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import { COMMAND_IDS } from './commands';
+import { COMMAND_IDS, PAGE_COLORS, READER_NAVS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
+import { DEFAULT_TRANSLATION_PREFS, translationPrefsSchema } from './translation';
 
 const storedColumnId = z.string().min(1).max(64);
 /**
@@ -38,6 +39,10 @@ export const SETTINGS = {
   'ui.lastOpenItemId': z.uuid().nullable(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
+  /** The colour of a PDF's pages (spec 8): unset reads as 'auto', the app theme's. */
+  'reader.pageColor': z.enum(PAGE_COLORS),
+  /** What the reader's sidebar lists (spec 4.7): unset reads as the thumbnails. */
+  'reader.nav': z.enum(READER_NAVS),
   /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */
   'recovery.lastShown': z.string().regex(/^[0-9a-f]{64}$/),
   /**
@@ -84,6 +89,8 @@ export const prefsFields = {
   libraryRoot: z.string().min(1).nullable(),
   /** The folder the last backup was made in (spec 8.1; ADR-0007 (a), a device's value): the folder panel opens there. Main's own. */
   backupDir: z.string().min(1).nullable(),
+  /** The reader's translation (ADR-0012): consent and languages. The merge is shallow, so a patch carries the whole object. */
+  translation: translationPrefsSchema,
 };
 export const prefsSchema = z.object({
   theme: prefsFields.theme.default('system'),
@@ -91,6 +98,7 @@ export const prefsSchema = z.object({
   fontSize: prefsFields.fontSize.default(13),
   libraryRoot: prefsFields.libraryRoot.default(null),
   backupDir: prefsFields.backupDir.default(null),
+  translation: prefsFields.translation.default(DEFAULT_TRANSLATION_PREFS),
 });
 export type Prefs = z.infer<typeof prefsSchema>;
 /** All defaults: what a window falls back to when reading the prefs failed. */

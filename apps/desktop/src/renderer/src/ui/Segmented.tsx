@@ -16,6 +16,8 @@ export function Segmented<V extends string>(props: {
   options: readonly SegmentOption<V>[];
   onChange(value: V): void;
   fill?: boolean;
+  /** The group's test id (the options carry their own). */
+  testId?: string;
   isDisabled?: boolean;
   force?: ForcedState[];
   'aria-label'?: string;
@@ -31,6 +33,7 @@ export function Segmented<V extends string>(props: {
       isDisabled={props.isDisabled}
       className={cx('segmented', props.fill && 'fill')}
       data-force={props.force?.join(' ')}
+      data-testid={props.testId}
     >
       {props.options.map((o) => {
         const segment = (

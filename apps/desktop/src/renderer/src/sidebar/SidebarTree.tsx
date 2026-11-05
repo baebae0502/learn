@@ -44,8 +44,6 @@ export interface SidebarTreeProps {
   /** The collections are known: the snapshot and the stored open rows have both arrived. */
   settled: boolean;
   expanded: ReadonlySet<string>;
-  /** The reader is showing: a row is the way back to the library, and moving the cursor changes no view. */
-  reader: boolean;
   /** A row's height in px (the density). */
   rowSize: number;
   /** The sidebar's drag and drop (dnd/treeDnd.ts): handed to the Tree as it is. */
@@ -54,9 +52,7 @@ export interface SidebarTreeProps {
 
 interface RowContext {
   model: OrganizeModel;
-  reader: boolean;
   tap: { current: TreeState<unknown> | null };
-  onReaderPress(key: string): void;
   /** Drag and drop is wired: each collection row has its drag button (the keyboard's way to start a drag). */
   dnd: boolean;
 }
@@ -73,11 +69,11 @@ const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as 
 /** The tree's selection while a drop is being recorded (SidebarTree's parkCursor). */
 const NO_KEYS: ReadonlySet<Key> = new Set();
 
-function SpecialItem({ row, tap, reader, onReaderPress }: { row: SpecialRow; tap: RowContext['tap']; reader: boolean; onReaderPress(key: string): void }) {
+function SpecialItem({ row, tap }: { row: SpecialRow; tap: RowContext['tap'] }) {
   const { icon, label } = SPECIAL[row.kind];
   const key = SCOPE_KEYS[row.kind];
   return (
-    <TreeItem id={key} textValue={label} className="nav-row" data-testid={`nav-scope-${row.kind}`} {...(reader ? { onPress: () => onReaderPress(key) } : {})}>
+    <TreeItem id={key} textValue={label} className="nav-row" data-testid={`nav-scope-${row.kind}`}>
       <TreeItemContent>
         {({ state }) => (
           <>
@@ -125,7 +121,6 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
       className="nav-row"
       style={indent}
       data-testid={`nav-collection-${node.id}`}
-      {...(ctx.reader ? { onPress: () => ctx.onReaderPress(node.id) } : {})}
     >
       <TreeItemContent>
         {({ hasChildItems, isExpanded, state }) => (
@@ -168,8 +163,8 @@ function CollectionItem({ node, ctx }: { node: CollectionNode; ctx: RowContext }
  * first child and ← to the parent by the model (a row may not be mounted), and the name field keeps its own keys.
  */
 export function SidebarTree(props: SidebarTreeProps) {
-  const { model, scope, specials, settled, expanded, reader, rowSize } = props;
-  const { env, run } = useCommands();
+  const { model, scope, specials, settled, expanded, rowSize } = props;
+  const { env } = useCommands();
   const editKey = useSidebarEdit((s) => (s.edit === null ? null : s.edit.kind === 'new' ? DRAFT_KEY : s.edit.id));
   const editParent = useSidebarEdit((s) => (s.edit?.kind === 'new' ? s.edit.parentId : undefined));
   const restoreTo = useSidebarEdit((s) => s.restoreTo);
@@ -201,7 +196,6 @@ export function SidebarTree(props: SidebarTreeProps) {
       manager.setFocusedKey(key);
     } else treeRef.current?.querySelector<HTMLElement>(`[role="row"][data-key="${CSS.escape(key)}"]`)?.focus();
   }, []);
-  const onReaderPress = useCallback((key: string) => void (run('nav.back') && selectScope(key)), [run, selectScope]);
   const openMenu = useCallback(
     async (id: string, at: { x: number; y: number }) => {
       try {
@@ -214,7 +208,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     [env],
   );
   const dnd = props.dragAndDropHooks !== undefined;
-  const ctx = useMemo<RowContext | null>(() => (model ? { model, reader, tap, onReaderPress, dnd } : null), [model, reader, onReaderPress, dnd]);
+  const ctx = useMemo<RowContext | null>(() => (model ? { model, tap, dnd } : null), [model, dnd]);
 
   // ---- keys (capture phase, before the row's own) -------------------------------------------------------------------
   const onKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -240,7 +234,6 @@ export function SidebarTree(props: SidebarTreeProps) {
       composing: isComposingKey(e),
       target: field ? 'rename' : rowEl ? 'row' : 'other',
       contextMenuKey: isContextMenuKey(e),
-      reader,
       row:
         key === null
           ? null
@@ -261,7 +254,7 @@ export function SidebarTree(props: SidebarTreeProps) {
         collectionActions.startRename(action.key);
         break;
       case 'menu':
-        if (!reader) selectScope(action.key);
+        selectScope(action.key);
         void openMenu(action.key, menuPointFor(rowEl!));
         break;
       case 'goto':
@@ -287,7 +280,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     if (key === undefined) return;
     e.preventDefault();
     if (!model?.node(key)) return; // a special view has no menu (spec 9.2)
-    if (!reader) selectScope(key); // a right click selects first (design-spec 7.1)
+    selectScope(key); // a right click selects first (design-spec 7.1)
     void openMenu(key, { x: e.clientX, y: e.clientY });
   };
 
@@ -312,7 +305,7 @@ export function SidebarTree(props: SidebarTreeProps) {
       window.removeEventListener('pointercancel', up, true);
       window.setTimeout(() => {
         chevronDown.current = false;
-        if (!reader) tap.current?.selectionManager.setFocusedKey(latest.current.selectedKey);
+        tap.current?.selectionManager.setFocusedKey(latest.current.selectedKey);
       }, 0);
     };
     window.addEventListener('pointerup', up, true);
@@ -384,7 +377,7 @@ export function SidebarTree(props: SidebarTreeProps) {
 
   /** Selection follows the cursor, whichever key moved it (React Aria's ← to the parent moves only the focus). */
   const onFocus = (e: FocusEvent<HTMLDivElement>) => {
-    if (reader || chevronDown.current) return;
+    if (chevronDown.current) return;
     const el = e.target as HTMLElement;
     if (!el.matches('[role="row"][data-key]')) return;
     const key = el.dataset['key']!;
@@ -409,7 +402,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   const onExpandedChange = (keys: Set<Key>) => {
     const next = new Set([...keys].map(String));
     const { model: m } = latest.current;
-    if (!reader && m && scope.kind === 'collection') {
+    if (m && scope.kind === 'collection') {
       const hiding = ancestorIds(m, scope.id).find((id) => expanded.has(id) && !next.has(id));
       if (hiding !== undefined) selectScope(hiding);
     }
@@ -418,7 +411,7 @@ export function SidebarTree(props: SidebarTreeProps) {
 
   const onSelectionChange = (selection: Selection) => {
     // Right after a drop, before React Aria's late moves have come, a selection is its own (dragState.takeDropFocus): the view stays.
-    if (reader || selection === 'all' || chevronDown.current || dragState.dropGuarded()) return;
+    if (selection === 'all' || chevronDown.current || dragState.dropGuarded()) return;
     const key = [...selection][0];
     if (key !== undefined && String(key) !== DRAFT_KEY) selectScope(String(key));
   };
@@ -454,8 +447,8 @@ export function SidebarTree(props: SidebarTreeProps) {
   // The keyboard cursor follows the view when something else moved it (an item panel path, the palette): tabbing into the
   // tree then lands on the view's row and does not move the view to where the cursor was.
   useEffect(() => {
-    if (!reader) tap.current?.selectionManager.setFocusedKey(selectedKey);
-  }, [selectedKey, reader]);
+    tap.current?.selectionManager.setFocusedKey(selectedKey);
+  }, [selectedKey]);
 
   // A view inside a closed collection opens the way to its row — when the view changes, not whenever the user folds a parent.
   useEffect(() => {
@@ -573,7 +566,7 @@ export function SidebarTree(props: SidebarTreeProps) {
         >
           <TreeSection aria-label={t.shell.libraryHeading}>
             {specials.map((row) => (
-              <SpecialItem key={row.kind} row={row} tap={tap} reader={reader} onReaderPress={onReaderPress} />
+              <SpecialItem key={row.kind} row={row} tap={tap} />
             ))}
           </TreeSection>
           {hasCollections && ctx && model && (

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'rea
 import { Group, Panel, Separator, usePanelRef, type Layout, type LayoutChangedMeta, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useShell } from '../state/shell-store';
 import { t } from '../strings';
-import { INSPECTOR, SIDEBAR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, sidebarHidden } from './layout';
+import { INSPECTOR, SIDEBAR, afterViewportChange, clampSidebar, draggedInspectorWidth, hiddenPanes, inspectorAfterViewportChange, inspectorContentMin, sidebarHidden } from './layout';
 import { SidebarToggle } from './SidebarToggle';
 import { useKeepFocusOnInspectorFold } from './useInspector';
 import { keepFocusAcross, useKeepFocusAcrossFold } from './useSidebar';
@@ -28,9 +28,10 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
   const inspector = useShell((s) => s.inspector);
   const setInspector = useShell((s) => s.setInspector);
   const viewportWidth = useViewportWidth();
+  const contentMin = inspectorContentMin(useShell((s) => s.view.kind));
   const hidden = sidebarHidden(sidebar, viewportWidth);
   const present = props.inspector !== undefined;
-  const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present).inspector;
+  const inspectorHidden = hiddenPanes({ sidebar, inspector }, viewportWidth, present, contentMin).inspector;
   useKeepFocusAcrossFold(hidden);
   useKeepFocusOnInspectorFold(inspectorHidden);
   const inspectorSeparatorKey = useSeparatorKeyAfterFirstShow(present, inspectorHidden);
@@ -48,6 +49,8 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     const s = useShell.getState();
     const next = afterViewportChange(s.sidebar, viewportWidth);
     if (next !== s.sidebar) setSidebar(next);
+    // A panel shown on demand stays so until the window is wide enough for the library's column: a visit to the reader, whose
+    // column needs less, is no reason to fold it again on the way back.
     const nextInspector = inspectorAfterViewportChange({ sidebar: next, inspector: s.inspector }, viewportWidth);
     if (nextInspector !== s.inspector) setInspector(nextInspector);
   }, [viewportWidth, setSidebar, setInspector]);
@@ -77,13 +80,14 @@ export function Shell(props: { sidebar: ReactNode; sidebarFoot?: ReactNode; laun
     if (!meta.isUserInteraction || !panel || !group) return;
     const s = useShell.getState();
     const panes = { sidebar: s.sidebar, inspector: s.inspector };
+    const min = inspectorContentMin(s.view.kind);
     if (panel.isCollapsed()) {
-      if (hiddenPanes(panes, innerWidth, true).inspector) return;
+      if (hiddenPanes(panes, innerWidth, true, min).inspector) return;
       setInspector(s.inspector.forceShown ? { ...s.inspector, forceShown: false } : { ...s.inspector, collapsed: true });
       return;
     }
     const px = ((layout['inspector'] ?? panel.getSize().asPercentage) / 100) * group.offsetWidth;
-    const width = draggedInspectorWidth(panes, innerWidth, px);
+    const width = draggedInspectorWidth(panes, innerWidth, px, min);
     setInspector({ ...s.inspector, width, collapsed: false });
     // Dragged wider than leaves the content column its 520: back to the widest that does, rather than folding on release.
     if (Math.abs(width - px) >= 1) panel.resize(width);
@@ -178,19 +182,26 @@ function InspectorPanel(props: { panelRef: RefObject<PanelImperativeHandle | nul
   const { panelRef, hidden, width } = props;
   const [initialSize] = useState(() => (hidden ? 0 : width));
   // The group derives a late-mounted panel's constraints after this effect first runs (the handle throws until then),
-  // and the first size already says what is wanted: only a change after the mount goes through the handle.
+  // and the first size already says what is wanted: only a change after the mount goes through the handle at once.
   const mounted = useRef(false);
   // Development's StrictMode unmounts and re-runs every effect on mount: the skip must start over with it.
   useEffect(() => () => void (mounted.current = false), []);
   useEffect(() => {
+    const follow = () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (hidden && !panel.isCollapsed()) panel.collapse();
+      else if (!hidden && panel.isCollapsed()) panel.resize(width);
+    };
     if (!mounted.current) {
       mounted.current = true;
-      return;
+      // The group keeps the layout of a panel that left it (the reader's panel gone while the PDF loads, the library's folded one):
+      // a panel mounted again takes that size, not its defaultSize. A frame later, once the constraints exist, it is brought to what
+      // the shell says (hiddenPanes), so the toggle and the drawn panel never disagree (Mac critique 4).
+      const frame = requestAnimationFrame(follow);
+      return () => cancelAnimationFrame(frame);
     }
-    const panel = panelRef.current;
-    if (!panel) return;
-    if (hidden && !panel.isCollapsed()) panel.collapse();
-    else if (!hidden && panel.isCollapsed()) panel.resize(width);
+    follow();
   }, [hidden, width, panelRef]);
   return (
     <Panel

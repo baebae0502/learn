@@ -165,17 +165,12 @@ export function checkPayload(check: LibraryCheck, repo: LibraryRepository, input
   return { kind: 'libraryCheck', mode: input.mode, items: check.items, rows, homeDir: input.homeDir, failed: input.failed };
 }
 
-/** A batch put in the queue, answered with the report of the run it ended in (its files are all done then). */
-export function importAndWait(imports: Pick<ImportQueue, 'enqueue' | 'onFinished'>, batch: ImportBatch): Promise<ImportReport> {
+/** A batch put in the queue, answered when its own files are over (not when the run it joined ends). */
+export function importAndWait(imports: Pick<ImportQueue, 'enqueue'>, batch: ImportBatch): Promise<void> {
   return new Promise((resolve, reject) => {
-    const off = imports.onFinished((report) => {
-      off();
-      resolve(report);
-    });
     try {
-      imports.enqueue(batch);
+      imports.enqueue({ ...batch, onSettled: resolve });
     } catch (e) {
-      off();
       reject(e);
     }
   });
@@ -192,7 +187,7 @@ export interface CheckSheetsDeps {
   /** The open library; throws LIBRARY_UNAVAILABLE when there is none. */
   context(): LibraryContext;
   sheets: Pick<SheetHost, 'open'>;
-  imports: Pick<ImportQueue, 'enqueue' | 'onFinished'>;
+  imports: Pick<ImportQueue, 'enqueue'>;
   /** libraryChanged{availability} for the items whose file a check found missing or back. */
   announce(itemIds: string[]): void;
   /** libraryChanged{relink} for the items on a file 다시 연결… pointed again. */

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, closeSheet, drag, expectWindow, importPaths, launch, mainWindow, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, expectWindow, importPaths, launch, mainWindow, runMenuCommand, settingsFitsContent, stubOpenDialog } from './helpers';
 
 const IS_MAC = process.platform === 'darwin';
 const DEMO = { env: { LEARN_DEMO_OVERLAY: '1' } };
@@ -215,11 +215,8 @@ test('with LEARN_DEMO_OVERLAY=1 the overlay is inert in the main and settings wi
     expect(settings.url()).toContain('demo=1');
     await expectInert(settings, { x: 300, y: 120 });
     await expectNoSeriousA11y(settings, 'settings window with the demo overlay');
-    // Its height is its content's: the fixed overlay is outside the measured root.
-    const fits = async () =>
-      (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().includes('window=settings'))!.getContentSize()[1])) ===
-      (await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height)));
-    await expect.poll(fits).toBe(true);
+    // Its height is its content's (or the work area's, R-4): the fixed overlay is outside the measured root.
+    await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
     await settings.close();
   } finally {
     await app.close();

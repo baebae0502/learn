@@ -21,8 +21,13 @@ export interface ShortcutGroup {
  * the collection and tag commands whatever their context (M5 spec 9.3), then the colour keys.
  */
 const ORDER = ['app', 'library', 'item', 'organize', 'viewer'] as const;
-const groupOf = (c: (typeof COMMANDS)[number]): (typeof ORDER)[number] =>
-  /^(collection|tags?)\./.test(c.id) ? 'organize' : (c.contexts[0] as (typeof ORDER)[number]);
+const groupOf = (c: (typeof COMMANDS)[number], view?: 'library' | 'viewer'): (typeof ORDER)[number] =>
+  /^(collection|tags?)\./.test(c.id)
+    ? 'organize'
+    : // A key the library and the reader share (named by the view: stateLabels.view) is listed once, under the view the sheet was opened from.
+      view === 'viewer' && c.stateLabels?.view
+      ? 'viewer'
+      : (c.contexts[0] as (typeof ORDER)[number]);
 /**
  * The sheet's own order (design-spec 7.4: ⌘, then ⌘K, ⌘/ and ⌃⌘S): these lead their group in this order, the rest
  * follow in registry order. COMMANDS itself keeps app.palette last (R-10).
@@ -62,18 +67,19 @@ function colorKeysRow(platform: string): ShortcutRow {
 
 /**
  * The ⌘/ sheet: every registry shortcut by its first context (labelled as the menus label it), the system's 전체 화면
- * after the app rows, then the palette and dialog keys.
+ * after the app rows, then the palette and dialog keys. `view`: ⌘F ⌘+ ⌘− ⌘0 are named as that view's menu names them, and from
+ * the reader they are listed under 리더 (moved from 라이브러리, not repeated).
  */
-export function shortcutGroups(platform: string): ShortcutGroup[] {
+export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => groupOf(c) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
+    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null)
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
       .map((c): ShortcutRow => {
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
         // A single key is spoken like an accelerator: ⇧F6 on macOS, Shift+F6 elsewhere.
         const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');
-        return { label: commandLabel(c, platform), keys, spoken };
+        return { label: commandLabel(c, platform, view ? { view } : {}), keys, spoken };
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))

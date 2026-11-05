@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, TAG_COLORS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { isSubmenu, type CommandEntry, type MenuEntries } from './entries';
-import { colorTagGroup, collectionRows, menuNeedsOrganize, menuText, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
+import { colorTagGroup, collectionRows, groupEntry, menuNeedsOrganize, menuText, pageColorGroup, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
 import { ADD_TO_COLLECTION, COLOR_GROUP, ALL_COMMANDS, ALL_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
 
 const CTX: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
@@ -20,11 +20,11 @@ const NEW = '새\u00a0컬렉션';
 
 describe('정렬 기준 ▸ (sortColumns)', () => {
   it('lists the shown columns in catalogue order, then the two directions; the sort in force is the radio that is on', () => {
-    expect(lines(sortColumnRows(SORT.id, CTX, true))).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○']);
+    expect(lines(sortColumnRows(SORT.id, CTX, true))).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '진행', '-', '오름차순', '내림차순 ○']);
   });
   it('carries the column or the direction as the row\'s value', () => {
     expect(rows(sortColumnRows(SORT.id, CTX, true)).map((r) => r.args)).toEqual([
-      { column: 'title' }, { column: 'creators' }, { column: 'year' }, { column: 'type' }, { column: 'createdAt' }, { direction: 'asc' }, { direction: 'desc' },
+      { column: 'title' }, { column: 'creators' }, { column: 'year' }, { column: 'type' }, { column: 'createdAt' }, { column: 'progress' }, { direction: 'asc' }, { direction: 'desc' },
     ]);
     expect(rows(sortColumnRows(SORT.id, CTX, true)).every((r) => r.id === 'library.sortBy' && r.type === 'radio')).toBe(true);
   });
@@ -35,11 +35,10 @@ describe('정렬 기준 ▸ (sortColumns)', () => {
   it('the title is always listed; a sort by a hidden column still shows its row, checked, so the menu never contradicts the table', () => {
     expect(lines(sortColumnRows(SORT.id, { ...CTX, columnsShown: 0, sortColumn: 'title' }, true))).toEqual(['제목 ○', '-', '오름차순', '내림차순 ○']);
     expect(lines(sortColumnRows(SORT.id, { ...CTX, columnsShown: columnsMask(['title']), sortColumn: 'updatedAt' }, true))).toEqual(['제목', '수정일 ○', '-', '오름차순', '내림차순 ○']);
-    // progress has no column (M7): nothing is on, and nothing is invented.
-    expect(lines(sortColumnRows(SORT.id, { ...CTX, sortColumn: 'progress' }, true))).toEqual(['제목', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    expect(lines(sortColumnRows(SORT.id, { ...CTX, sortColumn: 'progress' }, true))).toEqual(['제목', '저자', '연도', '종류', '추가일', '진행 ○', '-', '오름차순', '내림차순 ○']);
   });
   it('is dispatched by the command\'s source, and every row is disabled with its command', () => {
-    expect(lines(valueRows(SORT, input(), false))).toEqual(['제목 ✗', '저자 ✗', '연도 ✗', '종류 ✗', '추가일 ○ ✗', '-', '오름차순 ✗', '내림차순 ○ ✗']);
+    expect(lines(valueRows(SORT, input(), false))).toEqual(['제목 ✗', '저자 ✗', '연도 ✗', '종류 ✗', '추가일 ○ ✗', '진행 ✗', '-', '오름차순 ✗', '내림차순 ○ ✗']);
   });
 });
 
@@ -146,6 +145,28 @@ describe('색 태그 ▸ (a group of commands)', () => {
     expect(group({ organize: null })).toBeNull();
     // The real registry has the members now: the group is built from it as from the stand-ins.
     expect(rows(colorTagGroup(COLOR_GROUP, COMMANDS, input())!.submenu).map((r) => r.id)).toEqual(['tag.color1', 'tag.color3']);
+  });
+});
+
+describe('쪽 색 ▸ (the reader\'s page colours)', () => {
+  const PAGE_COLOR = SUBMENUS.find((s) => s.id === 'pageColor')!;
+  const group = (over: Partial<SubmenuInput> = {}) => pageColorGroup(PAGE_COLOR, COMMANDS, input({ organize: null, ...over }))!;
+  it('lists the four colours in order, each its own command, with no mark and without reading the library', () => {
+    expect(group().id).toBe('submenu.pageColor');
+    expect(group().label).toBe('쪽 색');
+    expect(rows(group().submenu).map((r) => [r.id, r.label])).toEqual([
+      ['reader.pageColorAuto', '앱 테마 따르기'], ['reader.pageColorOriginal', '원본'], ['reader.pageColorSepia', '세피아'], ['reader.pageColorDark', '어둡게'],
+    ]);
+    expect(rows(group().submenu).every((r) => r.checked === undefined && r.type === undefined)).toBe(true);
+    expect(groupEntry(PAGE_COLOR, COMMANDS, input({ organize: null }))).toEqual(group());
+  });
+  it('judges each row on its command, and is off when none can run', () => {
+    expect(group({ enabledOf: () => false }).enabled).toBe(false);
+    expect(rows(group({ enabledOf: (c) => c.id === 'reader.pageColorSepia' }).submenu).map((r) => r.enabled)).toEqual([false, false, true, false]);
+    expect(group({ enabledOf: (c) => c.id === 'reader.pageColorSepia' }).enabled).toBe(true);
+  });
+  it('makes no menu read the library', () => {
+    expect(menuNeedsOrganize([], [PAGE_COLOR], 'menu')).toBe(false);
   });
 });
 

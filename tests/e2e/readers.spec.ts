@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, setPdfZoom, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -97,23 +97,21 @@ test('reader chrome: back button and ⌘1, title and kind · size in the toolbar
     await openItem(s.page, 'sample');
     await expect(s.page.getByTestId('viewer-title')).toHaveText('sample');
     await expect(s.page.getByTestId('toolbar-count')).toHaveText(/^PDF · \d+(\.\d)? KB$/);
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('1');
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     expect(await heightOf(s.page, 'reader-toolbar')).toBe(44);
-    // The page sits on the sunken stage; the stage is the scroller.
+    // The page sits on the sunken stage; the stage's container is the scroller.
     const stage = await s.page.locator('.pdf-stage').evaluate((el) => {
       const probe = document.createElement('div');
       probe.style.background = 'var(--bg-sunken)';
       document.body.append(probe);
       const want = getComputedStyle(probe).backgroundColor;
       probe.remove();
-      return { got: getComputedStyle(el).backgroundColor, want, overflow: getComputedStyle(el).overflow };
+      return { got: getComputedStyle(el).backgroundColor, want, overflow: getComputedStyle(el.querySelector('.pdf-scroll')!).overflow };
     });
     expect(stage.got).toBe(stage.want);
     expect(stage.overflow).toBe('auto');
-    // The zoom select draws the 12 px chevron instead of the native arrow (m2); the page buttons are up/down (m3).
-    expect(await s.page.getByTestId('pdf-zoom').evaluate((el) => getComputedStyle(el).appearance)).toBe('none');
-    await expect(s.page.locator('.zoom-select .icon')).toBeVisible();
+    // The page buttons are up/down (m3).
     await expect(s.page.getByTestId('pdf-prev').locator('svg')).toHaveClass(/lucide-chevron-up/);
     await expect(s.page.getByTestId('pdf-next').locator('svg')).toHaveClass(/lucide-chevron-down/);
     // A disabled control says why (M-2): focusable, aria-disabled, the reason as its description; an enabled one has none.
@@ -121,11 +119,11 @@ test('reader chrome: back button and ⌘1, title and kind · size in the toolbar
     await expectDisabledReason(s.page.getByTestId('pdf-next'), null);
     await s.page.getByTestId('pdf-next').click();
     await s.page.getByTestId('pdf-next').click();
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('3 / 3쪽');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
     await expectDisabledReason(s.page.getByTestId('pdf-next'), '마지막 쪽입니다');
     await expectDisabledReason(s.page.getByTestId('pdf-prev'), null);
     await s.page.getByTestId('pdf-next').click({ force: true }); // soft-disabled: a press does nothing
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('3 / 3쪽');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
     await s.page.getByTestId('viewer-back').click();
     await expect(s.page.getByTestId('library-table')).toBeVisible();
     // ⌘1 (go menu) is the same registry command.
@@ -157,6 +155,9 @@ test('a PDF that cannot be opened: the notice with the file and Finder에서 보
     await expect(notice.locator('h2')).toHaveText('이 PDF를 열 수 없습니다');
     await expect(notice.locator('p')).toHaveText('파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본 파일은 그대로 보관됩니다. 다른 사본이 있으면 다시 가져오세요.');
     await expect(notice.locator('.file')).toHaveText('broken.pdf · 37 B');
+    // The sidebar has no pages to list, and no segment to choose between (reader-pdf.html ?state=error).
+    await expect(s.page.getByTestId('reader-sidebar-empty')).toContainText('표시할 쪽이 없습니다');
+    await expect(s.page.getByTestId('reader-nav')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');
     // m1 / C-1 as amended: both file actions are notice buttons, through the registry.
     await expect(s.page.getByTestId('pdf-reveal')).toHaveText(REVEAL);
@@ -170,7 +171,7 @@ test('a PDF that cannot be opened: the notice with the file and Finder에서 보
       expect(path.relative(path.join(lib, 'derived', 'open'), p).split(path.sep)).toEqual([expect.stringMatching(/^[0-9a-f-]{36}$/), 'broken.pdf']);
       expect(fs.readFileSync(p, 'latin1')).toBe(fs.readFileSync(broken, 'latin1')); // the same bytes
     }
-    for (const id of ['pdf-prev', 'pdf-next', 'pdf-zoom', 'pdf-page-indicator', 'pdf-canvas', 'reader-toolbar']) await expect(s.page.getByTestId(id), id).toHaveCount(0);
+    for (const id of ['pdf-prev', 'pdf-next', 'pdf-page-field', 'pdf-page-count', 'pdf-viewer', 'reader-toolbar']) await expect(s.page.getByTestId(id), id).toHaveCount(0);
     // pdf.js's own message is logged by name only and never shown.
     expect(warnings.some((w) => /^\[pdf\] open\/render failed: \w+$/.test(w))).toBe(true);
     await expect(s.page.getByTestId('pdf-error')).not.toContainText(/Invalid|PDF header|structure/i);
@@ -184,9 +185,9 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
   try {
     await importPaths(s.page, [PDF]);
     await openItem(s.page, 'sample');
-    const canvas = s.page.getByTestId('pdf-canvas');
-    await expect(canvas).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    const drawn = Number(await canvas.getAttribute('data-rendered'));
+    const viewer = s.page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    const drawn = Number(await viewer.getAttribute('data-rendered'));
     // The next page's drawing fails (as a broken page's would): pdf.js asks the canvas for its context on each render.
     await s.page.evaluate(() => {
       const real = HTMLCanvasElement.prototype.getContext;
@@ -195,25 +196,28 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
         throw new Error('injected render failure');
       } as typeof real;
     });
+    // A narrow stage (the item panel takes its share) already shows and draws every page of this three-page file: a zoom step makes pdf.js draw them again, now failing.
+    await setPdfZoom(s.page, 1.25);
     await s.page.getByTestId('pdf-next').click();
-    const notice = s.page.getByTestId('pdf-page-error');
-    await expect(notice.locator('h2')).toHaveText('이\u00a0쪽을 표시할 수 없습니다');
-    await expect(notice.locator('p')).toHaveText('이\u00a0쪽의 내용을 그리지 못했습니다. 다른\u00a0쪽으로 이동해 계속 읽을 수 있습니다.');
+    const notice = s.page.getByTestId('pdf-page-error').first();
+    await expect(notice.locator('strong')).toHaveText('이\u00a0쪽을 표시할 수 없습니다');
+    await expect(notice.locator('span')).toHaveText('이\u00a0쪽의 내용을 그리지 못했습니다. 다른\u00a0쪽으로 이동해 계속 읽을 수 있습니다.');
     await expect(s.page.getByTestId('pdf-error')).toHaveCount(0); // the document is still open
     await expect(s.page.getByTestId('reader-toolbar')).toBeVisible();
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('2');
     await expectDisabledReason(s.page.getByTestId('pdf-prev'), null);
-    await expect(canvas).toHaveCSS('visibility', 'hidden'); // no half-drawn page under the notice
     // Drawing works again: the user moves on, and the pages render.
     await s.page.evaluate(() => {
       const w = window as unknown as { __realGetContext?: typeof HTMLCanvasElement.prototype.getContext };
       if (w.__realGetContext) HTMLCanvasElement.prototype.getContext = w.__realGetContext;
     });
+    // A page that failed is drawn again when pdf.js redraws it (here a zoom change); the page turn itself never errors.
+    await setPdfZoom(s.page, 1);
+    await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
     await s.page.getByTestId('pdf-next').click();
-    await expect(s.page.getByTestId('pdf-page-indicator')).toHaveText('3 / 3쪽');
-    await expect.poll(async () => Number(await canvas.getAttribute('data-rendered'))).toBeGreaterThan(drawn);
-    await expect(notice).toHaveCount(0);
-    await expect(canvas).toHaveCSS('visibility', 'visible');
+    await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
+    await expect.poll(async () => Number(await viewer.getAttribute('data-rendered'))).toBeGreaterThan(drawn);
+    await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
   } finally {
     await s.app.close();
   }
@@ -275,7 +279,7 @@ const recordOpening = (page: Page) =>
         empty: stage === null,
         bg: getComputedStyle(stage ?? content).backgroundColor,
         bareVideo: video !== null && video.checkVisibility({ visibilityProperty: true }) && video.readyState < 2 && video.error === null,
-        blankCanvas: canvas !== null && canvas.dataset['rendered'] === '0' && canvas.checkVisibility({ visibilityProperty: true }),
+        blankCanvas: canvas !== null && canvas.width === 300 && canvas.height === 150 && canvas.checkVisibility({ visibilityProperty: true }), // a canvas nothing has drawn on yet
       });
     }).observe(document.body, { subtree: true, childList: true, attributes: true });
   });
@@ -323,8 +327,8 @@ test('opening a PDF shows no canvas before its first page, and the stage is the 
     const sunken = await tokenColour(s.page, '--bg-sunken');
     await recordOpening(s.page);
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await expect(s.page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-viewer')).toBeVisible();
     const states = await openingStates(s.page);
     expect(states.length).toBeGreaterThan(0);
     expect(states.filter((x) => x.blankCanvas), 'no canvas before the first page').toEqual([]);
@@ -374,7 +378,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     await openItem(s.page, 'linked');
     await stubOpenDialog(s.app, [moved]);
     await s.page.getByTestId('relink').click();
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expect(s.page.getByTestId('missing-notice')).toHaveCount(0);
   } finally {
     await s.app.close();
@@ -425,6 +429,8 @@ test('a missing managed copy: the notice says to import the original again, with
     // The window is still named after the item (design-spec 2.1), not left at the library's title.
     await expect.poll(async () => (await mainWindow(s.app)).evaluate((w) => w.getTitle())).toBe('sample');
     await expect(notice.locator('.file')).toHaveCount(0); // the path inside the library means nothing to the user
+    await expect(s.page.getByTestId('reader-sidebar-empty')).toContainText('표시할 쪽이 없습니다');
+    await expect(s.page.getByTestId('reader-nav')).toHaveCount(0);
     await expect(s.page.getByTestId('relink')).toHaveCount(0);
     await expectStageUnderToolbar(s.page, '.reader-stage');
   } finally {
@@ -441,7 +447,7 @@ test('reopening an item whose file vanished silently shows the missing notice, n
   try {
     await importPaths(s.page, [file], { mode: 'linked' });
     await openItem(s.page, 'linked');
-    await expect(s.page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/); // cached as available
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/); // cached as available
     await s.page.getByTestId('viewer-back').click();
     fs.renameSync(file, path.join(src, 'moved.pdf')); // main does not watch the disk: no libraryChanged
     // Record every reader state that appears from here on.
@@ -449,7 +455,7 @@ test('reopening an item whose file vanished silently shows the missing notice, n
       const g = window as unknown as { __seen: string[] };
       g.__seen = [];
       new MutationObserver(() => {
-        for (const id of ['pdf-canvas', 'pdf-error', 'missing-notice']) {
+        for (const id of ['pdf-viewer', 'pdf-error', 'missing-notice']) {
           if (document.querySelector(`[data-testid="${id}"]`) && !g.__seen.includes(id)) g.__seen.push(id);
         }
       }).observe(document.body, { childList: true, subtree: true });

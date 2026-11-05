@@ -27,7 +27,7 @@ describe('settings registry', () => {
 
 describe('prefs', () => {
   it('has defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' } });
     // What a window shows when reading prefs failed (renderer Boot falls back to it).
     expect(DEFAULT_PREFS).toEqual(prefsSchema.parse({}));
     expect(Object.isFrozen(DEFAULT_PREFS)).toBe(true);
@@ -50,7 +50,7 @@ describe('prefs patch input', () => {
     expect(prefsSetInput.safeParse({ theme: 'neon' }).success).toBe(false);
   });
   it('full prefs schema still defaults', () => {
-    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null });
+    expect(prefsSchema.parse({})).toEqual({ theme: 'system', density: 'regular', fontSize: 13, libraryRoot: null, backupDir: null, translation: { enabled: null, autoOnSelect: true, from: 'auto', to: 'ko' } });
   });
 });
 

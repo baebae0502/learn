@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { COMMANDS, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, windowKinds } from './helpers';
@@ -121,7 +122,8 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
     await expect(sheet.getByTestId('sheet-root')).toHaveAttribute('data-kind', 'shortcuts');
     // The eight colour keys are one line, 1–8 under 정리, not eight rows.
     for (const c of COMMANDS.filter((x) => (x.accelerator || x.key) && !/^tag\.color\d$/.test(x.id))) {
-      await expect(sheet.getByTestId('shortcut-row').filter({ hasText: commandLabel(c, process.platform) }), c.id).toHaveCount(1);
+      // The whole label: 시계 방향으로 회전 is also the end of 반시계 방향으로 회전.
+      await expect(sheet.getByTestId('shortcut-row').filter({ has: sheet.locator('.sr-label').getByText(commandLabel(c, process.platform), { exact: true }) }), c.id).toHaveCount(1);
     }
     await expect(sheet.getByTestId('shortcut-row').filter({ hasText: '색 태그 붙이기/떼기' })).toHaveCount(1);
     // design-spec 7.4's ⌃⌘F 전체 화면(시스템): one static row, marked as the system's (main builds it outside the registry).
@@ -183,6 +185,27 @@ const tokenIn = (page: Page, name: string) =>
     p.remove();
     return c;
   }, name);
+
+/**
+ * The ⌘/ sheet's rule, stated for any screen: its body scrolls exactly when its natural height is over the cap main
+ * gives it (`sheetMaxHeight` of the parent's content height). The runner's 1024 × 768 screen clamps a 1440 × 900
+ * window to 1024 × 684 (room 652), a real 1440 × 900 Mac has 774 and Linux 824. The natural height is the sheet's
+ * height plus what its body hides; it is logged first, so a failing run still reports the number.
+ */
+async function sheetRule(app: ElectronApplication, sheet: Page, parentHeight: number): Promise<{ natural: number; cap: number; scrolls: boolean }> {
+  const platform = await app.evaluate(() => process.platform);
+  // main's own rule (sheet-geometry.ts), so the cap here is the cap the sheet got.
+  const cap = sheetMaxHeight(parentHeight, platform);
+  const { natural, scrolls } = await sheet.evaluate(() => {
+    const body = document.querySelector('.d-body')!;
+    const root = document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height;
+    return { natural: Math.ceil(root + (body.scrollHeight - body.clientHeight)), scrolls: body.scrollHeight > body.clientHeight };
+  });
+  console.log(`[measure] ⌘/ sheet natural height: ${natural} px, cap ${cap} px (parent ${parentHeight} px, ${platform}), body scrolls: ${scrolls}`);
+  expect(scrolls, `scrolls === (natural ${natural} > cap ${cap})`).toBe(natural > cap);
+  return { natural, cap, scrolls };
+}
+const parentHeightOf = async (app: ElectronApplication) => (await mainWindow(app)).evaluate((w) => w.getContentBounds().height);
 
 test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a name and a ring, between a fixed title and foot with scroll edges; one that fits is no stop', async ({}, testInfo) => {
   // Mac run 39779536146: on the 768-tall runner the sheet's body scrolled but no key could reach it (axe
@@ -246,13 +269,20 @@ test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a
     await fitsNoStop(dup);
     await closeSheet(dup, 'Escape');
     await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
-    // The ⌘/ sheet as well, in a window as tall as 1440 × 900 allows: in two columns (≈ 562 px with 자료, ≈ 591 with ⌘F,
-    // ≈ 620 with ⌥⌘I) it fits with no scrolling everywhere — Linux (room 824), the 768-tall Mac runner (work area 684,
-    // room 652) and a 1440 × 900 Mac's ≈ 806-tall parent (room 774).
-    await (await mainWindow(s.app)).evaluate((w) => w.setContentSize(1440, 900));
-    sheet = await open();
-    await fitsNoStop(sheet);
-    await closeSheet(sheet, 'Escape');
+    // The ⌘/ sheet as well, in a window as tall as 1440 × 900 allows (clamped to 1024 × 684 on the 768-tall Mac runner,
+    // room 652): it scrolls exactly when its natural height is over the cap, and then it is a stop (the first half above);
+    // when it fits it is no stop. A 1024 × 684 window makes the short room happen on every platform.
+    for (const [width, height] of [[1440, 900], [1024, 684]] as const) {
+      await (await mainWindow(s.app)).evaluate((w, size) => w.setContentSize(size[0]!, size[1]!), [width, height]);
+      sheet = await open();
+      const { scrolls } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
+      if (scrolls) {
+        await expect(sheet.locator('.d-body')).toHaveAttribute('tabindex', '0');
+        await expect(sheet.locator('.d-body')).toHaveAttribute('role', 'region');
+      } else await fitsNoStop(sheet);
+      await closeSheet(sheet, 'Escape');
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    }
   } finally {
     await s.app.close();
   }
@@ -321,18 +351,16 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
       ),
     );
     // Read down the first column, then the second, in the sheet's order (shortcuts.ts ORDER).
-    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리'], ['자료', '정리', '리더', '팔레트·대화상자']]);
+    expect(columns.map((c) => c.map((g) => g.title))).toEqual([['앱', '라이브러리', '자료'], ['정리', '리더', '팔레트·대화상자']]);
     // A group never splits: every section lies in one column with all its rows; the columns sit side by side.
     for (const g of columns.flat()) expect(g.whole, `${g.title}`).toBe(true);
     expect(new Set(columns[0]!.map((g) => g.left)).size).toBe(1);
     expect(new Set(columns[1]!.map((g) => g.left)).size).toBe(1);
     expect(columns[1]![0]!.left).toBeGreaterThan(columns[0]![0]!.right);
-    // Short enough for every 1440 × 900 room (≈ 620 px with 자료, ⌘F and ⌥⌘I; Linux room 824, Mac 774): no scrolling.
-    const body = sheet.locator('.d-body');
-    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(false);
-    const natural = await sheet.evaluate(() => Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height));
-    expect(natural).toBeLessThanOrEqual(700);
-    console.log(`[measure] ⌘/ sheet natural height: ${natural} px`);
+    // Short enough for every real 1440 × 900 room (Mac ≈ 806-tall parent, room 774): the bound below. Whether the body
+    // scrolls on THIS screen follows the rule (the runner's 1024 × 684 clamp has room 652 and scrolls).
+    const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
+    expect(natural).toBeLessThanOrEqual(770);
     await closeSheet(sheet, 'Escape');
   } finally {
     await s.app.close();

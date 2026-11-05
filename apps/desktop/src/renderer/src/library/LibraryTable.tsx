@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
@@ -15,13 +15,14 @@ import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
+import { ProgressBar } from '../ui/ProgressBar';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
 import { isContextMenuKey, isKeyMenuEcho, menuPointFor } from '../ui/contextMenuKey';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { collectionMatch } from '../trash/trashRows';
 import { useNow } from '../useNow';
-import { columnTemplates, defaultColumns, fixedWidths, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
+import { columnTemplates, defaultColumns, fixedWidths, progressShown, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
 import { wheelSteps } from './columnDrag';
@@ -111,7 +112,30 @@ function cellText(column: LibraryColumnId, item: LibraryItem, now: Date): string
       return item.originalName;
     case 'deletedAt':
       return 'deletedAt' in item ? formatDate((item as TrashedItem).deletedAt, now) : '';
+    case 'progress':
+      return item.progress === null ? '' : `${Math.round(item.progress * 100)}%`;
   }
+}
+
+/** The furthest point read: the narrow bar and the percent; nothing for an item never read. */
+function ProgressCell({ progress }: { progress: number | null }) {
+  if (progress === null) return null;
+  const percent = progressShown(progress);
+  // Finished: the check and 완료 in place of the bar and "100%" (the approved render's progressCell).
+  if (percent === 'done') {
+    return (
+      <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="progress-done">
+        <Icon icon={Check} size="sm" />
+        {t.library.progressDone}
+      </span>
+    );
+  }
+  return (
+    <>
+      <ProgressBar percent={percent} label={t.library.progressLabel} testId="progress-cell" />
+      <span className="pct">{percent}%</span>
+    </>
+  );
 }
 
 /** Kind icon 16 + 8 + the title (its full text as the tooltip: the cell truncates), then its marks and the colour dots. */
@@ -200,6 +224,8 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
         >
           {c.id === 'title' ? (
             <TitleCell item={item} match={match} tags={tags} kept={kept} />
+          ) : c.id === 'progress' ? (
+            <ProgressCell progress={item.progress} />
           ) : (
             <span className="ellipsis" title={c.id === 'originalName' ? item.originalName : undefined}>
               {cellText(c.id, item, now)}

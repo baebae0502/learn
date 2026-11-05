@@ -14,6 +14,7 @@ import { CHECK_ACTS, type PurgeVariant, type SheetAction, type SheetPayload } fr
 import { prefsFields } from './settings';
 import { LIBRARY_COLUMN_IDS, LIBRARY_SORT_COLUMNS, type LibraryColumnId } from './library-columns';
 import { TAG_COLORS, type TagColorId } from './tag-colors';
+import { translationFromSchema, translationToSchema, type TranslationResult } from './translation';
 
 export const storageModeSchema = z.enum(['managed', 'linked']);
 /** The collection an import files its items into: a uuid, or null/absent for none. */
@@ -104,6 +105,9 @@ export const prefsPatchInput = z.object(prefsFields).partial().strict();
 export type PrefsPatch = z.input<typeof prefsPatchInput>;
 /** What the renderer may change: everything but the library location and the backup folder, which only main sets (R4). */
 export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true }).partial().strict();
+/** translation.translate: the selection's text (up to 20,000; the service refuses what is over 5,000 once prepared). */
+export const translateInput = z.object({ text: z.string().min(1).max(20000), from: translationFromSchema, to: translationToSchema }).strict();
+export type TranslateInput = z.input<typeof translateInput>;
 /** ui.themeShown: the theme a page now shows (its own resolution of the pref; T13R4-m1). */
 export const themeShownInput = z.object({ shade: z.enum(['light', 'dark']) }).strict();
 export const savePositionInput = z.object({
@@ -142,6 +146,12 @@ export const commandContextInput = z
     columnsShown: z.number().int().min(0).max(2 ** LIBRARY_COLUMN_IDS.length - 1),
     /** Trashed items and collection rows (OrganizeSnapshot.trashCount): 휴지통 비우기 needs one (P-10). */
     trashCount: contextCount,
+    /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
+    pdfOpen: z.boolean().optional(),
+    /** Text of the open PDF is selected: 선택한 글 번역 is on; absent otherwise. */
+    pdfSelection: z.boolean().optional(),
+    /** Translation is switched off: 선택한 글 번역 is off; absent otherwise. */
+    translationOff: z.boolean().optional(),
     /** The import queue has files to finish (가져오기 취소); absent where nothing imports. */
     importRunning: z.boolean().optional(),
     /** A backup is on main's work line: 백업 만들기… is off. */
@@ -353,6 +363,11 @@ export interface LearnApi {
   prefs: {
     get(): Promise<Result<Prefs>>;
     set(input: PrefsSetInput): Promise<Result<Prefs>>;
+  };
+  translation: {
+    translate(input: TranslateInput): Promise<Result<TranslationResult>>;
+    /** Stops the request in flight, if any: it answers CANCELLED. */
+    cancel(): Promise<Result<void>>;
   };
   reader: {
     /** Records that the viewer opened the item (sets `openedAt`; creates the position row at the start if none). */

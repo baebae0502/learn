@@ -8,7 +8,8 @@ import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
   FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
-  specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, treeRow, waitImportIdle,
+  specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
+  selectInPage,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -63,15 +64,20 @@ test('import → open → page → back → palette → settings → shortcuts, 
     expect(await focusedTestId(page)).toBe('item-row');
     await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await expectNoSeriousA11y(page, 'PDF reader');
 
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: 다음 쪽 (이전 쪽 is disabled on page 1)
+    await page.keyboard.press('F6'); // content: the toolbar's first control, the page field
+    expect(await focusedTestId(page)).toBe('pdf-page-field');
+    await page.keyboard.press('Tab'); // 이전 쪽: disabled on page 1, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-prev');
+    await page.keyboard.press('Tab'); // 다음 쪽
     expect(await focusedTestId(page)).toBe('pdf-next');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
+    await page.keyboard.press('Shift+Tab'); // 쪽 번호
     await page.keyboard.press('Shift+Tab'); // toolbar: 라이브러리로 돌아가기
     expect(await focusedTestId(page)).toBe('viewer-back');
     await page.keyboard.press('Enter');
@@ -185,15 +191,20 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect.poll(() => focusedTestId(page)).toBe('item-row');
     await expect(row).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
 
     // Back to the library the first journey's way: F6 to the reader's controls, a page on, ⇧⇥ ×2 to 라이브러리로 돌아가기.
     await page.keyboard.press('F6'); // sidebar
-    await page.keyboard.press('F6'); // content: 다음 쪽
+    await page.keyboard.press('F6'); // content: the page field
+    expect(await focusedTestId(page)).toBe('pdf-page-field');
+    await page.keyboard.press('Tab'); // 이전 쪽: disabled on page 1, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-prev');
+    await page.keyboard.press('Tab'); // 다음 쪽
     expect(await focusedTestId(page)).toBe('pdf-next');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
+    await page.keyboard.press('Shift+Tab'); // 쪽 번호
     await page.keyboard.press('Shift+Tab'); // 라이브러리로 돌아가기
     expect(await focusedTestId(page)).toBe('viewer-back');
     await page.keyboard.press('Enter');
@@ -607,7 +618,7 @@ test('axe at every M5 state: the sidebar and its special views, a collection bei
     await expect(page.getByTestId('item-row')).toHaveCount(4);
     // Two rows carry the title now: the first import is opened by its id.
     await page.locator(`[data-testid="item-row"][data-item-id="${sample!.id}"]`).dblclick();
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await runMenuCommand(app, 'nav.back');
     const bio = await createCollection(page, '분자생물학');
     const ch6 = await createCollection(page, '6장 · 신호 전달', bio);
@@ -761,14 +772,15 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.keyboard.press('Shift+F6'); // wraps
     expect(await inPane(page)).toBe('content');
 
-    // Out of a text field (the zoom field is a <select>, where letters would type): F6 is marked inText.
+    // Out of a text field (the page field, where letters would type): F6 is marked inText.
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await page.getByTestId('pdf-zoom').focus();
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The reader has its item panel now (a PDF is open): sidebar → content → item panel.
+    await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('F6');
-    expect(await inPane(page)).toBe('sidebar');
-    await page.getByTestId('pdf-zoom').focus();
+    expect(await inPane(page)).toBe('inspector');
+    await page.getByTestId('pdf-page-field').focus();
     await page.keyboard.press('Shift+F6');
     expect(await inPane(page)).toBe('sidebar');
 
@@ -777,7 +789,9 @@ test('F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded s
     await page.keyboard.press('F6');
     expect(await inPane(page)).toBe('content');
     await page.keyboard.press('F6');
-    expect(await inPane(page)).toBe('content');
+    expect(await inPane(page)).toBe('inspector');
+    await page.keyboard.press('F6');
+    expect(await inPane(page)).toBe('content'); // the folded sidebar is skipped
   } finally {
     await app.close();
   }
@@ -1043,6 +1057,128 @@ test('a sidebar that folds by itself hands a keyboard focus to the toolbar toggl
     await zoom(1);
     await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
     await expect(page.getByTestId('sidebar-toggle')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+// M7a: the reader v2 and the translation by keyboard alone, with axe at the stops the milestone added (AC18). ⌘F is the menu item's
+// accelerator (runMenuCommand), as everywhere in this file; every other step is a real key press, and nothing is clicked.
+test('the reader v2 and its translation by keyboard: toolbar → page field → ⌘F → next result → esc → sidebar segment → thumbnails ↓ → the 번역 section, with axe', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await page.evaluate(async () => {
+      const r = await window.learn.prefs.get();
+      if (!r.ok) throw new Error(r.code);
+      await window.learn.prefs.set({ translation: { ...r.data.translation, enabled: true, autoOnSelect: true } });
+    });
+    await f6To(page, 'content'); // the table's cursor row
+    expect(await focusedTestId(page)).toBe('item-row');
+    await page.keyboard.press('Enter');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-pages', '100');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+
+    // The toolbar: F6 from the sidebar reaches the content pane, whose first control is the page field.
+    await f6To(page, 'content');
+    await tabTo(page, 'pdf-page-field', 6);
+    const pageField = page.getByTestId('pdf-page-field');
+    await page.keyboard.type('7');
+    await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '7');
+    await expect(pageField).toHaveValue('7');
+
+    // ⌘F: the find bar takes the focus in its field; a word, then the next result.
+    await runMenuCommand(app, 'library.find');
+    const findField = page.getByTestId('pdf-find-field').getByRole('searchbox');
+    await expect(findField).toBeFocused();
+    await page.keyboard.type('page');
+    const count = page.getByTestId('pdf-find-count');
+    await expect(count).toHaveText(/^\d+ \/ \d+$/);
+    const first = Number((await count.textContent())!.split(' / ')[0]); // the search starts from the page in view (7)
+    await expectNoSeriousA11y(page, 'the reader with the find bar open');
+    await page.keyboard.press('Enter'); // next result
+    await expect(count).toHaveText(new RegExp(`^${first + 1} / \\d+$`));
+    await page.keyboard.press('Escape'); // the bar closes
+    await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);
+    await expect.poll(() => inPane(page)).toBe('content');
+
+    // The sidebar segment: F6 round to the sidebar (the reader's own), the segment 목차 and back to 썸네일 with the arrow keys.
+    await f6To(page, 'sidebar');
+    expect(await focusedTestId(page)).toBe('reader-nav-thumbnails'); // F6 lands on the checked segment
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByTestId('pdf-thumbnails')).toBeVisible();
+
+    // ↓ on the thumbnails goes to the next one; Enter takes the reader to that page (the focus goes to the stage, where the arrows turn pages).
+    await page.keyboard.press('Tab'); // out of the segment into the list
+    expect(await focusedTestId(page)).toBe('pdf-thumbnails');
+    const current = Number(await viewer.getAttribute('data-page'));
+    await page.keyboard.press('ArrowDown');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 1));
+    await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 1));
+    await expect.poll(() => focusedTestId(page)).toBe('pdf-stage');
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 2));
+    await page.keyboard.press('ArrowLeft');
+    await expect(viewer).toHaveAttribute('data-page', String(current + 1));
+
+    // The reader's panel: its 번역 section, in the order Tab takes it: the original box, 선택하면 번역, 이어 붙이기, 지우기, 복사 ▾, 번역.
+    await f6To(page, 'inspector');
+    await expect(page.getByTestId('translation-section')).toBeVisible();
+    await tabTo(page, 'translation-source', 8);
+    await page.keyboard.type('Attention is all you need.');
+    await page.keyboard.press('Tab');
+    expect(await focusedTestId(page)).toBe('translation-auto');
+    await page.keyboard.press('Tab');
+    expect(await focusedTestId(page)).toBe('translation-concat');
+    await page.keyboard.press('Space');
+    await expect(page.getByTestId('translation-concat').locator('input')).toBeChecked();
+    await page.keyboard.press('Tab');
+    expect(await focusedTestId(page)).toBe('translation-clear');
+    await page.keyboard.press('Tab');
+    expect(await focusedTestId(page)).toBe('translation-copy');
+    await page.keyboard.press('Enter'); // 복사 ▾ opens: the original can be copied now, the translation not yet
+    await expect(page.getByTestId('translation-copy-source')).toBeVisible();
+    await expect(page.getByTestId('translation-copy-result')).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('translation-copy')).toBeFocused();
+    await page.keyboard.press('Tab');
+    expect(await focusedTestId(page)).toBe('translation-run');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('translation-result')).toHaveText('주의가 필요한 전부입니다.');
+    await expectNoSeriousA11y(page, 'the reader with the 번역 section translated');
+  } finally {
+    await app.close();
+  }
+});
+
+test('axe: the reader with the selection pop-up open, and the settings window at the translation group', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached();
+    // Asking for the consent, then the answer: both are the pop-up.
+    await selectInPage(page, 'Attention is all you need.');
+    await expect(page.getByTestId('selection-popup')).toHaveAttribute('data-state', 'consent');
+    await expectNoSeriousA11y(page, 'the reader with the selection pop-up asking for the consent');
+    await page.getByTestId('consent-enable').first().click();
+    await expect(page.getByTestId('selection-popup')).toHaveAttribute('data-state', 'done');
+    await expectNoSeriousA11y(page, 'the reader with the selection pop-up open, translated');
+    await translationFake(app, 'offline');
+    await page.evaluate(() => getSelection()!.removeAllRanges());
+    await selectInPage(page, 'It is based solely on attention mechanisms.');
+    await expect(page.getByTestId('selection-popup')).toHaveAttribute('data-state', 'error');
+    await expectNoSeriousA11y(page, 'the reader with the selection pop-up showing an error');
+
+    const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
+    await settings.getByTestId('settings-translation-enabled').scrollIntoViewIfNeeded();
+    await expectNoSeriousA11y(settings, 'the settings window at the translation group');
   } finally {
     await app.close();
   }

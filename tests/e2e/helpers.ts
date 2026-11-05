@@ -8,8 +8,9 @@ import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
 import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
+import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
-import { compareShots, isTranslucent, type Pixels } from './shot-compare';
+import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 
 declare global {
   interface Window {
@@ -143,6 +144,22 @@ export async function settingsPrepared(app: ElectronApplication): Promise<boolea
 }
 
 /**
+ * The shown settings window is as tall as its content (design-spec 6), also after a message appeared in it; on a display
+ * whose work area cannot hold that, as tall as the work area leaves below its title bar, the page scrolling inside it
+ * (R-4). The macOS runner's 1024 × 768 with the Dock leaves 656 px for 681 (Mac run 41797171352).
+ */
+export async function settingsFitsContent(app: ElectronApplication, settings: Page): Promise<boolean> {
+  const content = await settings.locator('[data-settings-root]').evaluate((el) => Math.ceil(el.getBoundingClientRect().height));
+  const shown = await app.evaluate(({ BrowserWindow, screen }) => {
+    const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings'));
+    if (!w?.isVisible()) return null;
+    const height = w.getContentSize()[1]!;
+    return { height, chrome: w.getBounds().height - height, room: screen.getDisplayMatching(w.getBounds()).workArea.height };
+  });
+  return shown !== null && shown.height === settingsContentHeight(content, shown.room, shown.chrome);
+}
+
+/**
  * Replace the native file dialog in the main process for the next calls; resets the call counter. The real dialog is
  * kept the first time (`restoreOpenDialog` puts it back): a stub otherwise stays for the rest of the session, and a later
  * step that needs the real panel gets the stub's files instead (Mac run 39779536146: the settings folder panel got a PDF).
@@ -206,6 +223,120 @@ export async function stubShell(app: ElectronApplication, opts: { openFails?: bo
   }, opts.openFails === true);
 }
 export const shellCalls = (app: ElectronApplication): Promise<ShellCall[]> => app.evaluate(() => (globalThis as { __learnShell?: ShellCall[] }).__learnShell ?? []);
+
+/** Record the URLs main hands to the system (shell.openExternal) instead of opening a browser or a mail program. */
+export async function stubOpenExternal(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ shell }) => {
+    const g = globalThis as { __learnExternal?: string[] };
+    g.__learnExternal = [];
+    shell.openExternal = async (url: string) => void g.__learnExternal!.push(url);
+  });
+}
+export const openExternalCalls = (app: ElectronApplication): Promise<string[]> => app.evaluate(() => (globalThis as { __learnExternal?: string[] }).__learnExternal ?? []);
+
+/**
+ * Zoom the open PDF through the reader's handle (the E2E-only window.__learnReader store): 1 is 100 %. It waits for the saved place:
+ * the reader applies it once the stage has settled and the position has come, and a zoom set before that is overwritten by it (on the
+ * Mac runner that can be after the first page is drawn, run 41846187098).
+ */
+export const setPdfZoom = async (page: Page, zoom: number | 'auto' | 'page-width' | 'page-fit'): Promise<void> => {
+  await expect(page.locator('[data-testid="pdf-scroll"][data-restored]')).toBeAttached();
+  await page.evaluate((z) => {
+    const store = (window as unknown as { __learnReader?: { getState(): { handle: { setZoom(z: unknown): void } | null } } }).__learnReader;
+    const handle = store?.getState().handle;
+    if (!handle) throw new Error('no PDF is open');
+    handle.setZoom(z);
+  }, zoom);
+};
+
+/**
+ * The colour the screen shows at a point of the window (a 1 x 1 screenshot, decoded in the page), as [r, g, b].
+ * `x` and `y` are CSS px from the window's top left.
+ */
+export async function pixelAt(page: Page, x: number, y: number): Promise<[number, number, number]> {
+  const shot = await page.screenshot({ clip: { x, y, width: 1, height: 1 }, animations: 'disabled', caret: 'hide' });
+  return page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    return [d[0]!, d[1]!, d[2]!] as [number, number, number];
+  }, shot.toString('base64'));
+}
+
+/** The RGBA pixels of a rectangle of the window (CSS px), row by row. */
+export async function shotPixels(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<{ width: number; height: number; data: Uint8Array }> {
+  const shot = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
+  const r = await page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let binary = '';
+    for (let i = 0; i < d.length; i += 0x8000) binary += String.fromCharCode(...d.subarray(i, i + 0x8000));
+    return { width: bitmap.width, height: bitmap.height, data: btoa(binary) };
+  }, shot.toString('base64'));
+  return { width: r.width, height: r.height, data: Buffer.from(r.data, 'base64') };
+}
+
+/** The darkest colour on the screen inside a rectangle of the window (CSS px), as [r, g, b]: whether ink stays ink. */
+export async function darkestPixel(page: Page, clip: { x: number; y: number; width: number; height: number }): Promise<[number, number, number]> {
+  const shot = await page.screenshot({ clip, animations: 'disabled', caret: 'hide' });
+  return page.evaluate(async (b64) => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type: 'image/png' }), { premultiplyAlpha: 'none' });
+    const ctx = new OffscreenCanvas(bitmap.width, bitmap.height).getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const d = ctx.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    let best: [number, number, number] = [255, 255, 255];
+    for (let i = 0; i < d.length; i += 4) if (d[i]! + d[i + 1]! + d[i + 2]! < best[0] + best[1] + best[2]) best = [d[i]!, d[i + 1]!, d[i + 2]!];
+    return best;
+  }, shot.toString('base64'));
+}
+
+/**
+ * What a colour expression of the page's own CSS (`var(--bg-sunken)`, a light-dark() token) comes out as in sRGB, as [r, g, b]:
+ * a probe element resolves it as the stage computes it, and a canvas converts what it computed.
+ */
+export const resolveColor = (page: Page, expression: string): Promise<[number, number, number]> =>
+  page.evaluate((expr) => {
+    const probe = document.createElement('div');
+    probe.style.background = expr;
+    document.body.append(probe);
+    const css = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    const ctx = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+    ctx.fillStyle = css;
+    ctx.fillRect(0, 0, 1, 1);
+    const d = ctx.getImageData(0, 0, 1, 1).data;
+    return [d[0]!, d[1]!, d[2]!] as [number, number, number];
+  }, expression);
+
+/**
+ * A mouse drag along a text line as a hand makes it: one pointer position per frame, a few px apart. The selection follows the
+ * positions the pointer was seen at; a single jump onto the text layer's endOfContent (user-select none, Chromium 152) leaves it
+ * where the last text position put it, so a burst of Playwright's `steps` (coalesced to a frame) loses the line's last glyphs.
+ */
+export async function dragAlong(page: Page, fromX: number, toX: number, y: number): Promise<void> {
+  await page.mouse.move(fromX, y);
+  await page.mouse.down();
+  const dir = toX >= fromX ? 1 : -1;
+  for (let x = fromX + 3 * dir; dir * (toX - x) > 0; x += 3 * dir) {
+    await page.mouse.move(x, y);
+    await page.waitForTimeout(16);
+  }
+  await page.mouse.move(toX, y);
+  await page.waitForTimeout(16);
+  await page.mouse.up();
+}
+
+/**
+ * The canvas of one page of the open PDF (pdf.js draws a canvas in each page's wrapper). Not the detail canvas pdf.js
+ * adds over the visible part when the screen area caps the page's canvas (capCanvasAreaFactor; the 1024 × 768 macOS
+ * runner at 200 %, Mac run 41797171352): that one is aria-hidden, the page's own has role presentation.
+ */
+export const pdfCanvas = (page: Page, pageNumber = 1): Locator =>
+  page.getByTestId('pdf-viewer').locator(`.page[data-page-number="${pageNumber}"] canvas[role="presentation"]`);
+
 
 /** One call of the stubbed save panel: whether it hung on a window (a sheet), and what it was asked to show. */
 export interface SaveDialogCall {
@@ -828,12 +959,16 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
       return { width, height, data: btoa(binary) };
     };
     // The sidebar's opaque colour without the window material: the token the sidebar paints when it is not clear.
-    const token = getComputedStyle(document.documentElement).getPropertyValue('--bg-sidebar').trim();
+    // It is a light-dark() value, which a canvas cannot parse: a probe element resolves it, and the canvas paints what it computed.
+    const probe = document.createElement('div');
+    probe.style.background = 'var(--bg-sidebar)';
+    document.body.append(probe);
+    const css = getComputedStyle(probe).backgroundColor;
+    probe.remove();
     const swatch = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
-    swatch.fillStyle = token === '' ? '#000' : token;
+    swatch.fillStyle = css;
     swatch.fillRect(0, 0, 1, 1);
-    const [r, g, bl] = swatch.getImageData(0, 0, 1, 1).data;
-    return { x: await decode(a!), y: await decode(b!), fallback: [r!, g!, bl!] };
+    return { x: await decode(a!), y: await decode(b!), css, swatch: Array.from(swatch.getImageData(0, 0, 1, 1).data) };
   }, [shot.toString('base64'), reference.toString('base64')] as const);
   const pixels = (d: { width: number; height: number; data: string }): Pixels => ({ width: d.width, height: d.height, data: Buffer.from(d.data, 'base64') });
   const [x, y] = [pixels(decoded.x), pixels(decoded.y)];
@@ -843,7 +978,7 @@ export async function expectSameShot(page: Page, testInfo: TestInfo, shot: Buffe
   else {
     // Over the macOS window material the shots are translucent and the renderer's soft edges vary by a few steps from
     // shot to shot, and so do a rounded corner's anti-aliased pixels; only there is the compare alpha-aware (see `compareShots`). Everywhere else it is exact.
-    const result = compareShots(x, y, process.platform === 'darwin' ? decoded.fallback : null);
+    const result = compareShots(x, y, process.platform === 'darwin' ? sidebarFallback(decoded.css, decoded.swatch) : null);
     if (result.count === 0) {
       if (process.platform === 'darwin' && (isTranslucent(x) || isTranslucent(y))) return;
       report = 'same pixels, different PNG bytes (encoder)';
@@ -1486,3 +1621,73 @@ export const seedAssets = (app: ElectronApplication, input: SeedAssetsInput): Pr
   app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.seedAssets(arg), input);
 export const fsyncProbe = (app: ElectronApplication, input: FsyncProbeInput): Promise<FsyncProbeResult> =>
   app.evaluate((_electron, arg) => (globalThis as unknown as WithSeedHooks).__learnTest.fsyncProbe(arg), input);
+
+// ---- M7a translation (main's fake engine, main/test-hooks.ts; E2E never reaches the real service) ----------------------------------
+
+export type TranslationFakeMode = 'ok' | 'offline' | 'rateLimited' | 'blocked' | 'unavailable' | 'badResponse' | 'slow';
+type WithTranslationHooks = { __learnTest: { translationFake(mode: TranslationFakeMode): void; translationCalls(): number } };
+/** How the fake engine answers from now on. */
+export const translationFake = (app: ElectronApplication, mode: TranslationFakeMode) =>
+  app.evaluate((_e, mode) => (globalThis as unknown as WithTranslationHooks).__learnTest.translationFake(mode), mode);
+/** Requests the fake engine has taken since launch (a cache hit, a refusal and Korean into Korean take none). */
+export const translationCalls = (app: ElectronApplication): Promise<number> => app.evaluate(() => (globalThis as unknown as WithTranslationHooks).__learnTest.translationCalls());
+
+/** One request the test's translation host took (main/translation/net-intercept.ts). */
+export interface TranslationNetRequest {
+  method: string;
+  host: string;
+  path: string;
+  search: string;
+  contentType: string | null;
+  body: string;
+}
+/** Launch options for the real translation engine over net.fetch, answered by the test's handler on the default session (R-17). */
+export const TRANSLATION_NET_ENV = { LEARN_TRANSLATION_NET: 'intercept' } as const;
+/** What that host took and what it refused (every other https request). */
+export const translationNet = (app: ElectronApplication): Promise<{ requests: TranslationNetRequest[]; refused: string[] }> =>
+  app.evaluate(() => (globalThis as unknown as { __learnTest: { translationNet(): { requests: TranslationNetRequest[]; refused: string[] } } }).__learnTest.translationNet());
+
+/** Selects the text of `sentence` in the text layer of page `pageNumber`, across the spans it runs through (a user's drag). */
+export async function selectInPage(page: Page, sentence: string, pageNumber = 1): Promise<void> {
+  const found = await page.evaluate(
+    ({ sentence, pageNumber }) => {
+      const layer = document.querySelector(`.page[data-page-number="${pageNumber}"] .textLayer`);
+      if (!layer) return false;
+      const nodes: Text[] = [];
+      const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text);
+      // The text as one string with a space between spans (a line break reads as one).
+      let joined = '';
+      const starts = nodes.map((n) => {
+        const at = joined.length;
+        joined += `${n.data} `;
+        return at;
+      });
+      const from = joined.indexOf(sentence);
+      if (from < 0) return false;
+      const to = from + sentence.length;
+      const locate = (offset: number, end: boolean) => {
+        for (let i = nodes.length - 1; i >= 0; i--) if (starts[i]! < offset || (!end && starts[i]! === offset)) return { node: nodes[i]!, at: Math.min(offset - starts[i]!, nodes[i]!.data.length) };
+        return { node: nodes[0]!, at: 0 };
+      };
+      const a = locate(from, false);
+      const b = locate(to, true);
+      const range = document.createRange();
+      range.setStart(a.node, a.at);
+      range.setEnd(b.node, b.at);
+      const selection = getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    },
+    { sentence, pageNumber },
+  );
+  if (!found) throw new Error(`selectInPage: "${sentence}" is not in the text layer of page ${pageNumber}`);
+}
+
+/**
+ * The one console line a test lets through: pdf.js's own error for a getPage still in flight when a document is closed on
+ * purpose (leaving the reader). Nothing else is allowed; the value is the same in every spec that watches the console.
+ */
+export const CLOSE_NOISE = /^Unable to get page .*Transport destroyed/s;
+export const isCloseNoise = (text: string): boolean => CLOSE_NOISE.test(text);

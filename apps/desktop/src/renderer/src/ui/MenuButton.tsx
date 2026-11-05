@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties, type RefObject } from 'react';
 import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
 import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
@@ -126,13 +126,16 @@ export function MenuButton<K extends string>(props: {
   disabledReason?: string;
   /** Which edge the menu lines up with: the button's start (default) or, for a button at the window's end, its end. */
   placement?: 'bottom start' | 'bottom end';
+  /** How the button is drawn, as Button's: the bordered secondary one (default) or the plain one inside a toolbar. */
+  variant?: 'secondary' | 'plain';
+  size?: 'regular' | 'small';
   testId?: string;
 }) {
   const reason = useDisabledReason(props.isDisabled, props.disabledReason);
   // Controlled, so a soft-disabled trigger (focusable, aria-disabled) can never open the menu.
   const [isOpen, setOpen] = useState(false);
   const trigger = (
-    <AriaButton className={cx('btn', 'btn-secondary', props.icon && 'has-icon', 'has-menu')} {...reason.controlProps} data-testid={props.testId}>
+    <AriaButton className={cx('btn', `btn-${props.variant ?? 'secondary'}`, props.size === 'small' && 'btn-small', props.icon && 'has-icon', 'has-menu')} {...reason.controlProps} data-testid={props.testId}>
       {props.icon && <Icon icon={props.icon} />}
       {props.label}
       <Icon icon={ChevronDown} size="xs" />
@@ -168,12 +171,21 @@ export function MenuIconButton<K extends string>(props: {
   onAction(id: K): void;
   placement?: 'bottom start' | 'bottom end';
   size?: 'regular' | 'small';
+  /** Extra class on the popover, for a menu that needs its own width. */
+  popoverClassName?: string;
+  /** The box the menu lines up with in place of the button (a field and its chevron are one group). */
+  anchorRef?: RefObject<Element | null>;
+  isDisabled?: boolean;
+  /** Why it is disabled (see MenuButton): the button stays focusable and never opens. */
+  disabledReason?: string;
   testId?: string;
 }) {
+  // Controlled, so a disabled trigger can never open the menu.
+  const [isOpen, setOpen] = useState(false);
   return (
-    <MenuTrigger>
-      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} />
-      <Popover className="menu-popover" placement={props.placement ?? 'bottom end'} offset={4}>
+    <MenuTrigger isOpen={isOpen && !props.isDisabled} onOpenChange={(open) => setOpen(open && !props.isDisabled)}>
+      <IconButton icon={props.icon} label={props.label} size={props.size ?? 'small'} testId={props.testId} isDisabled={props.isDisabled} disabledReason={props.disabledReason} />
+      <Popover className={cx('menu-popover', props.popoverClassName)} placement={props.placement ?? 'bottom end'} offset={4} triggerRef={props.anchorRef}>
         <MenuList entries={props.items} onAction={props.onAction} aria-label={props.label} />
       </Popover>
     </MenuTrigger>

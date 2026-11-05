@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Folder, FolderSearch } from 'lucide-react';
+import { ArrowRight, Folder, FolderSearch } from 'lucide-react';
 import { Radio, RadioGroup } from 'react-aria-components';
 import { DEFAULT_PREFS, type Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
@@ -12,6 +12,9 @@ import { DemoOverlay } from '../shell/DemoOverlay';
 import { useWindowState } from '../shell/useWindowState';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
+import { cx } from '../ui/cx';
+import { MenuButton } from '../ui/MenuButton';
+import { FROM_OPTIONS, TO_OPTIONS, fromName, langName } from '../translation/languages';
 import { Icon } from '../ui/Icon';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { Segmented } from '../ui/Segmented';
@@ -68,6 +71,10 @@ export function SettingsApp() {
       setPrefsError(messageOf(e));
     });
   };
+  const tr = prefs.translation;
+  const trOn = tr.enabled === true;
+  // The merge is shallow: the whole translation object goes with the one value that changed.
+  const setTranslation = (patch: Partial<Prefs['translation']>) => set({ translation: { ...tr, ...patch } });
   const pickTheme = (theme: Prefs['theme']) => {
     setPickedTheme(theme);
     set({ theme }, () => setPickedTheme((picked) => (picked === theme ? null : picked)));
@@ -94,6 +101,8 @@ export function SettingsApp() {
 
   return (
     <>
+      {/* The window is capped to the display's work area (main/settings-window.ts): what does not fit scrolls here, while the root keeps its own height for main to measure. */}
+      <div className="settings-scroll">
       <div className="settings" data-settings-root="" data-testid="settings-root">
         <section aria-labelledby="g-appearance">
           <h2 className="group-label" id="g-appearance">
@@ -217,6 +226,70 @@ export function SettingsApp() {
               )}
           </section>
         )}
+        <section aria-labelledby="g-translation">
+          <h2 className="group-label" id="g-translation">
+            {t.settings.translation}
+          </h2>
+          <div className="form-group">
+            <div className="form-row">
+              <span className="fr-label">
+                <span id="l-tr-enabled">{t.translation.settingsEnabled}</span>
+                <span className="hint">{t.translation.settingsEnabledHint}</span>
+              </span>
+              {/* Not asked yet (null): neither segment is chosen, and what follows waits like it does while off. */}
+              <Segmented
+                aria-labelledby="l-tr-enabled"
+                testId="settings-translation-enabled"
+                value={tr.enabled === null ? '' : tr.enabled ? 'on' : 'off'}
+                onChange={(v) => setTranslation({ enabled: v === 'on' })}
+                options={[
+                  { value: 'on', label: t.translation.on, testId: 'settings-translation-enabled-on' },
+                  { value: 'off', label: t.translation.off, testId: 'settings-translation-enabled-off' },
+                ]}
+              />
+            </div>
+            <div className={cx('form-row', !trOn && 'is-disabled')}>
+              <span className="fr-label">
+                <span id="l-tr-auto">{t.translation.settingsAuto}</span>
+                <span className="hint">{t.translation.settingsAutoHint}</span>
+              </span>
+              <Segmented
+                aria-labelledby="l-tr-auto"
+                testId="settings-translation-auto"
+                isDisabled={!trOn}
+                value={tr.autoOnSelect ? 'on' : 'off'}
+                onChange={(v) => setTranslation({ autoOnSelect: v === 'on' })}
+                options={[
+                  { value: 'on', label: t.translation.on, testId: 'settings-translation-auto-on' },
+                  { value: 'off', label: t.translation.off, testId: 'settings-translation-auto-off' },
+                ]}
+              />
+            </div>
+            <div className={cx('form-row', !trOn && 'is-disabled')}>
+              <span className="fr-label">{t.translation.settingsDirection}</span>
+              <div className="row-actions center">
+                <MenuButton
+                  label={fromName(tr.from)}
+                  isDisabled={!trOn}
+                  placement="bottom end"
+                  items={FROM_OPTIONS.map((v) => ({ id: v, label: fromName(v), checked: v === tr.from }))}
+                  onAction={(from) => setTranslation({ from: from as typeof tr.from })}
+                  testId="settings-translation-from"
+                />
+                <Icon icon={ArrowRight} size="sm" />
+                <MenuButton
+                  label={langName(tr.to) ?? ''}
+                  isDisabled={!trOn}
+                  placement="bottom end"
+                  items={TO_OPTIONS.map((v) => ({ id: v, label: langName(v)!, checked: v === tr.to }))}
+                  onAction={(to) => setTranslation({ to: to as typeof tr.to })}
+                  testId="settings-translation-to"
+                />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
       </div>
       {/* Demo recordings only (main sets demo=1 for LEARN_DEMO_OVERLAY=1 in an unpackaged build); fixed, outside the
           measured root. */}

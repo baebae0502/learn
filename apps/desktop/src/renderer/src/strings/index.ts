@@ -15,6 +15,7 @@ import { settings } from './settings';
 import { shell } from './shell';
 import { sheets } from './sheets';
 import { toast } from './toast';
+import { translation } from './translation';
 import { trash } from './trash';
 
-export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize, jobs, trash, check, backup, restore } as const;
+export const t = { common, shell, library, reader, fatal, toast, sheets, palette, settings, drop, inspector, organize, jobs, trash, check, backup, restore, translation } as const;

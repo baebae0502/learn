@@ -143,6 +143,22 @@ describe('createHandle (the single IPC entry point)', () => {
     expect(JSON.stringify(logged)).not.toMatch(/Secret|Users|paper|찾을/);
   });
 
+  it('does not log a cancel or a refusal of translation as an error: they are the product working (final review m-6)', async () => {
+    const debug: unknown[][] = [];
+    vi.spyOn(console, 'debug').mockImplementation((...args: unknown[]) => void debug.push(args));
+    const handle = createHandle(null);
+    handle(Channels.library.detail, itemIdInput, () => {
+      throw new LearnError('CANCELLED', '취소했습니다.');
+    });
+    handle(Channels.library.trash, z.object({ itemIds: z.array(z.string()) }), () => {
+      throw new LearnError('TRANSLATION_DISABLED', '번역을 사용하지 않습니다.');
+    });
+    expect(await call(Channels.library.detail, { itemId: ITEM })).toMatchObject({ ok: false, code: 'CANCELLED' });
+    expect(await call(Channels.library.trash, { itemIds: [ITEM] })).toMatchObject({ ok: false, code: 'TRANSLATION_DISABLED' });
+    expect(logged).toEqual([]);
+    expect(debug).toEqual([['[ipc] library:detail failed: CANCELLED'], ['[ipc] library:trash failed: TRANSLATION_DISABLED']]);
+  });
+
   it('wraps the handler result (sync or async) in an ok Result and passes the parsed input', async () => {
     const handle = createHandle(null);
     const seen: unknown[] = [];

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { acceleratorLabel, platformAccelerator } from '../../packages/domain/src/accelerator';
-import { COMMANDS, NO_LIBRARY_VIEW, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
+import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandLabel, type CommandContextState, type MenuName } from '../../packages/domain/src/commands';
 import { CHANNEL_KINDS } from '../../apps/desktop/src/main/ipc/channel-kinds';
 import type { WindowKind } from '../../apps/desktop/src/main/window-kinds';
 import {
@@ -32,10 +32,12 @@ const topMenu = (menu: readonly MenuNode[], label: string): MenuNode[] => {
 };
 /** Submenu entries as [role, label]; a separator is ['-', '']. */
 const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'separator' ? '-' : roleOf(n), n.label]);
-/** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin). */
+/** 보기 up to its full-screen item: the palette, the sidebar and item panel toggles (the empty library reports no panel, so the neutral name), the text size group (with ⌘+'s hidden ⌘= twin), the reader's groups. */
 const VIEW_START = [
-  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], ['-', ''],
+  [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
+  // The reader's: how the page fits, the rotation and 쪽 색 ▸ (its rows are the group's, without marks).
+  [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], ['-', ''],
 ];
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
@@ -114,10 +116,12 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
 
     // Registry-driven: each placed command appears exactly once, in its platform menu, with its id, platform label and
     // accelerator, enabled exactly when the shared predicate allows it in the library view.
+    const pageColorRows = new Set<string>(SUBMENUS.find((g) => g.id === 'pageColor')!.commands);
     for (const c of COMMANDS) {
       const hits = all.filter((n) => n.id === c.id);
       if (!c.menu) {
-        expect(hits, `${c.id} is context-menu only`).toHaveLength(0);
+        // The members of 쪽 색 ▸ are rows of that group (the menu bar shows no mark), not placed commands.
+        expect(hits, `${c.id} is context-menu only`).toHaveLength(pageColorRows.has(c.id) ? 1 : 0);
         continue;
       }
       expect(hits, c.id).toHaveLength(1);
@@ -142,7 +146,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
     expect(topMenu(menu, '파일')[0]).toMatchObject({ id: 'file.importManaged', accelerator: 'CmdOrCtrl+O' });
     // The text size group; the second 글자 크게 is ⌘+'s hidden ⌘= twin (menuSnapshot does not carry `visible`).
     expect(entries(topMenu(menu, '보기'))).toEqual([...VIEW_START, IS_MAC ? [null, '전체 화면 시작'] : ['togglefullscreen', '전체 화면']]);
-    // 정렬 기준 ▸ (spec 5.2): off in the empty library, its rows drawn from the default sort and the five default columns.
+    // 정렬 기준 ▸ (spec 5.2): off in the empty library, its rows drawn from the default sort and the six default columns.
     const sort = all.find((n) => n.id === 'library.sortBy')!;
     expect(sort).toMatchObject({ label: '정렬 기준', enabled: false });
     expect(sort.submenu!.map((n) => (n.type === 'separator' ? ['-'] : [n.id, n.label, n.type, n.checked]))).toEqual([
@@ -151,11 +155,12 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
       ['library.sortBy?column=year', '연도', 'radio', false],
       ['library.sortBy?column=type', '종류', 'radio', false],
       ['library.sortBy?column=createdAt', '추가일', 'radio', true],
+      ['library.sortBy?column=progress', '진행', 'radio', false],
       ['-'],
       ['library.sortBy?direction=asc', '오름차순', 'radio', false],
       ['library.sortBy?direction=desc', '내림차순', 'radio', true],
     ]);
-    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기']]);
+    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리로 돌아가기'], [null, '쪽으로 이동…']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
         ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기']]
@@ -239,7 +244,7 @@ test('menu command 라이브러리로 돌아가기 returns from the PDF viewer t
     await importOnePdf(page);
     await openItem(page, 'sample');
     await expect(page.getByTestId('viewer-title')).toHaveText('sample');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     await runMenuCommand(app, 'nav.back');
     await expect(page.getByTestId('library-table')).toBeVisible();
     await expect(page.getByTestId('viewer-title')).toHaveCount(0);
@@ -256,7 +261,7 @@ test('item context menu: right-click a row, pick 열기 → the viewer opens; �
     await stubContextMenu(app, '열기');
     await page.getByTestId('item-row').click({ button: 'right' });
     await expect(page.getByTestId('viewer-title')).toHaveText('sample');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     // Exactly one native popup (the row's preventDefault keeps the edit context menu away), with the registry items.
     const popups = await recordedPopups(app);
     expect(popups).toHaveLength(1);
@@ -324,6 +329,9 @@ test('menu: 편집 carries the native edit roles with Korean labels', async ({},
       ['selectall', '모두 선택'],
       ['-', ''],
       [null, '빠른 검색'],
+      [null, '다음 찾기'],
+      [null, '이전 찾기'],
+      [null, '선택한 글로 찾기'],
     ]);
   } finally {
     await app.close();

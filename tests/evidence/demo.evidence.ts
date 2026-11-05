@@ -1,7 +1,7 @@
-// @demo — a 3–4 minute macOS screen recording of the M6 work (a big folder imported with its progress toast, more put in
-// while it runs, 취소, the duplicate question with one answer for the rest, the trash with 실행 취소, the trash view's 복원 and
-// 영구 삭제, 중복 정리, 백업, 복원 up to its result sheet, and the library check on a leftover temporary file) with a chapter list
-// (m6-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen,
+// @demo — a 3–4 minute macOS screen recording of the M7a work (the English paper opened, a sentence selected, the consent in the
+// pop-up, the pop-up's translation, 이어 붙이기 in the panel, ⌘F, the outline, rotation and zoom, the sepia page colour, the same
+// place after quitting, the 진행 column) on the fake translation engine, with a chapter list
+// (m7a-demo.chapters.raw.txt / .json; the trimmed video's own list comes from finish-demo.sh), a caption per chapter on screen,
 // and the chapters embedded in the video afterwards (scripts/finish-demo.sh on the server, scripts/record-demo-linux.sh on
 // Linux). Elsewhere (Linux CI) the same script runs at 1/10 pace, unrecorded.
 //
@@ -31,19 +31,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
-import { commandById, commandLabel, type CommandId } from '../../packages/domain/src/commands';
+import { type CommandId } from '../../packages/domain/src/commands';
 import { motion } from '../../apps/desktop/src/renderer/src/design/tokens';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, ROOT, bringAppToFront, clickToCloseSheet, drag, dropSource, expectWindow, importFiles, importPause, importQueueState, importResume, importWaiting,
-  launch, nativeKeyCode, nativeKeystroke, osascript, osascriptLimits, rowAt, rowByTitle, runMenuCommand, specialRow, stubFolderPicker, stubFolderPicks, waitImportIdle,
+  FIXTURES, NativeInputNotPermitted, ROOT, bringAppToFront, importFiles,
+  launch, nativeKeyCode, nativeKeystroke, osascriptLimits, rowByTitle, runMenuCommand, selectInPage, waitImportIdle,
   type KeyModifier, type LaunchOptions, type Session,
 } from '../e2e/helpers';
 import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recording, type Recording, type StoppableRecording } from './capture';
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
-import { captionBottom, captionSpot, parkSpot as parkAt } from './demo-geometry';
+import { captionBottom, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
 import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron } from './demo-mac';
-import { PDF_FOOTER, writeDemoMedia } from './demo-media';
+import { PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
 
@@ -74,18 +74,9 @@ const GRAB = (() => {
   const m = IS_MAC ? null : /^(\d+)x(\d+)\+(\d+),(\d+)$/.exec(process.env['LEARN_DEMO_GRAB'] ?? '');
   return m ? { width: Number(m[1]), height: Number(m[2]), x: Number(m[3]), y: Number(m[4]) } : null;
 })();
+/** The English paper the reader chapters open (fixtures/generated/paper-100.pdf, copied under a readable name). */
+const PAPER_TITLE = 'Attention Is All You Need';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-/** The platform's add-to-selection modifier for a click (⌘ on macOS, Ctrl elsewhere). */
-const MOD = IS_MAC ? 'Meta' : 'Control';
-/** The size of a copy in the demo's big folder: sized so that 30 of them take a while to hash and place. */
-const FILLER_BYTES = 1_000_000;
-/** A PDF of about FILLER_BYTES that differs from every other by its name (a comment after %%EOF, then blanks); returns its path. */
-function fillerPdf(file: string, base: Buffer): string {
-  const tag = Buffer.from(`\n% Learn demo ${path.basename(file)}\n`);
-  fs.writeFileSync(file, Buffer.concat([base, tag, Buffer.alloc(Math.max(0, FILLER_BYTES - base.length - tag.length), 0x20)]));
-  return file;
-}
-
 /**
  * One way to take the recording. Mac run 39779536146 lost it: screencapture exited 8 s in, at 1600 × 900 ("capture
  * error"), while the same image recorded 280 s in that mode before (run 39729419115) and 10 s at 1024 × 768 later the
@@ -186,13 +177,10 @@ const STOP_MS = 30_000;
  * consecutive F6 stops) may be read together with their pill.
  */
 const afterKey = (pressedAt: number, result = 2500) => sleep(Math.max(0, pressedAt + (PILL_GONE_MS + result) * PACE - Date.now()));
-/** The caption of a chapter that opens a sheet: two lines left of the sheet (final critique minor 5: it hid the caption's end). */
-const SHEET_CAPTION_WIDTH = 400;
 /** T13R2-m3: a caption stays as long as it takes to read at 12 characters a second, 3.5–6.5 s. */
 const captionMs = (text: string) => Math.min(6500, Math.max(3500, Math.round((text.length / 12) * 1000)));
 /** A shortcut as this platform's menus write it (⌘O on macOS, Ctrl+O elsewhere). */
 const key = (accelerator: string) => acceleratorLabel(accelerator, process.platform);
-const label = (id: CommandId) => commandLabel(commandById(id), process.platform);
 const errorText = (e: unknown) => (e instanceof Error ? `${e.name}: ${e.message.split('\n')[0]}` : String(e));
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
@@ -285,8 +273,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   const overlayClashes: string[] = [];
   let s: Session | null = null;
   let rec: Recording | null = null;
-  /** The slowed imports of chapters 1–3 that are still going: an attempt that ends early stops them before it closes the app. */
-  const slowRuns = new Set<{ stop(): Promise<void> }>();
   /** x11grab recordings end when told; macOS screencapture after RECORD_SECONDS. */
   let stopRec: StoppableRecording['stop'] | null = null;
   let started = Date.now();
@@ -343,9 +329,9 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
 
   try {
     s = await launch(libraryDir, userData, launchOptions);
-    const app = s.app;
-    onRestore('the app (closing it)', () => app.close());
-    const page = s.page;
+    let app = s.app;
+    onRestore('the app (closing it)', () => app.close().catch(() => {}));
+    let page = s.page;
     // The study material, printed by Chromium in the launched app before anything is recorded; if printing fails or
     // takes too long, fixture copies under the same names (a note says so; the demo stays the same).
     const media = await writeDemoMedia(materialDir, printPdfWith(app), (text) => notes.push(text));
@@ -373,21 +359,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       expect((screen as { window: unknown }).window, 'the window fills the recorded region').toEqual(want);
       expect((screen as { content: unknown }).content, 'the page fills the window (frameless)').toEqual(want);
     }
-
-    // ---- the files the chapters bring in, written before anything is recorded -------------------------------------------
-    // Files the chapters bring in, written before anything is recorded: folder A (30 files: the demo's own notes and
-    // sized copies), a handful dropped while it runs, folder C (the import that is cancelled).
-    const sampleBytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
-    const folderOf = (name: string, prefix: string, count: number) => {
-      const dir = path.join(materialDir, name);
-      fs.mkdirSync(dir, { recursive: true });
-      return Array.from({ length: count }, (_, i) => fillerPdf(path.join(dir, `${prefix} ${String(i + 1).padStart(2, '0')}.pdf`), sampleBytes));
-    };
-    const realNotes = [...media.drop, media.read, ...media.extra];
-    const folderA = [...realNotes, ...folderOf('강의 폴더', '생명과학 강의 노트', 30 - realNotes.length)];
-    const dropped = folderOf('추가 자료', '추가 자료', 4);
-    const folderC = folderOf('실험 보고서', '실험 보고서', 24);
-    expect(folderA).toHaveLength(30);
 
     // ---- input helpers -------------------------------------------------------------------------------------------
     const settingsPages: Page[] = [];
@@ -575,25 +546,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       lastCaptioned = 'target' in where ? where : { target: where };
       await caption(lastCaptioned, title, holdMs);
     };
-    /**
-     * Where a settings chapter is captioned (mac1 m3, concern 4; demo-geometry.ts): in the main window (it shows a
-     * caption while not key) where the settings window leaves its caption box free, else there at a narrower width,
-     * left of the settings window; only when even that leaves no room, at the top of the settings window. A chapter
-     * that clicks a theme tile (`clicksTiles`) then has it under the tiles, never over 외관 or a tile.
-     */
-    const captionFor = async (settings: Page, opts: { clicksTiles?: boolean } = {}): Promise<Captioned> => {
-      // Its bounds once it is shown: before that it still has the height it was created with (measured, then sized).
-      await expect
-        .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && x.webContents.getURL().includes('window=settings') && x.isVisible())))
-        .toBe(true);
-      const [m, w] = await Promise.all([originOf('main'), originOf('settings')]);
-      const spot = captionSpot(m, w, await mainCaptionBottom());
-      if (spot.target === 'main') return { target: page, ...(spot.maxWidth !== undefined ? { maxWidth: spot.maxWidth } : {}) };
-      notes.push('a settings chapter is captioned in the settings window (it covers the main window\'s caption room)');
-      if (!opts.clicksTiles) return { target: settings, place: 'top' };
-      const tiles = (await settings.locator('.theme-tiles').boundingBox())!;
-      return { target: settings, place: 'top', top: Math.round(tiles.y + tiles.height + 12) };
-    };
     /** The lasting "스크립트로 재현" tag while a scripted gesture is on screen (T13R2-m3). */
     const scriptedTag = async (text: string | null) => {
       await page.evaluate((detail) => dispatchEvent(new CustomEvent('learn:demo-tag', { detail })), text);
@@ -632,91 +584,49 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       input[how === 'menu' ? 'menu' : 'native']++;
       return at;
     };
-    const rows = page.getByTestId('item-row');
-    /** A settings window or a sheet is on screen (the settings window may wait hidden beforehand). */
-    const windowUp = (kind: 'settings' | 'sheet') => () =>
-      app.evaluate(({ BrowserWindow }, kind) => BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes(`window=${kind}`)), kind);
-    /**
-     * Native popups (the collection and tag menus, the item menu) as the camera should see them: on macOS the real menu opens
-     * and stays up for a moment, then the script picks the row (its own click(), as stubContextMenu does) — a path of labels
-     * down the submenus (['색 지정', '1 노랑']) — and closes the menu; the chapter's caption says the pick is scripted. Elsewhere
-     * nothing is drawn and the pick is at once. A popup with no pick waiting closes after 1.5 s: no menu is ever left open on camera.
-     */
-    await app.evaluate(({ Menu }, show) => {
-      interface LiveItem { label: string; enabled: boolean; visible: boolean; submenu?: { items: LiveItem[] }; click(): void }
-      const g = globalThis as { __learnDemoPick?: { path: string[]; holdMs: number } | null; __learnDemoMenuSteps?: number | null; __learnRealPopup?: Electron.Menu['popup'] };
-      g.__learnRealPopup ??= Menu.prototype.popup;
-      const real = g.__learnRealPopup;
-      Menu.prototype.popup = function popup(this: Electron.Menu, options?: Electron.PopupOptions) {
-        const pick = g.__learnDemoPick ?? null;
-        g.__learnDemoPick = null;
-        let level = this.items as unknown as LiveItem[];
-        let target: LiveItem | undefined;
-        for (const name of pick?.path ?? []) {
-          target = level.find((i) => i.label === name && i.enabled && i.visible);
-          if (!target) break;
-          level = target.submenu?.items ?? [];
-        }
-        if (target?.submenu) target = undefined; // a path that ends on a submenu's head picks nothing
-        // How many arrow-downs lead from the row under the pointer (the first one a keyboard can reach) to the target:
-        // the rows between them in this menu's template, separators and rows that are disabled or hidden not counted.
-        const reachable = (this.items as unknown as Array<LiveItem & { type?: string }>).filter((i) => i.type !== 'separator' && i.enabled && i.visible);
-        g.__learnDemoMenuSteps = target && (pick?.path.length ?? 0) === 1 ? Math.max(0, reachable.indexOf(target)) : 0;
-        if (show) real.call(this, options);
-        setTimeout(() => {
-          target?.click();
-          if (show) this.closePopup();
-          else options?.callback?.();
-        }, show ? (pick?.holdMs ?? 1500) : 0);
-      };
-    }, IS_MAC);
-    /** The row (a label, or a path of labels down the submenus) the next native popup picks, after showing itself `holdMs` on macOS. */
-    const pickFromNextPopup = (itemLabel: string | readonly string[], holdMs = 2200) =>
-      app.evaluate((_electron, p) => {
-        const g = globalThis as { __learnDemoPick?: unknown; __learnDemoMenuSteps?: number | null };
-        g.__learnDemoPick = p;
-        g.__learnDemoMenuSteps = null;
-      }, {
-        path: typeof itemLabel === 'string' ? [itemLabel] : [...itemLabel],
-        holdMs: Math.round(holdMs * PACE),
-      });
-    /**
-     * macOS: moves the open native menu's highlight from the row under the pointer down to the row the pick is about to
-     * take, with real arrow-down presses, so the menu shows the row the chapter talks about. Nothing elsewhere (no menu is
-     * drawn). A key macOS refuses or that fails is a note: the pick still happens, only without the highlight.
-     */
-    const highlightPickedRow = async () => {
-      if (!IS_MAC) return;
-      const deadline = Date.now() + 3000;
-      let steps: number | null = null;
-      while (steps === null && Date.now() < deadline) {
-        steps = await app.evaluate(() => (globalThis as { __learnDemoMenuSteps?: number | null }).__learnDemoMenuSteps ?? null);
-        if (steps === null) await sleep(100);
-      }
-      if (steps === null) return void notes.push('the item menu did not open in time to move its highlight');
-      try {
-        for (let i = 0; i < steps; i++) await nativeKeyCode(app, KEY_CODE.down);
-      } catch (e) {
-        notes.push(`the item menu's highlight stayed where it was (${errorText(e)})`);
-      }
-    };
-
     if (IS_MAC) await bringAppToFront(app);
     await drawFor(page);
     await park(page, 'main');
+    // ---- the library, filled before anything is recorded -------------------------------------------------------------
+    // The demo's own study notes and the English paper (copied under a readable name), put in through the import path as a
+    // user would (the file panel is skipped), then two of the notes read — one to its last page, one to its second — so the
+    // 진행 column of the last chapter has something to show. None of this is on camera.
+    const paper = path.join(materialDir, `${PAPER_TITLE}.pdf`);
+    fs.copyFileSync(path.join(FIXTURES, 'paper-100.pdf'), paper);
+    const progressOf = (title: string) =>
+      page.evaluate(async (t) => {
+        const r = await window.learn.library.list();
+        return r.ok ? (r.data.find((i) => i.title === t)?.progress ?? 0) : 0;
+      }, title);
+    await importFiles(s, [...media.drop.filter((f) => f.endsWith('.pdf')), media.read, ...media.extra, paper]);
+    await waitImportIdle(page);
+    await expect(page.getByTestId('import-done')).toHaveCount(0, { timeout: 15_000 });
+    for (const [title, toLast] of [[READ_TITLE, true], [PALETTE_TITLE, false]] as const) {
+      await rowByTitle(page, title).dblclick();
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+      const total = Number((await page.getByTestId('pdf-page-count').innerText()).replace(/\D/g, ''));
+      const field = page.getByTestId('pdf-page-field');
+      await field.fill(String(toLast ? total : 2));
+      await field.press('Enter');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', String(toLast ? total : 2));
+      await expect.poll(() => progressOf(title), { timeout: 15_000 }).toBeGreaterThan(0.4);
+      await page.getByTestId('viewer-back').click();
+      await expect(page.getByTestId('library-table')).toBeVisible();
+    }
+    await park(page, 'main');
     if (GRAB) {
-      const x11 = await startX11Recording(GRAB, 'm6-demo', 'M6 demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
+      const x11 = await startX11Recording(GRAB, 'm7a-demo', 'M7a demo (Linux, Pretendard, no native chrome)', RECORD_SECONDS + 120);
       recordingStartMs = Date.now(); // ffmpeg has opened the screen and its file
       rec = x11;
       stopRec = () => x11.stop();
     } else if (plan.capture === 'screencast') {
       // The last resort: the main window's page through CDP (no native chrome, menus, sheets or Finder in it).
-      const cast = await startScreencast(page, 'm6-demo', 'M6 demo: the main window page only (CDP screencast)');
+      const cast = await startScreencast(page, 'm7a-demo', 'M7a demo: the main window page only (CDP screencast)');
       recordingStartMs = Date.now();
       stopRec = () => cast.stop();
       notes.push('the recording is the main window page only (CDP screencast): screencapture was lost three times');
     } else {
-      rec = startRecording(RECORD_SECONDS, 'm6-demo', 'M6 demo (3–4 min)');
+      rec = startRecording(RECORD_SECONDS, 'm7a-demo', 'M7a demo (3–4 min)');
       const recordingFrom = Date.now();
       if (rec.file) {
         // Not for a skipped one (Linux CI). An exit before the demo has ended is a lost recording, with or without a
@@ -734,278 +644,173 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     started = Date.now();
 
-    const importToast = page.getByTestId('import-progress');
-    const importDone = page.getByTestId('import-done');
-    const queueDone = async () => (await importQueueState(app)).done;
-    /**
-     * Slows an import to a pace a viewer can follow: each file waits `eachMs` at the importer's commit point (the E2E
-     * pause hook), the first one longer so the progress toast, which shows once a run has taken a second, is up before
-     * the captions are read. It ends by itself when the run does.
-     */
-    const slowImport = (startMs: number, firstMs = Math.max(1400, 2500 * PACE)) => {
-      let on = true;
-      let eachMs = startMs;
-      const loop = (async () => {
-        let seenBusy = false;
-        let first = true;
-        const began = Date.now();
-        while (on) {
-          await importPause(app, 'beforeCommit');
-          let held = false;
-          for (let i = 0; i < 80 && on; i++) {
-            if (await importWaiting(app)) {
-              held = true;
-              break;
-            }
-            const state = (await importQueueState(app)).state;
-            if (state !== 'idle') seenBusy = true;
-            else if (seenBusy || Date.now() - began > 4000) break;
-            await sleep(25);
-          }
-          if (!held) {
-            if (!on || seenBusy || Date.now() - began > 4000) break;
-            continue;
-          }
-          seenBusy = true;
-          await sleep(first ? firstMs : eachMs * PACE);
-          first = false;
-          await importResume(app);
-        }
-        await importPause(app, null);
-        await importResume(app);
-      })();
-      // The loop runs on its own while the chapters go on: an app that is closed under it (a lost recording ends the attempt)
-      // must reach whoever stops it, not the process as an unhandled rejection, which fails the test and so ends the retries.
-      const ended = loop.then(
-        () => null,
-        (e: unknown) => ({ error: e }),
-      );
-      const run = {
-        each: (ms: number) => void (eachMs = ms),
-        stop: async () => {
-          on = false;
-          const result = await ended;
-          if (result) throw result.error;
-        },
-      };
-      slowRuns.add(run);
-      return run;
+    notes.push('the selection of a sentence is scripted (a range over the text layer); the pointer and the clicks are real, the file panel is not used (the library is filled before the recording)');
+    const viewer = page.getByTestId('pdf-viewer');
+    const popup = page.getByTestId('selection-popup');
+    const S3 = 'We propose a new simple network architecture.';
+    const K3 = '우리는 새롭고 간단한 네트워크 아키텍처를 제안합니다.';
+    const S4 = 'It is based solely on attention mechanisms.';
+    const K4 = '이는 주의 메커니즘에만 기반을 두고 있습니다.';
+    const S1 = 'Attention is all you need.';
+    const K1 = '주의가 필요한 전부입니다.';
+    const readerReady = async () => {
+      await expect(viewer).toHaveAttribute('data-pages', /^[1-9]/);
+      await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached(); // the text layer is drawn after the canvas
     };
-    /** A chapter whose point is a sheet: the caption is read in full and goes, then the sheet comes (as chapter 16 of the M5 demo did). */
-    const sheetChapter = async (title: string, open: () => Promise<unknown>): Promise<Page> => {
-      await chapter(title, { target: page, maxWidth: SHEET_CAPTION_WIDTH }, 60_000);
-      await glide(page, 'main', 120, (await page.evaluate(() => innerHeight)) - 240);
-      await pause(captionMs(title));
-      await caption({ target: page }, '');
-      await expect(page.getByTestId('demo-caption')).toHaveCount(0, { timeout: 2000 });
-      return expectWindow(app, 'sheet', open);
+    /** A selection the user lets go of, and the pop-up with it. */
+    const unselect = async () => {
+      await page.evaluate(() => getSelection()!.removeAllRanges());
+      await expect(popup).toHaveCount(0);
     };
-    const itemRow = (index: number) => rowAt(page, index);
-    const tableToTop = () => page.getByTestId('library-scroller').evaluate((e) => void (e.scrollTop = 0));
-    const titleAt = async (index: number) => (await itemRow(index).getAttribute('data-title'))!;
-    /** What the toolbar counts, as text. */
-    const rowCount = async () => (await page.getByTestId('toolbar-count').innerText()).replace(/\s+/g, ' ');
-    notes.push('the imports of chapters 1–3 are slowed by the E2E pause hook so that the progress can be read; the file panels are stubbed');
+    /** The sentence is picked in the text layer (scripted: the caption says so), the pointer resting where the drag would end. */
+    const pickSentence = async (sentence: string) => {
+      const line = page.locator('.page[data-page-number="1"] .textLayer span', { hasText: sentence.slice(0, 20) }).first();
+      const box = (await line.boundingBox())!;
+      await glide(page, 'main', box.x + box.width * 0.9, box.y + box.height / 2);
+      await scriptedTag('선택은 스크립트로 재현');
+      await selectInPage(page, sentence);
+      await pause(600);
+      await scriptedTag(null);
+    };
 
-    // 1. A big folder: 30 files in one go; past a second the progress toast appears, with the count and the bar.
-    await chapter('폴더 하나에 든 파일 30개를 한꺼번에 가져옵니다. 가져오는 동안 토스트가 진행을 보여 줍니다. (파일 선택 창은 건너뛰고, 진행이 보이게 가져오기를 일부러 늦춥니다)', page, 5500);
+    // 1. The English paper opens: thumbnails on the left, the panel on the right.
+    await chapter('영어로 쓴 논문 PDF를 엽니다. 왼쪽에는 쪽 목록이, 오른쪽에는 번역과 항목 정보가 있는 패널이 열립니다.');
     await pause(1500);
-    let slow = slowImport(500);
-    await importFiles(s!, folderA);
-    await expect(importToast).toBeVisible({ timeout: 15_000 });
-    await expect(importToast).toContainText('가져오는 중');
+    await glideClick(page, 'main', rowByTitle(page, PAPER_TITLE));
+    await pause(700);
+    await rowByTitle(page, PAPER_TITLE).dblclick();
+    await readerReady();
     await park(page, 'main');
-    await expect.poll(queueDone, { timeout: 60_000 }).toBeGreaterThanOrEqual(6);
-    await pause(1500);
-
-    // 2. The window stays usable and more can be put in: the whole count grows.
-    await chapter('가져오는 중에도 창을 그대로 쓸 수 있고, 파일을 더 놓으면 전체 수가 늘어납니다. (끌기는 스크립트로 재현합니다)');
-    // The run is still bringing rows in at the top while the pointer glides (slower on the Mac runner): the row is followed by its title.
-    const picked = rowByTitle(page, await titleAt(0));
-    await glideClick(page, 'main', picked);
-    await expect(picked).toHaveAttribute('aria-selected', 'true');
-    slow.each(900); // the drop below must land while the run is still going
-    await pause(1200);
-    const { w: mainW, h: mainH } = await page.evaluate(() => ({ w: innerWidth, h: innerHeight }));
-    const totalBefore = (await importQueueState(app)).total;
-    await dropSource(page, dropped);
-    await glide(page, 'main', 14, mainH * 0.55);
-    await drag(page, 'dragenter', 'source');
-    await expect(page.getByTestId('drop-overlay')).toHaveAttribute('data-mode', 'copy');
-    await scriptedTag('스크립트로 재현');
-    await glide(page, 'main', mainW * 0.5, mainH * 0.78);
-    await pause(2200);
-    await scriptedTag(null);
-    await drag(page, 'drop', 'source');
-    await expect.poll(async () => (await importQueueState(app)).total).toBe(totalBefore + dropped.length);
-    await park(page, 'main');
-    slow.each(200);
-    await waitImportIdle(page);
-    await slow.stop();
-    await expect(importDone).toContainText('자료 34개를 가져왔습니다');
-    await pause(2800);
-    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
-
-    // 3. 취소: what is already in stays, the rest is dropped.
-    await chapter('토스트의 ‘취소’를 누르면 남은 파일은 가져오지 않고, 이미 들어온 자료는 그대로 둡니다.');
-    await pause(1000);
-    slow = slowImport(500);
-    await importFiles(s!, folderC);
-    await expect(importToast).toBeVisible({ timeout: 15_000 });
-    await expect.poll(queueDone, { timeout: 60_000 }).toBeGreaterThanOrEqual(7);
-    await glideClick(page, 'main', page.getByTestId('import-cancel'));
-    await expect(importDone).toContainText('개 중');
-    await slow.stop();
-    await waitImportIdle(page);
-    await park(page, 'main');
-    await pause(3500);
-    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
-
-    // 4. The same file again: a sheet asks; one answer for the rest of the duplicates.
-    const again = [media.read, media.drop[0]!, media.drop[1]!];
-    const dupSheet = await sheetChapter(
-      '이미 있는 파일을 다시 가져오면 시트가 묻습니다. ‘남은 중복 파일에도 같은 선택 적용’이 처음부터 켜져 있어 한 번만 답하면 됩니다. (파일 선택 창은 건너뜁니다)',
-      () => importFiles(s!, again),
-    );
-    await expect(dupSheet.getByRole('checkbox', { name: '남은 중복 파일 2개에도 같은 선택 적용' })).toBeChecked();
-    await pause(8000);
-    // 그래도 추가: the copies are what chapter 7 cleans up.
-    await clickToCloseSheet(dupSheet, dupSheet.getByTestId('dup-add'));
-    await waitImportIdle(page);
-    await park(page, 'main');
-    await expect(importDone).toContainText('자료 3개를 가져왔습니다');
-    await pause(3500);
-    await expect(importDone).toHaveCount(0, { timeout: 10_000 });
-
-    // 5. 휴지통으로 이동 and 실행 취소.
-    await chapter(`${key('CmdOrCtrl+Backspace')} 키로 고른 자료를 휴지통으로 옮기고, 토스트의 ‘실행 취소’로 되돌립니다.`);
-    await glideClick(page, 'main', specialRow(page, 'all'));
-    await tableToTop();
-    await pause(800);
-    const firstTitle = await titleAt(0);
-    await glideClick(page, 'main', itemRow(0));
-    await glideClick(page, 'main', itemRow(1), { modifiers: [MOD] });
-    await pause(1200);
-    const countBefore = await rowCount();
-    const trashAt = await press('Backspace', ['command'], 'item.trash', async () => (await page.getByTestId('trash-undo').count()) > 0, KEY_CODE.delete);
-    await expect(page.getByTestId('trash-undo')).toContainText('자료 2개를 휴지통으로 옮겼습니다');
-    await afterKey(trashAt, 0); // the toast closes by itself after 5 s: the glide to 실행 취소 starts once the key's pill has gone
-    await glideClick(page, 'main', page.getByTestId('trash-undo').getByTestId('undo-action'));
-    await expect(page.getByTestId('trash-undo')).toHaveCount(0);
-    await expect.poll(rowCount).toBe(countBefore);
-    expect(await titleAt(0)).toBe(firstTitle);
-    await park(page, 'main');
-    await pause(3500);
-    // Three others go for the next chapter (no caption: it is the set-up); the copies of chapter 4 stay for chapter 7.
-    const toTrash = [await titleAt(3), await titleAt(4), await titleAt(5)];
-    for (const title of toTrash) expect(again.map((f) => path.basename(f, '.pdf')), 'a row of chapter 7 stays').not.toContain(title);
-    await glideClick(page, 'main', itemRow(3));
-    await glideClick(page, 'main', itemRow(5), { modifiers: ['Shift'] });
-    await pause(900);
-    await press('Backspace', ['command'], 'item.trash', async () => (await page.getByTestId('trash-undo').count()) > 0, KEY_CODE.delete);
-    await expect(page.getByTestId('trash-undo')).toContainText('자료 3개를 휴지통으로 옮겼습니다');
-    await expect(specialRow(page, 'trash')).toBeVisible();
-    await park(page, 'main');
-    await pause(2800);
-
-    // 6. The trash view: 복원, and 영구 삭제 behind a sheet.
-    await chapter('휴지통 보기에서 자료를 복원하거나 영구히 삭제합니다. 영구 삭제는 시트가 먼저 묻습니다. (메뉴 고르기는 스크립트로 재현합니다)', page, 5500);
-    await glideClick(page, 'main', specialRow(page, 'trash'));
-    await expect(rows).toHaveCount(3);
-    await pause(2500);
-    await pickFromNextPopup(label('item.restore'));
-    await glideClick(page, 'main', rowByTitle(page, toTrash[0]!), { button: 'right' });
-    await expect(page.getByTestId('restore-done')).toBeVisible();
-    await expect(rows).toHaveCount(2);
-    await park(page, 'main');
-    await pause(3000);
-    await expect(page.getByTestId('restore-done')).toHaveCount(0, { timeout: 10_000 });
-    await glideClick(page, 'main', rowByTitle(page, toTrash[1]!));
-    await pause(1200);
-    const purgeSheet = await expectWindow(app, 'sheet', () =>
-      press('Backspace', ['command'], 'item.trash', windowUp('sheet'), KEY_CODE.delete),
-    );
-    await expect(purgeSheet.getByTestId('purge-title')).toBeVisible();
     await pause(4500);
-    await clickToCloseSheet(purgeSheet, purgeSheet.getByTestId('purge-confirm'));
-    await expect(page.getByTestId('purge-done')).toBeVisible();
-    await expect(rows).toHaveCount(1);
-    await park(page, 'main');
-    await pause(3000);
-    await pause(1000);
-    await expect(page.getByTestId('purge-done')).toHaveCount(0, { timeout: 10_000 });
 
-    // 7. 중복 정리: the item menu's 하나만 남기고 휴지통으로 (above 휴지통으로 이동 in the real menu on macOS), then 모두 정리.
-    await chapter(
-      `중복 항목에서 행을 오른쪽 클릭하면 ‘${label('duplicates.keepOne')}’가 ‘${label('item.trash')}’ 바로 위에 있습니다. 남은 묶음은 ‘모두 정리’ 한 번으로 끝냅니다. (메뉴 고르기는 스크립트로 재현합니다)`,
-      page,
-      6500,
-    );
-    await glideClick(page, 'main', specialRow(page, 'duplicates'));
-    await expect(rows).toHaveCount(6);
-    await expect(page.getByTestId('kept-mark')).toHaveCount(3);
-    await pause(3000);
-    await pickFromNextPopup(label('duplicates.keepOne'), 5500);
-    await glideClick(page, 'main', page.locator('[data-testid="item-row"]:not(:has([data-testid="kept-mark"]))').first(), { button: 'right' });
-    await highlightPickedRow();
-    await expect(page.getByTestId('undo-toast')).toContainText('중복 항목 1개를 휴지통으로 옮겼습니다');
-    await expect(rows).toHaveCount(4);
-    await park(page, 'main');
-    await pause(3000);
-    await expect(page.getByTestId('keep-all-duplicates')).toHaveText('중복 2묶음 모두 정리');
-    await glideClick(page, 'main', page.getByTestId('keep-all-duplicates'));
-    await expect(page.getByTestId('undo-toast').last()).toContainText('중복 항목 2개를 휴지통으로 옮겼습니다');
-    await expect(specialRow(page, 'duplicates')).toHaveCount(0);
-    await park(page, 'main');
+    // 2. A sentence is selected; the pop-up asks first (consent), the panel asks the same.
+    await chapter('문장을 고르면 선택한 글 옆에 팝업이 뜹니다. 아직 번역을 켜지 않았으므로 팝업이 먼저 묻습니다. (고르기는 스크립트로 재현합니다)', page, 5500);
+    await pause(800);
+    await pickSentence(S1);
+    await expect(popup).toHaveAttribute('data-state', 'consent');
     await pause(5000);
 
-    // 8. 백업 만들기…
-    fs.mkdirSync(backups, { recursive: true });
-    fs.mkdirSync(restores, { recursive: true });
-    await stubFolderPicker(app, backups);
-    const backupDone = await sheetChapter(
-      `‘${label('file.backup')}’\u2060는 라이브러리를 폴더 하나로 복사하고, 끝나면 결과를 시트로 알립니다. (폴더 선택 창은 건너뜁니다)`,
-      () => runMenuCommand(app, 'file.backup'),
-    );
-    await expect(backupDone.getByTestId('backup-title')).toHaveText('백업을 만들었습니다');
-    await expect(backupDone.getByTestId('backup-files')).toContainText('손상 없음');
-    await pause(7000);
-    await clickToCloseSheet(backupDone, backupDone.getByTestId('backup-done'));
-    await park(page, 'main');
-    await pause(1500);
+    // 3. Consent: nothing is sent before it.
+    await chapter('‘번역 켜기’를 누르면 그때부터 선택한 글을 Google로 보내 번역합니다. 동의하기 전에는 아무것도 보내지 않습니다.', page, 5500);
+    await glideClick(page, 'main', popup.getByTestId('consent-enable'));
+    await expect(popup).toHaveAttribute('data-state', 'done');
+    await expect(page.getByTestId('translation-result')).toHaveText(K1);
+    await pause(4500);
 
-    // 9. 백업에서 복원…: a new folder, the result sheet; switching libraries restarts the app, so the demo stops at the sheet.
-    const backupFolder = path.join(backups, fs.readdirSync(backups)[0]!);
-    await stubFolderPicks(app, [backupFolder, restores]);
-    const restoreDone = await sheetChapter(
-      `‘${label('file.restore')}’\u2060은 백업을 새 폴더로 복원하고 결과를 보여 줍니다. 라이브러리를 바꾸면 앱이 다시 시작되므로, 데모는 결과 시트에서 멈춥니다. (폴더 선택 창은 건너뜁니다)`,
-      () => runMenuCommand(app, 'file.restore'),
-    );
-    await expect(restoreDone.getByTestId('restore-title')).toHaveText('백업을 복원했습니다');
-    await expect(restoreDone.getByTestId('restore-files')).toContainText('손상 없음');
-    await pause(8000);
-    await clickToCloseSheet(restoreDone, restoreDone.getByTestId('restore-later'));
-    await park(page, 'main');
-    await pause(1500);
+    // 4. The pop-up translates what is selected from now on.
+    await chapter('이제 글을 고를 때마다 팝업이 번역을 보여 주고, 같은 번역이 오른쪽 패널에도 남습니다. (고르기는 스크립트로 재현합니다)', page, 5500);
+    await unselect();
+    await pause(600);
+    await pickSentence(S3);
+    await expect(popup).toHaveAttribute('data-state', 'done');
+    await expect(popup).toContainText(K3);
+    await pause(5500);
 
-    // 10. The check sheet on a library that holds one leftover temporary file (an import that stopped half way). Planted
-    // here, not before launch, so the automatic check does not open ahead of chapter 1; the sheet opens by its menu command.
-    notes.push('chapter 10: a leftover .part file is planted just before the check, which opens by its menu command');
-    fs.writeFileSync(path.join(libraryDir, 'staging', 'demo-import.part'), Buffer.alloc(48 * 1024, 7));
-    const checkSheet = await sheetChapter(
-      `‘${label('file.checkLibrary')}’\u2060은 가져오다 멈춘 임시 파일 같은 것을 찾아 보여 주고, 지울지는 사용자가 정합니다. (임시 파일 하나를 미리 남겨 두었습니다)`,
-      () => runMenuCommand(app, 'file.checkLibrary'),
-    );
-    const stagingRow = checkSheet.locator('[data-testid="check-row"][data-kind="staging"]');
-    await expect(stagingRow).toBeVisible();
-    await pause(5000);
-    await checkSheet.getByTestId('check-cleanStaging').click();
-    await expect(stagingRow).toHaveAttribute('data-state', 'done');
+    // 5. 이어 붙이기 in the panel: the next sentence goes under the first, the translation holds both.
+    await chapter('패널의 ‘이어 붙이기’를 켜면 다음에 고른 문장이 원문 아래에 붙고, 번역은 두 문장을 함께 다룹니다. (고르기는 스크립트로 재현합니다)', page, 6500);
+    await glideClick(page, 'main', page.getByTestId('translation-concat'));
+    await expect(page.getByTestId('translation-concat').locator('input')).toBeChecked();
+    await unselect();
+    await pause(500);
+    await pickSentence(S4);
+    await expect(page.getByTestId('translation-source')).toHaveValue(`${S3}\n${S4}`);
+    await expect(page.getByTestId('translation-result')).toContainText(K4);
+    await park(page, 'main');
+    await pause(5500);
+
+    // 6. 찾기: ⌘F, a word, the next results.
+    await chapter(`${key('CmdOrCtrl+F')}로 찾기 막대를 열고 단어를 입력하면 문서 전체의 결과 수가 세어지고, 다음 결과로 넘어갈 수 있습니다.`, page, 5500);
+    await unselect();
+    const findAt = await press('f', ['command'], 'library.find', async () => (await page.getByTestId('pdf-find-bar').count()) > 0);
+    await expect(page.getByTestId('pdf-find-field').getByRole('searchbox')).toBeFocused();
+    await afterKey(findAt, 600);
+    await page.keyboard.type('attention', { delay: 140 * PACE });
+    await expect(page.getByTestId('pdf-find-count')).toHaveText(/^1 \/ \d+$/);
+    await pause(2500);
+    await glideClick(page, 'main', page.getByTestId('pdf-find-next'));
+    await glideClick(page, 'main', page.getByTestId('pdf-find-next'));
+    await expect(page.getByTestId('pdf-find-count')).toHaveText(/^3 \/ \d+$/);
     await pause(3500);
-    await clickToCloseSheet(checkSheet, checkSheet.getByTestId('check-done'));
-    expect(fs.readdirSync(path.join(libraryDir, 'staging')).filter((n) => n.endsWith('.part'))).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);
     await park(page, 'main');
-    await pause(6000);
+    await pause(1500);
+
+    // 7. 목차: the segment, a chapter.
+    await chapter('왼쪽의 ‘목차’로 바꾸면 PDF의 목차가 나오고, 장을 누르면 그 쪽으로 이동합니다.', page, 5000);
+    await glideClick(page, 'main', page.getByTestId('reader-nav-outline'));
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await pause(2500);
+    await glideClick(page, 'main', page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first());
+    await expect(viewer).toHaveAttribute('data-page', '21');
+    await park(page, 'main');
+    await pause(3500);
+
+    // 8. Rotation and zoom.
+    await chapter(`${key('CmdOrCtrl+R')}로 쪽을 돌리고, 확대 메뉴에서 배율을 고릅니다.`, page, 5000);
+    const rotateAt = await press('r', ['command'], 'reader.rotateCw', async () => (await viewer.getAttribute('data-rotation')) === '90');
+    await expect(viewer).toHaveAttribute('data-rotation', '90');
+    await afterKey(rotateAt);
+    const rotateBack = await press('l', ['command'], 'reader.rotateCcw', async () => (await viewer.getAttribute('data-rotation')) === '0');
+    await expect(viewer).toHaveAttribute('data-rotation', '0');
+    await afterKey(rotateBack, 1200);
+    await glideClick(page, 'main', page.getByTestId('pdf-zoom-menu'));
+    await pause(1500);
+    await glideClick(page, 'main', page.getByRole('menuitemradio', { name: '150%' }));
+    await expect(viewer).toHaveAttribute('data-scale', '1.5');
+    await park(page, 'main');
+    await pause(3500);
+
+    // 9. Page colour: 세피아.
+    await chapter('보기 메뉴의 ‘쪽 색’에서 세피아를 고르면 눈이 덜 피로한 종이색으로 바뀝니다.', page, 5000);
+    await glideClick(page, 'main', page.getByTestId('pdf-view-menu'));
+    await pause(1500);
+    await glideClick(page, 'main', page.getByRole('menuitemradio', { name: '세피아' }));
+    await expect(viewer).toHaveAttribute('data-page-color', 'sepia');
+    await park(page, 'main');
+    await pause(4500);
+
+    // 10. Quit and open again: the same place (page, zoom, colour). The app is closed and started again on the same library.
+    notes.push('chapter 10: the app is closed and started again once on the same library and settings (a new window; the recording goes on)');
+    await chapter('앱을 종료했다가 다시 열고 같은 논문을 열면, 읽던 쪽과 배율과 쪽 색이 그대로입니다. (앱을 한 번 닫았다가 다시 엽니다)', page, 6000);
+    await pause(3000);
+    await expect.poll(() => progressOf(PAPER_TITLE)).toBeGreaterThan(0.15); // the place is saved (page 21 of 100)
+    const scaleBefore = await viewer.getAttribute('data-scale');
+    await app.close();
+    s = await launch(libraryDir, userData, launchOptions);
+    app = s.app;
+    onRestore('the app (closing it again)', () => app.close());
+    page = s.page;
+    await drawFor(page);
+    await park(page, 'main');
+    // The new window has its own overlay, which starts empty: the caption is shown again here.
+    await caption({ target: page }, '앱을 종료했다가 다시 열고 같은 논문을 열면, 읽던 쪽과 배율과 쪽 색이 그대로입니다.', 5000);
+    await pause(2500);
+    await glideClick(page, 'main', rowByTitle(page, PAPER_TITLE));
+    await pause(500);
+    await rowByTitle(page, PAPER_TITLE).dblclick();
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', '21');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-scale', scaleBefore!);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'sepia');
+    await park(page, 'main');
+    await pause(5500);
+
+    // 11. The library's 진행 column: how far each item has been read.
+    await chapter('목록의 ‘진행’ 열에는 자료마다 어디까지 읽었는지가 보이고, 끝까지 읽은 자료에는 ‘완료’가 표시됩니다.', page, 5500);
+    await glideClick(page, 'main', page.getByTestId('viewer-back'));
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await pause(1000);
+    const progressHeader = page.locator('[data-testid="column-header"][data-col="progress"]');
+    await glideClick(page, 'main', progressHeader);
+    if ((await progressHeader.getAttribute('aria-sort')) !== 'descending') await glideClick(page, 'main', progressHeader);
+    await expect(progressHeader).toHaveAttribute('aria-sort', 'descending');
+    await expect(page.getByTestId('progress-done').first()).toBeVisible();
+    await expect(page.getByTestId('progress-cell').first()).toBeVisible();
+    await park(page, 'main');
+    await pause(6500);
 
     demoSeconds = Math.round((Date.now() - started) / 100) / 10;
     stopIfLost(); // an exit that came during the last pause
@@ -1031,8 +836,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       (e: unknown) => ({ file: null, error: errorText(e) }),
     );
     loss = recordingLoss({ capture: GRAB ? 'x11grab' : plan.capture, end: entry, early: lostRecording });
-    // A slowed import still going (the attempt ended inside chapters 1–3) is let go before the app is closed under it.
-    await within(Promise.all([...slowRuns].map((r) => r.stop().catch(() => {}))), RESTORE_MS, 'stopping the slowed import').catch((e: unknown) => notes.push(errorText(e)));
     await runRestores(notes);
     osascriptLimits.timeoutMs = osascriptBefore;
     fs.rmSync(userData, { recursive: true, force: true });
@@ -1049,8 +852,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           : 0;
     const inVideo = (c: { ms: number }) => Math.max(0, Math.floor(c.ms / 1000 - offset));
     const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-    const txt = outFile('m6-demo.chapters.raw.txt');
-    const json = outFile('m6-demo.chapters.json');
+    const txt = outFile('m7a-demo.chapters.raw.txt');
+    const json = outFile('m7a-demo.chapters.json');
     fs.writeFileSync(txt.abs, chapters.map((c) => `${mmss(inVideo(c))} ${c.title}`).join('\n') + '\n');
     fs.writeFileSync(
       json.abs,
@@ -1068,8 +871,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             'chapters[].ms': "milliseconds on the demo script's clock (zero = the first chapter's start)",
             offset: "seconds from that zero to the raw recording's first frame",
             demoSeconds: "seconds on the script's clock",
-            'm6-demo.chapters.raw.txt': 'the raw recording (m6-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
-            'm6-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
+            'm7a-demo.chapters.raw.txt': 'the raw recording (m7a-demo.mov / .mp4): ms / 1000 − offset; late on the trimmed file',
+            'm7a-demo.final.* and its .chapters.txt/.json': 'the trimmed video that viewers watch: scripts/finish-demo.sh writes them, with the cut head and the Mac file length applied',
           },
           /** Seconds from the chapters' zero to the recording's first frame: a chapter is at `ms / 1000 − offset` in the raw video. */
           offset,
@@ -1093,8 +896,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         2,
       )}\n`,
     );
-    record({ file: txt.rel, kind: 'data', description: 'M6 demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
-    record({ file: json.rel, kind: 'data', description: 'M6 demo chapters, offset, input, cursor, screen, display switch, notes' });
+    record({ file: txt.rel, kind: 'data', description: 'M7a demo chapter list on the RAW recording timeline (the trimmed video has its own list from finish-demo.sh)' });
+    record({ file: json.rel, kind: 'data', description: 'M7a demo chapters, offset, input, cursor, screen, display switch, notes' });
     mergeEnv({ displayModes: savedDisplayModes(), displaySwitch: display.result });
   }
   if (loss) return { lost: loss };
@@ -1104,7 +907,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
   return { lost: null };
 }
 
-test('M6 demo recording with chapters', { tag: '@demo' }, async () => {
+test('M7a demo recording with chapters', { tag: '@demo' }, async () => {
   test.setTimeout(DEMO_BUDGET_MS + 60_000);
   const began = Date.now();
   const history: string[] = [];
@@ -1119,7 +922,7 @@ test('M6 demo recording with chapters', { tag: '@demo' }, async () => {
     }
   }
   // Every attempt lost its recording: the last attempt's chapters.json carries the history; the run reports it.
-  const json = outFile('m6-demo.chapters.json').abs;
+  const json = outFile('m7a-demo.chapters.json').abs;
   try {
     const written = JSON.parse(fs.readFileSync(json, 'utf8')) as { notes: string[] };
     fs.writeFileSync(json, `${JSON.stringify({ ...written, notes: [...history, ...written.notes.filter((n) => !history.includes(n))] }, null, 2)}\n`);

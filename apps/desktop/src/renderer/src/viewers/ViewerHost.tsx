@@ -9,10 +9,11 @@ import { useLearnEvent } from '../events';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/Notice';
-import { PdfViewer } from './PdfViewer';
 import { MissingNotice } from './ReaderNotices';
 import { readerLost, trashedAfter, type TrashedState } from './readerState';
 import { TrashedNotice } from './TrashedNotice';
+import { PdfReader } from './pdf/PdfReader';
+import { useReader, type NoPages } from './pdf/readerStore';
 import { VideoViewer } from './VideoViewer';
 
 /** Picks the reader or the notice for one item. Relink and back go through the registry; the cache follows libraryChanged. */
@@ -36,6 +37,13 @@ export function ViewerHost({ itemId }: { itemId: string }) {
   // frame can paint at once (the dark video stage, the PDF reader's strip and sunken stage) instead of the empty white
   // column (T13-m6). Nothing else is decided from the cache.
   const cachedType = useQueryClient().getQueryData<LibraryItem[]>(keys.items)?.find((x) => x.id === itemId)?.type;
+  // What the reader's sidebar says about the pages: gone with the trash, or nothing to show here (a video, a lost or missing file).
+  const noPages: NoPages | null =
+    trashed !== 'no' ? 'trashed' : !item.isFetchedAfterMount ? null : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf' ? 'none' : null;
+  useEffect(() => {
+    useReader.getState().setNoPages('host', noPages);
+    return () => useReader.getState().setNoPages('host', null);
+  }, [noPages]);
   if (trashed !== 'no') return <TrashedNotice itemId={itemId} />;
   if (!item.isFetchedAfterMount) return <ReaderFrame type={cachedType} />; // transient: one IPC round trip
   if (readerLost(item)) {
@@ -66,7 +74,7 @@ export function ViewerHost({ itemId }: { itemId: string }) {
     if (linkedMissing && detail.isPending) return <div className="reader-stage" aria-hidden="true" />;
     return <MissingNotice item={item.data} externalPath={detail.data?.file.externalPath ?? null} />;
   }
-  return item.data.type === 'pdf' ? <PdfViewer key={item.data.id} item={item.data} /> : <VideoViewer key={item.data.id} item={item.data} />;
+  return item.data.type === 'pdf' ? <PdfReader key={item.data.id} item={item.data} /> : <VideoViewer key={item.data.id} item={item.data} />;
 }
 
 /**

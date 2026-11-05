@@ -75,7 +75,7 @@ beforeEach(() => {
 describe('sheets are opened over the main window only', () => {
   it('ui.showShortcuts shows the ⌘/ sheet over the main window', async () => {
     expect(await invoke('ui:showShortcuts', MAIN)).toEqual({ ok: true, data: undefined });
-    expect(opened).toEqual([{ kind: 'shortcuts' }]);
+    expect(opened).toEqual([{ kind: 'shortcuts', view: 'library' }]);
   });
   it('any other window (a sheet, the settings window) is PERMISSION_DENIED and opens nothing', async () => {
     for (const from of [SHEET, SETTINGS]) expect(await invoke('ui:showShortcuts', from)).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });

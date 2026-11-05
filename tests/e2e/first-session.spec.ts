@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { FIXTURES, launch, mainWindow, openItem, stubOpenDialog } from './helpers';
+import { FIXTURES, launch, mainWindow, openItem, pdfCanvas, setPdfZoom, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -53,8 +53,8 @@ async function toggleFullscreen(app: ElectronApplication, page: Page, video: Loc
   await exiting;
 }
 
-async function inkedPixels(page: Page): Promise<{ dark: number; white: number }> {
-  return page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => {
+async function inkedPixels(page: Page, pageNumber = 1): Promise<{ dark: number; white: number }> {
+  return pdfCanvas(page, pageNumber).evaluate((c: HTMLCanvasElement) => {
     const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
     let dark = 0;
     let white = 0;
@@ -79,23 +79,23 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
 
   // PDF
   await openItem(page, 'sample');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   const ink = await inkedPixels(page);
   console.log('[measure] pdf page1 ink', JSON.stringify(ink));
   expect(ink.dark).toBeGreaterThan(300);
   expect(ink.white).toBeGreaterThan(10000);
-  await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+  await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
   await page.getByTestId('pdf-next').click();
-  await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[2-9]\d*$/);
-  const rotated = await page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => c.width > c.height);
-  expect(rotated).toBe(true); // page 2 is rotated 90°
+  await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[2-9]\d*$/);
+  // Page 2 is rotated 90°.
+  await expect.poll(() => pdfCanvas(page, 2).evaluate((c: HTMLCanvasElement) => c.width > c.height)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('02-pdf.png') });
   await page.getByTestId('viewer-back').click();
 
   // Korean path PDF
   await openItem(page, '한글 경로 (테스트) #1');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await page.getByTestId('viewer-back').click();
 
   // Video: play + seek accuracy (AC05 target ≤ 500 ms)
@@ -135,7 +135,7 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   ({ app, page } = await launch(lib, ud));
   await expect(page.getByTestId('item-row')).toHaveCount(4);
   await openItem(page, 'sample');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await app.close();
 });
 
@@ -169,12 +169,24 @@ test('PDF zoom levels keep rendering', async ({}, testInfo) => {
   await stubOpenDialog(app, [PDF]);
   await page.getByTestId('import-managed').click();
   await openItem(page, 'sample');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-  const width100 = await page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => c.clientWidth);
-  await page.getByTestId('pdf-zoom').selectOption('2');
-  await expect.poll(() => page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => c.clientWidth)).toBeGreaterThan(width100 * 1.9);
-  await page.getByTestId('pdf-zoom').selectOption('0.5');
-  await expect.poll(() => page.getByTestId('pdf-canvas').evaluate((c: HTMLCanvasElement) => c.clientWidth)).toBeLessThan(width100 * 0.6);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  const widthOf = () => pdfCanvas(page, 1).evaluate((c: HTMLCanvasElement) => c.clientWidth);
+  await setPdfZoom(page, 1);
+  // The width at 100 % once it holds still: a read while pdf.js swaps the page's canvas can see the new one before it is
+  // laid out (0 on Mac run 41837267944, which then compared 0.5 × against 0).
+  let width100 = 0;
+  await expect
+    .poll(async () => {
+      const first = await widthOf();
+      await page.waitForTimeout(100);
+      width100 = (await widthOf()) === first ? first : 0;
+      return width100;
+    })
+    .toBeGreaterThan(0);
+  await setPdfZoom(page, 2);
+  await expect.poll(widthOf).toBeGreaterThan(width100 * 1.9);
+  await setPdfZoom(page, 0.5);
+  await expect.poll(widthOf).toBeLessThan(width100 * 0.6);
   await app.close();
 });
 
@@ -183,17 +195,21 @@ test('rapid page and zoom changes never surface a render error', async ({}, test
   await stubOpenDialog(app, [PDF]);
   await page.getByTestId('import-managed').click();
   await openItem(page, 'sample');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await page.getByTestId('pdf-next').click({ noWaitAfter: true });
   await page.getByTestId('pdf-next').click({ noWaitAfter: true });
   await page.getByTestId('pdf-prev').click({ noWaitAfter: true });
-  await page.getByTestId('pdf-zoom').selectOption('2');
-  await page.getByTestId('pdf-zoom').selectOption('0.5');
-  await page.getByTestId('pdf-zoom').selectOption('1');
-  await expect(page.getByTestId('pdf-page-indicator')).toHaveText('2 / 3쪽');
-  await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+  // The page clicks are the page field's business: settle them before the zoom steps. pdf.js re-scrolls a zoom
+  // change to the last location its scroll events reported, so a zoom fired within a frame of a prev can land a page off.
+  await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
+  await setPdfZoom(page, 2);
+  await setPdfZoom(page, 0.5);
+  await setPdfZoom(page, 1);
+  // After the zooms the page is pdf.js's business: only no error, pages rendered, ink on the page shown.
+  await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await expect(page.getByTestId('pdf-error')).toHaveCount(0);
-  await expect.poll(async () => (await inkedPixels(page)).dark).toBeGreaterThan(300);
+  const shown = Number(await page.getByTestId('pdf-page-field').inputValue());
+  await expect.poll(async () => (await inkedPixels(page, shown)).dark).toBeGreaterThan(300);
   await expect(page.getByTestId('pdf-error')).toHaveCount(0);
   await app.close();
 });

@@ -1,0 +1,186 @@
+@layer screens {
+  /* Selection pop-up (spec 6.1): at most 320 wide and 240 high (the body scrolls), 8 px under the end of the selection
+     (above it when there is no room). It never takes the focus, so the selection stays. */
+  .sel-popup {
+    position: absolute;
+    z-index: 10; /* local: above the page layers inside the scroller, under the find bar (20) so the bar is never covered */
+    display: flex;
+    flex-direction: column;
+    width: 320px; /* local: the pop-up's width (spec 6.1) */
+    max-width: calc(100% - var(--space-16));
+    max-height: 240px; /* local: the pop-up's height (spec 6.1) */
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--text-primary);
+  }
+  .sel-popup.is-compact {
+    width: max-content;
+  }
+  .sel-popup .sp-body {
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--space-12) var(--space-12) var(--space-8);
+    font: var(--type-paragraph);
+    user-select: text;
+  }
+  .sel-popup.is-compact .sp-body {
+    padding-bottom: var(--space-12);
+  }
+  .sel-popup .sp-body p {
+    margin: 0;
+  }
+  .sel-popup .sp-body p + p {
+    margin-top: var(--space-8);
+  }
+  .sel-popup .sp-status {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-8);
+  }
+  .sel-popup .sp-status > .icon {
+    flex: none;
+    margin-top: 2px; /* local: centres a 16 px glyph on the first 20 px line */
+    color: var(--text-secondary);
+  }
+  .sel-popup .sp-status > .icon.warning {
+    color: var(--warning-text);
+  }
+  .sel-popup .sp-note {
+    margin-top: var(--space-4);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .sel-popup .sp-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    padding: var(--space-4) var(--space-8) var(--space-8) var(--space-12);
+  }
+  .sel-popup .sp-foot .sp-lang {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .sel-popup .sp-foot .spacer {
+    flex: 1 1 auto;
+  }
+
+  /* The 번역 section of the reader's panel (spec 6.2): first, with no line above it. */
+  .inspector-scroll > .section.tr {
+    border-top: 0;
+  }
+  .section.tr + .item-head {
+    border-top: 1px solid var(--separator);
+  }
+  .tr .section-head .btn {
+    margin-right: -4px; /* local: the button's text on the section's right inset */
+    margin-left: auto;
+  }
+  .tr-label {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-8);
+    margin: var(--space-8) 0 var(--space-4);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tr-label .spacer {
+    flex: 1 1 auto;
+  }
+  .tr-box {
+    display: block;
+    width: 100%;
+    min-height: 76px; /* local: three paragraph lines (3 × 20) and the box's 2 × 8 inset */
+    padding: var(--space-8);
+    border: 0;
+    border-radius: var(--radius-md);
+    font: var(--type-paragraph);
+    color: var(--text-primary);
+    overflow: hidden;
+    user-select: text;
+  }
+  .tr-box.src {
+    resize: none;
+    overflow-y: auto;
+    max-height: 136px; /* local: six paragraph lines and the inset, then the original scrolls in its box */
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    outline: none;
+  }
+  .tr-box.src::placeholder {
+    color: var(--text-tertiary);
+  }
+  .tr-box.src:focus-visible {
+    box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+  }
+  .tr-box.dst {
+    background: var(--bg-sunken);
+  }
+  .tr-box p {
+    margin: 0;
+  }
+  .tr-box p + p {
+    margin-top: var(--space-8);
+  }
+  .tr-box .ph {
+    color: var(--text-tertiary);
+  }
+  .tr-box .loading {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    color: var(--text-secondary);
+  }
+  .tr-note {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-6);
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tr-note .icon {
+    flex: none;
+    margin-top: 2px; /* local: centres the glyph on the first footnote line */
+  }
+  .tr-note .icon.warning {
+    color: var(--warning-text);
+  }
+  .tr-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    margin-top: var(--space-12);
+  }
+  .tr-toggles .checkbox {
+    min-height: 24px; /* local: a 24 px row for a 14 px box */
+    font: var(--type-footnote);
+  }
+  .tr-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    margin-top: var(--space-12);
+  }
+  .tr-actions .spacer {
+    flex: 1 1 auto;
+  }
+  .tr-consent {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+  }
+  .tr-consent p {
+    margin: 0;
+    font: var(--type-paragraph);
+  }
+  .tr-consent .tr-note-text {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  .tr-consent .actions {
+    display: flex;
+    gap: var(--space-8);
+    margin-top: var(--space-4);
+  }
+}

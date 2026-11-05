@@ -101,6 +101,9 @@ export async function checkLibrary(layout: LibraryLayout, repo: LibraryRepositor
   for (const a of managed) {
     if (a.relativePath === null) continue;
     const there = onDisk.has(a.relativePath) || (await fs.access(path.join(layout.root, ...a.relativePath.split('/'))).then(() => true, () => false));
+    // A purge may have removed the row while the disk was read (here or before): asked right before the write, with no
+    // await between, there is nothing left to judge or write for it.
+    if (repo.getAsset(a.id) === undefined) continue;
     if (!there) missingAssets.push(a.id);
     if (!there && a.availability !== 'missing') repo.setAvailability(a.id, 'missing', now);
     if (there && a.availability === 'missing') repo.setAvailability(a.id, 'available', now);

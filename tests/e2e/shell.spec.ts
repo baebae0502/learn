@@ -273,7 +273,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     const library = await top88();
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     const pdf = await top88();
     const pdfWidth = await sidebarWidth(page);
     await runMenuCommand(app, 'nav.back');
@@ -296,7 +296,7 @@ test('layout B invariant: the sidebar top 88 px is pixel-identical in every view
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     const foldedLibrary = await foldedHead();
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     const foldedPdf = await foldedHead();
     for (const [name, shot] of [['library', foldedLibrary], ['pdf', foldedPdf]] as const) expect(shot.equals(foldedVideo), `folded ${name}`).toBe(true);
     // Shown again (from the PDF view): the sidebar top is still the one from the empty library.

@@ -1,0 +1,367 @@
+/* Portions adapted from PDF.js, Copyright 2014 Mozilla Foundation, Apache License 2.0
+ * (https://www.apache.org/licenses/LICENSE-2.0): the viewer, page, canvas wrapper, text layer and link rules of
+ * pdf_viewer.css, with the app's tokens in place of its colours. */
+@layer screens {
+  /* The stage is the positioned box; the viewer's container fills it (pdf.js needs an absolutely positioned container). */
+  .pdf-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: var(--bg-sunken);
+  }
+  /* The ring is an overlay on the stage, which does not scroll: an outline would sit under the scroller and its pages, and show as a
+     line under the toolbar and a stub at the left. Under the pop-up (10) and the find bar (20). */
+  .pdf-stage:focus-visible {
+    outline: none;
+  }
+  .pdf-stage:focus-visible::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5; /* local: over the pages inside the scroller */
+    pointer-events: none;
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus);
+  }
+  .pdf-scroll {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+  }
+  /* Until the saved page is applied the stage is not shown, so the reader never flashes page 1 first. */
+  .pdf-scroll:not([data-restored]) {
+    visibility: hidden;
+  }
+
+  .pdfViewer {
+    --scale-factor: 1;
+    --page-bg-color: var(--page-original-bg);
+    /* The mockup's room round the pages: 24 above the first, beside them and below the last, 12 between (.pdf-scroll gap). */
+    padding: var(--space-24) var(--space-24) var(--space-12);
+  }
+  .pdfViewer .page {
+    --user-unit: 1;
+    --total-scale-factor: calc(var(--scale-factor) * var(--user-unit));
+    --scale-round-x: 1px; /* local: pdf.js */
+    --scale-round-y: 1px; /* local: pdf.js */
+    direction: ltr;
+    position: relative;
+    overflow: visible;
+    width: 816px; /* local: pdf.js sets the real size per page */
+    height: 1056px; /* local: pdf.js sets the real size per page */
+    margin: 0 auto var(--space-12);
+    border: none;
+    background-color: var(--page-bg-color);
+    background-clip: content-box;
+    box-shadow: var(--shadow-page);
+  }
+  .pdfViewer .dummyPage {
+    position: relative;
+    width: 0;
+  }
+
+  .pdfViewer .canvasWrapper {
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+  }
+  .pdfViewer .canvasWrapper canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    contain: content;
+  }
+  /* The page colour (the app theme's, original, sepia or dark): the paper and, as a filter on the drawn page only, the ink.
+     The text layer, the links and the selection above the canvas stay as they are. */
+  .pdfViewer[data-page-color='original'] {
+    --page-bg-color: var(--page-original-bg);
+  }
+  .pdfViewer[data-page-color='sepia'] {
+    --page-bg-color: var(--page-sepia-bg);
+  }
+  .pdfViewer[data-page-color='sepia'] .canvasWrapper canvas {
+    /* Each channel times the paper colour (SepiaFilter): white paper becomes the cream, black ink stays black. A filter and not a blend:
+       pdf.js's opaque detail canvas over a capped page must still cover the page canvas under it. */
+    filter: url('#learn-page-sepia');
+  }
+  .pdfViewer[data-page-color='dark'] {
+    --page-bg-color: var(--page-dark-bg);
+  }
+  .pdfViewer[data-page-color='dark'] .canvasWrapper canvas {
+    filter: invert(0.9) hue-rotate(180deg) brightness(0.95); /* local: page filter */
+  }
+  .pdfViewer .canvasWrapper canvas.detailView {
+    image-rendering: pixelated;
+  }
+  /* The selection pdf.js draws under the text (enableSelectionRendering): the text layer's own is transparent. */
+  .pdfViewer .canvasWrapper .selection {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--focus) 28%, transparent); /* local: a tint over the page image, readable on every page colour */
+  }
+
+  .textLayer {
+    color-scheme: only light;
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    opacity: 1;
+    text-align: initial;
+    line-height: 1;
+    letter-spacing: normal;
+    word-spacing: normal;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+    caret-color: CanvasText;
+    z-index: 0;
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+  }
+  /* A layer is laid out at the page's own size and turned to the viewer's rotation here: pdf.js sets data-main-rotation and leaves the turn to the page's CSS. */
+  .textLayer[data-main-rotation='90'],
+  .annotationLayer[data-main-rotation='90'] {
+    transform: rotate(90deg) translateY(-100%);
+  }
+  .textLayer[data-main-rotation='180'],
+  .annotationLayer[data-main-rotation='180'] {
+    transform: rotate(180deg) translate(-100%, -100%);
+  }
+  .textLayer[data-main-rotation='270'],
+  .annotationLayer[data-main-rotation='270'] {
+    transform: rotate(270deg) translateX(-100%);
+  }
+  .textLayer :is(span, br) {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    user-select: text;
+  }
+  .textLayer > :not(.markedContent),
+  .textLayer .markedContent span:not(.markedContent) {
+    z-index: 1;
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+  .textLayer .markedContent {
+    display: contents;
+  }
+  .textLayer span[role='img'] {
+    user-select: none;
+    cursor: default;
+  }
+  .textLayer .highlight {
+    margin: -1px; /* local: pdf.js grows the highlight by a pixel around its text */
+    padding: 1px; /* local: pdf.js grows the highlight by a pixel around its text */
+    border-radius: var(--radius-xs);
+    background-color: var(--find-match);
+  }
+  .textLayer .highlight.appended {
+    position: initial;
+  }
+  .textLayer .highlight.begin {
+    border-radius: var(--radius-xs) 0 0 var(--radius-xs);
+  }
+  .textLayer .highlight.end {
+    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  }
+  .textLayer .highlight.middle {
+    border-radius: 0;
+  }
+  .textLayer .highlight.selected {
+    background-color: var(--find-match-current);
+    scroll-margin-top: 50px; /* local: pdf.js keeps the current match clear of the stage's edge */
+  }
+  .textLayer ::selection {
+    background: color-mix(in srgb, var(--focus) 28%, transparent); /* local: a tint over the page image */
+    color: transparent;
+  }
+  .textLayer.selectionRendering ::selection {
+    background: transparent;
+    color: transparent;
+  }
+  .textLayer br::selection {
+    background: transparent;
+  }
+  .textLayer .endOfContent {
+    display: block;
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: 0;
+    cursor: default;
+    user-select: none;
+  }
+  .textLayer.selecting .endOfContent {
+    top: 0;
+  }
+
+  .annotationLayer {
+    color-scheme: only light;
+    position: absolute;
+    inset: 0;
+    pointer-events: none; /* the text under it stays selectable; only the links take the pointer */
+    transform-origin: 0 0;
+  }
+  .annotationLayer section {
+    position: absolute;
+    text-align: initial;
+    pointer-events: auto;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    user-select: none;
+  }
+  .textLayer.selecting ~ .annotationLayer section {
+    pointer-events: none;
+  }
+  .annotationLayer .linkAnnotation > a {
+    position: absolute;
+    inset: 0;
+    font-size: 1em; /* local: pdf.js link anchor */
+    cursor: pointer;
+  }
+
+  /* A page that cannot be drawn: a small notice in its place, the others stay readable. */
+  .pdf-page-error {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: var(--space-8);
+    padding: var(--space-16);
+    color: var(--page-original-muted);
+    text-align: center;
+    font: var(--type-footnote);
+  }
+  .pdf-page-error strong {
+    color: var(--page-original-text);
+    font: var(--type-headline);
+  }
+
+  .reader-toolbar .page-field {
+    width: 48px; /* local: a page number of up to four digits */
+    height: var(--control-height-small);
+    padding: 0 var(--space-6);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-footnote);
+    text-align: center;
+  }
+  .reader-toolbar .page-field:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .reader-toolbar .zoom-field {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .reader-toolbar .zoom-input {
+    width: 56px; /* local: "400%" in 13 pt with its inset */
+    height: var(--control-height-small);
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-body);
+    text-align: center;
+  }
+  .zoom-menu .menu {
+    min-width: 232px; /* local: zoom menu width (design-spec 7.3 mockup) */
+  }
+  .reader-toolbar .zoom-input:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  /* The count takes its text's width (the mockup's "/ 17"), so the page chevrons stand one gap after it. */
+  .reader-toolbar .page-count {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* The mockup's .toolbar-sep: 8 from each neighbour (the toolbar's 4 gap and this 4). */
+  .reader-toolbar .toolbar-sep {
+    flex: none;
+    width: 1px;
+    height: 16px;
+    margin: 0 var(--space-4);
+    background: var(--separator);
+  }
+
+  .password-form {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-8);
+  }
+  .password-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+  .password-input {
+    width: 240px; /* local: the mockup's field width */
+    height: var(--control-height);
+    padding: 0 var(--space-12);
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--bg-field);
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-primary);
+    font: var(--type-body);
+  }
+  .password-input:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
+  }
+  .password-error {
+    color: var(--danger-text);
+    font: var(--type-footnote);
+  }
+
+  /* The find bar (mockup .find-bar): over the stage's top right, above the pages. */
+  .find-bar {
+    position: absolute;
+    z-index: 20; /* local: above the page layers pdf.js stacks inside the scroller */
+    top: var(--space-8);
+    right: calc(var(--space-16) + var(--stage-scrollbar, 0px)); /* 16 from the visible edge: a classic scroll bar is the stage's (PdfReader) */
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+  }
+  .find-bar .find-field {
+    width: 220px; /* local: the field's width in the mockup */
+  }
+  /* The count is the field's last child (mockup .find-bar .count): tabular, and it never wraps or shrinks. Secondary, not the
+     mockup's tertiary: 12 px text keeps 4.5:1, as the library's stats line does. */
+  .find-bar .find-count {
+    flex: none;
+    margin-left: auto;
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .textLayer .highlight.selected {
+    box-shadow: 0 0 0 1.5px var(--accent); /* local: the mockup's ring on the current match */
+  }
+}

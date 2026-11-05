@@ -1,10 +1,13 @@
 import { BrowserWindow, screen } from 'electron';
 import { windowBackground } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, contentHeight, followContentHeight, fontsReady, markSized } from './measure';
+import { settingsContentHeight } from './settings-geometry';
 import { mainStrings } from './strings';
 import { currentTheme } from './theme';
 import { registerWindowKind } from './window-kinds';
 import { trackWindowState } from './window-state';
+
+export { settingsContentHeight };
 
 export const SETTINGS_WIDTH = 600;
 /** Off a main window, the settings window opens this far below its top edge (centred across it). */
@@ -61,6 +64,14 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
   /** A ⌘, came while it was being measured: it shows itself once sized, never unsized. */
   let wanted = false;
   const live = (): BrowserWindow | null => (win && !win.isDestroyed() ? win : null);
+
+  /** The content height this window may have on the display it is going to: its work area less the frame around the content. */
+  function capped(w: BrowserWindow, measured: number): number {
+    const main = deps.main();
+    const near = main && !main.isDestroyed() ? main.getBounds() : w.getBounds();
+    const { workArea } = screen.getDisplayMatching(near);
+    return settingsContentHeight(measured, workArea.height, w.getBounds().height - w.getContentSize()[1]!);
+  }
 
   /** Over the main window as it is now (it may have moved since it was measured), inside that display's work area. */
   function place(w: BrowserWindow): void {
@@ -151,7 +162,7 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         // that never renders still shows within the first measurement's 5 s.
         const height = await contentHeight(created.webContents, '[data-settings-root]', rendered, REMEASURE_MS);
         if (created.isDestroyed()) return;
-        created.setContentSize(SETTINGS_WIDTH, height);
+        created.setContentSize(SETTINGS_WIDTH, capped(created, height));
         await markSized(created.webContents);
         if (created.isDestroyed()) return;
         phase = 'ready';
@@ -160,7 +171,7 @@ export function createSettingsWindow(deps: { preload: string; url(): string; mai
         // A message that appears (a refused folder) or goes makes the window as tall as its content again; on macOS the
         // bottom edge slides as AppKit's own windows do (`animate` is ignored elsewhere).
         followContentHeight(created.webContents, '[data-settings-root]', height, (next) => {
-          if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, next, true);
+          if (!created.isDestroyed()) created.setContentSize(SETTINGS_WIDTH, capped(created, next), true);
         });
       })().catch(() => {
         // A window closed mid-measure gets here, and so does one whose renderer died (the call rejects, perhaps before the

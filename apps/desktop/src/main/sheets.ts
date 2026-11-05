@@ -3,27 +3,13 @@ import { BrowserWindow, nativeTheme, type WebContents } from 'electron';
 import { LearnError, commandLabel, type CommandSpec, type SheetAction, type SheetPayload, type SheetResult } from '@learn/domain';
 import { themeHex } from '../renderer/src/design/tokens.generated';
 import { REMEASURE_MS, capHeight, contentHeight, followContentHeight, fontsReady, holdHeight, markSized } from './measure';
+import { SHEET_MARGIN, SHEET_TOP, sheetMaxHeight } from './sheet-geometry';
 import { mainStrings } from './strings';
 import { registerWindowKind } from './window-kinds';
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
-/**
- * Off macOS: 8 px under the 52 px toolbar, centred across the window (design-spec 6 시트). macOS places a sheet itself:
- * centred over the parent window, which it dims (Big Sur and later — every macOS Electron 44 runs on).
- */
-export const SHEET_TOP = 60;
-/** Room kept at each free end of a sheet: below it off macOS, above and below the centred macOS sheet. */
-export const SHEET_MARGIN = 16;
+export { SHEET_MARGIN, SHEET_TOP, sheetMaxHeight };
 
-/**
- * The tallest a sheet may be over a parent `roomHeight` tall before its body scrolls (design-spec 6 시트: as tall as
- * its content). macOS centres the sheet itself (we set no sheet offset), so only a margin at each end is kept there;
- * elsewhere the sheet hangs SHEET_TOP down. Critic T12-m1: the ⌘/ sheet (743) fits the default window of a
- * 1440 × 900 Mac with the Dock (about 806 tall).
- */
-export function sheetMaxHeight(roomHeight: number, platform: NodeJS.Platform): number {
-  return Math.max(160, roomHeight - (platform === 'darwin' ? 2 * SHEET_MARGIN : SHEET_TOP + SHEET_MARGIN));
-}
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
 /** Room the library check keeps below its parent's height (P-26: at most the parent's height − 120, the list scrolls). */
 export const CHECK_SHEET_ROOM = 120;
 /** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap; the backup and restore result sheets grow by their reveal error line. */

@@ -290,34 +290,29 @@ test('a right click selects the collection first and opens its menu — the spec
   }
 });
 
-test('in the reader the sidebar is the way back: a row returns to the library at that collection, and moving the cursor changes no view', async ({}, testInfo) => {
+test('in the reader the sidebar lists the pages, not the collections; the way back is the toolbar and the command, and the library sidebar returns with it', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [pdf] = await importPaths(page, [PDF]);
     const a = await createCollection(page, '가');
     await addToCollection(page, a, [pdf!.id]);
-    await openItem(page, pdf!.title);
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
-    await specialRow(page, 'all').focus();
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId('viewer-title')).toBeVisible(); // still the reader
-    await runMenuCommand(app, 'nav.back');
-    await expect(title(page)).toHaveText('내 라이브러리'); // the cursor moved, the view did not
-    await openItem(page, pdf!.title);
-    await treeRow(page, a).click();
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
-    await expect(title(page)).toHaveText('가');
-    await expect(page.getByTestId('item-row')).toHaveCount(1);
-    // ↩ on a collection row is the way back too, not a rename (renaming is for the library view).
     await specialRow(page, 'all').click();
     await openItem(page, pdf!.title);
     await expect(page.getByTestId('viewer-title')).toBeVisible();
-    await treeRow(page, a).focus();
-    await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
-    await expect(page.getByTestId('rename-input')).toHaveCount(0);
+    await expect(page.getByTestId('reader-sidebar')).toBeVisible();
+    await expect(page.getByTestId('sidebar-tree')).toHaveCount(0);
+    await expect(specialRow(page, 'all')).toHaveCount(0);
+    await runMenuCommand(app, 'nav.back');
+    await expect(title(page)).toHaveText('내 라이브러리');
+    await expect(page.getByTestId('reader-sidebar')).toHaveCount(0);
+    await expect(treeRow(page, a)).toBeVisible();
+    // The way back leaves the view where it was: a collection stays the one shown.
+    await treeRow(page, a).click();
+    await openItem(page, pdf!.title);
+    await expect(page.getByTestId('reader-sidebar')).toBeVisible();
+    await page.getByTestId('viewer-back').click();
     await expect(title(page)).toHaveText('가');
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
   } finally {
     await app.close();
   }

@@ -15,6 +15,7 @@ const { registerSettingsIpc } = await import('./settings');
 let stored: Prefs = { ...DEFAULT_PREFS };
 const written: Array<[string, unknown]> = [];
 const changed = vi.fn();
+const cancelTranslation = vi.fn();
 registerSettingsIpc(
   createHandle(null),
   stubDeps({
@@ -24,6 +25,7 @@ registerSettingsIpc(
       set: (patch: Partial<Prefs>) => (stored = { ...stored, ...patch }),
     } as never,
     theme: { changed, shown: () => {} },
+    translation: { translate: async () => { throw new Error('not stubbed'); }, cancel: cancelTranslation },
   }),
 );
 const MAIN_PAGE = fakeSender(1, 'main');
@@ -38,6 +40,18 @@ describe('prefs.set and the theme (T13R4-m1)', () => {
     expect(changed.mock.calls).toEqual([['dark']]);
     expect(await invoke({ theme: 'dark', fontSize: 14 })).toMatchObject({ ok: true });
     expect(changed).toHaveBeenCalledTimes(1); // the same theme again: nothing to follow
+  });
+});
+
+describe('prefs.set and the translation in flight (final review m-5)', () => {
+  it('ends the request in flight when translation is not on after the set, and leaves it when it is', async () => {
+    cancelTranslation.mockClear();
+    expect(await invoke({ translation: { ...DEFAULT_PREFS.translation, enabled: true } })).toMatchObject({ ok: true });
+    expect(cancelTranslation).not.toHaveBeenCalled();
+    expect(await invoke({ translation: { ...DEFAULT_PREFS.translation, enabled: false } })).toMatchObject({ ok: true });
+    expect(cancelTranslation).toHaveBeenCalledTimes(1);
+    expect(await invoke({ translation: { ...DEFAULT_PREFS.translation, enabled: null } })).toMatchObject({ ok: true });
+    expect(cancelTranslation).toHaveBeenCalledTimes(2);
   });
 });
 

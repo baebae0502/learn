@@ -36,7 +36,7 @@ function over(d: Pixels['data'], i: number, k: number, fallback: readonly number
   return d[i + k]! * alpha + fallback[k]! * (1 - alpha);
 }
 
-/** A pixel translucent in both shots whose composite moved by no more than this is a soft edge (anti-aliasing at a rounded corner). */
+/** A pixel of a tolerant compare (a translucent shot) whose composite moved by no more than this is a soft edge (anti-aliasing at a rounded corner or a glyph's edge), opaque or not. */
 export const SOFT_EDGE_STEP = 48;
 /** How many soft-edge pixels a pair of shots may have: a corner's few pixels, never a moved outline. */
 export const SOFT_EDGE_PIXELS = 8;
@@ -46,9 +46,9 @@ export const SOFT_EDGE_PIXELS = 8;
  * is translucent; then both are laid over `fallback` (the sidebar's opaque colour without vibrancy, as RGB) and each
  * colour channel may differ by `TRANSLUCENT_TOLERANCE`. A pixel whose alpha moves far (a glyph that moved) still
  * fails, because the composite then moves by the glyph's contrast. Beyond that, a few soft-edge pixels pass (see
- * `SOFT_EDGE_PIXELS`): the renderer draws a rounded corner's anti-aliased edge with an alpha that differs between
- * two views of the same layout. They must be translucent in both shots and move by at most `SOFT_EDGE_STEP`; more of
- * them than the allowance, a larger step, or any difference at a pixel opaque in either shot fails as before.
+ * `SOFT_EDGE_PIXELS`): the renderer draws a rounded corner's anti-aliased edge (or a glyph's) with an alpha that
+ * differs between two views of the same layout. They must move by at most `SOFT_EDGE_STEP`, opaque or not; more of
+ * them than the allowance, or a larger step, fails as before.
  */
 export function compareShots(a: Pixels, b: Pixels, fallback: readonly number[] | null): ShotCompare {
   const tolerant = fallback !== null && (isTranslucent(a) || isTranslucent(b));
@@ -62,7 +62,7 @@ export function compareShots(a: Pixels, b: Pixels, fallback: readonly number[] |
     else for (let k = 0; k < 4; k++) delta = Math.max(delta, Math.abs(a.data[i + k]! - b.data[i + k]!));
     if (delta === 0 || (tolerant && delta <= TRANSLUCENT_TOLERANCE)) continue;
     steps[i / 4] = delta;
-    (tolerant && delta <= SOFT_EDGE_STEP && a.data[i + 3]! < 255 && b.data[i + 3]! < 255 ? soft : failing).push(i);
+    (tolerant && delta <= SOFT_EDGE_STEP ? soft : failing).push(i);
   }
   const counted = soft.length > SOFT_EDGE_PIXELS ? [...failing, ...soft].sort((m, n) => m - n) : failing;
   let maxDelta = 0;
@@ -77,4 +77,18 @@ export function compareShots(a: Pixels, b: Pixels, fallback: readonly number[] |
     if (first === '') first = `first at ${px},${py}: ${Array.from(a.data.slice(i, i + 4))} vs ${Array.from(b.data.slice(i, i + 4))}`;
   }
   return { count: counted.length, maxDelta, box: counted.length === 0 ? null : { x0, y0, x1, y1 }, first, differs };
+}
+
+/**
+ * The sidebar's opaque colour as the page resolved it: `css` is the probe element's computed background (the token
+ * `--bg-sidebar` is a `light-dark()` value, which a canvas cannot parse by itself) and `rgba` the pixel a canvas
+ * painted with `css`. A canvas keeps its default fill, opaque black, for a value it cannot parse, so black, a
+ * transparent or an empty answer is a bug in the probe and never a colour to compare against.
+ */
+export function sidebarFallback(css: string, rgba: readonly number[]): [number, number, number] {
+  const [r, g, b, a] = rgba;
+  if (css.trim() === '' || rgba.length < 4 || ![r, g, b, a].every((v) => Number.isFinite(v) && v! >= 0 && v! <= 255)) throw new Error(`the sidebar colour did not resolve: computed "${css}", pixel ${JSON.stringify(rgba)}`);
+  if (a !== 255) throw new Error(`the sidebar colour "${css}" is not opaque (alpha ${a}): no fallback to compare over`);
+  if (r === 0 && g === 0 && b === 0) throw new Error(`the sidebar colour "${css}" resolved to black: a canvas that cannot parse a value stays black`);
+  return [r!, g!, b!];
 }

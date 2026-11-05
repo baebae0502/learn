@@ -33,7 +33,7 @@ const radios = async (app: ElectronApplication): Promise<string[]> => {
   const head = flatten(await menuSnapshot(app)).find((n) => n.id === 'library.sortBy');
   return (head?.submenu ?? []).map((n) => (n.type === 'separator' ? '-' : `${n.label}${n.checked ? ' ○' : ''}`));
 };
-const DEFAULT_RADIOS = ['제목', '저자', '연도', '종류', '추가일 ○', '-', '오름차순', '내림차순 ○'];
+const DEFAULT_RADIOS = ['제목', '저자', '연도', '종류', '추가일 ○', '진행', '-', '오름차순', '내림차순 ○'];
 
 test('보기 › 정렬 기준 ▸ sorts the table by a shown column and a direction; its radios follow the sort and the columns, whoever changed them', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
@@ -46,12 +46,12 @@ test('보기 › 정렬 기준 ▸ sorts the table by a shown column and a direc
     await runMenuCommand(app, 'library.sortBy', { column: 'title' });
     await expect(header(page, 'title')).toHaveAttribute('aria-sort', 'descending');
     expect(await order(page)).toEqual(['gamma', 'delta', 'beta', 'alpha']);
-    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '진행', '-', '오름차순', '내림차순 ○']);
 
     await runMenuCommand(app, 'library.sortBy', { direction: 'asc' });
     await expect(header(page, 'title')).toHaveAttribute('aria-sort', 'ascending');
     expect(await order(page)).toEqual(['alpha', 'beta', 'delta', 'gamma']);
-    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '-', '오름차순 ○', '내림차순']);
+    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '진행', '-', '오름차순 ○', '내림차순']);
     await expect.poll(() => setting(page, 'library.sort')).toEqual({ column: 'title', direction: 'asc' });
 
     // The header sorts too (dates start newest first): the radios follow it.
@@ -63,12 +63,12 @@ test('보기 › 정렬 기준 ▸ sorts the table by a shown column and a direc
     await stubContextMenu(app, '크기');
     await header(page, 'year').click({ button: 'right' });
     await expect(header(page, 'size')).toBeVisible();
-    await expect.poll(() => radios(app)).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '크기', '-', '오름차순', '내림차순 ○']);
+    await expect.poll(() => radios(app)).toEqual(['제목', '저자', '연도', '종류', '추가일 ○', '크기', '진행', '-', '오름차순', '내림차순 ○']);
     await runMenuCommand(app, 'library.sortBy', { column: 'size' });
     await expect(header(page, 'size')).toHaveAttribute('aria-sort', 'descending');
     await header(page, 'year').click({ button: 'right' });
     await expect(header(page, 'size')).toHaveCount(0);
-    await expect.poll(() => radios(app)).toEqual(['제목', '저자', '연도', '종류', '추가일', '크기 ○', '-', '오름차순', '내림차순 ○']);
+    await expect.poll(() => radios(app)).toEqual(['제목', '저자', '연도', '종류', '추가일', '크기 ○', '진행', '-', '오름차순', '내림차순 ○']);
   } finally {
     await app.close();
   }
@@ -89,14 +89,14 @@ test('the menu bar is not rebuilt under an open menu: the radios wait for it to 
     await runMenuCommand(app, 'library.sortBy', { column: 'title' });
     await expect(header(page, 'title')).toHaveAttribute('aria-sort', 'descending'); // the click landed at once
     // Electron flips a clicked radio in place, in the open menu too: that is why the test tells a rebuild by the object.
-    expect(await radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    expect(await radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '진행', '-', '오름차순', '내림차순 ○']);
     // Main has the new context (the rebuild is asked for) before the wait starts, so the wait really covers the guard.
     await expect.poll(() => app.evaluate(() => (globalThis as { __learnMenuContext?: { sortColumn: string } }).__learnMenuContext?.sortColumn)).toBe('title');
     await page.waitForTimeout(500); // five rebuild delays
     expect(await rebuilt()).toBe(false); // the open menu was not replaced
     await app.evaluate(({ Menu }) => void Menu.getApplicationMenu()!.emit('menu-will-close'));
     await expect.poll(rebuilt).toBe(true);
-    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '-', '오름차순', '내림차순 ○']);
+    await expect.poll(() => radios(app)).toEqual(['제목 ○', '저자', '연도', '종류', '추가일', '진행', '-', '오름차순', '내림차순 ○']);
   } finally {
     await app.close();
   }

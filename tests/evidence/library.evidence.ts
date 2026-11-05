@@ -13,7 +13,7 @@ import {
   nativeKeystroke, recordedPopups, releaseCopies, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, saveDialogCalls, saveDialogLog, seedLibrary, seedMetadata, selectRows, shellCalls, stubContextMenu,
   stubShell, type Session,
 } from '../e2e/helpers';
-import { LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
+import { columnSpec, DEFAULT_COLUMN_CONFIG, LIBRARY_COLUMNS } from '../../packages/domain/src/library-columns';
 import { EVIDENCE_ROOT, IS_MAC, allShots, captureOpenMenu, focusApp, fullScreenShot, menuItemNames, movePointer, nativeWindowShot, pngPixels, pressEscape, writeJson } from './capture';
 import { decodePng } from './png';
 
@@ -88,10 +88,10 @@ test('M4 table: header, default columns, sorted 추가일, row metrics and strip
     results['table'] = { ...(results['table'] as object), metrics: v };
     check('header 28 px, rows 28 px at 보통, first row 4 px under the header', v.header === 28 && v.row === 28 && v.pitch === 28 && v.gap === 4, v);
   });
-  await guard('header labels follow the column catalogue: 제목 · 저자 · 연도 · 종류 · 추가일', async () => {
+  await guard('header labels follow the default column order: 제목 · 저자 · 연도 · 종류 · 진행 · 추가일', async () => {
     const labels = await s.page.getByTestId('column-header').allTextContents();
-    const want = LIBRARY_COLUMNS.filter((c) => c.defaultVisible).map((c) => c.label);
-    check('header labels follow the column catalogue: 제목 · 저자 · 연도 · 종류 · 추가일', JSON.stringify(labels) === JSON.stringify(want), { labels, want });
+    const want = DEFAULT_COLUMN_CONFIG.order.filter((id) => DEFAULT_COLUMN_CONFIG.visible.includes(id)).map((id) => columnSpec(id).label);
+    check('header labels follow the default column order: 제목 · 저자 · 연도 · 종류 · 진행 · 추가일', JSON.stringify(labels) === JSON.stringify(want), { labels, want });
   });
   await guard('the sorted header (추가일, newest first) is primary 500 with a 12 px chevron', async () => {
     const h = s.page.locator('[data-testid="column-header"][data-col="createdAt"]');

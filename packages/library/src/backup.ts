@@ -29,6 +29,8 @@ export interface BackupManifest {
   schemaVersion: number;
   counts: LibraryCounts;
   assets: BackupAssetEntry[];
+  /** SHA-256 of library.sqlite as snapshotted; backups made before it was recorded have none. */
+  databaseSha256?: string;
 }
 
 export interface RestoreResult {
@@ -144,6 +146,7 @@ const BackupManifestSchema = z.object({
     trashedItems: z.number().int().nonnegative().optional(),
     trashedCollections: z.number().int().nonnegative().optional(),
   }),
+  databaseSha256: z.string().regex(/^[0-9a-f]{64}$/).optional(),
   assets: z.array(BackupAssetEntrySchema),
 });
 
@@ -247,6 +250,8 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
     const schemaVersion = currentVersion(db);
     const createdAt = (args.createdAt ?? new Date()).toISOString();
     await fsyncFile(tempDbFile);
+    // Hashed once the snapshot is on disk: a restore compares the copy it makes with this.
+    const databaseSha256 = await sha256File(tempDbFile);
 
     // A managed copy is found from its hash, where the importer put it, never from the path its row claims (spec 8.1).
     const plan = allAssets.map((asset) => ({ asset, rel: asset.storageMode === 'managed' && SHA256_HEX.test(asset.sha256) ? managedRelativePath(asset.sha256) : null }));
@@ -296,7 +301,7 @@ export async function createBackup(args: CreateBackupArgs): Promise<BackupResult
     for (const shard of shards) await fsyncDir(shard);
     if (shards.size > 0) await fsyncDir(path.join(tempDir, 'assets'));
 
-    const manifest: BackupManifest = { format: 'learn-backup', formatVersion: 1, createdAt, schemaVersion, counts: countsAtSnapshot, assets };
+    const manifest: BackupManifest = { format: 'learn-backup', formatVersion: 1, createdAt, schemaVersion, counts: countsAtSnapshot, assets, databaseSha256 };
     const manifestFile = path.join(tempDir, 'manifest.json');
     await fs.writeFile(manifestFile, JSON.stringify(manifest, null, 2));
     await fsyncFile(manifestFile);
@@ -412,6 +417,10 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
     ensureLayout(temp);
     await fs.copyFile(path.join(backupDir, 'library.sqlite'), temp.dbFile);
     await fsyncFile(temp.dbFile);
+    // Before SQLite opens it: a copy that differs from the snapshot the backup was made from is damaged, however well it opens.
+    if (manifest.databaseSha256 !== undefined && (await sha256File(temp.dbFile)) !== manifest.databaseSha256) {
+      throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase);
+    }
 
     // Every included copy's path is the one its hash names — anything else is a damaged list, and a way out of the
     // folder — checked before a byte is copied.
@@ -468,8 +477,11 @@ export async function restoreBackup(args: RestoreArgs): Promise<RestoreResult> {
     try {
       // The backup's database can open and still be broken: what migrate or the reads hit is the backup's fault too.
       migrate(db, { dbFile: temp.dbFile });
-      // Pages that no read below touches can be broken too: SQLite's own quick check, anything but "ok" refuses.
-      if (db.pragma('quick_check', { simple: true }) !== 'ok') throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase);
+      // Pages that no read below touches can be broken too, and rows can point at nothing: SQLite's full check and the
+      // foreign-key check, anything but "ok" and no violations refuses.
+      if (db.pragma('integrity_check', { simple: true }) !== 'ok' || (db.pragma('foreign_key_check') as unknown[]).length > 0) {
+        throw new LearnError('VALIDATION_FAILED', RESTORE_COPY.damagedDatabase);
+      }
       const repo = new LibraryRepository(db);
       // Every asset the manifest lists is in the database it came with: one that is not means this is not that backup.
       for (const entry of manifest.assets) {

@@ -47,10 +47,11 @@ test('⇧⌘N makes a row in the tree and names it in place; ↩ creates it and 
     await expect(field(page)).toHaveCount(0);
     expect(await names(page)).toEqual(['논문 읽기']);
 
-    // In the reader 새 컬렉션 is off (a library command): the button says why, and comes back with the library.
+    // In the reader the sidebar lists pages, not collections: the button is gone, and comes back with the library.
     await openItem(page, 'sample');
     await expect.poll(() => menuItemEnabled(app, 'nav.back')).toBe(true);
-    await expectDisabledReason(page.getByTestId('new-collection'), '라이브러리로 돌아가면 만들 수 있습니다');
+    await expect(page.getByTestId('new-collection')).toHaveCount(0);
+    await expect.poll(() => menuItemEnabled(app, 'collection.new')).toBe(false);
     await runMenuCommand(app, 'nav.back');
     await expectDisabledReason(page.getByTestId('new-collection'), null);
   } finally {

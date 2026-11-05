@@ -2,14 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { LibraryItem } from '../../packages/domain/src/library';
-import { FIXTURES, hardKill, importPaths, launch, openItem } from './helpers';
+import { FIXTURES, backFromReader, hardKill, importPaths, launch, mainWindow, openItem, rowByTitle, runMenuCommand, setPdfZoom } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf'); // 3 pages
+const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const MP4 = path.join(FIXTURES, 'sample-h264-aac.mp4'); // 10 s (fixtures/generate.mjs)
 const RESUME_AT = 7; // seconds; 70 % of the clip, below the 95 % "finished, start over" cutoff
 
 test.beforeAll(() => {
-  for (const f of [PDF, MP4]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
+  for (const f of [PDF, PAPER, MP4]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
 
 /** The item as `library.list` reports it (progress and openedAt come from the stored reading position). */
@@ -28,32 +29,38 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
   try {
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
-    const indicator = page.getByTestId('pdf-page-indicator');
-    await expect(indicator).toHaveText('1 / 3쪽');
+    const field = page.getByTestId('pdf-page-field');
+    await expect(field).toHaveValue('1');
+    await expect(page.getByTestId('pdf-page-count')).toHaveText('/ 3');
     await page.getByTestId('pdf-next').click();
-    await expect(indicator).toHaveText('2 / 3쪽');
+    await expect(field).toHaveValue('2');
     await page.waitForTimeout(400); // the brief's scenario wait (> 300 ms debounce); the save itself is confirmed by the poll below
     // Saved by the debounce while the viewer is still open (not only by the unmount flush): (pageIndex + 1) / pageCount.
     await expect.poll(() => progressOf(page, 'sample')).toBeCloseTo(2 / 3, 5);
     await page.getByTestId('viewer-back').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
-    // Every text the page indicator shows while reopening: '…' until the restore is applied, never page 1 first.
+    // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first. The sampler
+    // runs on animation frames, which stop while the window counts as hidden (Mac run 41837267944 saw none): keep it awake.
+    await (await mainWindow(app)).evaluate((w) => w.webContents.setBackgroundThrottling(false));
     await page.evaluate(() => {
       const seen: string[] = [];
       (window as unknown as { __indicator: string[] }).__indicator = seen;
-      new MutationObserver(() => {
-        const text = document.querySelector('[data-testid="pdf-page-indicator"]')?.textContent;
+      // The value is a property, which no mutation observer sees: sample it on every frame (a value shown for less is not seen).
+      const sample = () => {
+        const text = (document.querySelector('[data-testid="pdf-page-field"]') as HTMLInputElement | null)?.value;
         if (text && seen.at(-1) !== text) seen.push(text);
-      }).observe(document.body, { subtree: true, childList: true, characterData: true });
+        requestAnimationFrame(sample);
+      };
+      sample();
     });
     await openItem(page, 'sample');
-    await expect(indicator).toHaveText('2 / 3쪽');
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(field).toHaveValue('2');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     const shown = await page.evaluate(() => (window as unknown as { __indicator: string[] }).__indicator);
     console.log('[measure] pdf reopen indicator', JSON.stringify(shown));
-    expect(shown.at(-1)).toBe('2 / 3쪽');
-    expect(shown).not.toContain('1 / 3쪽');
+    expect(shown.at(-1)).toBe('2');
+    expect(shown).not.toContain('1');
 
     const item = await listed(page, 'sample');
     expect(item.progress).toBeCloseTo(2 / 3, 5);
@@ -69,7 +76,7 @@ test('opening a PDF records openedAt even when the page never changes', async ({
     const [imported] = await importPaths(page, [PDF]);
     expect((await listed(page, 'sample')).openedAt).toBeNull();
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-page-indicator')).toHaveText('1 / 3쪽');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
     await page.getByTestId('viewer-back').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
@@ -136,5 +143,211 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     expect((await listed(page, 'sample-h264-aac')).progress).toBeCloseTo(pausedAt / duration, 2);
   } finally {
     if (!killed) await app.close().catch(() => {}); // never mask a failed relaunch's own error
+  }
+});
+
+/** Where the scroll sits in the page it is on, as a share of the page's height: independent of what is above it. */
+const placeInPage = (page: Page, pageNumber: number) =>
+  page.evaluate((n) => {
+    const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+    const el = document.querySelector<HTMLElement>(`[data-testid="pdf-viewer"] .page[data-page-number="${n}"]`)!;
+    return (scroll.getBoundingClientRect().top - el.getBoundingClientRect().top) / el.getBoundingClientRect().height;
+  }, pageNumber);
+
+const storedPosition = async (page: Page, itemId: string) => {
+  const r = await page.evaluate((id) => window.learn.reader.getPosition({ itemId: id }), itemId);
+  if (!r.ok) throw new Error(`reader.getPosition failed: ${r.code}`);
+  return r.data;
+};
+
+test('a PDF reopens on the page, the place in it, the zoom and the rotation it was left with, after a SIGKILL', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  let killed = false;
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await runMenuCommand(app, 'reader.rotateCw');
+    await expect(viewer).toHaveAttribute('data-rotation', '90');
+    await setPdfZoom(page, 1.5);
+    await expect(viewer).toHaveAttribute('data-scale', '1.5');
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('37');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '37');
+    // Into the middle of the page: a share of its height, so the place in the page is not the page's top.
+    await page.evaluate(() => {
+      const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+      const el = document.querySelector<HTMLElement>('[data-testid="pdf-viewer"] .page[data-page-number="37"]')!;
+      scroll.scrollTop += el.getBoundingClientRect().top - scroll.getBoundingClientRect().top + el.getBoundingClientRect().height * 0.4;
+    });
+    await expect(viewer).toHaveAttribute('data-page', '37');
+    const before = await placeInPage(page, 37);
+    expect(before).toBeGreaterThan(0.3);
+    expect(before).toBeLessThan(0.5);
+    // The save is on disk before the kill: wait for the stored row to carry all of it (the debounce is 300 ms).
+    await expect
+      .poll(async () => {
+        const p = await storedPosition(page, imported!.id);
+        const l = p?.locator;
+        return l?.kind === 'pdf' && l.pageIndex === 36 && l.rotation === 90 && l.zoom === 1.5 && typeof l.top === 'number';
+      })
+      .toBe(true);
+    await page.waitForTimeout(450); // and the last scroll's save after it
+    const saved = await storedPosition(page, imported!.id);
+
+    await hardKill(app);
+    killed = true;
+    ({ app, page } = await launch(lib, ud));
+    killed = false;
+    // Every page the thumbnail list rings or lists while the document reopens: the restored page only, never page 1 first.
+    await page.evaluate(() => {
+      const seen = new Set<string>();
+      (window as unknown as { __thumbs: Set<string> }).__thumbs = seen;
+      const sample = () => {
+        for (const t of document.querySelectorAll<HTMLElement>('[data-testid="pdf-thumb"]')) seen.add(`${t.dataset['page']}${t.dataset['current'] ? '*' : ''}`);
+        requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    await openItem(page, 'paper-100');
+    const reopened = page.getByTestId('pdf-viewer');
+    await expect(reopened).toHaveAttribute('data-page', '37');
+    await expect(reopened).toHaveAttribute('data-scale', '1.5');
+    await expect(reopened).toHaveAttribute('data-rotation', '90');
+    await expect(reopened).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    const after = await placeInPage(page, 37);
+    console.log('[measure] position place in page', JSON.stringify({ before, after }));
+    expect(Math.abs(after - before)).toBeLessThanOrEqual(0.05);
+    await expect(page.locator('[data-testid="pdf-thumb"][data-current="true"]')).toHaveAttribute('data-page', '37');
+    const thumbs = await page.evaluate(() => [...(window as unknown as { __thumbs: Set<string> }).__thumbs]);
+    expect(thumbs).toContain('37*');
+    expect(thumbs).not.toContain('1');
+    expect(thumbs).not.toContain('1*');
+    // Opening and restoring saved nothing over what was stored.
+    await page.waitForTimeout(600);
+    expect((await storedPosition(page, imported!.id))?.locator).toEqual(saved?.locator);
+  } finally {
+    if (!killed) await app.close().catch(() => {});
+  }
+});
+
+test('a page wider than the stage reopens with its 24 on the left, as it was left (R-25; CI 41866507324 caught the tour without it)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await setPdfZoom(page, 2);
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    const scroll = page.getByTestId('pdf-scroll');
+    // The room left of the page and how far the stage scrolls sideways: at 200 % the page is wider than the stage.
+    const left = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector('[data-testid="pdf-viewer"] .page[data-page-number="1"]')!.getBoundingClientRect();
+        return { room: pg.left - sc.getBoundingClientRect().left, overflow: sc.scrollWidth - sc.clientWidth };
+      });
+    await scroll.evaluate((el) => void (el.scrollLeft = 0));
+    expect((await left()).overflow).toBeGreaterThan(24);
+    expect((await left()).room).toBeCloseTo(24, 0);
+    // The place saved with the room showing: pdf.js's left is then inside the margin, below 0.
+    await expect
+      .poll(async () => {
+        const l = (await storedPosition(page, imported!.id))?.locator;
+        return l?.kind === 'pdf' && l.pageIndex === 0 && l.zoom === 2 && typeof l.left === 'number' && l.left < 0;
+      })
+      .toBe(true);
+    await backFromReader(page);
+    await openItem(page, 'paper-100');
+    await expect(scroll).toHaveAttribute('data-restored', '');
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    // pdf.js scrolls a place to the page's left edge (it drops a left inside the margin): the room beside the page comes back,
+    // as the room above it does.
+    expect((await left()).room).toBeCloseTo(24, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('scrolled to the end with several pages on screen, the progress is 100 % and the column says 완료 (final review I-3)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-pages', '100');
+    // 25 %: several pages fit the stage, so the page at its top is not the last one when the end of the document is reached.
+    const scroll = page.getByTestId('pdf-scroll');
+    await expect(scroll).toHaveAttribute('data-restored', ''); // the saved place is applied first; a zoom set before it would be overwritten by it
+    await setPdfZoom(page, 0.25);
+    await expect(viewer).toHaveAttribute('data-scale', '0.25');
+    await scroll.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => scroll.evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 1)).toBe(true);
+    // The reading place stays the top page (the restore needs it); the progress counts what was seen.
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBe(1);
+    expect((await storedPosition(page, imported!.id))?.locator).toMatchObject({ kind: 'pdf' }); // the place is the top page's (unit-tested); where that is depends on the screen
+    await backFromReader(page);
+    const cell = rowByTitle(page, 'paper-100').locator('[data-col="progress"]');
+    await expect(cell).toHaveText('완료');
+    await expect(cell.getByTestId('progress-done')).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the progress column shows the furthest page read and does not drop when the reader goes back', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    const cell = () => rowByTitle(page, 'paper-100').locator('[data-col="progress"]');
+    await expect(cell()).toHaveText(''); // never read: an empty cell
+    await expect(cell().getByTestId('progress-cell')).toHaveCount(0);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('37');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '37');
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBeCloseTo(0.37, 5); // read for longer than the debounce
+    await field.fill('1');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '1');
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.locator).toMatchObject({ pageIndex: 0 }); // saved at page 1, progress kept
+    expect((await storedPosition(page, imported!.id))?.progress).toBeCloseTo(0.37, 5);
+    await backFromReader(page);
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(cell()).toHaveText('37%');
+    await expect(cell().getByTestId('progress-cell')).toHaveAttribute('aria-valuenow', '37');
+
+    // Reading on raises it (the list may refetch on the way back; the position notice itself is covered by the unit tests).
+    await openItem(page, 'paper-100');
+    await field.fill('50');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '50');
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBeCloseTo(0.5, 5);
+    await backFromReader(page);
+    await expect(cell()).toHaveText('50%');
+
+    // The last page: the check and 완료 in place of the bar and "100%".
+    await openItem(page, 'paper-100');
+    await field.fill('100');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '100');
+    await expect.poll(async () => (await storedPosition(page, imported!.id))?.progress).toBe(1);
+    await backFromReader(page);
+    await expect(cell()).toHaveText('완료');
+    await expect(cell().getByTestId('progress-done')).toBeVisible();
+    await expect(cell().getByTestId('progress-cell')).toHaveCount(0);
+    // It fits the column at its default width.
+    expect(await cell().evaluate((td) => td.scrollWidth <= td.clientWidth)).toBe(true);
+  } finally {
+    await app.close();
   }
 });

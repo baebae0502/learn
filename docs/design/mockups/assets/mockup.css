@@ -3894,3 +3894,249 @@ h2,
   display: block;
   background: var(--bg-window);
 }
+
+/* ── M7a: reader v2 (reader-pdf?m=7a), selection pop-up, translation section ───────────────────────────────────
+   Built from tokens; values that are not tokens say "local". */
+/* The 24 px zoom field (13 pt) in the 44 px reader toolbar, with its menu arrow. */
+.zoom-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.zoom-field .field {
+  width: 56px; /* local: "125%" in 13 pt with its inset */
+  height: 24px; /* local: the page field's height */
+  padding: 0 var(--space-4);
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font: var(--type-body);
+  font-variant-numeric: tabular-nums;
+}
+.zoom-field.is-disabled {
+  opacity: 0.4;
+}
+/* The selected text on the page (the text layer's own selection): the accent at a low alpha, over any page colour. */
+.pdf-page .sel {
+  background: color-mix(in oklch, var(--accent) 30%, transparent);
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.pdf-page.paper h4 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  line-height: 19px;
+  break-after: avoid;
+}
+.pdf-page.paper .paper-cols p b {
+  font-weight: 700;
+}
+
+/* Selection pop-up (spec 6.1): at most 320 wide and 240 high (the body scrolls), 8 px under the end of the selection
+   (above it when there is no room). It never takes the focus, so the selection stays. */
+.sel-popup {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  max-width: 320px;
+  max-height: 240px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+  color: var(--text-primary);
+}
+.sel-popup.is-compact {
+  width: max-content;
+}
+.sel-popup .sp-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-12) var(--space-12) var(--space-8);
+  font: var(--type-paragraph);
+}
+.sel-popup .sp-body p {
+  margin: 0;
+}
+.sel-popup .sp-body p + p {
+  margin-top: var(--space-8);
+}
+.sel-popup .sp-status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+}
+.sel-popup .sp-status > .icon {
+  margin-top: 2px; /* local: centres a 16 px glyph on the first 20 px line */
+  color: var(--text-secondary);
+}
+.sel-popup .sp-status .icon.warning {
+  color: var(--warning-text);
+}
+.sel-popup .sp-note {
+  margin-top: var(--space-4);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.sel-popup .sp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--space-8) var(--space-8) var(--space-12);
+}
+.sel-popup .sp-foot .sp-lang {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+
+/* Translation section of the inspector (spec 6.2): first section of the reader's 정보 mode. */
+.inspector-scroll > .section.tr {
+  border-top: 0;
+}
+.tr .section-head .btn {
+  margin-right: -4px;
+}
+.tr-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  margin: var(--space-8) 0 var(--space-4);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tr-box {
+  min-height: 76px; /* local: three paragraph lines (3 × 20) and the box's 2 × 8 inset */
+  padding: var(--space-8);
+  border-radius: var(--radius-md);
+  font: var(--type-paragraph);
+  overflow: hidden;
+}
+.tr-box.src {
+  background: var(--bg-field);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.tr-box.src.is-focus {
+  box-shadow: inset 0 0 0 1px var(--focus), 0 0 0 3px color-mix(in oklch, var(--focus) 28%, transparent);
+}
+.tr-box.dst {
+  background: var(--bg-sunken);
+}
+.tr-box p {
+  margin: 0;
+}
+.tr-box p + p {
+  margin-top: var(--space-8);
+}
+.tr-box .ph {
+  color: var(--text-tertiary);
+}
+.tr-box.src {
+  /* The original grows to six lines (6 × 20 + 2 × 8), then it scrolls inside the box; the translation grows and the
+     inspector scrolls. A line break the user (or 이어 붙이기) makes is a blank line, as in a text area. */
+  max-height: 136px; /* local: six paragraph lines and the inset */
+}
+.tr-box.src p + p {
+  margin-top: var(--space-20);
+}
+.pdf-page.paper .find-hit {
+  /* pdf.js draws its highlight over the text layer: it never moves the text. */
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: 0 0 0 2px var(--find-match);
+}
+.pdf-page.paper .find-hit.current {
+  box-shadow: 0 0 0 2px var(--find-match-current), 0 0 0 3px var(--accent);
+}
+.section.tr + .item-head {
+  border-top: 1px solid var(--separator);
+}
+.settings-window.dense .s-body {
+  gap: var(--space-16);
+}
+.settings-window.dense .form-row {
+  min-height: 36px; /* local: the 28 px control and 2 × 4 */
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+.settings-window.dense .form-row.stacked {
+  gap: var(--space-8);
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-12);
+}
+.notice .pw-error {
+  margin-top: calc(var(--space-4) * -1);
+}
+.tr-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-6);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.tr-note .icon {
+  flex: none;
+  margin-top: 2px;
+}
+.tr-note .icon.warning {
+  color: var(--warning-text);
+}
+.tr-box.dst .tr-note + .tr-note {
+  margin-top: var(--space-4);
+}
+.tr-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-12);
+}
+.tr-toggles .checkbox {
+  min-height: 24px;
+}
+.tr-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+}
+.tr-consent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.tr-consent p {
+  margin: 0;
+  font: var(--type-paragraph);
+}
+.tr-consent .actions {
+  display: flex;
+  gap: var(--space-8);
+  margin-top: var(--space-4);
+}
+.pw-row {
+  display: flex;
+  gap: var(--space-8);
+  width: 280px; /* local: the notice's input row */
+}
+.pw-row .field {
+  flex: 1 1 auto;
+}
+.pw-error {
+  color: var(--danger-text);
+  font: var(--type-footnote);
+}
+
+.tr-box .caret {
+  display: inline-block;
+  width: 1px;
+  height: 15px;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--text-primary);
+}
+
+.form-row.is-disabled {
+  opacity: 0.45; /* local: the rows that follow a switch that is off, like the other disabled controls */
+}

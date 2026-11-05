@@ -68,7 +68,7 @@ test('파일 › Finder에서 보기 (⇧⌘R) and 기본 앱으로 열기 follo
     await rowByTitle(page, 'sample').click();
     await expect.poll(() => fileItems(app)).toEqual([true, true]);
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     await expect.poll(() => fileItems(app)).toEqual([false, false]);
     await runMenuCommand(app, 'nav.back');
     await expect(rowByTitle(page, 'sample')).toHaveAttribute('aria-selected', 'true');
@@ -170,7 +170,7 @@ test('back from the reader the selection stays and the last opened row is scroll
     await expect(selectedRows(page)).toHaveAttribute('data-index', /^3\d\d$/);
     const id = (await selectedRows(page).getAttribute('data-item-id'))!;
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     await runMenuCommand(app, 'nav.back');
     // The table mounted again at its top, where that row is not even drawn: it is brought back into view.
     const row = page.locator(`[data-testid="item-row"][data-item-id="${id}"]`);

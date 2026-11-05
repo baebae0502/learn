@@ -11,6 +11,7 @@ import type { PrefsStore } from '../prefs';
 import type { SheetHost } from '../sheets';
 import { isAllowedAppUrl } from '../url-policy';
 import { mainStrings } from '../strings';
+import type { TranslationService } from '../translation/service';
 import { windowKindOf } from '../window-kinds';
 import { CHANNEL_KINDS } from './channel-kinds';
 
@@ -18,6 +19,7 @@ export interface IpcDeps {
   getContext(): LibraryContext;
   appInfo(): AppInfo;
   prefs: PrefsStore;
+  translation: TranslationService;
   /** The main window's renderer reports its command context; main derives menu availability from it. */
   uiContext: { report(sender: WebContents, ctx: CommandContextState): void; current(): CommandContextState };
   /** Modal sheet windows (duplicate question, ⌘/ shortcuts); the only callers of the sheet:* channels. */
@@ -91,6 +93,8 @@ function heldBack(channel: string): Promise<void> | undefined {
   return ms ? new Promise((resolve) => setTimeout(resolve, ms)) : undefined;
 }
 
+const QUIET_CODES: ReadonlySet<string> = new Set(['CANCELLED', 'TRANSLATION_DISABLED']);
+
 /**
  * The single IPC entry point: sender URL check, window-kind check (CHANNEL_KINDS, by the sender's webContents), zod
  * validation, `Result` envelope, and error-code-only logging. A sender the channel does not allow is refused before
@@ -111,7 +115,8 @@ export function createHandle(devOrigin: string | null): Handle {
         return ok(await fn(parsed.data, event));
       } catch (e) {
         const failure = failureFrom(e);
-        console.error(`[ipc] ${channel} failed: ${failure.code}`);
+        // A superseded request and a refused one are the product working, not failures (errors.ts: CANCELLED is never reported as one).
+        (QUIET_CODES.has(failure.code) ? console.debug : console.error)(`[ipc] ${channel} failed: ${failure.code}`);
         return failure;
       }
     };

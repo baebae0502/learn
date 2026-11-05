@@ -56,6 +56,7 @@ export type CommandId =
   | 'tags.clearFilter'
   | 'view.toggleSidebar'
   | 'view.toggleInspector'
+  | 'translation.translateSelection'
   | 'app.shortcuts'
   | 'app.palette'
   | 'app.settings'
@@ -65,7 +66,30 @@ export type CommandId =
   | 'trash.empty'
   | 'view.nextPane'
   | 'view.previousPane'
-  | 'library.sortBy';
+  | 'library.sortBy'
+  | 'reader.zoomAuto'
+  | 'reader.zoomPageWidth'
+  | 'reader.zoomPageFit'
+  | 'reader.rotateCw'
+  | 'reader.rotateCcw'
+  | 'reader.goToPage'
+  | 'reader.findNext'
+  | 'reader.findPrevious'
+  | 'reader.findSelection'
+  | 'reader.showThumbnails'
+  | 'reader.showOutline'
+  | 'reader.pageColorAuto'
+  | 'reader.pageColorOriginal'
+  | 'reader.pageColorSepia'
+  | 'reader.pageColorDark';
+
+/** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
+export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
+export type PageColor = (typeof PAGE_COLORS)[number];
+/** What the reader's sidebar lists (settings 'reader.nav'). */
+export const READER_NAVS = ['thumbnails', 'outline'] as const;
+export type ReaderNav = (typeof READER_NAVS)[number];
+
 /**
  * `app`: anywhere in the main window; `library` / `viewer`: the current view; `item` / `collection` / `tag` / `trash`: needs a
  * target of that kind (judged on the targets handed in; the first of these a command lists decides). `trash` is the trash
@@ -134,6 +158,8 @@ export interface CommandSpec {
     inspector?: Readonly<Record<PaneShown, string>>;
     /** By the view shown (P-11): ⌘⌫ is 영구 삭제… in the trash; a view without an entry keeps `label`. */
     scope?: Readonly<Partial<Record<LibraryScope['kind'], string>>>;
+    /** By the view shown (P-9): ⌘+ ⌘− ⌘0 size the library's text and zoom the reader's page, one command per key. */
+    view?: Readonly<Record<'library' | 'viewer', string>>;
   };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
   labelOff?: string;
@@ -223,8 +249,22 @@ export const COMMANDS: readonly CommandSpec[] = [
   // ⌘F (design-spec 7.4 라이브러리, 7.1: instead of type-ahead): the toolbar's quick search field takes the focus with
   // its text selected. 편집 › after the system's items; the empty library has no field, so nothing to find there.
   {
-    id: 'library.find', label: '빠른 검색', accelerator: 'CmdOrCtrl+F', menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library'],
+    id: 'library.find', label: '빠른 검색', stateLabels: { view: { library: '빠른 검색', viewer: '찾기' } }, accelerator: 'CmdOrCtrl+F',
+    menu: { menu: 'edit', group: 1, order: 1 }, contexts: ['library', 'viewer'],
     keywords: ['검색', '찾기', 'search', 'find'],
+  },
+  // 찾기 in the reader (M7a): ⌘F above is its find bar; these keys go on in the PDF's text and are off without a PDF.
+  {
+    id: 'reader.findNext', label: '다음 찾기', accelerator: 'CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 2 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '다음', 'find next'],
+  },
+  {
+    id: 'reader.findPrevious', label: '이전 찾기', accelerator: 'Shift+CmdOrCtrl+G', menu: { menu: 'edit', group: 1, order: 3 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '이전', 'find previous'],
+  },
+  {
+    id: 'reader.findSelection', label: '선택한 글로 찾기', accelerator: 'CmdOrCtrl+E', menu: { menu: 'edit', group: 1, order: 4 }, contexts: ['viewer'],
+    keywords: ['찾기', '검색', '선택', '선택한 글', 'use selection for find'],
   },
   // 내 라이브러리 전체에서 찾기 (spec 7.1): the no-results state's second button and a palette command — the view returns to
   // 내 라이브러리 and the query stays. No menu bar item, key or context menu: the design spec draws none for it.
@@ -235,6 +275,11 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
     keywords: ['라이브러리', '뒤로', '목록', 'library', 'back'],
+  },
+  // ⌥⌘G (design-spec 7.4 리더): the toolbar's page field takes the focus with its number selected.
+  {
+    id: 'reader.goToPage', label: '쪽으로 이동…', accelerator: 'Alt+CmdOrCtrl+G', menu: { menu: 'go', group: 1, order: 2 }, contexts: ['viewer'],
+    keywords: ['쪽', '이동', '페이지', '번호', '가기', 'page', 'go to'],
   },
   { id: 'item.relink', label: '다시 연결…', contexts: ['item'], contextMenu: { kinds: ['item'], group: 0, order: 1, onlyWhenAvailable: true } },
   { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
@@ -342,12 +387,16 @@ export const COMMANDS: readonly CommandSpec[] = [
     stateLabels: { sidebar: { shown: '사이드바 가리기', hidden: '사이드바 보기' } },
     keywords: ['사이드바', '패널', '가리기', '숨기기', '보기', 'sidebar'],
   },
-  // The item panel: the library only, its right slot (the reader's is the tutor's). Named by what it does now
-  // (stateLabels), like the sidebar toggle.
+  // The item panel: the library's, and the reader's while a PDF is open. Named by what it does now (stateLabels), like the sidebar toggle.
   {
-    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library'],
+    id: 'view.toggleInspector', label: '항목 패널 보기/가리기', accelerator: 'Alt+CmdOrCtrl+I', menu: { menu: 'view', group: 2, order: 2 }, contexts: ['library', 'viewer'],
     stateLabels: { inspector: { shown: '항목 패널 가리기', hidden: '항목 패널 보기' } },
     keywords: ['항목 패널', '인스펙터', '정보', '패널', '가리기', '보기', 'inspector', 'info'],
+  },
+  // The selection pop-up's command (M7a): no menu item, no key; the palette offers it while a PDF text is selected.
+  {
+    id: 'translation.translateSelection', label: '선택한 글 번역', contexts: ['viewer'],
+    keywords: ['번역', 'translate', '선택', '선택한 글'],
   },
   // 정렬 기준 ▸ (spec 5.2): the keyboard-only sort. Its rows are the shown columns and the two directions, built by main
   // from the reported context; a pick sets the sort of the view shown. Not in the palette: a run there carries no value.
@@ -362,9 +411,69 @@ export const COMMANDS: readonly CommandSpec[] = [
     keywords: ['설정', '환경설정', '테마', '다크', '밀도', '글자 크기', '라이브러리 위치', 'settings', 'preferences'],
   },
   // ⌘+ / ⌘− / ⌘0: the library's UI text size (design-spec 7.4 라이브러리; PDF zoom takes these keys in the reader, M7).
-  { id: 'view.textBigger', label: '글자 크게', accelerator: 'CmdOrCtrl+Plus', menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library'], keywords: ['글자', '크게', '확대', 'font', 'bigger'] },
-  { id: 'view.textSmaller', label: '글자 작게', accelerator: 'CmdOrCtrl+-', menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library'], keywords: ['글자', '작게', '축소', 'font', 'smaller'] },
-  { id: 'view.textReset', label: '기본 글자 크기', accelerator: 'CmdOrCtrl+0', menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library'], keywords: ['글자', '기본', 'font', 'reset'] },
+  // In the reader the same keys zoom the page (P-9): the menu bar is one for every view and each key belongs to one command,
+  // so the command is named by the view (stateLabels.view) and its handler acts by it.
+  {
+    id: 'view.textBigger', label: '글자 크게', stateLabels: { view: { library: '글자 크게', viewer: '확대' } }, accelerator: 'CmdOrCtrl+Plus',
+    menu: { menu: 'view', group: 3, order: 1 }, contexts: ['library', 'viewer'], keywords: ['글자', '크게', '확대', '키우기', '줌', 'font', 'bigger', 'zoom in'],
+  },
+  {
+    id: 'view.textSmaller', label: '글자 작게', stateLabels: { view: { library: '글자 작게', viewer: '축소' } }, accelerator: 'CmdOrCtrl+-',
+    menu: { menu: 'view', group: 3, order: 2 }, contexts: ['library', 'viewer'], keywords: ['글자', '작게', '축소', '줄이기', '줌', 'font', 'smaller', 'zoom out'],
+  },
+  {
+    id: 'view.textReset', label: '기본 글자 크기', stateLabels: { view: { library: '기본 글자 크기', viewer: '실제 크기' } }, accelerator: 'CmdOrCtrl+0',
+    menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library', 'viewer'], keywords: ['글자', '기본', '실제 크기', '100%', '배율', 'font', 'reset', 'actual size'],
+  },
+  // The reader's own view commands (M7a): they act on the open PDF, so a video or no document greys them (pdfOpen).
+  // 보기 group 4 is how the page fits, group 5 turns it and colours it.
+  {
+    id: 'reader.zoomAuto', label: '자동 맞춤', menu: { menu: 'view', group: 4, order: 1 }, contexts: ['viewer'],
+    keywords: ['확대', '배율', '맞춤', '자동', '창 크기', 'zoom', 'auto', 'fit'],
+  },
+  {
+    id: 'reader.zoomPageWidth', label: '너비에 맞춤', menu: { menu: 'view', group: 4, order: 2 }, contexts: ['viewer'],
+    keywords: ['확대', '배율', '너비', '폭', '맞춤', 'zoom', 'width', 'fit'],
+  },
+  {
+    id: 'reader.zoomPageFit', label: '한 쪽 전체 보기', menu: { menu: 'view', group: 4, order: 3 }, contexts: ['viewer'],
+    keywords: ['확대', '배율', '한 쪽', '쪽 전체', '맞춤', 'zoom', 'page fit', 'whole page'],
+  },
+  {
+    id: 'reader.rotateCw', label: '시계 방향으로 회전', accelerator: 'CmdOrCtrl+R', menu: { menu: 'view', group: 5, order: 1 }, contexts: ['viewer'],
+    keywords: ['회전', '돌리기', '오른쪽', '시계', 'rotate', 'clockwise'],
+  },
+  {
+    id: 'reader.rotateCcw', label: '반시계 방향으로 회전', accelerator: 'CmdOrCtrl+L', menu: { menu: 'view', group: 5, order: 2 }, contexts: ['viewer'],
+    keywords: ['회전', '돌리기', '왼쪽', '반시계', 'rotate', 'counterclockwise'],
+  },
+  // The reader's sidebar shows thumbnails or the outline (보기 group 2, after the library's pane commands).
+  {
+    id: 'reader.showThumbnails', label: '썸네일 보기', accelerator: 'Alt+CmdOrCtrl+2', menu: { menu: 'view', group: 2, order: 4 }, contexts: ['viewer'],
+    keywords: ['썸네일', '미리보기', '쪽 목록', '사이드바', 'thumbnails', 'pages'],
+  },
+  {
+    id: 'reader.showOutline', label: '목차 보기', accelerator: 'Alt+CmdOrCtrl+3', menu: { menu: 'view', group: 2, order: 5 }, contexts: ['viewer'],
+    keywords: ['목차', '차례', '장', '절', '사이드바', 'outline', 'contents', 'table of contents'],
+  },
+  // 쪽 색 ▸ is one group in SUBMENUS (P-14): the four members carry no placement, the group holds it. The palette names each
+  // one with the group's word.
+  ...(
+    [
+      ['Auto', '앱 테마 따르기', ['테마', '자동', '다크', 'auto', 'theme']],
+      ['Original', '원본', ['원래', '흰색', '흰 배경', 'original', 'white']],
+      ['Sepia', '세피아', ['갈색', '따뜻한', '눈 편한', 'sepia']],
+      ['Dark', '어둡게', ['다크', '검정', '밤', '반전', 'dark', 'night']],
+    ] as const
+  ).map(
+    ([name, label, extra]): CommandSpec => ({
+      id: `reader.pageColor${name}` as CommandId,
+      label,
+      paletteLabel: `쪽 색: ${label}`,
+      contexts: ['viewer'],
+      keywords: ['쪽 색', '색', '배경', '종이', 'page color', ...extra],
+    }),
+  ),
   // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
   {
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
@@ -406,7 +515,7 @@ export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view'>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -418,6 +527,7 @@ export function commandLabel(c: CommandSpec, platform: string, state: LabelState
   if (labels?.inspector && state.inspector) return labels.inspector[state.inspector];
   const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
   if (scoped !== undefined) return scoped;
+  if (labels?.view && state.view) return labels.view[state.view];
   if (c.countLabel && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
@@ -480,6 +590,12 @@ export interface CommandContextState {
   columnsShown: number;
   /** Trashed items and collection rows (OrganizeSnapshot.trashCount): 휴지통 비우기 needs one (P-10). */
   trashCount: number;
+  /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
+  pdfOpen?: boolean;
+  /** Text of the open PDF is selected (the reader's selection pop-up has something to translate): 선택한 글 번역. Absent otherwise. */
+  pdfSelection?: boolean;
+  /** Translation is switched off (the choice is made and it is no): 선택한 글 번역 does nothing then. Absent while on or not yet chosen (running it asks). */
+  translationOff?: boolean;
   /** The import queue has files to finish (its progress toast is up or about to be): 가져오기 취소. Absent where nothing imports. */
   importRunning?: boolean;
   /** A backup is on main's work line, running or waiting (job:progress): 백업 만들기… is off until it ends. */
@@ -616,12 +732,19 @@ export function selectionTargets(ctx: CommandContextState): CommandTargetInfo[] 
 type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
+const pdfOpen: Rule = (c) => c.pdfOpen === true;
 const RULES: Partial<Record<CommandId, Rule>> = {
-  'library.find': (c) => c.libraryCount > 0,
+  'library.find': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  'reader.findNext': pdfOpen,
+  'reader.findPrevious': pdfOpen,
+  'reader.findSelection': pdfOpen,
+  'reader.showThumbnails': pdfOpen,
+  'reader.showOutline': pdfOpen,
   // Only with a search to keep, and only from a view that narrows it (spec 7.1).
   'library.findEverywhere': (c) => c.searchActive && c.scope !== 'all',
   // An empty library has no panel (design-spec 2.4).
-  'view.toggleInspector': (c) => c.libraryCount > 0,
+  'view.toggleInspector': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
+  'translation.translateSelection': (c) => c.pdfOpen === true && c.pdfSelection === true && c.translationOff !== true,
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
@@ -630,7 +753,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
-  'item.editInfo': (c, t) => t.items.length === 1 && c.view === 'library',
+  // The reader's panel carries the pencil too (its target is the open item); the palette gives the reader no target.
+  'item.editInfo': (c, t) => t.items.length === 1 && (c.view === 'library' || c.pdfOpen === true),
   // Filing needs the selection only (any file state: the file is not touched); the library view, as the menu bar judges it.
   'collection.addItems': (c) => c.view === 'library',
   // Takes the selection out of the collection viewed and what is below it: nothing to take out of anywhere else.
@@ -669,9 +793,21 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'file.backup': (c) => (c.libraryCount > 0 || c.trashCount > 0) && c.backupRunning !== true,
   // One restore at a time (a second click would otherwise be refused unseen); other work running first only makes it wait.
   'file.restore': (c) => c.restoreRunning !== true,
-  'view.textBigger': (c) => c.textSize < 15,
-  'view.textSmaller': (c) => c.textSize > 12,
-  'view.textReset': (c) => c.textSize !== 13,
+  // The reader zooms with these keys (P-9), and only a PDF with pages has a zoom; the library sizes its text.
+  'view.textBigger': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize < 15),
+  'view.textSmaller': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize > 12),
+  'view.textReset': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.textSize !== 13),
+  // The reader's view commands act on the open PDF.
+  'reader.zoomAuto': pdfOpen,
+  'reader.zoomPageWidth': pdfOpen,
+  'reader.zoomPageFit': pdfOpen,
+  'reader.rotateCw': pdfOpen,
+  'reader.rotateCcw': pdfOpen,
+  'reader.goToPage': pdfOpen,
+  'reader.pageColorAuto': pdfOpen,
+  'reader.pageColorOriginal': pdfOpen,
+  'reader.pageColorSepia': pdfOpen,
+  'reader.pageColorDark': pdfOpen,
 };
 
 /**

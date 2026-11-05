@@ -14,6 +14,38 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(system).toEqual([{ label: '전체 화면', keys: ['⌃', '⌘', 'F'], spoken: '⌃⌘F', system: true }]);
     expect(COMMANDS.some((c) => c.label === '전체 화면')).toBe(false);
   });
+  it('names ⌘+ ⌘− ⌘0 by the view the sheet was opened from (P-9)', () => {
+    const named = (view?: 'library' | 'viewer') => {
+      const rows = shortcutGroups('darwin', view).flatMap((g) => g.rows);
+      return ['⌘+', '⌘−', '⌘0'].map((spoken) => rows.find((r) => r.spoken === spoken)?.label);
+    };
+    expect(named('viewer')).toEqual(['확대', '축소', '실제 크기']);
+    expect(named('library')).toEqual(['글자 크게', '글자 작게', '기본 글자 크기']);
+    expect(named()).toEqual(['글자 크게', '글자 작게', '기본 글자 크기']);
+  });
+  it('names ⌘F by the view the sheet was opened from: 찾기 in the reader, 빠른 검색 elsewhere', () => {
+    const named = (view?: 'library' | 'viewer') => shortcutGroups('darwin', view).flatMap((g) => g.rows).find((r) => r.spoken === '⌘F')?.label;
+    expect(named('viewer')).toBe('찾기');
+    expect(named('library')).toBe('빠른 검색');
+    expect(named()).toBe('빠른 검색');
+  });
+  it('groups the keys the library and the reader share under the sheet\'s own view: moved, never listed twice (final review m-1)', () => {
+    const shared = ['⌘F', '⌘+', '⌘−', '⌘0'];
+    const where = (view?: 'library' | 'viewer') => {
+      const groups = shortcutGroups('darwin', view);
+      const spoken = groups.flatMap((g) => g.rows.map((r) => r.spoken));
+      for (const s of shared) expect(spoken.filter((x) => x === s), `${view}: ${s}`).toHaveLength(1);
+      return Object.fromEntries(groups.map((g) => [g.title, g.rows.filter((r) => shared.includes(r.spoken)).length]));
+    };
+    expect(where('viewer')).toMatchObject({ 라이브러리: 0, 리더: 4 });
+    expect(where('library')).toMatchObject({ 라이브러리: 4, 리더: 0 });
+    expect(where()).toMatchObject({ 라이브러리: 4, 리더: 0 });
+  });
+  it('keeps the sheet within the 770 px bound in both views (the natural height is the taller column plus 136 px of title, foot and padding: 754 px for 618)', () => {
+    const height = (view?: 'library' | 'viewer') => Math.max(...shortcutColumns(shortcutGroups('darwin', view)).map((c) => c.reduce((h, g, i) => h + 31 + 29 * g.rows.length + (i > 0 ? 16 : 0), 0)));
+    expect(height()).toBe(height('library'));
+    for (const view of ['library', 'viewer'] as const) expect(height(view) + 136, view).toBeLessThanOrEqual(770);
+  });
   it('uses the Linux bindings off macOS', () => {
     const app = shortcutGroups('linux')[0]!;
     expect(app.rows.find((r) => r.label === '사이드바 보기/가리기')?.keys).toEqual(['Ctrl', 'Shift', 'S']);
@@ -71,8 +103,8 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
       const groups = shortcutGroups(platform);
       const [left, right] = shortcutColumns(groups);
       expect([...left, ...right], platform).toEqual(groups); // every group whole, in ORDER
-      expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리']);
-      expect(right.map((g) => g.title), platform).toEqual(['자료', '정리', '리더', '팔레트·대화상자']);
+      expect(left.map((g) => g.title), platform).toEqual(['앱', '라이브러리', '자료']);
+      expect(right.map((g) => g.title), platform).toEqual(['정리', '리더', '팔레트·대화상자']);
     }
     const group = (rows: number) => ({ title: `${rows}`, rows: Array.from({ length: rows }, (_, i) => ({ label: `${i}`, keys: [], spoken: '' })) });
     expect(shortcutColumns([group(12), group(2), group(2), group(2)]).map((c) => c.length)).toEqual([1, 3]);

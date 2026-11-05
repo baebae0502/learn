@@ -595,7 +595,7 @@ test('라이브러리에서 ‘…’ 검색 ⌘F: none in an empty library; it 
 
     await importPaths(page, [PDF]);
     await openItem(page, 'sample');
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     await runMenuCommand(app, 'app.palette');
     await input.fill('효소 억제제');
     await expect(page.getByTestId('palette-empty')).toContainText('‘효소 억제제’\u2060와 일치하는 자료·컬렉션·명령이 없습니다');

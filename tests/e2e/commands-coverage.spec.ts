@@ -7,7 +7,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, importResume, importWaiting, launch, makeTags,
+  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, launch, makeTags,
   menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
   stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
@@ -85,6 +85,17 @@ const M6_COMMANDS: readonly CommandId[] = [
 ] as CommandId[];
 
 /**
+ * Every command the PDF reader v2 and the selection translation put in the registry (M7a; `git diff bede719 HEAD -- packages/domain/src/commands.ts`):
+ * the fifteen reader.* commands run in the menu loop's reader pass, 선택한 글 번역 is the palette's and is named in COVERED_ELSEWHERE.
+ */
+const M7A_COMMANDS: readonly CommandId[] = [
+  'reader.zoomAuto', 'reader.zoomPageWidth', 'reader.zoomPageFit', 'reader.rotateCw', 'reader.rotateCcw', 'reader.goToPage',
+  'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline',
+  'reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark',
+  'translation.translateSelection',
+] as CommandId[];
+
+/**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
  * (and the reader pass) needs: ⌘⌫ is 휴지통으로 이동. Their test is the COVERED_ELSEWHERE entry of the same id.
  */
@@ -95,6 +106,8 @@ const DESTRUCTIVE: ReadonlySet<CommandId> = new Set<CommandId>(['item.trash']);
  * the renderer keymap, with no menu item to click.
  */
 const COVERED_ELSEWHERE: Partial<Record<CommandId, string>> = {
+  // Palette only, and only with text selected in the page: translation.spec selects a sentence, closes the pop-up and brings it back through the palette (R-1).
+  'translation.translateSelection': 'translation.spec.ts › 선택한 글 번역 from the palette shows the pop-up again for the selected text',
   'view.nextPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
   'view.previousPane': 'keyboard.spec.ts › F6 / ⇧F6 cycle sidebar ↔ content, also out of a text field; a folded sidebar is skipped',
 };
@@ -105,7 +118,8 @@ test('every registry command runs without a page error (library and reader menus
   const watch = (p: Page) => {
     p.on('pageerror', (e) => errors.push(`${p.url()}: ${e.message}`));
     p.on('console', (m) => {
-      if (m.type() === 'error') errors.push(`${p.url()}: ${m.text()}`);
+      // pdf.js's own line for a getPage in flight when a document is closed on purpose; nothing else is let through.
+      if (m.type() === 'error' && !isCloseNoise(m.text())) errors.push(`${p.url()}: ${m.text()}`);
     });
   };
   watch(page);
@@ -114,6 +128,45 @@ test('every registry command runs without a page error (library and reader menus
   const sidebar = () => page.getByTestId('shell').getAttribute('data-sidebar');
   const inspector = () => page.getByTestId('shell').getAttribute('data-inspector');
   const searchInput = page.getByTestId('search-field').getByRole('searchbox');
+  const findField = page.getByTestId('pdf-find-field').getByRole('searchbox');
+  const findCount = page.getByTestId('pdf-find-count');
+  let selectedWord = '';
+  /** The state a reader find command acts on: a query with its first match current (⇧⌘G: its second), or a word selected in the page (⌘E). */
+  const prepareFind = async (id: CommandId) => {
+    if (id === 'reader.findSelection') {
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached(); // the text layer is drawn after the canvas
+      selectedWord = await page.evaluate(() => {
+        const text = [...document.querySelectorAll('.page[data-page-number="1"] .textLayer span')].map((s) => s.firstChild).find((n): n is Text => n instanceof Text && /\w{4,}/.test(n.data))!;
+        const at = text.data.search(/\w{4,}/);
+        const word = /\w+/.exec(text.data.slice(at))![0];
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + word.length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+        return word;
+      });
+      return;
+    }
+    if (id !== 'reader.findNext' && id !== 'reader.findPrevious') return;
+    // A search starts from the page in view: back to page 1 first, so its first match is the first one.
+    await page.getByTestId('pdf-page-field').fill('1');
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page', '1');
+    await runMenuCommand(app, 'library.find');
+    await findField.fill(''); // a new search each time: the same text again would keep the match it was on
+    await findField.fill('page');
+    await expect(findCount).toHaveText(/^1 \/ \d+$/);
+    if (id === 'reader.findPrevious') {
+      await runMenuCommand(app, 'reader.findNext');
+      await expect(findCount).toHaveText(/^2 \/ \d+$/);
+    }
+  };
+  /** The reader shows a PDF now: the shared keys act on it, not on the text size. */
+  const scale = async () => Number(await page.getByTestId('pdf-viewer').getAttribute('data-scale'));
+  let scaleBefore = 0;
+  let inspectorBefore: string | null = null;
+  const readerOpen = async () => (await page.getByTestId('pdf-viewer').count()) > 0;
   /** Named copies under derived/open/<uuid>/ with the type's extension. */
   const openDir = path.join(testInfo.outputPath('library'), 'derived', 'open');
   const namedCopy = (file: string) => expect.stringMatching(new RegExp(`^${escaped(openDir)}[\\\\/][0-9a-f-]{36}[\\\\/]${escaped(file)}$`));
@@ -143,26 +196,60 @@ test('every registry command runs without a page error (library and reader menus
       await runMenuCommand(app, 'view.toggleSidebar');
       await expect.poll(sidebar).toBe('shown');
     },
-    // The item panel, both states as for the sidebar; the menu item says what it will do next. 240 + 520 + 320 fit: the
-    // command hid the panel; in a narrower window (the 1024 px macOS runner) it showed the folded one on demand.
+    // The item panel, both states as for the sidebar; the menu item says what it will do next. The library hides the panel
+    // from where it stood (shown, 1440 wide) and the reader likewise: the command flips the state it found, and a second
+    // run puts it back (a narrower window shows a folded panel on demand instead).
     'view.toggleInspector': async () => {
-      const first = (await page.evaluate(() => innerWidth)) >= 1080 ? 'hidden' : 'shown';
+      const first = inspectorBefore === 'shown' ? 'hidden' : 'shown';
       const next = (state: string) => (state === 'hidden' ? '항목 패널 보기' : '항목 패널 가리기');
       await expect.poll(inspector).toBe(first);
       await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(first));
       await runMenuCommand(app, 'view.toggleInspector');
-      const second = first === 'hidden' ? 'shown' : 'hidden';
-      await expect.poll(inspector).toBe(second);
-      await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(second));
+      await expect.poll(inspector).toBe(inspectorBefore!);
+      await expect.poll(() => menuLabel(app, 'view.toggleInspector')).toBe(next(inspectorBefore!));
     },
-    'library.find': () => expect(searchInput).toBeFocused(),
+    // One key, two views (P-9): the library's quick search field, or the reader's find bar with its field focused.
+    'library.find': async () => {
+      if (await readerOpen()) await expect(findField).toBeFocused();
+      else await expect(searchInput).toBeFocused();
+    },
+    // Each find command is run from a state it can change (see `prepareFind`): the current match moves, or the word is taken.
+    'reader.findNext': () => expect(page.getByTestId('pdf-find-count')).toHaveText(/^2 \/ \d+$/),
+    'reader.findPrevious': () => expect(page.getByTestId('pdf-find-count')).toHaveText(/^1 \/ \d+$/),
+    'reader.findSelection': () => expect(findField).toHaveValue(selectedWord),
+    'reader.showThumbnails': () => expect(page.getByTestId('pdf-thumbnails')).toBeVisible(),
+    // sample.pdf has no outline: the sidebar says so.
+    'reader.showOutline': () => expect(page.getByTestId('reader-sidebar-empty')).toContainText('이 PDF에는 목차가 없습니다'),
     // 보기 › 정렬 기준 ▸ 연도: the column row keeps the direction, so the table is sorted by 연도, newest first as it was.
     'library.sortBy': () => expect(page.locator('[data-testid="column-header"][data-col="year"]')).toHaveAttribute('aria-sort', 'descending'),
     // 컬렉션에 추가 ▸ 전수 시험: the selected sample is filed there (main has it, not only the screen).
     'collection.addItems': () => expect.poll(async () => (await organizeSnapshot(page)).members[filing] ?? []).toEqual([filedId]),
-    // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13.
-    'view.textBigger': () => expect.poll(() => fontSize(page)).toBe(14),
-    'view.textSmaller': () => expect.poll(() => fontSize(page)).toBe(13),
+    // A pref round trip: ⌘+ and ⌘− in menu order, 13 → 14 → 13. In the reader the same keys zoom: the scale is a number, not a fit mode, and the pref stays.
+    'view.textBigger': async () => {
+      if (await readerOpen()) await expect.poll(scale).toBeGreaterThan(scaleBefore);
+      else await expect.poll(() => fontSize(page)).toBe(14);
+    },
+    'view.textSmaller': async () => {
+      if (await readerOpen()) await expect.poll(scale).toBeLessThan(scaleBefore);
+      else await expect.poll(() => fontSize(page)).toBe(13);
+    },
+    // The reader's own: each does what its name says on the open PDF (run in registry order, so the page colours end on 어둡게).
+    'view.textReset': async () => {
+      if (await readerOpen()) await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-scale', '1');
+    },
+    'reader.zoomAuto': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'auto'),
+    'reader.zoomPageWidth': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'page-width'),
+    'reader.zoomPageFit': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', 'page-fit'),
+    'reader.rotateCw': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '90'),
+    'reader.rotateCcw': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rotation', '0'),
+    'reader.goToPage': async () => {
+      await expect(page.getByTestId('pdf-page-field')).toBeFocused();
+      await page.getByTestId('pdf-stage').focus();
+    },
+    'reader.pageColorAuto': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', /^(original|dark)$/),
+    'reader.pageColorOriginal': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'original'),
+    'reader.pageColorSepia': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'sepia'),
+    'reader.pageColorDark': () => expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-page-color', 'dark'),
     // The 파일 menu's item commands, on the selected sample.
     'item.showInFolder': () => expect.poll(lastShell).toEqual(['reveal', namedCopy('sample.pdf')]),
     'item.openExternally': () => expect.poll(lastShell).toEqual(['open', namedCopy('sample.pdf')]),
@@ -197,17 +284,28 @@ test('every registry command runs without a page error (library and reader menus
         await openItem(page, 'sample'); // a double-click: a single click only selects
         // The menu is read once below: wait until the reader is up and main's menu has followed.
         await expect(page.getByTestId('viewer-title')).toBeVisible();
-        await expect.poll(() => menuItemEnabled(app, 'library.find')).toBe(false);
+        await expect.poll(() => menuLabel(app, 'library.find')).toBe('찾기');
+        // The reader's commands follow the PDF's pages, which main hears of a moment after the toolbar shows.
+        await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', /^[1-9]/);
+        await expect.poll(() => menuItemEnabled(app, 'reader.rotateCw')).toBe(true);
       }
       const ids = (await enabledMenuCommands(app)).sort((a, b) => Number(a === 'nav.back') - Number(b === 'nav.back')); // leave the reader last
       expect(ids.length).toBeGreaterThan(3);
       const libraryOnly = ids.filter((id) => id.startsWith('item.') || id === 'collection.addItems' || id === 'library.find' || id === 'library.sortBy' || id === 'view.toggleInspector');
       // Spec 6: the 자료 commands, 컬렉션에 추가, ⌘F, 정렬 기준 and the item panel belong to the library view; the reader's menu has them greyed.
+      // The reader's own commands (zoom modes, rotation, page colours, 쪽으로 이동…, the find keys, the sidebar lists) are on there and nowhere else.
+      // ⌘F (찾기) and ⌥⌘I (the reader's own panel) are the library commands that are also on in the reader.
+      const readerOwn = ids.filter((id) => id.startsWith('reader.'));
+      if (view === 'library') expect(readerOwn).toEqual([]);
+      else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
-      else expect(libraryOnly).toEqual([]);
+      else expect(libraryOnly.sort()).toEqual(['library.find', 'view.toggleInspector']); // ⌥⌘I is the reader's too while a PDF is open
       for (const id of ids) {
         if (DESTRUCTIVE.has(id)) continue;
         if (id === 'collection.addItems') await expect.poll(() => menuItemEnabled(app, `collection.addItems?collectionId=${filing}`)).toBe(true); // the menu bar is rebuilt after the collection exists
+        if (view === 'reader') scaleBefore = await scale();
+        if (id === 'view.toggleInspector') inspectorBefore = await inspector();
+        if (view === 'reader') await prepareFind(id);
         await runMenuCommand(app, id, id === 'collection.addItems' ? { collectionId: filing } : REPRESENTATIVE_ARGS[id]);
         await effects[id]?.();
         await closeTransient(app, page);
@@ -235,7 +333,7 @@ test('every registry command runs without a page error (library and reader menus
     // A right-click selects the row first (spec 3.3).
     await stubContextMenu(app, '열기');
     await rowByTitle(page, 'sample').click({ button: 'right' });
-    await expect(page.getByTestId('pdf-canvas')).toBeVisible();
+    await expect(page.getByTestId('pdf-viewer')).toBeVisible();
     ran.add('item.open');
     await runMenuCommand(app, 'nav.back');
     const before = (await shellCalls(app)).length;
@@ -518,6 +616,10 @@ test('every registry command runs without a page error (library and reader menus
     expect(M6_COMMANDS.filter((id) => !all.includes(id)), 'M6 commands gone from the registry').toEqual([]);
     expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
+    // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it, and the list is the whole set (reader.* and the pop-up's command).
+    expect(all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort(), 'the M7a commands in the registry').toEqual([...M7A_COMMANDS].sort());
+    expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7A_COMMANDS.includes(id as CommandId)), 'M7a commands named as covered elsewhere').toEqual(['translation.translateSelection']);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);
     // The backstop for M5 commands outside the prefix filter above: they still have to run here or be covered elsewhere.
     expect(all.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'commands neither run here nor covered elsewhere').toEqual([]);

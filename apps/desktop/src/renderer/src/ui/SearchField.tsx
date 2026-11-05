@@ -1,4 +1,4 @@
-import type { Ref } from 'react';
+import type { ReactNode, Ref } from 'react';
 import { CircleX, Search } from 'lucide-react';
 import { Input, SearchField as AriaSearchField, type KeyboardEvent } from 'react-aria-components';
 import { t } from '../strings';
@@ -38,6 +38,10 @@ export function SearchField(props: {
    * text but takes no input, as the launcher does (a real `disabled` would drop a focus the field has).
    */
   isDisabled?: boolean;
+  /** No clear button: a field whose esc means something else (the find bar's closes the bar). Default: there is one while there is a value. */
+  clearable?: boolean;
+  /** Content at the field's end, inside its box (the find bar's count), before the clear button. */
+  trailing?: ReactNode;
 }) {
   return (
     <AriaSearchField
@@ -74,7 +78,8 @@ export function SearchField(props: {
               e.preventDefault();
             }}
           />
-          {!isEmpty && <IconButton icon={CircleX} label={t.common.clear} size="small" isDisabled={props.isDisabled} testId={props.testId && `${props.testId}-clear`} />}
+          {props.trailing}
+          {!isEmpty && props.clearable !== false && <IconButton icon={CircleX} label={t.common.clear} size="small" isDisabled={props.isDisabled} testId={props.testId && `${props.testId}-clear`} />}
         </>
       )}
     </AriaSearchField>

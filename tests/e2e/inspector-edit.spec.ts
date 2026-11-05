@@ -165,7 +165,7 @@ test('leaving the edit: another row after valid changes saves first; invalid one
     await rowByTitle(page, '한글 경로 (테스트) #1').dblclick();
     await page.waitForTimeout(300);
     await expect(page.getByTestId('library-table')).toBeVisible();
-    await expect(page.getByTestId('pdf-canvas')).toHaveCount(0);
+    await expect(page.getByTestId('pdf-viewer')).toHaveCount(0);
     // 버리기 ends the edit without a write.
     await page.getByTestId('editor-discard').click();
     await expect(page.getByTestId('info-editor')).toHaveCount(0);
@@ -176,7 +176,7 @@ test('leaving the edit: another row after valid changes saves first; invalid one
     await page.getByTestId('info-edit').click();
     await field(page, 'language').fill('영어');
     await rowByTitle(page, 'sample').dblclick();
-    await expect(page.getByTestId('pdf-canvas')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     expect((await detailOf(page, pdf!.id)).metadata.language).toBe('영어');
   } finally {
     await app.close();

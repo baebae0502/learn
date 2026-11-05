@@ -92,9 +92,10 @@ export function moveColumn(cfg: ColumnConfig, forced: readonly LibraryColumnId[]
   const from = shown.indexOf(id);
   if (from < pinned || from >= last || slot < pinned || slot > last || slot === from || slot === from + 1) return cfg;
   const others = shown.filter((c) => c !== id);
-  const before = others[slot > from ? slot - 1 : slot];
+  // After the last movable column means after it, not before the fixed last column: the catalogue may keep other columns between them.
+  const before = slot === last ? undefined : others[slot > from ? slot - 1 : slot];
   const rest = completeOrder(cfg.order).filter((c) => c !== id);
-  const at = before === undefined ? rest.indexOf(others[others.length - 1]!) + 1 : rest.indexOf(before);
+  const at = before === undefined ? rest.indexOf(others[last - 2]!) + 1 : rest.indexOf(before);
   return { ...cfg, order: [...rest.slice(0, at), id, ...rest.slice(at)] };
 }
 
@@ -141,17 +142,18 @@ export function tradeWidths(
 }
 
 /**
- * The author column's default in the trash view, where 삭제한 날짜 needs 124 (the longest value, "오늘 오후 12:59", is 87 px plus
- * the cell's 8 + 24): the six default columns still fit a 1024 window with the panel closed (240 + 776 + 8). A width the user dragged stays.
+ * The defaults of two columns in the trash view, where 삭제한 날짜 needs 124 (the longest value, "오늘 오후 12:59", is 87 px plus
+ * the cell's 8 + 24) and 진행 is shown too: the seven default columns still fit a 1024 window with the panel closed (240 + 776 + 8)
+ * with the author and kind columns at their least widths. A width the user dragged stays.
  */
-export const TRASH_CREATORS_WIDTH = 168;
+export const TRASH_WIDTHS: Readonly<Partial<Record<LibraryColumnId, number>>> = Object.freeze({ creators: 96, type: 72 });
 
 /** The shown columns' pixel widths, the title's excepted: stored, else the default (the grid's tracks). */
 export const fixedWidths = (cfg: ColumnConfig, visible: readonly LibraryColumnSpec[]): Map<LibraryColumnId, number> => {
   const trash = visible.some((c) => trailing(c.id));
   return new Map(
     visible.flatMap((c) =>
-      c.defaultWidth === null ? [] : [[c.id, trash && c.id === 'creators' && cfg.widths.creators === undefined ? TRASH_CREATORS_WIDTH : widthOf(cfg, c)!] as const],
+      c.defaultWidth === null ? [] : [[c.id, (trash && cfg.widths[c.id] === undefined ? TRASH_WIDTHS[c.id] : undefined) ?? widthOf(cfg, c)!] as const],
     ),
   );
 };
@@ -185,3 +187,9 @@ export function columnTemplates(visible: readonly LibraryColumnSpec[], widths: R
   });
   return { head: head.join(' '), row: row.join(' '), minWidth };
 }
+
+/**
+ * What the 진행 cell shows for a stored progress: 'done' only at the very end, else a whole percent that stays below 100 (a long
+ * document's last-but-one page rounds to 100 and must not read as finished).
+ */
+export const progressShown = (progress: number): number | 'done' => (progress >= 1 ? 'done' : Math.min(99, Math.round(progress * 100)));

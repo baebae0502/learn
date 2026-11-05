@@ -133,6 +133,30 @@ export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[
 }
 
 /**
+ * 쪽 색 ▸ (P-14): the four page colours, each row its command. The native menu shows no mark: which colour is in force is
+ * checked in the reader's own 보기 menu, which knows the setting (the menu bar is told only the context).
+ */
+export function pageColorGroup(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
+  const rows: CommandEntry[] = [];
+  for (const id of spec.commands) {
+    const command = commands.find((c) => c.id === id);
+    if (command) rows.push({ id, label: command.label, enabled: input.enabledOf(command) });
+  }
+  if (rows.length === 0) return null;
+  return { id: `submenu.${spec.id}`, label: spec.label, enabled: rows.some((r) => r.enabled), submenu: rows };
+}
+
+/** A group of the registry as its menu entry; `null` when it has nothing to list. */
+export function groupEntry(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
+  switch (spec.id) {
+    case 'colorTags':
+      return colorTagGroup(spec, commands, input);
+    case 'pageColor':
+      return pageColorGroup(spec, commands, input);
+  }
+}
+
+/**
  * The rows of a value-submenu command. `rowsEnabled`: the context menu greys the rows with their command; the menu bar
  * leaves them on and greys the head (the head is switched in place, the rows are not).
  */
@@ -156,5 +180,13 @@ export function menuNeedsOrganize(commands: readonly CommandSpec[], submenus: re
   const fromSource = commands.some(
     (c) => (c.submenu === 'collections' || c.submenu === 'tagColors') && (where === 'menu' ? c.menu !== undefined : placedHere(c.contextMenu)),
   );
-  return fromSource || submenus.some((s) => (where === 'menu' ? s.menu !== undefined : placedHere(s.contextMenu)));
+  const readsLibrary = (s: SubmenuSpec): boolean => {
+    switch (s.id) {
+      case 'colorTags':
+        return true;
+      case 'pageColor': // reads nothing from the library
+        return false;
+    }
+  };
+  return fromSource || submenus.some((s) => readsLibrary(s) && (where === 'menu' ? s.menu !== undefined : placedHere(s.contextMenu)));
 }

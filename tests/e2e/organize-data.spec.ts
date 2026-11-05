@@ -71,7 +71,7 @@ test('the stored view reopens a collection: its name as the title, the full path
     await expect(s.page.getByTestId('toolbar-title')).toHaveAttribute('title', '분자생물학 › 6장 · 신호 전달');
     expect(await titles(s.page)).toEqual([A]);
     await expect(s.page.getByTestId('toolbar-count')).toHaveText('1개');
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '추가일']); // the openedAt column is for the recent view
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '진행', '추가일']); // the openedAt column is for the recent view
   } finally {
     await s.app.close();
   }
@@ -111,7 +111,7 @@ test('the recent view: opened items only, newest first by its own sort, with 마
     await expect(s.page.getByTestId('toolbar-title')).toHaveText('최근 연 자료');
     await expect.poll(() => titles(s.page)).toEqual([B, A]); // b was opened last
     await expect(s.page.getByTestId('toolbar-count')).toHaveText('2개');
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '추가일']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '마지막으로 연 날', '저자', '연도', '종류', '진행', '추가일']);
     await expect(s.page.getByTestId('item-row').first().locator('[data-col="openedAt"]')).toHaveText(/\S/);
     await expect(s.page.locator('[data-testid="column-header"][data-col="openedAt"]')).toHaveAttribute('aria-sort', 'descending');
 
@@ -143,7 +143,7 @@ test('the recent view is not restored when nothing was opened within 30 days', a
     await s.app.close();
     s = await launch(lib, ud);
     await expect(s.page.getByTestId('toolbar-title')).toHaveText('내 라이브러리');
-    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '추가일']);
+    await expect(s.page.getByTestId('column-header')).toHaveText(['제목', '저자', '연도', '종류', '진행', '추가일']);
   } finally {
     await s.app.close();
   }

@@ -3,10 +3,13 @@ export const ERROR_CODES = [
   'MIGRATION_FAILED', 'VALIDATION_FAILED', 'LIBRARY_UNAVAILABLE', 'PREFS_UNAVAILABLE', 'INTERNAL',
   // A job the user (or quitting) stopped: an import's file, a backup, a restore. Never reported as a failure.
   'CANCELLED',
+  // The reader's translation (ADR-0012): the cause is told apart so the panel can say what to do next.
+  'TRANSLATION_OFFLINE', 'TRANSLATION_RATE_LIMITED', 'TRANSLATION_BLOCKED', 'TRANSLATION_UNAVAILABLE', 'TRANSLATION_BAD_RESPONSE',
+  'TRANSLATION_DISABLED', 'TRANSLATION_TOO_LONG',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
-const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['DISK_FULL', 'PERMISSION_DENIED']);
+const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>(['DISK_FULL', 'PERMISSION_DENIED', 'TRANSLATION_OFFLINE', 'TRANSLATION_RATE_LIMITED', 'TRANSLATION_UNAVAILABLE']);
 
 export class LearnError extends Error {
   readonly code: ErrorCode;
@@ -31,6 +34,14 @@ export const ERROR_COPY = {
   libraryDenied: '라이브러리에 저장할 수 없습니다. 라이브러리 폴더의 쓰기 권한을 확인한 뒤 앱을 다시 시작하세요.',
   libraryCorrupt: '라이브러리 데이터가 손상되었습니다. 앱을 다시 시작하고, 계속되면 백업에서 복원하세요.',
   unknown: '알 수 없는 오류가 발생했습니다.',
+  translationOffline: '번역할 수 없음 — 인터넷에 연결되어 있지 않습니다',
+  translationRateLimited: '번역 요청이 너무 많습니다. 잠시 뒤 다시 시도하십시오',
+  translationBlocked: '번역 서비스가 요청을 거부했습니다',
+  translationUnavailable: '번역 서비스가 응답하지 않습니다',
+  translationBadResponse: '번역 결과를 읽을 수 없습니다',
+  translationDisabled: '번역이 꺼져 있습니다. 설정에서 켤 수 있습니다',
+  translationTooLong: '번역하기에 너무 깁니다',
+  translationCancelled: '번역을 취소했습니다.',
 } as const;
 
 interface Mapped {

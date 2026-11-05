@@ -12,6 +12,12 @@ export function stubDeps(over: Partial<IpcDeps> = {}): IpcDeps {
       throw new Error('appInfo not stubbed');
     },
     prefs: {} as IpcDeps['prefs'],
+    translation: {
+      translate: async () => {
+        throw new Error('translation.translate not stubbed');
+      },
+      cancel: () => {},
+    },
     uiContext: {
       report: () => {},
       current: () => ({ view: 'library', blocked: false, textSize: 13, libraryCount: 0, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW }),

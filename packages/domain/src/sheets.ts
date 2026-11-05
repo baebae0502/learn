@@ -76,7 +76,8 @@ export interface RestoreDoneSheet {
 export type SheetPayload =
   /** `remaining`: the other duplicates of this import still to settle; above 0 the sheet offers one answer for all. */
   | { kind: 'duplicate'; fileName: string; existing: DuplicateCard; remaining: number }
-  | { kind: 'shortcuts' }
+  /** `view`: the view the list is read in, so ⌘+ ⌘− ⌘0 are named as that view's menu names them (P-9). */
+  | { kind: 'shortcuts'; view?: 'library' | 'viewer' }
   /** `name`: the one row's title or name when exactly one is chosen; the sheet's title names it. */
   | { kind: 'purge'; variant: PurgeVariant; items: number; collections: number; name?: string }
   | LibraryCheckPayload

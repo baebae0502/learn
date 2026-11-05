@@ -20,5 +20,5 @@ export function SheetApp() {
   if (p.kind === 'libraryCheck') return <LibraryCheckSheet payload={p} />;
   if (p.kind === 'backupDone') return <BackupDoneSheet payload={p} />;
   if (p.kind === 'restoreDone') return <RestoreDoneSheet payload={p} />;
-  return <ShortcutsSheet />;
+  return <ShortcutsSheet view={p.kind === 'shortcuts' ? p.view : undefined} />;
 }

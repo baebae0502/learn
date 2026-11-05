@@ -52,6 +52,16 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   sortBy: vi.fn(),
   openSettings: vi.fn(),
   setTextSize: vi.fn(),
+  zoom: vi.fn(),
+  setZoom: vi.fn(),
+  rotate: vi.fn(),
+  setPageColor: vi.fn(),
+  goToPage: vi.fn(),
+  openFind: vi.fn(),
+  findAgain: vi.fn(),
+  findSelection: vi.fn(),
+  translateSelection: vi.fn(),
+  showReaderNav: vi.fn(),
   focusPane: vi.fn(),
   keepOneOfDuplicates: vi.fn(),
   keepAllDuplicates: vi.fn(),
@@ -239,9 +249,74 @@ describe('renderer command registry', () => {
     expect(runCommand('view.textSmaller', e)).toBe(false);
     expect(runCommand('view.textReset', at(13))).toBe(false);
     e = at(14, 'viewer');
-    expect(runCommand('view.textBigger', e)).toBe(false); // the reader zooms its own content (M7)
+    expect(runCommand('view.textBigger', e)).toBe(false); // no PDF with pages: nothing to zoom
     expect(runCommand('view.textReset', e)).toBe(false);
     expect(e.setTextSize).not.toHaveBeenCalled();
+  });
+  it('zooms the open PDF with the same keys in the reader, and leaves the text size alone (P-9)', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, textSize: 15 });
+    expect(runCommand('view.textBigger', e)).toBe(true); // the text size at its end does not stop the zoom
+    expect(runCommand('view.textSmaller', e)).toBe(true);
+    expect(runCommand('view.textReset', e)).toBe(true);
+    expect(vi.mocked(e.zoom).mock.calls).toEqual([['in'], ['out'], ['actual']]);
+    expect(e.setTextSize).not.toHaveBeenCalled();
+    const lib = env({ pdfOpen: true });
+    expect(runCommand('view.textBigger', lib)).toBe(true);
+    expect(lib.zoom).not.toHaveBeenCalled();
+    expect(lib.setTextSize).toHaveBeenCalledTimes(1);
+  });
+  it('runs the reader commands on the open PDF only', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    const run = (id: CommandId) => runCommand(id, e);
+    expect([run('reader.zoomAuto'), run('reader.zoomPageWidth'), run('reader.zoomPageFit')]).toEqual([true, true, true]);
+    expect(vi.mocked(e.setZoom).mock.calls).toEqual([['auto'], ['page-width'], ['page-fit']]);
+    run('reader.rotateCw');
+    run('reader.rotateCcw');
+    expect(vi.mocked(e.rotate).mock.calls).toEqual([[90], [-90]]);
+    for (const id of ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'] as const) run(id);
+    expect(vi.mocked(e.setPageColor).mock.calls).toEqual([['auto'], ['original'], ['sepia'], ['dark']]);
+    run('reader.goToPage');
+    expect(e.goToPage).toHaveBeenCalledTimes(1);
+    for (const off of [env({ view: 'viewer' }), env({ pdfOpen: true }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {
+      expect(runCommand('reader.rotateCw', off)).toBe(false);
+      expect(off.rotate).not.toHaveBeenCalled();
+    }
+    expect(contextOf(e)).toMatchObject({ view: 'viewer', pdfOpen: true });
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('pdfOpen');
+  });
+  it('선택한 글 번역 runs with a PDF open and a text selected, and is in the palette only there', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, pdfSelection: true });
+    expect(runCommand('translation.translateSelection', e)).toBe(true);
+    expect(e.translateSelection).toHaveBeenCalledTimes(1);
+    for (const over of [{ view: 'viewer' as const, pdfOpen: true }, { view: 'viewer' as const, pdfSelection: true }, { pdfOpen: true, pdfSelection: true, libraryCount: 2 }]) {
+      const off = env(over);
+      expect(runCommand('translation.translateSelection', off), JSON.stringify(over)).toBe(false);
+      expect(off.translateSelection).not.toHaveBeenCalled();
+    }
+    expect(contextOf(e)).toMatchObject({ pdfSelection: true });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfSelection');
+    // The bit travels only when translation is switched off (final review m-5).
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true }))).toMatchObject({ translationOff: true });
+    expect(contextOf(e)).not.toHaveProperty('translationOff');
+    const off = env({ view: 'viewer', pdfOpen: true, pdfSelection: true, translationOff: true });
+    expect(runCommand('translation.translateSelection', off)).toBe(false);
+    expect(off.translateSelection).not.toHaveBeenCalled();
+  });
+  it('⌘F finds in the reader and quick-searches in the library; ⌘G ⇧⌘G ⌘E and the sidebar lists run on the open PDF only', () => {
+    const e = env({ view: 'viewer', pdfOpen: true });
+    for (const id of ['library.find', 'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.showThumbnails', 'reader.showOutline'] as const) expect(runCommand(id, e)).toBe(true);
+    expect(e.openFind).toHaveBeenCalledTimes(1);
+    expect(e.focusSearch).not.toHaveBeenCalled();
+    expect(vi.mocked(e.findAgain).mock.calls).toEqual([[false], [true]]);
+    expect(e.findSelection).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(e.showReaderNav).mock.calls).toEqual([['thumbnails'], ['outline']]);
+    // An empty library has nothing to quick-search; a reader with no PDF has nothing to find in.
+    const lib = env({ libraryCount: 3 });
+    expect(runCommand('library.find', lib)).toBe(true);
+    expect(lib.focusSearch).toHaveBeenCalledTimes(1);
+    expect(lib.openFind).not.toHaveBeenCalled();
+    for (const off of [env({ view: 'viewer' }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) expect(runCommand('library.find', off)).toBe(false);
+    expect(runCommand('reader.findNext', env({ libraryCount: 3 }))).toBe(false);
   });
   it('item commands use the targets of the given items', () => {
     const e = env();
@@ -312,11 +387,14 @@ describe('renderer command registry', () => {
     expect(runPicked({ commandId: 'file.nope' as CommandId }, env(), { itemIds: [ID] })).toBe(false);
     expect(runPicked({ commandId: 'toString' as CommandId }, env(), { itemIds: [ID] })).toBe(false); // not fooled by Object.prototype
   });
-  it('⌥⌘I toggles the item panel in the library with items, never in the reader, the empty library or while blocked', () => {
+  it('⌥⌘I toggles the item panel in the library with items and in the reader with a PDF open, never in the empty library, a reader without pages or while blocked', () => {
     const e = env({ libraryCount: 2 });
     expect(runCommand('view.toggleInspector', e)).toBe(true);
     expect(e.toggleInspector).toHaveBeenCalledTimes(1);
-    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }]) {
+    const reader = env({ view: 'viewer', pdfOpen: true });
+    expect(runCommand('view.toggleInspector', reader)).toBe(true);
+    expect(reader.toggleInspector).toHaveBeenCalledTimes(1);
+    for (const over of [{ libraryCount: 0 }, { view: 'viewer' as const, libraryCount: 2 }, { libraryCount: 2, blocked: true }, { view: 'viewer' as const, pdfOpen: true, blocked: true }]) {
       const off = env(over);
       expect(runCommand('view.toggleInspector', off), JSON.stringify(over)).toBe(false);
       expect(off.toggleInspector).not.toHaveBeenCalled();

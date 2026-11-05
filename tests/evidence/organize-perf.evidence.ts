@@ -126,16 +126,18 @@ function installProbe(page: Page): Promise<void> {
 async function revealNavRow(page: Page, testId: string): Promise<void> {
   const row = page.getByTestId(testId);
   const tree = page.getByTestId('sidebar-tree');
+  // After each scroll the tree's render is waited for, the first one too: a row near the top that the scroll back to 0
+  // has not drawn yet was scrolled past and never found (Mac run 41806531028, 중복 항목 after a collection far down).
+  const drawn = () => row.waitFor({ state: 'attached', timeout: 1_000 }).then(() => true, () => false);
   if ((await row.count()) === 0) {
     await tree.evaluate((e) => e.scrollTo(0, 0));
-    for (let i = 0; i < 60 && (await row.count()) === 0; i++) {
+    for (let i = 0; i < 60 && !(await drawn()); i++) {
       const moved = await tree.evaluate((e) => {
         const before = e.scrollTop;
         e.scrollBy(0, Math.max(1, Math.floor(e.clientHeight * 0.8)));
         return e.scrollTop !== before;
       });
       if (!moved) break;
-      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     }
   }
   await row.scrollIntoViewIfNeeded();

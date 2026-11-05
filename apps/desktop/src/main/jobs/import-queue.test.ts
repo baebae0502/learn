@@ -597,6 +597,29 @@ describe('results', () => {
     expect(seen).toEqual(['item:/in/a.pdf', 'item:/in/b.pdf']);
   });
 
+  it('tells a batch it is settled once its own files are over — duplicates asked, failures and cancel included — not when the whole run ends', async () => {
+    const settled: string[] = [];
+    const h = setup({ answers: [{ choice: 'skip', applyToRest: false, askedOn: 1 }] });
+    const heldB = h.fake.hold('/in/b.pdf');
+    const done = h.nextReport();
+    h.queue.enqueue(batch(['/in/a.pdf'], { onSettled: () => void settled.push('a') }));
+    h.queue.enqueue(batch(['/in/b.pdf', '/in/c.pdf'], { onSettled: () => void settled.push('b') }));
+    await heldB.started;
+    expect(settled).toEqual(['a']);
+    heldB.release();
+    await done;
+    expect(settled).toEqual(['a', 'b']);
+
+    const stopped: string[] = [];
+    const g = setup();
+    const heldX = g.fake.hold('/in/x.pdf');
+    g.queue.enqueue(batch(['/in/x.pdf', '/in/y.pdf'], { onSettled: () => void stopped.push('x') }));
+    g.queue.enqueue(batch(['/in/z.pdf'], { onSettled: () => void stopped.push('z') }));
+    await heldX.started;
+    g.queue.cancel();
+    await vi.waitFor(() => expect(stopped.sort()).toEqual(['x', 'z']));
+  });
+
   it('announces the items it added at most once a second, and the rest as the run ends', async () => {
     vi.useFakeTimers();
     const importer = {

@@ -70,8 +70,8 @@ describe('anchors (spec 08 examples)', () => {
   const revisionId = newId();
   it('accepts a pdf anchor in pdf-user-space', () => {
     const r = sourceAnchor.safeParse({
-      kind: 'pdf', revisionId, pageIndex: 41, quads: [[1, 2, 3, 4, 5, 6, 7, 8]], coordinateSpace: 'pdf-user-space',
-      quote: { exact: 'A signaling cascade', prefix: '', suffix: ' can amplify' },
+      kind: 'pdf', revisionId, precision: 'span', pageIndex: 41, quads: [[1, 2, 3, 4, 5, 6, 7, 8]], coordinateSpace: 'pdf-user-space',
+      text: { quote: { exact: 'A signaling cascade', prefix: '', suffix: ' can amplify' } },
     });
     expect(r.success).toBe(true);
   });
@@ -86,7 +86,7 @@ describe('anchors (spec 08 examples)', () => {
     expect(sourceAnchor.safeParse({ kind: 'video', revisionId, startMs: 10, endMs: 5 }).success).toBe(false);
     expect(sourceAnchor.safeParse({ kind: 'video', revisionId, startMs: 0, endMs: 5, rect: [0.8, 0, 0.4, 0.1] }).success).toBe(false);
   });
-  it('exposes schema version 1', () => expect(ANCHOR_SCHEMA_VERSION).toBe(1));
+  it('exposes schema version 2', () => expect(ANCHOR_SCHEMA_VERSION).toBe(2));
 });
 
 describe('ipc contract', () => {

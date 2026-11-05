@@ -3,15 +3,27 @@
 export const reader = {
   prevPage: '이전 쪽',
   nextPage: '다음 쪽',
-  page: (n: number, total: number) => `${n} / ${total}쪽`,
+  /** After the page field: the field holds the current page. */
+  pageOf: (total: number) => `/ ${total}`,
+  pageField: '쪽\u00a0번호',
   /** Disabled-button tooltips (M-2). */
   firstPage: '첫 쪽입니다',
   lastPage: '마지막 쪽입니다',
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',
-  zoom: '배율',
   pdfTools: 'PDF 도구',
+  /** The zoom field holds the scale in percent; its ▾ opens the zoom menu (design-spec 7.3). */
+  zoomField: '확대 비율',
+  zoomMenu: '확대 메뉴',
+  /** The toolbar's 보기 menu: the page colour and the rotation. */
+  viewMenu: '보기',
+  pageColor: '쪽 색',
   pdfStage: 'PDF 쪽',
+  lockedTitle: '암호로 보호된 PDF입니다',
+  lockedBody: '암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.',
+  password: '암호',
+  passwordOpen: '열기',
+  passwordWrong: '암호가 맞지 않습니다.',
   linkedMeta: '외부 연결',
   pdfErrorTitle: '이\u00a0PDF를 열 수 없습니다',
   // One cause, one next action (design-spec 6), as in reader-pdf.html?state=error.
@@ -31,4 +43,31 @@ export const reader = {
   missingManagedBody:
     '라이브러리 안의 사본을 찾을 수 없습니다. 원본\u00a0파일이 있으면 다시 가져오세요. 이미 있는 자료로 표시되면 ‘새\u00a0자료로 추가’\u2060를 고르세요.',
   openFailedTitle: '자료를 열 수 없습니다',
+  /** The find bar (spec 4.5): the count reads "3 / 17"; a miss and a wrap say so in the same place. */
+  find: '찾기',
+  findField: 'PDF에서 찾기',
+  findCount: (current: number, total: number) => `${current} / ${total}`,
+  findNone: '찾을 수 없음',
+  findWrapped: (current: number, total: number) => `처음부터\u00a0· ${current} / ${total}`,
+  findWrappedSpoken: '처음부터 다시 찾았습니다',
+  findPrev: '이전 찾기',
+  findNext: '다음 찾기',
+  findClose: '찾기 닫기',
+  /** The sidebar while a PDF is read (spec 4.7). */
+  navLabel: '썸네일과 목차',
+  thumbnails: '썸네일',
+  outline: '목차',
+  thumbnailList: '쪽 썸네일',
+  thumbnailOf: (page: number) => `${page}쪽`,
+  outlineSearch: '목차에서 찾기',
+  outlineSearchLabel: '목차 검색',
+  outlineTree: 'PDF 목차',
+  noOutlineTitle: '이\u00a0PDF에는 목차가 없습니다',
+  /** The body names the page shortcut between its two halves (a keycap, not text: the keys differ by platform). */
+  noOutlineLead: '썸네일에서 쪽을 고르거나',
+  noOutlineTail: '로 쪽\u00a0번호를 입력하세요.',
+  outlineNoMatch: '일치하는 목차가 없습니다',
+  noPagesTrashed: '복원하면 쪽이 보입니다',
+  noPagesLocked: '암호를 입력하면 쪽이 보입니다',
+  noPages: '표시할 쪽이 없습니다',
 } as const;

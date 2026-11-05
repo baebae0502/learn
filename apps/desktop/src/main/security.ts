@@ -2,6 +2,9 @@ import { app, session, shell } from 'electron';
 import { appMayUse } from './permissions';
 import { isAllowedAppUrl } from './url-policy';
 
+/** Whether a window.open / target=_blank address may go to the system: web pages and mail links only. */
+export const isExternalOpenUrl = (url: string): boolean => /^(https?:\/\/|mailto:)/i.test(url);
+
 /** Must be called once, after 'ready' and before the first window is created. */
 export function hardenApp(devOrigin: string | null): void {
   app.on('web-contents-created', (_event, contents) => {
@@ -10,7 +13,7 @@ export function hardenApp(devOrigin: string | null): void {
     });
     contents.on('will-attach-webview', (event) => event.preventDefault());
     contents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+      if (isExternalOpenUrl(url)) void shell.openExternal(url);
       return { action: 'deny' };
     });
   });

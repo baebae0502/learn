@@ -50,22 +50,26 @@ function Viewer({ itemId }: { itemId: string }) {
   // the trash notice; one gone for good takes its tab with it.
   const removeTab = useShell((s) => s.removeTab);
   const firstReadSeen = useRef(false);
+  // Cancelled only when this host goes away: a re-render while the answer is on its way must not drop it.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     if (firstReadSeen.current || !item.isFetchedAfterMount) return;
     firstReadSeen.current = true;
     if (!(item.isError && item.error instanceof ApiError && item.error.code === 'NOT_FOUND')) return;
-    let live = true;
     api().library.detail({ itemId }).then(
       (r) => {
-        if (!live) return;
+        if (!mounted.current) return;
         if (r.ok) setTrashed('yes');
         else if (r.code === 'NOT_FOUND') removeTab(itemId);
       },
       () => {},
     );
-    return () => {
-      live = false;
-    };
   }, [item.isFetchedAfterMount, item.isError, item.error, itemId, removeTab]);
   const readAgain = trashed === 'back' && item.isSuccess && !item.isFetching;
   useEffect(() => {

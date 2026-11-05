@@ -11,7 +11,7 @@ import {
   FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
-import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
+import { THEMES, TOUR_VIDEO_BYTES, closeReaderTabs, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
 
@@ -875,6 +875,7 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
+      await closeReaderTabs(s.page); // the next theme's pass starts from the same strip
     }
   } finally {
     await s.app.close();
@@ -983,6 +984,7 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await unselect();
       await page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await expect(page.getByTestId('library-table')).toBeVisible();
+      await closeReaderTabs(page); // the next theme's pass starts from the same strip
     }
     // The settings window at the 번역 group: chosen on, light and dark.
     for (const theme of THEMES) {
@@ -1758,6 +1760,45 @@ test('import progress toast: waiting for a choice (and the sheet\'s box), the pa
     await releaseJob(s.app);
     await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
     await waitImportIdle(s.page);
+  } finally {
+    await s.app.close();
+  }
+});
+
+
+// Kept tabs shown again (M7b): the marks of a find and the focus of a password field come back with the tab.
+test('kept tabs: a find bar with its marks and a password field with its focus, shown again', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'locked.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'locked');
+      await expect(page.getByTestId('pdf-password')).toBeFocused();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached();
+      await runMenuCommand(s.app, 'library.find');
+      await page.getByTestId('pdf-find-field').getByRole('searchbox').fill('attention');
+      const total = await page.evaluate(async () => {
+        const probe = window.__learnPdf!;
+        let n = 0;
+        for (let i = 0; i < 100; i++) n += ((await probe.pageText(i)).toLowerCase().match(/attention/g) ?? []).length;
+        return n;
+      });
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(`1 / ${total}`);
+      await page.locator('[data-testid="tab"]:has-text("locked")').click();
+      await expect(page.getByTestId('pdf-password')).toBeFocused();
+      await shoot(page, `reader-kept-password-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(`1 / ${total}`);
+      await expect.poll(() => page.locator('[data-testid="tab-panel"][data-active="true"] .textLayer .highlight').count()).toBeGreaterThan(0);
+      await shoot(page, `reader-kept-find-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await closeReaderTabs(page);
+    }
   } finally {
     await s.app.close();
   }

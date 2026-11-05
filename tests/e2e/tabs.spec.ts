@@ -141,6 +141,8 @@ test('opening items makes tabs; the library tab switches back and forth', async 
     await expect(page.getByTestId('library-table')).toBeVisible();
     // The library's head moves under the strip while reader tabs exist.
     await expect(page.getByTestId('library-head')).toBeVisible();
+    // The search field is 240 wide there as in the toolbar.
+    expect(Math.round((await page.locator('.pane-header .library-search').boundingBox())!.width)).toBe(240);
 
     await readerTab(page, a!.id).click();
     await expect(readerTab(page, a!.id)).toHaveAttribute('aria-selected', 'true');
@@ -160,6 +162,9 @@ test('a kept tab comes back at once, with its find bar and place', async ({}, te
     await goToPage(page, 30);
     await runMenuCommand(app, 'library.find');
     await expect(page.getByTestId('pdf-find-bar')).toBeVisible();
+    await page.keyboard.type('attention');
+    const marks = () => page.locator('[data-testid="tab-panel"][data-active="true"] .textLayer .highlight').count();
+    await expect.poll(marks).toBeGreaterThan(0);
     // A mark on the viewer's own element: a viewer built again would not have it.
     await page.evaluate(() => document.querySelector('[data-testid="pdf-viewer"]')!.setAttribute('data-mark', 'kept'));
 
@@ -172,6 +177,15 @@ test('a kept tab comes back at once, with its find bar and place', async ({}, te
 
     await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
     await expect(page.getByTestId('pdf-find-bar')).toBeVisible();
+    // The matches are marked in the pages again, not only counted.
+    await expect.poll(marks).toBeGreaterThan(0);
+    // Closed (the marks go with the bar) and opened again with the query it kept: the marks come back with the bar.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);
+    await expect.poll(marks).toBe(0);
+    await runMenuCommand(app, 'library.find');
+    await expect(page.getByTestId('pdf-find-bar')).toBeVisible();
+    await expect.poll(marks).toBeGreaterThan(0);
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
     expect((await reader(page))!.pageNumber).toBe(30);
     await expect(page.locator('[data-testid="pdf-viewer"][data-mark="kept"]')).toHaveCount(1);
@@ -288,6 +302,13 @@ test('the tab strip scrolls to keep the active tab in view', async ({}, testInfo
     // The scroll box is as tall as the strip's tabs' row (a ring and a shadow are not clipped).
     const box = (await page.getByTestId('tab-scroll').boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(strip.height - 1);
+    // The hairline between two inactive tabs is 16 high (a 28 px tab, 6 above and below).
+    const hairline = await page.evaluate(() => {
+      const items = [...document.querySelectorAll<HTMLElement>('.tabs-scroll > .tab-item')];
+      const el = items[5]!;
+      return getComputedStyle(el, '::before').height;
+    });
+    expect(hairline).toBe('16px');
     // Back to the first: it scrolls into view too.
     const first = readerTab(page, items.find((x) => x.title === 'doc-01')!.id);
     await first.scrollIntoViewIfNeeded();
@@ -312,6 +333,50 @@ test("the window's title is the active tab's", async ({}, testInfo) => {
     await expect.poll(title).toBe('doc-01');
     await backFromReader(page);
     await expect.poll(title).not.toMatch(/^doc-0/);
+  } finally {
+    await app.close();
+  }
+});
+
+
+test('a kept locked tab shown again has its password field focused; a kept reader takes the focus back to its stage', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'locked.pdf'), ...pdfCopies(testInfo.outputPath('src'), 1)]);
+    await openItem(page, 'locked');
+    await expect(page.getByTestId('pdf-password')).toBeFocused();
+    await libraryTab(page).click();
+    await openItem(page, 'doc-01');
+    await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+    // By the pointer, from the strip: the content takes the focus as a browser tab does.
+    await page.locator('[data-testid="tab"]:has-text("locked")').click();
+    await expect(page.getByTestId('pdf-password')).toBeFocused();
+    await page.locator('[data-testid="tab"]:has-text("doc-01")').click();
+    await expect(page.getByTestId('pdf-stage')).toBeFocused();
+  } finally {
+    await app.close();
+  }
+});
+
+test('the empty part of the tab strip drags the window; the tabs do not', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 1));
+    await openItem(page, 'doc-01');
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    const regions = await page.evaluate(() => {
+      const bar = document.querySelector<HTMLElement>('[data-testid="tab-bar"]')!;
+      const tabs = document.querySelector<HTMLElement>('.tabs')!;
+      const last = [...document.querySelectorAll<HTMLElement>('.tab-item')].at(-1)!.getBoundingClientRect();
+      const at = document.elementFromPoint(last.right + 100, last.top + last.height / 2)!;
+      return {
+        empty: (getComputedStyle(at) as CSSStyleDeclaration & { webkitAppRegion: string }).webkitAppRegion,
+        emptyIsStrip: bar.contains(at),
+        tab: (getComputedStyle(document.querySelector('.tab-item')!) as CSSStyleDeclaration & { webkitAppRegion: string }).webkitAppRegion,
+        list: (getComputedStyle(tabs) as CSSStyleDeclaration & { webkitAppRegion: string }).webkitAppRegion,
+      };
+    });
+    expect(regions).toEqual({ empty: 'drag', emptyIsStrip: true, tab: 'no-drag', list: 'drag' });
   } finally {
     await app.close();
   }

@@ -27,6 +27,12 @@ export function FindBar({ onClose }: { onClose(): void }) {
   const bus = useReader((s) => s.handle?.eventBus() ?? null);
   const input = useRef<HTMLInputElement>(null);
 
+  // The bar opens with the query it kept (closing it cleared the marks in the pages, not the query): the search runs again, so the
+  // marks and the count agree. Once per opening.
+  useEffect(() => {
+    if (bus && scope.find.getState().query.trim() !== '') dispatchFind(bus, scope.find.getState().query, '');
+  }, [bus, scope]);
+
   // ⌘F again, or ⌘E: the field takes the focus with its text selected.
   useEffect(() => {
     input.current?.focus();

@@ -219,7 +219,7 @@
     color: inherit;
   }
   /* The toolbar's quick search field (design-spec 2.4). */
-  .titlebar .library-search {
+  :is(.titlebar, .pane-header) .library-search {
     width: 240px; /* local: design-spec 2.4 search field */
     flex: none;
   }

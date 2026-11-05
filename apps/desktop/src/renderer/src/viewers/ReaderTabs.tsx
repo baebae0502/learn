@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
+import { lastInput } from '../ui/inputModality';
 import { mountedTabs } from '../state/tabs';
 import { useShell } from '../state/shell-store';
 import { useItem } from '../data/queries';
@@ -40,8 +41,26 @@ export function ReaderTabs() {
 
 function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
   const title = useItem(itemId).data?.title;
+  const box = useRef<HTMLDivElement>(null);
+  /** What had the focus in this reader when it was last shown: a hidden (inert) panel loses its focus, and shown again has none. */
+  const lastFocus = useRef<HTMLElement | null>(null);
+  const wasActive = useRef(active);
+  // Shown again, the reader takes the focus back where it was (or at its first target: the password field, the stage, the player) —
+  // except when the tab was chosen from the strip by keyboard, where the focus stays on the tab (Tab goes on into the reader).
+  useLayoutEffect(() => {
+    const was = wasActive.current;
+    wasActive.current = active;
+    const panel = box.current;
+    if (!active || was || !panel) return;
+    const onTab = document.activeElement instanceof Element && document.activeElement.closest('.tab-bar') !== null;
+    if (onTab && lastInput() === 'keyboard') return;
+    const last = lastFocus.current;
+    const target = last?.isConnected && panel.contains(last) ? last : panel.querySelector<HTMLElement>('input[type="password"], .pdf-stage, video');
+    target?.focus({ preventScroll: true });
+  }, [active]);
   return (
     <div
+      ref={box}
       className="tab-panel"
       role="tabpanel"
       aria-label={title}
@@ -50,6 +69,9 @@ function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
       data-testid="tab-panel"
       data-item-id={itemId}
       data-active={active ? 'true' : 'false'}
+      onFocus={(e) => {
+        if (active) lastFocus.current = e.target as HTMLElement;
+      }}
     >
       <ViewerHost itemId={itemId} active={active} />
     </div>

@@ -338,9 +338,10 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         stageObserver.observe(container, { box: 'border-box' });
         // The scroll offset of the shown stage, kept to put back: a box that was display: none starts at 0 when it is shown again.
         let scrolled = { top: 0, left: 0 };
-        container.addEventListener('scroll', () => {
+        const onScroll = () => {
           if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
-        });
+        };
+        container.addEventListener('scroll', onScroll);
         let wasHidden = false;
         onShown.current = (visible) => {
           if (!visible) {
@@ -362,6 +363,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         };
         teardown = () => {
           onShown.current = null;
+          container.removeEventListener('scroll', onScroll);
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();
           cancelAnimationFrame(fitFrame);

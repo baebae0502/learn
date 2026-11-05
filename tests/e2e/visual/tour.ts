@@ -90,3 +90,12 @@ async function capture2x(page: Page, name: string, park: boolean): Promise<void>
     await cdp.detach().catch(() => {});
   }
 }
+
+/** Closes every reader tab (by its close mark), so each theme's pass of a scene starts from the same strip. */
+export async function closeReaderTabs(page: Page): Promise<void> {
+  const tabs = page.locator('[data-testid="tab"]:not([data-item-id="library"])');
+  while ((await tabs.count()) > 0) {
+    await tabs.first().click();
+    await page.locator('.tab-item.is-active [data-testid="tab-close"]').click();
+  }
+}

@@ -24,7 +24,6 @@ export const reader = {
   password: '암호',
   passwordOpen: '열기',
   passwordWrong: '암호가 맞지 않습니다.',
-  linkedMeta: '외부 연결',
   pdfErrorTitle: '이\u00a0PDF를 열 수 없습니다',
   // One cause, one next action (design-spec 6), as in reader-pdf.html?state=error.
   pdfErrorBody: '파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본\u00a0파일은 그대로 보관됩니다. 다른\u00a0사본이 있으면 다시 가져오세요.',

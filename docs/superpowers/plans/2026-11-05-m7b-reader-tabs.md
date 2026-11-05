@@ -655,7 +655,7 @@
 - 문서: 디자인 명세(명세 15절의 일곱 줄, P-7의 윈도우 메뉴 정정), `spec-amendments.md` 13절(M7b·M7c 분할, 소유자 결정, 사전 판정 P-6·P-7·P-12·P-13·P-18), `acceptance.md`(M7b 완료 조건 절 — 근거 실행 줄은 컨트롤러가 채움), `next-session.md`("M7b 결과" 절, M7c 입력, PR 남은 것, 로드맵 표 M7b 줄 고침·M7c 줄 더함, 실기에서만 확인할 것: 마우스 옆 단추·트랙패드 쓸기·4탭 메모리), `mac-verification.md`(중간 실행 줄). `next-session.md`에는 명세 8절의 "그대로 두는 것"과 그 이유도 적는다.
 - 컨트롤러: 전체 녹색 확인 → push → CI → Mac `all` → Mac PNG 비평(라이트·다크 데모 프레임) → 데모 영상(SendUserFile) → opus 브랜치 전체 검토 → 고침 한 번 → PR(본문 끝 Global Constraints의 두 줄). 병합은 소유자가 "병합해"라고 할 때만.
 
-- [ ] **Step 1**: 시험 PDF 링크, 투어·axe·키보드·명령 전수 시험을 더하고 통과시킨다.
+- [ ] **Step 1**: 시험 PDF 링크, 투어·axe·키보드·명령 전수 시험을 더하고 통과시킨다. 투어에 탭 줄 상태를 더한다(Task 5 비평 m2): `tabs-sidebar-hidden-*`(접힘 + 탭 줄), `tabs-overflow-*`(탭 12개), `library-tabs-*`(검색이 있는 머리), `tab-states-light`(호버·키보드 포커스·닫기 호버).
 - [ ] **Step 2**: 데모 장을 만들고 Linux에서 한 번 돌려 본다(`scripts/record-demo-linux.sh`가 있으면).
 - [ ] **Step 3**: 문서를 고친다.
 - [ ] **Step 4**: 커밋 `docs(m7b): design-spec and amendments §13, acceptance, next-session M7b results and M7c inputs, the roadmap's M7b and M7c rows; tour, axe, keyboard journey, the M7b command ledger, a link to a point in the paper fixture, the M7b demo`.

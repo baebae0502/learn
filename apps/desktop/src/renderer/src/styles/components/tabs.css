@@ -8,6 +8,11 @@
     gap: var(--space-4);
     flex: 1 1 auto;
     min-width: 0;
+  }
+  /* Only the tabs take the pointer; the empty strip drags the window as the M7a toolbar did. The scrolling box takes it too once it
+     overflows (no empty part is left and the wheel and the trackpad must reach it). */
+  .tab-bar .tab-item,
+  .tabs-scroll:is([data-fade-start], [data-fade-end]) {
     -webkit-app-region: no-drag;
   }
   .tab-item {
@@ -60,6 +65,10 @@
     background: var(--fill-hover);
   }
   .tab:focus-visible {
+    outline: none;
+  }
+  /* The ring is the whole tab's, the close mark inside it. */
+  .tab-item:has(> .tab:focus-visible) {
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: calc(var(--focus-ring-width) * -1);
   }
@@ -90,8 +99,8 @@
     content: '';
     position: absolute;
     left: -3px; /* local: the middle of the 4 px gap */
-    top: 8px; /* local: the hairline is 12 px high on the 28 px tab */
-    bottom: 8px; /* local: the hairline is 12 px high on the 28 px tab */
+    top: 6px; /* local: the hairline is 16 px high on the 28 px tab (spec 3.2) */
+    bottom: 6px; /* local: the hairline is 16 px high on the 28 px tab (spec 3.2) */
     width: 1px;
     background: var(--separator);
   }

@@ -45,9 +45,11 @@ window.Mockup = (() => {
     </div>`;
 
   function tab(t) {
-    const cls = ['tab', t.active ? 'is-active' : '', t.home ? 'home' : '', t.hover ? 'is-hover' : ''].join(' ');
+    const cls = ['tab', t.active ? 'is-active' : '', t.home ? 'home' : '', t.hover ? 'is-hover' : '', t.dragging ? 'is-dragging' : ''].join(' ');
     const close = t.home ? '' : `<span class="close" title="탭 닫기 ⌘W">${icon('x', 'sm')}</span>`;
-    return `<div class="${cls}" role="tab" aria-selected="${!!t.active}" title="${esc(t.title)}">${icon(t.icon)}<span class="title ellipsis">${esc(t.title)}</span>${close}</div>`;
+    const idAttr = t.id ? `id="tab-${t.id}"` : '';
+    const drag = t.style ? `style="${t.style}"` : '';
+    return `<div ${idAttr} ${drag} class="${cls}" role="tab" aria-selected="${!!t.active}" title="${esc(t.title)}">${icon(t.icon)}<span class="title ellipsis">${esc(t.title)}</span>${close}</div>`;
   }
 
   const toggle = (cls) =>
@@ -58,14 +60,14 @@ window.Mockup = (() => {
    * title bar (A) or beside it at full height (B). With a single tab (the library alone,
    * M3–M6) there is no tab strip: the title bar becomes a unified toolbar (`unified`).
    */
-  function windowShell({ tabs, unified = null, sidebar = '', main, inspector = null, overlays = '', above = '', inactive = false, cls: extra = '', style = '' }) {
+  function windowShell({ tabs, unified = null, sidebar = '', main, inspector = null, overlays = '', above = '', inactive = false, cls: extra = '', style = '', tabsCls = '' }) {
     const single = tabs.length <= 1;
     const cls = ['window', inspector ? 'has-inspector' : '', sidebar ? '' : 'no-sidebar', inactive ? 'is-inactive' : '', single ? 'single-tab' : '', extra].join(' ');
     const middle =
       single && unified
         ? `${unified.lead || ''}<div class="tb-title" ${ms(unified.ms || 'M3', unified.msLabel || '통합 도구 막대 제목')}><span class="title ellipsis">${esc(unified.title)}</span>${unified.count ? `<span class="count num">${unified.count}</span>` : ''}</div>
            <div class="tb-actions">${unified.actions || ''}</div>`
-        : `<div class="tabs" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
+        : `<div class="tabs ${tabsCls}" role="tablist" ${ms('M7', '탭 줄')}>${tabs.map(tab).join('')}</div>`;
     return `
     <div class="${cls}" ${style ? `style="${style}"` : ''}>
       <div class="traffic-lights" aria-hidden="true"><i class="close"></i><i class="min"></i><i class="zoom"></i></div>
@@ -129,6 +131,14 @@ window.Mockup = (() => {
       pop.style.top = `${Math.round(fits ? below : above)}px`;
       pop.style.left = `${Math.round(Math.max(8, Math.min(r.right - host.left - w / 2, host.width - w - 8)))}px`;
     }
+    // M7b: a strip that overflows scrolls the active tab to the middle of the visible part (spec 3.2: it is always seen).
+    for (const strip of document.querySelectorAll('.tabs.m7b')) {
+      const a = strip.querySelector('.tab.is-active');
+      if (!a || strip.scrollWidth <= strip.clientWidth) continue;
+      const s = strip.getBoundingClientRect();
+      const r = a.getBoundingClientRect();
+      strip.scrollLeft += r.left + r.width / 2 - (s.left + s.width / 2);
+    }
     for (const menu of document.querySelectorAll('.menu[data-anchor]')) {
       const anchor = document.getElementById(menu.dataset.anchor);
       if (!anchor) continue;
@@ -138,6 +148,16 @@ window.Mockup = (() => {
       menu.style.top = menu.dataset.place === 'above' ? `${r.top - host.top - 4 - menu.offsetHeight}px` : `${r.bottom - host.top + 4}px`;
       if (menu.dataset.align === 'end') menu.style.right = `${host.right - r.right}px`;
       else menu.style.left = `${r.left - host.left}px`;
+    }
+    // M7b: a submenu opens beside the row of its parent menu, level with the row.
+    for (const sub of document.querySelectorAll('.menu[data-sub-of]')) {
+      const row = document.getElementById(sub.dataset.subOf);
+      if (!row) continue;
+      const r = row.getBoundingClientRect();
+      const parent = row.closest('.menu').getBoundingClientRect();
+      const host = sub.offsetParent.getBoundingClientRect();
+      sub.style.top = `${Math.round(r.top - host.top - 5)}px`;
+      sub.style.left = `${Math.round(parent.right - host.left - 2)}px`;
     }
   }
 

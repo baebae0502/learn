@@ -8,9 +8,13 @@
  *                  &find=open|none &select=consent|translating|translated|error|offline|long|same
  *                  &inspector=empty|translated|concat|consent|off &menu=zoom|view|copy|direction
  *                  &state=loading|error|missing|locked|trashed|nooutline (&pw=wrong) &w=1024|960 (a narrower window)
+ *                  M7b (with &m=7b — the tab strip of layout B, ‹ › in the reader toolbar, scroll and spread in the view menu):
+ *                  &tabs=2|many|drag (one reader tab, 12 tabs that overflow, a tab being dragged)  &history=none|back|both
+ *                  &view=menu|menu-scroll|menu-spread  &scroll=horizontal|page  &spread=odd  &menu=tab  &sidebar=hidden  &w=1024
  *   reader-video   ?state=nosubs|nomatch
  *   palette        ?state=none
  *   settings       ?state=nobackup   ?section=translation (M7a: the 번역 group; &tr=off shows 번역 사용 끔)
+ *   library        ?m=7b&tabs=2 (M7b: the library tab active with one reader tab open)  ?reading=pdf|video|legacy (M7b: the 읽기 section)
  *   library        ?columns=progress (M7a: the 진행 column right-aligned, unread items blank, sorted by it)
  *   dialogs        ?scene=duplicate|recovery|recovery-full|recovery-ok|backup|backup-missing|restore|restore-issues|purge|empty-trash|jobs|fatal|codec
  *   components     ?part=1|2|3|4|5 (4–5 = tutor)
@@ -39,8 +43,8 @@
   const kindIcon = (kind) => (kind === 'video' ? 'clapperboard' : 'file-text');
 
   /** Web-drawn pop-up menu item (only for pop-up buttons inside the content, ADR-0005). */
-  const mi = (label, { check, shortcut, active, disabled, title } = {}) =>
-    `<div class="mi ${active ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}" ${title ? `title="${esc(title)}"` : ''}><span class="check">${check ? icon('check', 'sm') : ''}</span><span>${label}</span>${shortcut ? `<span class="shortcut">${shortcut}</span>` : ''}</div>`;
+  const mi = (label, { check, shortcut, active, disabled, title, sub, id } = {}) =>
+    `<div ${id ? `id="${id}"` : ''} class="mi ${active ? 'is-active' : ''} ${disabled ? 'is-disabled' : ''}" ${title ? `title="${esc(title)}"` : ''}><span class="check">${check ? icon('check', 'sm') : ''}</span><span>${label}</span>${shortcut ? `<span class="shortcut">${shortcut}</span>` : ''}${sub ? `<span class="sub-mark">${icon('chevron-right', 'sm')}</span>` : ''}</div>`;
 
   // ── Library: sidebar ───────────────────────────────────────────────────────
   function librarySidebar({ empty = false, selected = 'molbio', focused = false, extra = '', collapsed = false } = {}) {
@@ -237,14 +241,14 @@
   function inspectorItem(it = D.selectedItem, { trashed = false } = {}) {
     const kv = (rows) => `<dl class="kv">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
     const r = it.reading;
-    const pages = it.pages ?? r.pages;
+    const pages = it.pages ?? r?.pages;
     const tags = it.tags ?? [];
     const head = trashed
       ? `<div class="item-head" ${ms('M6', '휴지통 항목 패널 머리(복원 · ‘휴지통에 있습니다’ 줄)')}>`
       : `<div class="item-head" ${ms('M4', '항목 패널 머리(열기·Finder에서 보기)')}>`;
     return `<div class="inspector-scroll" ${trashed ? ms('M6', '휴지통 항목 패널(읽기 전용)') : ''}>
       ${head}
-        <div class="kind">${icon('file-text', 'sm')}${esc(it.kind)} · ${pages}쪽</div>
+        <div class="kind">${icon(it.video ? 'clapperboard' : 'file-text', 'sm')}${esc(it.kind)} · ${it.video ? it.length : `${pages}쪽`}</div>
         <h2>${esc(it.title)}</h2>
         <div class="authors">${esc(it.authors)} · ${it.year ?? 2024}</div>
         ${
@@ -261,7 +265,7 @@
           ? `<section class="section" ${ms('M7b', '읽기 절(M7a에서 뺌)')}>
         ${sectionHead('읽기')}
         <div class="row gap-8"><span class="progress wide thick"><i style="width:${r.percent}%"></i></span><span class="pct t-footnote">${r.percent}%</span></div>
-        <div class="t-footnote c-secondary" style="margin-top:4px"><span class="num">${r.page} / ${r.pages}쪽</span>에서 멈춤 · ${esc(r.opened)}</div>
+        <div class="t-footnote c-secondary" style="margin-top:4px"><span class="num">${r.time ?? (r.pages ? `${r.page} / ${r.pages}쪽` : `${r.page}쪽`)}</span>에서 멈춤 · ${esc(r.opened)}</div>
       </section>`
           : ''
       }
@@ -288,6 +292,24 @@
       </section>
     </div>`;
   }
+
+  /** The video row's panel: a lecture stopped at 12:34 (M7b 읽기 section). */
+  const VIDEO_ITEM = {
+    video: true,
+    kind: '동영상',
+    length: '48:20',
+    title: '강의 04 · 세포 신호',
+    authors: '윤재하',
+    year: 2025,
+    info: [['강의자', '윤재하'], ['연도', '2025'], ['길이', '48:20'], ['언어', '한국어'], ['추가일', '어제 오후 8:38']],
+    reading: { time: '12:34', percent: 35, opened: '어제' },
+    file: [['보관', '복사본 · 라이브러리 안'], ['크기', '312 MB'], ['원래 이름', 'lecture04_cell_signaling.mp4']],
+    sha: '4d03be71…',
+    shaFull: '4d03be71a96c2e50f8173b4da09e5c6f1827d3a4b05e9f26c7d18a3e04b5f692',
+    tags: [2],
+    plainTags: [],
+    collections: [['분자생물학']],
+  };
 
   /** Several trashed items chosen (the purge sheet's view): the summary, read-only, with the same trash note. */
   function inspectorTrashMulti(ids) {
@@ -417,13 +439,25 @@
       const byProgress = [...D.items].sort((a, b) => (b.progress ?? -1) - (a.progress ?? -1));
       table = libraryTable({ ...opts.table, items: byProgress, head: { sorted: '진행', dir: 'desc' }, progressEnd: true });
       insp = inspectorItem();
+    } else if (['pdf', 'video', 'legacy'].includes(params.get('reading')) && !opts.items) {
+      // M7b 읽기 section (spec 7): a PDF with its page count, a video with the time, a PDF whose old value has no page count.
+      const rd = params.get('reading');
+      if (rd === 'video') {
+        table = libraryTable({ ...opts.table, selectedIds: [2], focused: true });
+        insp = inspectorItem(VIDEO_ITEM);
+      } else {
+        table = libraryTable({ ...opts.table, selectedIds: [1], focused: true });
+        insp = inspectorItem(rd === 'legacy' ? { ...D.selectedItem, pages: 68, reading: { page: 42, percent: 62, opened: '오늘 오전 9:24' } } : D.selectedItem);
+      }
     } else {
       // `opts.items`: the rows a scene needs under its sheet (the library check's missing files, critique 1-21).
       table = libraryTable({ ...opts.table, ...(opts.items ? { items: opts.items } : {}) });
       insp = inspectorItem();
     }
+    const strip7b = params.get('m') === '7b';
     return M.windowShell({
-      tabs: M.standardTabs('library'),
+      tabs: strip7b ? tabs7b('G Protein–Coupled Receptor Dynamics in Live Cells', { libraryActive: true }) : M.standardTabs('library'),
+      tabsCls: strip7b ? 'm7b' : '',
       sidebar,
       main: header + table,
       inspector: insp,
@@ -825,10 +859,17 @@
     return `${head}${thumbsV2(thumbPages, doc.page, { drawn, body: thumbBody })}`;
   }
 
-  function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false }) {
+  function toolbarV2({ page, pages, zoom, menu = null, find = false, inspectorOn = true, disabled = false, history = null }) {
     const dis = disabled ? 'is-disabled' : '';
+    // M7b: back and forward before the page field; off while the tab's history has nothing in that direction.
+    const nav7b = history
+      ? `<div class="group" ${ms('M7b', '뒤로·앞으로(탭의 이동 기록)')}>
+        <span class="icon-btn ${history === 'none' || disabled ? 'is-disabled' : ''}" title="뒤로 ⌘[">${icon('chevron-left')}</span>
+        <span class="icon-btn ${history !== 'both' || disabled ? 'is-disabled' : ''}" title="앞으로 ⌘]">${icon('chevron-right')}</span>
+      </div><span class="toolbar-sep"></span>`
+      : '';
     return `<div class="reader-toolbar">
-      <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
+      ${nav7b}<div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
         <div class="page-field ${dis}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div><span class="num">/ ${pages}</span></div>
         <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
         <span class="icon-btn ${dis}" title="다음 쪽 →">${icon('chevron-down')}</span>
@@ -865,6 +906,27 @@
       <div class="msep"></div>
       ${mi('시계 방향으로 회전', { shortcut: '⌘R' })}${mi('반시계 방향으로 회전', { shortcut: '⌘L' })}
     </div>`;
+  }
+
+  /**
+   * M7b: 스크롤 ▸ and 펼침 ▸ between the page colours and the rotations (spec 5). `open`: 'scroll' | 'spread' | null shows
+   * that submenu beside its row; checks are the current values. Horizontal scroll turns 펼침 ▸ off (dimmed, no text).
+   */
+  function viewMenu7b({ open = null, scroll = 'vertical', spread = 'none' } = {}) {
+    const horizontal = scroll === 'horizontal';
+    const scrollSub = `<div class="menu" data-sub-of="mi-scroll" style="width:168px" role="menu" ${ms('M7b', '스크롤 하위 메뉴')}>
+      ${mi('세로로 이어서', { check: scroll === 'vertical' })}${mi('가로로 이어서', { check: scroll === 'horizontal' })}${mi('한 쪽씩', { check: scroll === 'page' })}
+    </div>`;
+    const spreadSub = `<div class="menu" data-sub-of="mi-spread" style="width:168px" role="menu" ${ms('M7b', '펼침 하위 메뉴')}>
+      ${mi('펼치지 않음', { check: spread === 'none' })}${mi('홀수 쪽부터', { check: spread === 'odd' })}${mi('짝수 쪽부터', { check: spread === 'even' })}
+    </div>`;
+    return `<div class="menu" data-anchor="view-btn" data-align="end" style="width:232px" role="menu" ${ms('M7b', '보기 메뉴(쪽 색 · 스크롤 · 펼침 · 회전)')}>
+      <div class="mhead">쪽 색</div>${mi('앱 테마 따르기', { check: true })}${mi('원본')}${mi('세피아')}${mi('어둡게')}
+      <div class="msep"></div>
+      ${mi('스크롤', { sub: true, id: 'mi-scroll', active: open === 'scroll' })}${mi('펼침', { sub: true, id: 'mi-spread', active: open === 'spread', disabled: horizontal })}
+      <div class="msep"></div>
+      ${mi('시계 방향으로 회전', { shortcut: '⌘R' })}${mi('반시계 방향으로 회전', { shortcut: '⌘L' })}
+    </div>${open === 'scroll' ? scrollSub : open === 'spread' ? spreadSub : ''}`;
   }
 
   // Languages of spec 6.3. The original language can be 자동 (detected); the target cannot.
@@ -1000,10 +1062,74 @@
     }[st];
   }
 
+  // ── M7b: tabs, scenes and the tab menu ─────────────────────────────────────
+  /** Titles and icons of the other reader tabs; `many` takes twelve of them with the open paper as the eighth. */
+  const OTHER_TABS = [
+    { title: '분자생물학 6장 · 신호 전달', icon: 'file-text' },
+    { title: '강의 04 · 세포 신호', icon: 'clapperboard' },
+    { title: '신호 증폭의 정량 모델', icon: 'file-text' },
+    { title: '강의 05 · 2차 전령', icon: 'clapperboard' },
+    { title: 'Kinase Cascades: A Primer', icon: 'file-text' },
+    { title: '분자생물학 7장 · 세포 주기', icon: 'file-text' },
+    { title: '강의 06 · 세포 주기 조절', icon: 'clapperboard' },
+    null,
+    { title: 'Phosphorylation Switches in Signal Relay', icon: 'file-text' },
+    { title: '세포막 수용체 정리', icon: 'file-text' },
+    { title: 'Second Messengers at a Glance', icon: 'file-text' },
+    { title: '효소 반응 속도론 요약', icon: 'file-text' },
+  ];
+  function tabs7b(activeTitle, { libraryActive = false } = {}) {
+    const q = params.get('tabs');
+    const home = { id: 'library', title: '라이브러리', icon: 'library-big', home: true, active: libraryActive };
+    const open = { id: 'r-open', title: activeTitle, icon: 'file-text', active: !libraryActive };
+    if (q === 'many') {
+      return [home, ...OTHER_TABS.map((t, i) => (t ? { id: `r${i}`, ...t } : open))];
+    }
+    if (q === 'drag') {
+      // The second reader tab is carried to the right over its neighbour, which has stepped aside into the empty place.
+      return [
+        home,
+        { id: 'r0', ...OTHER_TABS[0] },
+        { id: 'r1', ...OTHER_TABS[1], dragging: true, style: 'translate:170px -1px;z-index:3' },
+        { id: 'r2', ...OTHER_TABS[2], style: 'translate:-244px 0' },
+        open,
+      ];
+    }
+    if (params.get('menu') === 'tab') return [home, { id: 'r0', ...OTHER_TABS[0] }, open, { id: 'r1', ...OTHER_TABS[1] }];
+    return [home, open];
+  }
+
+  /** Tab context menu (design-spec 7.3): opens under the pointer, on the open tab. 다른 탭 닫기 needs another reader tab. */
+  function tabMenu7b() {
+    return `<div class="menu" data-anchor="tab-r-open" style="width:232px;margin-left:40px" role="menu" ${ms('M7b', '탭 컨텍스트 메뉴')}>
+      ${mi('탭 닫기', { shortcut: '⌘W' })}${mi('다른 탭 닫기')}
+      <div class="msep"></div>
+      ${mi('라이브러리에서 보기')}${mi('Finder에서 보기', { shortcut: '⇧⌘R' })}
+    </div>`;
+  }
+
+  /**
+   * The stage of the view-mode scenes (spec 5, 6): horizontal scroll — pages side by side, 24 left of the first and 12
+   * between; one page at a time — the page alone; spread (odd) — pages 3 and 4 side by side with 12 between.
+   */
+  function stage7b(scroll, spread, zoom) {
+    const pg = (n) => paperPageV2(n);
+    let inner;
+    if (spread === 'odd') inner = `<div class="pdf-scroll row spread" style="top:12px">${pg(3)}${pg(4)}</div>`;
+    else if (scroll === 'horizontal') inner = `<div class="pdf-scroll row hscroll" style="top:12px">${pg(3)}${pg(4)}${pg(5)}</div>`;
+    else inner = `<div class="pdf-scroll" style="top:12px">${pg(3)}</div>`;
+    return `<div class="pdf-stage tu-stage" style="--pg-zoom:${zoom}" ${ms('M7b', scroll === 'horizontal' ? '가로 스크롤 장면' : spread === 'odd' ? '펼침 보기 장면' : '한 쪽씩 장면')}>${inner}</div>`;
+  }
+
   function readerV2() {
     const pick = (name, allowed) => (allowed.includes(params.get(name)) ? params.get(name) : null);
     const nav = params.get('nav') === 'outline' ? 'outline' : 'thumbs';
-    const menu = pick('menu', ['zoom', 'view', 'copy', 'direction']);
+    const is7b = params.get('m') === '7b';
+    const viewQ = is7b ? pick('view', ['menu', 'menu-scroll', 'menu-spread']) : null;
+    const menu = viewQ ? 'view' : pick('menu', is7b ? ['zoom', 'view', 'copy', 'direction', 'tab'] : ['zoom', 'view', 'copy', 'direction']);
+    const scrollQ = is7b ? (pick('scroll', ['horizontal', 'page']) ?? 'vertical') : 'vertical';
+    const spreadQ = is7b ? (pick('spread', ['odd']) ?? 'none') : 'none';
+    const history = is7b ? (pick('history', ['none', 'back', 'both']) ?? 'back') : null;
     const find = pick('find', ['open', 'none', 'wrap']);
     const select = pick('select', ['consent', 'translating', 'translated', 'error', 'offline', 'long', 'same']);
     const w = Number(params.get('w')) || 1440;
@@ -1037,8 +1163,9 @@
       trashed: { title: BOOK.title, meta: BOOK.meta, item: { ...D.selectedItem, deleted: '오늘 오전 9:12' } },
     };
     const shown = dead ? deadDocs[dead] : doc;
-    const unified = { title: shown.title, count: shown.meta, lead: back, ms: 'M7a', msLabel: '창 도구 막대(뒤로 · 제목 · 종류와 크기)' };
-    const tabs = [{ id: 'pdf', title: shown.title, icon: 'file-text', active: true }];
+    // M7b: no window toolbar — the strip carries the title (the library tab is the way back).
+    const unified = is7b ? null : { title: shown.title, count: shown.meta, lead: back, ms: 'M7a', msLabel: '창 도구 막대(뒤로 · 제목 · 종류와 크기)' };
+    const tabs = is7b ? tabs7b(shown.title) : [{ id: 'pdf', title: shown.title, icon: 'file-text', active: true }];
 
     let sidebar;
     let main;
@@ -1048,6 +1175,9 @@
     const inspectorOn = w >= 1000;
     const mainW = w - 240 - (inspectorOn ? 320 : 0);
     if (w < 1440) zoom = Math.floor(((mainW - 1 - 32) / 794) * 100) / 100;
+    // Spread: two pages and the 12 px gap between them fill the stage; horizontal: pages fit the stage's height.
+    if (spreadQ === 'odd') zoom = Math.floor(((mainW - 1 - 24) / (2 * 794 + 12)) * 100) / 100;
+    if (scrollQ === 'horizontal') zoom = 0.7;
 
     if (dead) {
       sidebar =
@@ -1070,10 +1200,12 @@
       const findTotal = hits1 + countHits(paperPageV2(3, { find: true }));
       const findCurrent = find === 'wrap' ? 1 : hits1 + 1;
       sidebar = sidebarV2({ ...doc, page: curPage }, nooutline ? 'outline' : nav, { mode: loading ? 'loading' : nooutline ? 'nooutline' : 'normal', thumbPages, thumbBody });
-      const toolbar = toolbarV2({ page: String(curPage), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu, find: !!find, inspectorOn, disabled: loading });
+      const toolbar = toolbarV2({ page: String(curPage), pages: String(doc.pages), zoom: `${Math.round(zoom * 100)}%`, menu: menu === 'tab' ? null : menu, find: !!find, inspectorOn, disabled: loading, history });
       let stage;
       if (loading) {
         stage = `<div class="pdf-stage"><div class="pdf-scroll" style="top:24px"><div class="pdf-page placeholder" ${ms('M7a', 'PDF 여는 중')}><div class="stage-center"><div class="loading"><span class="spinner"></span>${doc.page}쪽을 여는 중…</div></div></div></div></div>`;
+      } else if (doc === PAPER && is7b && (scrollQ !== 'vertical' || spreadQ !== 'none')) {
+        stage = stage7b(scrollQ, spreadQ, zoom);
       } else if (doc === PAPER) {
         const marked = !!find && find !== 'none';
         const pages =
@@ -1092,16 +1224,19 @@
       inspector = inspectorV2(trKind, doc.item);
     }
     if (menu === 'zoom') overlays = zoomMenu({ m7a: true });
-    else if (menu === 'view') overlays = viewMenuV2();
+    else if (menu === 'view') overlays = is7b ? viewMenu7b({ open: viewQ === 'menu-scroll' ? 'scroll' : viewQ === 'menu-spread' ? 'spread' : null, scroll: scrollQ, spread: spreadQ }) : viewMenuV2();
+    else if (menu === 'tab') overlays = tabMenu7b();
     else if (menu === 'direction') overlays = directionMenu();
     else if (menu === 'copy') overlays = copyMenu();
 
     const shell = (extra = {}) =>
-      M.windowShell({ tabs, unified, sidebar, main, inspector: inspectorOn && !dead && state !== 'loading' ? inspector : null, overlays, ...extra });
+      M.windowShell({ tabs, unified, tabsCls: is7b ? 'm7b' : '', sidebar: is7b && params.get('sidebar') === 'hidden' ? '' : sidebar, main, inspector: inspectorOn && !dead && state !== 'loading' ? inspector : null, overlays, ...extra });
     if (w >= 1440) return shell();
     // A narrower window on a simulated desktop (the tutor mockup's state 10 does the same).
     const notes = {
-      1024: '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 리더 최소 440을 지켜 항목 패널이 펼쳐 있습니다. 1000 아래에서는 항목 패널이 먼저 접힙니다(창 폭에서 다시 계산, 저장하지 않음)',
+      1024: is7b
+        ? '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 탭 줄은 내용 열 폭(784)에서 최소 폭 120의 탭이 넘치면 가로로 스크롤하고 활성 탭을 보이게 합니다. 리더 도구 막대는 ‹ › 단추가 더해져도 한 줄에 듭니다'
+        : '창 1024 · 사이드바 240 + 리더 464 + 항목 패널 320 — 리더 최소 440을 지켜 항목 패널이 펼쳐 있습니다. 1000 아래에서는 항목 패널이 먼저 접힙니다(창 폭에서 다시 계산, 저장하지 않음)',
       960: '창 960(최소) · 사이드바 240 + 항목 패널 320을 두면 리더가 400이라 최소 440에 못 미쳐 항목 패널이 접혔습니다 — 도구 막대의 단추로 열면 사이드바가 접힙니다',
     };
     const win = shell({ style: `--win-w:${w}px;--win-h:${w === 960 ? 640 : 768}px` });
@@ -1114,7 +1249,7 @@
     const pageParam = params.get('page');
     const page = ['original', 'sepia', 'dark'].includes(pageParam) ? pageParam : M.isDark() ? 'dark' : 'original';
     document.documentElement.dataset.page = page;
-    if (params.get('m') === '7a') return readerV2();
+    if (params.get('m') === '7a' || params.get('m') === '7b') return readerV2();
 
     // Transient states keep the reader toolbar (disabled); final states replace it with a title
     // row, like the unplayable-video screen (rubric 8: transient = disabled, final = hidden).

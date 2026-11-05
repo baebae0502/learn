@@ -4140,3 +4140,43 @@ h2,
 .form-row.is-disabled {
   opacity: 0.45; /* local: the rows that follow a switch that is off, like the other disabled controls */
 }
+
+
+/* ── M7b: the tab strip's overflow, the view menu's submenus, the view-mode scenes ───────────────────────────── */
+/* A full strip keeps the tabs at 120 and scrolls sideways without a scroll bar (spec 3.2). */
+.tabs.m7b {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs.m7b::-webkit-scrollbar {
+  display: none;
+}
+.tabs.m7b .tab {
+  min-width: 120px; /* local: spec 3.2 minimum tab width */
+}
+.tabs.m7b .tab.home {
+  min-width: 0;
+}
+.menu .mi .sub-mark {
+  margin-left: auto;
+  padding-left: var(--space-24);
+  display: grid;
+  place-items: center;
+}
+.menu .mi.is-active .sub-mark {
+  color: var(--text-on-accent);
+}
+.menu .mi.is-disabled .sub-mark {
+  color: var(--text-tertiary);
+}
+.pdf-scroll.row {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.pdf-scroll.row.spread {
+  justify-content: center;
+}
+.pdf-scroll.row.hscroll {
+  justify-content: flex-start;
+  padding-left: var(--space-24);
+}

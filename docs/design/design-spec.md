@@ -430,7 +430,7 @@
 | 통합 도구 막대 제목(탭 하나), 빈 라이브러리 안내(설명, 가져오기 두 단추, 단축키 힌트, 지원 형식), 드롭 오버레이(⌥ 외부 연결 전환, 파일 수·종류) | M3 |
 | 컬렉션 없음 안내 | M5 |
 
-### 10.3 PDF 리더 — `reader-pdf.html` (`?page=original|sepia|dark`, `?menu=zoom|view`, `?nav=outline`, `?state=loading|error|locked|missing|nooutline|trashed`; M7a는 `&m=7a`와 함께 `?find=open|none`, `?select=consent|translating|translated|error|offline|long|same`, `?inspector=empty|translated|concat|consent|off`, `?menu=zoom|view|copy|direction`, `?state=…`(`&pw=wrong`), `?nav=thumbs|outline`, `?w=1024|960`)
+### 10.3 PDF 리더 — `reader-pdf.html` (`?page=original|sepia|dark`, `?menu=zoom|view`, `?nav=outline`, `?state=loading|error|locked|missing|nooutline|trashed`; M7a는 `&m=7a`와 함께 `?find=open|none`, `?select=consent|translating|translated|error|offline|long|same`, `?inspector=empty|translated|concat|consent|off`, `?menu=zoom|view|copy|direction`, `?state=…`(`&pw=wrong`), `?nav=thumbs|outline`, `?w=1024|960`; M7b는 `&m=7b`와 함께 `?tabs=2|many|drag`(리더 탭 하나 / 12개 넘침 스크롤 / 끌기 중), `?history=none|back|both`, `?view=menu|menu-scroll|menu-spread`, `?scroll=horizontal|page`, `?spread=odd`, `?menu=tab`, `?sidebar=hidden`, `?w=1024`; 라이브러리는 `library.html?m=7b&tabs=2`(라이브러리 탭 활성 + 리더 탭)와 `?reading=pdf|video|legacy`(항목 패널의 읽기 절)`?w=1024|960`)
 | 요소 | 마일스톤 |
 |---|---|
 | 탭 줄, 뒤로·앞으로 | M7b |

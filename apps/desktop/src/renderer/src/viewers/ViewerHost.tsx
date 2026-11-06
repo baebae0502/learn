@@ -106,7 +106,7 @@ function Viewer({ itemId }: { itemId: string }) {
             testId="open-failed"
             actions={
               <Button testId="open-failed-back" isDisabled={!isEnabled('nav.back')} disabledReason={t.common.busy} onPress={() => run('nav.back')}>
-                {commandById('nav.back').label}
+                {t.reader.backToLibrary}
               </Button>
             }
           >

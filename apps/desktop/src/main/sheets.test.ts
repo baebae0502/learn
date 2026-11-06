@@ -99,12 +99,12 @@ describe('sheet host', () => {
     const result = h.open(p, { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
     const w = FakeWindow.all[0]!;
-    expect(w.options).toMatchObject({ width: 760, modal: true, frame: false });
+    expect(w.options).toMatchObject({ width: 780, modal: true, frame: false });
     expect(w.url).toBe('learn://app/index.html?window=sheet');
     expect(w.shown).toBe(false);
     await ready(w);
-    expect(w.contentSize).toEqual([760, 200]);
-    expect(w.position).toEqual([100 + (1440 - 760) / 2, 50 + SHEET_TOP]);
+    expect(w.contentSize).toEqual([780, 200]);
+    expect(w.position).toEqual([100 + (1440 - 780) / 2, 50 + SHEET_TOP]);
     expect(w.shown).toBe(true);
     expect(h.payloadFor(contentsOf(w))).toEqual({ kind: 'shortcuts' });
     expect(p.focus).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('sheet host', () => {
     expect(asked).toHaveLength(2);
     expect(asked[0]).toContain('> 5000');
     expect(asked[1]).toContain('> 500)');
-    expect(w.contentSize).toEqual([760, 300]);
+    expect(w.contentSize).toEqual([780, 300]);
   });
 
   // Critic T12-m1: the ⌘/ sheet (743 tall) in the default window of a 1440 × 900 Mac with the Dock (about 806).
@@ -151,7 +151,7 @@ describe('sheet host', () => {
     expect(await shown('darwin', 806)).toEqual({ height: 743, measuredAt: 806 - 32, position: null });
     expect(await shown('darwin', 760)).toEqual({ height: 760 - 32, measuredAt: 760 - 32, position: null });
     // Linux / Windows hang it 60 down (8 under the 52 px toolbar) and keep 16 below.
-    expect(await shown('linux', 806)).toEqual({ height: 806 - SHEET_TOP - 16, measuredAt: 806 - SHEET_TOP - 16, position: [100 + (1440 - 760) / 2, 50 + SHEET_TOP] });
+    expect(await shown('linux', 806)).toEqual({ height: 806 - SHEET_TOP - 16, measuredAt: 806 - SHEET_TOP - 16, position: [100 + (1440 - 780) / 2, 50 + SHEET_TOP] });
     expect((await shown('win32', 900)).height).toBe(743);
   });
 
@@ -349,11 +349,11 @@ describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
     const h = keyed();
     const first = await openOnce(h);
     expect(first.w.options.height).toBe(900 - SHEET_TOP - 16); // measured at full height first
-    expect(first.w.contentSize).toEqual([760, 200]);
+    expect(first.w.contentSize).toEqual([780, 200]);
     FakeWindow.pageHeight = 260; // what a re-measure would see: it must not be asked
     const second = await openOnce(h);
     expect(second.w.options.height).toBe(200);
-    expect(second.w.contentSize).toEqual([760, 200]);
+    expect(second.w.contentSize).toEqual([780, 200]);
     expect(second.shown).toBe(true);
     expect(second.asked.some((s) => s.includes('> 5000'))).toBe(true); // rendered first: never an empty sheet
     expect(second.asked.filter((s) => s.includes('> 500)'))).toEqual([]);
@@ -365,7 +365,7 @@ describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
     await openOnce(h, parent(1, 900));
     const short = await openOnce(h, parent(1, 500));
     expect(short.w.options.height).toBe(500 - SHEET_TOP - 16);
-    expect(short.w.contentSize).toEqual([760, 500 - SHEET_TOP - 16]);
+    expect(short.w.contentSize).toEqual([780, 500 - SHEET_TOP - 16]);
   });
 
   it('remembers no height measured before its fonts were ready, and none for a sheet without a key', async () => {

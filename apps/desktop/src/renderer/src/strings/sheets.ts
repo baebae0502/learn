@@ -22,7 +22,7 @@ export const sheets = {
     zoom: '확대 / 축소',
     tabClose: '탭 닫기 / 닫은 탭 다시 열기',
     tabStep: '다음 / 이전 탭',
-    tabNumbers: '라이브러리 · 2…8번째 탭 / 마지막 탭',
+    tabNumbers: '라이브러리 · 2–8번째 탭 / 마지막 탭',
     find: '다음 / 이전 찾기',
     rotate: '시계 / 반시계 방향으로 회전',
     nav: '썸네일 / 목차 보기',

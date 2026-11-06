@@ -200,9 +200,29 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           const here = hereNow();
           if (here) store.setHistory(recordJump(scope.reader.getState().history, here));
         };
+        /**
+         * pdf.js focuses the target page's text layer once it is drawn (goToDestination's one-shot listener, an internal one that runs
+         * before ours), and the browser scrolls the focused page into view. A reader who has already left that jump (back, forward,
+         * another jump) must not be taken to it by a text layer that was slow: the page is remembered here, and when its layer arrives
+         * the scroll goes back to where the stage was (the last scroll event's: the focus's own has not been reported yet).
+         */
+        let linkTarget: number | null = null;
+        const abandoned = new Set<number>();
+        const leaveLink = () => {
+          if (linkTarget !== null) abandoned.add(linkTarget);
+          linkTarget = null;
+          jumped = null;
+        };
+        eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
+          if (linkTarget === e.pageNumber) linkTarget = null;
+          if (!abandoned.delete(e.pageNumber) || !shownRef.current) return;
+          container.scrollTop = scrolled.top;
+          container.scrollLeft = scrolled.left;
+        });
         const step = (direction: 'back' | 'forward') => {
           const here = hereNow();
           if (!here) return;
+          leaveLink();
           const moved = (direction === 'back' ? goBack : goForward)(scope.reader.getState().history, here);
           if (!moved) return;
           store.setHistory(moved.history);
@@ -210,13 +230,27 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           // A point, so a place inside a page comes back exactly (placement.ts keeps what a link names).
           place({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, left ?? 0, top ?? null, null] });
         };
-        linkService.setHistory(linkHistory({ jump: recordHere, back: () => step('back'), forward: () => step('forward') }));
+        linkService.setHistory(
+          linkHistory({
+            jump: (pageNumber) => {
+              leaveLink();
+              linkTarget = pageNumber;
+              recordHere();
+            },
+            back: () => step('back'),
+            forward: () => step('forward'),
+          }),
+        );
         const handle: PdfViewHandle = {
           place,
           goToPage: (n) => place({ pageNumber: n }),
           jumpToPage: (n) => {
             if (!Number.isInteger(n) || n < 1 || n > viewer.pagesCount) return;
-            recordHere();
+            // The page already shown is no jump: back would only lead to where the reader is.
+            if (n !== viewer.currentPageNumber) {
+              leaveLink();
+              recordHere();
+            }
             place({ pageNumber: n });
           },
           historyBack: () => step('back'),

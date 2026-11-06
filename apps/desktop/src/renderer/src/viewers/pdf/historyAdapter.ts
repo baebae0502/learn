@@ -10,12 +10,12 @@ export interface LinkHistory {
   forward(): void;
 }
 
-export function linkHistory(on: { jump(): void; back(): void; forward(): void }): LinkHistory {
+export function linkHistory(on: { jump(pageNumber: number): void; back(): void; forward(): void }): LinkHistory {
   return {
     // The service asks for the present position and then for the new one; one jump writes both (recordJump keeps where the reader is).
     pushCurrentPosition: () => undefined,
-    push: () => on.jump(),
-    pushPage: () => on.jump(),
+    push: (destination) => on.jump((destination as { pageNumber: number }).pageNumber),
+    pushPage: (pageNumber) => on.jump(pageNumber),
     back: () => on.back(),
     forward: () => on.forward(),
   };

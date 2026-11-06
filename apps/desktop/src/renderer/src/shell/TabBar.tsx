@@ -215,7 +215,7 @@ function Tab(props: { id: string; selected: boolean; title: string; icon: typeof
         <span className="title ellipsis">{title}</span>
       </div>
       {props.onClose && (
-        <span className="close" aria-hidden="true" title={closeHint()} data-testid="tab-close" onClick={props.onClose}>
+        <span className="close" aria-hidden="true" title={selected ? closeHint() : commandLabel(commandById('tab.close'), currentPlatform())} data-testid="tab-close" onClick={props.onClose}>
           <Icon icon={X} size="sm" />
         </span>
       )}

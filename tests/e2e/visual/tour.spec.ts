@@ -1803,3 +1803,56 @@ test('kept tabs: a find bar with its marks and a password field with its focus, 
     await s.app.close();
   }
 });
+
+test('reader: back and forward off and on, the toolbar at 1000 and 1024 wide (the page count gives way), the ⌘/ sheet opened from the reader', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const width = async (w: number) => (await mainWindow(s.app)).evaluate((win, w) => win.setContentSize(w, win.getContentSize()[1]!), w);
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      // The pass before left the place at page 12: a page turn (no jump) starts from the top again.
+      await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { handle: { goToPage(n: number): void } } } }).__learnReader.getState().handle.goToPage(1));
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      await expect(page.getByTestId('pdf-history-back')).toBeDisabled();
+      await shootReader(`reader-history-none-${theme}`);
+      // A jump (the page field) leaves something to go back to; going back leaves something to go forward to.
+      await page.getByTestId('pdf-page-field').fill('70');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('70');
+      await page.getByTestId('pdf-history-back').click();
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      await expect(page.getByTestId('pdf-history-forward')).toBeEnabled();
+      await page.getByTestId('pdf-page-field').fill('70');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await page.getByTestId('pdf-page-field').fill('12');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await page.getByTestId('pdf-history-back').click();
+      await expect(page.getByTestId('pdf-history-back')).toBeEnabled();
+      await expect(page.getByTestId('pdf-history-forward')).toBeEnabled();
+      await shootReader(`reader-history-both-${theme}`);
+      // The reader's own ⌘/ sheet: the keys the library shares move under 리더.
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+      const keys = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      await shoot(keys, `sheet-shortcuts-reader-${theme}`);
+      await closeSheet(keys, 'Escape');
+      // The narrowest windows: the reader is 440 and 464 wide with the panel open, and the page field loses its "/ N".
+      for (const w of [1000, 1024]) {
+        await width(w);
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(w);
+        await expect(page.getByTestId('pdf-page-count')).toBeHidden();
+        await shootReader(`reader-narrow-${w}-${theme}`);
+      }
+      await width(1440);
+      await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});

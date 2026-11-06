@@ -260,9 +260,13 @@
     font: var(--type-footnote);
     text-align: center;
   }
-  /* The mockup's .page-field.after-nav: the back and forward pair is its own group, one gap more before the page field. */
-  .reader-toolbar [data-testid='pdf-history-forward'] + .page-field {
-    margin-left: var(--space-4);
+  /* The mockup's back and forward: a pair 2 apart (its .group gap) with one gap more before the page field, whatever the buttons' state
+     (a disabled button carries a hidden reason, so a sibling rule on the page field would miss). */
+  .reader-toolbar .history-nav {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
   }
   .reader-toolbar .page-field:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);

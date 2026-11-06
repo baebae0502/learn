@@ -639,27 +639,28 @@ test('every registry command runs without a page error (library and reader menus
       await runMenuCommand(app, 'item.openInBackground');
       ran.add('item.openInBackground');
       await expect.poll(async () => (await strip()).length).toBe(1 + before.length + 8);
-      expect(await shown()).toBe('library');
+      await expect.poll(shown).toBe('library');
       const readers = (await strip()).slice(1);
       expect(readers.slice(before.length)).toEqual(Array.from({ length: 8 }, (_, i) => tabId(8 - i))); // newest first, as the table lists them
       // Next and previous go round through the library tab; ⌘2…⌘8 pick by place, ⌘9 the last.
       await runMenuCommand(app, 'tab.next');
-      expect(await shown()).toBe(readers[0]);
+      await expect.poll(shown, { message: 'tab.next' }).toBe(readers[0]);
       ran.add('tab.next');
       await runMenuCommand(app, 'tab.previous');
-      expect(await shown()).toBe('library');
+      await expect.poll(shown, { message: 'tab.previous' }).toBe('library');
       ran.add('tab.previous');
       for (let n = 2; n <= 8; n++) {
         const id = `tab.goTo${n}` as CommandId;
         await runMenuCommand(app, id);
-        expect(await shown(), id).toBe(readers[n - 2]);
+        await expect.poll(shown, { message: id }).toBe(readers[n - 2]);
         ran.add(id);
       }
       await runMenuCommand(app, 'tab.last');
-      expect(await shown()).toBe(readers.at(-1));
+      await expect.poll(shown, { message: 'tab.last' }).toBe(readers.at(-1));
       ran.add('tab.last');
       // Back and forward (⌘[ ⌘]) of the shown reader: off until a jump, then back to page 1 and forward to where it left.
       await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      await expect.poll(() => menuItemEnabled(app, 'reader.goToPage')).toBe(true); // this reader's context has been reported: a PDF with its pages
       expect(await menuItemEnabled(app, 'nav.historyBack')).toBe(false);
       await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { handle: { jumpToPage(n: number): void } } } }).__learnReader.getState().handle.jumpToPage(3));
       await expect(page.getByTestId('pdf-page-field')).toHaveValue('3');
@@ -691,7 +692,7 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(() => menuItemEnabled(app, 'tab.reopenClosed')).toBe(true);
       ran.add('tab.close');
       await runMenuCommand(app, 'tab.reopenClosed');
-      expect(await shown()).toBe(mid);
+      await expect.poll(shown).toBe(mid);
       ran.add('tab.reopenClosed');
       await stubContextMenu(app, '다른\u00a0탭 닫기');
       await readerTab(page, mid).click({ button: 'right' });

@@ -1,6 +1,8 @@
 // Reader chrome and the reader's final states (design-spec 6 끝난 상태, 9 원인 + 다음 행동). U+00A0 binds
 // determiner + noun and "원본 파일" (strings.test.ts).
 export const reader = {
+  /** The notices' second button: a verb of its own (the command's name, 라이브러리, is the menu's and the ⌘1 tab's). */
+  backToLibrary: '라이브러리로 돌아가기',
   prevPage: '이전 쪽',
   nextPage: '다음 쪽',
   /** After the page field: the field holds the current page. */
@@ -10,7 +12,7 @@ export const reader = {
   firstPage: '첫 쪽입니다',
   lastPage: '마지막 쪽입니다',
   /** The toolbar's 뒤로 / 앞으로 while the tab's history has nothing in that direction (M-2). */
-  noHistoryBack: '되돌아갈 곳이 없습니다',
+  noHistoryBack: '뒤로 갈 곳이 없습니다',
   noHistoryForward: '앞으로 갈 곳이 없습니다',
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',

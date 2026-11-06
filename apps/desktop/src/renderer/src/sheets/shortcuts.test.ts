@@ -23,9 +23,9 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(tabs('darwin')).toEqual([
       { label: '탭 닫기 / 닫은 탭 다시 열기', keys: ['⌘', 'W'], pairKeys: ['⇧', '⌘', 'T'], spoken: '⌘W / ⇧⌘T' },
       { label: '다음 / 이전 탭', keys: ['⌃', '⇥'], pairKeys: ['⌃', '⇧', '⇥'], spoken: '⌃⇥ / ⌃⇧⇥' },
-      { label: '라이브러리 · 2…8번째 탭 / 마지막 탭', keys: ['⌘', '1–8'], pairKeys: ['⌘', '9'], spoken: '⌘1부터 ⌘8 / ⌘9' },
+      { label: '라이브러리 · 2–8번째 탭 / 마지막 탭', keys: ['⌘', '1–8'], pairKeys: ['⌘', '9'], spoken: '⌘1부터 ⌘8 / ⌘9' },
     ]);
-    expect(tabs('linux').at(-1)).toEqual({ label: '라이브러리 · 2…8번째 탭 / 마지막 탭', keys: ['Ctrl', '1–8'], pairKeys: ['Ctrl', '9'], spoken: 'Ctrl+1부터 Ctrl+8 / Ctrl+9' });
+    expect(tabs('linux').at(-1)).toEqual({ label: '라이브러리 · 2–8번째 탭 / 마지막 탭', keys: ['Ctrl', '1–8'], pairKeys: ['Ctrl', '9'], spoken: 'Ctrl+1부터 Ctrl+8 / Ctrl+9' });
     expect(tabs('linux')[0]).toMatchObject({ label: '탭 닫기 / 닫은 탭 다시 열기', keys: ['Ctrl', 'W'], pairKeys: ['Ctrl', 'Shift', 'T'] });
   });
   it('lists ⌘[ / ⌘] as one pair line under 리더 (design-spec 7.4)', () => {

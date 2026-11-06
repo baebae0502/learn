@@ -74,6 +74,80 @@ test('forward returns to where you last were, not to the link target', async ({}
   }
 });
 
+test('going back before the link target\'s text layer is drawn stays back: pdf.js\'s late focus of that page does not pull the view to it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await link(page).scrollIntoViewIfNeeded();
+    const start = await scrollTop(page);
+    // Text layers are held back: their render events are kept and let through when released.
+    await page.evaluate(() => {
+      const bus = (window as unknown as { __learnReader: { getState(): { handle: { eventBus(): { dispatch(name: string, data: unknown): void } } } } }).__learnReader.getState().handle.eventBus();
+      const dispatch = bus.dispatch.bind(bus);
+      const held: Array<[string, unknown]> = [];
+      let holding = true;
+      bus.dispatch = (name, data) => {
+        if (holding && name === 'textlayerrendered') held.push([name, data]);
+        else dispatch(name, data);
+      };
+      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers = () => {
+        holding = false;
+        for (const [name, data] of held.splice(0)) dispatch(name, data);
+      };
+    });
+    await clickLink(page);
+    await expect(field(page)).toHaveValue('50');
+    await runMenuCommand(app, 'nav.historyBack');
+    await expect(field(page)).toHaveValue('1');
+    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await page.waitForTimeout(500);
+    await expect(field(page)).toHaveValue('1');
+    expect(Math.abs((await scrollTop(page)) - start)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the page group does not move when forward turns on or off, and the pair sits 2 apart', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const left = (id: string) => page.getByTestId(id).evaluate((el) => el.getBoundingClientRect().left);
+    const zoom = () => page.locator('.reader-toolbar .zoom-field').evaluate((el) => el.getBoundingClientRect().left);
+    const off = { field: await left('pdf-page-field'), zoom: await zoom(), forward: await left('pdf-history-forward'), back: await left('pdf-history-back') };
+    expect(off.forward - off.back).toBe(30); // 28 and 2
+    expect(off.field - off.back).toBe(64); // the mockup: 252 and 316
+    await field(page).fill('9');
+    await field(page).press('Enter');
+    await expect(back(page)).toBeEnabled(); // back on, forward off
+    expect({ field: await left('pdf-page-field'), zoom: await zoom() }).toEqual({ field: off.field, zoom: off.zoom });
+    await back(page).click();
+    await expect(forward(page)).toBeEnabled(); // both on
+    await expect(back(page)).toBeDisabled();
+    expect({ field: await left('pdf-page-field'), zoom: await zoom() }).toEqual({ field: off.field, zoom: off.zoom });
+    await field(page).fill('4');
+    await field(page).press('Enter');
+    await expect(back(page)).toBeEnabled();
+    await expect(forward(page)).toBeDisabled();
+    expect({ field: await left('pdf-page-field'), zoom: await zoom() }).toEqual({ field: off.field, zoom: off.zoom });
+  } finally {
+    await app.close();
+  }
+});
+
+test('a jump to the page already shown leaves nothing to go back to', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await field(page).fill('1');
+    await field(page).press('Enter');
+    await expect(field(page)).toHaveValue('1');
+    await expect(back(page)).toBeDisabled();
+  } finally {
+    await app.close();
+  }
+});
+
 test('the outline, a thumbnail and the page field are jumps; the page turns and scrolling are not', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -93,8 +167,6 @@ test('the outline, a thumbnail and the page field are jumps; the page turns and 
     await runMenuCommand(app, 'reader.showOutline');
     await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
     await expect(field(page)).toHaveValue('21');
-    // pdf.js focuses the target page's text layer once it is drawn, which scrolls it into view: leave after that, not in the middle of it.
-    await expect(page.locator('.page[data-page-number="21"] .textLayer span').first()).toBeAttached();
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
 

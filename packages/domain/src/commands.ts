@@ -345,8 +345,8 @@ export const COMMANDS: readonly CommandSpec[] = [
   })),
   { id: 'tab.last', label: '마지막 탭', accelerator: 'CmdOrCtrl+9', menu: { menu: 'window', group: 2, order: 10, hidden: true }, contexts: ['app'], palette: false },
   // ⌥⇧← / ⌥⇧→ are the tab strip's keys while a tab has the focus (the strip handles them); the palette moves the shown tab.
-  { id: 'tab.moveLeft', label: '탭을 왼쪽으로', contexts: ['app'], keywords: ['탭', '왼쪽', '옮기기', '순서', 'tab', 'move left'] },
-  { id: 'tab.moveRight', label: '탭을 오른쪽으로', contexts: ['app'], keywords: ['탭', '오른쪽', '옮기기', '순서', 'tab', 'move right'] },
+  { id: 'tab.moveLeft', label: '탭을 왼쪽으로 옮기기', contexts: ['app'], keywords: ['탭', '왼쪽', '옮기기', '순서', 'tab', 'move left'] },
+  { id: 'tab.moveRight', label: '탭을 오른쪽으로 옮기기', contexts: ['app'], keywords: ['탭', '오른쪽', '옮기기', '순서', 'tab', 'move right'] },
   { id: 'tab.closeOthers', label: '다른\u00a0탭 닫기', contexts: ['app'], contextMenu: { kinds: ['tab'], group: 1, order: 2 }, palette: false },
   { id: 'tab.revealInLibrary', label: '라이브러리에서 보기', contexts: ['app'], contextMenu: { kinds: ['tab'], group: 2, order: 0 }, palette: false },
   // ⇧⌘R (design-spec 7.4 라이브러리): 파일 › and the item menu act on the one selected row; the menu bar judges the
@@ -576,7 +576,9 @@ export function tagSlot(id: CommandId): number | null {
  * Whether the palette lists a command now, beside inPalette and availability: a colour key only while a tag holds its slot
  * (spec 4.2) — a row for an empty slot could not do what its name says. The key itself still runs (it tells the user).
  */
-export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 'tagPositions'>): boolean {
+export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 'tagPositions'> & Partial<Pick<CommandContextState, 'view'>>): boolean {
+  // 탭 닫기 on the library tab closes the window: the palette, which is read by name, offers it only where a reader tab is shown.
+  if (spec.id === 'tab.close') return ctx.view === 'viewer';
   const slot = tagSlot(spec.id);
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }

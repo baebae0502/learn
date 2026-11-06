@@ -41,9 +41,9 @@ export function MissingNotice({ item, externalPath }: { item: LibraryItem; exter
                   {commandById('item.relink').label}
                 </Button>
               )}
-              {/* The registry's one name for nav.back (critic T14-m3); 라이브러리에서 보기 is the M7 tab command (spec 7.3). */}
+              {/* A verb of its own; the button still runs nav.back (라이브러리에서 보기 is the M7 tab command, spec 7.3). */}
               <Button testId="missing-back" isDisabled={!isEnabled('nav.back')} disabledReason={t.common.busy} onPress={() => run('nav.back')}>
-                {commandById('nav.back').label}
+                {t.reader.backToLibrary}
               </Button>
             </>
           }

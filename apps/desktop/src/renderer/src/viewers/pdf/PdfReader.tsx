@@ -219,24 +219,26 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       <TranslationStatus />
       <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
         {/* Back and forward join the page group at its start: the places a link, the outline, a thumbnail or the page field left. */}
-        <IconButton
-          icon={ArrowLeft}
-          label={commandLabel(commandById('nav.historyBack'), currentPlatform())}
-          accelerator={commandById('nav.historyBack').accelerator}
-          testId="pdf-history-back"
-          isDisabled={!restored || !canGoBack(history)}
-          disabledReason={restored ? t.reader.noHistoryBack : t.reader.opening}
-          onPress={() => handle?.historyBack()}
-        />
-        <IconButton
-          icon={ArrowRight}
-          label={commandLabel(commandById('nav.historyForward'), currentPlatform())}
-          accelerator={commandById('nav.historyForward').accelerator}
-          testId="pdf-history-forward"
-          isDisabled={!restored || !canGoForward(history)}
-          disabledReason={restored ? t.reader.noHistoryForward : t.reader.opening}
-          onPress={() => handle?.historyForward()}
-        />
+        <div className="history-nav">
+          <IconButton
+            icon={ArrowLeft}
+            label={commandLabel(commandById('nav.historyBack'), currentPlatform())}
+            accelerator={commandById('nav.historyBack').accelerator}
+            testId="pdf-history-back"
+            isDisabled={!restored || !canGoBack(history)}
+            disabledReason={restored ? t.reader.noHistoryBack : t.reader.opening}
+            onPress={() => handle?.historyBack()}
+          />
+          <IconButton
+            icon={ArrowRight}
+            label={commandLabel(commandById('nav.historyForward'), currentPlatform())}
+            accelerator={commandById('nav.historyForward').accelerator}
+            testId="pdf-history-forward"
+            isDisabled={!restored || !canGoForward(history)}
+            disabledReason={restored ? t.reader.noHistoryForward : t.reader.opening}
+            onPress={() => handle?.historyForward()}
+          />
+        </div>
         <PageField page={page} total={total} onGo={(n) => handle?.jumpToPage(n)} onEscape={() => stageRef.current?.focus()} />
         <span className="page-count num" data-testid="pdf-page-count">
           {total > 0 ? t.reader.pageOf(total) : ''}

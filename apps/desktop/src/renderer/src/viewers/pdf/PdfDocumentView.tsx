@@ -180,7 +180,11 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         };
         const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
           if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
+          // Any placed move (the chevrons, a page field, back and forward) leaves a pending link jump behind.
+          leaveLink();
           viewer.scrollPageIntoView({ pageNumber, destArray: destArray ?? undefined });
+          // What a late focus of an abandoned page goes back to: the stage as this move left it, not the last scroll event's.
+          scrolled = { top: container.scrollTop, left: container.scrollLeft };
         };
         /**
          * The place the reader is at, read from the viewer now (a scroll's report can still be on its way). Back and forward

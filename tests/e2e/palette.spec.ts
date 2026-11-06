@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, readerTab, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
@@ -665,5 +665,27 @@ test('recent: commands run from the palette come first with an empty query (five
     await expect.poll(() => listed(session.page)).toEqual(expected);
   } finally {
     await session.app.close();
+  }
+});
+
+test('⌘↩ on an item row opens it in a tab behind; the library stays shown, ↩ still opens and shows it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [item] = await importPaths(page, [PDF]);
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('sample');
+    await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press(IS_MAC ? 'Meta+Enter' : 'Control+Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(readerTab(page, item!.id)).toHaveCount(1);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', 'library');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    // ↩ alone: the item opens and is shown.
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('sample');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', item!.id);
+  } finally {
+    await app.close();
   }
 });

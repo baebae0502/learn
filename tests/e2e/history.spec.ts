@@ -108,6 +108,38 @@ test('going back before the link target\'s text layer is drawn stays back: pdf.j
   }
 });
 
+test('a page turn right after a link, before its text layer is drawn, stays on the turned page', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await page.evaluate(() => {
+      const bus = (window as unknown as { __learnReader: { getState(): { handle: { eventBus(): { dispatch(name: string, data: unknown): void } } } } }).__learnReader.getState().handle.eventBus();
+      const dispatch = bus.dispatch.bind(bus);
+      const held: Array<[string, unknown]> = [];
+      let holding = true;
+      bus.dispatch = (name, data) => {
+        if (holding && name === 'textlayerrendered') held.push([name, data]);
+        else dispatch(name, data);
+      };
+      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers = () => {
+        holding = false;
+        for (const [name, data] of held.splice(0)) dispatch(name, data);
+      };
+    });
+    await clickLink(page);
+    await expect(field(page)).toHaveValue('50');
+    await page.getByTestId('pdf-next').click();
+    await expect(field(page)).toHaveValue('51');
+    const at = await scrollTop(page);
+    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await page.waitForTimeout(500);
+    await expect(field(page)).toHaveValue('51');
+    expect(Math.abs((await scrollTop(page)) - at)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
 test('the page group does not move when forward turns on or off, and the pair sits 2 apart', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

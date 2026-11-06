@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, setPdfZoom, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, pdfCanvas, releaseOpenDialog, recordedPopups, runMenuCommand, setPdfZoom, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -191,7 +191,6 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
     await openItem(s.page, 'sample');
     const viewer = s.page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    const drawn = Number(await viewer.getAttribute('data-rendered'));
     // The next page's drawing fails (as a broken page's would): pdf.js asks the canvas for its context on each render.
     await s.page.evaluate(() => {
       const real = HTMLCanvasElement.prototype.getContext;
@@ -220,7 +219,8 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
     await s.page.getByTestId('pdf-next').click();
     await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
-    await expect.poll(async () => Number(await viewer.getAttribute('data-rendered'))).toBeGreaterThan(drawn);
+    // Page 3 is drawn: its canvas has left the 300 x 150 a canvas starts with (a count of drawn pages cannot say so, all three can be drawn at once).
+    await expect.poll(() => pdfCanvas(s.page, 3).evaluate((c: HTMLCanvasElement) => !(c.width === 300 && c.height === 150))).toBe(true);
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
   } finally {
     await s.app.close();

@@ -465,7 +465,7 @@ test('eleven items ask first; cancelling opens nothing, confirming opens them al
   try {
     await importPaths(page, pdfCopies(testInfo.outputPath('src'), 11));
     await rowByTitle(page, 'doc-01').click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await stubConfirm(app, 'cancel');
     await runMenuCommand(app, 'item.openInBackground');
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);

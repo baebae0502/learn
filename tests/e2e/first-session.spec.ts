@@ -82,7 +82,8 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   const ink = await inkedPixels(page);
   console.log('[measure] pdf page1 ink', JSON.stringify(ink));
-  expect(ink.dark).toBeGreaterThan(300);
+  // A share of the page, not a count: the page's size follows the fit (R-21), and ink is about 0.2 % of any size.
+  expect(ink.dark / (ink.dark + ink.white)).toBeGreaterThan(0.001);
   expect(ink.white).toBeGreaterThan(10000);
   await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
   await page.getByTestId('pdf-next').click();

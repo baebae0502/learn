@@ -163,7 +163,7 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
       ['library.sortBy?direction=asc', '오름차순', 'radio', false],
       ['library.sortBy?direction=desc', '내림차순', 'radio', true],
     ]);
-    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리'], [null, '쪽으로 이동…']]);
+    expect(entries(topMenu(menu, '이동'))).toEqual([[null, '라이브러리'], [null, '쪽으로 이동…'], ['-', ''], [null, '뒤로'], [null, '앞으로']]);
     expect(entries(topMenu(menu, '윈도우'))).toEqual(
       IS_MAC
         ? [['minimize', '최소화'], ['zoom', '확대/축소'], ['-', ''], ['front', '모두 앞으로 가져오기'], ['-', ''], ...TAB_ENTRIES]

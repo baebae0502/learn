@@ -100,6 +100,7 @@ const PAIRS: readonly PairSpec[] = [
   pair('reader.findNext', 'reader.findPrevious', () => t.sheets.pairs.find),
   pair('reader.rotateCw', 'reader.rotateCcw', () => t.sheets.pairs.rotate),
   pair('reader.showThumbnails', 'reader.showOutline', () => t.sheets.pairs.nav),
+  pair('nav.historyBack', 'nav.historyForward', () => t.sheets.pairs.history),
   // ⌘1 is the library tab, ⌘2…⌘8 the numbered ones, ⌘9 the last: "⌘1…⌘8 / ⌘9" (the chords below are spelled by tabNumbersRow).
   { anchor: 'tab.goTo2', takes: ['nav.back', ...TAB_NUMBER_IDS] as unknown as PairSpec['takes'], label: () => t.sheets.pairs.tabNumbers, a: 'nav.back', b: 'tab.last' },
 ];
@@ -160,7 +161,7 @@ const GROUP_GAP = 16;
 const columnHeight = (groups: readonly ShortcutGroup[]): number => groups.reduce((h, g, i) => h + groupHeight(g) + (i > 0 ? GROUP_GAP : 0), 0);
 
 /**
- * The wide sheet's two columns (design-spec 6 시트, 넓게 560): the groups in ORDER, read down the first column and then
+ * The wide sheet's two columns (design-spec 6 시트, 넓게): the groups in ORDER, read down the first column and then
  * the second, never split; cut where the taller column is shortest, so the sheet stays short as commands are added.
  */
 export function shortcutColumns(groups: readonly ShortcutGroup[]): [ShortcutGroup[], ShortcutGroup[]] {

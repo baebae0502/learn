@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import type { LibraryItem } from '@learn/domain';
 import { useCommands } from '../../commands/CommandProvider';
 import { usePrefs } from '../../data/queries';
@@ -23,6 +23,7 @@ import { useFind } from './findStore';
 import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
+import { canGoBack, canGoForward } from './history';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { stageKeyAction } from './stageKeys';
 import { usePdfDocument } from './usePdfDocument';
@@ -52,6 +53,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const ready = pdf?.ready === true && handle !== null;
   const findOpen = useFind((s) => s.open);
+  const history = useReader((s) => s.history);
   const { run } = useCommands();
   const locked = open.status === 'password';
   const broken = open.status === 'failed' || viewFailed;
@@ -197,6 +199,18 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     }
   };
 
+  // The side buttons of a mouse: 3 is back, 4 forward. The browser's own history would take the window back, so the press is
+  // stopped as well; the release does the move.
+  const onStageMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.button === 3 || e.button === 4) e.preventDefault();
+  };
+  const onStageMouseUp = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 3 && e.button !== 4) return;
+    e.preventDefault();
+    if (e.button === 3) handle?.historyBack();
+    else handle?.historyForward();
+  };
+
   const page = restored && pdf ? pdf.pageNumber : null;
   const total = pdf?.pagesCount ?? 0;
   return (
@@ -204,7 +218,26 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       <SepiaFilter />
       <TranslationStatus />
       <div className="reader-toolbar" role="toolbar" aria-label={t.reader.pdfTools} data-testid="reader-toolbar">
-        <PageField page={page} total={total} onGo={(n) => handle?.goToPage(n)} onEscape={() => stageRef.current?.focus()} />
+        {/* Back and forward join the page group at its start: the places a link, the outline, a thumbnail or the page field left. */}
+        <IconButton
+          icon={ArrowLeft}
+          label={commandLabel(commandById('nav.historyBack'), currentPlatform())}
+          accelerator={commandById('nav.historyBack').accelerator}
+          testId="pdf-history-back"
+          isDisabled={!restored || !canGoBack(history)}
+          disabledReason={restored ? t.reader.noHistoryBack : t.reader.opening}
+          onPress={() => handle?.historyBack()}
+        />
+        <IconButton
+          icon={ArrowRight}
+          label={commandLabel(commandById('nav.historyForward'), currentPlatform())}
+          accelerator={commandById('nav.historyForward').accelerator}
+          testId="pdf-history-forward"
+          isDisabled={!restored || !canGoForward(history)}
+          disabledReason={restored ? t.reader.noHistoryForward : t.reader.opening}
+          onPress={() => handle?.historyForward()}
+        />
+        <PageField page={page} total={total} onGo={(n) => handle?.jumpToPage(n)} onEscape={() => stageRef.current?.focus()} />
         <span className="page-count num" data-testid="pdf-page-count">
           {total > 0 ? t.reader.pageOf(total) : ''}
         </span>
@@ -243,7 +276,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
         <InspectorToggle pending={!ready} />
       </div>
       {/* A named, focusable scroll area (keyboard scrolling) is a region: aria-label on a plain div names nothing. */}
-      <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey}>
+      <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey} onMouseDown={onStageMouseDown} onMouseUp={onStageMouseUp}>
         {findOpen && ready && <FindBar onClose={closeFind} />}
         {ready && <SelectionPopup stageRef={stageRef} />}
         {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} />}

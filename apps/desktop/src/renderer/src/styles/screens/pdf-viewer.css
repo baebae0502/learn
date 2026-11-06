@@ -260,6 +260,10 @@
     font: var(--type-footnote);
     text-align: center;
   }
+  /* The mockup's .page-field.after-nav: the back and forward pair is its own group, one gap more before the page field. */
+  .reader-toolbar [data-testid='pdf-history-forward'] + .page-field {
+    margin-left: var(--space-4);
+  }
   .reader-toolbar .page-field:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);

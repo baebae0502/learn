@@ -7,7 +7,9 @@ import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
 import { watchDevicePixelRatio } from './displayChange';
-import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { goBack, goForward, recordJump } from './history';
+import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
 import { useReaderScope, useReaderShown } from '../readerScope';
@@ -180,9 +182,45 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
           viewer.scrollPageIntoView({ pageNumber, destArray: destArray ?? undefined });
         };
+        /**
+         * The place the reader is at, read from the viewer now (a scroll's report can still be on its way). Back and forward
+         * write it into the list before they leave it, and a jump writes it before it goes.
+         */
+        let reported: PdfPlace | null = null;
+        eventBus.on('updateviewarea', (e: { location: { pageNumber: number; top: number; left: number } }) => {
+          reported = { pageIndex: e.location.pageNumber - 1, top: e.location.top, left: e.location.left };
+        });
+        const hereNow = (): PdfPlace | null => {
+          // Before the saved place is applied the viewer reports its own start (page 1): that is no place of the reader's.
+          if (!scope.reader.getState().pdf?.placed) return null;
+          viewer.update();
+          return reported;
+        };
+        const recordHere = () => {
+          const here = hereNow();
+          if (here) store.setHistory(recordJump(scope.reader.getState().history, here));
+        };
+        const step = (direction: 'back' | 'forward') => {
+          const here = hereNow();
+          if (!here) return;
+          const moved = (direction === 'back' ? goBack : goForward)(scope.reader.getState().history, here);
+          if (!moved) return;
+          store.setHistory(moved.history);
+          const { pageIndex, top, left } = moved.target;
+          // A point, so a place inside a page comes back exactly (placement.ts keeps what a link names).
+          place({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, left ?? 0, top ?? null, null] });
+        };
+        linkService.setHistory(linkHistory({ jump: recordHere, back: () => step('back'), forward: () => step('forward') }));
         const handle: PdfViewHandle = {
           place,
           goToPage: (n) => place({ pageNumber: n }),
+          jumpToPage: (n) => {
+            if (!Number.isInteger(n) || n < 1 || n > viewer.pagesCount) return;
+            recordHere();
+            place({ pageNumber: n });
+          },
+          historyBack: () => step('back'),
+          historyForward: () => step('forward'),
           next: () => place({ pageNumber: viewer.currentPageNumber + 1 }),
           previous: () => place({ pageNumber: viewer.currentPageNumber - 1 }),
           setZoom: (z) => {

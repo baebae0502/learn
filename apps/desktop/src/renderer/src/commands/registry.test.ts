@@ -65,6 +65,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   rotate: vi.fn(),
   setPageColor: vi.fn(),
   goToPage: vi.fn(),
+  history: vi.fn(),
   openFind: vi.fn(),
   findAgain: vi.fn(),
   findSelection: vi.fn(),
@@ -79,6 +80,18 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
 });
 
 describe('renderer command registry', () => {
+  it('⌘[ and ⌘] go back and forward in the open PDF only while its history has a place that way', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, historyBack: true });
+    runCommand('nav.historyBack', e);
+    expect(e.history).toHaveBeenCalledWith('back');
+    expect(runCommand('nav.historyForward', e)).toBe(false); // nothing ahead
+    const both = env({ view: 'viewer', pdfOpen: true, historyBack: true, historyForward: true });
+    runCommand('nav.historyForward', both);
+    expect(both.history).toHaveBeenCalledWith('forward');
+    for (const off of [env({ view: 'viewer', historyBack: true }), env({ pdfOpen: true, historyBack: true }), env({ view: 'viewer', pdfOpen: true })]) expect(runCommand('nav.historyBack', off)).toBe(false);
+    expect(contextOf(e)).toMatchObject({ historyBack: true });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('historyBack');
+  });
   it('has a handler for every registry command and nothing else (no fake controls)', () => {
     expect(Object.keys(COMMAND_HANDLERS).sort()).toEqual(COMMANDS.map((c) => c.id).sort());
   });

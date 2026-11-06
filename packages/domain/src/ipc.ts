@@ -148,6 +148,9 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */
+    historyBack: z.boolean().optional(),
+    historyForward: z.boolean().optional(),
     /** Text of the open PDF is selected: 선택한 글 번역 is on; absent otherwise. */
     pdfSelection: z.boolean().optional(),
     /** Translation is switched off: 선택한 글 번역 is off; absent otherwise. */

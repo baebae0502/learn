@@ -9,7 +9,8 @@ import { registerWindowKind } from './window-kinds';
 
 export { SHEET_MARGIN, SHEET_TOP, sheetMaxHeight };
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
+/** The ⌘/ sheet is 760 wide: with Ctrl keycaps on Linux and Windows a pair line ("Ctrl O / Ctrl Alt O") leaves a label of the first column 74 px at 560, and it wraps to three lines. */
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 760, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
 /** Room the library check keeps below its parent's height (P-26: at most the parent's height − 120, the list scrolls). */
 export const CHECK_SHEET_ROOM = 120;
 /** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap; the backup and restore result sheets grow by their reveal error line. */

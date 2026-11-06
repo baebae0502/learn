@@ -153,6 +153,9 @@ const GO: Shape = {
   id: 'menu.go', label: '이동', submenu: [
     { id: 'nav.back', label: '라이브러리', accelerator: 'CmdOrCtrl+1' },
     { id: 'reader.goToPage', label: '쪽으로 이동…', accelerator: 'Alt+CmdOrCtrl+G' },
+    { type: 'separator' },
+    { id: 'nav.historyBack', label: '뒤로', accelerator: 'CmdOrCtrl+[' },
+    { id: 'nav.historyForward', label: '앞으로', accelerator: 'CmdOrCtrl+]' },
   ],
 };
 const HELP = (platform: NodeJS.Platform): Shape => ({

@@ -98,6 +98,8 @@ export interface CommandEnv extends CommandContextState {
   rotate(delta: 90 | -90): void;
   /** 쪽 색: saved as the reader's setting. */
   setPageColor(color: PageColor): void;
+  /** ⌘[ / ⌘]: the open PDF goes back or forward in its history (where a link, the outline, a thumbnail or the page field took it from). */
+  history(direction: 'back' | 'forward'): void;
   /** ⌥⌘G: the page field takes the focus with its number selected. */
   goToPage(): void;
   /** ⌘F in the reader: the find bar opens (or its field is taken again) with its text selected. */
@@ -259,6 +261,8 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.rotateCw': (env) => env.rotate(90),
   'reader.rotateCcw': (env) => env.rotate(-90),
   'reader.goToPage': (env) => env.goToPage(),
+  'nav.historyBack': (env) => env.history('back'),
+  'nav.historyForward': (env) => env.history('forward'),
   'reader.pageColorAuto': (env) => env.setPageColor('auto'),
   'reader.pageColorOriginal': (env) => env.setPageColor('original'),
   'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
@@ -293,6 +297,8 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.historyBack ? { historyBack: true } : {}),
+    ...(env.historyForward ? { historyForward: true } : {}),
     ...(env.pdfSelection ? { pdfSelection: true } : {}),
     ...(env.translationOff ? { translationOff: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),

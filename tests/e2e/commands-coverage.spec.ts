@@ -103,7 +103,7 @@ const M7A_COMMANDS: readonly CommandId[] = [
 const M7B_COMMANDS: readonly CommandId[] = [
   'item.openInBackground', 'tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous',
   'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last',
-  'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary',
+  'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary', 'nav.historyBack', 'nav.historyForward',
 ] as CommandId[];
 
 /**
@@ -658,6 +658,19 @@ test('every registry command runs without a page error (library and reader menus
       await runMenuCommand(app, 'tab.last');
       expect(await shown()).toBe(readers.at(-1));
       ran.add('tab.last');
+      // Back and forward (⌘[ ⌘]) of the shown reader: off until a jump, then back to page 1 and forward to where it left.
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      expect(await menuItemEnabled(app, 'nav.historyBack')).toBe(false);
+      await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { handle: { jumpToPage(n: number): void } } } }).__learnReader.getState().handle.jumpToPage(3));
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('3');
+      await expect.poll(() => menuItemEnabled(app, 'nav.historyBack')).toBe(true);
+      await runMenuCommand(app, 'nav.historyBack');
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      ran.add('nav.historyBack');
+      await expect.poll(() => menuItemEnabled(app, 'nav.historyForward')).toBe(true);
+      await runMenuCommand(app, 'nav.historyForward');
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('3');
+      ran.add('nav.historyForward');
       // The palette moves the shown tab a place each way.
       await runPalette(page, app, '탭을 왼쪽으로', 'tab.moveLeft');
       await expect.poll(async () => (await strip()).slice(1)).toEqual([...readers.slice(0, -2), readers.at(-1)!, readers.at(-2)!]);
@@ -701,7 +714,7 @@ test('every registry command runs without a page error (library and reader menus
     expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
     // The M7b commands (the tabs): each ran in the block above, none is left to another test, and the list is the whole set.
-    expect(all.filter((id) => id.startsWith('tab.') || id === 'item.openInBackground').sort(), 'the M7b commands in the registry').toEqual([...M7B_COMMANDS].sort());
+    expect(all.filter((id) => id.startsWith('tab.') || id === 'item.openInBackground' || id.startsWith('nav.history')).sort(), 'the M7b commands in the registry').toEqual([...M7B_COMMANDS].sort());
     expect(M7B_COMMANDS.filter((id) => !ran.has(id)), 'M7b commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7B_COMMANDS.includes(id as CommandId)), 'M7b commands left to another test').toEqual([]);
     // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it, and the list is the whole set (reader.* and the pop-up's command).

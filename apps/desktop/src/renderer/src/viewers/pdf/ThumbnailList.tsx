@@ -133,6 +133,8 @@ export function ThumbnailList() {
   useLayoutEffect(() => virtualizer.measure(), [rotation, virtualizer]);
 
   const goTo = (page: number) => handle?.goToPage(page);
+  // A click is a jump (recorded for back); the arrows and ↩ only move the reader to the page the list already shows.
+  const jumpTo = (page: number) => handle?.jumpToPage(page);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (e.key === 'ArrowDown') goTo(Math.min(total, current + 1));
@@ -172,7 +174,7 @@ export function ThumbnailList() {
               data-page={page}
               data-current={page === current ? 'true' : undefined}
               style={{ transform: `translateY(${row.start}px)` }}
-              onClick={() => goTo(page)}
+              onClick={() => jumpTo(page)}
             >
               <div className="nav-thumb-page" style={{ aspectRatio: `1 / ${ratioOf(page)}` }}>
                 <ThumbnailCanvas page={page} cacheRef={cacheRef} drawn={drawn} />

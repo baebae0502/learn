@@ -1,4 +1,4 @@
-import { ArchiveRestore, ArrowLeftRight, AppWindow, ArrowRightFromLine, ListX, Undo2, ChevronsRight, ChevronsLeft, X, ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { ArchiveRestore, ArrowLeftRight, AppWindow, ArrowRightFromLine, ListX, Undo2, ChevronsRight, ChevronsLeft, X, ChevronDown, ChevronUp, GalleryVertical, ListTree, TextSearch, ArrowLeft, ArrowRight, ArrowUpDown, ArrowLeftToLine, ArrowRightToLine, CircleX, Command, CopyCheck, CopyMinus, DatabaseBackup, Eraser, Expand, ExternalLink, FileOutput, FilePlus, FilterX, FolderInput, FolderMinus, FolderOpen, FolderPlus, FolderSearch, FolderTree, Hash, History, Keyboard, Languages, LibraryBig, Link, Maximize, MoveHorizontal, PanelLeft, PanelRight, Palette, Pencil, RotateCcw, RotateCw, Search, Settings, Stethoscope, Tag, Trash, Trash2, Type, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import type { CommandId } from '@learn/domain';
 
 /** Palette row icons (design-spec 5: lucide 16 / 1.5). Exhaustive: a new command without an icon fails typecheck. */
@@ -78,6 +78,8 @@ export const COMMAND_ICONS: Record<CommandId, LucideIcon> = {
   'reader.rotateCw': RotateCw,
   'reader.rotateCcw': RotateCcw,
   'reader.goToPage': Hash,
+  'nav.historyBack': ArrowLeft,
+  'nav.historyForward': ArrowRight,
   'reader.findNext': ChevronDown,
   'reader.findPrevious': ChevronUp,
   'reader.findSelection': TextSearch,

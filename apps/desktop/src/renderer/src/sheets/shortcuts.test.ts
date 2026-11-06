@@ -28,6 +28,11 @@ describe('shortcut sheet content (design-spec 7.4 from the registry)', () => {
     expect(tabs('linux').at(-1)).toEqual({ label: '라이브러리 · 2…8번째 탭 / 마지막 탭', keys: ['Ctrl', '1–8'], pairKeys: ['Ctrl', '9'], spoken: 'Ctrl+1부터 Ctrl+8 / Ctrl+9' });
     expect(tabs('linux')[0]).toMatchObject({ label: '탭 닫기 / 닫은 탭 다시 열기', keys: ['Ctrl', 'W'], pairKeys: ['Ctrl', 'Shift', 'T'] });
   });
+  it('lists ⌘[ / ⌘] as one pair line under 리더 (design-spec 7.4)', () => {
+    const row = (platform: string) => shortcutGroups(platform).find((g) => g.title === '리더')!.rows.find((r) => r.label === '뒤로 / 앞으로');
+    expect(row('darwin')).toEqual({ label: '뒤로 / 앞으로', keys: ['⌘', '['], pairKeys: ['⌘', ']'], spoken: '⌘[ / ⌘]' });
+    expect(row('linux')).toMatchObject({ keys: ['Ctrl', '['], pairKeys: ['Ctrl', ']'] });
+  });
   it('names ⌘+ ⌘− ⌘0 by the view the sheet was opened from (P-9)', () => {
     const named = (view?: 'library' | 'viewer') => {
       const rows = shortcutGroups('darwin', view).flatMap((g) => g.rows);

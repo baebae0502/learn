@@ -10,7 +10,7 @@ import { focusPageField } from './pageField';
 import { useReader } from './readerStore';
 
 /** What the reader's commands do to the open PDF (the CommandEnv's reader part): through the handle, so nothing runs without a viewer. */
-export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'goToPage' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
+export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
   zoom: (dir) => {
     const handle = useReader.getState().handle;
     if (!handle) return;
@@ -22,6 +22,11 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
   rotate: (delta) => useReader.getState().handle?.rotate(delta),
   setPageColor: (color: PageColor) => saveSetting('reader.pageColor', color),
   goToPage: focusPageField,
+  history: (direction) => {
+    const handle = useReader.getState().handle;
+    if (direction === 'back') handle?.historyBack();
+    else handle?.historyForward();
+  },
   openFind: () => {
     if (useReader.getState().handle) useFind.getState().openBar();
   },

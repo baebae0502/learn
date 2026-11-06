@@ -4,6 +4,13 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    container-type: inline-size; /* the toolbar answers to the reader's own width, not the window's */
+  }
+  /* A reader narrower than 480 drops the page field's "/ N" so the toolbar fits 440 at 15 pt (the window's smallest with the panel open). */
+  @container (max-width: 479px) { /* local: the approved mockup's breakpoint */
+    .reader-toolbar .page-count {
+      display: none;
+    }
   }
   /* 44 px reader toolbar (mockup .reader-toolbar): the page field and page turns; later controls join the same strip. */
   .reader-toolbar {

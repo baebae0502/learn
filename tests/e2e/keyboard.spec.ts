@@ -78,6 +78,10 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
     await page.keyboard.press('Shift+Tab'); // 쪽 번호
+    await page.keyboard.press('Shift+Tab'); // 앞으로: off with nothing to go forward to, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-history-forward');
+    await page.keyboard.press('Shift+Tab'); // 뒤로
+    expect(await focusedTestId(page)).toBe('pdf-history-back');
     await page.keyboard.press('Shift+Tab'); // the tab strip: the reader's own tab
     expect(await focusedTestId(page)).toBe('tab');
     await page.keyboard.press('ArrowLeft'); // the library tab (an arrow moves the focus, ↩ chooses)
@@ -206,6 +210,10 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('2');
     await page.keyboard.press('Shift+Tab'); // 이전 쪽
     await page.keyboard.press('Shift+Tab'); // 쪽 번호
+    await page.keyboard.press('Shift+Tab'); // 앞으로: off with nothing to go forward to, still focusable
+    expect(await focusedTestId(page)).toBe('pdf-history-forward');
+    await page.keyboard.press('Shift+Tab'); // 뒤로
+    expect(await focusedTestId(page)).toBe('pdf-history-back');
     await page.keyboard.press('Shift+Tab'); // the tab strip: the reader's own tab
     expect(await focusedTestId(page)).toBe('tab');
     await page.keyboard.press('ArrowLeft'); // the library tab (an arrow moves the focus, ↩ chooses)

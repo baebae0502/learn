@@ -9,6 +9,9 @@ export const reader = {
   /** Disabled-button tooltips (M-2). */
   firstPage: '첫 쪽입니다',
   lastPage: '마지막 쪽입니다',
+  /** The toolbar's 뒤로 / 앞으로 while the tab's history has nothing in that direction (M-2). */
+  noHistoryBack: '되돌아갈 곳이 없습니다',
+  noHistoryForward: '앞으로 갈 곳이 없습니다',
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',
   pdfTools: 'PDF 도구',

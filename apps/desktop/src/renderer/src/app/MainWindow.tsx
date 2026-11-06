@@ -77,6 +77,7 @@ import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
 import { useReader } from '../viewers/pdf/readerStore';
+import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderTabs } from '../viewers/ReaderTabs';
 import { readerScopes } from '../viewers/readerScope';
@@ -371,6 +372,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then, and so is its item panel
   // (the video and the failure states keep the reader without one).
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
+  const historyBack = useReader((s) => canGoBack(s.history));
+  const historyForward = useReader((s) => canGoForward(s.history));
   const showsInspector = showsTable || (view.kind === 'reader' && pdfOpen);
   const inspectorHidden = useInspectorHidden(showsInspector);
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
@@ -421,6 +424,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     restoreRunning,
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
+    ...(pdfOpen && historyBack ? { historyBack: true } : {}),
+    ...(pdfOpen && historyForward ? { historyForward: true } : {}),
     ...(pdfSelection ? { pdfSelection: true } : {}),
     ...(translationOff ? { translationOff: true } : {}),
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
@@ -527,7 +532,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

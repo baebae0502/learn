@@ -60,10 +60,10 @@ describe('command registry', () => {
     }
     const keys = COMMANDS.flatMap((c) => (c.key ? [`${c.key.shift ? 'Shift+' : ''}${c.key.code}`] : []));
     expect(new Set(keys).size).toBe(keys.length);
-    // ⌘[ / ⌘] belong to PDF history (M7, design-spec 7.4).
-    const mac = COMMANDS.flatMap((c) => (c.accelerator ? [acceleratorLabel(c.accelerator, 'darwin')] : []));
-    expect(mac).not.toContain('⌘[');
-    expect(mac).not.toContain('⌘]');
+    // ⌘[ / ⌘] belong to PDF history (M7b, design-spec 7.4): these two commands hold them, and nothing else does.
+    const holders = (label: string) => COMMANDS.filter((c) => c.accelerator && acceleratorLabel(c.accelerator, 'darwin') === label).map((c) => c.id);
+    expect(holders('⌘[')).toEqual(['nav.historyBack']);
+    expect(holders('⌘]')).toEqual(['nav.historyForward']);
   });
   it('labels every command in Korean; placements use known menus; context menus use known kinds', () => {
     for (const c of COMMANDS) {
@@ -121,7 +121,7 @@ describe('command registry', () => {
   it('defines the registry commands with the design-spec labels and keys', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
-      'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back',
+      'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back', 'nav.historyBack', 'nav.historyForward',
       'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
@@ -164,6 +164,13 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('file.importManaged', VIEWER)).toBe(false);
     expect(isCommandAvailable('nav.back', LIB)).toBe(false);
     expect(isCommandAvailable('nav.back', VIEWER)).toBe(true);
+    // ⌘[ ⌘]: the open PDF, and a place to go to that way.
+    const withHistory = { ...VIEWER, pdfOpen: true, historyBack: true };
+    expect(isCommandAvailable('nav.historyBack', withHistory)).toBe(true);
+    expect(isCommandAvailable('nav.historyForward', withHistory)).toBe(false);
+    expect(isCommandAvailable('nav.historyForward', { ...withHistory, historyForward: true })).toBe(true);
+    expect(isCommandAvailable('nav.historyBack', { ...VIEWER, historyBack: true })).toBe(false);
+    expect(isCommandAvailable('nav.historyBack', { ...LIB, pdfOpen: true, historyBack: true })).toBe(false);
     for (const c of COMMANDS) expect(isCommandAvailable(c.id, { ...VIEWER, blocked: true }, [linkedMissing]), c.id).toBe(MAIN_OWNED_COMMANDS.has(c.id) || c.id === 'tab.close');
   });
   it('⌘F needs the library view and an item to find (spec 3.5: no search field in the empty library)', () => {

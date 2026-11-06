@@ -2,8 +2,12 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav } from '@learn/domain';
+import { emptyHistory, type History } from './history';
 
 export type { ReaderNav };
+
+/** A place of the page: what back and forward return to. */
+export type PdfPlace = Pick<Extract<ReadingLocator, { kind: 'pdf' }>, 'pageIndex' | 'top' | 'left'>;
 
 /** 1 is 100 %. */
 export type ZoomValue = 'auto' | 'page-width' | 'page-fit' | number;
@@ -26,6 +30,10 @@ export interface PdfViewHandle {
   /** The one way to a page: pdf.js lands it flush and the room the mockup draws round it is added (viewers/pdf/placement). */
   place(target: { pageNumber: number; destArray?: unknown[] | null }): void;
   goToPage(pageNumber: number): void;
+  /** A jump (a thumbnail, the page field): the place left is recorded for back, then the page is placed. */
+  jumpToPage(pageNumber: number): void;
+  historyBack(): void;
+  historyForward(): void;
   next(): void;
   previous(): void;
   setZoom(zoom: ZoomValue): void;
@@ -54,6 +62,12 @@ export interface ReaderStore {
   handle: PdfViewHandle | null;
   /** Said by the host of the reader (the item's state) and by the PDF reader (the password): the sidebar shows the first. */
   noPages: Readonly<Record<'host' | 'reader', NoPages | null>>;
+  /**
+   * The back and forward list of this tab. It lives with the scope, so the view's teardown (a tab pushed out of the kept ones)
+   * leaves it alone; a new run starts empty.
+   */
+  history: History<PdfPlace>;
+  setHistory(h: History<PdfPlace>): void;
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
@@ -65,6 +79,8 @@ export function createReaderStore(): StoreApi<ReaderStore> {
     pdf: null,
     handle: null,
     noPages: { host: null, reader: null },
+    history: emptyHistory<PdfPlace>(),
+    setHistory: (history) => set({ history }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),

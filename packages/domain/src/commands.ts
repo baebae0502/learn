@@ -24,6 +24,8 @@ export type CommandId =
   | 'library.find'
   | 'library.findEverywhere'
   | 'nav.back'
+  | 'nav.historyBack'
+  | 'nav.historyForward'
   | 'item.open'
   | 'item.openInBackground'
   | 'tab.close'
@@ -296,6 +298,15 @@ export const COMMANDS: readonly CommandSpec[] = [
   {
     id: 'nav.back', label: '라이브러리', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
     keywords: ['라이브러리', '뒤로', '목록', 'library', 'back'],
+  },
+  // ⌘[ / ⌘] (design-spec 7.4): the open PDF's own back and forward — where a link, the outline, a thumbnail or the page field took it from.
+  {
+    id: 'nav.historyBack', label: '뒤로', accelerator: 'CmdOrCtrl+[', menu: { menu: 'go', group: 2, order: 1 }, contexts: ['viewer'],
+    keywords: ['뒤로', '이전', '기록', 'back', 'history'],
+  },
+  {
+    id: 'nav.historyForward', label: '앞으로', accelerator: 'CmdOrCtrl+]', menu: { menu: 'go', group: 2, order: 2 }, contexts: ['viewer'],
+    keywords: ['앞으로', '다음', '기록', 'forward', 'history'],
   },
   // ⌥⌘G (design-spec 7.4 리더): the toolbar's page field takes the focus with its number selected.
   {
@@ -648,6 +659,9 @@ export interface CommandContextState {
   trashCount: number;
   /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
   pdfOpen?: boolean;
+  /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
+  historyBack?: boolean;
+  historyForward?: boolean;
   /** Text of the open PDF is selected (the reader's selection pop-up has something to translate): 선택한 글 번역. Absent otherwise. */
   pdfSelection?: boolean;
   /** Translation is switched off (the choice is made and it is no): 선택한 글 번역 does nothing then. Absent while on or not yet chosen (running it asks). */
@@ -888,6 +902,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.rotateCw': pdfOpen,
   'reader.rotateCcw': pdfOpen,
   'reader.goToPage': pdfOpen,
+  'nav.historyBack': (c) => c.pdfOpen === true && c.historyBack === true,
+  'nav.historyForward': (c) => c.pdfOpen === true && c.historyForward === true,
   'reader.pageColorAuto': pdfOpen,
   'reader.pageColorOriginal': pdfOpen,
   'reader.pageColorSepia': pdfOpen,

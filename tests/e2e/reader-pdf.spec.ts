@@ -1014,16 +1014,24 @@ test('the toolbar groups as the mockup has them: "/ 100" takes its own width wit
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
-    const count = await page.getByTestId('pdf-page-count').evaluate((el) => {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      return { box: el.getBoundingClientRect().width, text: range.getBoundingClientRect().width, nums: getComputedStyle(el).fontVariantNumeric };
-    });
-    expect(Math.abs(count.box - count.text)).toBeLessThanOrEqual(1);
-    expect(count.nums).toContain('tabular-nums');
-    const c = await rectOf(page, 'pdf-page-count');
-    const prev = await rectOf(page, 'pdf-prev');
-    expect(prev.left - c.right).toBeCloseTo(4, 0);
+    // A reader narrower than 480 (a 1024 screen with the panel open) gives up the count; the page chevrons then follow the field.
+    if ((await page.locator('.reader').first().boundingBox())!.width < 480) {
+      await expect(page.getByTestId('pdf-page-count')).toBeHidden();
+      const field = await rectOf(page, 'pdf-page-field');
+      const prev = await rectOf(page, 'pdf-prev');
+      expect(prev.left - field.right).toBeCloseTo(4, 0);
+    } else {
+      const count = await page.getByTestId('pdf-page-count').evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return { box: el.getBoundingClientRect().width, text: range.getBoundingClientRect().width, nums: getComputedStyle(el).fontVariantNumeric };
+      });
+      expect(Math.abs(count.box - count.text)).toBeLessThanOrEqual(1);
+      expect(count.nums).toContain('tabular-nums');
+      const c = await rectOf(page, 'pdf-page-count');
+      const prev = await rectOf(page, 'pdf-prev');
+      expect(prev.left - c.right).toBeCloseTo(4, 0);
+    }
     // The mockup's .toolbar-sep: 1 × 16 in --separator, 8 from the 보기 menu and 8 from the toggle.
     const sep = page.locator('.reader-toolbar [role="separator"]');
     await expect(sep).toHaveCount(1);

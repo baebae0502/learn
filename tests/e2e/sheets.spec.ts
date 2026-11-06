@@ -363,6 +363,8 @@ test('the ⌘/ sheet lays its groups out in two columns, read down then across, 
     // Short enough for every real 1440 × 900 room (Mac ≈ 806-tall parent, room 774): the bound below. Whether the body
     // scrolls on THIS screen follows the rule (the runner's 1024 × 684 clamp has room 652 and scrolls).
     const { natural } = await sheetRule(s.app, sheet, await parentHeightOf(s.app));
+    // No label wraps (a wrapped row would add a line each): the natural height is the rows' own, 28 + 1 apiece.
+    expect(await sheet.locator('[data-testid="shortcut-row"]').evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().height > 29).length)).toBe(0);
     expect(natural).toBeLessThanOrEqual(770);
     await closeSheet(sheet, 'Escape');
   } finally {

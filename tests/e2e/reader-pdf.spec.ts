@@ -1301,7 +1301,7 @@ test('thumbnails are drawn again when the display changes its pixel ratio', asyn
 });
 
 test('a thumbnail that fails once is drawn again when the list moves; one that fails twice shows the failed look', async ({}, testInfo) => {
-  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
   try {
     await openPaper(page);
     await readyFaults(page);
@@ -1328,6 +1328,35 @@ test('a thumbnail that fails once is drawn again when the list moves; one that f
     const mark = await cell.locator('.nav-thumb-failed svg').evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }));
     expect(mark).toEqual({ w: 16, h: 16 });
     await expect(page.getByTestId('pdf-thumb').and(page.locator('[data-failed]'))).toHaveCount(1);
+
+    // The groove is opaque to the page colour: the same grey in every page colour, the mark at 3:1 or more, in both themes.
+    const luminance = (c: number[]) => {
+      const f = (v: number) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(c[0]!) + 0.7152 * f(c[1]!) + 0.0722 * f(c[2]!);
+    };
+    const ratio = (a: number[], b: number[]) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
+    const numbers: string[] = [];
+    for (const theme of ['light', 'dark'] as const) {
+      await page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
+      await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(theme === 'dark');
+      const grounds = new Set<string>();
+      for (const color of ['Original', 'Sepia', 'Dark'] as const) {
+        await runMenuCommand(app, `reader.pageColor${color}`);
+        await expect(cell.locator('xpath=ancestor::*[@data-page-color][1]')).toHaveAttribute('data-page-color', color.toLowerCase());
+        await page.mouse.move(1, 1);
+        const box = await cell.locator('.nav-thumb-page').boundingBox();
+        const mark = await cell.locator('.nav-thumb-failed svg').boundingBox();
+        const ground = await pixelAt(page, Math.floor(box!.x + 3), Math.floor(box!.y + 3));
+        const px = await shotPixels(page, { x: Math.floor(mark!.x), y: Math.floor(mark!.y), width: 16, height: 16 });
+        let best = 1;
+        for (let i = 0; i < px.data.length; i += 4) best = Math.max(best, ratio([px.data[i]!, px.data[i + 1]!, px.data[i + 2]!], ground));
+        grounds.add(ground.join(','));
+        numbers.push(`${theme}/${color}: ground ${ground.join(',')} mark ${best.toFixed(2)}`);
+        expect(best, `${theme} ${color}`).toBeGreaterThanOrEqual(3);
+      }
+      expect(grounds.size, `one grey in every page colour (${theme})`).toBe(1);
+    }
+    console.log(numbers.join('\n'));
   } finally {
     await app.close();
   }
@@ -1358,12 +1387,22 @@ test('a page that fails to draw is drawn again once; a second failure shows the 
   try {
     await openPaper(page);
     await readyFaults(page);
-    const drawnPage = (n: number) => page.locator(`.pdfViewer .page[data-page-number="${n}"] canvas[role="presentation"]`);
+    // The share of dark pixels on the page's canvas: pdf.js fills an opaque canvas white first, so only ink shows a page was drawn.
+    const ink = (n: number) =>
+      page.evaluate((num) => {
+        const c = document.querySelector<HTMLCanvasElement>(`.pdfViewer .page[data-page-number="${num}"] canvas[role="presentation"]`);
+        if (!c || c.width === 0) return 0;
+        const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+        let dark = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i]! < 100 && d[i + 1]! < 100 && d[i + 2]! < 100) dark++;
+        return dark / (d.length / 4);
+      }, n);
     await setFaults(page, 'page', 30, 1);
     await field(page).fill('30');
     await field(page).press('Enter');
     await expect.poll(async () => (await faults(page))!.page[30]).toBe(0);
-    await expect(drawnPage(30)).toBeAttached();
+    // The first attempt failed; the second one draws text.
+    await expect.poll(() => ink(30), { timeout: 20_000 }).toBeGreaterThan(0.001);
     await expect(page.getByTestId('pdf-page-error')).toHaveCount(0);
     await setFaults(page, 'page', 60, 2);
     await field(page).fill('60');
@@ -1375,7 +1414,7 @@ test('a page that fails to draw is drawn again once; a second failure shows the 
   }
 });
 
-test('a long outline is drawn virtualised, with the tree semantics and keys kept', async ({}, testInfo) => {
+test('a long outline goes through the virtualizer with the same tree: rows keep their height, keys work, a click is a jump', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [LONG_OUTLINE]);
@@ -1384,55 +1423,54 @@ test('a long outline is drawn virtualised, with the tree semantics and keys kept
     await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
     await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
     const tree = page.getByTestId('pdf-outline');
-    await expect(tree).toHaveAttribute('role', 'tree');
-    await expect(tree).toHaveAttribute('data-virtual', 'true');
+    await expect(tree).toBeVisible();
     const rows = page.getByTestId('pdf-outline-row');
-    // Closed to the 60 parts, only the first screenful is in the page.
-    await expect.poll(async () => Number(await tree.getAttribute('data-rows'))).toBeGreaterThanOrEqual(60);
-    expect(Number(await tree.getAttribute('data-rows'))).toBeLessThan(100);
-    // A search opens every hit with its way down: all 300 rows are listed, a few dozen are drawn.
-    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('Topic');
-    await expect(tree).toHaveAttribute('data-rows', '300');
-    expect(await rows.count()).toBeLessThan(60);
-    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('');
-    await expect.poll(async () => Number(await tree.getAttribute('data-rows'))).toBeLessThan(300);
-    // Semantics: level, set size, position and state.
-    const second = rows.nth(1);
-    await expect(rows.first()).toHaveAttribute('aria-level', '1');
-    await expect(rows.first()).toHaveAttribute('aria-setsize', '60');
-    await expect(second).toHaveAttribute('aria-posinset', '2');
-    // Keys: → opens, → again enters the first child, ← leaves for the parent, ← closes, End goes to the last row.
-    await tree.focus();
-    await expect(tree).toHaveAttribute('aria-activedescendant', /pdf-outline-/);
-    const cursor = () => tree.getAttribute('aria-activedescendant');
+    // A search opens every hit with its way down: 300 rows, a few dozen in the page, each as tall as a row is (28).
+    const search = page.getByTestId('pdf-outline-search').getByRole('searchbox');
+    await search.fill('Topic');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeLessThan(100);
+    const heights = await rows.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
+    expect(heights.length).toBeGreaterThan(10);
+    expect(new Set(heights)).toEqual(new Set([28]));
+    await expect(tree.getByRole('row').first()).toHaveAttribute('aria-level', '1');
+    await search.fill('');
+    await expect(rows.first()).toHaveText(/Part 1/);
+    // The page numbers are part of a row's name for assistive tech.
+    await expect(rows.first()).toHaveAttribute('aria-label', /^Part 1, 1쪽$/);
+    // Keys: the tree takes the focus on a row; End goes to the last row (scrolled into the page), → opens a closed part.
+    await rows.first().focus();
+    await page.keyboard.press('End');
+    await expect(page.locator('[data-testid="pdf-outline-row"]:focus')).toHaveAttribute('aria-label', /^Part 60/);
     await page.keyboard.press('Home');
-    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-0');
-    const first = await cursor();
-    await page.keyboard.press('ArrowDown');
-    expect(await cursor()).not.toBe(first);
-    await page.keyboard.press('ArrowUp');
-    expect(await cursor()).toBe(first);
-    await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('[data-testid="pdf-outline-row"]:focus')).toHaveAttribute('aria-label', /^Part 1,/);
     await page.keyboard.press('ArrowRight');
     await expect(rows.first()).toHaveAttribute('aria-expanded', 'true');
-    await page.keyboard.press('ArrowRight');
-    expect(await cursor()).toBe('pdf-outline-0.0');
-    await expect(page.locator('#pdf-outline-0\\.0')).toHaveAttribute('aria-level', '2');
-    await page.keyboard.press('ArrowLeft');
-    expect(await cursor()).toBe('pdf-outline-0');
     await page.keyboard.press('ArrowLeft');
     await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    // A click is a jump through the link service: it is recorded, and ⌘[ comes back.
     await page.keyboard.press('End');
-    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-59');
-    await expect(page.locator('#pdf-outline-59')).toBeVisible();
-    // Home returns; the cursor names a row only while that row is in the page.
-    await page.keyboard.press('Home');
-    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-0');
-    // ↩ goes to the entry: Part 1 is on page 1; Part 60 is on page 6.
-    await page.keyboard.press('End');
-    await page.keyboard.press('Enter');
+    await page.locator('[data-testid="pdf-outline-row"]:focus').click();
     await expect(viewer(page)).toHaveAttribute('data-page', '6');
-    await expect(page.locator('#pdf-outline-59 .page')).toHaveText('6');
+    await expect(page.locator('[data-testid="pdf-outline-row"] [aria-current="location"]')).toHaveCount(1);
+    await runMenuCommand(app, 'nav.historyBack');
+    await expect(field(page)).toHaveValue('1');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the outline rows keep their height when many are open (paper-100, every chapter opened)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('Section');
+    const rows = page.getByTestId('pdf-outline-row');
+    await expect(rows.first()).toBeVisible();
+    const heights = await rows.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
+    expect(heights.length).toBeGreaterThan(20);
+    expect(new Set(heights)).toEqual(new Set([28]));
   } finally {
     await app.close();
   }

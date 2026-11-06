@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronDown, ChevronRight, ListTree, SearchX } from 'lucide-react';
-import { Button, Tree, TreeItem, TreeItemContent, type Key } from 'react-aria-components';
+import { Button, ListLayout, Tree, TreeItem, TreeItemContent, Virtualizer, type Key } from 'react-aria-components';
+import { usePrefs } from '../../data/queries';
+import { defaultDensity, density as ROW_HEIGHT } from '../../design/tokens';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { Kbd } from '../../ui/Kbd';
@@ -9,10 +11,6 @@ import { PaneEmpty } from '../../ui/PaneEmpty';
 import { SearchField } from '../../ui/SearchField';
 import { currentOutlineId, filterOutline, flattenOutline, outlinePages, outlineRows, type OutlineRow } from './outline';
 import { useReader } from './readerStore';
-import { VirtualOutline } from './VirtualOutline';
-
-/** More entries than this and the tree is drawn virtualised (react-aria's Tree draws every row it is given). */
-export const VIRTUAL_OUTLINE_THRESHOLD = 200; /* local: entries */
 
 const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as CSSProperties;
 
@@ -61,6 +59,8 @@ export function OutlineTree() {
   const handle = useReader((s) => s.handle);
   const page = useReader((s) => s.pdf?.pageNumber ?? 1);
   const [query, setQuery] = useState('');
+  const rowHeight = ROW_HEIGHT[usePrefs().data?.density ?? defaultDensity];
+  const layoutOptions = useMemo(() => ({ rowHeight }), [rowHeight]);
   const [opened, setOpened] = useState<ReadonlySet<Key>>(new Set());
 
   const rows = outline.status === 'ready' ? outline.rows : [];
@@ -93,9 +93,8 @@ export function OutlineTree() {
   };
   const byId = new Map(flattenOutline(rows).map((r) => [r.id, r]));
 
-  const virtual = byId.size > VIRTUAL_OUTLINE_THRESHOLD;
   const item = (row: OutlineRow) => (
-    <TreeItem key={row.id} id={row.id} textValue={row.title} className="nav-row" style={indent} data-current-page={row.id === current ? 'true' : undefined} data-testid="pdf-outline-row">
+    <TreeItem key={row.id} id={row.id} textValue={pages.has(row.id) ? t.reader.outlineRowName(row.title, pages.get(row.id)!) : row.title} className="nav-row" style={indent} data-current-page={row.id === current ? 'true' : undefined} data-testid="pdf-outline-row">
       <TreeItemContent>
         {({ hasChildItems, isExpanded }) => (
           <>
@@ -104,7 +103,7 @@ export function OutlineTree() {
                 <Icon icon={isExpanded ? ChevronDown : ChevronRight} size="xs" />
               </Button>
             )}
-            <span className="label ellipsis" title={row.title}>
+            <span className="label ellipsis" title={row.title} aria-current={row.id === current ? 'location' : undefined}>
               {row.title}
             </span>
             {pages.has(row.id) && <span className="page num">{pages.get(row.id)}</span>}
@@ -123,17 +122,7 @@ export function OutlineTree() {
       {shown.length === 0 ? (
         <PaneEmpty icon={SearchX} title={t.reader.outlineNoMatch} top testId="reader-sidebar-empty" />
       ) : (
-        virtual ? (
-          <VirtualOutline
-            rows={shown}
-            open={expanded as ReadonlySet<string>}
-            locked={searching}
-            current={current}
-            pages={pages}
-            onToggle={(id, on) => setOpened((before) => (on ? new Set([...before, id]) : new Set([...before].filter((k) => k !== id))))}
-            onGo={go}
-          />
-        ) : (
+        <Virtualizer layout={ListLayout} layoutOptions={layoutOptions}>
         <Tree
           aria-label={t.reader.outlineTree}
           className="nav-list outline"
@@ -147,7 +136,7 @@ export function OutlineTree() {
         >
           {shown.map(item)}
         </Tree>
-        )
+        </Virtualizer>
       )}
     </>
   );

@@ -1982,3 +1982,73 @@ test('item panel: the 읽기 section — a PDF with its page count and one saved
     await s.app.close();
   }
 });
+
+// A thumbnail that could not be made (reader-pdf.spec.ts forces the failure through the e2e fault hook): the groove with its mark,
+// beside the current page, in the paper colour and on a dark page.
+test('reader: a thumbnail that could not be drawn, in the paper colour and on a dark page', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const goTo = async (n: number) => {
+    await page.getByTestId('pdf-page-field').fill(String(n));
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(n));
+  };
+  type Faults = { thumbnail: Record<number, number>; ready: boolean };
+  const faults = () => page.evaluate(() => (window as unknown as { __learnFaults: Faults }).__learnFaults);
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await expect.poll(async () => (await faults())?.ready ?? false).toBe(true);
+    await page.evaluate(() => void ((window as unknown as { __learnFaults: Faults }).__learnFaults.thumbnail[50] = 2));
+    await goTo(50);
+    await expect.poll(async () => (await faults()).thumbnail[50]).toBe(1);
+    await goTo(51);
+    await expect(page.locator('[data-testid="pdf-thumb"][data-page="50"]')).toHaveAttribute('data-failed', 'true');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await runMenuCommand(s.app, 'reader.pageColorAuto');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`reader-thumb-failed-${theme}`);
+      await runMenuCommand(s.app, 'reader.pageColorDark');
+      await expect(page.getByTestId('pdf-thumbnails')).toHaveAttribute('data-page-color', 'dark');
+      await shootReader(`reader-thumb-failed-dark-page-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// The outline of 300 entries, all open by a search: the Virtualizer draws a screenful of the tree's rows, 28 high.
+test('reader: a long outline with every part open, and its keyboard cursor', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'long-outline.pdf')]);
+    await openItem(page, 'long-outline');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await page.getByTestId('reader-nav-outline').click();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('Topic');
+    const rows = page.getByTestId('pdf-outline-row');
+    await expect(rows.first()).toHaveText(/Part 1/);
+    await expect(rows.first().locator('.page')).toHaveText('1');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.getByTestId('pdf-outline-search').getByRole('searchbox').blur();
+      await shootReader(`reader-outline-long-${theme}`);
+      await rows.nth(1).focus();
+      await page.keyboard.press('ArrowDown');
+      await shootReader(`reader-outline-long-cursor-${theme}`);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    }
+  } finally {
+    await s.app.close();
+  }
+});

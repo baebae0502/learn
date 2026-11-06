@@ -42,8 +42,9 @@ export function ThumbnailList() {
   const cacheRef = useRef<ThumbnailCache | null>(null);
   const wantRef = useRef<number[]>([]);
   const wakeRef = useRef<(() => void) | null>(null);
-  /** Lets the drawing loop try the pages that failed once again: called when what is in view changes. */
-  const retryRef = useRef<(() => void) | null>(null);
+  /** Lets the drawing loop try the pages that failed once again: told what is in view and whether the page moved. */
+  const retryRef = useRef<((visible: ReadonlySet<number>, pageMoved: boolean) => void) | null>(null);
+  const lastPage = useRef(current);
 
   /** Height over width as the view shows the page: a quarter turn swaps the two. */
   const ratioOf = (page: number) => {
@@ -62,7 +63,9 @@ export function ThumbnailList() {
   // What to draw next: read by the drawing loop, which is woken when it changes.
   useEffect(() => {
     wantRef.current = drawOrder(visibleKey === '' ? [] : visibleKey.split(',').map(Number), current);
-    retryRef.current?.();
+    const visible = new Set(visibleKey === '' ? [] : visibleKey.split(',').map(Number));
+    retryRef.current?.(visible, lastPage.current !== current);
+    lastPage.current = current;
     wakeRef.current?.();
   }, [visibleKey, current]);
 
@@ -83,7 +86,18 @@ export function ThumbnailList() {
     const waiting = new Set<number>();
     const failed = new Set<number>();
     const retried = new Set<number>();
-    retryRef.current = () => waiting.clear();
+    // A page that failed is tried again when the reader moves to another page, or when the page has left the view and is back in it:
+    // a shift of the rows' sizes that leaves it in view does not count.
+    const away = new Set<number>();
+    retryRef.current = (visible, pageMoved) => {
+      for (const n of [...waiting]) {
+        if (!visible.has(n)) away.add(n);
+        else if (pageMoved || away.has(n)) {
+          waiting.delete(n);
+          away.delete(n);
+        }
+      }
+    };
     setFailedPages(new Set());
     // The pictures of the old rotation (or document) are gone: every cell reads the new cache.
     setDrawn((n) => n + 1);

@@ -69,6 +69,7 @@ export const reader = {
   thumbnailOf: (page: number) => `${page}쪽`,
   outlineSearch: '목차에서 찾기',
   outlineSearchLabel: '목차 검색',
+  outlineRowName: (title: string, page: number) => `${title}, ${page}쪽`,
   outlineTree: 'PDF 목차',
   noOutlineTitle: '이\u00a0PDF에는 목차가 없습니다',
   /** The body names the page shortcut between its two halves (a keycap, not text: the keys differ by platform). */

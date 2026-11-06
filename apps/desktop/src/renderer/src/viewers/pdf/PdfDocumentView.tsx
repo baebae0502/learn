@@ -14,7 +14,7 @@ import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
 import { useReaderScope, useReaderShown } from '../readerScope';
-import { fitScale, widestPage, type FitLayout, type FitMode } from './fit';
+import { fitScale, tallestHeight, widestPage, type FitLayout, type FitMode } from './fit';
 import { roomAfterJump } from './placement';
 import { spreadStep } from './spread';
 import { nextZoom } from './zoom';
@@ -75,7 +75,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         /** The modes the viewer is in (it can refuse a scroll mode, a document with too many pages), by name. */
         const scrollNow = (): ScrollModeName => (viewer.scrollMode === ScrollMode.HORIZONTAL ? 'horizontal' : viewer.scrollMode === ScrollMode.PAGE ? 'page' : 'vertical');
         const spreadNow = (): SpreadModeName => (viewer.spreadMode === SpreadMode.ODD ? 'odd' : viewer.spreadMode === SpreadMode.EVEN ? 'even' : 'none');
-        const layoutNow = (): FitLayout => ({ flow: scrollNow() === 'horizontal' ? 'horizontal' : 'vertical', columns: spreadNow() === 'none' ? 1 : 2 });
+        const layoutNow = (): FitLayout => ({ flow: scrollNow(), columns: spreadNow() === 'none' ? 1 : 2 });
         const eventBus = new EventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
         // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
@@ -122,7 +122,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             const [w, h] = [v.width / v.scale, v.height / v.scale];
             sizes.push(turned ? { width: h, height: w } : { width: w, height: h });
           }
-          return widestPage(sizes, viewer.pagesRotation as Rotation);
+          const widest = widestPage(sizes, viewer.pagesRotation as Rotation);
+          // A row of pages is as high as its tallest page: the fit to the stage's height is that page's, so no taller page scrolls.
+          return scrollNow() === 'horizontal' ? { width: widest.width, height: tallestHeight(sizes, viewer.pagesRotation as Rotation) } : widest;
         };
         /** A fit asked for while the tab is hidden (its stage measures nothing): done once it is shown. */
         let fitWhenShown: FitMode | null = null;
@@ -168,8 +170,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           const next = roomAfterJump({
             flow,
             page: { top, left, width: div.clientWidth, height: div.clientHeight },
-            // A page at a time shows one row (its page is the first), and the first page's place is not read from a page that is not in the tree.
-            firstRow: scroll === 'page' || (flow === 'horizontal' ? Math.abs(left - (first.offsetLeft + first.clientLeft)) : Math.abs(top - (first.offsetTop + first.clientTop))) <= 1,
+            // A page at a time has one page in the tree, so none is the first row: each has 12 above it, as the fit leaves.
+            firstRow: scroll !== 'page' && (flow === 'horizontal' ? Math.abs(left - (first.offsetLeft + first.clientLeft)) : Math.abs(top - (first.offsetTop + first.clientTop))) <= 1,
             stage: { scrollTop: container.scrollTop, scrollLeft: container.scrollLeft, width: container.clientWidth, height: container.clientHeight },
             keepTop,
             keepLeft,
@@ -306,6 +308,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             const scroll = saved?.scroll ?? 'vertical';
             viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : (saved?.spread ?? 'none')];
             viewer.scrollMode = SCROLL_OF[scroll];
+            // In the store before the viewer reports, so the saver's first baseline carries the modes.
+            store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
             viewer.pagesRotation = saved?.rotation ?? 0;
             if (typeof zoom === 'number') viewer.currentScale = zoom;
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).

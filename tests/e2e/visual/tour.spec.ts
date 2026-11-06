@@ -1868,6 +1868,8 @@ test('reader: the view menu with its scroll and spread submenus, a horizontal sc
     await page.getByTestId('pdf-page-field').press('Enter');
     await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(n));
   };
+  /** The scenes are the pages, not the keyboard's last stop: no focus ring (the other scenes cover the rings). */
+  const blur = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   const choose = async (submenu: 'scroll' | 'spread', name: string) => {
     await page.getByTestId('pdf-view-menu').click();
     await page.getByTestId(`pdf-${submenu}-menu`).click();
@@ -1900,22 +1902,48 @@ test('reader: the view menu with its scroll and spread submenus, a horizontal sc
       await goTo(3);
       await page.getByTestId('pdf-view-menu').click();
       await expect(page.getByTestId('pdf-spread-menu')).toHaveAttribute('data-disabled', 'true');
-      await page.getByTestId('pdf-scroll-menu').click();
-      await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toBeVisible();
+      // As the mockup: the menu is open and no row is lit; the check on 가로로 이어서 is the e2e's.
       await shootReader(`reader-scroll-horizontal-menu-${theme}`);
       await page.keyboard.press('Escape');
-      await page.keyboard.press('Escape');
       await expect(page.getByTestId('pdf-view-menu')).toBeVisible();
+      await blur();
       await shootReader(`reader-scroll-horizontal-${theme}`);
       await choose('scroll', '한 쪽씩');
       await goTo(3);
+      await blur();
       await shootReader(`reader-scroll-page-${theme}`);
       await choose('scroll', '세로로 이어서');
       await choose('spread', '홀수 쪽부터');
       await goTo(3);
+      await blur();
       await shootReader(`reader-spread-odd-${theme}`);
       await choose('spread', '펼치지 않음');
       await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('reader: with the item panel closed the scroll submenu flips to the left of 보기 ▾', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(page.getByTestId('inspector-panel')).toBeHidden();
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      await shoot(page, `reader-view-menu-scroll-left-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
     }
   } finally {
     await s.app.close();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FIT_MARGIN, FIT_MAX_AUTO, fitScale, widestPage } from './fit';
+import { FIT_MARGIN, FIT_MAX_AUTO, fitScale, tallestHeight, widestPage } from './fit';
 
 const stage = { width: 880, height: 700 };
 const a4 = { width: 794, height: 1123 };
@@ -58,6 +58,18 @@ describe('fitScale in the view modes', () => {
   it('auto in a horizontal flow is the height fit even when the stage is narrow', () => {
     expect(fitScale('auto', { width: 460, height: 700 }, a4, { flow: 'horizontal' })).toBeCloseTo((700 - 24) / 1123, 6);
     expect(fitScale('page-fit', { width: 460, height: 700 }, a4, { flow: 'horizontal' })).toBeCloseTo((460 - 48) / 794, 6);
+  });
+  it('a page at a time fits the whole page with 12 above and below, auto included', () => {
+    expect(fitScale('auto', { width: 1000, height: 700 }, a4, { flow: 'page' })).toBeCloseTo((700 - 24) / 1123, 6);
+    expect(fitScale('auto', { width: 400, height: 900 }, a4, { flow: 'page' })).toBeCloseTo((400 - 48) / 794, 6);
+    expect(fitScale('page-fit', stage, a4, { flow: 'page' })).toBeCloseTo((700 - 24) / 1123, 6);
+    expect(fitScale('page-width', stage, a4, { flow: 'page' })).toBeCloseTo((880 - 48) / 794, 6);
+  });
+  it('the tallest page, as shown', () => {
+    const sizes = [{ width: 800, height: 1000 }, { width: 600, height: 1200 }];
+    expect(tallestHeight(sizes, 0)).toBe(1200);
+    expect(tallestHeight(sizes, 90)).toBe(800);
+    expect(tallestHeight([], 0)).toBe(0);
   });
   it('a spread fits its two pages and the 12 between them to the width', () => {
     expect(fitScale('page-width', stage, a4, { columns: 2 })).toBeCloseTo((880 - 48 - 12) / (2 * 794), 6);

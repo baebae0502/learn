@@ -199,17 +199,17 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     const action = stageKeyAction(e.nativeEvent, isEditing(e.target as Element), pdf?.scroll);
     if (!action) return;
     e.preventDefault();
+    if (action === 'nextPage') return handle.next();
+    if (action === 'previousPage') return handle.previous();
     const scroll = stageRef.current?.querySelector<HTMLElement>('.pdf-scroll');
-    if (action === 'nextPage') handle.next();
-    else if (action === 'previousPage') handle.previous();
-    else if (action === 'screenRight' || action === 'screenLeft') scroll?.scrollBy({ left: (action === 'screenRight' ? 1 : -1) * scroll.clientWidth * SCREEN_STEP });
+    if (!scroll) return;
+    if (action === 'screenRight' || action === 'screenLeft') scroll.scrollBy({ left: (action === 'screenRight' ? 1 : -1) * scroll.clientWidth * SCREEN_STEP });
     else if (action === 'pageForward' || action === 'pageBack') {
-      if (!scroll) return;
       const step = pageStepAction(action, scroll);
       if (step.kind === 'scroll') scroll.scrollBy({ top: step.top });
       else if (step.direction === 'next') handle.next();
       else handle.previous();
-    } else scroll?.scrollBy({ top: (action === 'screenDown' ? 1 : -1) * (scroll?.clientHeight ?? 0) * SCREEN_STEP });
+    } else scroll.scrollBy({ top: (action === 'screenDown' ? 1 : -1) * scroll.clientHeight * SCREEN_STEP });
   };
 
   // The side buttons of a mouse: 3 is back, 4 forward. The browser's own history would take the window back, so the press is

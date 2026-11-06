@@ -98,7 +98,8 @@ function SubmenuRow<K extends string>({ entry, onAction, platform }: { entry: Me
           <Icon icon={ChevronRight} size="sm" />
         </span>
       </MenuItem>
-      <Popover className="menu-popover" offset={-4}>
+      {/* offset 4 puts the fly-out about 2 over the parent's edge (the row ends 5 inside it, the popover rounds to a whole pixel); crossOffset -5 is the menu's own padding, so the first item stands level with the row. Both mirror when it flips left. */}
+      <Popover className="menu-popover" offset={4} crossOffset={-5}>
         <Menu className="menu" aria-label={entry.label} shouldCloseOnSelect onAction={(key) => onAction(String(key) as K)} {...choice(entry.items)}>
           {entry.items.map((item) => (
             <Item key={item.id} item={item} platform={platform} />

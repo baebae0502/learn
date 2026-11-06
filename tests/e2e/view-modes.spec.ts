@@ -248,3 +248,86 @@ test('progress is not 100 % just because a page at a time fits the stage', async
     await app.close();
   }
 });
+
+test('a page at a time fits the whole page with 12 above and below, and a page and an even spread are restored', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  try {
+    await openPaper(page);
+    await choose(page, 'scroll', '한 쪽씩');
+    await expect(viewer(page)).toHaveAttribute('data-scroll', 'page');
+    await field(page).fill('3');
+    await field(page).press('Enter');
+    await expect(field(page)).toHaveValue('3');
+    await expect(page.locator('.pdfViewer .page')).toHaveCount(1);
+    const stage = await scroller(page).evaluate((el) => ({ height: el.clientHeight, scrollHeight: el.scrollHeight }));
+    const p = await box(page, 3);
+    expect(p.top).toBe(12);
+    expect(p.height).toBeLessThanOrEqual(stage.height - 24);
+    expect(stage.scrollHeight).toBe(stage.height); // nothing to scroll: the whole page is in the stage
+    await choose(page, 'spread', '짝수 쪽부터');
+    await expect(viewer(page)).toHaveAttribute('data-spread', 'even');
+    await page.waitForTimeout(600);
+    await app.close();
+    ({ app, page } = await launch(lib, ud));
+    await reader(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-scroll', 'page');
+    await expect(viewer(page)).toHaveAttribute('data-spread', 'even');
+    await expect(field(page)).toHaveValue('2'); // page 3 is the second of the even spread 2·3, and the field shows the spread's first page
+    await expect(page.locator('.pdfViewer .spread .page')).toHaveCount(2);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the submenu stands level with its row and 2 px over the parent menu (to the right and, with the item panel closed, to the left); → opens, ← closes, esc closes the menu', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const geometry = async () => {
+      const row = await page.getByTestId('pdf-scroll-menu').boundingBox();
+      const parent = await page.getByTestId('pdf-scroll-menu').locator('xpath=ancestor::*[@role="menu"][1]').boundingBox();
+      const first = page.getByRole('menuitemradio', { name: '세로로 이어서' });
+      const sub = await first.locator('xpath=ancestor::*[@role="menu"][1]').boundingBox();
+      const item = await first.boundingBox();
+      if (!row || !parent || !sub || !item) throw new Error('no box');
+      const right = sub.x > parent.x;
+      return { top: Math.abs(item.y - row.y), overlap: right ? parent.x + parent.width - sub.x : sub.x + sub.width - parent.x, right };
+    };
+    for (const panel of [true, false]) {
+      if (!panel) await runMenuCommand(app, 'view.toggleInspector');
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      const g = await geometry();
+      expect(g.right, panel ? 'opens to the right' : 'flips to the left').toBe(panel);
+      expect(g.top).toBeLessThanOrEqual(1);
+      expect(g.overlap).toBeGreaterThanOrEqual(0);
+      expect(g.overlap).toBeLessThanOrEqual(2);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+    }
+    // The keys: the row is entered with the arrow, → opens its submenu, ← closes only that, esc closes the menu.
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByRole('menuitemradio', { name: '앱 테마 따르기' }).focus();
+    for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('pdf-scroll-menu')).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toBeVisible();
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toHaveCount(0);
+    await expect(page.getByTestId('pdf-scroll-menu')).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-scroll', 'horizontal');
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByTestId('pdf-scroll-menu').click();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('pdf-scroll-menu')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});

@@ -1,9 +1,8 @@
+import type { ScrollModeName } from '@learn/domain';
 import type { KeyLike } from '../../commands/keymap';
 import { isComposingKey } from '../../ui/ime';
 
 export type { KeyLike };
-
-export type ScrollMode = 'vertical' | 'horizontal' | 'page';
 
 export type StageKeyAction = 'screenDown' | 'screenUp' | 'screenRight' | 'screenLeft' | 'pageForward' | 'pageBack' | 'previousPage' | 'nextPage' | null;
 
@@ -12,7 +11,7 @@ export type StageKeyAction = 'screenDown' | 'screenUp' | 'screenRight' | 'screen
  * text field has the focus, while an IME composes, or with a modifier (those belong to the menu). Sideways, the screen keys
  * move a stage width across; a page at a time, ↓ ↑ and the screen keys go on from the end of a page to the next one.
  */
-export function stageKeyAction(e: KeyLike, editing: boolean, mode: ScrollMode = 'vertical'): StageKeyAction {
+export function stageKeyAction(e: KeyLike, editing: boolean, mode: ScrollModeName = 'vertical'): StageKeyAction {
   if (editing || isComposingKey(e)) return null;
   if (e.altKey || e.ctrlKey || e.metaKey) return null;
   const forward = (e.code === 'Space' && !e.shiftKey) || (!e.shiftKey && (e.code === 'PageDown' || e.code === 'ArrowDown'));

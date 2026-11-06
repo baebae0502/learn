@@ -15,7 +15,8 @@ const FLOW_MARGIN = 12;
 
 /** How the pages are laid out: the flow, and how many sit side by side (a spread). */
 export interface FitLayout {
-  flow?: 'vertical' | 'horizontal';
+  /** 'page' is a page at a time: one row, fitted whole with 12 above and below like a sideways flow. */
+  flow?: 'vertical' | 'horizontal' | 'page';
   columns?: 1 | 2;
 }
 
@@ -32,13 +33,19 @@ export function fitScale(mode: FitMode, stage: Size, page: Size, layout: FitLayo
   const columns = layout.columns ?? 1;
   const horizontal = layout.flow === 'horizontal';
   // A horizontal flow keeps 12 above and below the pages (the mockup), a vertical one 24; a spread's pages have 12 between them.
-  const rowMargin = horizontal ? FLOW_MARGIN : FIT_MARGIN;
+  const rowMargin = horizontal || layout.flow === 'page' ? FLOW_MARGIN : FIT_MARGIN;
   const width = (stage.width - 2 * FIT_MARGIN - (columns - 1) * SPREAD_GAP) / (columns * page.width);
   const high = (stage.height - 2 * rowMargin) / page.height;
   const whole = Math.min(width, high);
   // Auto: a landscape page takes the whole-page fit and any other the width fit, as pdf.js's does; pages that flow sideways are fitted to the stage's height alone (the row scrolls across).
-  const scale = mode === 'page-width' ? width : mode === 'page-fit' ? whole : Math.min(FIT_MAX_AUTO, horizontal ? high : page.width > page.height ? whole : width);
+  const scale = mode === 'page-width' ? width : mode === 'page-fit' ? whole : Math.min(FIT_MAX_AUTO, horizontal ? high : layout.flow === 'page' || page.width > page.height ? whole : width);
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale));
+}
+
+/** The tallest page of the document as it is shown (a quarter turn swaps width and height); `sizes` are unrotated. */
+export function tallestHeight(sizes: readonly Size[], rotation: 0 | 90 | 180 | 270): number {
+  const turned = rotation % 180 !== 0;
+  return sizes.reduce((best, s) => Math.max(best, turned ? s.width : s.height), 0);
 }
 
 /**

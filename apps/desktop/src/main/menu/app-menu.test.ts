@@ -329,7 +329,8 @@ describe('menu state and placement (M3)', () => {
     expect(shape(build('darwin', false, vi.fn(), ALL, [extra]))[0]!.submenu!.map((s) => s.label ?? s.type)).toEqual([
       'Learn에 관하여', 'separator', '설정…', 'separator', '서비스', 'separator', 'Learn 가리기', '기타 가리기', '모두 보기', 'separator', 'Learn 종료',
     ]);
-    expect(shape(build('linux', false, vi.fn(), ALL, [extra])).find((m) => m.id === 'menu.file')!.submenu!.map((s) => s.label ?? s.type)).toEqual(['설정…', 'separator', '창 닫기']);
+    // 창 닫기 closes the last group of 파일 (the tab commands' group is the registry's last).
+    expect(shape(build('linux', false, vi.fn(), ALL, [extra, commandById('tab.close')])).find((m) => m.id === 'menu.file')!.submenu!.map((s) => s.label ?? s.type)).toEqual(['설정…', 'separator', '탭 닫기', '창 닫기']);
   });
   it('maps ⌃⌘ for Linux, uses the platform label, and gives ⌘+ a hidden ⌘= twin', () => {
     const cmds: CommandSpec[] = [
@@ -399,12 +400,15 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelState(next({ inspector: undefined }))).toEqual({ sidebar: 'shown', scope: 'all', view: 'library' }); // the reader has no item panel
     expect(menuLabelState(next({ sidebar: undefined, inspector: undefined, scope: undefined as never }))).toEqual({ view: 'library' }); // the fatal screen
   });
-  it('relabels when the sidebar or the item panel changed, never for a change of counts', () => {
+  it('relabels when the sidebar or the item panel changed, and for the number of selected items only past one (새 탭 N개로 열기)', () => {
     expect(menuLabelsChanged(base, next({ sidebar: 'hidden' }))).toBe(true);
     expect(menuLabelsChanged(base, next({ inspector: 'hidden' }))).toBe(true);
     expect(menuLabelsChanged(base, next({ inspector: undefined }))).toBe(true);
     expect(menuLabelsChanged(base, next({ scope: 'trash' }))).toBe(true); // ⌘⌫ is 영구 삭제… there (P-11)
-    expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, selectionRelinkable: 0 }))).toBe(false);
+    expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 1, selectionAvailable: 1, selectionRelinkable: 0 }))).toBe(false);
+    expect(menuLabelsChanged(base, next({ libraryCount: 4, selectionCount: 2, selectionAvailable: 2, selectionRelinkable: 0 }))).toBe(true);
+    expect(menuLabelsChanged(menuLabelState({ ...base, selectionCount: 2 }), menuLabelState({ ...base, selectionCount: 5 }))).toBe(true);
+    expect(menuLabelsChanged(base, next({ scope: 'trash', selectionCount: 3 }))).toBe(true); // the scope, not the count: nothing opens from the trash
     expect(menuLabelsChanged(base, next({ view: 'viewer' }))).toBe(true); // ⌘+ is 확대 in the reader (P-9)
     expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);

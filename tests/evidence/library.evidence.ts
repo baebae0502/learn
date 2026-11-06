@@ -319,8 +319,7 @@ test('M4 library: 파일 › Finder에서 보기 ⇧⌘R and 기본 앱으로 �
       natural: Math.ceil(document.querySelector('[data-sheet-root]')!.getBoundingClientRect().height),
     }));
     v['sheetLayout'] = layout;
-    // The tab keys (M7b) made it 823 tall: over the 774 room of a Mac with the Dock, so its body scrolls there (the controller's call, task 6 report).
-    check('selection: the ⌘/ sheet has two columns and is 830 tall at most', layout.columns.length === 2 && layout.natural <= 830, layout);
+    check('selection: the ⌘/ sheet has two columns and fits the 806 pt room', layout.columns.length === 2 && layout.natural <= 774, layout);
     if (IS_MAC) await fullScreenShot('m4-04c-sheet-shortcuts', '⌘/ sheet: two columns, the 자료 group after 라이브러리');
     await closeSheet(sheet, 'Escape');
   });

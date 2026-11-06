@@ -138,7 +138,6 @@ test('a single click only selects; double-click or ↩ opens the one selected ro
     await page.keyboard.press('Enter');
     await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('beta');
     await page.locator('[data-testid="tab"][data-item-id="library"]').click();
-    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await selectRows(page, ['alpha', 'beta']);
     await page.keyboard.press('Enter');
     // Both are open already: the first in table order (beta, the newer) is shown.

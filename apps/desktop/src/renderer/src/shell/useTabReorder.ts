@@ -92,16 +92,21 @@ export function useTabReorder(scroll: RefObject<HTMLElement | null>, move: (item
         }
         update();
       };
-      const end = () => {
+      /** `swallow`: the release that comes is not a click on anything: esc cancelled, so the button is still down. */
+      const end = (keepSwallowing = false) => {
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
-        window.removeEventListener('pointercancel', onCancel);
-        window.removeEventListener('blur', onCancel);
+        window.removeEventListener('pointercancel', onLost);
+        window.removeEventListener('blur', onLost);
         window.removeEventListener('keydown', onKey, true);
         cancelAnimationFrame(frame);
         abort.current = null;
-        // The click the release makes comes in the same task: swallow it, then forget.
-        if (active) setTimeout(() => (swallowClick.current = false), 0);
+        if (!active) return;
+        // The click the release makes comes in the same task as the release: swallow it, then forget. After esc the button is still
+        // down, so wait for the release first.
+        const forget = () => setTimeout(() => (swallowClick.current = false), 0);
+        if (keepSwallowing) window.addEventListener('pointerup', forget, { once: true, capture: true });
+        else forget();
       };
       const onUp = (ev: globalThis.PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
@@ -110,23 +115,25 @@ export function useTabReorder(scroll: RefObject<HTMLElement | null>, move: (item
         clear();
         if (drop !== null) latest.current(id, drop);
       };
-      const onCancel = () => {
+      const onCancel = (keepSwallowing = false) => {
         cancelled = true;
-        end();
+        end(keepSwallowing);
         clear();
       };
+      // A pointer that is lost or a window that loses its focus is no release to wait for.
+      const onLost = () => onCancel();
       // esc ends a drag that is running, and only then: it is the drag's, not a dialog's or the palette's.
       const onKey = (ev: KeyboardEvent) => {
         if (ev.key !== 'Escape' || !active || cancelled) return;
         ev.preventDefault();
         ev.stopPropagation();
-        onCancel();
+        onCancel(true);
       };
-      abort.current = onCancel;
+      abort.current = onLost;
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
-      window.addEventListener('pointercancel', onCancel);
-      window.addEventListener('blur', onCancel);
+      window.addEventListener('pointercancel', onLost);
+      window.addEventListener('blur', onLost);
       window.addEventListener('keydown', onKey, true);
     },
     [scroll],

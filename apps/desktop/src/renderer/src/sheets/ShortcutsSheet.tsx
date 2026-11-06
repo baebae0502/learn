@@ -47,7 +47,17 @@ export function ShortcutsSheet({ view }: { view?: 'library' | 'viewer' }) {
                     {g.rows.map((r) => (
                       <div className="shortcut-row" key={r.label} data-testid="shortcut-row" data-system={r.system ? '' : undefined}>
                         <span className="sr-label">{r.label}</span>
-                        <Kbd keys={r.keys} alternatives={r.alternatives} />
+                        {r.pairKeys ? (
+                          <span className="sr-pair">
+                            <Kbd keys={r.keys} />
+                            <span className="sr-slash" aria-hidden="true">
+                              /
+                            </span>
+                            <Kbd keys={r.pairKeys} />
+                          </span>
+                        ) : (
+                          <Kbd keys={r.keys} alternatives={r.alternatives} />
+                        )}
                         <span className="visually-hidden">{r.spoken}</span>
                       </div>
                     ))}

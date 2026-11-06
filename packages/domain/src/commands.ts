@@ -915,6 +915,9 @@ function neededTargets(spec: CommandSpec, ctx: CommandContextState, t: Targets):
  */
 export function commandAvailable(spec: CommandSpec, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = [], surface?: CommandSurface): boolean {
   if (MAIN_OWNED_COMMANDS.has(spec.id)) return true;
+  // ⌘W closes a tab or the window whatever holds the window (the role it replaced was always on), except under a modal surface of
+  // the renderer's own (a sheet's question, the palette), which owns the keys.
+  if (spec.id === 'tab.close' && surface?.modal !== true) return true;
   if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
   const t = targetsByKind(targets);
   const needed = neededTargets(spec, ctx, t);

@@ -26,7 +26,8 @@ describe('파일 menu (spec 11.2) and ⌘⌫ named by the view (P-11)', () => {
     const live: Record<string, { label?: string }> = { 'item.trash': { label: '휴지통으로 이동' } };
     const lookup = { getMenuItemById: (id: string) => live[id] ?? null };
     expect(menuLabelsChanged(menuLabelState(LIB), menuLabelState({ ...LIB, scope: 'trash' }))).toBe(true);
-    expect(menuLabelsChanged(menuLabelState(LIB), menuLabelState({ ...LIB, selectionCount: 3 }))).toBe(false);
+    expect(menuLabelsChanged(menuLabelState(LIB), menuLabelState({ ...LIB, selectionCount: 3 }))).toBe(true); // 새 탭 3개로 열기
+    expect(menuLabelsChanged(menuLabelState(LIB), menuLabelState({ ...LIB, libraryCount: 12 }))).toBe(false);
     applyMenuLabels(lookup, 'darwin', menuLabelState({ ...LIB, scope: 'trash' }));
     expect(live['item.trash']!.label).toBe('영구 삭제…');
     applyMenuLabels(lookup, 'darwin', menuLabelState(LIB));

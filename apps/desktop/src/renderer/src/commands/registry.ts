@@ -348,7 +348,7 @@ export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget
  */
 export function runPicked(picked: PickedCommand, env: CommandEnv, target: CommandTarget): boolean {
   const { commandId, args } = picked;
-  if (!Object.hasOwn(COMMAND_HANDLERS, commandId) || judged(env).blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
+  if (!Object.hasOwn(COMMAND_HANDLERS, commandId) || (judged(env).blocked && commandId !== 'tab.close')) return false; // COMMAND_HANDLERS has exactly the registry ids
   COMMAND_HANDLERS[commandId](env, args ? { ...target, args } : target);
   return true;
 }

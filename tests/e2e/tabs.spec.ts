@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
-  rowByTitle, runMenuCommand, runPalette, selectRows, stubConfirm, stubContextMenu, trashItems,
+  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
@@ -667,8 +667,13 @@ test('dragging a reader tab reorders it; the library tab cannot be passed; esc p
     await dragTab(page, b, last.x + last.width - 4, { release: false });
     await expect(page.locator('.tab-item.is-dragging')).toHaveCount(1);
     await page.keyboard.press('Escape');
+    // The button is still down: the release over the dragged tab's own spot is no click on it.
+    const own = (await readerTab(page, b).locator('xpath=..').boundingBox())!;
+    await page.mouse.move(own.x + own.width / 2, own.y + own.height / 2, { steps: 4 });
     await page.mouse.up();
     await expect(page.locator('.tab-item.is-dragging')).toHaveCount(0);
+    await page.waitForTimeout(100);
+    await expect.poll(() => activeTab(page)).toBe(c);
     await expect.poll(() => order(page)).toEqual(['library', b, c, a]);
     expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.tab-item')].every((e) => e.style.transform === ''))).toBe(true);
     // A click without a drag still chooses.
@@ -833,6 +838,42 @@ test('the library head dims its panel toggle in a window that is not main', asyn
     expect(lit).toBe('1');
     await page.evaluate(() => document.documentElement.setAttribute('data-window-not-main', ''));
     expect(Number(await toggle.evaluate((e) => getComputedStyle(e).opacity))).toBeLessThan(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘W still closes the shown reader tab while the window is held by a file panel', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const c = items.find((i) => i.title === 'doc-03')!.id;
+    // 파일 가져오기…'s panel stays open: the window is held and the other tab commands are off.
+    await libraryTab(page).click();
+    await holdOpenDialog(app, []);
+    await runMenuCommand(app, 'file.importManaged');
+    await readerTab(page, c).click();
+    await expect.poll(() => menuItemEnabled(app, 'tab.next')).toBe(false);
+    await expect.poll(() => menuItemEnabled(app, 'tab.close')).toBe(true);
+    await runMenuCommand(app, 'tab.close');
+    await expect(readerTab(page, c)).toHaveCount(0);
+    await releaseOpenDialog(app);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘W with the settings window focused closes that window and leaves the main window\'s tabs alone', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await threeTabs(app, page, testInfo.outputPath('src'));
+    const before = await order(page);
+    await runMenuCommand(app, 'app.settings');
+    await expect.poll(() => windowKinds(app)).toContain('settings');
+    await runMenuCommand(app, 'tab.close');
+    await expect.poll(() => windowKinds(app)).not.toContain('settings');
+    expect(await order(page)).toEqual(before);
+    await expect.poll(() => activeTab(page)).toBe(items.find((i) => i.title === 'doc-03')!.id);
   } finally {
     await app.close();
   }

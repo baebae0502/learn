@@ -10,6 +10,8 @@ export interface ShortcutRow {
   alternatives?: true;
   /** Not a registry command: a system item the menu bar carries (전체 화면). */
   system?: true;
+  /** A pair line of the design-spec 7.4 table ("A / B"): the second chord, drawn after a slash; `keys` is the first. */
+  pairKeys?: string[];
 }
 export interface ShortcutGroup {
   title: string;
@@ -20,7 +22,7 @@ export interface ShortcutGroup {
  * Groups by a command's first context; the selected item's commands follow the library's (design-spec 7.4 ⇧⌘R). 정리 holds
  * the collection and tag commands whatever their context (M5 spec 9.3), then the colour keys.
  */
-const ORDER = ['app', 'library', 'item', 'tabs', 'organize', 'viewer'] as const;
+const ORDER = ['app', 'library', 'item', 'organize', 'tabs', 'viewer'] as const;
 const groupOf = (c: (typeof COMMANDS)[number], view?: 'library' | 'viewer'): (typeof ORDER)[number] =>
   /^(collection|tags?)\./.test(c.id)
     ? 'organize'
@@ -59,25 +61,61 @@ const SYSTEM_APP_ROWS = (platform: string): ShortcutRow[] => {
   return [{ label: t.sheets.fullScreen, keys: acceleratorKeys(accelerator, platform), spoken: acceleratorLabel(accelerator, platform), system: true }];
 };
 
-/** The numbered tabs as one line: ⌘2…⌘9 (2…8번째 탭 / 마지막 탭), spelled the way the platform spells the chord. */
-function tabNumbersRow(platform: string): ShortcutRow {
-  const hidden = COMMANDS.filter((c) => c.menu?.hidden && c.accelerator !== undefined);
-  const first = hidden[0]!.accelerator!;
-  const keys = acceleratorKeys(first, platform);
-  const last = acceleratorKeys(hidden.at(-1)!.accelerator!, platform).at(-1)!;
-  return {
-    label: t.sheets.tabNumbers,
-    keys: [...keys.slice(0, -1), `${keys.at(-1)!}–${last}`],
-    spoken: `${acceleratorLabel(first, platform)}${t.sheets.tabNumbersTo}${acceleratorLabel(hidden.at(-1)!.accelerator!, platform)}`,
-  };
-}
-
 /** The colour keys as one line (spec 4.2): the first and last slot's key, spelled the way the platform spells a key. */
 function colorKeysRow(platform: string): ShortcutRow {
   const slots = COMMANDS.filter((c) => tagSlot(c.id) !== null && c.key !== undefined);
   const first = keySpecKeys(slots[0]!.key!, platform).at(-1)!;
   const last = keySpecKeys(slots.at(-1)!.key!, platform).at(-1)!;
   return { label: t.sheets.colorKeys.label, keys: [`${first}–${last}`], spoken: t.sheets.colorKeys.spoken(first, last) };
+}
+
+/**
+ * The lines of design-spec 7.4 that name two keys ("⌘G / ⇧⌘G"): one row for the pair, at the place of its `anchor` in the registry
+ * order, standing for the commands it `takes`. `view`: the label by the view the sheet was opened from.
+ */
+interface PairSpec {
+  anchor: CommandId;
+  takes: readonly [CommandId, ...CommandId[]];
+  label: (view?: 'library' | 'viewer') => string;
+  /** The commands whose keys are the two chords. */
+  a: CommandId;
+  b: CommandId;
+}
+const spec = (id: CommandId) => COMMANDS.find((c) => c.id === id)!;
+const accelOf = (id: CommandId): string => spec(id).accelerator!;
+/** A command's key as keycaps and as read aloud: its accelerator, or its single key (F6). */
+function chordOf(id: CommandId, platform: string): { keys: string[]; spoken: string } {
+  const c = spec(id);
+  const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
+  return { keys, spoken: c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+') };
+}
+const pair = (anchor: CommandId, other: CommandId, label: PairSpec['label']): PairSpec => ({ anchor, takes: [anchor, other], label, a: anchor, b: other });
+const TAB_NUMBER_IDS = COMMANDS.filter((c) => c.menu?.hidden).map((c) => c.id);
+const PAIRS: readonly PairSpec[] = [
+  pair('file.importManaged', 'file.importLinked', () => t.sheets.pairs.import),
+  pair('view.nextPane', 'view.previousPane', () => t.sheets.pairs.panes),
+  pair('view.textBigger', 'view.textSmaller', (view) => (view === 'viewer' ? t.sheets.pairs.zoom : t.sheets.pairs.text)),
+  pair('tab.close', 'tab.reopenClosed', () => t.sheets.pairs.tabClose),
+  pair('tab.next', 'tab.previous', () => t.sheets.pairs.tabStep),
+  pair('reader.findNext', 'reader.findPrevious', () => t.sheets.pairs.find),
+  pair('reader.rotateCw', 'reader.rotateCcw', () => t.sheets.pairs.rotate),
+  pair('reader.showThumbnails', 'reader.showOutline', () => t.sheets.pairs.nav),
+  // ⌘1 is the library tab, ⌘2…⌘8 the numbered ones, ⌘9 the last: "⌘1…⌘8 / ⌘9" (the chords below are spelled by tabNumbersRow).
+  { anchor: 'tab.goTo2', takes: ['nav.back', ...TAB_NUMBER_IDS] as unknown as PairSpec['takes'], label: () => t.sheets.pairs.tabNumbers, a: 'nav.back', b: 'tab.last' },
+];
+const PAIR_BY_ANCHOR = new Map(PAIRS.map((p) => [p.anchor, p]));
+/** Every command a pair row stands for (its anchor included): none of them is also a row of its own. */
+const PAIR_TAKEN = new Set<CommandId>(PAIRS.flatMap((p) => p.takes));
+
+/** The keycaps of a pair's two chords; "⌘1…⌘8 / ⌘9" spells the first as a range. */
+function pairRow(p: PairSpec, platform: string, view?: 'library' | 'viewer'): ShortcutRow {
+  const range = p.anchor === 'tab.goTo2';
+  const first = chordOf(p.a, platform);
+  const second = chordOf(p.b, platform);
+  const last = acceleratorKeys(accelOf('tab.goTo8'), platform).at(-1)!;
+  const keys = range ? [...first.keys.slice(0, -1), `${first.keys.at(-1)!}–${last}`] : first.keys;
+  const spokenA = range ? `${first.spoken}${t.sheets.tabNumbersTo}${acceleratorLabel(accelOf('tab.goTo8'), platform)}` : first.spoken;
+  return { label: p.label(view), keys, pairKeys: second.keys, spoken: `${spokenA} / ${second.spoken}` };
 }
 
 /**
@@ -88,18 +126,19 @@ function colorKeysRow(platform: string): ShortcutRow {
 export function shortcutGroups(platform: string, view?: 'library' | 'viewer'): ShortcutGroup[] {
   const groups = ORDER.map((ctx) => ({
     title: t.sheets.groups[ctx],
-    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx && (c.accelerator !== undefined || c.key !== undefined) && tagSlot(c.id) === null && !c.menu?.hidden)
+    rows: COMMANDS.filter((c) => groupOf(c, view) === ctx)
       .sort((a, b) => sheetRank(a.id) - sheetRank(b.id)) // stable: the rest keep the registry order
-      .map((c): ShortcutRow => {
+      .flatMap((c): ShortcutRow[] => {
+        const stands = PAIR_BY_ANCHOR.get(c.id);
+        if (stands) return [pairRow(stands, platform, view)];
+        if (PAIR_TAKEN.has(c.id) || (c.accelerator === undefined && c.key === undefined) || tagSlot(c.id) !== null || c.menu?.hidden) return [];
         const keys = c.accelerator ? acceleratorKeys(c.accelerator, platform) : keySpecKeys(c.key!, platform);
         // A single key is spoken like an accelerator: ⇧F6 on macOS, Shift+F6 elsewhere.
         const spoken = c.accelerator ? acceleratorLabel(c.accelerator, platform) : keys.join(platform === 'darwin' ? '' : '+');
-        return { label: commandLabel(c, platform, view ? { view } : {}), keys, spoken };
+        return [{ label: commandLabel(c, platform, view ? { view } : {}), keys, spoken }];
       }),
   }))
     .map((g, i) => (ORDER[i] === 'app' ? { ...g, rows: [...g.rows, ...SYSTEM_APP_ROWS(platform)] } : g))
-    // ⌘2…⌘9 are hidden menu items: one line for the numbered tabs, last in 탭.
-    .map((g, i) => (ORDER[i] === 'tabs' ? { ...g, rows: [...g.rows, tabNumbersRow(platform)] } : g))
     // The eight colour keys are one line, last in 정리 (spec 4.2).
     .map((g, i) => (ORDER[i] === 'organize' ? { ...g, rows: [...g.rows, colorKeysRow(platform)] } : g))
     .filter((g) => g.rows.length > 0);

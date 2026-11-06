@@ -164,7 +164,7 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
     expect(isCommandAvailable('file.importManaged', VIEWER)).toBe(false);
     expect(isCommandAvailable('nav.back', LIB)).toBe(false);
     expect(isCommandAvailable('nav.back', VIEWER)).toBe(true);
-    for (const c of COMMANDS) expect(isCommandAvailable(c.id, { ...VIEWER, blocked: true }, [linkedMissing]), c.id).toBe(MAIN_OWNED_COMMANDS.has(c.id));
+    for (const c of COMMANDS) expect(isCommandAvailable(c.id, { ...VIEWER, blocked: true }, [linkedMissing]), c.id).toBe(MAIN_OWNED_COMMANDS.has(c.id) || c.id === 'tab.close');
   });
   it('⌘F needs the library view and an item to find (spec 3.5: no search field in the empty library)', () => {
     expect(isCommandAvailable('library.find', LIB)).toBe(false); // libraryCount 0
@@ -264,8 +264,8 @@ describe('availability (one predicate for the menu bar, palette, toolbar and con
   it('lists the menu-bar commands of a view (the item commands only with a selection)', () => {
     expect(availableMenuCommands(LIB)).toEqual(['file.importManaged', 'file.importLinked', 'collection.new', 'file.checkLibrary', 'file.restore', 'tab.close', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'view.textBigger', 'view.textSmaller', 'app.palette']);
     expect(availableMenuCommands(VIEWER)).toEqual(['file.checkLibrary', 'file.restore', 'nav.back', 'tab.close', 'view.toggleSidebar', 'app.shortcuts', 'app.settings', 'app.palette']);
-    expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual([...MAIN_OWNED_COMMANDS].filter((id) => commandById(id).menu));
-    expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['app.settings']);
+    // Blocked: only the main-owned 설정… and ⌘W (a tab or the window closes whatever holds the window).
+    expect(availableMenuCommands({ ...LIB, blocked: true })).toEqual(['tab.close', 'app.settings']);
   });
   it("the 파일 menu's item commands follow the reported selection: exactly one item, and its file is there", () => {
     const one: CommandContextState = { ...LIB, libraryCount: 3, selectionCount: 1, selectionAvailable: 1 };
@@ -703,9 +703,12 @@ describe('tab commands (M7b spec 3.4, 9)', () => {
     expect(isCommandAvailable('tab.goTo8', withTabs(6))).toBe(false);
     expect(isCommandAvailable('tab.goTo8', withTabs(7))).toBe(true);
   });
-  it('closes any time, closes the others with two tabs, reopens only what can open, moves with two tabs in the reader', () => {
+  it('closes any time (blocked too), closes the others with two tabs, reopens only what can open, moves with two tabs in the reader', () => {
     expect(isCommandAvailable('tab.close', LIB)).toBe(true); // the library tab closes the window
-    expect(isCommandAvailable('tab.close', withTabs(1, { blocked: true }))).toBe(false);
+    expect(isCommandAvailable('tab.close', withTabs(1, { blocked: true }))).toBe(true); // ⌘W stays on under a sheet or a panel, as the window role it replaced
+    expect(isCommandAvailable('tab.close', { ...LIB, blocked: true })).toBe(true);
+    expect(isCommandAvailable('tab.next', withTabs(1, { blocked: true }))).toBe(false);
+    expect(isCommandAvailable('tab.close', withTabs(1, { blocked: true }), [], { modal: true })).toBe(false); // not under a sheet's question or the palette
     expect(isCommandAvailable('tab.closeOthers', withTabs(1))).toBe(false);
     expect(isCommandAvailable('tab.closeOthers', withTabs(2))).toBe(true);
     expect(isCommandAvailable('tab.reopenClosed', withTabs(0))).toBe(false);

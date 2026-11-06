@@ -70,12 +70,17 @@ export type MenuLabelState = LabelState;
 
 /** The label state of a reported context, without the absent parts (the fatal screen reports no pane). */
 export function menuLabelState<T extends LabelState>(ctx: T): MenuLabelState {
-  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}) };
+  // Several selected items name 새 탭 N개로 열기 (not in the trash view, where nothing opens).
+  const several = ctx.selectionCount !== undefined && ctx.selectionCount > 1 && ctx.scope !== 'trash';
+  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}), ...(several ? { selectionCount: ctx.selectionCount } : {}) };
 }
+
+/** The selected-item count a label names: only several count (a report works for a raw context and for a label state alike). */
+const manyOf = (s: MenuLabelState): number | undefined => (s.selectionCount !== undefined && s.selectionCount > 1 && s.scope !== 'trash' ? s.selectionCount : undefined);
 
 /** Whether a new report renames a menu item: a pane state or the view that a state label follows has changed. */
 export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
-  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view;
+  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view || manyOf(before) !== manyOf(after);
 }
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */
@@ -188,10 +193,8 @@ export function buildAppMenu(opts: AppMenuOptions): Item[] {
   };
   // ⌘W is 탭 닫기 (the library's tab closes the window itself); the window's own close keeps a key of its own.
   const close: Item = { role: 'close', label: mac ? copy.close.mac : copy.close.other, accelerator: 'Shift+CmdOrCtrl+W' };
-  // 창 닫기 joins the group of the tab commands it belongs with; without them (a test's own registry) it stands apart as before.
-  const fileItems = reg('file');
-  const withTabClose = opts.commands.some((c) => c.id === 'tab.close' && c.menu?.menu === 'file');
-  const file: Item = { id: 'menu.file', label: copy.top.file, submenu: withTabClose ? [...fileItems, close] : join(fileItems, [close]) };
+  // 창 닫기 closes the 파일 menu in the group of the tab commands it belongs with (group 95 is the registry's last).
+  const file: Item = { id: 'menu.file', label: copy.top.file, submenu: [...reg('file'), close] };
   const edit: Item = {
     id: 'menu.edit',
     label: copy.top.edit,
@@ -275,7 +278,7 @@ export function applyMenuLabels(
   commands: readonly CommandSpec[] = COMMANDS,
 ): void {
   for (const c of commands) {
-    if (!c.menu || !c.stateLabels) continue;
+    if (!c.menu || !(c.stateLabels || c.countLabel?.selection)) continue;
     const label = commandLabel(c, platform, state);
     for (const id of menuItemIds(c)) {
       const item = menu.getMenuItemById(id);

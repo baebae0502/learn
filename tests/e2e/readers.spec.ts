@@ -501,7 +501,7 @@ test('a library that cannot be opened: our own words, the newest real backup on 
     expect(await s.page.locator('.fatal-drag').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
     const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
     const registry = new Set<string>(COMMANDS.map((c) => c.id));
-    const enabled = flat(await menuSnapshot(s.app)).filter((n) => n.id !== null && registry.has(n.id) && n.enabled && !MAIN_OWNED_COMMANDS.has(n.id as CommandId));
+    const enabled = flat(await menuSnapshot(s.app)).filter((n) => n.id !== null && registry.has(n.id) && n.enabled && !MAIN_OWNED_COMMANDS.has(n.id as CommandId) && n.id !== 'tab.close'); // ⌘W closes the window, as the role did
     expect(enabled.map((n) => n.id)).toEqual([]);
   } finally {
     await s.app.close();

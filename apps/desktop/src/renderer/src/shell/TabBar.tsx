@@ -97,7 +97,11 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
   });
 
   /** A tab command run for the tab with the focus (the strip's keys; its menu): not the shown tab, which a command would take. */
-  const runFor = (commandId: CommandId, itemId: string) => runPicked({ commandId }, envRef.current, { itemIds: [itemId] });
+  const runFor = (commandId: CommandId, itemId: string): boolean => {
+    const ran = runPicked({ commandId }, envRef.current, { itemIds: [itemId] });
+    if (!ran) refocus.current = null; // refused (the window is held): nothing changes, so nothing takes the focus later
+    return ran;
+  };
   const showMenu = useCallback(async (itemId: string, e: MouseEvent) => {
     e.preventDefault();
     try {

@@ -21,6 +21,7 @@ import { CollectionsSection } from './CollectionsSection';
 import { FileSection } from './FileSection';
 import { InfoHead } from './InfoHead';
 import { InfoSection } from './InfoSection';
+import { ReadingSection } from './ReadingSection';
 import { TagsSection } from './TagsSection';
 import { TrashSelection } from './TrashInfo';
 import { libraryStats, multiSummary } from './summary';
@@ -38,7 +39,7 @@ export function InfoPane() {
   return view.kind === 'reader' ? <ReaderInfo itemId={view.itemId} /> : <LibraryInfo />;
 }
 
-/** The reader's panel: 번역 first, then the item that is open, with the library's own sections and editing (no 읽기 section). */
+/** The reader's panel: 번역 first, then the item that is open, with the library's own sections and editing (the 읽기 section is the library's). */
 function ReaderInfo({ itemId }: { itemId: string }) {
   const item = useItem(itemId).data;
   const translation = <TranslationSection />;
@@ -152,6 +153,7 @@ export function ItemInfo({ item, probe = true, trashedAt, before, inReader = fal
       <InfoHead item={item} probe={probe} trashedAt={trashedAt} inReader={inReader} />
       {detail.data ? (
         <>
+          {!inReader && trashedAt === undefined && <ReadingSection itemId={item.id} />}
           <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />
           <TagsSection ids={ids} readOnly={trashedAt !== undefined} />
           <CollectionsSection ids={ids} />

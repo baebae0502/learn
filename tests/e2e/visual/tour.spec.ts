@@ -1949,3 +1949,36 @@ test('reader: with the item panel closed the scroll submenu flips to the left of
     await s.app.close();
   }
 });
+
+test('item panel: the 읽기 section — a PDF with its page count and one saved before the count was kept, the section after the head', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'sample.pdf')]);
+    const save = (id: string, revisionId: string, locator: object, progress: number) =>
+      s.page.evaluate(async (a) => {
+        const r = await window.learn.reader.savePosition({ itemId: a.id, revisionId: a.revisionId, locator: a.locator as never, progress: a.progress });
+        if (!r.ok) throw new Error(r.code);
+      }, { id, revisionId, locator, progress });
+    const paper = items.find((i) => i.title === 'paper-100')!;
+    const legacy = items.find((i) => i.title === 'sample')!;
+    await save(paper.id, paper.revisionId, { kind: 'pdf', pageIndex: 41, pages: 100 }, 0.62);
+    await save(legacy.id, legacy.revisionId, { kind: 'pdf', pageIndex: 11 }, 0.4);
+    // The day moves the line's date: the shot gets one fixed word and time in its place.
+    const fixDate = () =>
+      s.page.getByTestId('reading-line').evaluate((e) => {
+        e.textContent = (e.textContent ?? '').replace(/·.*$/, '·\u00a0오늘\u00a0오전\u00a09:24');
+      });
+    for (const [title, line] of [['paper-100', '42 / 100쪽에서 멈춤'], ['sample', '12쪽에서 멈춤']] as const) {
+      await selectRows(s.page, [title]);
+      await expect(s.page.getByTestId('reading-line')).toContainText(line);
+      for (const theme of THEMES) {
+        await setTheme(s.page, theme);
+        await fixDate();
+        await shoot(s.page, `inspector-reading-${title === 'sample' ? 'legacy' : 'pdf'}-${theme}`, { mask: masks() });
+      }
+    }
+  } finally {
+    await s.app.close();
+  }
+});

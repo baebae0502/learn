@@ -230,9 +230,9 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
     if (cursorElementId) document.getElementById(cursorElementId)?.scrollIntoView({ block: 'nearest' });
   }, [cursorElementId]);
 
-  /** `background`: ⌘↩ on an item row opens its tab behind the shown one (design-spec 7.4), as ⌘↩ does in the library. */
+  /** `background`: ⌘↩ on an item row opens its tab behind the shown one (design-spec 7.4) in every view where ↩ opens it: the tab action itself, not the library's selection command. */
   const execute = (row: Row, background = false) => {
-    if (row.kind === 'item') closePalette(() => run(background ? 'item.openInBackground' : 'item.open', { itemIds: [row.ranked.item.id] }));
+    if (row.kind === 'item') closePalette(() => (background ? useShell.getState().openTab(row.ranked.item.id, { background: true }) : run('item.open', { itemIds: [row.ranked.item.id] })));
     else if (row.kind === 'collection') closePalette(() => showCollection(row.ranked.node.id, run, env.view));
     else if (row.kind === 'search') closePalette(() => searchLibrary(q, run, env.view));
     else {

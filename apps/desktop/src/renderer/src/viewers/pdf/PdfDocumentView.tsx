@@ -75,6 +75,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         /** The modes the viewer is in (it can refuse a scroll mode, a document with too many pages), by name. */
         const scrollNow = (): ScrollModeName => (viewer.scrollMode === ScrollMode.HORIZONTAL ? 'horizontal' : viewer.scrollMode === ScrollMode.PAGE ? 'page' : 'vertical');
         const spreadNow = (): SpreadModeName => (viewer.spreadMode === SpreadMode.ODD ? 'odd' : viewer.spreadMode === SpreadMode.EVEN ? 'even' : 'none');
+        /** The class goes with the mode in the same call: a jump right after the change must measure the new layout, which a rendered attribute would not give. */
+        const markScroll = () => viewerEl.classList.toggle('scrollPage', viewer.scrollMode === ScrollMode.PAGE);
         const layoutNow = (): FitLayout => ({ flow: scrollNow(), columns: spreadNow() === 'none' ? 1 : 2 });
         const eventBus = new EventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
@@ -123,8 +125,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             sizes.push(turned ? { width: h, height: w } : { width: w, height: h });
           }
           const widest = widestPage(sizes, viewer.pagesRotation as Rotation);
-          // A row of pages is as high as its tallest page: the fit to the stage's height is that page's, so no taller page scrolls.
-          return scrollNow() === 'horizontal' ? { width: widest.width, height: tallestHeight(sizes, viewer.pagesRotation as Rotation) } : widest;
+          // A row of pages (and a page at a time) is fitted to the stage's height by its tallest page, so no taller page spills past the stage.
+          return scrollNow() !== 'vertical' ? { width: widest.width, height: tallestHeight(sizes, viewer.pagesRotation as Rotation) } : widest;
         };
         /** A fit asked for while the tab is hidden (its stage measures nothing): done once it is shown. */
         let fitWhenShown: FitMode | null = null;
@@ -272,6 +274,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           leaveLink();
           viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : spread];
           viewer.scrollMode = SCROLL_OF[scroll];
+          markScroll();
           store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
           if (isFitMode(zoom)) fitTo(zoom);
           if (page >= 1 && page <= viewer.pagesCount) jump({ pageNumber: page }, false, false);
@@ -308,6 +311,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             const scroll = saved?.scroll ?? 'vertical';
             viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : (saved?.spread ?? 'none')];
             viewer.scrollMode = SCROLL_OF[scroll];
+            markScroll();
             // In the store before the viewer reports, so the saver's first baseline carries the modes.
             store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
             viewer.pagesRotation = saved?.rotation ?? 0;

@@ -331,3 +331,38 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
     await app.close();
   }
 });
+
+test('leaving a page at a time keeps the page: page 50 comes back as page 50 with 12 above it, and at 150 % the page stands 12 below the stage top', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await choose(page, 'scroll', '한 쪽씩');
+    await field(page).fill('50');
+    await field(page).press('Enter');
+    await expect(field(page)).toHaveValue('50');
+    await choose(page, 'scroll', '세로로 이어서');
+    await expect(viewer(page)).toHaveAttribute('data-scroll', 'vertical');
+    await expect(field(page)).toHaveValue('50');
+    await expect.poll(async () => Math.round((await box(page, 50)).top - (await scroller(page).evaluate((el) => el.scrollTop)))).toBe(12);
+    await page.waitForTimeout(600);
+    const listed = await page.evaluate(() => window.learn.library.list());
+    if (!listed.ok) throw new Error('list failed');
+    const item = listed.data.find((i) => i.title === 'paper-100')!;
+    const pos = await page.evaluate((id) => window.learn.reader.getPosition({ itemId: id }), item.id);
+    expect(JSON.stringify(pos)).toContain('"pageIndex":49');
+
+    // At 150 % a page taller than the stage: switching into a page at a time puts the page 12 below the stage top, not 24.
+    await setPdfZoom(page, 1.5);
+    await field(page).fill('4');
+    await field(page).press('Enter');
+    await choose(page, 'scroll', '한 쪽씩');
+    await expect(viewer(page)).toHaveClass(/scrollPage/);
+    await expect.poll(async () => Math.round((await box(page, 4)).top - (await scroller(page).evaluate((el) => el.scrollTop)))).toBe(12);
+    await choose(page, 'scroll', '세로로 이어서');
+    await expect(viewer(page)).not.toHaveClass(/scrollPage/);
+    await expect(field(page)).toHaveValue('4');
+    await expect.poll(async () => Math.round((await box(page, 4)).top - (await scroller(page).evaluate((el) => el.scrollTop)))).toBe(12);
+  } finally {
+    await app.close();
+  }
+});

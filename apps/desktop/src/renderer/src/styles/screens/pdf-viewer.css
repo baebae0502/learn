@@ -69,11 +69,11 @@
     flex: none;
     margin: 0;
   }
-  /* A page at a time shows the whole page: 12 above and below it, as the sideways flow (the page keeps no margin of its own below). */
-  .pdfViewer[data-scroll='page'] {
+  /* A page at a time shows the whole page: 12 above and below it, as the sideways flow (the page keeps no margin of its own below). The class is the viewer's own, set with its mode (pdf.js does the same for scrollHorizontal), so the layout is there when the page is placed. */
+  .pdfViewer.scrollPage {
     padding: var(--space-12) var(--space-24);
   }
-  .pdfViewer[data-scroll='page'] :is(.page, .spread .page) {
+  .pdfViewer.scrollPage .page {
     margin-bottom: 0;
   }
   /* A spread (pdf.js's .spread): two pages side by side with 12 between them, the row centred while it fits the stage. */
@@ -86,9 +86,6 @@
   .pdfViewer .spread .page {
     flex: none;
     margin: 0 0 var(--space-12);
-  }
-  .pdfViewer[data-scroll='page'] .spread .page {
-    margin-bottom: 0;
   }
   .pdfViewer .dummyPage {
     position: relative;

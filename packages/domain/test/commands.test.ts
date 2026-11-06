@@ -122,7 +122,7 @@ describe('command registry', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back', 'nav.historyBack', 'nav.historyForward',
-      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
@@ -608,7 +608,7 @@ describe('the reader commands (P-9, P-14)', () => {
   });
   it('every reader.* command needs pdfOpen in the viewer, and exists nowhere else', () => {
     expect(READER.map((c) => c.id).sort()).toEqual([
-      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.showOutline', 'reader.showThumbnails', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
     ]);
     for (const c of READER) {
       expect(c.contexts, c.id).toEqual(['viewer']);
@@ -639,6 +639,37 @@ describe('the reader commands (P-9, P-14)', () => {
     expect(colours.map((c) => c.label)).toEqual(['앱 테마 따르기', '원본', '세피아', '어둡게']);
     expect(colours.map((c) => paletteLabel(c, 'darwin'))).toEqual(['쪽 색: 앱 테마 따르기', '쪽 색: 원본', '쪽 색: 세피아', '쪽 색: 어둡게']);
     for (const c of colours) expect(c.menu, c.id).toBeUndefined(); // the group 쪽 색 ▸ holds the position (P-14)
+  });
+  it('lists 스크롤 ▸ and 펼침 ▸ in 보기 after 쪽 색 ▸, as groups whose members carry no placement', () => {
+    const scroll = SUBMENUS.find((s) => s.id === 'scrollMode')!;
+    const spread = SUBMENUS.find((s) => s.id === 'spreadMode')!;
+    expect(scroll).toMatchObject({ label: '스크롤', menu: { menu: 'view', group: 5, order: 4 } });
+    expect(spread).toMatchObject({ label: '펼침', menu: { menu: 'view', group: 5, order: 5 } });
+    expect(scroll.commands).toEqual(['reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage']);
+    expect(spread.commands).toEqual(['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven']);
+    expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
+    for (const id of [...scroll.commands, ...spread.commands]) {
+      const c = commandById(id);
+      expect(c.menu, id).toBeUndefined();
+      expect(c.accelerator, id).toBeUndefined();
+      expect(c.contexts, id).toEqual(['viewer']);
+    }
+    expect([...scroll.commands, ...spread.commands].map((id) => commandById(id).label)).toEqual(['세로로 이어서', '가로로 이어서', '한 쪽씩', '펼치지 않음', '홀수 쪽부터', '짝수 쪽부터']);
+    expect(paletteLabel(commandById('reader.scrollPage'), 'darwin')).toBe('스크롤: 한 쪽씩');
+    expect(paletteLabel(commandById('reader.spreadOdd'), 'darwin')).toBe('펼침: 홀수 쪽부터');
+  });
+  it('turns the three spread commands off while the scroll is horizontal, and the others never', () => {
+    for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) {
+      expect(isCommandAvailable(id, PDF_OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, { ...PDF_OPEN, pdfScroll: 'vertical' }), id).toBe(true);
+      expect(isCommandAvailable(id, { ...PDF_OPEN, pdfScroll: 'page' }), id).toBe(true);
+      expect(isCommandAvailable(id, { ...PDF_OPEN, pdfScroll: 'horizontal' }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, pdfScroll: 'vertical' }), id).toBe(false);
+    }
+    for (const id of ['reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage'] as const) {
+      expect(isCommandAvailable(id, { ...PDF_OPEN, pdfScroll: 'horizontal' }), id).toBe(true);
+      expect(isCommandAvailable(id, VIEWER), id).toBe(false);
+    }
   });
   it('lists 쪽 색 ▸ in 보기 after the rotation, as a group of the four colour commands', () => {
     const group = SUBMENUS.find((s) => s.id === 'pageColor')!;

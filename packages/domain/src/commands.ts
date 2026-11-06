@@ -2,6 +2,7 @@ import type { KeySpec } from './accelerator';
 import type { Availability, StorageMode } from './library';
 import { DEFAULT_COLUMN_CONFIG, columnsMask, type LibrarySortColumn } from './library-columns';
 import type { LibraryScope } from './organize';
+import type { ScrollModeName } from './reading';
 import { SUBMENUS, type SubmenuSource, type SubmenuSpec } from './submenus';
 import { COLOR_SLOTS } from './tag-colors';
 
@@ -100,7 +101,13 @@ export type CommandId =
   | 'reader.pageColorAuto'
   | 'reader.pageColorOriginal'
   | 'reader.pageColorSepia'
-  | 'reader.pageColorDark';
+  | 'reader.pageColorDark'
+  | 'reader.scrollVertical'
+  | 'reader.scrollHorizontal'
+  | 'reader.scrollPage'
+  | 'reader.spreadNone'
+  | 'reader.spreadOdd'
+  | 'reader.spreadEven';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
@@ -540,6 +547,26 @@ export const COMMANDS: readonly CommandSpec[] = [
       keywords: ['쪽 색', '색', '배경', '종이', 'page color', ...extra],
     }),
   ),
+  // 스크롤 ▸ and 펼침 ▸ are groups in SUBMENUS like 쪽 색 ▸: the members carry no placement and no key, the groups hold them.
+  // The palette names each one with its group's word.
+  ...(
+    [
+      ['scrollVertical', '세로로 이어서', '스크롤', ['세로', '위아래', '이어서', 'vertical']],
+      ['scrollHorizontal', '가로로 이어서', '스크롤', ['가로', '옆으로', '좌우', 'horizontal']],
+      ['scrollPage', '한 쪽씩', '스크롤', ['쪽', '한 장씩', '페이지', '넘기기', 'page', 'single']],
+      ['spreadNone', '펼치지 않음', '펼침', ['한 쪽', '낱장', 'none', 'single']],
+      ['spreadOdd', '홀수 쪽부터', '펼침', ['두 쪽', '양면', '책', '홀수', 'odd', 'book']],
+      ['spreadEven', '짝수 쪽부터', '펼침', ['두 쪽', '양면', '책', '짝수', 'even']],
+    ] as const
+  ).map(
+    ([name, label, group, extra]): CommandSpec => ({
+      id: `reader.${name}` as CommandId,
+      label,
+      paletteLabel: `${group}: ${label}`,
+      contexts: ['viewer'],
+      keywords: [group, '보기', '모드', 'scroll', 'spread', ...extra],
+    }),
+  ),
   // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
   {
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
@@ -661,6 +688,8 @@ export interface CommandContextState {
   trashCount: number;
   /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
   pdfOpen?: boolean;
+  /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
+  pdfScroll?: ScrollModeName;
   /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
   historyBack?: boolean;
   historyForward?: boolean;
@@ -812,6 +841,8 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
+/** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
+const spreadAllowed: Rule = (c) => c.pdfOpen === true && c.pdfScroll !== 'horizontal';
 /** Tab number `n` (1 is the library) exists: reader tabs are numbered from 2. */
 const hasTab = (n: number): Rule => (c) => (c.tabCount ?? 0) >= n - 1;
 const RULES: Partial<Record<CommandId, Rule>> = {
@@ -910,6 +941,12 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.pageColorOriginal': pdfOpen,
   'reader.pageColorSepia': pdfOpen,
   'reader.pageColorDark': pdfOpen,
+  'reader.scrollVertical': pdfOpen,
+  'reader.scrollHorizontal': pdfOpen,
+  'reader.scrollPage': pdfOpen,
+  'reader.spreadNone': spreadAllowed,
+  'reader.spreadOdd': spreadAllowed,
+  'reader.spreadEven': spreadAllowed,
 };
 
 /**

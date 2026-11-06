@@ -25,7 +25,8 @@ import { PdfDocumentView } from './PdfDocumentView';
 import { useReader } from './readerStore';
 import { canGoBack, canGoForward } from './history';
 import { useReaderScope, useReaderShown } from '../readerScope';
-import { stageKeyAction } from './stageKeys';
+import { pageStepAction, SCREEN_STEP, stageKeyAction } from './stageKeys';
+import { spreadStep } from './spread';
 import { usePdfDocument } from './usePdfDocument';
 import { SepiaFilter } from './SepiaFilter';
 import { ViewMenu } from './ViewMenu';
@@ -33,9 +34,6 @@ import { ZoomField } from './ZoomField';
 import { clampZoom } from './zoom';
 
 const PAGE_SAVE = { kind: 'debounce', ms: 300 } as const;
-
-/** A screen's scroll by the space bar leaves a tenth of it in view, so the eye keeps its place. */
-const SCREEN_STEP = 0.9;
 
 /** The PDF reader: the 44 px toolbar (page field and page turns) over the stage that the pdf.js viewer fills. */
 export function PdfReader({ item }: { item: LibraryItem }) {
@@ -136,14 +134,24 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       const viewer = handle.viewer();
       const container = viewer?.container;
       const visible: PageSpan[] = [];
+      // The same rule along the flow: a sideways flow counts the pages by their extent across and the scroll by its width.
+      const sideways = state.scroll === 'horizontal';
       if (viewer && container) {
         for (const v of (viewer._getVisiblePages() as { views: Array<{ id: number; view: { div: HTMLElement } }> }).views) {
-          visible.push({ number: v.id, top: v.view.div.offsetTop + v.view.div.clientTop, bottom: v.view.div.offsetTop + v.view.div.clientTop + v.view.div.clientHeight });
+          const div = v.view.div;
+          const start = sideways ? div.offsetLeft + div.clientLeft : div.offsetTop + div.clientTop;
+          visible.push({ number: v.id, top: start, bottom: start + (sideways ? div.clientWidth : div.clientHeight) });
         }
       }
-      const furthest = container ? furthestPageSeen(pageNumber, state.pagesCount, container, visible) : pageNumber;
+      const alongFlow = container && sideways ? { scrollTop: container.scrollLeft, clientHeight: container.clientWidth, scrollHeight: container.scrollWidth } : container;
+      const furthest = alongFlow ? furthestPageSeen(pageNumber, state.pagesCount, alongFlow, visible, state.scroll === 'page' ? 'page' : 'scroll') : pageNumber;
       const next: LatestPosition = {
-        locator: { kind: 'pdf', pageIndex: pageNumber - 1, top, left, zoom: typeof zoom === 'number' ? clampZoom(zoom) : zoom, rotation: rotation as 0 | 90 | 180 | 270 },
+        locator: { kind: 'pdf', pageIndex: pageNumber - 1, top, left, zoom: typeof zoom === 'number' ? clampZoom(zoom) : zoom, rotation: rotation as 0 | 90 | 180 | 270,
+          // The default modes are left out, so a document that was never switched keeps the locator it always had.
+          ...(state.scroll !== 'vertical' ? { scroll: state.scroll } : {}),
+          ...(state.spread !== 'none' ? { spread: state.spread } : {}),
+          pages: state.pagesCount,
+        },
         progress: ratio(furthest, state.pagesCount),
       };
       place.current = next;
@@ -188,15 +196,20 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       return;
     }
     if (!handle) return;
-    const action = stageKeyAction(e.nativeEvent, isEditing(e.target as Element));
+    const action = stageKeyAction(e.nativeEvent, isEditing(e.target as Element), pdf?.scroll);
     if (!action) return;
     e.preventDefault();
+    const scroll = stageRef.current?.querySelector<HTMLElement>('.pdf-scroll');
     if (action === 'nextPage') handle.next();
     else if (action === 'previousPage') handle.previous();
-    else {
-      const scroll = stageRef.current?.querySelector<HTMLElement>('.pdf-scroll');
-      scroll?.scrollBy({ top: (action === 'screenDown' ? 1 : -1) * scroll.clientHeight * SCREEN_STEP });
-    }
+    else if (action === 'screenRight' || action === 'screenLeft') scroll?.scrollBy({ left: (action === 'screenRight' ? 1 : -1) * scroll.clientWidth * SCREEN_STEP });
+    else if (action === 'pageForward' || action === 'pageBack') {
+      if (!scroll) return;
+      const step = pageStepAction(action, scroll);
+      if (step.kind === 'scroll') scroll.scrollBy({ top: step.top });
+      else if (step.direction === 'next') handle.next();
+      else handle.previous();
+    } else scroll?.scrollBy({ top: (action === 'screenDown' ? 1 : -1) * (scroll?.clientHeight ?? 0) * SCREEN_STEP });
   };
 
   // The side buttons of a mouse: 3 is back, 4 forward. The browser's own history would take the window back, so the press is
@@ -213,6 +226,10 @@ export function PdfReader({ item }: { item: LibraryItem }) {
 
   const page = restored && pdf ? pdf.pageNumber : null;
   const total = pdf?.pagesCount ?? 0;
+  // A spread turns two pages: its last one has nothing to go on to even when the page shown is not the document's last.
+  const spread = pdf?.spread ?? 'none';
+  const hasNext = page !== null && spreadStep(page, total, spread, 'next') !== null;
+  const hasPrevious = page !== null && spreadStep(page, total, spread, 'previous') !== null;
   return (
     <div className="reader">
       <SepiaFilter />
@@ -248,7 +265,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           icon={ChevronUp}
           label={t.reader.prevPage}
           testId="pdf-prev"
-          isDisabled={page === null || page <= 1}
+          isDisabled={!hasPrevious}
           disabledReason={page === null ? t.reader.opening : t.reader.firstPage}
           onPress={() => handle?.previous()}
         />
@@ -256,7 +273,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           icon={ChevronDown}
           label={t.reader.nextPage}
           testId="pdf-next"
-          isDisabled={page === null || page >= total}
+          isDisabled={!hasNext}
           disabledReason={page === null ? t.reader.opening : t.reader.lastPage}
           onPress={() => handle?.next()}
         />

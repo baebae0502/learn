@@ -45,15 +45,23 @@
     margin-left: auto;
     padding-left: var(--space-24);
   }
-  .menu .mi:is([data-focused], [data-force~='active']) {
+  .menu .mi:is([data-focused], [data-open], [data-force~='active']) {
     background: var(--accent);
     color: var(--text-on-accent);
   }
-  .menu .mi:is([data-focused], [data-force~='active']) :is(.shortcut, .check) {
+  .menu .mi:is([data-focused], [data-open], [data-force~='active']) :is(.shortcut, .check, .sub-chevron) {
     color: var(--text-on-accent);
   }
   .menu .mi[data-disabled] {
     color: var(--text-tertiary);
+  }
+  /* A row that opens a fly-out: the ▸ sits at the right edge where a shortcut would. */
+  .menu .mi .sub-chevron {
+    margin-left: auto;
+    padding-left: var(--space-24);
+    display: grid;
+    place-items: center;
+    flex: none;
   }
   .menu .msep {
     height: 1px;

@@ -48,3 +48,22 @@ describe('widestPage (R-21: auto and page width fit the widest page)', () => {
     expect(widestPage([portrait, landscape], 180)).toEqual(landscape);
   });
 });
+
+describe('fitScale in the view modes', () => {
+  it('a horizontal flow keeps 12 above and below the page and 24 at the sides; auto is the whole-page fit there', () => {
+    expect(fitScale('page-fit', stage, a4, { flow: 'horizontal' })).toBeCloseTo((700 - 24) / 1123, 6);
+    expect(fitScale('auto', { width: 2000, height: 700 }, a4, { flow: 'horizontal' })).toBeCloseTo((700 - 24) / 1123, 6);
+    expect(fitScale('page-width', stage, a4, { flow: 'horizontal' })).toBeCloseTo((880 - 48) / 794, 6);
+  });
+  it('auto in a horizontal flow is the height fit even when the stage is narrow', () => {
+    expect(fitScale('auto', { width: 460, height: 700 }, a4, { flow: 'horizontal' })).toBeCloseTo((700 - 24) / 1123, 6);
+    expect(fitScale('page-fit', { width: 460, height: 700 }, a4, { flow: 'horizontal' })).toBeCloseTo((460 - 48) / 794, 6);
+  });
+  it('a spread fits its two pages and the 12 between them to the width', () => {
+    expect(fitScale('page-width', stage, a4, { columns: 2 })).toBeCloseTo((880 - 48 - 12) / (2 * 794), 6);
+    expect(fitScale('page-fit', { width: 4000, height: 700 }, a4, { columns: 2 })).toBeCloseTo((700 - 48) / 1123, 6);
+  });
+  it('no layout is the one-column vertical fit', () => {
+    expect(fitScale('page-fit', stage, a4, {})).toBe(fitScale('page-fit', stage, a4));
+  });
+});

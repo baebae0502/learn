@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileX } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { ScrollModeName, SpreadModeName } from '@learn/domain';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
@@ -13,8 +14,9 @@ import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
 import { useReaderScope, useReaderShown } from '../readerScope';
-import { fitScale, widestPage, type FitMode } from './fit';
+import { fitScale, widestPage, type FitLayout, type FitMode } from './fit';
 import { roomAfterJump } from './placement';
+import { spreadStep } from './spread';
 import { nextZoom } from './zoom';
 
 type Rotation = 0 | 90 | 180 | 270;
@@ -67,7 +69,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
     void Promise.all([pdfViewerModule(), pdfjs()])
       .then(([viewerLib, lib]) => {
         if (cancelled) return;
-        const { EventBus, PDFFindController, PDFLinkService, PDFViewer, LinkTarget } = viewerLib;
+        const { EventBus, PDFFindController, PDFLinkService, PDFViewer, LinkTarget, ScrollMode, SpreadMode } = viewerLib;
+        const SCROLL_OF: Record<ScrollModeName, number> = { vertical: ScrollMode.VERTICAL, horizontal: ScrollMode.HORIZONTAL, page: ScrollMode.PAGE };
+        const SPREAD_OF: Record<SpreadModeName, number> = { none: SpreadMode.NONE, odd: SpreadMode.ODD, even: SpreadMode.EVEN };
+        /** The modes the viewer is in (it can refuse a scroll mode, a document with too many pages), by name. */
+        const scrollNow = (): ScrollModeName => (viewer.scrollMode === ScrollMode.HORIZONTAL ? 'horizontal' : viewer.scrollMode === ScrollMode.PAGE ? 'page' : 'vertical');
+        const spreadNow = (): SpreadModeName => (viewer.spreadMode === SpreadMode.ODD ? 'odd' : viewer.spreadMode === SpreadMode.EVEN ? 'even' : 'none');
+        const layoutNow = (): FitLayout => ({ flow: scrollNow() === 'horizontal' ? 'horizontal' : 'vertical', columns: spreadNow() === 'none' ? 1 : 2 });
         const eventBus = new EventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
         // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
@@ -129,7 +137,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           // Auto and page width are sized to the widest page once every page's size is known, so no page needs the stage to scroll
           // sideways; before that, and for the whole-page fit, it is the page in view.
           const size = pagesLoaded && mode !== 'page-fit' ? widestShown() : { width: view.width / view.scale, height: view.height / view.scale };
-          const scale = fitScale(mode, { width, height }, size);
+          const scale = fitScale(mode, { width, height }, size, layoutNow());
           fitting = mode;
           try {
             viewer.currentScale = scale;
@@ -155,10 +163,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           if (!div || !first) return;
           const top = div.offsetTop + div.clientTop;
           const left = div.offsetLeft + div.clientLeft;
+          const scroll = scrollNow();
+          const flow = scroll === 'horizontal' ? 'horizontal' : 'vertical';
           const next = roomAfterJump({
-            flow: 'vertical',
+            flow,
             page: { top, left, width: div.clientWidth, height: div.clientHeight },
-            firstRow: Math.abs(top - (first.offsetTop + first.clientTop)) <= 1,
+            // A page at a time shows one row (its page is the first), and the first page's place is not read from a page that is not in the tree.
+            firstRow: scroll === 'page' || (flow === 'horizontal' ? Math.abs(left - (first.offsetLeft + first.clientLeft)) : Math.abs(top - (first.offsetTop + first.clientTop))) <= 1,
             stage: { scrollTop: container.scrollTop, scrollLeft: container.scrollLeft, width: container.clientWidth, height: container.clientHeight },
             keepTop,
             keepLeft,
@@ -245,6 +256,25 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             forward: () => step('forward'),
           }),
         );
+        const stepPage = (direction: 'next' | 'previous') => {
+          const target = spreadStep(viewer.currentPageNumber, viewer.pagesCount, spreadNow(), direction);
+          if (target !== null) place({ pageNumber: target });
+        };
+        /**
+         * Another scroll or spread mode. The spread goes first (a horizontal flow has none), then the flow; the page in view stays in
+         * view with the room the mockup draws, and a fit is sized again for the new layout. No jump: nothing is recorded for back.
+         */
+        const setModes = (scroll: ScrollModeName, spread: SpreadModeName) => {
+          const page = viewer.currentPageNumber;
+          const zoom = scope.reader.getState().pdf?.zoom;
+          leaveLink();
+          viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : spread];
+          viewer.scrollMode = SCROLL_OF[scroll];
+          store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
+          if (isFitMode(zoom)) fitTo(zoom);
+          if (page >= 1 && page <= viewer.pagesCount) jump({ pageNumber: page }, false, false);
+          viewer.update();
+        };
         const handle: PdfViewHandle = {
           place,
           goToPage: (n) => place({ pageNumber: n }),
@@ -259,14 +289,23 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           },
           historyBack: () => step('back'),
           historyForward: () => step('forward'),
-          next: () => place({ pageNumber: viewer.currentPageNumber + 1 }),
-          previous: () => place({ pageNumber: viewer.currentPageNumber - 1 }),
+          // A spread turns two pages at a time, to the first page of the next one.
+          next: () => stepPage('next'),
+          previous: () => stepPage('previous'),
+          setScroll: (mode) => setModes(mode, mode === 'horizontal' ? 'none' : spreadNow()),
+          setSpread: (mode) => {
+            if (scrollNow() !== 'horizontal') setModes(scrollNow(), mode);
+          },
           setZoom: (z) => {
             if (typeof z === 'number') viewer.currentScale = z;
             else fitTo(z);
           },
           restore: (saved, pageIndex) => {
             const zoom = saved?.zoom ?? 'auto';
+            // The modes come first: the zoom is fitted to the layout and the place is a place of that layout.
+            const scroll = saved?.scroll ?? 'vertical';
+            viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : (saved?.spread ?? 'none')];
+            viewer.scrollMode = SCROLL_OF[scroll];
             viewer.pagesRotation = saved?.rotation ?? 0;
             if (typeof zoom === 'number') viewer.currentScale = zoom;
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
@@ -276,7 +315,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
-            store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });
+            store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation, scroll: scrollNow(), spread: spreadNow() });
           },
           zoomIn: () => {
             viewer.currentScale = nextZoom(viewer.currentScale, 1);
@@ -342,6 +381,12 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           // A fit mode is sized for the turned page; the scroll position stays in pixels, which names another page once the pages change height.
           const zoom = scope.reader.getState().pdf?.zoom;
           if (isFitMode(zoom)) fitTo(zoom);
+          // A sideways flow keeps the page, not a share of its height: the page is put back flush with its room.
+          if (scrollNow() === 'horizontal') {
+            jump({ pageNumber: from?.pageNumber ?? e.pageNumber }, false, false);
+            viewer.update();
+            return;
+          }
           const div = viewer.getPageView((from?.pageNumber ?? e.pageNumber) - 1)?.div;
           if (!div) return;
           container.scrollTop = div.offsetTop + div.clientTop + (from?.share ?? 0) * div.clientHeight + (from?.above ?? 0);
@@ -474,6 +519,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           data-zoom={String(pdf?.zoom ?? 'auto')}
           data-page-color={pageColor}
           data-rotation={pdf?.rotation ?? 0}
+          data-scroll={pdf?.scroll ?? 'vertical'}
+          data-spread={pdf?.spread ?? 'none'}
           data-rendered={rendered}
         />
       </div>

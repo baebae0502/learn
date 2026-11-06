@@ -372,6 +372,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then, and so is its item panel
   // (the video and the failure states keep the reader without one).
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
+  const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
   const showsInspector = showsTable || (view.kind === 'reader' && pdfOpen);
@@ -424,6 +425,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     restoreRunning,
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
+    ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
     ...(pdfOpen && historyBack ? { historyBack: true } : {}),
     ...(pdfOpen && historyForward ? { historyForward: true } : {}),
     ...(pdfSelection ? { pdfSelection: true } : {}),
@@ -532,7 +534,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

@@ -96,7 +96,7 @@ const M7A_COMMANDS: readonly CommandId[] = [
 ] as CommandId[];
 
 /**
- * Every command the tabs put in the registry (M7b; the history and view-mode commands join it with their tasks): the menu loop leaves them
+ * Every command the tabs put in the registry (M7b; the history and view-mode commands joined it with theirs): the menu loop leaves them
  * to a block of their own at its end, because running them in the loop would change what the loop runs on (a tab switch, a closed
  * window, a new tab). Each ran there, from the menu, the tab menu or the palette (`tab.moveLeft` / `tab.moveRight`).
  */
@@ -104,6 +104,7 @@ const M7B_COMMANDS: readonly CommandId[] = [
   'item.openInBackground', 'tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous',
   'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last',
   'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary', 'nav.historyBack', 'nav.historyForward',
+  'reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven',
 ] as CommandId[];
 
 /**
@@ -672,6 +673,20 @@ test('every registry command runs without a page error (library and reader menus
       await runMenuCommand(app, 'nav.historyForward');
       await expect(page.getByTestId('pdf-page-field')).toHaveValue('3');
       ran.add('nav.historyForward');
+      // The view modes (스크롤 ▸ and 펼침 ▸): each from the menu bar, in an order that keeps the spread rows on until horizontal ends them.
+      const viewerEl = page.getByTestId('pdf-viewer');
+      for (const [id, attr, value] of [
+        ['reader.spreadOdd', 'data-spread', 'odd'], ['reader.spreadEven', 'data-spread', 'even'], ['reader.spreadNone', 'data-spread', 'none'],
+        ['reader.scrollPage', 'data-scroll', 'page'], ['reader.scrollHorizontal', 'data-scroll', 'horizontal'], ['reader.scrollVertical', 'data-scroll', 'vertical'],
+      ] as const) {
+        await runMenuCommand(app, id);
+        await expect(viewerEl, id).toHaveAttribute(attr, value);
+        ran.add(id);
+      }
+      await runMenuCommand(app, 'reader.scrollHorizontal'); // and the spread rows are off while it is
+      await expect.poll(() => menuItemEnabled(app, 'reader.spreadOdd')).toBe(false);
+      await runMenuCommand(app, 'reader.scrollVertical');
+      await expect.poll(() => menuItemEnabled(app, 'reader.spreadOdd')).toBe(true);
       // The palette moves the shown tab a place each way.
       await runPalette(page, app, '탭을 왼쪽으로', 'tab.moveLeft');
       await expect.poll(async () => (await strip()).slice(1)).toEqual([...readers.slice(0, -2), readers.at(-1)!, readers.at(-2)!]);
@@ -714,12 +729,16 @@ test('every registry command runs without a page error (library and reader menus
     expect(M6_COMMANDS.filter((id) => !all.includes(id)), 'M6 commands gone from the registry').toEqual([]);
     expect(M6_COMMANDS.filter((id) => !ran.has(id)), 'M6 commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M6_COMMANDS.includes(id as CommandId)), 'M6 commands left to another test').toEqual([]);
-    // The M7b commands (the tabs): each ran in the block above, none is left to another test, and the list is the whole set.
-    expect(all.filter((id) => id.startsWith('tab.') || id === 'item.openInBackground' || id.startsWith('nav.history')).sort(), 'the M7b commands in the registry').toEqual([...M7B_COMMANDS].sort());
+    // The M7b commands (the tabs, the history and the view modes): each ran in the block above, none is left to another test, and every one is in the registry.
+    expect(M7B_COMMANDS.filter((id) => !all.includes(id)), 'M7b commands gone from the registry').toEqual([]);
     expect(M7B_COMMANDS.filter((id) => !ran.has(id)), 'M7b commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7B_COMMANDS.includes(id as CommandId)), 'M7b commands left to another test').toEqual([]);
-    // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it, and the list is the whole set (reader.* and the pop-up's command).
-    expect(all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort(), 'the M7a commands in the registry').toEqual([...M7A_COMMANDS].sort());
+    // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it. The reader's and the translation's commands
+    // are exactly the two lists' (M7a's and M7b's), compared by id: a new one is added to the list of the milestone that made it.
+    expect(M7A_COMMANDS.filter((id) => !all.includes(id)), 'M7a commands gone from the registry').toEqual([]);
+    const readerOrTranslation = all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort();
+    expect(readerOrTranslation, 'the reader and translation commands in the registry').toEqual([...M7A_COMMANDS, ...M7B_COMMANDS.filter((id) => id.startsWith('reader.'))].sort());
+    expect(all.filter((id) => (id.startsWith('tab.') || id === 'item.openInBackground' || id.startsWith('nav.history'))).sort(), 'the tab and history commands in the registry').toEqual([...M7B_COMMANDS.filter((id) => !id.startsWith('reader.'))].sort());
     expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7A_COMMANDS.includes(id as CommandId)), 'M7a commands named as covered elsewhere').toEqual(['translation.translateSelection']);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => !all.includes(id as CommandId)), 'stale coveredElsewhere entries').toEqual([]);

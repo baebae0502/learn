@@ -1,5 +1,5 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
-import type { PageColor, StorageMode } from '@learn/domain';
+import type { PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 import type { ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
@@ -98,6 +98,11 @@ export interface CommandEnv extends CommandContextState {
   rotate(delta: 90 | -90): void;
   /** 쪽 색: saved as the reader's setting. */
   setPageColor(color: PageColor): void;
+  /** 스크롤 ▸ and 펼침 ▸: how the open PDF flows, and whether its pages pair up (the reader remembers both per item). */
+  setScroll(mode: ScrollModeName): void;
+  setSpread(mode: SpreadModeName): void;
+  /** How the open PDF scrolls (the spread commands are off while it is horizontal). Absent with no PDF open. */
+  pdfScroll?: ScrollModeName;
   /** ⌘[ / ⌘]: the open PDF goes back or forward in its history (where a link, the outline, a thumbnail or the page field took it from). */
   history(direction: 'back' | 'forward'): void;
   /** ⌥⌘G: the page field takes the focus with its number selected. */
@@ -267,6 +272,12 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.pageColorOriginal': (env) => env.setPageColor('original'),
   'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
   'reader.pageColorDark': (env) => env.setPageColor('dark'),
+  'reader.scrollVertical': (env) => env.setScroll('vertical'),
+  'reader.scrollHorizontal': (env) => env.setScroll('horizontal'),
+  'reader.scrollPage': (env) => env.setScroll('page'),
+  'reader.spreadNone': (env) => env.setSpread('none'),
+  'reader.spreadOdd': (env) => env.setSpread('odd'),
+  'reader.spreadEven': (env) => env.setSpread('even'),
   'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
@@ -297,6 +308,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
     ...(env.historyBack ? { historyBack: true } : {}),
     ...(env.historyForward ? { historyForward: true } : {}),
     ...(env.pdfSelection ? { pdfSelection: true } : {}),

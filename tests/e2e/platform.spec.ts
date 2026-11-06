@@ -36,8 +36,8 @@ const entries = (items: readonly MenuNode[]) => items.map((n) => [n.type === 'se
 const VIEW_START = [
   [null, '명령 팔레트…'], ['-', ''], [null, '사이드바 가리기'], [null, '항목 패널 보기/가리기'], [null, '정렬 기준'], [null, '썸네일 보기'], [null, '목차 보기'], ['-', ''],
   [null, '글자 크게'], [null, '글자 크게'], [null, '글자 작게'], [null, '기본 글자 크기'], ['-', ''],
-  // The reader's: how the page fits, the rotation and 쪽 색 ▸ (its rows are the group's, without marks).
-  [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], ['-', ''],
+  // The reader's: how the page fits, the rotation, then 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸ (their rows are the groups', without marks).
+  [null, '자동 맞춤'], [null, '너비에 맞춤'], [null, '한 쪽 전체 보기'], ['-', ''], [null, '시계 방향으로 회전'], [null, '반시계 방향으로 회전'], [null, '쪽 색'], [null, '스크롤'], [null, '펼침'], ['-', ''],
 ];
 
 async function session(testInfo: { outputPath(...p: string[]): string }) {
@@ -119,12 +119,12 @@ test('menu: Korean top-level menus built from the registry, no reload or develop
 
     // Registry-driven: each placed command appears exactly once, in its platform menu, with its id, platform label and
     // accelerator, enabled exactly when the shared predicate allows it in the library view.
-    const pageColorRows = new Set<string>(SUBMENUS.find((g) => g.id === 'pageColor')!.commands);
+    const groupRows = new Set<string>(SUBMENUS.filter((g) => g.id !== 'colorTags').flatMap((g) => g.commands));
     for (const c of COMMANDS) {
       const hits = all.filter((n) => n.id === c.id);
       if (!c.menu) {
-        // The members of 쪽 색 ▸ are rows of that group (the menu bar shows no mark), not placed commands.
-        expect(hits, `${c.id} is context-menu only`).toHaveLength(pageColorRows.has(c.id) ? 1 : 0);
+        // The members of 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸ are rows of those groups (the menu bar shows no mark), not placed commands.
+        expect(hits, `${c.id} is context-menu only`).toHaveLength(groupRows.has(c.id) ? 1 : 0);
         continue;
       }
       expect(hits, c.id).toHaveLength(1);

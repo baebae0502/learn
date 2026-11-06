@@ -1,4 +1,4 @@
-import type { PageColor } from '@learn/domain';
+import type { PageColor, ScrollModeName, SpreadModeName } from '@learn/domain';
 import type { CommandEnv } from '../../commands/registry';
 import { saveSetting } from '../../data/saveSetting';
 import { useShell } from '../../state/shell-store';
@@ -10,7 +10,7 @@ import { focusPageField } from './pageField';
 import { useReader } from './readerStore';
 
 /** What the reader's commands do to the open PDF (the CommandEnv's reader part): through the handle, so nothing runs without a viewer. */
-export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
+export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'setScroll' | 'setSpread' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
   zoom: (dir) => {
     const handle = useReader.getState().handle;
     if (!handle) return;
@@ -21,6 +21,8 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
   setZoom: (zoom) => useReader.getState().handle?.setZoom(zoom),
   rotate: (delta) => useReader.getState().handle?.rotate(delta),
   setPageColor: (color: PageColor) => saveSetting('reader.pageColor', color),
+  setScroll: (mode: ScrollModeName) => useReader.getState().handle?.setScroll(mode),
+  setSpread: (mode: SpreadModeName) => useReader.getState().handle?.setSpread(mode),
   goToPage: focusPageField,
   history: (direction) => {
     const handle = useReader.getState().handle;

@@ -48,7 +48,7 @@ describe('a value names a menu row (Q-24)', () => {
 
 describe('submenu invariants (P-3, Q-25)', () => {
   it('the real registry passes its own invariants: its groups are 색 태그 ▸ and 쪽 색 ▸, and its value submenus are placed and kept out of the palette', () => {
-    expect(SUBMENUS.map((s) => s.id)).toEqual(['colorTags', 'pageColor']);
+    expect(SUBMENUS.map((s) => s.id)).toEqual(['colorTags', 'pageColor', 'scrollMode', 'spreadMode']);
     expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
     for (const c of COMMANDS.filter((x) => x.submenu !== undefined)) expect(inPalette(c), c.id).toBe(false);
   });

@@ -1,7 +1,7 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import type { ReadingLocator, ReaderNav } from '@learn/domain';
+import type { ReadingLocator, ReaderNav, ScrollModeName, SpreadModeName } from '@learn/domain';
 import { emptyHistory, type History } from './history';
 
 export type { ReaderNav };
@@ -23,6 +23,9 @@ export interface PdfState {
   scale: number;
   zoom: ZoomValue;
   rotation: 0 | 90 | 180 | 270;
+  /** How the pages flow and pair up (a horizontal scroll has no spreads). */
+  scroll: ScrollModeName;
+  spread: SpreadModeName;
 }
 
 /** What the toolbar, the sidebar and the panels do to the open document, whoever mounts them. */
@@ -42,6 +45,9 @@ export interface PdfViewHandle {
    * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place.
    */
   restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number): void;
+  /** The pages flow another way: the page in view stays in view. Horizontal also ends any spread. Not a jump (no history). */
+  setScroll(mode: ScrollModeName): void;
+  setSpread(mode: SpreadModeName): void;
   zoomIn(): void;
   zoomOut(): void;
   rotate(delta: 90 | -90): void;
@@ -51,7 +57,7 @@ export interface PdfViewHandle {
   linkService(): PDFLinkService | null;
 }
 
-export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0 };
+export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
 /** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
 export type NoPages = 'trashed' | 'locked' | 'none';

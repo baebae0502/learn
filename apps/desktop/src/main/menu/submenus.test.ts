@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, TAG_COLORS, columnsMask, type CommandContextState, type CommandId, type CommandSpec } from '@learn/domain';
 import { isSubmenu, type CommandEntry, type MenuEntries } from './entries';
-import { colorTagGroup, collectionRows, groupEntry, menuNeedsOrganize, menuText, pageColorGroup, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
+import { colorTagGroup, collectionRows, groupEntry, menuNeedsOrganize, menuText, plainGroup, sortColumnRows, tagColorRows, valueRows, type SubmenuInput } from './submenus';
 import { ADD_TO_COLLECTION, COLOR_GROUP, ALL_COMMANDS, ALL_SUBMENUS, LIBRARY, SET_TAG_COLOR, organize } from './testing';
 
 const CTX: CommandContextState = { view: 'library', blocked: false, textSize: 13, libraryCount: 9, selectionCount: 0, selectionAvailable: 0, selectionRelinkable: 0, ...NO_LIBRARY_VIEW };
@@ -150,7 +150,7 @@ describe('색 태그 ▸ (a group of commands)', () => {
 
 describe('쪽 색 ▸ (the reader\'s page colours)', () => {
   const PAGE_COLOR = SUBMENUS.find((s) => s.id === 'pageColor')!;
-  const group = (over: Partial<SubmenuInput> = {}) => pageColorGroup(PAGE_COLOR, COMMANDS, input({ organize: null, ...over }))!;
+  const group = (over: Partial<SubmenuInput> = {}) => plainGroup(PAGE_COLOR, COMMANDS, input({ organize: null, ...over }))!;
   it('lists the four colours in order, each its own command, with no mark and without reading the library', () => {
     expect(group().id).toBe('submenu.pageColor');
     expect(group().label).toBe('쪽 색');
@@ -167,6 +167,27 @@ describe('쪽 색 ▸ (the reader\'s page colours)', () => {
   });
   it('makes no menu read the library', () => {
     expect(menuNeedsOrganize([], [PAGE_COLOR], 'menu')).toBe(false);
+  });
+});
+
+describe('스크롤 ▸ and 펼침 ▸ (the reader\'s view modes)', () => {
+  const SCROLL = SUBMENUS.find((s) => s.id === 'scrollMode')!;
+  const SPREAD = SUBMENUS.find((s) => s.id === 'spreadMode')!;
+  const entry = (spec: typeof SCROLL, over: Partial<SubmenuInput> = {}) => groupEntry(spec, COMMANDS, input({ organize: null, ...over }))!;
+  it('lists each group\'s three commands in order, with no mark and without reading the library', () => {
+    expect(entry(SCROLL).id).toBe('submenu.scrollMode');
+    expect(entry(SPREAD).id).toBe('submenu.spreadMode');
+    expect(rows(entry(SCROLL).submenu).map((r) => [r.id, r.label])).toEqual([['reader.scrollVertical', '세로로 이어서'], ['reader.scrollHorizontal', '가로로 이어서'], ['reader.scrollPage', '한 쪽씩']]);
+    expect(rows(entry(SPREAD).submenu).map((r) => [r.id, r.label])).toEqual([['reader.spreadNone', '펼치지 않음'], ['reader.spreadOdd', '홀수 쪽부터'], ['reader.spreadEven', '짝수 쪽부터']]);
+    for (const spec of [SCROLL, SPREAD]) expect(rows(entry(spec).submenu).every((r) => r.checked === undefined && r.type === undefined)).toBe(true);
+  });
+  it('judges each row on its command, so the head is off when none can run', () => {
+    expect(entry(SPREAD, { enabledOf: () => false }).enabled).toBe(false);
+    expect(entry(SPREAD, { enabledOf: (c) => c.id === 'reader.spreadOdd' }).enabled).toBe(true);
+    expect(rows(entry(SCROLL, { enabledOf: (c) => c.id === 'reader.scrollPage' }).submenu).map((r) => r.enabled)).toEqual([false, false, true]);
+  });
+  it('makes no menu read the library', () => {
+    expect(menuNeedsOrganize([], [SCROLL, SPREAD], 'menu')).toBe(false);
   });
 });
 

@@ -1856,3 +1856,68 @@ test('reader: back and forward off and on, the toolbar at 1000 and 1024 wide (th
     await s.app.close();
   }
 });
+
+// 보기 ▾'s 스크롤 ▸ and 펼침 ▸ and the pages they lay out (reader-pdf.html?m=7b: view=menu-scroll|menu-spread, scroll=horizontal|page, spread=odd).
+test('reader: the view menu with its scroll and spread submenus, a horizontal scroll, a page at a time and odd spreads', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const goTo = async (n: number) => {
+    await page.getByTestId('pdf-page-field').fill(String(n));
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(n));
+  };
+  const choose = async (submenu: 'scroll' | 'spread', name: string) => {
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByTestId(`pdf-${submenu}-menu`).click();
+    await page.getByRole('menuitemradio', { name }).click();
+  };
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      await goTo(3);
+      // The submenus, the one in force checked.
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      await shootReader(`reader-view-menu-scroll-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-spread-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '홀수 쪽부터' })).toBeVisible();
+      await shootReader(`reader-view-menu-spread-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      // A row of pages, the spread row off.
+      await choose('scroll', '가로로 이어서');
+      await expect(page.getByTestId('pdf-viewer')).toHaveClass(/scrollHorizontal/);
+      await goTo(3);
+      await page.getByTestId('pdf-view-menu').click();
+      await expect(page.getByTestId('pdf-spread-menu')).toHaveAttribute('data-disabled', 'true');
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toBeVisible();
+      await shootReader(`reader-scroll-horizontal-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('pdf-view-menu')).toBeVisible();
+      await shootReader(`reader-scroll-horizontal-${theme}`);
+      await choose('scroll', '한 쪽씩');
+      await goTo(3);
+      await shootReader(`reader-scroll-page-${theme}`);
+      await choose('scroll', '세로로 이어서');
+      await choose('spread', '홀수 쪽부터');
+      await goTo(3);
+      await shootReader(`reader-spread-odd-${theme}`);
+      await choose('spread', '펼치지 않음');
+      await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});

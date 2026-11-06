@@ -38,3 +38,17 @@ describe('the furthest page seen', () => {
     expect(furthestPageSeen(29, 30, { scrollTop: 1000, clientHeight: 500, scrollHeight: 1502 }, pages(30).slice(28))).toBe(29);
   });
 });
+
+describe('the furthest page seen, a page at a time', () => {
+  it('is not the last page just because the page fits the stage', () => {
+    const box = { scrollTop: 0, clientHeight: 700, scrollHeight: 700 };
+    expect(furthestPageSeen(3, 17, box, [{ number: 3, top: 24, bottom: 600 }], 'page')).toBe(3);
+  });
+  it('counts both pages of a spread shown, and the last page once it is shown and its end reached', () => {
+    const box = { scrollTop: 0, clientHeight: 700, scrollHeight: 700 };
+    const two: PageSpan[] = [{ number: 4, top: 24, bottom: 600 }, { number: 5, top: 24, bottom: 600 }];
+    expect(furthestPageSeen(4, 17, box, two, 'page')).toBe(5);
+    expect(furthestPageSeen(17, 17, box, [{ number: 17, top: 24, bottom: 600 }], 'page')).toBe(17);
+    expect(furthestPageSeen(16, 17, box, [{ number: 16, top: 24, bottom: 600 }, { number: 17, top: 24, bottom: 600 }], 'page')).toBe(17);
+  });
+});

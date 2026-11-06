@@ -137,6 +137,20 @@ const VIEW = (platform: NodeJS.Platform): Shape => ({
         { id: 'reader.pageColorDark', label: '어둡게' },
       ],
     },
+    {
+      id: 'submenu.scrollMode', label: '스크롤', submenu: [
+        { id: 'reader.scrollVertical', label: '세로로 이어서' },
+        { id: 'reader.scrollHorizontal', label: '가로로 이어서' },
+        { id: 'reader.scrollPage', label: '한 쪽씩' },
+      ],
+    },
+    {
+      id: 'submenu.spreadMode', label: '펼침', submenu: [
+        { id: 'reader.spreadNone', label: '펼치지 않음' },
+        { id: 'reader.spreadOdd', label: '홀수 쪽부터' },
+        { id: 'reader.spreadEven', label: '짝수 쪽부터' },
+      ],
+    },
     SEP,
     // macOS: our item names what it will do (Apple Korean); elsewhere the neutral role item.
     platform === 'darwin' ? { id: 'menu.view.fullScreen', label: '전체 화면 시작', accelerator: 'Ctrl+Cmd+F' } : { label: '전체 화면', role: 'togglefullscreen' },
@@ -245,10 +259,10 @@ describe('buildAppMenu', () => {
 
   it('places each registry command with a menu exactly once, with its label and accelerator', () => {
     const items = walk(build('darwin'));
-    const pageColors = SUBMENUS.find((s) => s.id === 'pageColor')!.commands; // rows of 쪽 색 ▸, which needs nothing from the library
+    const groupRows = SUBMENUS.filter((s) => s.id !== 'colorTags').flatMap((s) => s.commands); // rows of 쪽 색 ▸, 스크롤 ▸ and 펼침 ▸, which need nothing from the library
     for (const c of COMMANDS) {
       const found = items.filter((i) => i.id === c.id);
-      expect(found, c.id).toHaveLength((c.menu && c.submenu !== 'collections') || pageColors.includes(c.id) ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
+      expect(found, c.id).toHaveLength((c.menu && c.submenu !== 'collections') || groupRows.includes(c.id) ? 1 : 0); // 컬렉션에 추가 ▸ has no row here without the library read for the menu bar (organize is null), so its head is left out too
       if (found[0]) {
         expect(found[0].label).toBe(c.label);
         expect(found[0].accelerator).toBe(c.accelerator);
@@ -541,7 +555,7 @@ describe('in-place enabled toggle (the menu is built once; reports only flip ena
   it('looks up only commands placed in the menu bar, and skips ids the menu does not have', () => {
     const asked: string[] = [];
     applyMenuEnabled({ getMenuItemById: (id) => (asked.push(id), null) }, ALL, cmds);
-    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags', 'submenu.pageColor']); // each group's head is placed in its menu too
+    expect(asked).toEqual(['file.importManaged', 'file.importLinked', 'file.importLinked#1', 'submenu.colorTags', 'submenu.pageColor', 'submenu.scrollMode', 'submenu.spreadMode']); // each group's head is placed in its menu too
   });
 });
 

@@ -20,7 +20,7 @@ export const SUBMENU_SOURCES: Readonly<Record<SubmenuSource, { menuBar: boolean;
  * A group exists only with its members' handlers (a row without a handler cannot exist): the colour keys' are in R/commands/registry.ts.
  */
 export interface SubmenuSpec {
-  id: 'colorTags' | 'pageColor';
+  id: 'colorTags' | 'pageColor' | 'scrollMode' | 'spreadMode';
   /** Korean, as the menu shows it. */
   label: string;
   /** The members, in menu order. */
@@ -44,6 +44,19 @@ export const SUBMENUS: readonly SubmenuSpec[] = [
     label: '쪽 색',
     commands: ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'],
     menu: { menu: 'view', group: 5, order: 3 },
+  },
+  // 스크롤 ▸ and 펼침 ▸ (M7b): the same shape, after 쪽 색 ▸. The current value is checked in the toolbar's 보기 menu only.
+  {
+    id: 'scrollMode',
+    label: '스크롤',
+    commands: ['reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage'],
+    menu: { menu: 'view', group: 5, order: 4 },
+  },
+  {
+    id: 'spreadMode',
+    label: '펼침',
+    commands: ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'],
+    menu: { menu: 'view', group: 5, order: 5 },
   },
 ];
 

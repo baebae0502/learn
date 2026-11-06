@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type RefObject } from 'react';
-import { Check, ChevronDown, type LucideIcon } from 'lucide-react';
-import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator } from 'react-aria-components';
+import { Check, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator, SubmenuTrigger } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
 import { IconButton, SoftDisabled, type ForcedState } from './Button';
 import { cx } from './cx';
@@ -37,14 +37,28 @@ export interface MenuButtonSection<K extends string> {
   header?: string;
   items: readonly MenuButtonItem<K>[];
 }
+/**
+ * A row that opens a fly-out menu of its own (design-spec 6 메뉴: 보기 ▾'s 스크롤 and 펼침): a name with a ▸ at the right, whose items
+ * are one single-choice group when any of them sets `checked`. `isDisabled` greys the row and keeps it from opening.
+ */
+export interface MenuSubmenu<K extends string> {
+  /** The row's own key (never an action: choosing the row opens it). */
+  id: string;
+  submenu: true;
+  label: string;
+  items: readonly MenuButtonItem<K>[];
+  isDisabled?: boolean;
+  testId?: string;
+}
 export interface MenuSeparator {
   separator: true;
 }
 export const MENU_SEPARATOR: MenuSeparator = { separator: true };
-export type MenuEntry<K extends string> = MenuButtonItem<K> | MenuButtonSection<K> | MenuSeparator;
+export type MenuEntry<K extends string> = MenuButtonItem<K> | MenuButtonSection<K> | MenuSubmenu<K> | MenuSeparator;
 
 const isSeparator = <K extends string>(e: MenuEntry<K>): e is MenuSeparator => 'separator' in e;
-const isSection = <K extends string>(e: MenuEntry<K>): e is MenuButtonSection<K> => 'items' in e;
+const isSubmenu = <K extends string>(e: MenuEntry<K>): e is MenuSubmenu<K> => 'submenu' in e;
+const isSection = <K extends string>(e: MenuEntry<K>): e is MenuButtonSection<K> => 'items' in e && !('submenu' in e);
 
 /** Selection props for a group whose items carry `checked` (one answer) or `marked` (each its own); none otherwise. */
 function choice<K extends string>(items: readonly MenuButtonItem<K>[]) {
@@ -74,6 +88,27 @@ function Item<K extends string>({ item, platform }: { item: MenuButtonItem<K>; p
   );
 }
 
+function SubmenuRow<K extends string>({ entry, onAction, platform }: { entry: MenuSubmenu<K>; onAction(id: K): void; platform: string }) {
+  return (
+    <SubmenuTrigger>
+      <MenuItem id={entry.id} textValue={entry.label} className="mi mi-sub" isDisabled={entry.isDisabled} data-testid={entry.testId}>
+        <span className="check" aria-hidden="true" />
+        <span className="mi-label">{entry.label}</span>
+        <span className="sub-chevron" aria-hidden="true">
+          <Icon icon={ChevronRight} size="sm" />
+        </span>
+      </MenuItem>
+      <Popover className="menu-popover" offset={-4}>
+        <Menu className="menu" aria-label={entry.label} shouldCloseOnSelect onAction={(key) => onAction(String(key) as K)} {...choice(entry.items)}>
+          {entry.items.map((item) => (
+            <Item key={item.id} item={item} platform={platform} />
+          ))}
+        </Menu>
+      </Popover>
+    </SubmenuTrigger>
+  );
+}
+
 /**
  * The web menu itself (design-spec 6 메뉴, 7.3): items with a check column and right-aligned shortcuts, caption
  * section headers and separators. MenuButton shows it in a popover; the state board draws it in place.
@@ -86,7 +121,7 @@ export function MenuList<K extends string>(props: {
   testId?: string;
 }) {
   const platform = currentPlatform();
-  const topItems = props.entries.filter((e): e is MenuButtonItem<K> => !isSeparator(e) && !isSection(e));
+  const topItems = props.entries.filter((e): e is MenuButtonItem<K> => !isSeparator(e) && !isSection(e) && !isSubmenu(e));
   return (
     <Menu
       className="menu"
@@ -99,6 +134,7 @@ export function MenuList<K extends string>(props: {
     >
       {props.entries.map((entry, i) => {
         if (isSeparator(entry)) return <Separator key={`sep-${i}`} className="msep" />;
+        if (isSubmenu(entry)) return <SubmenuRow key={entry.id} entry={entry} onAction={props.onAction} platform={platform} />;
         if (isSection(entry)) {
           return (
             <MenuSection key={`sec-${i}`} id={`sec-${i}`} shouldCloseOnSelect {...choice(entry.items)}>

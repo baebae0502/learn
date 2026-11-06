@@ -64,6 +64,8 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   setZoom: vi.fn(),
   rotate: vi.fn(),
   setPageColor: vi.fn(),
+  setScroll: vi.fn(),
+  setSpread: vi.fn(),
   goToPage: vi.fn(),
   history: vi.fn(),
   openFind: vi.fn(),
@@ -286,6 +288,15 @@ describe('renderer command registry', () => {
     expect(lib.zoom).not.toHaveBeenCalled();
     expect(lib.setTextSize).toHaveBeenCalledTimes(1);
   });
+  it('turns the spread commands off while the PDF scrolls horizontally and reports how it scrolls', () => {
+    const horizontal = env({ view: 'viewer', pdfOpen: true, pdfScroll: 'horizontal' });
+    for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) expect(runCommand(id, horizontal), id).toBe(false);
+    expect(horizontal.setSpread).not.toHaveBeenCalled();
+    expect(runCommand('reader.scrollVertical', horizontal)).toBe(true);
+    expect(contextOf(horizontal)).toMatchObject({ pdfScroll: 'horizontal' });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfScroll');
+    expect(contextOf(env({ view: 'viewer', pdfScroll: 'page' }))).not.toHaveProperty('pdfScroll');
+  });
   it('runs the reader commands on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });
     const run = (id: CommandId) => runCommand(id, e);
@@ -296,6 +307,10 @@ describe('renderer command registry', () => {
     expect(vi.mocked(e.rotate).mock.calls).toEqual([[90], [-90]]);
     for (const id of ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'] as const) run(id);
     expect(vi.mocked(e.setPageColor).mock.calls).toEqual([['auto'], ['original'], ['sepia'], ['dark']]);
+    for (const id of ['reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage'] as const) run(id);
+    expect(vi.mocked(e.setScroll).mock.calls).toEqual([['vertical'], ['horizontal'], ['page']]);
+    for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) run(id);
+    expect(vi.mocked(e.setSpread).mock.calls).toEqual([['none'], ['odd'], ['even']]);
     run('reader.goToPage');
     expect(e.goToPage).toHaveBeenCalledTimes(1);
     for (const off of [env({ view: 'viewer' }), env({ pdfOpen: true }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {

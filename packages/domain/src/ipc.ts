@@ -7,7 +7,7 @@ import type {
 } from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
-import { readingLocatorSchema, type ReadingPosition } from './reading';
+import { SCROLL_MODES, readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
 import { CHECK_ACTS, type PurgeVariant, type SheetAction, type SheetPayload } from './sheets';
@@ -148,6 +148,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
+    pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */
     historyBack: z.boolean().optional(),
     historyForward: z.boolean().optional(),

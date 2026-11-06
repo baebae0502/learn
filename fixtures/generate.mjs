@@ -161,6 +161,21 @@ async function makePaper(file) {
   fs.writeFileSync(file, await doc.save());
 }
 
+// ---- long-outline.pdf: 300 outline entries over 6 pages (the sidebar draws a list this long virtualised) ------------
+async function makeLongOutline(file) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  doc.setTitle('Learn fixture: long outline');
+  for (let i = 1; i <= 6; i++) doc.addPage([595, 842]).drawText(`Long outline - page ${i}`, { x: 56, y: 780, size: 18, font });
+  const chapters = Array.from({ length: 60 }, (_, c) => ({
+    title: `Part ${c + 1}`,
+    page: Math.floor((c * 6) / 60) + 1,
+    children: Array.from({ length: 4 }, (_, s) => ({ title: `${c + 1}.${s + 1} Topic`, page: Math.floor((c * 6) / 60) + 1, children: [] })),
+  }));
+  writeOutline(doc, chapters);
+  fs.writeFileSync(file, await doc.save());
+}
+
 // ---- korean.pdf: Korean text for the text layer (page 2 is the same paragraph decomposed) ---------------------------
 // The variable font is embedded whole: fontkit cannot subset it. pdf.js draws no glyphs from it, but the text content and
 // the glyph widths are right, which is all the text layer needs.
@@ -233,6 +248,7 @@ const has = (name) => {
 if (need('sample.pdf')) await makePdf(path.join(out, 'sample.pdf'), 'Sample PDF');
 if (need('한글 경로 (테스트) #1.pdf')) await makePdf(path.join(out, '한글 경로 (테스트) #1.pdf'), 'Korean path PDF');
 if (need('paper-100.pdf')) await makePaper(path.join(out, 'paper-100.pdf'));
+if (need('long-outline.pdf')) await makeLongOutline(path.join(out, 'long-outline.pdf'));
 if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));

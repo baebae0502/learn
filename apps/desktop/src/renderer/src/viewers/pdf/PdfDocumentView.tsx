@@ -95,6 +95,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         const doneOnce = new Set<number>();
         /** One host element per page that failed: pdf.js empties a page's div when it redraws it, so React renders into a host it can still find. */
         const failed = new Map<number, HTMLElement>();
+        /** The pages that failed once and were drawn again: a second failure is shown, a success makes the next failure a first one. */
+        const redrawn = new Set<number>();
         /**
          * A fit mode is sized here, not by pdf.js: its fit keeps no room round the page when page borders are off, and the mockup
          * keeps 24 on every side (fit.ts). The number goes in as the viewer's scale; the preset keeps its name in the store, and
@@ -403,6 +405,16 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         eventBus.on('pagerendered', (e: { pageNumber: number; source: { div: HTMLElement }; error?: unknown }) => {
           if (e.error) {
             console.warn(`[pdf] open/render failed: ${(e.error as Error)?.name ?? 'Error'}`);
+            if (!redrawn.has(e.pageNumber)) {
+              // Once more: the page is reset and the viewer draws it again while it is in view (or when it comes into view).
+              redrawn.add(e.pageNumber);
+              requestAnimationFrame(() => {
+                if (cancelled) return;
+                viewer.getPageView(e.pageNumber - 1)?.reset();
+                viewer.update();
+              });
+              return;
+            }
             let host = failed.get(e.pageNumber);
             if (!host) {
               host = document.createElement('div');
@@ -413,6 +425,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             setPageDivs(new Map(failed));
             return;
           }
+          redrawn.delete(e.pageNumber);
           if (failed.delete(e.pageNumber)) setPageDivs(new Map(failed));
           doneOnce.add(e.pageNumber);
           setRendered(doneOnce.size);
@@ -433,6 +446,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         // Loaded on demand, so the product's bundle does not hold them.
         let removeProbe: ((() => void) & { claim(): void }) | null = null;
         if (readWindowParams(window.location.search).e2e) {
+          void import('./drawFaults').then(({ default: installFaults }) => (cancelled ? undefined : installFaults(doc)));
           void import('./anchorProbe').then(({ default: installProbe }) => {
             if (!cancelled) removeProbe = installProbe({ doc, viewer, revisionId });
           });

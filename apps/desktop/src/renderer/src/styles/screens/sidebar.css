@@ -101,6 +101,15 @@
   .nav-thumb-canvas:not([data-drawn]) {
     visibility: hidden;
   }
+  /* A page whose picture could not be made: a grey cell with a warning mark, the number under it stays. */
+  .nav-thumb-failed {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--fill-selected);
+    color: var(--text-secondary);
+  }
   .nav-thumbs[data-page-color='sepia'] .nav-thumb-page {
     background: var(--page-sepia-bg);
   }
@@ -137,6 +146,25 @@
     overflow-y: auto;
     padding: var(--space-4) var(--space-8);
     outline: none;
+  }
+  /* The long outline: rows placed by the virtualizer inside a box as tall as all of them. */
+  .outline-virtual {
+    outline: none;
+  }
+  .outline-virtual:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .outline-virtual-inner {
+    position: relative;
+    flex: none;
+    width: 100%;
+  }
+  .outline-virtual .nav-row {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
   }
   .outline .nav-row {
     font: var(--type-body);

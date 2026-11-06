@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { ChevronDown, ChevronRight, ListTree, SearchX } from 'lucide-react';
 import { Button, Tree, TreeItem, TreeItemContent, type Key } from 'react-aria-components';
 import { t } from '../../strings';
@@ -8,43 +9,50 @@ import { PaneEmpty } from '../../ui/PaneEmpty';
 import { SearchField } from '../../ui/SearchField';
 import { currentOutlineId, filterOutline, flattenOutline, outlinePages, outlineRows, type OutlineRow } from './outline';
 import { useReader } from './readerStore';
+import { VirtualOutline } from './VirtualOutline';
+
+/** More entries than this and the tree is drawn virtualised (react-aria's Tree draws every row it is given). */
+export const VIRTUAL_OUTLINE_THRESHOLD = 200; /* local: entries */
 
 const indent = ({ level }: { level: number }) => ({ '--indent': level - 1 }) as CSSProperties;
 
 type Loaded = { status: 'loading' } | { status: 'ready'; rows: OutlineRow[]; pages: ReadonlyMap<string, number> };
+const LOADING: Loaded = { status: 'loading' };
+type Held = { doc: PDFDocumentProxy | null; state: Loaded };
 
-/** The entries of a document's outline, loaded once for the open document (and the page each one goes to, a little later). */
+/** The entries of a document's outline, loaded once for the open document (and the page each one goes to, a batch at a time). */
 function useOutline(): Loaded {
   const handle = useReader((s) => s.handle);
   const doc = handle?.document() ?? null;
-  const [state, setState] = useState<Loaded>({ status: 'loading' });
+  const [held, setHeld] = useState<Held>({ doc, state: { status: 'loading' } });
   useEffect(() => {
     if (!doc) return;
     let cancelled = false;
-    setState({ status: 'loading' });
+    const put = (state: Loaded) => setHeld({ doc, state });
+    put({ status: 'loading' });
     void doc.getOutline().then(
       (nodes) => {
         if (cancelled) return;
         const rows = outlineRows(nodes);
-        setState({ status: 'ready', rows, pages: new Map() });
-        void outlinePages(doc, rows, () => cancelled).then((pages) => {
-          if (!cancelled) setState({ status: 'ready', rows, pages });
+        put({ status: 'ready', rows, pages: new Map() });
+        void outlinePages(doc, rows, () => cancelled, (pages) => {
+          if (!cancelled) put({ status: 'ready', rows, pages });
         });
       },
       (e: unknown) => {
         // A document that closes under the request is not an outline that failed to load; anything else is "no outline".
         if (cancelled) return;
         console.warn(`[pdf] outline failed: ${(e as Error)?.name ?? 'Error'}`);
-        setState({ status: 'ready', rows: [], pages: new Map() });
+        put({ status: 'ready', rows: [], pages: new Map() });
       },
     );
     return () => {
       cancelled = true;
     };
   }, [doc]);
-  return state;
+  // What was read from another document is not shown for this one, not even for the render before the effect runs.
+  return held.doc === doc ? held.state : LOADING;
 }
-
 const ancestorsOf = (id: string): string[] => id.split('.').slice(0, -1).map((_, i, parts) => parts.slice(0, i + 1).join('.'));
 
 /** The outline (spec 4.7): a searchable tree; a row goes to its destination, the one the reader is in is marked. */
@@ -85,6 +93,7 @@ export function OutlineTree() {
   };
   const byId = new Map(flattenOutline(rows).map((r) => [r.id, r]));
 
+  const virtual = byId.size > VIRTUAL_OUTLINE_THRESHOLD;
   const item = (row: OutlineRow) => (
     <TreeItem key={row.id} id={row.id} textValue={row.title} className="nav-row" style={indent} data-current-page={row.id === current ? 'true' : undefined} data-testid="pdf-outline-row">
       <TreeItemContent>
@@ -114,6 +123,17 @@ export function OutlineTree() {
       {shown.length === 0 ? (
         <PaneEmpty icon={SearchX} title={t.reader.outlineNoMatch} top testId="reader-sidebar-empty" />
       ) : (
+        virtual ? (
+          <VirtualOutline
+            rows={shown}
+            open={expanded as ReadonlySet<string>}
+            locked={searching}
+            current={current}
+            pages={pages}
+            onToggle={(id, on) => setOpened((before) => (on ? new Set([...before, id]) : new Set([...before].filter((k) => k !== id))))}
+            onGo={go}
+          />
+        ) : (
         <Tree
           aria-label={t.reader.outlineTree}
           className="nav-list outline"
@@ -127,6 +147,7 @@ export function OutlineTree() {
         >
           {shown.map(item)}
         </Tree>
+        )
       )}
     </>
   );

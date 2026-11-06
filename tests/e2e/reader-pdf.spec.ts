@@ -9,10 +9,11 @@ const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
 const KOREAN = path.join(FIXTURES, 'korean.pdf');
 const LOCKED = path.join(FIXTURES, 'locked.pdf');
+const LONG_OUTLINE = path.join(FIXTURES, 'long-outline.pdf');
 const VIDEO = path.join(FIXTURES, 'sample-h264-aac.mp4');
 
 test.beforeAll(() => {
-  for (const f of [PAPER, KOREAN, LOCKED]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
+  for (const f of [PAPER, KOREAN, LOCKED, LONG_OUTLINE]) if (!fs.existsSync(f)) throw new Error(`fixture missing: ${f} — run \`pnpm fixtures\``);
 });
 
 const viewer = (page: Page) => page.getByTestId('pdf-viewer');
@@ -1258,6 +1259,180 @@ test('classic scroll bars (Mac critique 11): the thumbnails stay centred under t
     const panel = await page.locator('.inspector-scroll').first().evaluate((el) => ({ gutter: getComputedStyle(el).scrollbarGutter, reserved: (el as HTMLElement).offsetWidth - el.clientWidth }));
     expect(panel.gutter).toBe('stable');
     expect(panel.reserved).toBe(bar); // the room is there before the scroll bar is
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- Sidebar fixes: thumbnails, outline, a page that fails to draw -------------------------------------------------------
+
+type Faults = { thumbnail: Record<number, number>; page: Record<number, number>; ready: boolean };
+const faults = (page: Page) => page.evaluate(() => (window as unknown as { __learnFaults?: Faults }).__learnFaults ?? null);
+async function readyFaults(page: Page) {
+  await expect.poll(async () => (await faults(page))?.ready ?? false).toBe(true);
+}
+const setFaults = (page: Page, kind: 'thumbnail' | 'page', n: number, count: number) =>
+  page.evaluate(([k, num, c]) => void ((window as unknown as { __learnFaults: Faults }).__learnFaults[k as 'thumbnail' | 'page'][num as number] = c as number), [kind, n, count] as const);
+const thumbCell = (page: Page, n: number) => page.locator(`[data-testid="pdf-thumb"][data-page="${n}"]`);
+async function showThumb(page: Page, n: number) {
+  await page.getByTestId('pdf-thumbnails').evaluate((el, num) => {
+    el.scrollTop = (el.scrollHeight / 100) * (num - 1) - 40;
+  }, n);
+  await expect(thumbCell(page, n)).toBeVisible();
+}
+
+test('thumbnails are drawn again when the display changes its pixel ratio', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const canvas = thumbCell(page, 1).locator('canvas');
+    await expect(canvas).toHaveAttribute('data-drawn', /.*/);
+    const before = await page.evaluate(() => ({ dpr: window.devicePixelRatio, w: window.innerWidth, h: window.innerHeight }));
+    const width = () => canvas.evaluate((c: HTMLCanvasElement) => c.width);
+    expect(await width()).toBe(Math.ceil(104 * before.dpr));
+    // One change: Chromium notifies only the queries that existed before an emulated change, and the watcher re-arms after each one.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: before.w, height: before.h, deviceScaleFactor: before.dpr * 2, mobile: false });
+    await expect.poll(width).toBe(Math.ceil(104 * before.dpr * 2));
+    await expect(canvas).toHaveAttribute('data-drawn', /.*/);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a thumbnail that fails once is drawn again when the list moves; one that fails twice shows the failed look', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await readyFaults(page);
+    // Once: the next time the page is in view it is drawn.
+    await setFaults(page, 'thumbnail', 50, 1);
+    await showThumb(page, 50);
+    await expect.poll(async () => (await faults(page))!.thumbnail[50]).toBe(0);
+    await expect(thumbCell(page, 50).locator('canvas')).not.toHaveAttribute('data-drawn', /.*/);
+    await field(page).fill('51');
+    await field(page).press('Enter');
+    await expect(thumbCell(page, 50).locator('canvas')).toHaveAttribute('data-drawn', /.*/);
+    await expect(thumbCell(page, 50)).not.toHaveAttribute('data-failed', /.*/);
+    // Twice: the cell is grey with a warning mark, the number stays, and assistive tech is told.
+    await setFaults(page, 'thumbnail', 70, 2);
+    await showThumb(page, 70);
+    await expect.poll(async () => (await faults(page))!.thumbnail[70]).toBe(1);
+    await field(page).fill('71');
+    await field(page).press('Enter');
+    const cell = thumbCell(page, 70);
+    await expect(cell).toHaveAttribute('data-failed', 'true');
+    await expect(cell).toHaveAttribute('aria-label', '70쪽 — 미리 보기를 만들 수 없습니다');
+    await expect(cell.locator('.nav-thumb-failed svg')).toBeVisible();
+    await expect(cell.locator('.lbl')).toHaveText('70');
+    const mark = await cell.locator('.nav-thumb-failed svg').evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }));
+    expect(mark).toEqual({ w: 16, h: 16 });
+    await expect(page.getByTestId('pdf-thumb').and(page.locator('[data-failed]'))).toHaveCount(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the thumbnail list names the current page to assistive tech and follows it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const list = page.getByTestId('pdf-thumbnails');
+    await expect(list).toHaveAttribute('aria-activedescendant', 'pdf-thumb-1');
+    await field(page).fill('7');
+    await field(page).press('Enter');
+    await expect(list).toHaveAttribute('aria-activedescendant', 'pdf-thumb-7');
+    await expect(page.locator('#pdf-thumb-7')).toHaveAttribute('aria-selected', 'true');
+    await field(page).fill('64');
+    await field(page).press('Enter');
+    await expect(list).toHaveAttribute('aria-activedescendant', 'pdf-thumb-64');
+    // The id always belongs to a row in the page.
+    await expect(page.locator('#pdf-thumb-64')).toHaveAttribute('data-current', 'true');
+  } finally {
+    await app.close();
+  }
+});
+
+test('a page that fails to draw is drawn again once; a second failure shows the notice', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await readyFaults(page);
+    const drawnPage = (n: number) => page.locator(`.pdfViewer .page[data-page-number="${n}"] canvas[role="presentation"]`);
+    await setFaults(page, 'page', 30, 1);
+    await field(page).fill('30');
+    await field(page).press('Enter');
+    await expect.poll(async () => (await faults(page))!.page[30]).toBe(0);
+    await expect(drawnPage(30)).toBeAttached();
+    await expect(page.getByTestId('pdf-page-error')).toHaveCount(0);
+    await setFaults(page, 'page', 60, 2);
+    await field(page).fill('60');
+    await field(page).press('Enter');
+    await expect(page.getByTestId('pdf-page-error')).toHaveCount(1);
+    await expect.poll(async () => (await faults(page))!.page[60]).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a long outline is drawn virtualised, with the tree semantics and keys kept', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const tree = page.getByTestId('pdf-outline');
+    await expect(tree).toHaveAttribute('role', 'tree');
+    await expect(tree).toHaveAttribute('data-virtual', 'true');
+    const rows = page.getByTestId('pdf-outline-row');
+    // Closed to the 60 parts, only the first screenful is in the page.
+    await expect.poll(async () => Number(await tree.getAttribute('data-rows'))).toBeGreaterThanOrEqual(60);
+    expect(Number(await tree.getAttribute('data-rows'))).toBeLessThan(100);
+    // A search opens every hit with its way down: all 300 rows are listed, a few dozen are drawn.
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('Topic');
+    await expect(tree).toHaveAttribute('data-rows', '300');
+    expect(await rows.count()).toBeLessThan(60);
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('');
+    await expect.poll(async () => Number(await tree.getAttribute('data-rows'))).toBeLessThan(300);
+    // Semantics: level, set size, position and state.
+    const second = rows.nth(1);
+    await expect(rows.first()).toHaveAttribute('aria-level', '1');
+    await expect(rows.first()).toHaveAttribute('aria-setsize', '60');
+    await expect(second).toHaveAttribute('aria-posinset', '2');
+    // Keys: → opens, → again enters the first child, ← leaves for the parent, ← closes, End goes to the last row.
+    await tree.focus();
+    await expect(tree).toHaveAttribute('aria-activedescendant', /pdf-outline-/);
+    const cursor = () => tree.getAttribute('aria-activedescendant');
+    await page.keyboard.press('Home');
+    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-0');
+    const first = await cursor();
+    await page.keyboard.press('ArrowDown');
+    expect(await cursor()).not.toBe(first);
+    await page.keyboard.press('ArrowUp');
+    expect(await cursor()).toBe(first);
+    await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('ArrowRight');
+    await expect(rows.first()).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('ArrowRight');
+    expect(await cursor()).toBe('pdf-outline-0.0');
+    await expect(page.locator('#pdf-outline-0\\.0')).toHaveAttribute('aria-level', '2');
+    await page.keyboard.press('ArrowLeft');
+    expect(await cursor()).toBe('pdf-outline-0');
+    await page.keyboard.press('ArrowLeft');
+    await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('End');
+    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-59');
+    await expect(page.locator('#pdf-outline-59')).toBeVisible();
+    // Home returns; the cursor names a row only while that row is in the page.
+    await page.keyboard.press('Home');
+    await expect(tree).toHaveAttribute('aria-activedescendant', 'pdf-outline-0');
+    // ↩ goes to the entry: Part 1 is on page 1; Part 60 is on page 6.
+    await page.keyboard.press('End');
+    await page.keyboard.press('Enter');
+    await expect(viewer(page)).toHaveAttribute('data-page', '6');
+    await expect(page.locator('#pdf-outline-59 .page')).toHaveText('6');
   } finally {
     await app.close();
   }

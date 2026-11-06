@@ -65,6 +65,7 @@ export const reader = {
   thumbnails: '썸네일',
   outline: '목차',
   thumbnailList: '쪽 썸네일',
+  thumbnailFailed: (page: number) => `${page}쪽 — 미리 보기를 만들 수 없습니다`,
   thumbnailOf: (page: number) => `${page}쪽`,
   outlineSearch: '목차에서 찾기',
   outlineSearchLabel: '목차 검색',

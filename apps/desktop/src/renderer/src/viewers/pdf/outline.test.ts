@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { currentOutlineId, filterOutline, outlinePages, outlineRows, type PdfOutlineNode } from './outline';
+import { currentOutlineId, filterOutline, OUTLINE_BATCH, outlinePages, outlineRows, visibleOutline, type PdfOutlineNode } from './outline';
 
 const node = (title: string, items: PdfOutlineNode[] = [], extra: Partial<PdfOutlineNode> = {}): PdfOutlineNode =>
   ({ title, bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: null, url: null, unsafeUrl: undefined, newWindow: undefined, count: undefined, items, ...extra }) as PdfOutlineNode;
@@ -106,8 +106,64 @@ describe('outlinePages', () => {
   });
   it('stops asking once cancelled', async () => {
     const d = doc();
-    let calls = 0;
-    await outlinePages(d, rows, () => ++calls > 1);
-    expect(vi.mocked(d.getDestination)).toHaveBeenCalledTimes(1);
+    await outlinePages(d, rows, () => true);
+    expect(vi.mocked(d.getDestination)).not.toHaveBeenCalled();
+  });
+
+  describe('in batches', () => {
+    const many = outlineRows(Array.from({ length: 70 }, (_, i) => node(`E${i}`, [], { dest: [i, { name: 'Fit' }] })));
+
+    it('resolves a batch at a time, in order, and reports the pages found so far after each', async () => {
+      const seen: number[][] = [];
+      const pages = await outlinePages(doc(), many, () => false, (so_far) => seen.push([...so_far.values()]));
+      expect(OUTLINE_BATCH).toBe(32);
+      expect(seen.map((s) => s.length)).toEqual([32, 64, 70]);
+      expect([...pages.keys()]).toEqual(many.map((r) => r.id));
+      expect([...pages.values()]).toEqual(many.map((_, i) => i + 1));
+    });
+
+    it('asks a whole batch at once, not one entry after another', async () => {
+      let open = 0;
+      let most = 0;
+      const d = doc({
+        getPageIndex: vi.fn(async () => {
+          open++;
+          most = Math.max(most, open);
+          await Promise.resolve();
+          open--;
+          return 0;
+        }),
+      });
+      await outlinePages(d, outlineRows(Array.from({ length: 40 }, (_, i) => node(`E${i}`, [], { dest: [{ num: i, gen: 0 }] }))), () => false);
+      expect(most).toBe(32);
+    });
+
+    it('stops at the batch boundary when cancelled and reports nothing more', async () => {
+      const d = doc();
+      let stop = false;
+      const batches: number[] = [];
+      await outlinePages(d, many, () => stop, (so_far) => {
+        batches.push(so_far.size);
+        stop = true;
+      });
+      expect(batches).toEqual([32]);
+    });
+  });
+});
+
+describe('visibleOutline', () => {
+  const rows = outlineRows(TREE);
+
+  it('lists the rows of open entries only, with their level, set size and place in it', () => {
+    const flat = visibleOutline(rows, new Set(['1']));
+    expect(flat.map((f) => f.row.id)).toEqual(['0', '1', '1.0', '1.1', '1.2', '2']);
+    expect(flat[3]).toMatchObject({ level: 2, setSize: 3, posInSet: 2, expanded: false, parent: '1' });
+    expect(flat[1]).toMatchObject({ level: 1, setSize: 3, posInSet: 2, expanded: true, parent: null });
+    expect(flat[0]).toMatchObject({ expanded: false });
+    expect(flat[5]).toMatchObject({ expanded: undefined });
+  });
+
+  it('shows nothing under a closed entry', () => {
+    expect(visibleOutline(rows, new Set()).map((f) => f.row.id)).toEqual(['0', '1', '2']);
   });
 });

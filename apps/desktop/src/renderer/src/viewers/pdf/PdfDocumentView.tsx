@@ -243,7 +243,15 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           jumped = null;
         };
         eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
-          if (linkTarget === e.pageNumber) linkTarget = null;
+          if (linkTarget === e.pageNumber) {
+            linkTarget = null;
+            // A scroll of the reader's own since the jump (wheel, scroll bar, keys) leaves the link as a move of ours does.
+            const landed = jumped?.pageNumber === e.pageNumber ? jumped : null;
+            if (landed && (Math.abs(scrolled.top - landed.scrollTop) > 2 || Math.abs(scrolled.left - landed.scrollLeft) > 2)) {
+              abandoned.add(e.pageNumber);
+              jumped = null;
+            }
+          }
           if (!abandoned.delete(e.pageNumber) || !shownRef.current) return;
           container.scrollTop = scrolled.top;
           container.scrollLeft = scrolled.left;

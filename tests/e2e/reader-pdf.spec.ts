@@ -1430,6 +1430,10 @@ test('a thumbnail that fails once is drawn again when the list moves; one that f
     await expect(page.getByTestId('pdf-thumb').and(page.locator('[data-failed]'))).toHaveCount(1);
 
     // The groove is opaque to the page colour: the same grey in every page colour, the mark at 3:1 or more, in both themes.
+    // The 3:1 is the mark's colour (its computed stroke colour, drawn on a canvas for an sRGB triple) against the groove's
+    // pixel: the lucide stroke is 1 px wide at 16 px and its lines sit on pixel centres, so a screen at a device pixel ratio of 1
+    // may paint no pixel fully covered (the Mac runner read 2.41 for the token's 5.4) and the best pixel is no measure of the
+    // colour. The mark is also asserted drawn: some pixel of its box is told from the groove (at least 1.5:1).
     const luminance = (c: number[]) => {
       const f = (v: number) => (v / 255 <= 0.03928 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
       return 0.2126 * f(c[0]!) + 0.7152 * f(c[1]!) + 0.0722 * f(c[2]!);
@@ -1450,9 +1454,18 @@ test('a thumbnail that fails once is drawn again when the list moves; one that f
         const px = await shotPixels(page, { x: Math.floor(mark!.x), y: Math.floor(mark!.y), width: 16, height: 16 });
         let best = 1;
         for (let i = 0; i < px.data.length; i += 4) best = Math.max(best, ratio([px.data[i]!, px.data[i + 1]!, px.data[i + 2]!], ground));
+        const stroke = await cell.locator('.nav-thumb-failed svg').evaluate((el) => {
+          const c = new OffscreenCanvas(1, 1).getContext('2d', { willReadFrequently: true })!;
+          c.fillStyle = getComputedStyle(el).stroke === 'none' ? getComputedStyle(el).color : getComputedStyle(el).stroke;
+          c.fillRect(0, 0, 1, 1);
+          const d = c.getImageData(0, 0, 1, 1).data;
+          return [d[0]!, d[1]!, d[2]!];
+        });
+        const designed = ratio(stroke, ground);
         grounds.add(ground.join(','));
-        numbers.push(`${theme}/${color}: ground ${ground.join(',')} mark ${best.toFixed(2)}`);
-        expect(best, `${theme} ${color}`).toBeGreaterThanOrEqual(3);
+        numbers.push(`${theme}/${color}: ground ${ground.join(',')} stroke ${stroke.join(',')} colour ${designed.toFixed(2)} best pixel ${best.toFixed(2)}`);
+        expect(designed, `${theme} ${color}: the mark's colour against the groove`).toBeGreaterThanOrEqual(3);
+        expect(best, `${theme} ${color}: the mark is drawn`).toBeGreaterThanOrEqual(1.5);
       }
       expect(grounds.size, `one grey in every page colour (${theme})`).toBe(1);
     }

@@ -191,6 +191,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (next.scrollTop !== container.scrollTop) container.scrollTop = next.scrollTop;
           if (next.scrollLeft !== container.scrollLeft) container.scrollLeft = next.scrollLeft;
           jumped = { pageNumber: args.pageNumber, scrollTop: container.scrollTop, scrollLeft: container.scrollLeft };
+          // The landing is where the stage is now, as place() leaves it: a text layer that arrives before this scroll is reported is no move away.
+          if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
         };
         /** A link that names a point of the page (an XYZ with a top or a left) is kept at that point. */
         const pointOf = (dest: unknown): { top: boolean; left: boolean } => {

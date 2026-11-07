@@ -1579,7 +1579,17 @@ test('a long outline goes through the virtualizer with the same tree: rows keep 
     await page.keyboard.press('End');
     await page.locator('[data-testid="pdf-outline-row"]:focus').click();
     await expect(viewer(page)).toHaveAttribute('data-page', '6');
-    await expect(page.locator('[data-testid="pdf-outline-row"] [aria-current="location"]')).toHaveCount(1);
+    // The reader's place is the last entry that starts on or before page 6: it can be a part's entry that opens below the
+    // clicked last row, and the list is virtualised, so the end of the list is brought into the page before the mark is looked for.
+    await expect
+      .poll(async () => {
+        await tree.evaluate((el) => {
+          const scroller = [el, ...el.querySelectorAll<HTMLElement>('*')].find((n) => n.scrollHeight > n.clientHeight + 1 && getComputedStyle(n).overflowY !== 'visible');
+          if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        });
+        return page.locator('[data-testid="pdf-outline-row"] [aria-current="location"]').count();
+      })
+      .toBe(1);
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
   } finally {

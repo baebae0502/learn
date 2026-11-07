@@ -54,7 +54,14 @@ test('a link to a point keeps the point', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
-    // The link on the "See figure 2 on page 40." line: the anchor whose box holds the middle of that text.
+    // The link on the "See figure 2 on page 40." line: the anchor whose box holds the middle of that text (once page 1's text layer is drawn).
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          [...document.querySelectorAll('.page[data-page-number="1"] .textLayer span')].some((e) => e.textContent?.includes('See figure 2 on page 40.')),
+        ),
+      )
+      .toBe(true);
     const pointHandle = await page.evaluateHandle(() => {
       const first = document.querySelector('.page[data-page-number="1"]')!;
       const span = [...first.querySelectorAll('.textLayer span')].find((e) => e.textContent?.includes('See figure 2 on page 40.'))!;

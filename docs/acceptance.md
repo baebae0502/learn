@@ -92,7 +92,7 @@
 - Mac `all` head: (Mac all 실행 뒤 채움)
 - 중간 Mac `e2e`: run 42161659263 (02d9a61) — 기능 E2E 464 통과 · 3 예상 밖 실패 · 39 건너뜀(통과 464에 `test.fail` 하나가 들어 있다), 30분. 실패는 모두 시험 쪽(러너 기하와 `Control+a`) — 원인과 고침은 [`mac-verification.md`](mac-verification.md) "M7b". 뒤로/앞으로·보기 모드·읽기 절·목차 고침 이후 코드는 이 실행에 없다.
 
-1. **닫힘(Linux)** — Linux CI · Mac `all` · Mac 디자인 비평: (Mac all 실행 뒤 채움). Linux 로컬 마지막 전체: 단위 2517개, 전체 E2E 535 통과 · 4 건너뜀, 1024×768 `history`+`keyboard` 통과. Mac 비평(opus, 라이트·다크 데모 프레임) blocker/major 0건은 (Mac all 실행 뒤 채움).
+1. **대기** — Linux CI · Mac `all` · Mac 디자인 비평: (Mac all 실행 뒤 채움). Linux 로컬 마지막 전체: 단위·전체 E2E (Mac all 실행 뒤 채움), 1024×768 `history`+`keyboard` 통과. Mac 비평(opus, 라이트·다크 데모 프레임) blocker/major 0건은 (Mac all 실행 뒤 채움).
 2. **닫힘(Linux)** — 세션 복원: 정상 종료와 SIGKILL 뒤 다시 실행하면 탭·순서·활성 탭이 돌아오고 활성 탭은 저장된 자리에 있다(`tabs.spec.ts` "a reader open at quit reopens on launch, at its place" 종료 방식마다, "the order of the tabs and the shown one come back after a restart", 휴지통·영구 삭제 뒤 복원 둘). Mac: (Mac all 실행 뒤 채움).
 3. **닫힘(Linux)** — 뒤로/앞으로: 링크·목차·썸네일 클릭·쪽 필드 이동이 기록되고 앞으로가 마지막 자리로 정확히 돌아온다(`history.spec.ts` "a link, then ⌘[ and ⌘]…", "forward returns to where you last were, not to the link target", "a link to a point keeps the point", "the outline, a thumbnail and the page field are jumps; the page turns and scrolling are not", "a new jump after going back drops what was ahead", 마우스 옆 단추는 합성 사건으로, "each tab has its own history…"). 늦게 그려지는 글 층이 자리를 끌어가던 경합 셋도 같은 파일이 지킨다(고침 80b795b·5cfee65; 같은 프레임의 잔여는 `next-session.md` "PR 남은 것", R29). Mac: (Mac all 실행 뒤 채움).
 4. **닫힘(Linux)** — 가린 탭: 창 크기를 바꿔도 가린 탭이 다시 맞춤을 끝없이 하지 않는다(M7a N-1, `tabs.spec.ts` "a hidden tab does not refit while the window changes size"). 가린 영상은 멈춘다("a hidden video stops"). Mac: (Mac all 실행 뒤 채움).

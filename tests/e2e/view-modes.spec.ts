@@ -39,6 +39,11 @@ const box = (page: Page, n: number) =>
     return { top: d.offsetTop + d.clientTop, left: d.offsetLeft + d.clientLeft, width: d.clientWidth, height: d.clientHeight };
   });
 const scrollLeft = (page: Page) => scroller(page).evaluate((el) => el.scrollLeft);
+/**
+ * React Aria moves the focus into a menu a moment after it opens (frames later on a slow runner): a key pressed before that
+ * goes to the trigger, and an Escape then leaves the menu open (CI 42424057718). Keys wait for the focus to be in a menu.
+ */
+const focusInMenu = (page: Page) => expect(page.locator('[role="menu"]:focus-within').first()).toBeVisible();
 
 test('horizontal: the pages stand in a row, → turns a page, the spread submenu is off and the left room is 24 for the first page and 12 for the others', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
@@ -59,6 +64,7 @@ test('horizontal: the pages stand in a row, → turns a page, the spread submenu
     // The spread rows are off while the scroll is horizontal.
     await page.getByTestId('pdf-view-menu').click();
     await expect(page.getByTestId('pdf-spread-menu')).toHaveAttribute('data-disabled', 'true');
+    await focusInMenu(page);
     await page.keyboard.press('Escape');
     await expect.poll(() => menuItemEnabled(app, 'reader.spreadOdd')).toBe(false);
     await expect.poll(() => menuItemEnabled(app, 'reader.scrollVertical')).toBe(true);
@@ -344,6 +350,7 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
     }
     // The keys: the row is entered with the arrow, → opens its submenu, ← closes only that, esc closes the menu.
     await page.getByTestId('pdf-view-menu').click();
+    await focusInMenu(page); // the menu's own focus has landed: it cannot take the row back after the next line
     await page.getByRole('menuitemradio', { name: '앱 테마 따르기' }).focus();
     for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowDown');
     await expect(page.getByTestId('pdf-scroll-menu')).toBeFocused();
@@ -358,6 +365,7 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
     await expect(viewer(page)).toHaveAttribute('data-scroll', 'horizontal');
     await page.getByTestId('pdf-view-menu').click();
     await page.getByTestId('pdf-scroll-menu').click();
+    await focusInMenu(page);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('pdf-scroll-menu')).toHaveCount(0);

@@ -487,8 +487,9 @@ export function MainWindow(_props: { info: AppInfo }) {
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
-      // The library's tab has nothing to close: ⌘W closes the window, which asks an open edit form first (main's close handler).
-      if (id === 'library') window.close();
+      // The library's tab has nothing to close: ⌘W closes the window. The page's window.close() does not pass main's close
+      // handler (the edit flush), so the open edit form is asked here: invalid changes keep the window, valid ones are saved.
+      if (id === 'library') afterEditing(() => window.close());
       // The shown tab leaves with its tab: an open 정보 편집 is asked first (a tab behind it leaves nothing).
       else if (id === shell.tabs.active) afterEditing(() => useShell.getState().closeTab(id));
       else shell.closeTab(id);

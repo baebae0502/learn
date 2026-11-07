@@ -50,6 +50,43 @@ test('a link, then ⌘[ and ⌘]: back to the same place of page 1, forward to p
   }
 });
 
+test('a link to a point keeps the point', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const pointLink = page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a').nth(4);
+    await pointLink.scrollIntoViewIfNeeded();
+    const start = await scrollTop(page);
+    const startHeight = await pageHeight(page);
+    await pointLink.click();
+    await expect(field(page)).toHaveValue('40');
+    await expect(back(page)).toBeEnabled();
+    // The point (x 56, y 600 of an A4 page of 841.89 pt) is the stage's top edge: no room is added before it, as it is before a whole page.
+    const landing = async () =>
+      page.getByTestId('pdf-scroll').evaluate((el) => {
+        const p = el.querySelector<HTMLElement>('.page[data-page-number="40"]')!;
+        return { top: el.scrollTop - (p.offsetTop + p.clientTop), left: el.scrollLeft, height: p.clientHeight };
+      });
+    await expect
+      .poll(async () => {
+        const at = await landing();
+        return Math.abs(at.top - ((841.89 - 600) / 841.89) * at.height);
+      })
+      .toBeLessThanOrEqual(2);
+    const at = await landing();
+    expect(at.top).toBeGreaterThan(at.height * 0.2); // not the page's top, nor 12 px above it
+    await runMenuCommand(app, 'nav.historyBack');
+    await expect(field(page)).toHaveValue('1');
+    expect(Math.abs((await scrollTop(page)) - start)).toBeLessThanOrEqual(startHeight * 0.02);
+    await runMenuAccelerator(app, 'nav.historyForward');
+    await expect(field(page)).toHaveValue('40');
+    const again = await landing();
+    expect(Math.abs(again.top - at.top)).toBeLessThanOrEqual(startHeight * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
 test('forward returns to where you last were, not to the link target', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

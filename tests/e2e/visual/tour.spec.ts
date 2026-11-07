@@ -2052,3 +2052,87 @@ test('reader: a long outline with every part open, and its keyboard cursor', asy
     await s.app.close();
   }
 });
+
+// The tab strip's states (spec 3.2): the sidebar folded with the strip, twelve readers with the strip scrolled between its edge fades,
+// the library's head with a search typed beside a strip of readers, and a tab hovered, a tab with the keyboard's ring and a hovered close mark.
+test('tabs: the strip with the sidebar folded, twelve readers scrolled, the library head with a search, and the tab states', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const shootLibrary = (name: string, opts: { keepPointer?: boolean } = {}) =>
+    shoot(page, name, { mask: [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(page)], ...opts });
+  const tabOf = (title: string) => page.locator(`[data-testid="tab"]:has-text("${title}")`);
+  const field = page.getByTestId('search-field').locator('input');
+  try {
+    const distinct = distinctPdfs(testInfo.outputPath('more'), 11);
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), ...distinct]);
+    const titles = ['paper-100', ...distinct.map((f) => path.basename(f, '.pdf'))];
+    await selectRows(page, titles.slice(0, 3));
+    await runMenuCommand(s.app, 'item.openInBackground');
+    await expect(page.getByTestId('tab')).toHaveCount(4);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // The library's head with a search typed, and the strip beside it.
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+      await runMenuCommand(s.app, 'library.find');
+      await expect(field).toBeFocused();
+      await field.fill('distinct');
+      await expect(field).toHaveValue('distinct');
+      await shootLibrary(`library-tabs-${theme}`);
+      await field.fill('');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      // A reader with the sidebar folded: the strip starts after the fold button.
+      await tabOf('paper-100').click();
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      await runMenuCommand(s.app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`tabs-sidebar-hidden-${theme}`);
+      await runMenuCommand(s.app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+    }
+    // Hover, the keyboard's ring and the close mark's hover, side by side in the light theme (one pointer: the first hover is forced).
+    await setTheme(page, 'light');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await page.locator('[data-testid="tab"][data-item-id="library"]').focus();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('ArrowRight'); // the second reader: the ring
+      await expect(page.locator('[data-testid="tab"]:focus-visible')).toHaveCount(1);
+      await cdp.send('DOM.enable');
+      await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.tabs-scroll > .tab-item:nth-child(1)' });
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+      const close = (await page.locator('.tabs-scroll > .tab-item:nth-child(3) [data-testid="tab-close"]').boundingBox())!;
+      await page.mouse.move(close.x + close.width / 2, close.y + close.height / 2);
+      await expect(page.locator('.tabs-scroll > .tab-item:nth-child(3) [data-testid="tab-close"]:hover')).toHaveCount(1);
+      await shootLibrary('tab-states-light', { keepPointer: true });
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
+    // Twelve readers: the strip scrolls, with a fade at the edge that has more.
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await selectRows(page, titles.slice(3));
+    await runMenuCommand(s.app, 'item.openInBackground');
+    await expect(page.getByTestId('tab')).toHaveCount(13);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await tabOf(titles[5]!).click();
+      await expect(page.getByTestId('pdf-viewer')).toBeVisible();
+      await page.getByTestId('tab-scroll').evaluate((el) => {
+        el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+      });
+      await expect(page.getByTestId('tab-scroll')).toHaveAttribute('data-fade-start', '1');
+      await expect(page.getByTestId('tab-scroll')).toHaveAttribute('data-fade-end', '1');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`tabs-overflow-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});

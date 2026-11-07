@@ -91,7 +91,7 @@ test('a link inside the document goes to its page', async ({}, testInfo) => {
   try {
     await openPaper(page);
     const links = page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a');
-    await expect(links).toHaveCount(4);
+    await expect(links).toHaveCount(5);
     await links.nth(0).click();
     await expect(viewer(page)).toHaveAttribute('data-page', '50');
   } finally {
@@ -105,7 +105,7 @@ test('outside links go to the system through the window-open guard, mailto inclu
     await stubOpenExternal(app);
     await openPaper(page);
     const links = page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a');
-    await expect(links).toHaveCount(4);
+    await expect(links).toHaveCount(5);
     await links.nth(2).click();
     await expect.poll(() => openExternalCalls(app)).toEqual(['https://example.org/learn']);
     await links.nth(3).click();

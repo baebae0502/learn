@@ -157,6 +157,7 @@ async function makePaper(file) {
   link(157, 'See page 100.', { Dest: [pages[99].ref, PDFName.of('XYZ'), null, null, null] });
   link(144, 'https://example.org/learn', { A: { Type: 'Action', S: 'URI', URI: PDFString.of('https://example.org/learn') } });
   link(131, 'mailto:learn@example.org', { A: { Type: 'Action', S: 'URI', URI: PDFString.of('mailto:learn@example.org') } });
+  link(118, 'See figure 2 on page 40.', { Dest: [pages[39].ref, PDFName.of('XYZ'), 56, 600, null] });
   writeOutline(doc, outlineNodes());
   fs.writeFileSync(file, await doc.save());
 }

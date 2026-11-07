@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { expectNoSeriousA11y } from './a11y';
 import { beginDrag, cancelDrag, hover } from './dnd-helpers';
 import {
-  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, mainWindow,
+  FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
   selectInPage,
@@ -1191,6 +1191,152 @@ test('axe: the reader with the selection pop-up open, and the settings window at
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     await settings.getByTestId('settings-translation-enabled').scrollIntoViewIfNeeded();
     await expectNoSeriousA11y(settings, 'the settings window at the translation group');
+  } finally {
+    await app.close();
+  }
+});
+
+/** The ids of every tab in the strip, in order ('library' first), and the shown one. */
+const tabOrder = (page: Page) => page.locator('[data-testid="tab"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-item-id')));
+const shownTab = (page: Page) => page.locator('[data-testid="tab"][aria-selected="true"]').getAttribute('data-item-id');
+
+test('axe at every M7b state: the reader with a tab strip of three, 보기 ▾ open and its 스크롤 submenu, the library item panel\'s 읽기 section', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), ...distinctPdfs(testInfo.outputPath('more'), 2)]);
+    const paper = items.find((i) => i.title === 'paper-100')!;
+    await page.evaluate(async (a) => {
+      const r = await window.learn.reader.savePosition({ itemId: a.id, revisionId: a.revisionId, locator: { kind: 'pdf', pageIndex: 41, pages: 100 }, progress: 0.62 });
+      if (!r.ok) throw new Error(r.code);
+    }, { id: paper.id, revisionId: paper.revisionId });
+    await selectRows(page, items.map((i) => i.title));
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect(page.getByTestId('tab')).toHaveCount(4);
+    await expectNoSeriousA11y(page, 'm7b-library with a strip of three readers');
+
+    await readerTab(page, paper.id).click();
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await expectNoSeriousA11y(page, 'm7b-reader with a tab strip of three');
+
+    await page.getByTestId('pdf-view-menu').click();
+    await expect(page.getByTestId('pdf-scroll-menu')).toBeVisible();
+    await expectNoSeriousA11y(page, 'm7b-reader, 보기 ▾ open');
+    await page.getByTestId('pdf-scroll-menu').click();
+    await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toBeVisible();
+    await expectNoSeriousA11y(page, 'm7b-reader, 보기 ▾ with 스크롤 open');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menuitemradio', { name: '가로로 이어서' })).toHaveCount(0);
+
+    await libraryTab(page).click();
+    await rowByTitle(page, 'paper-100').click();
+    await expect(page.getByTestId('reading-section')).toBeVisible();
+    await expect(page.getByTestId('reading-line')).toContainText('42 / 100쪽에서');
+    await expectNoSeriousA11y(page, 'm7b-library item panel, 읽기 section');
+  } finally {
+    await app.close();
+  }
+});
+
+test('M7b keyboard only: ↩ opens → ⌘1 → ⌘↩ opens behind → Tab into the strip → ←/→ → ↩ → ⌥⇧→ → page field ↩ → ⌘[ → ⌘] → 보기 ▾ 펼침 › 홀수 → esc, with axe at every new stop', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const viewer = page.getByTestId('pdf-viewer');
+  const field = page.getByTestId('pdf-page-field');
+  /** ↓ from the first row until the cursor row is `title` (the table's order is its own). */
+  const cursorOn = async (title: string) => {
+    await page.keyboard.press('Home');
+    for (let i = 0; i < 4 && (await rowByTitle(page, title).getAttribute('aria-selected')) !== 'true'; i++) await page.keyboard.press('ArrowDown');
+    await expect(rowByTitle(page, title)).toHaveAttribute('aria-selected', 'true');
+  };
+  /** Shift+Tab, at most `max` times, until the focus is on a tab of the strip. */
+  const intoStrip = async (max = 14) => {
+    for (let i = 0; i < max && (await focusedTestId(page)) !== 'tab'; i++) await page.keyboard.press('Shift+Tab');
+    expect(await focusedTestId(page)).toBe('tab');
+  };
+  try {
+    const items = await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), ...distinctPdfs(testInfo.outputPath('more'), 1)]);
+    const paper = items.find((i) => i.title === 'paper-100')!;
+    const other = items.find((i) => i.title === 'distinct-01')!;
+
+    // 1. The table's cursor on paper-100, ↩: it opens and is shown.
+    await f6To(page, 'content');
+    await cursorOn('paper-100');
+    await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-pages', '100');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    expect(await shownTab(page)).toBe(paper.id);
+    await expectNoSeriousA11y(page, 'm7b-journey: the first reader opened with ↩');
+
+    // 2. ⌘1 (the library): back, the table has its rows.
+    await runMenuAccelerator(app, 'nav.back');
+    await expect.poll(() => shownTab(page)).toBe('library');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await f6To(page, 'content');
+
+    // 3. ⌘↩ on another row opens it behind: the library stays shown, the strip has both readers.
+    await cursorOn('distinct-01');
+    await runMenuAccelerator(app, 'item.openInBackground');
+    await expect.poll(() => tabOrder(page)).toEqual(['library', paper.id, other.id]);
+    expect(await shownTab(page)).toBe('library');
+    await expectNoSeriousA11y(page, 'm7b-journey: a second reader behind the library');
+
+    // 4. Shift+Tab into the strip: the shown tab (the library's) has the focus; → moves it to paper-100 without choosing it; ← and → go round.
+    await intoStrip();
+    await expect(libraryTab(page)).toBeFocused();
+    await page.keyboard.press('ArrowRight');
+    await expect(readerTab(page, paper.id)).toBeFocused();
+    expect(await shownTab(page)).toBe('library');
+    await page.keyboard.press('ArrowRight');
+    await expect(readerTab(page, other.id)).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(readerTab(page, paper.id)).toBeFocused();
+    await expectNoSeriousA11y(page, 'm7b-journey: the strip with a tab focused');
+
+    // 5. ↩ chooses it; ⌥⇧→ (the strip's key) moves it behind distinct-01 and it keeps the focus.
+    await page.keyboard.press('Enter');
+    await expect.poll(() => shownTab(page)).toBe(paper.id);
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await page.keyboard.press('Alt+Shift+ArrowRight');
+    await expect.poll(() => tabOrder(page)).toEqual(['library', other.id, paper.id]);
+    await expect(readerTab(page, paper.id)).toBeFocused();
+    expect(await shownTab(page)).toBe(paper.id);
+    await expectNoSeriousA11y(page, 'm7b-journey: the tab moved');
+
+    // 6. The page field: 7 ↩ is a jump (something to go back to); ⌘[ returns to page 1, ⌘] to 7.
+    await tabTo(page, 'pdf-page-field', 12);
+    await page.keyboard.type('7');
+    await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '7');
+    await expect(field).toHaveValue('7');
+    await runMenuAccelerator(app, 'nav.historyBack');
+    await expect(field).toHaveValue('1');
+    await expect(page.getByTestId('pdf-history-back')).toBeDisabled();
+    await runMenuAccelerator(app, 'nav.historyForward');
+    await expect(field).toHaveValue('7');
+    await expectNoSeriousA11y(page, 'm7b-journey: the reader after a jump, back and forward');
+
+    // 7. 보기 ▾ by keyboard: ↩ opens it, ↓ to 펼침, → opens it, ↓ to 홀수 쪽부터, ↩ chooses; esc leaves nothing open.
+    await tabTo(page, 'pdf-view-menu', 12);
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('pdf-spread-menu')).toBeVisible();
+    for (let i = 0; i < 6 && (await focusedTestId(page)) !== 'pdf-spread-menu'; i++) await page.keyboard.press('ArrowDown');
+    expect(await focusedTestId(page)).toBe('pdf-spread-menu');
+    await page.keyboard.press('ArrowRight');
+    const odd = page.getByRole('menuitemradio', { name: '홀수 쪽부터' });
+    await expect(odd).toBeVisible();
+    await expectNoSeriousA11y(page, 'm7b-journey: 보기 ▾ with 펼침 open');
+    for (let i = 0; i < 4 && !(await odd.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('ArrowDown');
+    await expect(odd).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(viewer).toHaveAttribute('data-spread', 'odd');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('pdf-spread-menu')).toHaveCount(0);
+    await expect(odd).toHaveCount(0);
+    await expect(viewer).toHaveAttribute('data-spread', 'odd'); // esc does not undo the choice
+    await expectNoSeriousA11y(page, 'm7b-journey: odd spreads, the menu closed');
   } finally {
     await app.close();
   }

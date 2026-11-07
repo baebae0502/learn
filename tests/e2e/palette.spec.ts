@@ -672,11 +672,13 @@ test('⌘↩ on an item row opens it in a tab behind; the library stays shown, �
   const { app, page } = await launch(...dirs(testInfo));
   try {
     const [item] = await importPaths(page, [PDF]);
+    await expect(page.getByTestId('tab')).toHaveCount(0); // no strip while no reader is open
     await runMenuCommand(app, 'app.palette');
     await page.getByTestId('palette-input').fill('sample');
     await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-focused', 'true');
     await page.keyboard.press(IS_MAC ? 'Meta+Enter' : 'Control+Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('tab')).toHaveCount(2); // the strip appears: the library's tab and the one reader behind it
     await expect(readerTab(page, item!.id)).toHaveCount(1);
     await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', 'library');
     await expect(page.getByTestId('library-table')).toBeVisible();
@@ -696,11 +698,13 @@ test('⌘↩ on an item row in the reader opens it in a tab behind and the reade
     const [a, b] = await importPaths(page, [PDF, path.join(FIXTURES, 'paper-100.pdf')]);
     await openItem(page, 'sample');
     await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+    await expect(page.getByTestId('tab')).toHaveCount(2); // the library tab and the sample's
     await runMenuCommand(app, 'app.palette');
     await page.getByTestId('palette-input').fill('paper-100');
     await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-focused', 'true');
     await page.keyboard.press(IS_MAC ? 'Meta+Enter' : 'Control+Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('tab')).toHaveCount(3);
     await expect(readerTab(page, b!.id)).toHaveCount(1);
     await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', a!.id);
   } finally {

@@ -219,17 +219,18 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
     await s.page.getByTestId('pdf-next').click();
     await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
-    // Page 3 is drawn: pdf.js sizes a canvas before it paints, so the pixels are read (a blank canvas has none that are opaque). A count of drawn pages cannot say so, all three can be drawn at once.
+    // Page 3 is drawn: pdf.js sizes a canvas before it paints, so the pixels are read. Ink is counted: a draw that fails after pdf.js got its opaque context still leaves a white canvas, which is all opaque. A count of drawn pages cannot say so, all three can be drawn at once.
     await expect
       .poll(() =>
         pdfCanvas(s.page, 3).evaluate((c: HTMLCanvasElement) => {
+          if (c.width === 0 || c.height === 0) return 0; // not sized yet
           const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
-          let opaque = 0;
-          for (let i = 3; i < d.length; i += 4) if (d[i] === 255) opaque++;
-          return opaque / (c.width * c.height);
+          let dark = 0;
+          for (let i = 0; i < d.length; i += 4) if (d[i]! < 100 && d[i + 1]! < 100 && d[i + 2]! < 100) dark++;
+          return dark / (c.width * c.height);
         }),
       )
-      .toBeGreaterThan(0.9);
+      .toBeGreaterThan(0.001);
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
   } finally {
     await s.app.close();

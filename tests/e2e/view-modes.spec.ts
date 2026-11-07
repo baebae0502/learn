@@ -63,8 +63,12 @@ test('horizontal: the pages stand in a row, → turns a page, the spread submenu
     await expect.poll(() => menuItemEnabled(app, 'reader.spreadOdd')).toBe(false);
     await expect.poll(() => menuItemEnabled(app, 'reader.scrollVertical')).toBe(true);
 
-    // The side arrows still turn a page.
+    // The side arrows still turn a page. React Aria gives the focus back to the trigger a frame after the menu has gone (on a
+    // slow runner, long after Escape): wait for that to settle before the stage takes the focus, and make sure it holds.
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    await expect(page.getByTestId('pdf-view-menu')).toBeFocused();
     await page.getByTestId('pdf-stage').focus();
+    await expect(page.getByTestId('pdf-stage')).toBeFocused();
     await page.keyboard.press('ArrowRight');
     await expect(field(page)).toHaveValue('2');
     await page.keyboard.press('ArrowLeft');
@@ -322,14 +326,21 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
       await page.getByTestId('pdf-view-menu').click();
       await page.getByTestId('pdf-scroll-menu').click();
       await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      // The popovers slide in (pop-in translates them by a few px): read the geometry once every animation has ended, not mid-way.
+      await expect.poll(() => page.evaluate(async () => {
+        const running = document.getAnimations().filter((a) => a.effect instanceof KeyframeEffect && (a.effect.target as Element | null)?.closest('.menu-popover'));
+        await Promise.all(running.map((a) => a.finished.catch(() => undefined)));
+        return document.querySelectorAll('.menu-popover[data-entering], .menu-popover[data-exiting]').length;
+      })).toBe(0);
       const g = await geometry();
       expect(g.right, panel ? 'opens to the right' : 'flips to the left').toBe(panel);
-      // Level with its row: within 2 px (text metrics put the rows a fraction of a pixel apart on some runners, 1.18 on CI).
-      expect(g.top).toBeLessThanOrEqual(2);
+      // Level with its row: within 1 px.
+      expect(g.top).toBeLessThanOrEqual(1);
       expect(g.overlap).toBeGreaterThanOrEqual(0);
       expect(g.overlap).toBeLessThanOrEqual(2);
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0); // gone (its exit animation ended) before the next menu opens
     }
     // The keys: the row is entered with the arrow, → opens its submenu, ← closes only that, esc closes the menu.
     await page.getByTestId('pdf-view-menu').click();

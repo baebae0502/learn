@@ -1247,7 +1247,11 @@ test('M7b keyboard only: ↩ opens → ⌘1 → ⌘↩ opens behind → Tab into
   /** ↓ from the first row until the cursor row is `title` (the table's order is its own). */
   const cursorOn = async (title: string) => {
     await page.keyboard.press('Home');
-    for (let i = 0; i < 4 && (await rowByTitle(page, title).getAttribute('aria-selected')) !== 'true'; i++) await page.keyboard.press('ArrowDown');
+    for (let i = 0; i < 4; i++) {
+      // Each key is waited for: the cursor row is settled before it is read.
+      if (await expect.poll(() => rowByTitle(page, title).getAttribute('aria-selected'), { timeout: 1_000 }).toBe('true').then(() => true, () => false)) break;
+      await page.keyboard.press('ArrowDown');
+    }
     await expect(rowByTitle(page, title)).toHaveAttribute('aria-selected', 'true');
   };
   /** Shift+Tab, at most `max` times, until the focus is on a tab of the strip. */

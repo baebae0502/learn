@@ -54,7 +54,18 @@ test('a link to a point keeps the point', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
-    const pointLink = page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a').nth(4);
+    // The link on the "See figure 2 on page 40." line: the anchor whose box holds the middle of that text.
+    const pointHandle = await page.evaluateHandle(() => {
+      const first = document.querySelector('.page[data-page-number="1"]')!;
+      const span = [...first.querySelectorAll('.textLayer span')].find((e) => e.textContent?.includes('See figure 2 on page 40.'))!;
+      const r = span.getBoundingClientRect();
+      const [x, y] = [r.x + r.width / 2, r.y + r.height / 2];
+      return [...first.querySelectorAll<HTMLElement>('.annotationLayer .linkAnnotation > a')].find((a) => {
+        const b = a.getBoundingClientRect();
+        return x >= b.left && x <= b.right && y >= b.top && y <= b.bottom;
+      })!;
+    });
+    const pointLink = pointHandle.asElement()!;
     await pointLink.scrollIntoViewIfNeeded();
     const start = await scrollTop(page);
     const startHeight = await pageHeight(page);
@@ -104,6 +115,50 @@ test('forward returns to where you last were, not to the link target', async ({}
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
     await runMenuCommand(app, 'nav.historyForward');
+    await expect(field(page)).toHaveValue('52');
+    expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a scroll of the reader\'s own after a link keeps the stage when the target\'s text layer is drawn late', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    // Text layers are held back and let through on release. The event bus object cannot take a new own property, so its prototype's dispatch is wrapped.
+    await page.evaluate(() => {
+      type Bus = { dispatch(name: string, data: unknown): void };
+      const w = window as unknown as { __learnReader: { getState(): { handle: { eventBus(): Bus } } }; heldPages: () => number[]; releaseTextLayers: () => void };
+      const bus = w.__learnReader.getState().handle.eventBus();
+      const proto = Object.getPrototypeOf(bus) as Bus;
+      const dispatch = proto.dispatch;
+      const held: Array<[unknown, string, { pageNumber: number }]> = [];
+      let holding = true;
+      proto.dispatch = function (this: unknown, name: string, data: unknown) {
+        if (holding && name === 'textlayerrendered') held.push([this, name, data as { pageNumber: number }]);
+        else dispatch.call(this, name, data);
+      };
+      w.heldPages = () => held.map(([, , d]) => d.pageNumber);
+      w.releaseTextLayers = () => {
+        holding = false;
+        for (const [self, name, data] of held.splice(0)) dispatch.call(self, name, data);
+      };
+    });
+    await clickLink(page);
+    await expect(field(page)).toHaveValue('50');
+    // The target's text layer is drawn and held back; the reader scrolls on before it is let through.
+    await expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages())).toContain(50);
+    await page.getByTestId('pdf-scroll').evaluate((el) => {
+      const p52 = el.querySelector<HTMLElement>('.page[data-page-number="52"]')!;
+      el.scrollTop = p52.offsetTop + p52.clientTop + p52.clientHeight * 0.3;
+    });
+    await expect(field(page)).toHaveValue('52');
+    const there = await scrollTop(page);
+    const height = await pageHeight(page);
+    await page.waitForTimeout(100); // the scroll event is reported
+    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('52');
     expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
   } finally {

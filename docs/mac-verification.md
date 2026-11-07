@@ -706,6 +706,20 @@ M7a의 macOS 실행. 리더 화면 작업이 끝난 중간 지점(Task 9 뒤)에
 - 리더 성능(`reader-perf.json`, 보고값 — 판정은 기준 장비): 첫 쪽 표시 중앙값 173.9ms(예산 2,000), 스크롤 프레임 간격 p95 17.8ms(예산 16.7 — 넘었다, 2배선 33.4 안; 426프레임 중 33ms를 넘은 것 4), 확대 단계 18.7ms(250), 찾기 첫 결과 270ms(500), 썸네일 94ms(1,000), 캐시된 팝업 p95 79.3ms(100).
 - Mac에서 처음 도는 것: 번역 시험(`translation.spec.ts`), 리더 성능 `reader-perf.evidence.ts`(Mac 값은 보고값), M7a 투어 장면, M7a 데모(11장 — 12a는 Mac에서 장 10의 종료 후 다시 열기와 1024×684 창을 시험하지 못했다), 중간 실행의 시험 고침 다섯.
 
+## M7b (2026-11-08, macos-15 arm64, 브랜치 `m7b-reader`)
+
+M7b의 macOS 실행. 탭과 뒤로/앞으로가 들어간 중간 지점(Task 7 뒤)에서 `e2e` 한 번, 끝에 `all` 한 번이다(M7b 명세 13절, P-19). 저장소가 공개라 모두 무료다. 값은 로그(`evidence/m7b-mid-e2e/42161659263/`)와 진단(`mac-mid-diagnosis.md`)에서 옮겼다.
+
+### 중간 실행 (run 42161659263, 02d9a61)
+[run 42161659263](https://github.com/baebae0502/learn/actions/runs/42161659263) — 11-06 04:17 UTC에 `e2e` / 아니오로 보내 30분(1,804초) 만에 실패로 끝났다. 기능 E2E 464 예상대로 통과(그 가운데 `test.fail` 하나) · 3 예상 밖 실패 · 39 건너뜀 · flaky 0(재시도 없음). 진단은 읽기 전용으로 했고, 넷 모두 앱이 아니라 시험 쪽이다 — M7b 앱의 회귀는 없다. 첫째와 셋째는 M7b가 더한 앱 변경(ebf3579, 자동·너비 맞춤이 문서에서 가장 넓은 쪽 기준이 됨)이 드러냈다. 고침은 시험만 바꿨고 Mac 확인은 최종 `all`에서 한다(R17).
+- `first-session.spec.ts`(가져오기 → PDF·영상 열기): 어두운 픽셀 236 ≤ 300. ebf3579 뒤 `sample.pdf`의 1쪽(세로 A4)이 2쪽(가로)의 폭에 맞춰져 캔버스가 282×399로 작아졌다(잉크는 둘 다 캔버스의 0.2%). 문턱이 옛 캔버스(1,422 / 497k px)의 절대값이었다. Linux 1024에서도 재현된다(217). 문턱을 비율(> 0.001)로 바꿨다.
+- `first-session.spec.ts` "macOS: exiting fullscreen during the enter transition settles": "unsettled after 10 s" — 실패가 아니다. 알려진 Electron 44 / macOS 경합을 기록한 `test.fail(true)`라 실패가 통과로 센다. 첫째 실패가 `toggleFullscreen` 앞에서 끝나 이 실행은 주 여정의 Mac 전체 화면 경로를 돌리지 못했다 — 첫째를 고친 뒤 최종 `all`에서 다시 본다.
+- `readers.spec.ts` "a page that cannot be drawn says so on its own stage…": `data-rendered`가 3을 넘지 못했다(Mac은 늘, Linux는 8번 중 1번). 쪽이 작아져 세 쪽이 한 번에 그려지면 처음 읽은 값이 이미 3이라 더 커질 수 없다. 카운터를 버리고 3쪽 캔버스 폭이 0보다 커질 때까지 기다리게 했다(`pdfCanvas`).
+- `tabs.spec.ts` "eleven items ask first…": 확인 시트 호출 기대 1, 실제 0. `Control+a`는 macOS에서 전체 선택이 아니라(⌃A, `gridKeys.test.ts`) 한 자료만 골라져 시트가 불리지 않았다. `ControlOrMeta+a`로 바꿨다. 이 고침 뒤의 macOS 확인 시트 경로는 Mac에서 처음 도는 것이다.
+
+### 최종 `all` 실행
+(Mac all 실행 뒤 채움)
+
 ## 알려진 한계
 
 - 러너는 M1 가상 머신(3 vCPU, 가상 GPU, 1024×768 @1x)이다. 콜드 시간은 run마다 2–3배 차이가 나고, Retina(@2x) 렌더링·실제 GPU·트랙패드는 확인할 수 없다.

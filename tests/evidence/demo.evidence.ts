@@ -404,12 +404,23 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
      */
     const glide = async (p: Page, kind: WindowKind, x: number, y: number, held = false) => {
       await pointerTo(kind);
+      /** Playwright's mouse along the same eased path, step by step (the drawn cursor's, and a held drag's own moves). */
+      const stepped = async () => {
+        const from = mouseAt.get(p) ?? { x, y }; // a window's first glide starts where it is going
+        const steps = 20;
+        for (let i = 1; i <= steps; i++) {
+          const t = ease(i / steps);
+          await p.mouse.move(from.x + (x - from.x) * t, from.y + (y - from.y) * t);
+          await pause(21);
+        }
+        mouseAt.set(p, { x, y });
+      };
       if (cursor !== 'synthetic') {
         const o = await originOf(kind);
         const to = { x: o.x + x, y: o.y + y };
         const once = () => glideCursor(to, { warpOnly: cursor === 'warp' || held });
         // A glide that throws (a stuck Apple Event) is tried once more before the mode changes (round 3 m2).
-        const r = await once()
+        const moved = once()
           .catch(async (e: unknown) => {
             notes.push(`moving the system cursor failed (${errorText(e)}): tried once more`);
             return once();
@@ -418,10 +429,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             notes.push(`moving the system cursor failed again (${errorText(e)}): the drawn cursor only`);
             return { moved: false, warped: false };
           });
-        if (held && cursor === 'system') {
+        if (held) {
+          // The warps carry the visible cursor while Playwright's mouse carries the drag beside them, on the same eased path.
+          const [r] = await Promise.all([moved, stepped()]);
           if (!r.warped) notes.push('the held drag: the system cursor could not be warped, the drawn cursor only');
           return;
         }
+        const r = await moved;
         if ((cursor === 'system' && !r.moved) || (cursor === 'warp' && !r.warped)) {
           await switchCursor(r.warped ? 'warp' : 'synthetic');
           notes.push(
@@ -437,14 +451,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
           return;
         }
       }
-      const from = mouseAt.get(p) ?? { x, y }; // a window's first glide starts where it is going
-      const steps = 20;
-      for (let i = 1; i <= steps; i++) {
-        const t = ease(i / steps);
-        await p.mouse.move(from.x + (x - from.x) * t, from.y + (y - from.y) * t);
-        await pause(21);
-      }
-      mouseAt.set(p, { x, y });
+      await stepped();
     };
     /** The main window's sidebar as drawn now: the tag selector's top (null: none drawn) and the bottom of the last tree row or of the hint. */
     const sidebarNow = (p: Page) =>
@@ -805,6 +812,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.mouse.move(from.x + from.width / 2, dragY);
     await page.mouse.down();
     await page.mouse.move(from.x + from.width / 2 + 8, dragY, { steps: 2 });
+    mouseAt.set(page, { x: from.x + from.width / 2 + 8, y: dragY }); // the held glide's steps start where the drag is
     const toX = lastBox.x + lastBox.width - 6;
     await glide(page, 'main', toX, dragY, true); // the button is down: no native move events (they would end the drag)
     await page.mouse.move(toX, dragY, { steps: 6 });

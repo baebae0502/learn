@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileX } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
@@ -31,8 +31,16 @@ const zoomOf = (presetValue: string | undefined, scale: number): ZoomValue =>
  * Owns the pdf.js viewer for one open document: the scroll container, the pages, the text and link layers. The viewer
  * fills the store (state and handle) for whatever else the reader mounts; React never renders into the pages.
  */
-export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: PDFDocumentProxy; revisionId: string; restored: boolean; onFailed(): void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScroller }: { doc: PDFDocumentProxy; revisionId: string; restored: boolean; onFailed(): void; onScroller?(node: HTMLElement | null): void }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** The scroller is known to the reader (its find bar's scroll bar watch) as it mounts and as it goes, so a view that attaches again is watched again. */
+  const setScroller = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      onScroller?.(node);
+    },
+    [onScroller],
+  );
   const viewerRef = useRef<HTMLDivElement>(null);
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
   const [rendered, setRendered] = useState(0);
@@ -432,6 +440,11 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         });
         store.setPdf({ ...INITIAL_PDF, pagesCount: doc.numPages });
         store.setHandle(handle);
+        // E2E only: a viewer that fails to start, to show the notice that stands in for it.
+        if (readWindowParams(window.location.search).e2e && window.__learnFaults?.start) {
+          window.__learnFaults.start -= 1;
+          throw new Error('injected start fault');
+        }
         viewer.setDocument(doc);
         linkService.setDocument(doc);
         // pdf.js rejects its pages promise when the first page or the permissions cannot be read. Before pagesinit there is
@@ -521,7 +534,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           store.setPdf(null);
         };
       })
-      .catch(fail);
+      .catch((e: unknown) => {
+        // A start that threw before the teardown exists leaves no handle behind: whoever reads the store sees no viewer.
+        if (!teardown && !cancelled) {
+          store.setHandle(null);
+          store.setPdf(null);
+        }
+        fail(e);
+      });
     return () => {
       cancelled = true;
       teardown?.();
@@ -530,7 +550,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
 
   return (
     <>
-      <div ref={scrollRef} className="pdf-scroll" data-testid="pdf-scroll" data-restored={restored ? '' : undefined}>
+      <div ref={setScroller} className="pdf-scroll" data-testid="pdf-scroll" data-restored={restored ? '' : undefined}>
         <div
           ref={viewerRef}
           className="pdfViewer"

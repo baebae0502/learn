@@ -2,12 +2,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
-import { progressShown } from '../library/columns';
 import { useNow } from '../useNow';
 import { t } from '../strings';
 import { Icon } from '../ui/Icon';
 import { ProgressBar } from '../ui/ProgressBar';
-import { readingLine } from './readingLine';
+import { readingLine, readingProgressView } from './readingLine';
 import { Section } from './Section';
 
 const readingKey = (itemId: string) => ['reading', itemId] as const;
@@ -22,22 +21,23 @@ export function ReadingSection({ itemId }: { itemId: string }) {
   });
   const p = position.data;
   if (!p) return null;
-  const percent = p.progress === null ? null : progressShown(p.progress);
+  const view = readingProgressView(p.progress);
   return (
     <Section id="reading" title={t.inspector.sections.reading} testId="reading-section">
-      {percent !== null && (
+      {view.kind === 'bar' && (
         <div className="reading-progress">
-          <ProgressBar percent={percent === 'done' ? 100 : percent} label={t.library.progressLabel} wide thick testId="reading-bar" />
-          {percent === 'done' ? (
-            <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="reading-done">
-              <Icon icon={Check} size="sm" />
-              {t.library.progressDone}
-            </span>
-          ) : (
-            <span className="pct" data-testid="reading-percent">
-              {percent}%
-            </span>
-          )}
+          <ProgressBar percent={view.percent} label={t.library.progressLabel} wide thick testId="reading-bar" />
+          <span className="pct" data-testid="reading-percent">
+            {view.percent}%
+          </span>
+        </div>
+      )}
+      {view.kind === 'done' && (
+        <div className="reading-progress">
+          <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="reading-done">
+            <Icon icon={Check} size="sm" />
+            {t.library.progressDone}
+          </span>
         </div>
       )}
       <div className="reading-line" data-testid="reading-line">

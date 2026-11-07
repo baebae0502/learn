@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, backFromReader, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, closeReaderTab, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -661,6 +661,80 @@ test('the page colour is chosen in the 보기 menu and kept for the next start',
   }
 });
 
+test('a reader restored at launch draws its first page in the saved colour: the first value ever on the pages is sepia, never 앱 테마 따르기 first', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  try {
+    await openPaper(page);
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByRole('menuitemradio', { name: '세피아' }).click();
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'sepia');
+    await expect.poll(() => page.evaluate(async () => { const r = await window.learn.settings.get({ key: 'reader.pageColor' }); return r.ok ? r.data : null; })).toBe('sepia');
+    await app.close();
+    ({ app, page } = await launch(lib, ud));
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      (window as unknown as { __colors: string[] }).__colors = seen;
+      const look = () => {
+        for (const el of document.querySelectorAll<HTMLElement>('[data-page-color]')) {
+          const v = el.dataset['pageColor']!;
+          if (seen[seen.length - 1] !== v) seen.push(v);
+        }
+      };
+      new MutationObserver(look).observe(document, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-page-color'] });
+    });
+    await page.reload();
+    await expect(viewer(page)).toHaveAttribute('data-page-color', 'sepia');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    expect(await page.evaluate(() => (window as unknown as { __colors: string[] }).__colors)).toEqual(['sepia']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the item panel has its width in its first frame when a PDF opens', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await showItemPanel(app, page);
+    await page.evaluate(() => {
+      const widths: number[] = [];
+      (window as unknown as { __panelWidths: number[] }).__panelWidths = widths;
+      const sample = () => {
+        const panel = document.querySelector<HTMLElement>('[data-testid="pdf-viewer"]') ? document.querySelector<HTMLElement>('[data-testid="inspector-panel"]') : null;
+        if (panel) widths.push(Math.round(panel.getBoundingClientRect().width));
+        requestAnimationFrame(sample);
+      };
+      sample();
+    });
+    await openItem(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await page.waitForTimeout(300);
+    const widths = await page.evaluate(() => (window as unknown as { __panelWidths: number[] }).__panelWidths);
+    expect(widths.length).toBeGreaterThan(0);
+    expect(Math.min(...widths)).toBeGreaterThan(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the viewer failing before pdf.js has the document shows the notice instead of the pages', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await page.evaluate(() => {
+      (window as unknown as { __learnFaults: { thumbnail: object; page: object; ready: boolean; start: number } }).__learnFaults = { thumbnail: {}, page: {}, ready: false, start: 1 };
+    });
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-error')).toBeVisible();
+    await expect(viewer(page)).toHaveCount(0);
+    await expect(page.getByTestId('pdf-find')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a video has no page to turn: the rotation is off there and on again in a PDF', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -1240,6 +1314,31 @@ test('classic scroll bars (Mac critique 11): the find bar keeps 16 from the stag
   }
 });
 
+test('the find bar\'s scroll bar watch follows the stage\'s scroller after the tab was left and came back, and after the reader was built afresh', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    const state = () =>
+      page.evaluate(() => {
+        const stage = document.querySelector<HTMLElement>('[data-testid="pdf-stage"]')!;
+        const scroll = stage.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        return { var: stage.style.getPropertyValue('--stage-scrollbar'), bar: `${scroll.offsetWidth - scroll.clientWidth}px` };
+      });
+    const first = await state();
+    expect(first.bar).not.toBe('0px'); // classic bars on this runner
+    expect(first.var).toBe(first.bar);
+    await backFromReader(page);
+    await openItem(page, 'paper-100');
+    await expect.poll(async () => { const s = await state(); return s.var === s.bar; }).toBe(true);
+    await closeReaderTab(page);
+    await openItem(page, 'paper-100');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect.poll(async () => { const s = await state(); return s.var === s.bar && s.bar !== '0px'; }).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('classic scroll bars (Mac critique 11): the thumbnails stay centred under the segment, and the item panel keeps room for a bar so a long translation does not narrow it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -1322,7 +1421,8 @@ test('a thumbnail that fails once is drawn again when the list moves; one that f
     await field(page).press('Enter');
     const cell = thumbCell(page, 70);
     await expect(cell).toHaveAttribute('data-failed', 'true');
-    await expect(cell).toHaveAttribute('aria-label', '70쪽 — 미리 보기를 만들 수 없습니다');
+    await expect(cell).toHaveAttribute('aria-label', '70쪽, 썸네일을 만들 수 없습니다');
+    await expect(cell).toHaveAttribute('title', '70쪽, 썸네일을 만들 수 없습니다');
     await expect(cell.locator('.nav-thumb-failed svg')).toBeVisible();
     await expect(cell.locator('.lbl')).toHaveText('70');
     const mark = await cell.locator('.nav-thumb-failed svg').evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height }));
@@ -1409,6 +1509,33 @@ test('a page that fails to draw is drawn again once; a second failure shows the 
     await field(page).press('Enter');
     await expect(page.getByTestId('pdf-page-error')).toHaveCount(1);
     await expect.poll(async () => (await faults(page))!.page[60]).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('typing a name in the outline with a space in it neither opens a row nor goes to it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const rows = page.getByTestId('pdf-outline-row');
+    await expect(rows.first()).toHaveText(/Part 1/);
+    await rows.first().focus();
+    await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('End');
+    await page.keyboard.press('Home');
+    await page.keyboard.type('Part 3', { delay: 20 });
+    await expect(page.locator('[data-testid="pdf-outline-row"]:focus')).toHaveAttribute('aria-label', /^Part 3,/);
+    // Space inside the typed name is part of the name: it does not open the row it is on.
+    await expect(page.locator('[data-testid="pdf-outline-row"]:focus')).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press('Home');
+    await expect(rows.first()).toHaveAttribute('aria-expanded', 'false');
+    await expect(viewer(page)).toHaveAttribute('data-page', '1');
+    await expect(page.getByTestId('pdf-history-back')).toBeDisabled();
   } finally {
     await app.close();
   }

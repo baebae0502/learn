@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, backFromReader, expectDisabledReason, expectSameShot, importPaths, launch, openItem, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, sidebarTop88, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, expectDisabledReason, expectSameShot, importPaths, launch, openItem, mainWindow, menuSnapshot, readClipboard, runMenuCommand, seedMetadata, selectRows, showItemPanel, specialRow, trashItems, sidebarTop88, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
@@ -403,7 +403,9 @@ test('the 읽기 section: where reading stopped and the bar, in the library only
         }, paper.id),
       )
       .toEqual([11, 100]);
-    await expect(page.getByTestId('reading-section')).toHaveCount(0); // the reader's panel has none
+    // The reader's panel has none: it has rendered (its info is there) before the absence means anything.
+    await expect(page.getByTestId('inspector-item')).toBeVisible();
+    await expect(page.getByTestId('reading-section')).toHaveCount(0);
     await backFromReader(page);
 
     await selectRows(page, ['paper-100']);
@@ -419,6 +421,44 @@ test('the 읽기 section: where reading stopped and the bar, in the library only
     await expect(page.getByTestId('inspector-multi')).toBeVisible();
     await expect(page.getByTestId('reading-section')).toHaveCount(0);
     await selectRows(page, ['sample']);
+    await expect(page.getByTestId('reading-section')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the 읽기 section at 100 %: the finished flag alone, no bar and no percent; an unknown total shows the line alone; the trash view has none', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    await widen(app, page);
+    const items = await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), PDF]);
+    const paper = items.find((i) => i.title === 'paper-100')!;
+    const save = (progress: number | null, pageIndex: number) =>
+      page.evaluate(async (a) => window.learn.reader.savePosition({ itemId: a.id, revisionId: a.revisionId, locator: { kind: 'pdf', pageIndex: a.pageIndex, pages: 100 }, progress: a.progress }), { id: paper.id, revisionId: paper.revisionId, progress, pageIndex });
+    await save(1, 99);
+    await selectRows(page, ['paper-100']);
+    await expect(page.getByTestId('reading-section')).toBeVisible();
+    await expect(page.getByTestId('reading-done')).toHaveText('완료');
+    await expect(page.getByTestId('reading-bar')).toHaveCount(0);
+    await expect(page.getByTestId('reading-percent')).toHaveCount(0);
+    await expect(page.getByTestId('reading-line')).toContainText('100쪽에서');
+    // The table's progress cell says the same.
+    await expect(page.getByTestId('progress-done')).toHaveCount(1);
+
+    // An unknown total: the line alone (the furthest point read only grows, so another item stands for it).
+    const sample = items.find((i) => i.title === 'sample')!;
+    await page.evaluate(async (a) => window.learn.reader.savePosition({ itemId: a.id, revisionId: a.revisionId, locator: { kind: 'pdf', pageIndex: 1 }, progress: null }), { id: sample.id, revisionId: sample.revisionId });
+    await selectRows(page, ['sample']);
+    await expect(page.getByTestId('reading-line')).toContainText('2쪽에서 멈춤');
+    await expect(page.getByTestId('reading-bar')).toHaveCount(0);
+    await expect(page.getByTestId('reading-done')).toHaveCount(0);
+    await expect(page.getByTestId('reading-percent')).toHaveCount(0);
+    await selectRows(page, ['paper-100']);
+
+    await trashItems(page, [paper.id]);
+    await specialRow(page, 'trash').click();
+    await selectRows(page, ['paper-100']);
+    await expect(page.getByTestId('inspector-item')).toBeVisible();
     await expect(page.getByTestId('reading-section')).toHaveCount(0);
   } finally {
     await app.close();

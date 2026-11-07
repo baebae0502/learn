@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { PageColor } from '@learn/domain';
 import { api, unwrap } from '../../api';
 import { settingKey } from '../../data/saveSetting';
@@ -14,12 +14,16 @@ function subscribeTheme(onChange: () => void): () => void {
 }
 const themeShade = (): Shade => (document.documentElement.dataset['theme'] === 'dark' ? 'dark' : 'light');
 
+/** Read before the window's first paint (Boot), so the first page is drawn in the saved colour, not 앱 테마 따르기 first. */
+export const usePageColorSetting = (): UseQueryResult<unknown> =>
+  useQuery({ queryKey: settingKey('reader.pageColor'), queryFn: () => unwrap(api().settings.get({ key: 'reader.pageColor' })) });
+
 /**
  * The reader's page colour: the saved choice (`setting`, 앱 테마 따르기 until one is made) and the colour the pages are
  * drawn in (`resolved`), which follows the theme shown while the choice is 앱 테마 따르기.
  */
 export function usePageColor(): { setting: PageColor; resolved: 'original' | 'sepia' | 'dark' } {
-  const read = useQuery({ queryKey: settingKey('reader.pageColor'), queryFn: () => unwrap(api().settings.get({ key: 'reader.pageColor' })) });
+  const read = usePageColorSetting();
   const shade = useSyncExternalStore(subscribeTheme, themeShade, () => 'light' as const);
   const setting = parsePageColor(read.data);
   return { setting, resolved: resolvePageColor(setting, shade) };

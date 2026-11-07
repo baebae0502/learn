@@ -73,7 +73,7 @@
   .pdfViewer.scrollPage {
     padding: var(--space-12) var(--space-24);
   }
-  .pdfViewer.scrollPage .page {
+  .pdfViewer.scrollPage :is(.page, .spread .page) {
     margin-bottom: 0;
   }
   /* A spread (pdf.js's .spread): two pages side by side with 12 between them, the row centred while it fits the stage. */

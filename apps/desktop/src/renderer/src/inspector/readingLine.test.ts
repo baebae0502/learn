@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ReadingPosition } from '@learn/domain';
-import { readingLine } from './readingLine';
+import { readingLine, readingProgressView } from './readingLine';
 
 const now = new Date(2026, 10, 6, 12, 0);
 const at = (d: Date): string => d.toISOString();
@@ -22,5 +22,18 @@ describe('readingLine (the item panel 읽기 section)', () => {
   it('dates with the table format: today, yesterday, a date; updatedAt when never opened', () => {
     expect(readingLine(pdf(0, 5, { openedAt: at(new Date(2026, 9, 12, 8, 0)) }), now)).toBe('1 / 5쪽에서 멈춤 · 2026. 10. 12.');
     expect(readingLine(pdf(0, 5, { openedAt: null }), now)).toBe('1 / 5쪽에서 멈춤 · 2026. 11. 1.');
+  });
+});
+
+describe('readingProgressView', () => {
+  it('shows the bar below 100 %, capped at 99', () => {
+    expect(readingProgressView(0.4)).toEqual({ kind: 'bar', percent: 40 });
+    expect(readingProgressView(0.999)).toEqual({ kind: 'bar', percent: 99 });
+  });
+  it('shows the finished flag alone at 100 %, as the table does', () => {
+    expect(readingProgressView(1)).toEqual({ kind: 'done' });
+  });
+  it('shows nothing while the total is unknown', () => {
+    expect(readingProgressView(null)).toEqual({ kind: 'none' });
   });
 });

@@ -281,6 +281,26 @@ test('a page at a time fits the whole page with 12 above and below, and a page a
   }
 });
 
+test('a page at a time with an odd spread, the item panel closed (the fit is limited by the height): nothing scrolls, the pairs keep no margin below', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await runMenuCommand(app, 'view.toggleInspector');
+    await expect.poll(() => page.getByTestId('inspector-panel').evaluate((el) => el.getBoundingClientRect().width)).toBe(0);
+    await choose(page, 'scroll', '한 쪽씩');
+    await expect(viewer(page)).toHaveAttribute('data-scroll', 'page');
+    await choose(page, 'spread', '홀수 쪽부터');
+    await expect(viewer(page)).toHaveAttribute('data-spread', 'odd');
+    await field(page).fill('3');
+    await field(page).press('Enter');
+    await expect(page.locator('.pdfViewer .spread .page')).toHaveCount(2);
+    await expect.poll(() => scroller(page).evaluate((el) => el.scrollHeight - el.clientHeight)).toBe(0);
+    expect(await page.locator('.pdfViewer .spread .page').first().evaluate((el) => getComputedStyle(el).marginBottom)).toBe('0px');
+  } finally {
+    await app.close();
+  }
+});
+
 test('the submenu stands level with its row and 2 px over the parent menu (to the right and, with the item panel closed, to the left); → opens, ← closes, esc closes the menu', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

@@ -100,6 +100,21 @@ describe('position saver', () => {
     vi.advanceTimersByTime(1000);
     expect(send).not.toHaveBeenCalled();
   });
+
+  it('flush then dispose leaves no timer, throttle or debounce (the window is closing)', () => {
+    for (const policy of [{ kind: 'debounce', ms: 300 }, { kind: 'throttle', ms: 2000 }] as const) {
+      const { saver, send } = make(policy, pdf(0));
+      saver.update(pdf(1), 0.1);
+      saver.update(pdf(2), 0.2);
+      saver.flush();
+      saver.update(pdf(3), 0.3);
+      saver.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+      const sent = send.mock.calls.length;
+      vi.advanceTimersByTime(5000);
+      expect(send).toHaveBeenCalledTimes(sent);
+    }
+  });
 });
 
 describe('position math', () => {

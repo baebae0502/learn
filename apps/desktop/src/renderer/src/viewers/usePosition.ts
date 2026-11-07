@@ -63,7 +63,10 @@ export function usePosition(item: LibraryItem, policy: SavePolicy, readLatest?: 
   }, [itemId]);
 
   useEffect(() => {
-    const onUnload = () => saver.current?.flush();
+    const onUnload = () => {
+      saver.current?.flush();
+      saver.current?.dispose();
+    };
     window.addEventListener('beforeunload', onUnload);
     return () => window.removeEventListener('beforeunload', onUnload);
   }, []);

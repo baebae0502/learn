@@ -380,7 +380,11 @@ describe('the ⌘/ sheet keeps the height it measured (spec 8, P-4)', () => {
   });
 
   it('names a height by platform, text size, density and what the sheet lists', () => {
-    expect(sheetHeightKey({ platform: 'darwin', fontSize: 13, density: 'regular', digest: 'abc' })).toBe('darwin|13|regular|abc');
+    expect(sheetHeightKey({ platform: 'darwin', fontSize: 13, density: 'regular', digest: 'abc', view: 'library' })).toBe('darwin|13|regular|abc|library');
+    // The sheet lists the viewer's keys by the view it opened from, so its height differs by view.
+    expect(sheetHeightKey({ platform: 'darwin', fontSize: 13, density: 'regular', digest: 'abc', view: 'viewer' })).not.toBe(
+      sheetHeightKey({ platform: 'darwin', fontSize: 13, density: 'regular', digest: 'abc', view: 'library' }),
+    );
     const digest = shortcutsDigest(COMMANDS, 'darwin');
     expect(digest).toMatch(/^[0-9a-f]{16}$/);
     expect(shortcutsDigest(COMMANDS.map((c) => (c.id === 'app.settings' ? { ...c, label: '환경설정…' } : c)), 'darwin')).not.toBe(digest);

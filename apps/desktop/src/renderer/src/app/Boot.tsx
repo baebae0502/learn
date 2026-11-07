@@ -3,6 +3,7 @@ import { SETTINGS, type AppInfo } from '@learn/domain';
 import { ApiError } from '../api';
 import { FatalScreen } from '../components/FatalScreen';
 import { useAppInfo, usePanes, usePrefs, usePrefsSync, useSavedTabs } from '../data/queries';
+import { usePageColorSetting } from '../viewers/pdf/usePageColor';
 import { parsePanes } from '../shell/layout';
 import { useShell } from '../state/shell-store';
 import { fromSaved } from '../state/tabs';
@@ -34,8 +35,10 @@ export function Boot() {
 function PanesGate({ info }: { info: AppInfo }) {
   const panes = usePanes();
   const savedTabs = useSavedTabs();
+  // The reader's page colour too: a reader restored at launch draws its first page in it (a failed read falls back to 앱 테마 따르기).
+  const pageColor = usePageColorSetting();
   const seeded = useRef(false);
-  if (panes.isPending || savedTabs.isPending) return null;
+  if (panes.isPending || savedTabs.isPending || pageColor.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
     // Both panes before the first paint: the item panel has its width in its first frame too.

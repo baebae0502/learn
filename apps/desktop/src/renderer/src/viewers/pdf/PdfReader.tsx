@@ -49,6 +49,8 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   /** The document opened but the viewer could not show it. */
   const [viewFailed, setViewFailed] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
+  /** The view's scroller, as the view reports it: the scroll bar watch follows a view that mounts again. */
+  const [scroll, setScroll] = useState<HTMLElement | null>(null);
   const ready = pdf?.ready === true && handle !== null;
   const findOpen = useFind((s) => s.open);
   const history = useReader((s) => s.history);
@@ -101,7 +103,6 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   // keeps its 16 from the visible edge, so the find bar is offset by that width (an overlay bar is 0). Read again whenever the scroller resizes.
   useEffect(() => {
     const stage = stageRef.current;
-    const scroll = stage?.querySelector<HTMLElement>('.pdf-scroll');
     if (!ready || !stage || !scroll || !shown) return;
     const measure = () => stage.style.setProperty('--stage-scrollbar', `${scroll.offsetWidth - scroll.clientWidth}px`);
     measure();
@@ -111,7 +112,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       observer.disconnect();
       stage.style.removeProperty('--stage-scrollbar');
     };
-  }, [ready, shown]);
+  }, [ready, shown, scroll]);
   const closeFind = () => {
     handle?.eventBus()?.dispatch('findbarclose', { source: null });
     scope.find.getState().closeBar();
@@ -298,7 +299,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
       <div ref={stageRef} className="pdf-stage" role="region" tabIndex={0} aria-label={t.reader.pdfStage} data-testid="pdf-stage" onKeyDown={onStageKey} onMouseDown={onStageMouseDown} onMouseUp={onStageMouseUp}>
         {findOpen && ready && <FindBar onClose={closeFind} />}
         {ready && <SelectionPopup stageRef={stageRef} />}
-        {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} />}
+        {open.status === 'ready' && <PdfDocumentView doc={open.doc} revisionId={item.revisionId} restored={restored} onFailed={() => setViewFailed(true)} onScroller={setScroll} />}
       </div>
     </div>
   );

@@ -4,6 +4,8 @@ import type { PDFDocumentProxy } from 'pdfjs-dist';
 export interface DrawFaults {
   thumbnail: Record<number, number>;
   page: Record<number, number>;
+  /** Starts of the viewer still to be made to fail (before pdf.js has the document). */
+  start?: number;
   /** The renders are patched: faults set before this are not seen. */
   ready: boolean;
 }

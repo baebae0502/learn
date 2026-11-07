@@ -210,6 +210,7 @@ export function ThumbnailList() {
               aria-selected={page === current}
               id={`pdf-thumb-${page}`}
               aria-label={failedHere ? t.reader.thumbnailFailed(page) : String(page)}
+              title={failedHere ? t.reader.thumbnailFailed(page) : undefined}
               className="nav-thumb"
               data-testid="pdf-thumb"
               data-page={page}

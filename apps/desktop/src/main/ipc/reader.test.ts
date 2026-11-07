@@ -13,7 +13,7 @@ vi.mock('electron', () => ({
 }));
 
 const { createHandle } = await import('./register');
-const { registerReaderIpc } = await import('./reader');
+const { registerReaderIpc, endPositionNotices } = await import('./reader');
 
 const ITEM = '7d3f3c3e-8a51-4f7e-9d7c-2b1f0f6f8f10';
 const REV = '1b6f5a52-2c1e-4d55-9a3e-0d2c6f7e8a90';
@@ -88,6 +88,19 @@ describe('reader IPC', () => {
       await save(OTHER, 1);
       expect(sent).toEqual([notice(ITEM), notice(ITEM), notice(OTHER)]);
       await vi.advanceTimersByTimeAsync(POSITION_NOTICE_MS); // the windows close
+    });
+
+    it('a closed window ends the notice windows: no timer is left and the saved ones are not announced', async () => {
+      await save(ITEM, 1);
+      await save(ITEM, 2);
+      expect(vi.getTimerCount()).toBe(1);
+      endPositionNotices();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(POSITION_NOTICE_MS * 2);
+      expect(sent).toEqual([notice(ITEM)]);
+      await save(ITEM, 3); // a window opened later starts afresh
+      expect(sent).toEqual([notice(ITEM), notice(ITEM)]);
+      endPositionNotices();
     });
 
     it('a save that failed announces nothing', async () => {

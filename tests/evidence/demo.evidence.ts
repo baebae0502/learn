@@ -398,13 +398,16 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     /**
      * Moves the pointer to (x, y) of a window's page, as the current cursor mode does it: about 420 ms along an eased
      * path (T13R2-m4), Playwright's mouse step by step, or the system cursor in one osascript call.
+     * `held`: Playwright's button is down (a scripted drag). A native mouse-moved event carries no button (the OS button is up),
+     * and the app ends a drag whose move comes with the button up (useTabReorder, as for a real drag that lost its button), so
+     * the system cursor travels by warps only, with no events; the caller's own mouse.move carries the drag.
      */
-    const glide = async (p: Page, kind: WindowKind, x: number, y: number) => {
+    const glide = async (p: Page, kind: WindowKind, x: number, y: number, held = false) => {
       await pointerTo(kind);
       if (cursor !== 'synthetic') {
         const o = await originOf(kind);
         const to = { x: o.x + x, y: o.y + y };
-        const once = () => glideCursor(to, { warpOnly: cursor === 'warp' });
+        const once = () => glideCursor(to, { warpOnly: cursor === 'warp' || held });
         // A glide that throws (a stuck Apple Event) is tried once more before the mode changes (round 3 m2).
         const r = await once()
           .catch(async (e: unknown) => {
@@ -415,6 +418,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             notes.push(`moving the system cursor failed again (${errorText(e)}): the drawn cursor only`);
             return { moved: false, warped: false };
           });
+        if (held && cursor === 'system') {
+          if (!r.warped) notes.push('the held drag: the system cursor could not be warped, the drawn cursor only');
+          return;
+        }
         if ((cursor === 'system' && !r.moved) || (cursor === 'warp' && !r.warped)) {
           await switchCursor(r.warped ? 'warp' : 'synthetic');
           notes.push(
@@ -799,7 +806,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.mouse.down();
     await page.mouse.move(from.x + from.width / 2 + 8, dragY, { steps: 2 });
     const toX = lastBox.x + lastBox.width - 6;
-    await glide(page, 'main', toX, dragY);
+    await glide(page, 'main', toX, dragY, true); // the button is down: no native move events (they would end the drag)
     await page.mouse.move(toX, dragY, { steps: 6 });
     await pause(900);
     await page.mouse.up();

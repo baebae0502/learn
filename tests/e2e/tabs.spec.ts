@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
-  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, stubConfirm, stubContextMenu, trashItems, windowKinds,
+  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
@@ -97,6 +97,11 @@ for (const gone of ['trashed', 'purged'] as const) {
       if (gone === 'trashed') {
         await expect(page.getByTestId('reader-trashed')).toBeVisible();
         await expect(page.getByTestId('open-failed')).toHaveCount(0);
+        // The trash hides the item from the library list and from library.get: the tab still names it (library.detail reads the trash).
+        await expect(readerTab(page, imported!.id)).toHaveAccessibleName('paper-100');
+        await expect(readerTab(page, imported!.id)).toHaveAttribute('title', 'paper-100');
+        await expect(page.getByRole('tabpanel', { name: 'paper-100' })).toHaveAttribute('data-item-id', imported!.id);
+        await expect.poll(() => page.title()).toBe('paper-100');
         const r = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
         expect(r.ok && r.data).toEqual({ items: [imported!.id], active: imported!.id });
       } else {
@@ -874,6 +879,113 @@ test('⌘W with the settings window focused closes that window and leaves the ma
     await expect.poll(() => windowKinds(app)).not.toContain('settings');
     expect(await order(page)).toEqual(before);
     await expect.poll(() => activeTab(page)).toBe(items.find((i) => i.title === 'doc-03')!.id);
+  } finally {
+    await app.close();
+  }
+});
+
+const field = (page: Page, name: string) => page.locator(`[data-testid="editor-field"][data-field="${name}"] :is(input, textarea)`);
+
+test('an open 정보 편집 is asked before the shown tab changes or closes: valid changes are saved first, invalid ones keep the tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 2));
+    const [a, b] = ['doc-01', 'doc-02'].map((t) => items.find((i) => i.title === t)!.id) as [string, string];
+    await openBehind(app, page, ['doc-01']);
+    await openBehind(app, page, ['doc-02']);
+    await showItemPanel(app, page);
+    await selectRows(page, ['doc-01']);
+    const titleOf = async (id: string) => {
+      const r = await page.evaluate((x) => window.learn.library.detail({ itemId: x }), id);
+      return r.ok ? r.data.item.title : null;
+    };
+    // Valid: a click on another tab saves the title, then the tab changes.
+    await page.getByTestId('info-edit').click();
+    await field(page, 'title').fill('doc-01 edited');
+    await readerTab(page, b).click();
+    await expect(readerTab(page, b)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    expect(await titleOf(a)).toBe('doc-01 edited');
+
+    // Invalid: the tab does not change, and the editor says why.
+    await libraryTab(page).click();
+    await selectRows(page, ['doc-02']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'date').fill('어제');
+    await readerTab(page, a).click();
+    await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+    await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
+    await expect(readerTab(page, a)).toHaveAttribute('aria-selected', 'false');
+    // The same for the keyboard's way (⌃⇥) and for closing the shown tab with the strip's mark: a tab behind the shown one closes freely.
+    await runMenuCommand(app, 'tab.next');
+    await page.waitForTimeout(300);
+    await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
+    await page.getByTestId('editor-discard').click();
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the outline\'s search and opened rows stay with their tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const dir = testInfo.outputPath('src');
+    fs.mkdirSync(dir, { recursive: true });
+    const second = path.join(dir, 'paper-b.pdf');
+    fs.copyFileSync(PAPER, second);
+    fs.appendFileSync(second, '\n% copy b\n');
+    const items = await importPaths(page, [PAPER, second]);
+    const [a, b] = ['paper-100', 'paper-b'].map((t) => items.find((i) => i.title === t)!.id) as [string, string];
+    await openBehind(app, page, ['paper-100']);
+    await openBehind(app, page, ['paper-b']);
+    // Reader to reader, with no library between: the sidebar is the same place in the page unless it is keyed by its tab.
+    await readerTab(page, a).click();
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const search = page.getByTestId('pdf-outline-search').getByRole('searchbox');
+    await search.fill('3.2');
+    await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^1\.1 / })).toHaveCount(0);
+    await readerTab(page, b).click();
+    await expect(readerTab(page, b)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await expect(search).toHaveValue('');
+    await expect(page.getByTestId('pdf-outline').getByRole('row', { name: /^1\.1 / }).first()).toBeVisible();
+    await readerTab(page, a).click();
+    await expect(readerTab(page, a)).toHaveAttribute('aria-selected', 'true');
+    await expect(search).toHaveValue('');
+  } finally {
+    await app.close();
+  }
+});
+
+test('closing a tab never mounts an evicted reader: it is not opened again and keeps its opened date', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 5));
+    const id = (t: string) => items.find((i) => i.title === t)!.id;
+    for (const title of ['doc-01', 'doc-02', 'doc-03', 'doc-04', 'doc-05']) {
+      if (title !== 'doc-01') await libraryTab(page).click();
+      await openItem(page, title);
+      await expect(readerTab(page, id(title))).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+    }
+    await expect(panels(page)).toHaveCount(4);
+    await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveCount(0);
+    const openedAt = async () => {
+      const r = await page.evaluate((x) => window.learn.library.detail({ itemId: x }), id('doc-01'));
+      return r.ok ? r.data.item.openedAt : null;
+    };
+    const before = await openedAt();
+    await page.waitForTimeout(50);
+    await runMenuCommand(app, 'tab.close'); // the shown doc-05
+    await expect(readerTab(page, id('doc-05'))).toHaveCount(0);
+    await expect(panels(page)).toHaveCount(3);
+    await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveCount(0);
+    await page.waitForTimeout(600);
+    expect(await openedAt()).toBe(before);
+    // Shown, it is mounted again, as now.
+    await readerTab(page, id('doc-01')).click();
+    await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveAttribute('data-active', 'true');
   } finally {
     await app.close();
   }

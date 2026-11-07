@@ -129,7 +129,12 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Crash and restart (AC06 partial: saved state survives a hard kill). The session is saved 300 ms after the last tab change.
-  await page.waitForTimeout(450);
+  await expect
+    .poll(async () => {
+      const r = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
+      return r.ok ? (r.data as { active: string | null } | null)?.active : undefined;
+    })
+    .toBeNull();
   const proc = app.process();
   const exited = new Promise((r) => proc.once('exit', r));
   proc.kill('SIGKILL');

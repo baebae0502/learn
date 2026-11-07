@@ -645,7 +645,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
     started = Date.now();
 
-    notes.push('the three papers are opened with the real ↩ key and the ⌘↩ command (macOS: the real keys), the tabs are chosen with ⌘숫자 and ⌃⇥, the links and buttons are clicked by the pointer; the drag of a tab is a scripted pointer drag (its caption says so); the app is closed and started again once (chapter 8)');
+    notes.push('the three papers are opened with ↩ (a key event sent to the renderer, on every platform) and the ⌘↩ command, the tabs are chosen with ⌘숫자 and ⌃⇥, the links and buttons are clicked by the pointer; the drag of a tab is a scripted pointer drag (its caption says so); the app is closed and started again once (chapter 8)');
     const V = () => page.getByTestId('pdf-viewer');
     const field = () => page.getByTestId('pdf-page-field');
     const readerReady = async () => {

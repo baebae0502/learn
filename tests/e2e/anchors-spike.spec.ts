@@ -192,7 +192,7 @@ test('page quotes become anchors: two lines, a hyphen break, NFD text found by a
   }
 });
 
-test('the probe exists only in a window that carries e2e=1', async ({}, testInfo) => {
+test('the probe is there in a window that carries e2e=1', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [PAPER]);

@@ -492,7 +492,15 @@ interface QueueTestHooks {
 type WithQueueHooks = { __learnTest: QueueTestHooks };
 /** The next file of an import waits at `at` until importResume; null calls it off. */
 export const importPause = (app: ElectronApplication, at: ImportPausePoint | null) => app.evaluate((_e, at) => (globalThis as unknown as WithQueueHooks).__learnTest.importPause({ at }), at);
-export const importResume = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importResume());
+/**
+ * Lets the held file go. A resume sent before the file has reached its hold is lost and the file then waits there for good (Mac
+ * all 41387123318; here the empty-library busy screen test under taskset -c 0-3), so it waits for the file to be held first.
+ * Nothing held within the wait: the resume goes anyway (a test that calls it off with no file coming).
+ */
+export const importResume = async (app: ElectronApplication) => {
+  await expect.poll(() => importWaiting(app), { timeout: 15_000 }).not.toBeNull().catch(() => undefined);
+  await app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importResume());
+};
 export const importWaiting = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importWaiting());
 export const importQueueState = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithQueueHooks).__learnTest.importQueueState());
 /** A job of another kind holds the work line until releaseJob: an import put in meanwhile waits behind it. */

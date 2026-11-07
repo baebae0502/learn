@@ -90,7 +90,11 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
         // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
         const findController = new PDFFindController({ linkService, eventBus, updateMatchesCountOnProgress: true });
+        // pdf.js disconnects its own container observer and scroll listener when this aborts (the end of the view, in teardown).
+        // The option is read by pdf_viewer.mjs 6.4.299 (BaseViewer) but missing from its typings, hence the spread.
+        const lifetime = new AbortController();
         const viewer = new PDFViewer({
+          ...{ abortSignal: lifetime.signal },
           container,
           findController,
           viewer: viewerEl,
@@ -170,6 +174,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
          */
         const scrollPageIntoView = viewer.scrollPageIntoView.bind(viewer);
         let jumped: { pageNumber: number; scrollTop: number; scrollLeft: number } | null = null;
+        // The scroll offset of the shown stage, kept to put back: a box that was display: none starts at 0 when it is shown again.
+        let scrolled = { top: 0, left: 0 };
         const jump = (args: Parameters<typeof scrollPageIntoView>[0], keepTop: boolean, keepLeft: boolean) => {
           scrollPageIntoView({ ...args, allowNegativeOffset: true });
           const div = viewer.getPageView(args.pageNumber - 1)?.div;
@@ -502,8 +508,6 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (!fitFrame) fitFrame = requestAnimationFrame(refit);
         });
         stageObserver.observe(container, { box: 'border-box' });
-        // The scroll offset of the shown stage, kept to put back: a box that was display: none starts at 0 when it is shown again.
-        let scrolled = { top: 0, left: 0 };
         const onScroll = () => {
           if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
         };
@@ -539,6 +543,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           viewer.renderingQueue!.renderView = () => false;
           // This also detaches the find controller (pdf.js hands it null): its text extraction asks the document for pages.
           viewer.setDocument(null);
+          lifetime.abort();
           scope.find.getState().reset();
           store.setHandle(null);
           store.setPdf(null);

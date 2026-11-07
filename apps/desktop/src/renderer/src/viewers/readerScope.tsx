@@ -25,7 +25,8 @@ export function createReaderScope(id: string): ReaderScope {
 
 /**
  * The scope of each tab's document, made on first ask and kept while the tab is open: a reader that left the mounted set and
- * comes back finds its find query and translation as it left them (the view itself is made again, at the saved place).
+ * comes back finds its history as it left it (spec 3.7). The view is made again, at the saved place, with a find and a translation
+ * that start over: the view's teardown resets the find store and the reader's unmount the translation store.
  */
 export const readerScopes = (() => {
   const all = new Map<string, ReaderScope>();

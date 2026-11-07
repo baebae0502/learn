@@ -51,17 +51,17 @@ const COPY: Partial<Record<ErrorCode, string>> = {
 /** One document's translation: its source text and what became of it. The preferences are the app's own (read from the prefs query). */
 export function createTranslationStore(): StoreApi<TranslationStore> {
   return createStore<TranslationStore>()((set, get) => {
-  /** The request that is current in this store; a reply for any other never touches the view. */
-  let seq = 0;
-  let inFlight = false;
+    /** The request that is current in this store; a reply for any other never touches the view. */
+    let seq = 0;
+    let inFlight = false;
 
-  /** Ends the request in flight at main; the reply it would have given is dropped by `seq`. */
-  function cancelInFlight(): void {
-    seq += 1;
-    if (!inFlight) return;
-    inFlight = false;
-    void api().translation.cancel();
-  }
+    /** Ends the request in flight at main; the reply it would have given is dropped by `seq`. */
+    function cancelInFlight(): void {
+      seq += 1;
+      if (!inFlight) return;
+      inFlight = false;
+      void api().translation.cancel();
+    }
 
     const start = async (): Promise<void> => {
       const { source } = get();

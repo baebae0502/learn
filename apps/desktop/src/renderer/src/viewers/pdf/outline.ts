@@ -110,26 +110,3 @@ export async function outlinePages(
   }
   return pages;
 }
-
-/** A row of the flattened tree (what a long outline draws): its place among its siblings and whether it is open. */
-export interface VisibleOutlineRow {
-  row: OutlineRow;
-  /** From 1 (aria-level). */
-  level: number;
-  setSize: number;
-  /** From 1. */
-  posInSet: number;
-  /** undefined for a leaf. */
-  expanded: boolean | undefined;
-  /** The id of the row above in the tree, or null at the top. */
-  parent: string | null;
-}
-
-/** The rows that can be seen, in reading order: the children of an open row follow it. */
-export function visibleOutline(rows: readonly OutlineRow[], open: ReadonlySet<string>, parent: string | null = null, level = 1): VisibleOutlineRow[] {
-  return rows.flatMap((row, i) => {
-    const expanded = row.children.length === 0 ? undefined : open.has(row.id);
-    const self: VisibleOutlineRow = { row, level, setSize: rows.length, posInSet: i + 1, expanded, parent };
-    return expanded ? [self, ...visibleOutline(row.children, open, row.id, level + 1)] : [self];
-  });
-}

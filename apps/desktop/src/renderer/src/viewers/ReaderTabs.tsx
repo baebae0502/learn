@@ -2,12 +2,12 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { lastInput } from '../ui/inputModality';
 import { mountedTabs } from '../state/tabs';
 import { useShell } from '../state/shell-store';
-import { useItem } from '../data/queries';
+import { useTabItem } from '../shell/useTabItem';
 import { ViewerHost } from './ViewerHost';
 import { readerScopes, setActiveReaderScope } from './readerScope';
 
 /**
- * The readers of the tabs kept mounted: the shown tab and the most recent others (tabs.ts MOUNTED_MAX). A tab that is not shown
+ * The readers of the tabs kept mounted: the shown tab and the most recent others (tabs.ts MOUNTED_MAX, a cap). A tab that is not shown
  * stays in the page, hidden and inert, so coming back to it is a show and not an open. The panels keep their order in the
  * page whatever the order of use (a node moved in the page loses its scroll), and a tab that leaves the set is unmounted:
  * its place is saved by the reader's own unmount, and its scope stays for when the tab is chosen again.
@@ -16,7 +16,9 @@ export function ReaderTabs() {
   const tabs = useShell((s) => s.tabs);
   const order = useRef<string[]>([]);
   const keep = new Set(mountedTabs(tabs));
-  order.current = [...order.current.filter((id) => keep.has(id)), ...[...keep].filter((id) => !order.current.includes(id))];
+  // A tab joins the set only by being shown (R32): closing another tab lets the next recent one into `mountedTabs`, but an evicted
+  // reader is not opened again for that (it would count as opened now); the cap is four, not a floor.
+  order.current = [...order.current.filter((id) => keep.has(id)), ...(keep.has(tabs.active) && !order.current.includes(tabs.active) ? [tabs.active] : [])];
 
   // The shell around the readers (their toolbar, sidebar, item panel and commands) talks to the shown tab's scope, from the first paint.
   useLayoutEffect(() => {
@@ -40,7 +42,7 @@ export function ReaderTabs() {
 }
 
 function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
-  const title = useItem(itemId).data?.title;
+  const title = useTabItem(itemId).item?.title;
   const box = useRef<HTMLDivElement>(null);
   /** What had the focus in this reader when it was last shown: a hidden (inert) panel loses its focus, and shown again has none. */
   const lastFocus = useRef<HTMLElement | null>(null);

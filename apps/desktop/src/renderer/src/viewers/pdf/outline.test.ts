@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { currentOutlineId, filterOutline, OUTLINE_BATCH, outlinePages, outlineRows, visibleOutline, type PdfOutlineNode } from './outline';
+import { currentOutlineId, filterOutline, OUTLINE_BATCH, outlinePages, outlineRows, type PdfOutlineNode } from './outline';
 
 const node = (title: string, items: PdfOutlineNode[] = [], extra: Partial<PdfOutlineNode> = {}): PdfOutlineNode =>
   ({ title, bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: null, url: null, unsafeUrl: undefined, newWindow: undefined, count: undefined, items, ...extra }) as PdfOutlineNode;
@@ -148,22 +148,5 @@ describe('outlinePages', () => {
       });
       expect(batches).toEqual([32]);
     });
-  });
-});
-
-describe('visibleOutline', () => {
-  const rows = outlineRows(TREE);
-
-  it('lists the rows of open entries only, with their level, set size and place in it', () => {
-    const flat = visibleOutline(rows, new Set(['1']));
-    expect(flat.map((f) => f.row.id)).toEqual(['0', '1', '1.0', '1.1', '1.2', '2']);
-    expect(flat[3]).toMatchObject({ level: 2, setSize: 3, posInSet: 2, expanded: false, parent: '1' });
-    expect(flat[1]).toMatchObject({ level: 1, setSize: 3, posInSet: 2, expanded: true, parent: null });
-    expect(flat[0]).toMatchObject({ expanded: false });
-    expect(flat[5]).toMatchObject({ expanded: undefined });
-  });
-
-  it('shows nothing under a closed entry', () => {
-    expect(visibleOutline(rows, new Set()).map((f) => f.row.id)).toEqual(['0', '1', '2']);
   });
 });

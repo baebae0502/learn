@@ -82,6 +82,8 @@ export function useTabReorder(scroll: RefObject<HTMLElement | null>, move: (item
         if (ev.pointerId !== pointerId) return;
         x = ev.clientX;
         if (cancelled) return;
+        // The button is up (the release came outside the window and was missed): the drag is over, not a tab stuck to the pointer.
+        if ((ev.buttons & 1) === 0) return onLost();
         if (!active) {
           if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < DRAG_THRESHOLD) return;
           active = true;

@@ -401,7 +401,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       .catch(actionFailed);
   }, []);
   /** 라이브러리에서 보기: the library tab, the row selected and brought into view; a view that hides it gives way to 내 라이브러리. */
-  const revealInLibrary = useCallback((itemId: string) => {
+  const revealInLibrary = useCallback((itemId: string) => afterEditing(() => {
     const library = useLibrary.getState();
     if (library.query.trim() !== '') library.setQuery('');
     if (filteredRef.current.some((i) => i.id === itemId) && !inTrash) {
@@ -412,7 +412,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       library.setLastOpened(itemId);
     }
     useShell.getState().selectTab('library');
-  }, [inTrash]);
+  }), [inTrash]);
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -482,19 +482,21 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagColor: (tagId) => void tagActions.clearColor(tagId),
     deleteTag: (tagId) => void tagActions.remove(tagId),
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
-    back: () => selectTab('library'),
+    back: () => afterEditing(() => selectTab('library')),
     openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
       // The library's tab has nothing to close: ⌘W closes the window, which asks an open edit form first (main's close handler).
       if (id === 'library') window.close();
+      // The shown tab leaves with its tab: an open 정보 편집 is asked first (a tab behind it leaves nothing).
+      else if (id === shell.tabs.active) afterEditing(() => useShell.getState().closeTab(id));
       else shell.closeTab(id);
     },
-    reopenClosedTab: () => useShell.getState().reopenClosedTab((id) => listRef.current.some((i) => i.id === id)),
-    selectRelativeTab: (delta) => useShell.getState().selectRelativeTab(delta),
-    selectTabAt: (index) => useShell.getState().selectTabAt(index),
-    selectLastTab: () => useShell.getState().selectLastTab(),
+    reopenClosedTab: () => afterEditing(() => useShell.getState().reopenClosedTab((id) => listRef.current.some((i) => i.id === id))),
+    selectRelativeTab: (delta) => afterEditing(() => useShell.getState().selectRelativeTab(delta)),
+    selectTabAt: (index) => afterEditing(() => useShell.getState().selectTabAt(index)),
+    selectLastTab: () => afterEditing(() => useShell.getState().selectLastTab()),
     moveTab: (delta, itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
@@ -504,7 +506,10 @@ export function MainWindow(_props: { info: AppInfo }) {
     closeOtherTabs: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
-      if (id !== 'library') shell.closeOtherTabs(id);
+      if (id === 'library') return;
+      // Closing the others shows this one: when another is shown now, it leaves with its tab.
+      if (shell.tabs.active !== id) afterEditing(() => useShell.getState().closeOtherTabs(id));
+      else shell.closeOtherTabs(id);
     },
     revealInLibrary: (itemId) => revealInLibrary(itemId),
     relink: (itemId) => void relink(itemId),
@@ -662,7 +667,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={view.kind === 'reader' ? <ReaderSidebar /> : <LibrarySidebar onFilesDrop={onDrop} />}
+        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}

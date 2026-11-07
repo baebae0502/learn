@@ -760,6 +760,10 @@ describe('tab commands (M7b spec 3.4, 9)', () => {
     expect(isCommandAvailable('tab.revealInLibrary', withTabs(1), [{ ...managedOk, trashed: true }])).toBe(false);
     expect(isCommandAvailable('tab.revealInLibrary', withTabs(1), [])).toBe(false);
   });
+  it('shows a file in the folder unless its item is in the trash (main answers NOT_FOUND for it)', () => {
+    expect(isCommandAvailable('item.showInFolder', withTabs(1), [managedOk])).toBe(true);
+    expect(isCommandAvailable('item.showInFolder', withTabs(1), [{ ...managedOk, trashed: true }])).toBe(false);
+  });
   it('opens several items as tabs, in the background too, but not from the trash view or without a selection', () => {
     expect(isCommandAvailable('item.open', selecting(3, 3), [managedOk, managedOk, managedOk])).toBe(true);
     expect(isCommandAvailable('item.openInBackground', selecting(1, 1), [managedOk])).toBe(true);

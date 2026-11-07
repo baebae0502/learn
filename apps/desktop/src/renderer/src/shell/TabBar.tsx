@@ -4,12 +4,14 @@ import { acceleratorLabel, commandById, commandLabel, type CommandId } from '@le
 import { unwrap, api } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { runPicked } from '../commands/registry';
-import { useItem, useItems } from '../data/queries';
 import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useTabReorder } from './useTabReorder';
 import { readerWindowTitle } from '../viewers/readerTitle';
+import { useTabItem } from './useTabItem';
 import { useShell } from '../state/shell-store';
+import type { TabId } from '../state/tabs';
+import { afterEditing } from '../inspector/editGuard';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
 import { Icon } from '../ui/Icon';
@@ -28,6 +30,9 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
   const tabs = useShell((s) => s.tabs);
   const selectTab = useShell((s) => s.selectTab);
   const closeTab = useShell((s) => s.closeTab);
+  /** Leaving the shown tab, or closing it, asks an open 정보 편집 first (editGuard); a tab behind the shown one leaves nothing. */
+  const choose = (id: TabId) => (id === useShell.getState().tabs.active ? selectTab(id) : afterEditing(() => selectTab(id)));
+  const close = (id: string) => (id === useShell.getState().tabs.active ? afterEditing(() => closeTab(id)) : closeTab(id));
   const moveTab = useShell((s) => s.moveTab);
   const { env } = useCommands();
   const envRef = useRef(env);
@@ -148,11 +153,11 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
     <header className="titlebar tab-bar" data-testid="tab-bar">
       {hidden && <SidebarToggle place="toolbar" />}
       <div ref={listRef} className="tabs" role="tablist" aria-label={t.shell.tabs} aria-orientation="horizontal" onKeyDown={onKeyDown} onPointerDown={reorder.onPointerDown} onClickCapture={reorder.onClickCapture}>
-        <Tab id="library" selected={active === 'library'} title={t.shell.libraryTab} icon={LibraryBig} home onChoose={() => selectTab('library')} />
+        <Tab id="library" selected={active === 'library'} title={t.shell.libraryTab} icon={LibraryBig} home onChoose={() => choose('library')} />
         <span className="tabs-sep" aria-hidden="true" />
         <div ref={scrollRef} className="tabs-scroll" data-testid="tab-scroll" data-fade-start={fade.start ? 1 : undefined} data-fade-end={fade.end ? 1 : undefined} onScroll={measure}>
           {tabs.tabs.map((id) => (
-            <ReaderTab key={id} itemId={id} selected={active === id} onChoose={() => selectTab(id)} onClose={() => closeTab(id)} onMenu={(e) => void showMenu(id, e)} />
+            <ReaderTab key={id} itemId={id} selected={active === id} onChoose={() => choose(id)} onClose={() => close(id)} onMenu={(e) => void showMenu(id, e)} />
           ))}
         </div>
       </div>
@@ -164,8 +169,8 @@ export function TabBar({ trailing }: { trailing: ReactNode }) {
 
 /** Names the window after the shown reader tab (Electron follows document.title); renders nothing. */
 function ActiveTitle({ itemId }: { itemId: string }) {
-  const query = useItem(itemId);
-  const title = readerWindowTitle(query);
+  const { item, failed } = useTabItem(itemId);
+  const title = readerWindowTitle({ data: item, isError: failed });
   useEffect(() => {
     if (title) document.title = title;
   }, [title]);
@@ -173,10 +178,7 @@ function ActiveTitle({ itemId }: { itemId: string }) {
 }
 
 function ReaderTab({ itemId, selected, onChoose, onClose, onMenu }: { itemId: string; selected: boolean; onChoose(): void; onClose(): void; onMenu(e: MouseEvent): void }) {
-  const query = useItem(itemId);
-  // A trashed item no longer reads from the library; its row in the list (or the last read) still names it.
-  const listed = useItems().data?.find((i) => i.id === itemId);
-  const item = query.data ?? listed;
+  const { item } = useTabItem(itemId);
   const title = item?.title ?? '';
   return <Tab id={itemId} selected={selected} title={title} icon={item?.type === 'video' ? Clapperboard : FileText} onChoose={onChoose} onClose={onClose} onMenu={onMenu} />;
 }

@@ -881,7 +881,8 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   // A trashed item has no row in the library to show.
   'tab.revealInLibrary': (_c, t) => t.items.length === 1 && t.items[0]!.trashed !== true,
   'item.relink': (_ctx, t) => t.items.length === 1 && t.items[0]!.storageMode === 'linked' && t.items[0]!.availability === 'missing',
-  'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
+  // A trashed item has no file to show: main answers NOT_FOUND for it (the tab menu of a trashed tab).
+  'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available' && t.items[0]!.trashed !== true,
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   // The reader's panel carries the pencil too (its target is the open item); the palette gives the reader no target.

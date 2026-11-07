@@ -105,9 +105,11 @@ test('forward returns to where you last were, not to the link target', async ({}
     await clickLink(page);
     await expect(field(page)).toHaveValue('50');
     const scroll = page.getByTestId('pdf-scroll');
-    await scroll.evaluate((el) => {
+    await scroll.evaluate(async (el) => {
       const p52 = el.querySelector<HTMLElement>('.page[data-page-number="52"]')!;
       el.scrollTop = p52.offsetTop + p52.clientTop + p52.clientHeight * 0.3;
+      // A reader's scroll is reported frame by frame; two frames, so the viewer has the place before a late text layer arrives.
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     });
     await expect(field(page)).toHaveValue('52');
     const there = await scrollTop(page);
@@ -122,33 +124,43 @@ test('forward returns to where you last were, not to the link target', async ({}
   }
 });
 
+/**
+ * Text layers are held back: their render events are kept and let through on release. The event bus object cannot take a new own
+ * property, so its prototype's dispatch is wrapped.
+ */
+async function holdTextLayers(page: Page) {
+  await page.evaluate(() => {
+    type Bus = { dispatch(name: string, data: unknown): void };
+    const w = window as unknown as { __learnReader: { getState(): { handle: { eventBus(): Bus } } }; heldPages: () => number[]; releaseTextLayers: () => void };
+    const proto = Object.getPrototypeOf(w.__learnReader.getState().handle.eventBus()) as Bus;
+    const dispatch = proto.dispatch;
+    const held: Array<[unknown, string, { pageNumber: number }]> = [];
+    let holding = true;
+    proto.dispatch = function (this: unknown, name: string, data: unknown) {
+      if (holding && name === 'textlayerrendered') held.push([this, name, data as { pageNumber: number }]);
+      else dispatch.call(this, name, data);
+    };
+    w.heldPages = () => held.map(([, , d]) => d.pageNumber);
+    w.releaseTextLayers = () => {
+      holding = false;
+      for (const [self, name, data] of held.splice(0)) dispatch.call(self, name, data);
+    };
+  });
+}
+/** The text layer of `pageNumber` has been drawn and is held back. */
+const expectHeld = (page: Page, pageNumber: number) =>
+  expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages())).toContain(pageNumber);
+const releaseTextLayers = (page: Page) => page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+
 test('a scroll of the reader\'s own after a link keeps the stage when the target\'s text layer is drawn late', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
-    // Text layers are held back and let through on release. The event bus object cannot take a new own property, so its prototype's dispatch is wrapped.
-    await page.evaluate(() => {
-      type Bus = { dispatch(name: string, data: unknown): void };
-      const w = window as unknown as { __learnReader: { getState(): { handle: { eventBus(): Bus } } }; heldPages: () => number[]; releaseTextLayers: () => void };
-      const bus = w.__learnReader.getState().handle.eventBus();
-      const proto = Object.getPrototypeOf(bus) as Bus;
-      const dispatch = proto.dispatch;
-      const held: Array<[unknown, string, { pageNumber: number }]> = [];
-      let holding = true;
-      proto.dispatch = function (this: unknown, name: string, data: unknown) {
-        if (holding && name === 'textlayerrendered') held.push([this, name, data as { pageNumber: number }]);
-        else dispatch.call(this, name, data);
-      };
-      w.heldPages = () => held.map(([, , d]) => d.pageNumber);
-      w.releaseTextLayers = () => {
-        holding = false;
-        for (const [self, name, data] of held.splice(0)) dispatch.call(self, name, data);
-      };
-    });
+    await holdTextLayers(page);
     await clickLink(page);
     await expect(field(page)).toHaveValue('50');
     // The target's text layer is drawn and held back; the reader scrolls on before it is let through.
-    await expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages())).toContain(50);
+    await expectHeld(page, 50);
     await page.getByTestId('pdf-scroll').evaluate((el) => {
       const p52 = el.querySelector<HTMLElement>('.page[data-page-number="52"]')!;
       el.scrollTop = p52.offsetTop + p52.clientTop + p52.clientHeight * 0.3;
@@ -157,7 +169,7 @@ test('a scroll of the reader\'s own after a link keeps the stage when the target
     const there = await scrollTop(page);
     const height = await pageHeight(page);
     await page.waitForTimeout(100); // the scroll event is reported
-    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await releaseTextLayers(page);
     await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('52');
     expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
@@ -166,32 +178,19 @@ test('a scroll of the reader\'s own after a link keeps the stage when the target
   }
 });
 
-test('going back before the link target\'s text layer is drawn stays back: pdf.js\'s late focus of that page does not pull the view to it', async ({}, testInfo) => {
+test('going back before the link target\'s text layer is let through stays back: pdf.js\'s late focus of that page does not pull the view to it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
     await link(page).scrollIntoViewIfNeeded();
     const start = await scrollTop(page);
-    // Text layers are held back: their render events are kept and let through when released.
-    await page.evaluate(() => {
-      const bus = (window as unknown as { __learnReader: { getState(): { handle: { eventBus(): { dispatch(name: string, data: unknown): void } } } } }).__learnReader.getState().handle.eventBus();
-      const dispatch = bus.dispatch.bind(bus);
-      const held: Array<[string, unknown]> = [];
-      let holding = true;
-      bus.dispatch = (name, data) => {
-        if (holding && name === 'textlayerrendered') held.push([name, data]);
-        else dispatch(name, data);
-      };
-      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers = () => {
-        holding = false;
-        for (const [name, data] of held.splice(0)) dispatch(name, data);
-      };
-    });
+    await holdTextLayers(page);
     await clickLink(page);
     await expect(field(page)).toHaveValue('50');
+    await expectHeld(page, 50);
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
-    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await releaseTextLayers(page);
     await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('1');
     expect(Math.abs((await scrollTop(page)) - start)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
@@ -200,30 +199,18 @@ test('going back before the link target\'s text layer is drawn stays back: pdf.j
   }
 });
 
-test('a page turn right after a link, before its text layer is drawn, stays on the turned page', async ({}, testInfo) => {
+test('a page turn right after a link, before its text layer is let through, stays on the turned page', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);
-    await page.evaluate(() => {
-      const bus = (window as unknown as { __learnReader: { getState(): { handle: { eventBus(): { dispatch(name: string, data: unknown): void } } } } }).__learnReader.getState().handle.eventBus();
-      const dispatch = bus.dispatch.bind(bus);
-      const held: Array<[string, unknown]> = [];
-      let holding = true;
-      bus.dispatch = (name, data) => {
-        if (holding && name === 'textlayerrendered') held.push([name, data]);
-        else dispatch(name, data);
-      };
-      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers = () => {
-        holding = false;
-        for (const [name, data] of held.splice(0)) dispatch(name, data);
-      };
-    });
+    await holdTextLayers(page);
     await clickLink(page);
     await expect(field(page)).toHaveValue('50');
+    await expectHeld(page, 50);
     await page.getByTestId('pdf-next').click();
     await expect(field(page)).toHaveValue('51');
     const at = await scrollTop(page);
-    await page.evaluate(() => (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers());
+    await releaseTextLayers(page);
     await page.waitForTimeout(500);
     await expect(field(page)).toHaveValue('51');
     expect(Math.abs((await scrollTop(page)) - at)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, runMenuCommand, seedRows } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, renderCounts, runMenuCommand, seedRows, watchRenders } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
@@ -361,6 +361,41 @@ test('a drop of 8 files into an empty library: drop → overlay gone → import 
 });
 
 /** spec 9, ms. Linux CI fails beyond twice each; every other run reports. */
+/**
+ * A CDP performance trace around a stretch of the page's work: the time the main thread spent per kind of event, the
+ * costliest first, to name what a slow scroll is spent on. Null where the trace cannot be taken.
+ */
+async function startTrace(page: Page): Promise<{ stop(): Promise<Array<{ name: string; ms: number; count: number }> | null> }> {
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    const events: Array<{ name?: string; dur?: number; ph?: string }> = [];
+    cdp.on('Tracing.dataCollected', (e: { value: typeof events }) => events.push(...e.value));
+    await cdp.send('Tracing.start', { categories: 'devtools.timeline,disabled-by-default-devtools.timeline', transferMode: 'ReportEvents' });
+    return {
+      async stop() {
+        try {
+          const done = new Promise<void>((resolve) => cdp.once('Tracing.tracingComplete', () => resolve()));
+          await cdp.send('Tracing.end');
+          await done;
+          const byName = new Map<string, { ms: number; count: number }>();
+          for (const e of events) {
+            if (e.ph !== 'X' || e.dur === undefined || e.name === undefined) continue;
+            const cur = byName.get(e.name) ?? { ms: 0, count: 0 };
+            cur.ms += e.dur / 1000;
+            cur.count += 1;
+            byName.set(e.name, cur);
+          }
+          return [...byName].map(([name, v]) => ({ name, ms: Math.round(v.ms * 10) / 10, count: v.count })).sort((a, b) => b.ms - a.ms).slice(0, 15);
+        } catch {
+          return null;
+        }
+      },
+    };
+  } catch {
+    return { stop: async () => null };
+  }
+}
+
 const LIBRARY_BUDGET_MS = { listIpc: 150, firstPaint: 500, inputToPaintP95: 50, paletteInputToPaintP95: 50, searchP95: 300, scrollFrameP95: 16.7, sortToPaint: 100, inspectorToPaint: 100 } as const;
 const LIBRARY_ITEMS = 10_000;
 /** Each single-shot timing five times (spec 9: five or more). */
@@ -577,6 +612,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
 
     // Scroll: the scroller is the table's own scroll view (the rows placed by the virtualizer, the header above it), 40 px every
     // frame for 150 frames.
+    await watchRenders(page);
+    const trace = await startTrace(page);
     const scroll = await page.evaluate(async () => {
       const target = document.querySelector<HTMLElement>('[data-testid="library-scroller"]')!;
       if (target.scrollHeight <= target.clientHeight + 1) throw new Error('the table does not scroll');
@@ -595,8 +632,12 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       });
       return { deltas: deltas.slice(2), scrolledTo: Math.round(target.scrollTop) };
     });
+    const scrollTrace = await trace.stop();
+    const scrollRenders = await renderCounts(page);
     expect(scroll.scrolledTo, 'the table scrolled').toBeGreaterThan(0);
     const frameMs = scroll.deltas.map(tenth);
+    // 150 frames of 40 px: the rows that scrolled in render once, the ones that stayed do not (a row is 32-40 px tall).
+    expect(scrollRenders['LibraryRow'] ?? 0, 'rows rendered while scrolling: only the ones that came into the range').toBeLessThanOrEqual(scroll.scrolledTo / 24 + 60);
 
     // Sort: a press on a column header's sort button → the first frame with the re-sorted rows. The button's onClick sorts
     // (a button's click() runs it, unlike a row's), the settings write is optimistic.
@@ -656,7 +697,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
       searchTextsPayload,
       paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
-      scrollFrameMs: { frames: frameMs.length, p95: percentile(frameMs, 95), max: Math.max(...frameMs), scrolledPx: scroll.scrolledTo },
+      scrollFrameMs: { frames: frameMs.length, p95: percentile(frameMs, 95), max: Math.max(...frameMs), scrolledPx: scroll.scrolledTo, rowRenders: scrollRenders['LibraryRow'] ?? 0, trace: scrollTrace },
       sortToPaintMs: { columns: SORT_COLUMNS, runs: sortToPaintMs, median: median(sortToPaintMs), max: Math.max(...sortToPaintMs) },
       inspectorToPaintMs: { panel, forcedShown, runs: inspectorToPaintMs, median: median(inspectorToPaintMs), max: Math.max(...inspectorToPaintMs) },
       platform: `${process.platform}-${process.arch}`,

@@ -14,6 +14,7 @@ import { highlight } from '../palette/highlight';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { cx } from '../ui/cx';
+import { countRender } from '../ui/renderCount';
 import { Icon } from '../ui/Icon';
 import { ProgressBar } from '../ui/ProgressBar';
 import { isNavigationKey, lastInput } from '../ui/inputModality';
@@ -182,12 +183,29 @@ interface ItemRowProps {
   groupStart: boolean;
 }
 
+const sameMatch = (a: Match | null, b: Match | null): boolean => a === b || (a !== null && b !== null && a.start === b.start && a.end === b.end && a.kind === b.kind);
+const sameTags = (a: readonly OrganizeTag[], b: readonly OrganizeTag[]): boolean => a === b || (a.length === b.length && a.every((x, k) => x === b[k]));
+
+/**
+ * Whether a row would draw what it drew: its item object, its place, whether it is selected, ringed or the tab stop, the
+ * columns shown (and so the density's heights, which move `top`), the day (for the dates), the title match, the tags and
+ * the duplicate marks. A new array or object with the same content (a tag list, a match) is the same row.
+ */
+function sameRow(a: ItemRowProps, b: ItemRowProps): boolean {
+  return (
+    a.item === b.item && a.index === b.index && a.top === b.top && a.selected === b.selected && a.tabStop === b.tabStop && a.ring === b.ring &&
+    a.columns === b.columns && a.now === b.now && a.dragIdsOf === b.dragIdsOf && a.draggable === b.draggable && a.kept === b.kept &&
+    a.groupStart === b.groupStart && sameMatch(a.match, b.match) && sameTags(a.tags, b.tags)
+  );
+}
+
 /**
  * One row (spec §3.4): it redraws only when its item, its place or its state changed — a re-read list redraws the rows
  * whose items changed, a click the two rows whose selection changed. Widths are not a prop: the grid tracks come from
  * the table's CSS variables, so a column drag redraws no row.
  */
 const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, ring, columns, now, match, tags, dragIdsOf, draggable, kept, groupStart }: ItemRowProps) {
+  countRender('LibraryRow');
   const last = columns.length - 1;
   const rowRef = useRef<HTMLDivElement>(null);
   const { rowProps, isDropTarget } = useRowDnd(rowRef, item.id, dragIdsOf, draggable);
@@ -241,7 +259,7 @@ const ItemRow = memo(function ItemRow({ item, index, top, selected, tabStop, rin
       )}
     </div>
   );
-});
+}, sameRow);
 
 interface CollectionRowProps {
   collection: TrashedCollection;

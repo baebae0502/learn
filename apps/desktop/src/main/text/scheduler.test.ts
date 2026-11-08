@@ -3,6 +3,7 @@ import { LibraryRepository, TextRepository, migrate, openDatabase, type Db } fro
 import { TEXT_LIMITS, newId } from '@learn/domain';
 import type { ExtractEvents, ExtractOutcome, TextExtractor } from './extractor';
 import type { ExtractRequest } from './messages';
+import { createThrottle } from '../jobs/throttle';
 import { createTextScheduler, type TextScheduler } from './scheduler';
 
 let db: Db;
@@ -82,8 +83,10 @@ interface Rig {
   progress: { request: number; now: number };
   busy: { value: boolean; release: () => void };
   files: Map<string, string | null>;
+  /** With `throttle`: the index progress as each notice that really left would have read it. */
+  sent: Array<{ done: number; total: number }>;
 }
-function rig(script: Step[], o: { paused?: boolean; files?: (sha: string) => string | null } = {}): Rig {
+function rig(script: Step[], o: { paused?: boolean; files?: (sha: string) => string | null; throttle?: boolean } = {}): Rig {
   const x = new FakeExtractor(script);
   const delays: Rig['delays'] = [];
   const announced: string[][] = [];
@@ -99,6 +102,8 @@ function rig(script: Step[], o: { paused?: boolean; files?: (sha: string) => str
     },
   };
   const files = new Map<string, string | null>();
+  const sent: Rig['sent'] = [];
+  const notice = createThrottle(() => void sent.push(repo.progress()), 1000);
   const s = createTextScheduler({
     repo: () => repo,
     extractor: x,
@@ -107,13 +112,19 @@ function rig(script: Step[], o: { paused?: boolean; files?: (sha: string) => str
     file: o.files ?? ((sha) => (files.has(sha) ? files.get(sha)! : `/files/${sha.slice(0, 4)}.pdf`)),
     assetsDir: '/assets',
     announce: (ids) => void announced.push(ids),
-    progress: () => void (progress.request += 1),
-    progressNow: () => void (progress.now += 1),
+    progress: () => {
+      progress.request += 1;
+      if (o.throttle) notice.request();
+    },
+    progressNow: () => {
+      progress.now += 1;
+      if (o.throttle) notice.flush();
+    },
     paused: o.paused ?? false,
     now: () => T(9),
     delay: (ms) => new Promise<void>((go) => delays.push({ ms, go })),
   });
-  return { s, x, delays, announced, progress, busy, files };
+  return { s, x, delays, announced, progress, busy, files, sent };
 }
 /** Both signals the first start waits for, the delay (when there is one) elapsed. */
 async function startUp(r: Rig): Promise<void> {
@@ -263,8 +274,18 @@ describe('order and results', () => {
     expect(r.x.calls[0]).toMatchObject({ startPage: 0, assetsDir: '/assets', limits: { maxPages: 5000, maxPageChars: 100_000, maxDocChars: 10_000_000, maxFileBytes: 512 * 1024 * 1024 } });
     expect(repo.pageCount(fresh.sha)).toBe(25);
     expect(r.progress.request).toBeGreaterThanOrEqual(3); // two batches of the first, one of the second
-    expect(r.progress.now).toBeGreaterThanOrEqual(2);
+    expect(r.progress.now).toBe(1); // a job end only asks; the empty queue sends
     expect(r.announced).toEqual([[fresh.itemId], [old.itemId]]);
+  });
+
+  it('a run of short jobs sends no notice per job end: the first one, then the final flush', async () => {
+    for (let day = 1; day <= 5; day++) addPdf(day);
+    const r = rig([reads(1), reads(1), reads(1), reads(1), reads(1)], { throttle: true });
+    await startUp(r);
+    expect(repo.jobs().every((j) => j.state === 'done')).toBe(true);
+    expect(r.progress.request).toBeGreaterThanOrEqual(10); // positive control: every batch and every job end asked
+    expect(r.sent.length).toBeLessThanOrEqual(2);
+    expect(r.sent.at(-1)).toEqual({ done: 5, total: 5 });
   });
 
   it('a file the worker could not open ends failed with its reason; both outcomes are announced', async () => {
@@ -322,12 +343,22 @@ describe('order and results', () => {
 
   it.each(['crashed', 'timeout', 'bad-message'] as const)('%s counts one attempt and the job is tried again; the third failure ends in gave-up, announced', async (kind) => {
     const a = addPdf(1);
-    const r = rig([async () => ({ kind }), async () => ({ kind }), async () => ({ kind }), async () => ({ kind: 'done', pages: 1, truncated: false })]);
+    const r = rig([async () => ({ kind }), async () => ({ kind }), async () => ({ kind }), async () => ({ kind: 'done', pages: 1, truncated: false })], { throttle: true });
     await startUp(r);
     expect(r.x.calls).toHaveLength(3); // the fourth step was not used
+    expect(r.sent.at(-1)).toEqual({ done: 1, total: 1 }); // the final notice after the give-up counts the job as answered
     expect(job(a.sha)).toMatchObject({ state: 'failed', error: 'gave-up', attempts: 3 });
     expect(repo.stateOf(a.sha)).toEqual({ state: 'failed', reason: 'gave-up' });
     expect(r.announced).toEqual([[a.itemId]]);
+  });
+
+  it('a job that gave up ends with a notice that counts it as answered', async () => {
+    const a = addPdf(1);
+    const r = rig([async () => ({ kind: 'crashed' }), async () => ({ kind: 'crashed' }), async () => ({ kind: 'crashed' })], { throttle: true });
+    await startUp(r);
+    expect(job(a.sha).state).toBe('failed');
+    expect(r.sent.at(-1)).toEqual({ done: 1, total: 1 }); // what the last notice that left says: the job is done with
+    expect(r.sent.some((p) => p.done === 0)).toBe(true); // positive control: the earlier notices still counted it open
   });
 
   it('a batch that is not written (the job is no longer running) stops the worker', async () => {
@@ -517,7 +548,7 @@ describe('the trash, restore and purge (spec 5.7)', () => {
 });
 
 describe('dispose', () => {
-  it('kills the worker and starts nothing more; a pending idle() is let go', async () => {
+  it('kills the worker and starts nothing more; a pending idle() is let go; the running job goes back to the queue with its attempt given back', async () => {
     const a = addPdf(1);
     const r = rig([reads(100), reads(1)]);
     r.s.hold(20);
@@ -525,6 +556,7 @@ describe('dispose', () => {
     r.s.startupChecked();
     r.s.control('now');
     await until(() => r.s.held());
+    expect(job(a.sha)).toMatchObject({ state: 'running', attempts: 1 }); // positive control: the attempt was counted at the start
     const settled = vi.fn();
     void r.s.idle().then(settled);
     r.s.dispose();
@@ -533,6 +565,49 @@ describe('dispose', () => {
     r.s.wake();
     await tick();
     expect(r.x.calls).toHaveLength(1);
-    expect(job(a.sha).state).not.toBe('done');
+    expect(job(a.sha)).toMatchObject({ state: 'queued', attempts: 0 });
+  });
+
+  it('touches the database no more once it is disposed and closed', async () => {
+    addPdf(1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const r = rig([reads(100)]);
+      r.s.hold(20);
+      r.s.firstIdle();
+      r.s.startupChecked();
+      r.s.control('now');
+      await until(() => r.s.held());
+      r.progress.request = 0;
+      r.progress.now = 0;
+      r.s.dispose();
+      db.close();
+      for (let i = 0; i < 5; i++) await tick();
+      expect(warn).not.toHaveBeenCalled();
+      expect(r.progress.request + r.progress.now).toBe(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe('library broadcasts', () => {
+  it('a restore starts the next run after the handler that announced it, not inside it', async () => {
+    const a = addPdf(1);
+    const r = rig([reads(100), reads(100)]);
+    r.s.hold(20);
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    await until(() => r.s.held());
+    new LibraryRepository(db).trash([a.itemId]);
+    r.s.libraryChanged('trash');
+    await until(() => !r.s.held() && job(a.sha).state === 'queued');
+    r.s.hold(null);
+    new LibraryRepository(db).restore([a.itemId]);
+    const calls = r.x.calls.length;
+    r.s.libraryChanged('restore');
+    expect(r.x.calls).toHaveLength(calls); // nothing ran inside the call
+    await until(() => r.x.calls.length === calls + 1);
   });
 });

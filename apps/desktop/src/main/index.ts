@@ -463,7 +463,10 @@ if (!app.requestSingleInstanceLock()) {
     // Body text (spec 5.1): one file at a time while the work line is free, from the window's first idle on.
     if (ctx) {
       const openCtx = ctx;
-      const indexProgress = createThrottle(() => broadcast('search:progress', openCtx.text.progress()), 1000);
+      // The timer may fire after the quit closed the database.
+      const indexProgress = createThrottle(() => {
+        if (openCtx.db.open) broadcast('search:progress', openCtx.text.progress());
+      }, 1000);
       text = createTextScheduler({
         repo: () => (openCtx.db.open ? openCtx.text : null),
         extractor: textExtractor,

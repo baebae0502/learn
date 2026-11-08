@@ -20,9 +20,10 @@ export function bodyTextPage(seed: number, doc: number, page: number, chars: num
   let x = (seed * 1_000_003 + doc * 1009 + page) % 2 ** 31;
   let text = '';
   for (let k = 0; text.length < chars; k++) {
-    x = (1103515245 * x + 12345) % 2 ** 31;
+    // 32-bit integer arithmetic: the product in doubles would lose its low bits, and with them half of the words.
+    x = (Math.imul(1103515245, x) + 12345) & 0x7fffffff;
     const table = k % 5 === 4 ? KO : EN;
-    text += (k === 0 ? '' : ' ') + table[x % table.length]!;
+    text += (k === 0 ? '' : ' ') + table[(x >>> 16) % table.length]!;
   }
   return text.slice(0, chars);
 }

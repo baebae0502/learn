@@ -78,7 +78,7 @@ export interface StartCheckDeps {
   requestAuto(): void;
   gate: AutoGate;
   pollMs?: number;
-  /** The first check ended, whatever came of it: the jobs it found running are interrupted, so the body-text scheduler may wake (P-29). */
+  /** The first check ended, whatever came of it: the jobs it found running are interrupted, so the body-text scheduler may wake. */
   onChecked?(): void;
 }
 

@@ -34,6 +34,29 @@ describe('bodyTextPage', () => {
   });
 });
 
+describe('the words of the pages', () => {
+  const tableWords = [
+    'signal', 'transduction', 'protein', 'receptor', 'membrane', 'kinase', 'pathway', 'expression', 'cellular', 'molecular', 'analysis', 'method', 'result',
+    'sample', 'structure', 'function', 'binding', 'activity', 'response', 'control', 'model', 'network', 'sequence', 'genome', 'enzyme', 'inhibitor',
+    'phosphorylation', 'regulation', 'microscopy', 'fluorescence', 'imaging', 'tissue', 'neuron', 'synapse', 'channel', 'ligand', 'assay', 'culture',
+    'antibody', 'dynamics',
+  ];
+  // The Korean words the search timings ask for (written as escapes: main keeps its Hangul in strings.ts).
+  const asked = ['\uD615\uAD11', '\uC138\uD3EC', '\uD604\uBBF8\uACBD', '\uB2E8\uBC31\uC9C8', '\uC2E0\uD638'];
+
+  it('every word of both tables occurs over a few hundred pages, among them each word the search timings ask for', () => {
+    const seen = new Set<string>();
+    for (let doc = 0; doc < 10; doc++) for (let page = 0; page < 30; page++) for (const w of bodyTextPage(7, doc, page, 4000).split(' ').slice(0, -1)) seen.add(w); // the last word of a page may be cut
+    for (const w of tableWords) expect(seen, w).toContain(w);
+    const korean = [...seen].filter((w) => /\p{Script=Hangul}/u.test(w));
+    expect(korean).toHaveLength(20);
+    for (const w of asked) expect(seen, w).toContain(w);
+    expect(seen).toContain('transduction');
+    expect(seen).toContain('signal');
+    expect(seen.size).toBe(60); // positive control: nothing else is in the pages
+  });
+});
+
 describe('seedBodyText', () => {
   const dirs: string[] = [];
   afterEach(() => {

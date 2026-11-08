@@ -432,7 +432,7 @@ export interface LearnTestHooks {
   requestLibraryCheck(): Promise<void>;
   /** Reads one PDF's body text through the app's worker and returns what it sent; nothing is written to the library. */
   extractFile(input: { file: string; startPage?: number; limits?: Partial<ExtractLimits> }): Promise<{ outcome: ExtractOutcome; opened: number | null; batches: Array<{ from: number; texts: string[] }> }>;
-  /** PDF items with their body text already stored (J31): `docs` × `pages` pages of `chars` characters, finished jobs. */
+  /** PDF items with their body text already stored: `docs` × `pages` pages of `chars` characters, finished jobs. */
   seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
   /** The body-text scheduler starts paused under E2E: 'resume' runs it after its usual delay, 'now' without the delay (the startup check is still waited for). */
   textExtraction(mode: 'pause' | 'resume' | 'now'): void;

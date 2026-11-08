@@ -1758,7 +1758,7 @@ type WithTextSchedulerHooks = {
     textStats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
   };
 };
-/** PDF items with their body text already stored (J31), without waiting for the worker; announces one import. */
+/** PDF items with their body text already stored, without waiting for the worker; announces one import. */
 export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
 /** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
 export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);

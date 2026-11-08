@@ -22,6 +22,12 @@ export const NEXT_JOB_SQL = `SELECT j.id, j.state, j.attempts, j.error, j.payloa
          WHERE a.sha256 = substr(j.dedupe_key, ${SHA_AT}, 64))
   ORDER BY j.created_at DESC, j.rowid DESC`;
 
+/** The PDF files that have no job yet, with the date of their newest item (exported for its query-plan test): each file's key is looked up in the unique index. */
+export const BACKFILL_FILES_SQL = `SELECT a.sha256, MAX(i.created_at) AS created FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+  JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf'
+  AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = '${extractKey('#').slice(0, SHA_AT - 1)}' || a.sha256 || '${KEY_SUFFIX}')
+  GROUP BY a.sha256 ORDER BY created, a.sha256`;
+
 const parse = (row: JobRow): ExtractPayload => JSON.parse(row.payload_json) as ExtractPayload;
 const toJob = (row: JobRow): ExtractJob => {
   const payload = parse(row);
@@ -44,10 +50,7 @@ export class TextRepository {
   /** One job per PDF file content that has none yet, older libraries included. Returns how many were added. */
   backfill(now: string): number {
     return this.db.transaction((): number => {
-      const files = this.db
-        .prepare(`SELECT a.sha256, MAX(i.created_at) AS created FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
-                  JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf' GROUP BY a.sha256 ORDER BY created, a.sha256`)
-        .all() as Array<{ sha256: string; created: string }>;
+      const files = this.db.prepare(BACKFILL_FILES_SQL).all() as Array<{ sha256: string; created: string }>;
       const insert = this.db.prepare(
         `INSERT INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at) VALUES (?, 'extract', ?, 'queued', 0, ?, ?, ?)
          ON CONFLICT(dedupe_key) DO NOTHING`,
@@ -148,6 +151,11 @@ export class TextRepository {
     this.db
       .prepare(`UPDATE jobs SET state = 'queued', attempts = MAX(attempts - 1, 0), updated_at = ? WHERE id = ? AND state = 'running'`)
       .run(now, jobId);
+  }
+
+  /** Whether the file has a job, in any state (an indexed lookup by the dedupe key). */
+  hasJob(sha256: string): boolean {
+    return this.db.prepare('SELECT 1 FROM jobs WHERE dedupe_key = ? LIMIT 1').get(extractKey(sha256)) !== undefined;
   }
 
   hasLiveItem(sha256: string): boolean {

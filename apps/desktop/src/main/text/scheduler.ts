@@ -6,7 +6,7 @@ import { guardStoredText } from './page-text';
 export interface TextScheduler {
   /** The main window's first ui:reportIdle. */
   firstIdle(): void;
-  /** The startup check's first run ended: jobs it found running are interrupted now (P-29). */
+  /** The startup check's first run ended: jobs it found running are interrupted now. */
   startupChecked(): void;
   /** An import ended, an item came back from the trash, or the work line emptied. */
   wake(): void;
@@ -29,15 +29,15 @@ export interface TextSchedulerDeps {
   extractor: TextExtractor;
   laneBusy(): boolean;
   laneIdle(): Promise<void>;
-  /** The path of a readable copy of the file, or null when none is there (P-14). */
+  /** The path of a readable copy of the file, or null when none is there. */
   file(sha256: string): string | null;
   assetsDir: string;
   announce(itemIds: string[]): void;
   /** The index progress changed (the caller throttles it). */
   progress(): void;
-  /** Send the progress now: a job ended or the queue emptied. */
+  /** Send the progress now: the queue emptied or a job gave up. */
   progressNow(): void;
-  /** P-13: under E2E nothing runs until control('resume' | 'now'). */
+  /** Under E2E nothing runs until control('resume' | 'now'). */
   paused: boolean;
   now?(): string;
   delay?(ms: number): Promise<void>;
@@ -59,7 +59,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   let looping = false;
   let dirty = false;
   let disposed = false;
-  /** Files with no readable copy, left alone for the session (P-14). */
+  /** Files with no readable copy, left alone for the session. */
   const unavailable = new Set<string>();
   let current: { jobId: string; sha256: string } | null = null;
   /** The job whose run the trash or a purge stopped: its attempt is given back. */
@@ -126,6 +126,9 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     if (started === undefined) return null;
     if ('gaveUp' in started) {
       d.announce(repo.itemIdsOfSha(job.sha256));
+      // Nothing settles a job that gave up: its own notice, sent now, counts it as answered.
+      d.progress();
+      d.progressNow();
       return null;
     }
     const { payload } = started.job;
@@ -186,9 +189,8 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
         // The state does not change for the screen: the job is back in the queue, its attempt counted.
         repo.release(job.id, now());
     }
-    // Asked for after the state changed, then sent: the notice made at the last batch still counts this job as open.
+    // Asked for after the state changed; the throttle sends it, and the end of the queue sends what is left.
     d.progress();
-    d.progressNow();
   }
 
   async function runLoop(): Promise<void> {
@@ -208,6 +210,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
         }
         const job = repo.next(unavailable);
         if (job === undefined) {
+          d.progress();
           d.progressNow();
           return;
         }
@@ -215,11 +218,12 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
         try {
           outcome = await runJob(repo, job);
         } catch (e) {
-          repo.release(job.id, now());
+          if (!disposed) repo.release(job.id, now());
           throw e;
         }
-        if (outcome !== null) settle(repo, job, outcome);
+        // Disposed: the database may be closed, and dispose() already put the job back.
         if (disposed) return;
+        if (outcome !== null) settle(repo, job, outcome);
       }
     } catch (e) {
       console.warn(`[text] the body text loop stopped: ${toLearnError(e).code}`); // the code only: no names in a log
@@ -247,7 +251,8 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       if (disposed) return;
       if (reason === 'restore') {
         dirty = true;
-        kick();
+        // Not inside the handler of the restore that announced it.
+        setImmediate(kick);
         return;
       }
       const repo = d.repo();
@@ -257,7 +262,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
         if (!repo.hasLiveItem(running.sha256)) stopCurrent();
       } else if (reason === 'purge') {
         // The purge took the job away when the last asset of the file left; a purge of anything else leaves it be.
-        if (!repo.jobs().some((j) => j.sha256 === running.sha256)) stopCurrent();
+        if (!repo.hasJob(running.sha256)) stopCurrent();
       }
     },
     control(mode) {
@@ -286,6 +291,9 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     stats: () => ({ batchMs: [...stats.batchMs], pagesWritten: stats.pagesWritten, activeMs: stats.activeMs }),
     dispose() {
       disposed = true;
+      // A quit is not a failure: the running job goes back to the queue with its attempt given back (a kill leaves it running, counted).
+      const repo = d.repo();
+      if (repo && current) repo.requeue(current.jobId, now());
       d.extractor.dispose();
       releaseHolders(false);
       settleIdle();

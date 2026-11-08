@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractKey } from '@learn/domain';
-import { LibraryRepository, NEXT_JOB_SQL, TextRepository, type Db } from '../src/index';
+import { BACKFILL_FILES_SQL, LibraryRepository, NEXT_JOB_SQL, TextRepository, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -181,6 +181,22 @@ describe('progress', () => {
   });
 });
 
+describe('hasJob', () => {
+  it('answers by the dedupe key whatever the job state, and for a file with no job', () => {
+    const { asset } = seedItem(db);
+    expect(texts.hasJob(asset.sha256)).toBe(false);
+    texts.backfill(T(1));
+    expect(texts.hasJob(asset.sha256)).toBe(true); // positive control: the job is there
+    const { id } = texts.next()!;
+    texts.start(id, T(1));
+    texts.fail(id, 'damaged', T(2));
+    expect(texts.hasJob(asset.sha256)).toBe(true);
+    expect(texts.hasJob('f'.repeat(64))).toBe(false);
+    const plan = (db.prepare('EXPLAIN QUERY PLAN SELECT 1 FROM jobs WHERE dedupe_key = ? LIMIT 1').all(extractKey(asset.sha256)) as Array<{ detail: string }>).map((r) => r.detail).join('\n');
+    expect(plan).toMatch(/USING (COVERING )?INDEX/);
+  });
+});
+
 describe('lookups', () => {
   it('finds live items and every item of a sha', () => {
     const a = seedItem(db);
@@ -240,5 +256,25 @@ describe('backfill order and plan', () => {
     const plan = (db.prepare(`EXPLAIN QUERY PLAN ${NEXT_JOB_SQL}`).all() as Array<{ detail: string }>).map((r) => r.detail).join('\n');
     expect(plan).toMatch(/SEARCH a USING (COVERING )?INDEX assets_sha256/);
     expect(plan).not.toMatch(/SCAN a\b/);
+  });
+
+  it('a backfill that has nothing to add leaves the jobs as they are, and its candidate query looks each job up by its key', () => {
+    const a = seedItem(db, { sha: '5'.repeat(64) });
+    const b = seedItem(db, { sha: '6'.repeat(64) });
+    expect(texts.backfill(T(1))).toBe(2);
+    const { id } = texts.next()!;
+    texts.start(id, T(2));
+    const before = db.prepare('SELECT * FROM jobs ORDER BY rowid').all();
+    const candidates = () => db.prepare(BACKFILL_FILES_SQL).all();
+    expect(candidates()).toEqual([]); // every file has its job
+    expect(texts.backfill(T(3))).toBe(0);
+    expect(db.prepare('SELECT * FROM jobs ORDER BY rowid').all()).toEqual(before);
+    const c = seedItem(db, { sha: '7'.repeat(64) });
+    expect(candidates()).toEqual([{ sha256: c.asset.sha256, created: expect.any(String) }]); // positive control: a file with no job is a candidate
+    expect(texts.backfill(T(4))).toBe(1);
+    void a; void b;
+    const plan = (db.prepare(`EXPLAIN QUERY PLAN ${BACKFILL_FILES_SQL}`).all() as Array<{ detail: string }>).map((r) => r.detail).join('\n');
+    expect(plan).toMatch(/SEARCH j USING (COVERING )?INDEX sqlite_autoindex_jobs/);
+    expect(plan).not.toMatch(/SCAN j\b/);
   });
 });

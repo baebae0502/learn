@@ -41,6 +41,10 @@
         ['dialogs', 'M6 시트', [['영구 삭제', 'scene=purge'], ['휴지통 비우기', 'scene=empty-trash'], ['복원', 'scene=restore'], ['복원 · 문제', 'scene=restore-issues'], ['점검 · 모든 줄', 'scene=recovery-full'], ['점검 · 문제 없음', 'scene=recovery-ok'], ['백업 · 사라진 사본', 'scene=backup-missing'], ['진행 토스트', 'scene=jobs'], ['치명 화면', 'scene=fatal']], 'B'],
         ['reader-pdf', 'M6 리더', [['휴지통 안내', 'state=trashed']], 'B'],
         ['settings', 'M6 설정', [['백업 없음', 'state=nobackup']], 'B'],
+        // M7c (spec 2026-11-08-m7c-images-search-perf-design.md §12): layout B only.
+        ['reader-image', 'M7c 이미지 리더', [['큰 사진', 'm=7c'], ['체크무늬', 'm=7c&bg=checker'], ['투명 PNG', 'm=7c&img=transparent&bg=checker'], ['400%', 'm=7c&zoom=400'], ['보기 ▾ › 배경', 'm=7c&menu=view-bg'], ['그릴 수 없음', 'm=7c&state=error']], 'B'],
+        ['library', 'M7c 라이브러리', [['검색 범위 메뉴', 'm=7c&search=scope-menu'], ['범위 단추 상태', 'm=7c&search=scope-states'], ['본문 일치', 'm=7c&matches=3'], ['이미지 패널', 'm=7c&panel=image']], 'B'],
+        ['library-empty', 'M7c 첫 실행', [['지원 형식', 'm=7c'], ['드롭', 'm=7c&state=drop']], 'B'],
         // Tutor (T1 mockup): layout B only; states 1–10 and the owner's decisions (tutor-decisions.md).
         ['tutor', '튜터(T1)', [...Array.from({ length: 10 }, (_, i) => [String(i + 1), `state=${i + 1}`]), ['폭 340', 'width=340'], ['폭 440', 'width=440'], ['말풍선', 'msg=bubble'], ['p. 42', 'state=6&cite=p'], ['아이콘', 'state=6&cite=icon'], ['동의 시트', 'state=2&consent=sheet'], ['세션 패널', 'state=9&sessions=panel'], ['라이브러리', 'view=library'], ['정보 모드', 'state=1&mode=info'], ['부품', 'part=4'], ['부품 2', 'part=5']], 'B'],
       ];

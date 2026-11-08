@@ -4239,3 +4239,202 @@ h2,
 .pdf-scroll.row.hscroll {
   justify-content: flex-start;
 }
+
+/* ── M7c: the image reader, the search scope, the item panel's 본문 일치 and preview ─────────────────────────────────
+   The four image-background colours are the tokens of spec 12 (--image-bg-light, --image-bg-dark, --image-checker-a,
+   --image-checker-b): a choice of the reader, independent of the app theme. Task 12 moves the values into tokens.ts. */
+:root {
+  --image-bg-light: oklch(97.5% 0.002 250); /* local: mockup value of the token, Task 12 moves it */
+  --image-bg-dark: oklch(15% 0.004 250); /* local: mockup value of the token, Task 12 moves it */
+  --image-checker-a: oklch(80% 0 0); /* local: mockup value of the token, Task 12 moves it */
+  --image-checker-b: oklch(92% 0 0); /* local: mockup value of the token, Task 12 moves it */
+}
+.image-stage {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--image-bg-light);
+}
+.image-stage[data-bg='dark'] {
+  background: var(--image-bg-dark);
+}
+.image-stage[data-bg='checker'] {
+  /* 8 px squares in two colours */
+  background: repeating-conic-gradient(var(--image-checker-a) 0 25%, var(--image-checker-b) 0 50%) 0 0 / 16px 16px;
+}
+.image-stage.is-grab {
+  cursor: grab;
+}
+.image-pic {
+  position: absolute;
+  display: block; /* no border, no shadow around the picture */
+}
+.image-pic > svg {
+  display: block;
+}
+.image-pic.rot > svg {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+}
+.image-note {
+  position: absolute;
+  left: var(--space-12);
+  bottom: var(--space-12);
+  padding: var(--space-4) var(--space-12);
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.image-hand {
+  position: absolute;
+  z-index: 5;
+  color: #000; /* local: the cursor is drawn black with a white outline over any picture */
+  pointer-events: none;
+}
+.image-hand .icon {
+  fill: #fff; /* local: cursor outline */
+  stroke: #000; /* local: cursor outline */
+}
+.reader-toolbar.image {
+  gap: 0;
+}
+.reader-toolbar.image > .l,
+.reader-toolbar.image > .r {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.reader-toolbar.image > .l {
+  justify-content: flex-start;
+}
+
+/* Search scope button: the field's first element, in the place of the magnifier. */
+.scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px; /* local: the arrow sits close to the magnifier */
+  height: 22px; /* local: inside the 28 field with 3 above and below */
+  margin-left: -4px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+}
+.scope-btn.is-hover {
+  background: var(--fill-hover);
+  color: var(--text-secondary);
+}
+.scope-btn.is-pressed {
+  background: var(--fill-pressed);
+  color: var(--text-primary);
+}
+.scope-btn.is-focus {
+  box-shadow: 0 0 0 2px var(--focus);
+}
+.scope-states {
+  position: absolute;
+  z-index: 30;
+  right: 332px; /* local: under the search field, left of the item panel */
+  top: 112px; /* local: below the pane header */
+  padding: var(--space-12);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-e1);
+  display: grid;
+  grid-template-columns: auto 264px;
+  gap: var(--space-8) var(--space-12);
+  align-items: center;
+}
+.scope-states .lbl {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.menu .mi.two {
+  height: auto;
+  padding-top: var(--space-4);
+  padding-bottom: var(--space-4);
+  align-items: flex-start;
+  white-space: normal;
+}
+.menu .mi.two .check {
+  height: 16px; /* local: the check sits on the first line */
+}
+.menu .mi .mi-text {
+  display: flex;
+  flex-direction: column;
+}
+.menu .mi .mi-desc {
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+}
+.table-row mark,
+.match-row mark {
+  background: none;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.table-row.is-selected.is-focused mark {
+  color: var(--text-on-accent);
+}
+
+/* Item panel: image preview (spec 4.6) and the 본문 일치 section (spec 5.8). */
+.item-preview {
+  height: 160px; /* local: spec 4.6 maximum height */
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.item-preview.icon-only {
+  height: 96px; /* local: the icon cell of an image over 50 megapixels */
+  color: var(--text-tertiary);
+}
+.match-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(var(--space-8) * -1);
+}
+.match-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: var(--space-8);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-sm);
+  font: var(--type-footnote);
+}
+.match-row .pg {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.match-row .snip {
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.match-more {
+  padding: var(--space-4) var(--space-8) 0;
+  color: var(--text-tertiary);
+  font: var(--type-footnote);
+}
+.match-status {
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.kv dd.status {
+  white-space: normal;
+  color: var(--text-secondary);
+  font: var(--type-footnote);
+}
+.empty-state .hints .row.formats {
+  max-width: 300px; /* local: the formats line is about 440 wide; at this width it breaks after 동영상, in every window */
+  text-align: center;
+}

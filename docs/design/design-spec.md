@@ -410,7 +410,7 @@
 
 이 표는 목업의 `data-ms` 태그와 **같은 목록**이다. 렌더 스크립트가 모든 대화형 요소(버튼, 필드, 탭, 행, 칩, 메뉴 항목, 컨트롤 …)가 태그 안에 있는지 검사하고(`report.json`의 `milestones.missing`, 현재 0건), 태그 목록을 `docs/design/renders/milestones.txt`에 쓴다. `?ms=1`로 열면 같은 태그가 점선 테두리와 배지로 보인다. 공통 셸: M3 사이드바 토글·⌘K 실행기·통합 도구 막대 제목, M7 탭 줄(M3–M6은 탭 하나라 탭 줄 없음).
 
-### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`)
+### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`; M7c는 `&m=7c`와 함께 `?search=scope-states|scope-menu`(`&indexing=1`), `?scope=fulltext&q=형광`, `?matches=3|many|loading|indexing|empty|locked`(many는 `&scroll=end`), `?panel=image|image-large|pdf-indexing`, `?state=noresults&scope=fulltext`(`&indexing=1`))
 | 요소 | 마일스톤 |
 |---|---|
 | 창(숨긴 제목 막대, 신호등, 비브런시, 테마, 밀도, 패널 크기 조절·기억), 사이드바 토글, ⌘K 실행기, 가져오기 단추·메뉴 | M3 |
@@ -431,7 +431,7 @@
 | 항목 패널의 읽기 절(`library.html?m=7b&tabs=2&reading=pdf|video|legacy`, 머리 → 읽기 → 정보 → 태그 → 컬렉션 → 파일 순서): 넓은·두꺼운 진행 막대 + 퍼센트, 그 아래 footnote 2차색 한 줄 — PDF "42 / 68쪽에서 멈춤 · 오늘 오전 9:24", 영상 "18:20에서 멈춤 · 어제", 쪽 수를 모르는 옛 값 "42쪽에서 멈춤"(숫자와 단위·" · " 앞은 U+00A0). 100%이면 진행 열과 같게 막대 없이 "✓ 완료"만 보인다. 한 번도 연 적 없는 자료·여러 개 선택·휴지통에서는 절이 없고, 리더의 항목 패널에도 없다 | M7b |
 | 진행 열(`?columns=progress`): 작은 막대(44) + 퍼센트 오른쪽 정렬 `tabular-nums`, 가장 멀리 본 쪽 기준, 읽지 않은 자료는 칸을 비움, 100%는 `check` + "완료"(`--success-text`, R-13), 정렬 가능(퍼센트가 큰 자료부터). 기본 열 구성: 새 라이브러리는 보임이고 표시 순서에서 추가일 바로 앞에 놓인다(열 목록의 위치는 끝). 열 구성을 저장해 둔 라이브러리에는 숨김으로 더한다. 기본 너비 88/72 | M7a |
 
-### 10.2 첫 실행·드롭 — `library-empty.html` (`?state=drop`)
+### 10.2 첫 실행·드롭 — `library-empty.html` (`?state=drop`; M7c: `?m=7c`(지원 형식 줄), `?m=7c&w=1024`, `?m=7c&state=drop`)
 | 요소 | 마일스톤 |
 |---|---|
 | 통합 도구 막대 제목(탭 하나), 빈 라이브러리 안내(설명, 가져오기 두 단추, 단축키 힌트, 지원 형식), 드롭 오버레이(⌥ 외부 연결 전환, 파일 수·종류) | M3 |
@@ -527,6 +527,15 @@
 | 기억 제안 카드 | M10 |
 
 - 소유자가 정한 다섯 가지(폭, 말풍선, 동의 카드, 사이드바 세션, 키 B)는 2.6에 옮겼다. 인용 칩 "42쪽"은 잠정이다. 이 절과 2.1·2.5·7.3에서 소유자가 답하지 않은 항목은 표시를 "튜터 목업 — 승인 전"에서 "튜터 목업 — T1에서 확정"으로 바꾸고, 6절 부품 표로 옮기는 일은 T1 계획에서 한다(튜터 목업 명세 5절).
+
+### 10.10 이미지 리더 — `reader-image.html` (`?m=7c` 필수)
+쿼리 목록만 적는다(요소 표는 소유자 승인 뒤 정한다).
+- `?m=7c` — 큰 사진(시험 무늬), 창에 맞춤, 배경은 앱 테마를 따른다
+- `&bg=light|dark|checker`, `&img=small|transparent`(투명 PNG는 `&bg=checker`와)
+- `&zoom=width|400`, `&rotate=90`
+- `&menu=zoom|view|view-bg`
+- `&state=loading|error|missing|trashed`, `&w=1024`
+- `&sidebar=nopages|folded`(판단 질문: 쪽 없음 안내 / 사이드바 자동 접기)
 
 ## 부록 A. 목업 사용법
 - 쿼리: `theme=light|dark`, `layout=A|B`, `font=system|pretendard`, `density=compact|regular|comfortable`, `ms=1`, 그리고 화면별 `state` / `scene` / `page` / `menu` / `nav` / `part` / `m=7a`(탭 없는 리더, M7a) / `find` / `select` / `inspector` / `w` / `section` / `columns`(10절 제목 옆).

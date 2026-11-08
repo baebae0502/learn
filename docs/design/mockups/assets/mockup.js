@@ -183,7 +183,10 @@ window.Mockup = (() => {
       const parent = row.closest('.menu').getBoundingClientRect();
       const host = sub.offsetParent.getBoundingClientRect();
       sub.style.top = `${Math.round(r.top - host.top - 5)}px`;
-      sub.style.left = `${Math.round(parent.right - host.left - 2)}px`;
+      // Beside the parent; on the left of it when there is no room on the right (a menu opened near the window's edge).
+      let left = parent.right - host.left - 2;
+      if (left + sub.offsetWidth > host.width - 4) left = parent.left - host.left - sub.offsetWidth + 2;
+      sub.style.left = `${Math.round(left)}px`;
     }
   }
 
@@ -196,7 +199,7 @@ window.Mockup = (() => {
   const INTERACTIVE = [
     '.btn', '.icon-btn', '.field', '.seg', '.tab', '.chip', '.nav-row', '.table-row', '.th', '.thumb', '.cue',
     '.zoom-btn', '.speed-btn', '.mi', '.p-item', '.switch', '.checkbox', '.theme-tile', '.scrubber', '.drop-mode',
-    '.collection-path', '.volume', '.toast',
+    '.collection-path', '.volume', '.toast', '.scope-btn',
     // Tutor (tutor.html)
     '.cite', '.tool', '.tu-scope', '.tu-composer', '.attach', '.agent-row', '.radio', '.proposal',
   ].join(',');
@@ -250,7 +253,9 @@ window.Mockup = (() => {
     // M7a
     '.sp-body, .sp-note, .sp-status, .tr-consent p, .tr-note, .pw-error, ' +
     // M7b
-    '.reading-line, .native-note';
+    '.reading-line, .native-note, ' +
+    // M7c
+    '.match-status, .match-more';
   const COMPOUNDS = ['쪽 번호', '디스크 공간', '필기와 태그', '지운 것', '새 위치', 'G 단백질', '새 컬렉션', '어느 쪽', '원본 파일'];
   function copyLint() {
     const issues = [];
@@ -290,11 +295,20 @@ window.Mockup = (() => {
     }
   }
 
+  /** A panel scrolled so that one of its elements ends near the bottom (`data-scroll-to` = a selector inside it). */
+  function scrollInto() {
+    for (const el of document.querySelectorAll('[data-scroll-to]')) {
+      const t = el.querySelector(el.dataset.scrollTo);
+      if (t) el.scrollTop = Math.max(0, t.offsetTop - el.offsetTop + t.offsetHeight - el.clientHeight + 24);
+    }
+  }
+
   async function mount(html) {
     document.body.innerHTML = html;
     await document.fonts.ready;
     scrollToEnd();
     scrollLists();
+    scrollInto();
     placeMenus();
     milestones();
     copyLint();

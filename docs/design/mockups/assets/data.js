@@ -259,5 +259,40 @@ window.MockupData = (() => {
     },
   };
 
-  return { tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor, trash, duplicates, edited };
+  // M7c (docs/superpowers/specs/2026-11-08-m7c-images-search-perf-design.md §12): image rows of the library, the image the
+  // item panel and the reader show (a 4032 × 3024 photo drawn by the mockup itself), and the 본문 일치 pieces.
+  const imageRows = [
+    { id: 401, kind: 'image', title: '수용체 분포 형광 현미경 사진', authors: '연구실 공용', year: 2026, progress: 100, added: '어제 오후 8:36', tags: [], w: 4032, h: 3024 },
+    { id: 402, kind: 'image', title: '세포막 수용체 모식도', authors: '배유나', year: 2025, progress: null, added: '어제 오후 8:34', tags: [2], w: 1920, h: 1080 },
+    { id: 403, kind: 'image', title: '웨스턴 블롯 결과 스캔', authors: '연구실 공용', year: 2026, progress: 100, added: '2026. 10. 17.', tags: [], w: 2480, h: 3508 },
+  ];
+  const imageItem = {
+    image: true,
+    kind: '이미지',
+    kindIcon: 'image',
+    kindText: '이미지\u00a0· 4032\u00a0×\u00a03024',
+    title: '수용체 분포 형광 현미경 사진',
+    authors: '연구실 공용',
+    year: 2026,
+    info: [['저자', '연구실 공용'], ['연도', '2026'], ['추가일', '어제 오후 8:36']],
+    reading: { done: true, opened: '어제' },
+    file: [['보관', '복사본 · 라이브러리 안'], ['크기', '6.8 MB'], ['원래 이름', 'receptor_fluorescence_0412.jpg']],
+    sha: '7e20c4b9…',
+    shaFull: '7e20c4b9a15d3f68e0b27c41d9a6f3e5081b4c7da29e6f10b35d8c4a7e2f9013',
+    tags: [],
+    plainTags: ['수용체', '실험'],
+    collections: [['분자생물학'], ['분자생물학', '실험 노트']],
+  };
+  // 본문 일치 snippets (fictional): the page and a short passage around the word, as the extractor cuts it.
+  const snippets = [
+    '…수용체를 <mark>형광</mark> 단백질에 이어 붙이면 살아 있는 세포에서 수용체의 위치를 따라갈 수 있다. 이때 …',
+    '…<mark>형광</mark> 공명 에너지 전이는 두 단백질이 10\u00a0나노미터 안에 있을 때만 일어나므로 상호작용의 …',
+    '…칼슘 농도가 오르면 <mark>형광</mark> 세기가 커지는 지시약을 넣어 2차 전령의 변화를 실시간으로 …',
+    '…그림 6-4의 <mark>형광</mark> 사진에서 초록 신호는 세포막에, 붉은 신호는 핵 주변에 모여 있다. …',
+    '…항체에 <mark>형광</mark> 물질을 붙여 수용체가 놓인 자리를 표시하는 방법을 면역 <mark>형광</mark> 염색이라고 한다. …',
+    '…<mark>형광</mark> 세기를 시간에 따라 재면 cAMP가 만들어지고 사라지는 속도를 비교할 수 있다. …',
+  ];
+  const matchPages = [12, 14, 15, 21, 22, 27, 28, 30, 31, 33, 35, 36, 38, 40, 41, 44, 47, 49, 52, 55];
+
+  return { imageRows, imageItem, snippets, matchPages, tags, plainTags, dimTags, collections, items, selectedItem, outline, cues, memos, tutor, trash, duplicates, edited };
 })();

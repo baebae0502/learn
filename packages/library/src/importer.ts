@@ -1,7 +1,7 @@
 import type { Stats } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { IMAGE_FORMATS, LearnError, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
+import { IMAGE_FORMATS, LearnError, extractKey, VIDEO_FORMATS, newId, nowIso, toLearnError, type ImportOutcome, type StorageMode } from '@learn/domain';
 import type { AssetRow, LibraryRepository } from '@learn/db';
 import { withManagedPath } from './asset-lock';
 import { fsyncDir, fsyncFile } from './fsync';
@@ -10,7 +10,6 @@ import { managedRelativePath, type LibraryLayout } from './layout';
 import { IMAGE_HEAD_BYTES, imageSize } from './image-size';
 import { sniffFile, type SniffResult } from './sniff';
 
-export const EXTRACTOR_VERSION = 'text-v0';
 /** A stopped file's outcome message. The queue leaves stopped files out of its report, so it is never shown. */
 const CANCELLED_MESSAGE = '가져오기를 취소했습니다.';
 
@@ -150,7 +149,7 @@ export class Importer {
       asset,
       assetIsNew: !reused,
       revision: reused ? null : { id: newId(), createdAt: now },
-      job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha256}:${EXTRACTOR_VERSION}`, payload: { sha256, type: kind.type } },
+      job: kind.type === 'pdf' ? { id: newId(), kind: 'extract', dedupeKey: extractKey(sha256), payload: { sha256, type: 'pdf', nextPage: 0, pages: null, chars: 0, truncated: false } } : null,
       collectionId,
     });
     const saved = repo.getItem(item.id);

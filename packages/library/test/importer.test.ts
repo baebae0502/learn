@@ -62,7 +62,25 @@ describe('managed import', () => {
     expect(await sha256File(stored)).toBe(asset.sha256);
     expect(fs.readFileSync(src)).toEqual(before);
     expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
-    expect(jobs(db)).toEqual([{ kind: 'extract', dedupe_key: `extract:${asset.sha256}:text-v0`, state: 'queued' }]);
+    expect(jobs(db)).toEqual([{ kind: 'extract', dedupe_key: `extract:${asset.sha256}:pdf-text-1`, state: 'queued' }]);
+  });
+
+  it('queues an extract job for a PDF (with its resumable payload) and none for a video or an image', async () => {
+    const { db, importer } = setup();
+    const dir = tempDir('src');
+    const pdf = await importer.importOne(writePdf(dir, 'a.pdf', 'body'), { mode: 'managed' });
+    if (pdf.status !== 'imported') throw new Error(pdf.status);
+    // Positive control: the PDF's job exists before the absence of the others means anything.
+    const sha = (db.prepare('SELECT sha256 FROM assets').get() as { sha256: string }).sha256;
+    expect(db.prepare('SELECT payload_json FROM jobs').pluck().all().map((j) => JSON.parse(j as string))).toEqual([
+      { sha256: sha, type: 'pdf', nextPage: 0, pages: null, chars: 0, truncated: false },
+    ]);
+    const video = await importer.importOne(writeMp4(dir, 'b.mp4', 'video'), { mode: 'managed' });
+    const imgPath = path.join(dir, 'c.png');
+    fs.copyFileSync(path.join(IMAGES, 'transparent.png'), imgPath);
+    const image = await importer.importOne(imgPath, { mode: 'managed' });
+    expect([video.status, image.status]).toEqual(['imported', 'imported']);
+    expect(jobs(db)).toEqual([{ kind: 'extract', dedupe_key: `extract:${sha}:pdf-text-1`, state: 'queued' }]);
   });
 
   it.each([

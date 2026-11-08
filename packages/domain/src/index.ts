@@ -1,4 +1,5 @@
 export * from './accelerator';
+export * from './body-search';
 export * from './anchor-geometry';
 export * from './anchor-text';
 export * from './anchors';

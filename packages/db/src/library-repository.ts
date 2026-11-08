@@ -8,6 +8,7 @@ import { nextDeletionStamp } from './deletion-stamp';
 import { keepOneOf, undoKeepOne } from './duplicates';
 import { CollectionsRepository } from './collections-repository';
 import { TagsRepository } from './tags-repository';
+import { TextRepository } from './text-repository';
 import { emptyTrash, purgeTrash, trashedCollections, trashPlaces, type PurgeResult } from './trash';
 
 export interface AssetRow {
@@ -338,6 +339,7 @@ export class LibraryRepository {
       },
       tags: new TagsRepository(this.db).tagsOf(id),
       collections: new CollectionsRepository(this.db).membershipsOf(id),
+      text: row.type === 'pdf' ? new TextRepository(this.db).stateOf(row.sha256) : null,
     };
   }
 

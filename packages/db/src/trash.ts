@@ -162,7 +162,11 @@ function removeUnusedAssets(db: Db, assetIds: ReadonlySet<string>): PurgedAsset[
   const shaLeft = db.prepare('SELECT 1 FROM assets WHERE sha256 = ? LIMIT 1');
   const shas = [...new Set(gone.map((a) => a.sha256))].filter((sha) => !shaLeft.get(sha));
   // A job's dedupe key is `<kind>:<sha256>:<version>` (importer.ts): one scan for every sha that left the library.
-  if (shas.length > 0) db.prepare(`DELETE FROM jobs WHERE substr(dedupe_key, instr(dedupe_key, ':') + 1, 64) IN (SELECT value FROM json_each(?))`).run(JSON.stringify(shas));
+  if (shas.length > 0) {
+    const json = JSON.stringify(shas);
+    db.prepare(`DELETE FROM jobs WHERE substr(dedupe_key, instr(dedupe_key, ':') + 1, 64) IN (SELECT value FROM json_each(?))`).run(json);
+    db.prepare('DELETE FROM page_texts WHERE sha256 IN (SELECT value FROM json_each(?))').run(json); // its triggers drop the index rows
+  }
   const paths = gone.flatMap((a) => (a.storage_mode === 'managed' && a.relative_path !== null ? [a.relative_path] : []));
   const held = new Set(
     paths.length === 0 ? [] : (db.prepare('SELECT relative_path FROM assets WHERE relative_path IN (SELECT value FROM json_each(?))').pluck().all(JSON.stringify(paths)) as string[]),

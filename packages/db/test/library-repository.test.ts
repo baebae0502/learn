@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { newId, nowIso, type StorageMode } from '@learn/domain';
 import {
-  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, migrate, openDatabase,
+  CollectionsRepository, LibraryRepository, ReadingRepository, TagsRepository, TextRepository, migrate, openDatabase,
   type AssetRow, type Db, type NewImportRecord,
 } from '../src/index';
 import { expectLearnError, seedItem } from './fixtures';
@@ -313,11 +313,22 @@ describe('LibraryRepository: organize fields, metadata, trash, duplicates', () =
     });
     expect(detail.tags).toEqual([{ id: tag.id, name: '중요', color: null, position: null, itemCount: 1 }]);
     expect(detail.collections.map((c) => [c.id, c.itemCount])).toEqual([[live.id, 1]]);
+    expect(detail.text).toEqual({ state: 'pending' });
 
     expectLearnError(() => repo.getItemDetail(newId()), 'NOT_FOUND', '항목을 찾을 수 없습니다.');
     repo.trash([itemId]);
     // The trash view's read-only panel reads it too (M6 Task 6, Q-6b).
     expect(repo.getItemDetail(itemId).item.id).toBe(itemId);
+  });
+
+  it('gives a PDF its body state and anything else null', () => {
+    const pdf = seedItem(db);
+    const video = seedItem(db, { type: 'video' });
+    const image = seedItem(db, { type: 'image' });
+    new TextRepository(db).backfill('2026-11-01T00:00:00.000Z');
+    expect(repo.getItemDetail(pdf.itemId).text).toEqual({ state: 'pending' });
+    expect(repo.getItemDetail(video.itemId).text).toBeNull();
+    expect(repo.getItemDetail(image.itemId).text).toBeNull();
   });
 
   it('trashes and restores items, listing the trash most recently deleted first', () => {

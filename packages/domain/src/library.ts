@@ -1,3 +1,4 @@
+import type { BodyTextState } from './body-search';
 import type { ErrorCode } from './errors';
 import type { ItemMetadata } from './metadata';
 import type { TagColorId } from './tag-colors';
@@ -81,6 +82,8 @@ export interface ItemDetail {
   };
   tags: Tag[];
   collections: Collection[];
+  /** Where the body text of a PDF stands; null for anything else. */
+  text: BodyTextState | null;
 }
 
 export interface DuplicateGroup {

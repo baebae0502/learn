@@ -166,8 +166,12 @@ export function PdfReader({ item }: { item: LibraryItem }) {
   }, [ready, handle, pos.update]);
 
   // The restore waits for both the pages and the stored position, and is applied once; saves start from the place it reached.
+  // Only while the tab is shown. `stageSettled` is set in a frame and put back by the effect above only after the tab is hidden, and
+  // React draws an update still waiting (the frame's) with the hide's own: the render that hides the tab can be the one that settles
+  // the stage. A restore then would jump in a display: none stage, which pdf.js cannot scroll ("offsetParent is not set -- cannot
+  // scroll", CI 42447621731), and the saved place would count as applied.
   useEffect(() => {
-    if (!ready || !pdf?.sized || !stageSettled || !pos.loaded || restored || !handle) return;
+    if (!shown || !ready || !pdf?.sized || !stageSettled || !pos.loaded || restored || !handle) return;
     const saved = pos.saved?.locator.kind === 'pdf' ? pos.saved.locator : undefined;
     const index = restorePageIndex(pos.saved?.locator, pdf.pagesCount);
     place.current = null;
@@ -178,7 +182,7 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     pos.markRestored(start?.locator ?? { kind: 'pdf', pageIndex: index });
     restoredRef.current = true;
     setRestored(true);
-  }, [ready, stageSettled, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
+  }, [shown, ready, stageSettled, pos.loaded, pos.saved, pos.markRestored, restored, pdf, handle]);
 
   // A final state (design-spec 6): no reader controls that cannot work, only the notice.
   if (open.status === 'failed' || viewFailed) return <PdfErrorNotice item={item} />;

@@ -235,6 +235,32 @@ async function makeKorean(file) {
   fs.writeFileSync(file, await saved.save());
 }
 
+// ---- korean-cmap.pdf: Korean text in a font that is NOT embedded ------------------------------------------------------
+// A Type0 font with the predefined UniKS-UCS2-H encoding and Adobe-Korea1 ordering, no ToUnicode: pdf.js must read its
+// cMap files to turn the codes into text, which korean.pdf (an embedded font with a ToUnicode map) never needs.
+
+export const KOREAN_CMAP_TEXT = '한글검색시험';
+
+async function makeKoreanCmap(file) {
+  const doc = await PDFDocument.create();
+  const ctx = doc.context;
+  const cid = ctx.obj({
+    Type: 'Font',
+    Subtype: 'CIDFontType0',
+    BaseFont: 'HYSMyeongJo-Medium',
+    CIDSystemInfo: ctx.obj({ Registry: PDFString.of('Adobe'), Ordering: PDFString.of('Korea1'), Supplement: 1 }),
+    FontDescriptor: ctx.obj({ Type: 'FontDescriptor', FontName: 'HYSMyeongJo-Medium', Flags: 6, FontBBox: [0, -200, 1000, 900], ItalicAngle: 0, Ascent: 880, Descent: -120, CapHeight: 700, StemV: 80 }),
+    DW: 1000,
+  });
+  const type0 = ctx.obj({ Type: 'Font', Subtype: 'Type0', BaseFont: 'HYSMyeongJo-Medium-UniKS-UCS2-H', Encoding: 'UniKS-UCS2-H', DescendantFonts: [ctx.register(cid)] });
+  const page = doc.addPage([595, 842]);
+  page.node.setFontDictionary(PDFName.of('F1'), ctx.register(type0));
+  const codes = [...KOREAN_CMAP_TEXT].map((c) => c.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')).join('');
+  const stream = ctx.flateStream(`BT /F1 18 Tf 56 760 Td <${codes}> Tj ET`);
+  page.node.set(PDFName.of('Contents'), ctx.register(stream));
+  fs.writeFileSync(file, await doc.save());
+}
+
 // ffmpeg is only touched when a video fixture is actually missing, so a warm fixture dir needs no ffmpeg.
 const runFfmpeg = (args, opts) => {
   try {
@@ -256,6 +282,7 @@ if (need('한글 경로 (테스트) #1.pdf')) await makePdf(path.join(out, '한�
 if (need('paper-100.pdf')) await makePaper(path.join(out, 'paper-100.pdf'));
 if (need('long-outline.pdf')) await makeLongOutline(path.join(out, 'long-outline.pdf'));
 if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
+if (need('korean-cmap.pdf')) await makeKoreanCmap(path.join(out, 'korean-cmap.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));
 

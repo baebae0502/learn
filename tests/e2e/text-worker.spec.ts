@@ -23,6 +23,19 @@ test("korean.pdf in the utility process: three pages, NFC, page 2's decomposed t
   }
 });
 
+// korean.pdf embeds its font and carries a ToUnicode map, so pdf.js never reads a cMap for it. This file names a font that is
+// not embedded (UniKS-UCS2-H, Adobe-Korea1, no ToUnicode): its text comes out only if the worker really loads the cMap files.
+test('korean-cmap.pdf: text of a font that is not embedded needs the cMap files from the app folder', async ({}, testInfo) => {
+  const { app } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const r = await extractFile(app, { file: pdf('korean-cmap.pdf') });
+    expect(r.outcome).toMatchObject({ kind: 'done', pages: 1 });
+    expect(r.batches.flatMap((b) => b.texts)).toEqual(['한글검색시험']);
+  } finally {
+    await app.close();
+  }
+});
+
 test('paper-100: a word broken at a line end is one word; batches of at most 20 pages from startPage', async ({}, testInfo) => {
   const { app } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

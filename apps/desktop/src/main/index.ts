@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreferences, webContents, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
-import { readOrganizeSnapshot } from '@learn/db';
+import { readMenuOrganize } from '@learn/db';
 import { resolveAssetPath } from '@learn/library';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -198,7 +198,7 @@ const menuUsesOrganize = menuNeedsOrganize(COMMANDS, SUBMENUS, 'menu');
 function menuOrganize(): OrganizeSnapshot | null {
   if (!menuUsesOrganize || !ctx) return null;
   try {
-    return readOrganizeSnapshot(ctx.db);
+    return readMenuOrganize(ctx.db);
   } catch (e) {
     console.warn(`[menu] reading the library for the menu bar failed: ${toLearnError(e).code}`); // the code only: no names in a log
     return null;
@@ -211,6 +211,10 @@ function menuOrganize(): OrganizeSnapshot | null {
  * report flips `enabled` in place (setUiContext), so an open dropdown stays open.
  */
 function installAppMenu(): void {
+  if (isE2E(app.isPackaged, process.env)) {
+    const marks = globalThis as { __learnMenuBuilds?: number };
+    marks.__learnMenuBuilds = (marks.__learnMenuBuilds ?? 0) + 1;
+  }
   appMenu = Menu.buildFromTemplate(
     buildAppMenu({
       isDev: isDevBuild,
@@ -247,9 +251,10 @@ const menuRebuild = createMenuRebuilder(() => {
     console.warn(`[menu] rebuilding the menu bar failed: ${toLearnError(e).code}`);
   }
 });
-// The collections and tags main announces change the menu bar's submenus, when it has any that list them.
+// The collections and tags main announces change the menu bar's submenus, when it has any that list them. A notice that names
+// items only files or tags them, which the menu bar does not show.
 onBroadcast((e) => {
-  if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags')) menuRebuild.request();
+  if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags') && e.payload.itemIds === undefined) menuRebuild.request();
 });
 
 // The trash, a restore and a purge change what the body-text worker may read (spec 5.7).

@@ -80,10 +80,18 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // PDF
   await openItem(page, 'sample');
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-  const ink = await inkedPixels(page);
-  console.log('[measure] pdf page1 ink', JSON.stringify(ink));
+  // The saved place is applied after the first draw on the macOS runner; its scale change redraws page 1, whose old canvas is
+  // emptied meanwhile (width 0: Mac run 42443540025). Read the page once it is placed, as drawn again.
+  await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+  let ink = { dark: 0, white: 0 };
   // A share of the page, not a count: the page's size follows the fit (R-21), and ink is about 0.2 % of any size.
-  expect(ink.dark / (ink.dark + ink.white)).toBeGreaterThan(0.001);
+  await expect
+    .poll(async () => {
+      ink = await inkedPixels(page).catch(() => ({ dark: 0, white: 0 }));
+      return ink.dark / Math.max(1, ink.dark + ink.white);
+    })
+    .toBeGreaterThan(0.001);
+  console.log('[measure] pdf page1 ink', JSON.stringify(ink));
   expect(ink.white).toBeGreaterThan(10000);
   await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
   await page.getByTestId('pdf-next').click();

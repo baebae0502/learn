@@ -5,6 +5,7 @@ import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
   holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
+import { holdReplies } from './dnd-helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const PAGE = 7;
@@ -995,5 +996,266 @@ test('closing a tab never mounts an evicted reader: it is not opened again and k
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveAttribute('data-active', 'true');
   } finally {
     await app.close();
+  }
+});
+
+interface TabFrame {
+  tabs: Array<{ id: string | null; title: string; icon: string }>;
+  labels: string[];
+  seg: string;
+}
+
+test('a relaunch names every tab in its first frame, and the sidebar segment never shows 썸네일 when 목차 was the choice (R38)', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  let closed = false;
+  try {
+    const items = await importPaths(page, [PAPER, VIDEO, ...pdfCopies(testInfo.outputPath('src'), 1)]);
+    const id = (t: string) => items.find((i) => i.title === t)!.id;
+    await openItem(page, 'doc-01');
+    await libraryTab(page).click();
+    await openBehind(app, page, ['sample-h264-aac']);
+    await libraryTab(page).click();
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+    await page.getByTestId('reader-nav-outline').click();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    // The record carries the names the strip showed, and the choice is stored, before the window is closed.
+    await expect
+      .poll(async () => {
+        const nav = await page.evaluate(() => window.learn.settings.get({ key: 'reader.nav' }));
+        const known = ((await tabsSetting(page)) as { known?: Record<string, unknown> } | null)?.known;
+        return nav.ok && nav.data === 'outline' && Object.keys(known ?? {}).length === 3;
+      })
+      .toBe(true);
+    expect(((await tabsSetting(page)) as { known: Record<string, unknown> }).known).toEqual({
+      [id('doc-01')]: { title: 'doc-01', type: 'pdf' },
+      [id('sample-h264-aac')]: { title: 'sample-h264-aac', type: 'video' },
+      [id('paper-100')]: { title: 'paper-100', type: 'pdf' },
+    });
+    await app.close();
+    closed = true;
+    ({ app, page } = await launch(lib, ud));
+    closed = false;
+    // The library list comes 900 ms late, as in a busy main: until then only what the session record knows can name a tab.
+    await holdReplies(app, ['library:list'], 900);
+    await page.addInitScript(() => {
+      const frames: TabFrame[] = [];
+      (window as unknown as { __frames: TabFrame[] }).__frames = frames;
+      const snap = () => {
+        const tabs = [...document.querySelectorAll<HTMLElement>('[data-testid="tab"]')].map((t) => ({
+          id: t.getAttribute('data-item-id'),
+          title: t.querySelector('.title')?.textContent ?? '',
+          icon: t.querySelector('svg')?.getAttribute('class')?.match(/lucide-[a-z-]+/)?.[0] ?? '',
+        }));
+        const labels = [...document.querySelectorAll<HTMLElement>('[data-testid="tab-panel"]')].map((p) => p.getAttribute('aria-label') ?? '');
+        const group = document.querySelector('[data-testid="reader-nav"]');
+        const seg = group === null ? 'none' : (['thumbnails', 'outline'].find((v) => group.querySelector(`[data-testid="reader-nav-${v}"][data-selected]`)) ?? 'unchosen');
+        frames.push({ tabs, labels, seg });
+      };
+      // Every committed state (a MutationObserver sees one that lasted less than a frame) and every frame.
+      new MutationObserver(snap).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+      const tick = () => {
+        snap();
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    await page.reload();
+    await expect(page.getByTestId('app-ready')).toBeAttached();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    const frames = await page.evaluate(() => (window as unknown as { __frames: TabFrame[] }).__frames);
+    const withTabs = frames.filter((f) => f.tabs.length > 0);
+    expect(withTabs.length, 'the strip was drawn before the list came').toBeGreaterThan(10);
+    // Every tab that is drawn has its name from the first frame it is drawn in, and the video's tab its own mark.
+    for (const f of withTabs) {
+      expect(f.tabs.map((t) => t.title)).not.toContain('');
+      expect(f.labels).not.toContain('');
+      expect(f.tabs.filter((t) => t.id === id('sample-h264-aac')).map((t) => t.icon)).toEqual(f.tabs.some((t) => t.id === id('sample-h264-aac')) ? ['lucide-clapperboard'] : []);
+    }
+    // The segment: the saved choice whenever a choice is drawn; never 썸네일 first.
+    const segs = new Set(frames.map((f) => f.seg));
+    expect(segs.has('thumbnails')).toBe(false);
+    expect(segs.has('outline')).toBe(true);
+  } finally {
+    if (!closed) await app.close().catch(() => {});
+  }
+});
+
+interface OpenFrame {
+  panel: number | null;
+  inspector: string | null;
+  zoomX: number | null;
+  findX: number | null;
+  zoom: string | null;
+  restored: boolean;
+  /** The reader's pages are drawn (pdf.ready): the translation section is usable from here. */
+  ready: boolean;
+  translation: 'none' | 'disabled' | 'enabled';
+}
+
+test('a tab shown for the first time keeps the item panel and lays the toolbar out once: in no frame the panel is missing or the toolbar moves, and the zoom field never shows a percentage but the final one (R39)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, [PAPER, ...pdfCopies(testInfo.outputPath('src'), 1)]);
+    const paper = items.find((i) => i.title === 'paper-100')!.id;
+    await openItem(page, 'doc-01');
+    await expect(page.getByTestId('pdf-zoom-field')).not.toHaveValue('');
+    await showItemPanel(app, page);
+    await libraryTab(page).click();
+    await openBehind(app, page, ['paper-100']);
+    await expect.poll(() => order(page)).toContain(paper);
+    await page.evaluate(() => {
+      const frames: OpenFrame[] = [];
+      (window as unknown as { __open: { frames: OpenFrame[]; done: boolean } }).__open = { frames, done: false };
+      const snap = () => {
+        const shown = document.querySelector<HTMLElement>('[data-testid="tab-panel"][data-active="true"]');
+        const box = document.querySelector('[data-testid="inspector-panel"]')?.getBoundingClientRect();
+        const zoom = shown?.querySelector<HTMLInputElement>('[data-testid="pdf-zoom-field"]');
+        const find = shown?.querySelector('[data-testid="pdf-find"]');
+        const section = document.querySelector('[data-testid="translation-section"]');
+        frames.push({
+          panel: box && box.width > 0 ? Math.round(box.width) : null,
+          inspector: document.querySelector('[data-testid="shell"]')?.getAttribute('data-inspector') ?? null,
+          zoomX: zoom ? zoom.getBoundingClientRect().x : null,
+          findX: find ? find.getBoundingClientRect().x : null,
+          zoom: zoom ? zoom.value : null,
+          restored: shown?.querySelector('[data-testid="pdf-scroll"]')?.hasAttribute('data-restored') ?? false,
+          ready: (window as unknown as { __learnReader: { getState(): { pdf: { ready: boolean } | null } } }).__learnReader.getState().pdf?.ready === true,
+          translation: section === null ? 'none' : section.classList.contains('is-disabled') ? 'disabled' : 'enabled',
+        });
+      };
+      new MutationObserver(snap).observe(document, { subtree: true, childList: true, attributes: true });
+      const tick = () => {
+        snap();
+        const last = frames.at(-1)!;
+        if (last.restored && last.zoom) {
+          // Ten more frames: whatever follows the restore is part of the sample.
+          const o = (window as unknown as { __open: { frames: OpenFrame[]; done: boolean } }).__open;
+          let n = 0;
+          const rest = () => (++n < 10 ? requestAnimationFrame(rest) : void (o.done = true));
+          rest();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    await readerTab(page, paper).click();
+    await page.waitForFunction(() => (window as unknown as { __open: { done: boolean } }).__open.done, undefined, { timeout: 15_000 });
+    const frames = await page.evaluate(() => (window as unknown as { __open: { frames: OpenFrame[] } }).__open.frames);
+    const reader = frames.filter((f) => f.zoomX !== null);
+    expect(reader.length, 'frames with the toolbar drawn').toBeGreaterThan(5);
+    expect(reader.some((f) => !f.restored), 'the opening state was sampled').toBe(true);
+    // The panel is there, shown and of one width, in every frame from the library tab to the drawn page.
+    expect(frames.every((f) => f.inspector === 'shown')).toBe(true);
+    expect(new Set(frames.map((f) => f.panel))).toEqual(new Set([frames.at(-1)!.panel]));
+    expect(frames.at(-1)!.panel).toBeGreaterThan(0);
+    // The toolbar is laid out once: the zoom field and the right-hand group never change place.
+    expect(new Set(reader.map((f) => f.zoomX)).size).toBe(1);
+    expect(new Set(reader.map((f) => f.findX)).size).toBe(1);
+    // No provisional percentage: "…" (empty) until the saved place is applied, then the one the reader keeps.
+    const finalZoom = frames.at(-1)!.zoom;
+    expect(finalZoom).toMatch(/^\d+%$/);
+    expect(new Set(reader.map((f) => f.zoom).filter((z) => z !== ''))).toEqual(new Set([finalZoom]));
+    // The translation section is there from the start, disabled until the pages are drawn.
+    const opening = reader.filter((f) => !f.ready);
+    expect(opening.length, 'frames before the pages are drawn').toBeGreaterThan(0);
+    expect(opening.every((f) => f.translation === 'disabled')).toBe(true);
+    expect(frames.at(-1)!.translation).toBe('enabled');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the toolbar stands in one place whatever the page count: the chevrons, the zoom field and the find button do not move between a 3-page and a 100-page tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, [PAPER, ...pdfCopies(testInfo.outputPath('src'), 1)]);
+    const id = (t: string) => items.find((i) => i.title === t)!.id;
+    const at = async () => {
+      const x = async (testId: string) => (await page.getByTestId(testId).boundingBox())!.x;
+      return { prev: await x('pdf-prev'), zoom: await x('pdf-zoom-field'), find: await x('pdf-find') };
+    };
+    await openItem(page, 'doc-01');
+    await expect(page.getByTestId('pdf-page-count')).toHaveText('/ 3');
+    await expect(page.getByTestId('pdf-zoom-field')).not.toHaveValue('');
+    const short = await at();
+    await libraryTab(page).click();
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-page-count')).toHaveText('/ 100');
+    await expect(page.getByTestId('pdf-zoom-field')).not.toHaveValue('');
+    const long = await at();
+    expect(long).toEqual(short);
+    await readerTab(page, id('doc-01')).click();
+    await expect(page.getByTestId('pdf-page-count')).toHaveText('/ 3');
+    expect(await at()).toEqual(short);
+  } finally {
+    await app.close();
+  }
+});
+
+interface OutlineFrame {
+  expanded: string[];
+  current: string[];
+  rows: number;
+}
+
+test('a restored reader opens the outline on its own chapter only: page 1 is never the current entry and Chapter 1 is not opened for it (m1)', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  let closed = false;
+  try {
+    const [imported] = await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    await page.getByTestId('reader-nav-outline').click();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await goToPage(page, 33); // paper-100's outline puts chapter n on page 10n − 9: chapter 4 starts on 31
+    await expect.poll(() => page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]').first().getAttribute('aria-label')).toMatch(/^(Chapter 4|4\.\d)/);
+    await expect
+      .poll(async () => {
+        const pos = await page.evaluate((x) => window.learn.reader.getPosition({ itemId: x }), imported!.id);
+        return pos.ok && pos.data?.locator?.kind === 'pdf' ? pos.data.locator.pageIndex : -1;
+      })
+      .toBe(32);
+    await app.close();
+    closed = true;
+    ({ app, page } = await launch(lib, ud));
+    closed = false;
+    await page.addInitScript(() => {
+      const frames: OutlineFrame[] = [];
+      (window as unknown as { __outline: OutlineFrame[] }).__outline = frames;
+      const snap = () => {
+        const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="pdf-outline-row"]')];
+        frames.push({
+          expanded: rows.filter((r) => r.getAttribute('aria-expanded') === 'true').map((r) => r.getAttribute('aria-label') ?? ''),
+          current: rows.filter((r) => r.getAttribute('data-current-page') === 'true').map((r) => r.getAttribute('aria-label') ?? ''),
+          rows: rows.length,
+        });
+      };
+      new MutationObserver(snap).observe(document, { subtree: true, childList: true, attributes: true });
+      const tick = () => {
+        snap();
+        requestAnimationFrame(tick);
+      };
+      tick();
+    });
+    await page.reload();
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('33');
+    await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
+    await page.waitForTimeout(300);
+    const frames = await page.evaluate(() => (window as unknown as { __outline: OutlineFrame[] }).__outline);
+    expect(frames.filter((f) => f.rows > 0).length, 'the outline was drawn').toBeGreaterThan(3);
+    // Only rows of chapter 4 are ever the current entry or opened; nothing of chapter 1.
+    const chapter4 = /^(Chapter 4|4\.\d)/;
+    for (const f of frames) {
+      expect(f.current.filter((l) => !chapter4.test(l))).toEqual([]);
+      expect(f.expanded.filter((l) => !chapter4.test(l))).toEqual([]);
+    }
+    expect(frames.at(-1)!.expanded.length).toBeGreaterThan(0);
+  } finally {
+    if (!closed) await app.close().catch(() => {});
   }
 });

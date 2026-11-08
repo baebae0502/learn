@@ -24,6 +24,11 @@ const tabsSetting = async (page: Page) => {
   const r = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
   return r.ok ? r.data : null;
 };
+/** The order and the shown tab of the saved session: its `known` names (R38) are checked on their own. */
+const sessionOf = (value: unknown) => {
+  const v = value as { items: string[]; active: string | null } | null;
+  return v === null ? null : { items: v.items, active: v.active };
+};
 
 /** Both the session record and the reading position are stored, as a hard kill gives no other chance. */
 async function stored(page: Page, itemId: string) {
@@ -31,7 +36,7 @@ async function stored(page: Page, itemId: string) {
     .poll(async () => {
       const tabs = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
       const pos = await page.evaluate((id) => window.learn.reader.getPosition({ itemId: id }), itemId);
-      const tabsOk = tabs.ok && JSON.stringify(tabs.data) === JSON.stringify({ items: [itemId], active: itemId });
+      const tabsOk = tabs.ok && JSON.stringify(sessionOf(tabs.data)) === JSON.stringify({ items: [itemId], active: itemId });
       const pageIndex = pos.ok && pos.data?.locator?.kind === 'pdf' ? pos.data.locator.pageIndex : -1;
       return tabsOk && pageIndex === PAGE - 1;
     })
@@ -84,7 +89,7 @@ for (const gone of ['trashed', 'purged'] as const) {
       }
       if (gone === 'trashed') {
         await expect
-          .poll(async () => JSON.stringify(await tabsSetting(page)))
+          .poll(async () => JSON.stringify(sessionOf(await tabsSetting(page))))
           .toBe(JSON.stringify({ items: [imported!.id], active: imported!.id }));
       } else {
         // Nothing to keep (the record may never have been written: the tab was gone within the 300 ms before the save).
@@ -102,8 +107,10 @@ for (const gone of ['trashed', 'purged'] as const) {
         await expect(readerTab(page, imported!.id)).toHaveAttribute('title', 'paper-100');
         await expect(page.getByRole('tabpanel', { name: 'paper-100' })).toHaveAttribute('data-item-id', imported!.id);
         await expect.poll(() => page.title()).toBe('paper-100');
-        const r = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
-        expect(r.ok && r.data).toEqual({ items: [imported!.id], active: imported!.id });
+        // The record keeps the name the tab last showed (R38), the item being in the trash or not.
+        await expect
+          .poll(() => tabsSetting(page))
+          .toEqual({ items: [imported!.id], active: imported!.id, known: { [imported!.id]: { title: 'paper-100', type: 'pdf' } } });
       } else {
         // The library is empty, so it shows its empty state: what matters is that no reader is left.
         await expect.poll(async () => JSON.stringify(await tabsSetting(page))).toMatch(/^(null|\{"items":\[\],"active":null\})$/);
@@ -819,7 +826,7 @@ test('the order of the tabs and the shown one come back after a restart', async 
     await expect.poll(() => order(page)).toEqual(['library', c, a, b]);
     await readerTab(page, a).click();
     await expect
-      .poll(async () => JSON.stringify(await tabsSetting(page)))
+      .poll(async () => JSON.stringify(sessionOf(await tabsSetting(page))))
       .toBe(JSON.stringify({ items: [c, a, b], active: a }));
     await app.close();
     closed = true;

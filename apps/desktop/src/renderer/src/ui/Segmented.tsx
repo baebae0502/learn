@@ -12,7 +12,8 @@ export interface SegmentOption<V extends string> {
 
 /** Segmented control = radio group (design-spec 6 세그먼트). */
 export function Segmented<V extends string>(props: {
-  value: V;
+  /** null: no segment is selected (a choice not read yet). */
+  value: V | null;
   options: readonly SegmentOption<V>[];
   onChange(value: V): void;
   fill?: boolean;

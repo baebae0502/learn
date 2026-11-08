@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { INSPECTOR, SIDEBAR, type PaneState } from '../shell/layout';
 import * as T from './tabs';
-import { NO_TABS, type TabId, type TabsState } from './tabs';
+import { NO_TABS, type KnownTabItem, type KnownTabItems, type TabId, type TabsState } from './tabs';
 
 export type View = { kind: 'library' } | { kind: 'reader'; itemId: string };
 
@@ -20,7 +20,10 @@ export interface ShellState {
   reopenClosedTab(isOpenable: (id: string) => boolean): void;
   moveTab(id: string, toIndex: number): void;
   removeTab(id: string): void;
-  restoreTabs(saved: TabsState): void;
+  restoreTabs(saved: TabsState, known?: KnownTabItems): void;
+  /** Each reader tab's last known name and kind: what the strip shows until the item itself is known, and what the session record carries (R38). */
+  known: KnownTabItems;
+  noteTabItem(itemId: string, item: KnownTabItem): void;
   sidebar: PaneState;
   /** The item panel's width and the user's choice (one layout.panes record with the sidebar); its fold by width is layout.ts. */
   inspector: PaneState;
@@ -63,7 +66,13 @@ export const useShell = create<ShellState>()((set) => {
     reopenClosedTab: (ok) => change((t) => T.reopenClosedTab(t, ok)),
     moveTab: (id, i) => change((t) => T.moveTab(t, id, i)),
     removeTab: (id) => change((t) => T.removeTab(t, id)),
-    restoreTabs: (saved) => set({ tabs: saved, view: viewOf(saved) }),
+    restoreTabs: (saved, known = {}) => set({ tabs: saved, view: viewOf(saved), known }),
+    known: {},
+    noteTabItem: (itemId, item) =>
+      set((st) => {
+        const was = st.known[itemId];
+        return was && was.title === item.title && was.type === item.type ? st : { known: { ...st.known, [itemId]: item } };
+      }),
     sidebar: { width: SIDEBAR.default, collapsed: false, forceShown: false },
     inspector: { width: INSPECTOR.default, collapsed: false, forceShown: false },
     paletteOpen: false,

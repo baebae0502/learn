@@ -45,7 +45,7 @@ export function ReaderSidebar() {
           fill
           aria-label={t.reader.navLabel}
           value={nav}
-          isDisabled={!ready}
+          isDisabled={!ready || nav === null}
           onChange={(v) => saveSetting('reader.nav', v)}
           options={[
             { value: 'thumbnails', label: t.reader.thumbnails, title: `${thumbnails.label} ${hint(thumbnails.accelerator)}`, testId: 'reader-nav-thumbnails' },
@@ -53,7 +53,7 @@ export function ReaderSidebar() {
           ]}
         />
       </div>
-      {nav === 'outline' ? <OutlineTree /> : <ThumbnailList />}
+      {nav === 'outline' ? <OutlineTree /> : nav === 'thumbnails' ? <ThumbnailList /> : null}
     </div>
   );
 }

@@ -15,6 +15,7 @@ export const NO_TABS: TabsState = { tabs: [], active: 'library', recent: [], clo
 export const CLOSED_MAX = 10;
 export const SAVED_MAX = 50;
 export const MOUNTED_MAX = 4;
+export const SAVED_TITLE_MAX = 300;
 
 const without = (list: readonly string[], id: string) => list.filter((x) => x !== id);
 
@@ -105,14 +106,38 @@ export function mountedTabs(s: TabsState, limit: number = MOUNTED_MAX): string[]
   return order.filter((id) => s.tabs.includes(id)).slice(0, limit);
 }
 
-export function toSaved(s: TabsState): { items: string[]; active: string | null } {
-  const items = s.tabs.slice(0, SAVED_MAX);
-  return { items, active: items.includes(s.active) ? s.active : null };
+/** What a reader tab last showed of its item: its name and kind, kept in the saved session so the strip is whole in its first frame. */
+export interface KnownTabItem {
+  title: string;
+  type: 'pdf' | 'video';
+}
+export type KnownTabItems = Readonly<Record<string, KnownTabItem>>;
+
+export interface SavedTabs {
+  items: string[];
+  active: string | null;
+  known?: Record<string, KnownTabItem> | undefined;
 }
 
-export function fromSaved(v: { items: string[]; active: string | null } | undefined): TabsState {
+/** The record of ui.tabs; `known` only for the tabs kept, and left out when it holds none. */
+export function toSaved(s: TabsState, known: KnownTabItems = {}): SavedTabs {
+  const items = s.tabs.slice(0, SAVED_MAX);
+  const kept: Record<string, KnownTabItem> = {};
+  for (const id of items) {
+    const k = known[id];
+    if (k) kept[id] = { title: k.title.slice(0, SAVED_TITLE_MAX), type: k.type };
+  }
+  return { items, active: items.includes(s.active) ? s.active : null, ...(Object.keys(kept).length > 0 ? { known: kept } : {}) };
+}
+
+export function fromSaved(v: SavedTabs | undefined): TabsState {
   if (!v) return NO_TABS;
   const tabs = [...new Set(v.items)].slice(0, SAVED_MAX);
   const active = v.active !== null && tabs.includes(v.active) ? v.active : 'library';
   return { tabs, active, recent: active === 'library' ? [] : [active], closed: [] };
+}
+
+/** The names the saved session carried, for the tabs it reopens. */
+export function knownFromSaved(v: SavedTabs | undefined): KnownTabItems {
+  return v?.known ?? {};
 }

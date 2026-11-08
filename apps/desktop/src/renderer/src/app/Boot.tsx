@@ -4,9 +4,10 @@ import { ApiError } from '../api';
 import { FatalScreen } from '../components/FatalScreen';
 import { useAppInfo, usePanes, usePrefs, usePrefsSync, useSavedTabs } from '../data/queries';
 import { usePageColorSetting } from '../viewers/pdf/usePageColor';
+import { useReaderNavSetting } from '../viewers/pdf/useReaderNav';
 import { parsePanes } from '../shell/layout';
 import { useShell } from '../state/shell-store';
-import { fromSaved } from '../state/tabs';
+import { fromSaved, knownFromSaved } from '../state/tabs';
 import { MainWindow } from './MainWindow';
 import { RenderBoundary } from './RenderBoundary';
 
@@ -37,8 +38,10 @@ function PanesGate({ info }: { info: AppInfo }) {
   const savedTabs = useSavedTabs();
   // The reader's page colour too: a reader restored at launch draws its first page in it (a failed read falls back to 앱 테마 따르기).
   const pageColor = usePageColorSetting();
+  // And the sidebar's list (thumbnails or outline): the segment is drawn with its saved choice from the first frame.
+  const readerNav = useReaderNavSetting();
   const seeded = useRef(false);
-  if (panes.isPending || savedTabs.isPending || pageColor.isPending) return null;
+  if (panes.isPending || savedTabs.isPending || pageColor.isPending || readerNav.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
     // Both panes before the first paint: the item panel has its width in its first frame too.
@@ -47,7 +50,8 @@ function PanesGate({ info }: { info: AppInfo }) {
     useShell.getState().setInspector(seed.inspector);
     // The tabs open at the last quit; a missing, unreadable or failed read opens on the library alone.
     const tabs = SETTINGS['ui.tabs'].safeParse(savedTabs.data);
-    useShell.getState().restoreTabs(fromSaved(tabs.success ? tabs.data : undefined));
+    const saved = tabs.success ? tabs.data : undefined;
+    useShell.getState().restoreTabs(fromSaved(saved), knownFromSaved(saved));
   }
   return (
     <RenderBoundary>

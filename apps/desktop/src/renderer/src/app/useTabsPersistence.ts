@@ -5,10 +5,11 @@ import { toSaved } from '../state/tabs';
 
 const LATER_MS = 300;
 
-/** Saves the open reader tabs and the shown one as ui.tabs, 300 ms after the last change and at once when the window unloads. */
+/** Saves the open reader tabs, the shown one and each tab's last known name as ui.tabs, 300 ms after the last change and at once when the window unloads. */
 export function useTabsPersistence(): void {
   const tabs = useShell((s) => s.tabs);
-  const json = JSON.stringify(toSaved(tabs));
+  const known = useShell((s) => s.known);
+  const json = JSON.stringify(toSaved(tabs, known));
   // The boot value came from the setting itself; only a different record is written.
   const saved = useRef<string | null>(null);
   saved.current ??= json;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { CLOSED_MAX, NO_TABS, SAVED_MAX, closeOtherTabs, closeTab, fromSaved, moveTab, mountedTabs, openTab, openTabs, removeTab, reopenClosedTab, selectLastTab, selectRelativeTab, selectTab, selectTabAt, toSaved } from './tabs';
+import { SAVED_TITLE_MAX, CLOSED_MAX, NO_TABS, SAVED_MAX, closeOtherTabs, closeTab, fromSaved, moveTab, mountedTabs, openTab, openTabs, removeTab, reopenClosedTab, selectLastTab, selectRelativeTab, selectTab, selectTabAt, toSaved, knownFromSaved } from './tabs';
 
 test('↩ on an open item goes to its tab; ⌘↩ never switches', () => {
   const s = openTab(openTab(NO_TABS, 'a'), 'b', { background: true });
@@ -106,5 +106,18 @@ describe('more of the model', () => {
     expect(fromSaved({ items: ['a', 'b'], active: 'zzz' }).active).toBe('library');
     expect(fromSaved({ items: ['a', 'b'], active: 'b' })).toMatchObject({ tabs: ['a', 'b'], active: 'b' });
     expect(fromSaved({ items: ['a', 'a'], active: null }).tabs).toEqual(['a']);
+  });
+  test('toSaved carries the known title and kind of the tabs it keeps, cut at 300, and nothing for a tab that is not saved (R38)', () => {
+    const s = openTabs(NO_TABS, ['a', 'b']);
+    const known = { a: { title: 'Alpha', type: 'pdf' as const }, b: { title: 'x'.repeat(400), type: 'video' as const }, gone: { title: 'Gone', type: 'pdf' as const } };
+    const saved = toSaved(s, known);
+    expect(saved.known).toEqual({ a: { title: 'Alpha', type: 'pdf' }, b: { title: 'x'.repeat(SAVED_TITLE_MAX), type: 'video' } });
+    // None known: the record is the one written before, with no `known` key at all.
+    expect(toSaved(s)).toEqual({ items: ['a', 'b'], active: 'a' });
+    expect('known' in toSaved(s, { gone: known.gone })).toBe(false);
+    // It comes back as the strip's stand-in names.
+    expect(knownFromSaved(saved)).toEqual(saved.known);
+    expect(knownFromSaved(undefined)).toEqual({});
+    expect(knownFromSaved({ items: ['a'], active: null })).toEqual({});
   });
 });

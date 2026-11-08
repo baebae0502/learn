@@ -432,9 +432,11 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
     try {
       await expect(field).toBeFocused({ timeout: 5_000 });
     } catch (e) {
+      if (!IS_MAC) throw e;
       // Mac runs 42443540025 and 42451371771: the key went out with the app frontmost and the field never took the focus, and nothing
-      // said where the key went. The miss now carries it (one line: the guard keeps an error's first line).
-      throw new Error(`${errorText(e)} ${JSON.stringify(IS_MAC ? await keyMiss(s.app, s.page, sentAt) : null)}`);
+      // said where the key went. The miss now carries it, on the message's first line (the one the guard keeps, with its own prefix).
+      const first = (e instanceof Error ? (e.message.split('\n')[0] ?? '') : String(e)).replace(/\u001b\[\d+m/g, ''); // without the terminal colours
+      throw new Error(`${first} ${JSON.stringify(await keyMiss(s.app, s.page, sentAt))}`);
     } finally {
       if (IS_MAC) await stopWatchingKeys(s.app);
     }

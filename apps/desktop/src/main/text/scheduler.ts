@@ -20,7 +20,7 @@ export interface TextScheduler {
   /** Resolves when no PDF outside the trash has a queued job and nothing runs. */
   idle(): Promise<void>;
   stats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
-  /** Kills the worker; a running job stays 'running' and the next startup check interrupts it. */
+  /** Kills the worker; a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check). */
   dispose(): void;
 }
 

@@ -18,6 +18,7 @@ exposeSurface({
     settings: ['get', 'set'],
     prefs: ['get', 'set'],
     reader: ['open', 'getPosition', 'savePosition'],
+    search: ['body', 'pages', 'progress'],
     backup: ['create', 'cancel', 'restore'],
     translation: ['translate', 'cancel'],
     ui: ['showContextMenu', 'windowState', 'reportContext', 'confirm', 'confirmPurge', 'showShortcuts', 'openSettings', 'themeShown', 'showColumnMenu', 'reportIdle'],

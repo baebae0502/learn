@@ -1472,9 +1472,9 @@ export async function makeTags<const S extends ReadonlyArray<{ name: string; slo
  * `count` PDFs that differ by one trailing comment: each imports as an item of its own, with its own file and revision
  * (items the E2E hook seeds share one revision, so a page-count probe would be answered from the cache).
  */
-export function distinctPdfs(dir: string, count: number): string[] {
+export function distinctPdfs(dir: string, count: number, source = 'sample.pdf'): string[] {
   fs.mkdirSync(dir, { recursive: true });
-  const bytes = fs.readFileSync(path.join(FIXTURES, 'sample.pdf'));
+  const bytes = fs.readFileSync(path.join(FIXTURES, source));
   return Array.from({ length: count }, (_, i) => {
     const file = path.join(dir, `distinct-${String(i + 1).padStart(2, '0')}.pdf`);
     fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from(`\n% copy ${i + 1}\n`)]));

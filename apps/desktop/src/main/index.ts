@@ -797,7 +797,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     applyLibrarySwitch();
     checkStopped = true;
-    // The worker first, the database after: a running job stays 'running' and the next startup check interrupts it.
+    // The worker first, the database after: a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check).
     if (text) text.dispose();
     else textExtractor.dispose();
     menuRebuild.cancel();

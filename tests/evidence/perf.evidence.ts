@@ -37,7 +37,7 @@ test('cold start to app-ready, 5 launches, and the renderer bundle', { tag: '@pe
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-perf-'));
     try {
       const t0 = Date.now();
-      const s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'));
+      const s = await launch(path.join(tmp, 'library'), path.join(tmp, 'userdata'), { env: { LEARN_TEXT_EXTRACTION: 'run' } });
       const wall = Date.now() - t0;
       try {
         const appReadyAt = Number(await s.page.getByTestId('app-ready').getAttribute('data-at'));

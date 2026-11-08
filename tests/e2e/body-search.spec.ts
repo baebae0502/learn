@@ -2,7 +2,7 @@
 // stops for the trash, and tells the screen how far it is. (The search itself has its own spec.)
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { FIXTURES, hardKill, importPaths, launch, pageTextCount, textExtraction, textHeld, textHold, textIdle, textJobs, trashItems } from './helpers';
+import { FIXTURES, hardKill, importPaths, launch, pageTextCount, seedBodyText, textExtraction, textHeld, textHold, textIdle, textJobs, trashItems } from './helpers';
 
 const pdf = (name: string) => path.join(FIXTURES, name);
 const detailOf = async (page: import('@playwright/test').Page, itemId: string) => {
@@ -120,6 +120,37 @@ test('progress notices: done never passes total, and the last one has them equal
       expect(p.done).toBeLessThanOrEqual(p.total);
       expect(p.total).toBe(3);
     }
+  } finally {
+    await app.close();
+  }
+});
+
+test("the page's search API answers from the index", async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const seeded = await seedBodyText(app, { docs: 20, pages: 12, chars: 400, seed: 1 });
+    const body = (query: string) => page.evaluate((q) => window.learn.search.body({ query: q }), query);
+    const hit = await body('형광');
+    if (!hit.ok) throw new Error(`search.body failed: ${hit.code}`);
+    expect(hit.data.searched).toBe(true);
+    expect(hit.data.itemIds.length).toBeGreaterThan(0);
+    expect(hit.data.itemIds.every((id) => seeded.itemIds.includes(id))).toBe(true);
+    // One letter has no body word: not searched, which is not the same as nothing found.
+    expect(await body('형')).toEqual({ ok: true, data: { itemIds: [], searched: false } });
+    // Three letters take the index, and a query nobody has is searched and empty.
+    const indexed = await body('transduction');
+    expect(indexed.ok && indexed.data.searched && indexed.data.itemIds.length > 0).toBe(true);
+    expect(await body('xylophone')).toEqual({ ok: true, data: { itemIds: [], searched: true } });
+
+    const pages = await page.evaluate((id) => window.learn.search.pages({ itemId: id, query: '형광' }), hit.data.itemIds[0]!);
+    if (!pages.ok) throw new Error(`search.pages failed: ${pages.code}`);
+    expect(pages.data.pages.length).toBeGreaterThan(0);
+    expect(pages.data.total).toBeGreaterThanOrEqual(pages.data.pages.length);
+    const order = pages.data.pages.map((p) => p.pageIndex);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    for (const p of pages.data.pages) expect(p.snippet).toContain('\ue000');
+
+    expect(await page.evaluate(() => window.learn.search.progress())).toEqual({ ok: true, data: { done: 20, total: 20 } });
   } finally {
     await app.close();
   }

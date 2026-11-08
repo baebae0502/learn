@@ -146,6 +146,11 @@ async function makePaper(file) {
       page.drawText(line, { x: COLUMN.x[column], y: top - (i % perColumn) * LEAD, size: 10, font });
     });
     if (n % 5 === 0) page.drawRectangle({ x: 56, y: 100, width: 483, height: 60, borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 2 });
+    // The target of the "See figure 2 on page 40." link (XYZ 56, 600) is a figure: its top-left corner is the point the link lands on.
+    if (n === 40) {
+      page.drawRectangle({ x: 56, y: 520, width: 483, height: 80, color: rgb(1, 1, 1), borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 2 });
+      page.drawText('Figure 2', { x: 66, y: 580, size: 12, font: bold, color: rgb(0.18, 0.5, 0.48) });
+    }
     page.drawText(`${n}. Footnote of page ${n}.`, { x: 56, y: 60, size: 8, font });
   });
   const first = pages[0];

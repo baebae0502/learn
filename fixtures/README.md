@@ -7,7 +7,7 @@
 |---|---|---|
 | `sample.pdf` | pdf-lib, Helvetica, 3쪽(2쪽 90° 회전) | PDF 렌더·쪽 이동 |
 | `한글 경로 (테스트) #1.pdf` | 위와 같은 생성기, 다른 라벨 | 경로의 한글·공백·특수문자 |
-| `paper-100.pdf` | pdf-lib, A4 100쪽, 두 단 Helvetica 10/13, 1쪽 첫 줄에 번역 시험 문장 넷, 2쪽 줄 끝 하이픈, 쪽 안·밖 링크 5개(쪽 50·100, https, mailto, 쪽 40의 한 점 x 56·y 600을 가리키는 "See figure 2 on page 40."), 장·절·소절 3단 목차 | 리더 스크롤·글 선택·링크·목차 |
+| `paper-100.pdf` | pdf-lib, A4 100쪽, 두 단 Helvetica 10/13, 1쪽 첫 줄에 번역 시험 문장 넷, 2쪽 줄 끝 하이픈, 쪽 안·밖 링크 5개(쪽 50·100, https, mailto, 쪽 40의 한 점 x 56·y 600을 가리키는 "See figure 2 on page 40." — 쪽 40의 그 점에 "Figure 2" 상자), 장·절·소절 3단 목차 | 리더 스크롤·글 선택·링크·목차 |
 | `long-outline.pdf` | pdf-lib, 6쪽, 부 60개 × 소제목 4개 = 목차 300항목 | 긴 목차의 가상 목록 |
 | `korean.pdf` | pdf-lib + `@pdf-lib/fontkit`, Pretendard 가변 글꼴 전체 포함(`subset: false`), 3쪽(NFC · NFD · 한영 두 단) | 글 레이어의 한국어(글리프는 pdf.js가 그리지 못하고 글 내용과 폭만 맞다) |
 | `locked.pdf` | `fixtures/static/locked.pdf` 복사(mutool로 한 번 만든 암호 `learn`, 명령은 `fixtures/static/README.md`) | 암호 입력 |

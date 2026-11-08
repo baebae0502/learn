@@ -1084,6 +1084,8 @@ test('a relaunch names every tab in its first frame, and the sidebar segment nev
 });
 
 interface OpenFrame {
+  /** The shown tab's item. */
+  tab: string | null;
   panel: number | null;
   inspector: string | null;
   zoomX: number | null;
@@ -1100,13 +1102,18 @@ test('a tab shown for the first time keeps the item panel and lays the toolbar o
   try {
     const items = await importPaths(page, [PAPER, ...pdfCopies(testInfo.outputPath('src'), 1)]);
     const paper = items.find((i) => i.title === 'paper-100')!.id;
+    const doc = items.find((i) => i.title === 'doc-01')!.id;
     await openItem(page, 'doc-01');
     await expect(page.getByTestId('pdf-zoom-field')).not.toHaveValue('');
-    await showItemPanel(app, page);
     await libraryTab(page).click();
     await openBehind(app, page, ['paper-100']);
     await expect.poll(() => order(page)).toContain(paper);
-    await page.evaluate(() => {
+    // From a drawn reader with its panel shown (the library of the 1024 px macOS runner folds the panel beside the table by
+    // design: Mac run 42439011165) to the reader not drawn yet.
+    await readerTab(page, doc).click();
+    await expect(page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="pdf-zoom-field"]')).not.toHaveValue('');
+    await showItemPanel(app, page);
+    await page.evaluate((target) => {
       const frames: OpenFrame[] = [];
       (window as unknown as { __open: { frames: OpenFrame[]; done: boolean } }).__open = { frames, done: false };
       const snap = () => {
@@ -1116,6 +1123,7 @@ test('a tab shown for the first time keeps the item panel and lays the toolbar o
         const find = shown?.querySelector('[data-testid="pdf-find"]');
         const section = document.querySelector('[data-testid="translation-section"]');
         frames.push({
+          tab: shown?.getAttribute('data-item-id') ?? null,
           panel: box && box.width > 0 ? Math.round(box.width) : null,
           inspector: document.querySelector('[data-testid="shell"]')?.getAttribute('data-inspector') ?? null,
           zoomX: zoom ? zoom.getBoundingClientRect().x : null,
@@ -1130,7 +1138,7 @@ test('a tab shown for the first time keeps the item panel and lays the toolbar o
       const tick = () => {
         snap();
         const last = frames.at(-1)!;
-        if (last.restored && last.zoom) {
+        if (last.tab === target && last.restored && last.zoom) {
           // Ten more frames: whatever follows the restore is part of the sample.
           const o = (window as unknown as { __open: { frames: OpenFrame[]; done: boolean } }).__open;
           let n = 0;
@@ -1141,14 +1149,15 @@ test('a tab shown for the first time keeps the item panel and lays the toolbar o
         requestAnimationFrame(tick);
       };
       tick();
-    });
+    }, paper);
     await readerTab(page, paper).click();
     await page.waitForFunction(() => (window as unknown as { __open: { done: boolean } }).__open.done, undefined, { timeout: 15_000 });
     const frames = await page.evaluate(() => (window as unknown as { __open: { frames: OpenFrame[] } }).__open.frames);
-    const reader = frames.filter((f) => f.zoomX !== null);
+    expect(frames[0]!.tab, 'sampled from the drawn reader').toBe(doc);
+    const reader = frames.filter((f) => f.tab === paper && f.zoomX !== null);
     expect(reader.length, 'frames with the toolbar drawn').toBeGreaterThan(5);
     expect(reader.some((f) => !f.restored), 'the opening state was sampled').toBe(true);
-    // The panel is there, shown and of one width, in every frame from the library tab to the drawn page.
+    // The panel is there, shown and of one width, in every frame from the drawn reader to the newly drawn page.
     expect(frames.every((f) => f.inspector === 'shown')).toBe(true);
     expect(new Set(frames.map((f) => f.panel))).toEqual(new Set([frames.at(-1)!.panel]));
     expect(frames.at(-1)!.panel).toBeGreaterThan(0);

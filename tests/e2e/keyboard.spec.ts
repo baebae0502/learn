@@ -65,6 +65,7 @@ test('import → open → page → back → palette → settings → shortcuts, 
     await expect(rowAt(page, 0)).toHaveAttribute('data-focus-visible', 'true'); // keyboard cursor ring
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', ''); // the page field is on from here
     await expectNoSeriousA11y(page, 'PDF reader');
 
     await page.keyboard.press('F6'); // sidebar
@@ -197,6 +198,8 @@ test('M4 keyboard only: import → find (⌘F) → select → edit the info → 
     await expect(row).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The page field is off until the saved place is applied, and F6 passes over it until then (Mac run 42439011165: pdf-find).
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
 
     // Back to the library the first journey's way: F6 to the reader's controls, a page on, ⇧⇥ ×2 to 라이브러리로 돌아가기.
     await page.keyboard.press('F6'); // sidebar

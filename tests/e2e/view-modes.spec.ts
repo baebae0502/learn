@@ -149,8 +149,9 @@ test('zoomed out so the last pages fit together, the next chevron reaches the la
     const next = page.getByTestId('pdf-next');
     // In a row or a spread pdf.js makes the most visible page the current one (the lowest number on a tie) whenever it updates the
     // view. At the document's end several pages are in full view and the stage cannot move: a turn that updated the view at once
-    // made an earlier page current again, and → never reached the last page. A turn whose stage does move is handled in the next
-    // frame, which can still take one turn back at the end (pdf.js's own rule, not the app's): a few more presses are allowed.
+    // made an earlier page current again, and → never reached the last page. A turn whose stage does move still ends in pdf.js's
+    // own scroll handling, an update on the scroll and a trailing one 100 ms later (`_scrollUpdate`); the trailing one can land
+    // after the next press and take one turn back at the end (pdf.js's own rule, not the app's): a few more presses are allowed.
     for (const [mode, from, last, turns] of [['row', 90, 100, 10], ['spread', 89, 99, 5]] as const) {
       if (mode === 'row') await choose(page, 'scroll', '가로로 이어서');
       else {
@@ -164,7 +165,7 @@ test('zoomed out so the last pages fit together, the next chevron reaches the la
       const seen: string[] = [];
       for (let i = 0; i < turns + 3 && !(await next.isDisabled()); i++) {
         await next.click();
-        // pdf.js handles the turn's scroll in the frame after it: the page it leaves current is read once that has run.
+        // pdf.js's first update for the turn's scroll runs on the scroll event, a frame or so after it: the page is read after that.
         await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => done())))));
         seen.push(await field(page).inputValue());
       }

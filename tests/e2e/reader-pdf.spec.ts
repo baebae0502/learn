@@ -1029,6 +1029,17 @@ test('leaving a PDF the moment its pages exist leaves no page error and no conso
     if (m.type() === 'warning' && /thumbnail/i.test(m.text())) errors.push(`warning: ${m.text()}`);
   });
   try {
+    // Should pdf.js's "offsetParent is not set -- cannot scroll" come back (CI 42447621731, the restore in a hidden tab), the stack of
+    // the call that logged it names the caller. Only recorded: the message is logged as before. The page is not reloaded in this test.
+    await page.evaluate(() => {
+      const w = window as unknown as { __noOffsetParent: string[] };
+      w.__noOffsetParent = [];
+      const error = console.error.bind(console);
+      console.error = (...args: unknown[]) => {
+        if (typeof args[0] === 'string' && args[0].startsWith('offsetParent is not set')) w.__noOffsetParent.push(new Error('logged here').stack ?? '(no stack)');
+        error(...args);
+      };
+    });
     await importPaths(page, [PAPER]);
     for (let i = 0; i < 8; i++) {
       await openItem(page, 'paper-100');
@@ -1047,7 +1058,8 @@ test('leaving a PDF the moment its pages exist leaves no page error and no conso
       await expect(viewer(page)).toHaveCount(0);
     }
     await page.waitForTimeout(500);
-    expect(errors).toEqual([]);
+    const stacks = await page.evaluate(() => (window as unknown as { __noOffsetParent: string[] }).__noOffsetParent);
+    expect(errors, stacks.length > 0 ? `the calls that logged "offsetParent is not set":\n${stacks.join('\n---\n')}` : undefined).toEqual([]);
   } finally {
     await app.close();
   }

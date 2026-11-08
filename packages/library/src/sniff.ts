@@ -49,3 +49,40 @@ export async function sniffFile(filePath: string): Promise<SniffResult | null> {
     await fh.close();
   }
 }
+
+export const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'] as const;
+export type ImageMime = (typeof IMAGE_MIMES)[number];
+
+/** Brands of HEIC and its relatives: a file that lists one of them is not taken as AVIF even if it also lists avif. */
+const HEIC_BRANDS: ReadonlySet<string> = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs']);
+
+function ascii(head: Uint8Array, at: number, text: string): boolean {
+  if (at + text.length > head.length) return false;
+  for (let i = 0; i < text.length; i++) if (head[at + i] !== text.charCodeAt(i)) return false;
+  return true;
+}
+
+function brandAt(head: Uint8Array, at: number): string {
+  return String.fromCharCode(head[at]!, head[at + 1]!, head[at + 2]!, head[at + 3]!);
+}
+
+/** AVIF by its ftyp box; any HEIC-family brand, major or compatible, turns it away. */
+function ftypIsAvif(head: Uint8Array): boolean {
+  if (head.length < 12) return false;
+  const size = ((head[0]! << 24) | (head[1]! << 16) | (head[2]! << 8) | head[3]!) >>> 0;
+  const end = Math.min(size, head.length);
+  const brands = [brandAt(head, 8)];
+  for (let at = 16; at + 4 <= end; at += 4) brands.push(brandAt(head, at));
+  if (brands.some((b) => HEIC_BRANDS.has(b))) return false;
+  return brands.some((b) => b === 'avif' || b === 'avis');
+}
+
+/** The image format by the first bytes (the extension is not looked at); null for anything else. */
+export function sniffImage(head: Uint8Array): ImageMime | null {
+  if (head.length >= 8 && head[0] === 0x89 && ascii(head, 1, 'PNG\r\n') && head[6] === 0x1a && head[7] === 0x0a) return 'image/png';
+  if (head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+  if (ascii(head, 0, 'GIF87a') || ascii(head, 0, 'GIF89a')) return 'image/gif';
+  if (ascii(head, 0, 'RIFF') && ascii(head, 8, 'WEBP') && (ascii(head, 12, 'VP8 ') || ascii(head, 12, 'VP8L') || ascii(head, 12, 'VP8X'))) return 'image/webp';
+  if (ascii(head, 4, 'ftyp') && ftypIsAvif(head)) return 'image/avif';
+  return null;
+}

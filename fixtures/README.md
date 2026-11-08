@@ -25,3 +25,4 @@
 | `translation/google-en-ko.json` | `translate.googleapis.com`의 실제 응답(2026-11-03, ADR-0012): 영어 두 문장·줄바꿈, `sl=en&tl=ko` | 응답 해석 단위 시험 |
 | `translation/google-auto.json` | 같은 요청, `sl=auto`, 영어 두 문장 | 감지한 원문 언어(`r[2]`) |
 | `translation/google-ko.json` | 같은 요청, 한국어 입력 `tl=ko`(같은 글과 `"ko"`) | 같은 언어 응답 |
+| `static/images/*` (PNG, JPEG, WebP, GIF, AVIF) | ImageMagick와 ffmpeg로 만든 그라데이션·시험 무늬, JPEG의 EXIF 방향 6은 짧은 node 스크립트(명령은 `static/README.md`). `generated/`로 복사하지 않는다 | 이미지 머리 판별과 크기 읽기 단위 시험 |

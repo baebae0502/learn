@@ -360,7 +360,7 @@
       ${icon('mouse-pointer-2')}
       <div class="pe-title">선택한 자료 없음</div>
       <div class="pe-text">표에서 자료를 고르면 정보와 읽기 진행이 여기에 보입니다.</div>
-      ${stats ? `<div class="pe-text c-tertiary" style="margin-top:12px">${params.get('m') === '7c' ? '분자생물학 · 자료 48개(PDF\u00a032\u00a0· 동영상\u00a013\u00a0· 이미지\u00a03) · 1.9\u00a0GB' : '분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB'}</div>` : ''}
+      ${stats ? `<div class="pe-text c-tertiary" style="margin-top:12px">${params.get('m') === '7c' ? '분자생물학\u00a0· 자료 48개(PDF\u00a032\u00a0· 동영상\u00a013\u00a0· 이미지\u00a03)\u00a0· 1.9\u00a0GB' : '분자생물학 · 자료 48개(PDF 35 · 동영상 13) · 1.9 GB'}</div>` : ''}
     </div>`;
   }
 
@@ -508,7 +508,7 @@
     let body;
     if (kind === '3') {
       head = sectionHead('본문 일치', count('쪽\u00a03개'));
-      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows([12, 31, 44], ['', 'is-hover', 'is-cursor'])}</div>`;
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows([12, 31, 44], params.get('matches') === '3' ? ['', 'is-hover', 'is-cursor'] : [])}</div>`;
     } else if (kind === 'many') {
       head = sectionHead('본문 일치', count('쪽\u00a034개'));
       body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows(D.matchPages)}</div><div class="match-more" id="match-more">외 14쪽</div>`;
@@ -558,7 +558,8 @@
     if (matches || (q('scope') === 'fulltext' && q('q') && state !== 'noresults')) {
       const kind = matches || '3';
       header = libraryHeader({ count: '7개 / 48개', scope7c: { scope: 'full', value: q('q') || '형광', focus: false } });
-      table = libraryTable({ items: fulltextRows(), selectedIds: [1], focused: true, cols: COLS_KIND, kindCol: true });
+      // matches=3: the keyboard is in the match list, so the table's selection is the neutral (unfocused) one.
+      table = libraryTable({ items: fulltextRows(), selectedIds: [1], focused: matches !== '3', cols: COLS_KIND, kindCol: true });
       const withStatus = ['indexing', 'empty', 'locked'].includes(kind);
       insp = inspectorItem({
         ...D.selectedItem,
@@ -3090,7 +3091,7 @@
         const cy = Number(q('cy')) || 0.43;
         pic = `<div class="image-pic" style="left:0;top:0;width:${sw}px;height:${sh}px">${img.draw({ width: sw, height: sh, view: [Math.round(cx * img.w - vw / 2), Math.round(cy * img.h - vh / 2), vw, vh] })}</div>`;
         extra = `<span class="image-hand" style="left:${Math.round(sw / 2 - 12)}px;top:${Math.round(sh / 2 - 12)}px">${icon('grab', 'lg')}</span>`;
-        note = '커서 grab · 끄는 동안 grabbing — 그림이 무대보다 클 때만';
+        note = '목업 메모 · 커서 grab · 끄는 동안 grabbing — 그림이 무대보다 클 때만';
       } else {
         const left = Math.max(24, (sw - dw) / 2);
         const top = dh + 48 <= sh ? (sh - dh) / 2 : 24;
@@ -3100,9 +3101,9 @@
               img.draw({ width: img.w * scale, height: img.h * scale }).replace('<svg ', `<svg style="margin:${-(img.h * scale) / 2}px 0 0 ${-(img.w * scale) / 2}px;transform:rotate(${rotate}deg)" `),
             )
           : `<div class="image-pic" style="left:${left}px;top:${top}px;width:${dw}px;height:${dh}px">${img.draw({ width: dw, height: dh })}</div>`;
-        if (mode === 'width' && dh + 48 > sh) note = '너비에 맞춤 — 그림이 무대보다 길어 세로로 스크롤합니다';
-        if (mode === 'fit' && img === IMAGES.small) note = '작은 이미지는 키우지 않습니다 — 창에 맞춤도 100%';
-        if (img === IMAGES.diagram) note = '흰 바탕 그림 · 테두리와 그림자 없음';
+        if (mode === 'width' && dh + 48 > sh) note = '목업 메모 · 너비에 맞춤 — 그림이 무대보다 길어 세로로 스크롤합니다';
+        if (mode === 'fit' && img === IMAGES.small) note = '목업 메모 · 작은 이미지는 키우지 않습니다 — 창에 맞춤도 100%';
+        if (img === IMAGES.diagram) note = '목업 메모 · 흰 바탕 그림 · 테두리와 그림자 없음';
       }
       stage = `<div class="image-stage ${mode === '400' ? 'is-grab' : ''}" data-bg="${bg}" role="region" tabindex="0" aria-label="이미지" ${ms('M7c', '이미지 무대(스크롤 · 끌기 · 핀치)')}>${pic}${extra}</div>`;
     }

@@ -298,10 +298,7 @@ export function createSheetHost(opts: {
         clearTimeout(hung);
         pending.delete(id);
         resolve(result);
-        if (!win.isDestroyed()) {
-          if (reuse) win.hide();
-          win.close();
-        }
+        if (!win.isDestroyed()) win.close();
         // Keyboard focus goes back to the window the sheet hung over (Linux/Windows do not always hand it back).
         if (!parent.isDestroyed()) parent.focus();
         if (payload.kind === 'shortcuts' && !parent.isDestroyed()) prepareLater(parent);

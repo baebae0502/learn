@@ -25,11 +25,22 @@ async function openPaper(page: Page) {
   await ready(page);
 }
 
+/**
+ * A menu that closes gives the focus back to 보기 ▾ a frame after it has gone (after its exit animation). A menu opened
+ * before that loses its focus to the late give-back, so the next key goes to the trigger (CI 42424057718, 42438975801:
+ * opened 30 ms after a choice, the menu never held the focus). Wait for the give-back before the next menu or key.
+ */
+async function menuClosed(page: Page) {
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByTestId('pdf-view-menu')).toBeFocused();
+}
+
 /** Chooses a row of one of 보기 ▾'s submenus the way a reader does: open the menu, open the submenu, pick the row. */
 async function choose(page: Page, submenu: 'scroll' | 'spread', name: string) {
   await page.getByTestId('pdf-view-menu').click();
   await page.getByTestId(`pdf-${submenu}-menu`).click();
   await page.getByRole('menuitemradio', { name }).click();
+  await menuClosed(page);
 }
 
 /** A page's box in the stage's scroll box (offset plus border, the numbers placement.ts works in). */
@@ -39,10 +50,7 @@ const box = (page: Page, n: number) =>
     return { top: d.offsetTop + d.clientTop, left: d.offsetLeft + d.clientLeft, width: d.clientWidth, height: d.clientHeight };
   });
 const scrollLeft = (page: Page) => scroller(page).evaluate((el) => el.scrollLeft);
-/**
- * React Aria moves the focus into a menu a moment after it opens (frames later on a slow runner): a key pressed before that
- * goes to the trigger, and an Escape then leaves the menu open (CI 42424057718). Keys wait for the focus to be in a menu.
- */
+/** A key meant for a menu waits for the focus to be in one (with `menuClosed` before the menu opened, it lands at once). */
 const focusInMenu = (page: Page) => expect(page.locator('[role="menu"]:focus-within').first()).toBeVisible();
 
 test('horizontal: the pages stand in a row, → turns a page, the spread submenu is off and the left room is 24 for the first page and 12 for the others', async ({}, testInfo) => {
@@ -69,10 +77,9 @@ test('horizontal: the pages stand in a row, → turns a page, the spread submenu
     await expect.poll(() => menuItemEnabled(app, 'reader.spreadOdd')).toBe(false);
     await expect.poll(() => menuItemEnabled(app, 'reader.scrollVertical')).toBe(true);
 
-    // The side arrows still turn a page. React Aria gives the focus back to the trigger a frame after the menu has gone (on a
-    // slow runner, long after Escape): wait for that to settle before the stage takes the focus, and make sure it holds.
-    await expect(page.getByRole('menu')).toHaveCount(0);
-    await expect(page.getByTestId('pdf-view-menu')).toBeFocused();
+    // The side arrows still turn a page. The focus comes back to the trigger only after the menu has gone (on a slow runner,
+    // long after Escape): wait for that before the stage takes the focus, and make sure it holds.
+    await menuClosed(page);
     await page.getByTestId('pdf-stage').focus();
     await expect(page.getByTestId('pdf-stage')).toBeFocused();
     await page.keyboard.press('ArrowRight');
@@ -346,7 +353,7 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
       expect(g.overlap).toBeLessThanOrEqual(2);
       await page.keyboard.press('Escape');
       await page.keyboard.press('Escape');
-      await expect(page.getByRole('menu')).toHaveCount(0); // gone (its exit animation ended) before the next menu opens
+      await menuClosed(page); // gone, and the focus given back, before the next menu opens
     }
     // The keys: the row is entered with the arrow, → opens its submenu, ← closes only that, esc closes the menu.
     await page.getByTestId('pdf-view-menu').click();
@@ -363,6 +370,7 @@ test('the submenu stands level with its row and 2 px over the parent menu (to th
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await expect(viewer(page)).toHaveAttribute('data-scroll', 'horizontal');
+    await menuClosed(page);
     await page.getByTestId('pdf-view-menu').click();
     await page.getByTestId('pdf-scroll-menu').click();
     await focusInMenu(page);

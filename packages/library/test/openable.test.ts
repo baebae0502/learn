@@ -23,6 +23,10 @@ describe('a file the OS can open by name (final review I1)', () => {
     expect(openExtension('video/quicktime', 'a.mp4')).toBe('mov');
     expect(openExtension('video/webm', 'a.webm')).toBe('webm');
     expect(openExtension('video/x-matroska', 'a.bin')).toBe('mkv');
+    expect(openExtension('image/jpeg', 'photo.JPEG')).toBe('jpeg');
+    expect(openExtension('image/png', 'x.jpg')).toBe('png');
+    expect(openExtension('image/jpeg', 'x')).toBe('jpg');
+    expect(openExtension('image/avif', 'a.avif')).toBe('avif');
     expect(openExtension('text/plain', 'a.txt')).toBeNull();
     expect(extensionAgrees('/Users/me/a.pdf', 'application/pdf')).toBe(true);
     expect(extensionAgrees('/Users/me/a.command', 'application/pdf')).toBe(false);

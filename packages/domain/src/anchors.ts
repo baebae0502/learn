@@ -70,5 +70,16 @@ export const slideAnchor = z.object({
   quads: z.array(quad),
 });
 
-export const sourceAnchor = z.union([pdfAnchor, videoAnchor, epubAnchor, webAnchor, slideAnchor]);
+export const imageAnchor = z
+  .object({
+    kind: z.literal('image'),
+    revisionId: z.uuid(),
+    precision: z.literal('region'),
+    /** [x, y, w, h] in 0-1 of the unrotated image (as Chromium draws it with the EXIF orientation applied), origin upper left, y down. */
+    rect: z.tuple([unit, unit, unit, unit]),
+  })
+  .refine((a) => a.rect[2] > 0 && a.rect[3] > 0, { message: 'rect has an area' })
+  .refine((a) => a.rect[0] + a.rect[2] <= 1 + 1e-9 && a.rect[1] + a.rect[3] <= 1 + 1e-9, { message: 'rect must stay inside the image' });
+
+export const sourceAnchor = z.union([pdfAnchor, videoAnchor, epubAnchor, webAnchor, slideAnchor, imageAnchor]);
 export type SourceAnchor = z.infer<typeof sourceAnchor>;

@@ -81,6 +81,12 @@ describe('ReadingRepository', () => {
     });
   });
 
+  it('markOpened creates the row of an image: { kind: image }, no progress', () => {
+    const image = seedItem(db, { type: 'image' });
+    repo.markOpened(image.itemId);
+    expect(repo.get(image.itemId)).toMatchObject({ itemId: image.itemId, revisionId: image.revisionId, locator: { kind: 'image' }, progress: null });
+  });
+
   it('markOpened on an existing row refreshes openedAt only (locator, progress, revision and updatedAt stay)', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     const { itemId, revisionId } = seedItem(db, { type: 'video' });

@@ -91,7 +91,6 @@ describe('sniffFile: an ISO BMFF file is a video only by its brands (spec 10: HE
     ['an iPhone photo (HEIC)', 'IMG_0001.heic', 'heic', ['mif1', 'heic']],
     ['a HEIF image, mif1 first', 'photo.heif', 'mif1', ['heic', 'miaf']],
     ['a HEIF burst', 'burst.heics', 'msf1', ['msf1', 'hevc']],
-    ['an AVIF image', 'image.avif', 'avif', ['avif', 'mif1', 'miaf', 'MA1B']],
     ['iTunes audio that also lists mp42 and isom (m4a)', 'song.m4a', 'M4A ', ['M4A ', 'mp42', 'isom']],
     ['an audiobook (m4b)', 'book.m4b', 'M4B ', ['M4B ', 'mp42', 'isom']],
     ['protected music (m4p)', 'song.m4p', 'M4P ', ['M4P ', 'mp42', 'isom']],
@@ -112,6 +111,14 @@ describe('sniffFile: an ISO BMFF file is a video only by its brands (spec 10: HE
     ['HEVC in an MP4: a video, not a still image', 'hevc.mp4', 'isom', ['isom', 'iso2', 'mp41'], 'video/mp4'],
   ] as const)('%s is a video', async (_, name, major, compatible, mime) => {
     expect(await sniffFile(writeFtyp(tempDir(), name, major, compatible))).toEqual({ type: 'video', mime });
+  });
+
+  it.each([
+    ['an AVIF image', 'image.avif', 'avif', ['avif', 'mif1', 'miaf', 'MA1B']],
+    ['an AVIF sequence', 'anim.avif', 'avis', ['avis', 'msf1']],
+    ['an AVIF with mif1 as the major brand', 'other.avif', 'mif1', ['mif1', 'avif', 'miaf']],
+  ] as const)('%s is an image', async (_, name, major, compatible) => {
+    expect(await sniffFile(writeFtyp(tempDir(), name, major, compatible))).toEqual({ type: 'image', mime: 'image/avif' });
   });
 
   it('reads compatible brands inside the box only, also when the file ends early', async () => {

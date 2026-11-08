@@ -50,6 +50,24 @@ describe('LibraryRepository', () => {
     expect(repo.counts()).toMatchObject({ items: 1, assets: 1, revisions: 1 });
   });
 
+  it('reads an image\'s pixel size from the asset: both known, one missing, and never for a PDF', () => {
+    const imageRec = (sha: string, over: Partial<AssetRow>) => {
+      const rec = record(asset(sha, 'managed', { mime: 'image/png', originalName: 'p.png', ...over }), true, 'p');
+      return { ...rec, item: { ...rec.item, type: 'image' as const } };
+    };
+    const full = imageRec('1'.repeat(64), { width: 4032, height: 3024 });
+    const half = imageRec('2'.repeat(64), { width: 40, height: null });
+    const none = imageRec('3'.repeat(64), {});
+    const pdf = record(asset('4'.repeat(64), 'managed', { width: 5, height: 5 }));
+    for (const r of [full, half, none, pdf]) repo.insertImported(r);
+    expect(repo.getItem(full.item.id)?.imageSize).toEqual({ width: 4032, height: 3024 });
+    expect(repo.getItem(half.item.id)?.imageSize).toBeNull();
+    expect(repo.getItem(none.item.id)?.imageSize).toBeNull();
+    expect(repo.getItem(pdf.item.id)?.imageSize).toBeNull();
+    expect(repo.listItems().find((i) => i.id === full.item.id)?.imageSize).toEqual({ width: 4032, height: 3024 });
+    expect(repo.findAssetsBySha('1'.repeat(64))[0]).toMatchObject({ width: 4032, height: 3024 });
+  });
+
   it('rolls back everything when part of the insert fails', () => {
     const first = record(asset(SHA_A, 'managed'));
     repo.insertImported(first);

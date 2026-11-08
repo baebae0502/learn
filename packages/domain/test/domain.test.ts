@@ -86,6 +86,24 @@ describe('anchors (spec 08 examples)', () => {
     expect(sourceAnchor.safeParse({ kind: 'video', revisionId, startMs: 10, endMs: 5 }).success).toBe(false);
     expect(sourceAnchor.safeParse({ kind: 'video', revisionId, startMs: 0, endMs: 5, rect: [0.8, 0, 0.4, 0.1] }).success).toBe(false);
   });
+  it('accepts an image anchor: a region inside the unrotated image, decimal drift within 1e-9', () => {
+    for (const rect of [[0, 0, 1, 1], [0.25, 0.5, 0.75, 0.5], [0.1 + 0.2, 0, 0.7, 1]]) {
+      expect(sourceAnchor.safeParse({ kind: 'image', revisionId, precision: 'region', rect }).success, String(rect)).toBe(true);
+    }
+  });
+  it('rejects an image anchor with no area, a rect past the image, or any precision but region', () => {
+    const base = { kind: 'image', revisionId, precision: 'region', rect: [0, 0, 1, 1] };
+    expect(sourceAnchor.safeParse({ ...base, rect: [0.5, 0, 0, 1] }).success).toBe(false);
+    expect(sourceAnchor.safeParse({ ...base, rect: [0, 0.5, 1, 0] }).success).toBe(false);
+    expect(sourceAnchor.safeParse({ ...base, rect: [0.5, 0, 0.51, 1] }).success).toBe(false);
+    expect(sourceAnchor.safeParse({ ...base, rect: [0, 0.5, 1, 0.51] }).success).toBe(false);
+    expect(sourceAnchor.safeParse({ ...base, rect: [0, 0, 1.01, 1] }).success).toBe(false);
+    expect(sourceAnchor.safeParse({ ...base, precision: 'span' }).success).toBe(false);
+  });
+  it('strips a text field from an image anchor (the object schema is not strict), so none survives the parse', () => {
+    const r = sourceAnchor.parse({ kind: 'image', revisionId, precision: 'region', rect: [0, 0, 1, 1], text: { quote: { exact: 'x', prefix: '', suffix: '' } } });
+    expect(r).not.toHaveProperty('text');
+  });
   it('exposes schema version 2', () => expect(ANCHOR_SCHEMA_VERSION).toBe(2));
 });
 

@@ -39,12 +39,14 @@ export async function sniffFile(filePath: string): Promise<SniffResult | null> {
     const ext = path.extname(filePath).toLowerCase();
     if (head.subarray(0, 5).toString('latin1') === '%PDF-') return { type: 'pdf', mime: 'application/pdf' };
     if (head.length >= 12 && head.subarray(4, 8).toString('latin1') === 'ftyp') {
+      if (sniffImage(head) === 'image/avif') return { type: 'image', mime: 'image/avif' };
       return ftypIsVideo(head) ? { type: 'video', mime: ISO_BMFF_MIME[ext] ?? 'video/mp4' } : null;
     }
     if (head.length >= 4 && head.readUInt32BE(0) === 0x1a45dfa3) {
       return { type: 'video', mime: ext === '.mkv' ? 'video/x-matroska' : 'video/webm' };
     }
-    return null;
+    const image = sniffImage(head);
+    return image ? { type: 'image', mime: image } : null;
   } finally {
     await fh.close();
   }
@@ -66,15 +68,20 @@ function brandAt(head: Uint8Array, at: number): string {
   return String.fromCharCode(head[at]!, head[at + 1]!, head[at + 2]!, head[at + 3]!);
 }
 
-/** AVIF by its ftyp box; any HEIC-family brand, major or compatible, turns it away. */
+/**
+ * AVIF by its ftyp box: the major brand is avif/avis, or it is mif1/msf1 with avif/avis among the compatible brands.
+ * Any HEIC-family brand, major or compatible, turns it away.
+ */
 function ftypIsAvif(head: Uint8Array): boolean {
   if (head.length < 12) return false;
   const size = ((head[0]! << 24) | (head[1]! << 16) | (head[2]! << 8) | head[3]!) >>> 0;
   const end = Math.min(size, head.length);
-  const brands = [brandAt(head, 8)];
-  for (let at = 16; at + 4 <= end; at += 4) brands.push(brandAt(head, at));
-  if (brands.some((b) => HEIC_BRANDS.has(b))) return false;
-  return brands.some((b) => b === 'avif' || b === 'avis');
+  const major = brandAt(head, 8);
+  const compatible: string[] = [];
+  for (let at = 16; at + 4 <= end; at += 4) compatible.push(brandAt(head, at));
+  if (HEIC_BRANDS.has(major) || compatible.some((b) => HEIC_BRANDS.has(b))) return false;
+  if (major === 'avif' || major === 'avis') return true;
+  return (major === 'mif1' || major === 'msf1') && compatible.some((b) => b === 'avif' || b === 'avis');
 }
 
 /** The image format by the first bytes (the extension is not looked at); null for anything else. */

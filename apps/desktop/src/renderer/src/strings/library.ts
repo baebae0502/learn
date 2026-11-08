@@ -13,7 +13,7 @@ export const library = {
   progressDone: '완료',
   progressDoneLabel: '끝까지 읽음',
   listFailed: '자료 목록을 불러오지 못했습니다',
-  type: { pdf: 'PDF', video: '동영상' },
+  type: { pdf: 'PDF', video: '동영상', image: '이미지' },
   /** 보관 column (spec §3.1): the user's words, never the internal "managed" (design-spec 9). */
   storage: { managed: '사본', linked: '외부 연결' },
   linked: '외부 파일 연결',

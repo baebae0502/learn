@@ -12,7 +12,7 @@ let seq = 0;
 /** Imports one item through the real repository path; pass `reuseAsset` to share an existing asset (duplicate content). */
 export function seedItem(
   db: Db,
-  opts: { title?: string; sha?: string; mode?: StorageMode; reuseAsset?: AssetRow; type?: 'pdf' | 'video' } = {},
+  opts: { title?: string; sha?: string; mode?: StorageMode; reuseAsset?: AssetRow; type?: 'pdf' | 'video' | 'image' } = {},
 ): { itemId: string; revisionId: string; asset: AssetRow } {
   const repo = new LibraryRepository(db);
   const now = nowIso();
@@ -23,7 +23,7 @@ export function seedItem(
     id: newId(), sha256: sha, storageMode: mode,
     relativePath: mode === 'managed' ? `assets/${sha.slice(0, 2)}/${sha}` : null,
     externalPath: mode === 'linked' ? `/ext/${sha.slice(0, 8)}.pdf` : null,
-    originalName: 'lecture.pdf', mime: opts.type === 'video' ? 'video/mp4' : 'application/pdf', size: 1234, availability: 'available',
+    originalName: 'lecture.pdf', mime: opts.type === 'video' ? 'video/mp4' : opts.type === 'image' ? 'image/png' : 'application/pdf', size: 1234, availability: 'available',
     createdAt: now, checkedAt: now,
   };
   const itemId = newId();

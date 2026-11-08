@@ -39,6 +39,17 @@ describe('AnchorsRepository', () => {
     expect(db.prepare('SELECT precision FROM anchors WHERE id = ?').get(s.id)).toEqual({ precision: 'region' });
   });
 
+  it('stores an image anchor as a region without a quote and lists it with its revision', () => {
+    const db = freshDb();
+    const { revisionId } = seedItem(db, { type: 'image' });
+    const repo = new AnchorsRepository(db);
+    const image: SourceAnchor = { kind: 'image', revisionId, precision: 'region', rect: [0.25, 0.5, 0.5, 0.25] };
+    const rec = repo.create(image);
+    expect(repo.get(rec.id)).toEqual({ id: rec.id, anchor: image, status: 'ok', schemaVersion: 2 });
+    expect(repo.listByRevision(revisionId).map((r) => r.anchor)).toEqual([image]);
+    expect(db.prepare('SELECT kind, precision, quote, text_json FROM anchors WHERE id = ?').get(rec.id)).toEqual({ kind: 'image', precision: 'region', quote: null, text_json: null });
+  });
+
   it('refuses a span without text and an unknown revision', () => {
     const db = freshDb();
     const { revisionId } = seedItem(db);

@@ -16,7 +16,7 @@ import type { Handle, IpcDeps } from './register';
 
 /** The open panels' type filters (import, relink, the library check's 다시 연결…). */
 export const IMPORT_FILTERS: OpenDialogOptions['filters'] = [
-  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv'] },
+  { name: mainStrings.importFilters.media, extensions: ['pdf', 'mp4', 'm4v', 'mov', 'webm', 'mkv', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'avif'] },
   { name: mainStrings.importFilters.all, extensions: ['*'] },
 ];
 

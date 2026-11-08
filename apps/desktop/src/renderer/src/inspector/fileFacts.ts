@@ -67,6 +67,8 @@ declare global {
 
 /** Opens the item's file for its fact (pdf.js for a PDF, a video element for a video), noting it where a test asks to count. */
 export function startProbe(item: Pick<LibraryItem, 'type' | 'assetId'>): Probe {
+  // An image has no page count or length to read: opening it as a video would only fail.
+  if (item.type === 'image') return { done: Promise.resolve({}), cancel: () => {} };
   const kind = item.type === 'pdf' ? 'pdf' : 'video';
   window.__learnProbes?.push({ kind, assetId: item.assetId });
   return kind === 'pdf' ? probePdf(item.assetId) : probeVideo(item.assetId);

@@ -22,6 +22,9 @@ export interface AssetRow {
   availability: Availability;
   createdAt: string;
   checkedAt: string | null;
+  /** Pixel size of an image (EXIF orientation applied); null or absent when it is not an image or could not be read. */
+  width?: number | null;
+  height?: number | null;
 }
 
 export interface NewImportRecord {
@@ -66,17 +69,19 @@ export interface MetadataUpdate {
 interface AssetDbRow {
   id: string; sha256: string; storage_mode: StorageMode; relative_path: string | null; external_path: string | null;
   original_name: string; mime: string; size: number; availability: Availability; created_at: string; checked_at: string | null;
+  width: number | null; height: number | null;
 }
 interface ItemDbRow {
   id: string; title: string; type: ItemType; created_at: string; updated_at: string; metadata_json: string;
   asset_id: string; mime: string; size: number; storage_mode: StorageMode; availability: Availability; original_name: string;
   sha256: string; external_path: string | null; revision_id: string; progress: number | null; opened_at: string | null; deleted_at: string | null;
+  width: number | null; height: number | null;
 }
 
 /** Item + original asset + latest revision + reading position. Callers add the deleted_at filter (ITEM_SELECT / TRASH_SELECT). */
 const ITEM_FROM = `
 SELECT i.id, i.title, i.type, i.created_at, i.updated_at, i.metadata_json, i.deleted_at,
-       a.id AS asset_id, a.mime, a.size, a.storage_mode, a.availability, a.original_name, a.sha256, a.external_path,
+       a.id AS asset_id, a.mime, a.size, a.storage_mode, a.availability, a.original_name, a.sha256, a.external_path, a.width, a.height,
        (SELECT r.id FROM source_revisions r WHERE r.asset_id = a.id
          ORDER BY r.created_at DESC, r.rowid DESC LIMIT 1) AS revision_id,
        rp.progress, rp.opened_at
@@ -93,12 +98,14 @@ const GET_ITEMS_CHUNK = 500;
 const toAsset = (r: AssetDbRow): AssetRow => ({
   id: r.id, sha256: r.sha256, storageMode: r.storage_mode, relativePath: r.relative_path, externalPath: r.external_path,
   originalName: r.original_name, mime: r.mime, size: r.size, availability: r.availability, createdAt: r.created_at, checkedAt: r.checked_at,
+  width: r.width, height: r.height,
 });
 
 const toItem = (r: ItemDbRow, meta: ItemMetadata = parseItemMetadata(r.metadata_json)): LibraryItem => ({
   id: r.id, title: r.title, type: r.type, mime: r.mime, size: r.size, storageMode: r.storage_mode,
   availability: r.availability, assetId: r.asset_id, revisionId: r.revision_id, originalName: r.original_name, createdAt: r.created_at,
   updatedAt: r.updated_at, creators: creatorNames(meta), year: yearOf(meta), publisher: meta.publisher || null, progress: r.progress, openedAt: r.opened_at,
+  imageSize: r.type === 'image' && r.width !== null && r.height !== null ? { width: r.width, height: r.height } : null,
 });
 
 const itemNotFound = () => new LearnError('NOT_FOUND', '항목을 찾을 수 없습니다.');
@@ -174,9 +181,9 @@ export class LibraryRepository {
     return this.db.transaction(() => {
       if (rec.assetIsNew) {
         this.db
-          .prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
-                    VALUES (@id, @sha256, @storageMode, @relativePath, @externalPath, @originalName, @mime, @size, @availability, @createdAt, @checkedAt)`)
-          .run(a);
+          .prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at, width, height)
+                    VALUES (@id, @sha256, @storageMode, @relativePath, @externalPath, @originalName, @mime, @size, @availability, @createdAt, @checkedAt, @width, @height)`)
+          .run({ ...a, width: a.width ?? null, height: a.height ?? null });
       }
       this.db
         .prepare(`INSERT INTO items (id, type, title, metadata_json, created_at, updated_at) VALUES (?, ?, ?, '{}', ?, ?)`)

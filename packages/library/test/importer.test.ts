@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CollectionsRepository, LibraryRepository, migrate, openDatabase, type Db } from '@learn/db';
 import { Importer, ensureLayout, libraryLayout, managedRelativePath, resolveAssetPath, sha256File, type ImportHooks, type LibraryLayout } from '../src/index';
 import { cleanupTemp, tempDir, writeMp4, writePdf } from './helpers';
+import { ftyp, png } from './image-bytes';
+
+const IMAGES = path.resolve(import.meta.dirname, '../../../fixtures/static/images');
 
 /** Every fsync the importer asks for, in order, with the renames between them (the durability tests read it). */
 const durability = vi.hoisted(() => ({ log: [] as string[][], failFile: null as string | null }));
@@ -60,6 +63,53 @@ describe('managed import', () => {
     expect(fs.readFileSync(src)).toEqual(before);
     expect(fs.readdirSync(layout.stagingDir)).toEqual([]);
     expect(jobs(db)).toEqual([{ kind: 'extract', dedupe_key: `extract:${asset.sha256}:text-v0`, state: 'queued' }]);
+  });
+
+  it.each([
+    ['transparent.png', 'transparent.png', 'image/png', { width: 64, height: 48 }],
+    ['orient6.jpg', 'orient6.jpg', 'image/jpeg', { width: 40, height: 60 }],
+    ['alpha.webp', 'alpha.webp', 'image/webp', { width: 48, height: 32 }],
+    ['two-frames.gif', 'two-frames.gif', 'image/gif', { width: 24, height: 16 }],
+    ['still.avif', 'still.avif', 'image/avif', { width: 40, height: 30 }],
+    ['a PNG named .jpg', 'transparent.png', 'image/png', { width: 64, height: 48 }],
+  ] as const)('imports %s as an image by its header, with the pixel size stored', async (label, file, mime, size) => {
+    const { repo, importer } = setup();
+    const src = path.join(tempDir('src'), label === 'a PNG named .jpg' ? 'png-named.jpg' : file);
+    fs.copyFileSync(path.join(IMAGES, file), src);
+    const out = await importer.importOne(src, { mode: 'managed' });
+    if (out.status !== 'imported') throw new Error(out.status);
+    expect(out.item).toMatchObject({ type: 'image', mime, imageSize: size });
+    expect(repo.getAsset(out.item.assetId)).toMatchObject({ mime, width: size.width, height: size.height });
+  });
+
+  it('imports a PNG cut after its header, with the size its header says; a linked image too', async () => {
+    const { repo, importer } = setup();
+    const dir = tempDir('src');
+    const cut = path.join(dir, 'cut.png');
+    fs.writeFileSync(cut, png(10, 10));
+    const out = await importer.importOne(cut, { mode: 'linked' });
+    if (out.status !== 'imported') throw new Error(out.status);
+    expect(out.item).toMatchObject({ type: 'image', imageSize: { width: 10, height: 10 } });
+    expect(repo.getAsset(out.item.assetId)).toMatchObject({ width: 10, height: 10 });
+  });
+
+  it('imports an image whose size cannot be read, without a size', async () => {
+    const { importer } = setup();
+    const src = path.join(tempDir('src'), 'zero.png');
+    fs.writeFileSync(src, png(0, 10));
+    const out = await importer.importOne(src, { mode: 'managed' });
+    if (out.status !== 'imported') throw new Error(out.status);
+    expect(out.item).toMatchObject({ type: 'image', imageSize: null });
+  });
+
+  it('turns a HEIC file away with the formats it can import', async () => {
+    const { importer } = setup();
+    const src = path.join(tempDir('src'), 'IMG_1.heic');
+    fs.writeFileSync(src, ftyp('heic', 'mif1', 'heic'));
+    expect(await importer.importOne(src, { mode: 'managed' })).toMatchObject({
+      status: 'failed', code: 'UNSUPPORTED_TYPE',
+      message: '지원하지 않는 형식입니다. 지금은 PDF, 동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM), 이미지(PNG\u00a0·\u00a0JPEG\u00a0·\u00a0WebP\u00a0·\u00a0GIF\u00a0·\u00a0AVIF)를 가져올\u00a0수 있습니다.',
+    });
   });
 
   it('keeps working after the original file is moved away (AC01)', async () => {
@@ -148,7 +198,7 @@ describe('failures', () => {
     expect(await importer.importOne(txt, { mode: 'managed' })).toMatchObject({
       status: 'failed',
       code: 'UNSUPPORTED_TYPE',
-      message: '지원하지 않는 형식입니다. 지금은 PDF와\u00a0동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM)을 가져올\u00a0수 있습니다.',
+      message: '지원하지 않는 형식입니다. 지금은 PDF, 동영상(MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM), 이미지(PNG\u00a0·\u00a0JPEG\u00a0·\u00a0WebP\u00a0·\u00a0GIF\u00a0·\u00a0AVIF)를 가져올\u00a0수 있습니다.',
     });
     expect(await importer.importOne(path.join(dir, 'nope.pdf'), { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'NOT_FOUND' });
     expect(await importer.importOne(dir, { mode: 'managed' })).toMatchObject({ status: 'failed', code: 'UNSUPPORTED_TYPE', message: '일반 파일만 가져올\u00a0수 있습니다.' });

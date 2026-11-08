@@ -103,20 +103,24 @@ describe('migrate', () => {
   });
 });
 
+/** Written with SQL, not the repository: these seeds go into schemas older than the one the repository writes (v4 added the asset's size). */
 function seedItem(repo: LibraryRepository, n: number): { itemId: string; revisionId: string } {
+  const db = (repo as unknown as { db: Db }).db;
   const now = nowIso();
   const sha = String(n).repeat(64);
-  const a: AssetRow = {
-    id: newId(), sha256: sha, storageMode: 'managed', relativePath: `assets/${sha.slice(0, 2)}/${sha}`, externalPath: null,
-    originalName: `f${n}.pdf`, mime: 'application/pdf', size: 10, availability: 'available', createdAt: now, checkedAt: now,
-  };
+  const assetId = newId();
   const itemId = newId();
   const revisionId = newId();
-  repo.insertImported({
-    item: { id: itemId, type: 'pdf', title: `t${n}`, createdAt: now }, asset: a, assetIsNew: true,
-    revision: { id: revisionId, createdAt: now },
-    job: { id: newId(), kind: 'extract', dedupeKey: `extract:${sha}:text-v0`, payload: { sha256: sha } },
-  });
+  db.transaction(() => {
+    db.prepare(`INSERT INTO assets (id, sha256, storage_mode, relative_path, external_path, original_name, mime, size, availability, created_at, checked_at)
+                VALUES (?, ?, 'managed', ?, NULL, ?, 'application/pdf', 10, 'available', ?, ?)`)
+      .run(assetId, sha, `assets/${sha.slice(0, 2)}/${sha}`, `f${n}.pdf`, now, now);
+    db.prepare(`INSERT INTO items (id, type, title, metadata_json, created_at, updated_at) VALUES (?, 'pdf', ?, '{}', ?, ?)`).run(itemId, `t${n}`, now, now);
+    db.prepare(`INSERT INTO item_assets (item_id, asset_id, role) VALUES (?, ?, 'original')`).run(itemId, assetId);
+    db.prepare(`INSERT INTO source_revisions (id, asset_id, hash, parent_revision_id, renderer_version, created_at) VALUES (?, ?, ?, NULL, NULL, ?)`).run(revisionId, assetId, sha, now);
+    db.prepare(`INSERT INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at) VALUES (?, 'extract', ?, 'queued', 0, ?, ?, ?)`)
+      .run(newId(), `extract:${sha}:text-v0`, JSON.stringify({ sha256: sha }), now, now);
+  })();
   return { itemId, revisionId };
 }
 

@@ -21,6 +21,7 @@ describe('sniffImage (spec 3.1)', () => {
     expect(sniffImage(ftyp('mif1', 'avif', 'hevc'))).toBeNull();
     expect(sniffImage(bytes('RIFF', u32le(4), 'WEBP', 'ALPH'))).toBeNull();
     expect(sniffImage(ftyp('isom', 'mp42'))).toBeNull();
+    expect(sniffImage(ftyp('isom', 'avif'))).toBeNull();
     expect(sniffImage(bytes('%PDF-1.7'))).toBeNull();
   });
 });

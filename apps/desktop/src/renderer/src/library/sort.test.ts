@@ -35,6 +35,10 @@ describe('library sort (M4 spec 3.1)', () => {
     // Two files of one import can share 추가일 to the millisecond: the list's order (created_at DESC, rowid DESC) stays.
     expect(sortItems(items, { column: 'createdAt', direction: 'desc' }).map((i) => i.id)).toEqual(['c', 'b', 'a']);
   });
+  it('puts the kind column in the order PDF, video, image', () => {
+    const items = [item({ title: 'img', type: 'image' }), item({ title: 'vid', type: 'video' }), item({ title: 'doc', type: 'pdf' })];
+    expect(titles(sortItems(items, { column: 'type', direction: 'asc' }))).toEqual(['doc', 'vid', 'img']);
+  });
   it('sorts times, sizes, kinds and storage by value, and never changes its input', () => {
     const items = [
       item({ title: 'old video', type: 'video', size: 3000, storageMode: 'linked', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-10-05T00:00:00.000Z' }),

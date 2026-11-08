@@ -14,7 +14,7 @@ const SELECT = 'SELECT id, locator_json, text_json, status, schema_version FROM 
 
 function precisionOf(anchor: SourceAnchor): 'span' | 'region' {
   if (anchor.kind === 'pdf') return anchor.precision;
-  return anchor.kind === 'slides' ? 'region' : 'span';
+  return anchor.kind === 'slides' || anchor.kind === 'image' ? 'region' : 'span';
 }
 
 /** The row, or undefined (with a warning) when it no longer parses, so one bad row never hides the others. */

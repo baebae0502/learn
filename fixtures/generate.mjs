@@ -259,6 +259,13 @@ if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));
 
+// The five committed raster images (fixtures/static/images), copied so a spec reads them from one folder; png-named.jpg is
+// transparent.png under a wrong extension.
+for (const name of ['transparent.png', 'orient6.jpg', 'alpha.webp', 'two-frames.gif', 'still.avif']) {
+  if (need(name)) fs.copyFileSync(path.join(here, 'static', 'images', name), path.join(out, name));
+}
+if (need('png-named.jpg')) fs.copyFileSync(path.join(here, 'static', 'images', 'transparent.png'), path.join(out, 'png-named.jpg'));
+
 if (need('sample-h264-aac.mp4')) {
   ffmpeg([
     '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '10',

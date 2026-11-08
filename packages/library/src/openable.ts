@@ -25,6 +25,11 @@ const EXTENSIONS: Readonly<Record<string, readonly string[]>> = {
   'video/quicktime': ['mov'],
   'video/webm': ['webm'],
   'video/x-matroska': ['mkv'],
+  'image/png': ['png'],
+  'image/jpeg': ['jpg', 'jpeg'],
+  'image/webp': ['webp'],
+  'image/gif': ['gif'],
+  'image/avif': ['avif'],
 };
 
 /** The extension for a file of this sniffed type: the original name's own when it agrees with the type, else the type's. */

@@ -11,6 +11,8 @@
 | `long-outline.pdf` | pdf-lib, 6쪽, 부 60개 × 소제목 4개 = 목차 300항목 | 긴 목차의 가상 목록 |
 | `korean.pdf` | pdf-lib + `@pdf-lib/fontkit`, Pretendard 가변 글꼴 전체 포함(`subset: false`), 3쪽(NFC · NFD · 한영 두 단) | 글 레이어의 한국어(글리프는 pdf.js가 그리지 못하고 글 내용과 폭만 맞다) |
 | `locked.pdf` | `fixtures/static/locked.pdf` 복사(mutool로 한 번 만든 암호 `learn`, 명령은 `fixtures/static/README.md`) | 암호 입력 |
+| `transparent.png` `orient6.jpg` `alpha.webp` `two-frames.gif` `still.avif` | `fixtures/static/images/`의 같은 이름 복사 | 이미지 가져오기·읽기(E2E) |
+| `png-named.jpg` | `static/images/transparent.png`의 사본(확장자만 `.jpg`) | 확장자가 틀려도 머리로 가려냄 |
 | `sample-h264-aac.mp4` | ffmpeg `testsrc2` + `sine`, 1280×720 30fps 10초, H.264 High/AAC, GOP 60, faststart | 재생·seek 정확도(AC05) |
 | `sample-mpeg4part2.mp4` | ffmpeg `testsrc2`, MPEG-4 Part 2 | Chromium 미지원 코덱 안내 |
 | `sample-hevc.mp4` | ffmpeg `libx265`(있을 때만) | 플랫폼 의존 코덱 기록용(판정 기준 아님) |
@@ -25,4 +27,4 @@
 | `translation/google-en-ko.json` | `translate.googleapis.com`의 실제 응답(2026-11-03, ADR-0012): 영어 두 문장·줄바꿈, `sl=en&tl=ko` | 응답 해석 단위 시험 |
 | `translation/google-auto.json` | 같은 요청, `sl=auto`, 영어 두 문장 | 감지한 원문 언어(`r[2]`) |
 | `translation/google-ko.json` | 같은 요청, 한국어 입력 `tl=ko`(같은 글과 `"ko"`) | 같은 언어 응답 |
-| `static/images/*` (PNG, JPEG, WebP, GIF, AVIF) | ImageMagick와 ffmpeg로 만든 그라데이션·시험 무늬, JPEG의 EXIF 방향 6은 짧은 node 스크립트(명령은 `static/README.md`). `generated/`로 복사하지 않는다 | 이미지 머리 판별과 크기 읽기 단위 시험 |
+| `static/images/*` (PNG, JPEG, WebP, GIF, AVIF) | ImageMagick와 ffmpeg로 만든 그라데이션·시험 무늬, JPEG의 EXIF 방향 6은 짧은 node 스크립트(명령은 `static/README.md`). 생성기가 `generated/`로 복사한다(위) | 이미지 머리 판별과 크기 읽기 단위 시험 |

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import type { ItemType } from '@learn/domain';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiError, unwrap } from '../api';
 import { keys, useItems } from '../data/queries';
@@ -7,7 +8,7 @@ import { useShell } from '../state/shell-store';
 /** What a tab shows of its item. */
 export interface TabItem {
   title: string;
-  type: 'pdf' | 'video';
+  type: ItemType;
 }
 
 /**

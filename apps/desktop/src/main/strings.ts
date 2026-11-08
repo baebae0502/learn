@@ -22,7 +22,7 @@ export const mainStrings = {
     updateBackupMissing: '업데이트 전 백업 파일을 찾을 수 없습니다. 옮기거나 지웠는지 확인하세요.',
   },
   /** The open panels of 파일 가져오기… and 다시 연결… (the filter names; middots bound as VIDEO_FORMATS, T14-n1). */
-  importFilters: { media: 'PDF\u00a0·\u00a0동영상', all: '모든\u00a0파일' },
+  importFilters: { media: 'PDF\u00a0·\u00a0동영상\u00a0·\u00a0이미지', all: '모든\u00a0파일' },
   /**
    * The open panels' titles: 파일 가져오기… and 다시 연결… (ipc/library.ts). macOS shows no title on a sheet, so each
    * panel also has a one-line message (shown on top) and its own button name: ⌘O, ⌥⌘O and 다시 연결 do not look alike.
@@ -64,7 +64,7 @@ export const mainStrings = {
   },
   /** 사본 내보내기… (ipc/library.ts exportCopy): the save panel's type filter and what the copy can fail with. */
   exportCopy: {
-    filterName: { pdf: 'PDF', video: '동영상' },
+    filterName: { pdf: 'PDF', video: '동영상', image: '이미지' },
     notWritable: '이\u00a0폴더에는 쓸 수 없습니다. 다른\u00a0폴더를 고르세요.',
     diskFull: '디스크\u00a0공간이 부족합니다. 공간을 확보하거나 다른\u00a0폴더를 고르세요.',
     inLibrary: '라이브러리 폴더 안에는 저장할 수 없습니다. 다른\u00a0폴더를 고르세요.',

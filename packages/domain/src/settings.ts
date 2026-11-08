@@ -23,7 +23,7 @@ export const SIDEBAR_EXPANDED_MAX = 2000;
 
 /** What a saved reader tab last showed of its item (R38): the strip names the tab from the first frame, before the library list has come. */
 export const SAVED_TAB_TITLE_MAX = 300;
-export const savedTabItemSchema = z.object({ title: z.string().max(SAVED_TAB_TITLE_MAX), type: z.enum(['pdf', 'video']) }).strict();
+export const savedTabItemSchema = z.object({ title: z.string().max(SAVED_TAB_TITLE_MAX), type: z.enum(['pdf', 'video', 'image']) }).strict();
 export type SavedTabItem = z.infer<typeof savedTabItemSchema>;
 
 /** Library-scoped settings (stored in the library DB). */

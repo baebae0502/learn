@@ -58,6 +58,8 @@ export function OutlineTree() {
   const outline = useOutline();
   const handle = useReader((s) => s.handle);
   const page = useReader((s) => s.pdf?.pageNumber ?? 1);
+  // Page 1 is where pdf.js starts, not where the reader is: no row is the current one (and none is opened for it) until the saved place has been applied.
+  const placed = useReader((s) => s.pdf?.placed === true);
   const [query, setQuery] = useState('');
   const rowHeight = ROW_HEIGHT[usePrefs().data?.density ?? defaultDensity];
   const layoutOptions = useMemo(() => ({ rowHeight }), [rowHeight]);
@@ -65,7 +67,7 @@ export function OutlineTree() {
 
   const rows = outline.status === 'ready' ? outline.rows : [];
   const pages = outline.status === 'ready' ? outline.pages : new Map<string, number>();
-  const current = useMemo(() => currentOutlineId(rows, pages, page), [rows, pages, page]);
+  const current = useMemo(() => (placed ? currentOutlineId(rows, pages, page) : null), [placed, rows, pages, page]);
   const shown = useMemo(() => filterOutline(rows, query), [rows, query]);
   const searching = query.trim() !== '';
 

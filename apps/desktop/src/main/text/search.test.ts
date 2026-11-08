@@ -94,7 +94,15 @@ describe('searchBody', () => {
     put(item().sha, 0, 'transduction');
     const ctl = new AbortController();
     ctl.abort();
-    await expect(searchBody(db, 'transduction', ctl.signal)).rejects.toMatchObject({ code: 'CANCELLED' });
+    const statements: string[] = [];
+    const real = db.prepare.bind(db);
+    const proxy = new Proxy(db, { get: (t, k) => (k === 'prepare' ? (sql: string) => (statements.push(sql), real(sql)) : (Reflect.get(t, k) as unknown)) });
+    // positive control: the same query, not stopped, prepares its statement
+    expect((await searchBody(proxy, 'transduction', live())).itemIds).toHaveLength(1);
+    expect(statements.length).toBeGreaterThan(0);
+    statements.length = 0;
+    await expect(searchBody(proxy, 'transduction', ctl.signal)).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(statements, 'a stopped query does not start its statement').toEqual([]);
   });
 });
 
@@ -104,18 +112,22 @@ describe('searchPages', () => {
     put(a.sha, 4, 'later 형광 page');
     put(a.sha, 1, 'earlier 형광 page');
     put(a.sha, 2, 'nothing here');
-    const r = searchPages(db, repo, a.itemId, '형광');
+    const r = searchPages(db, a.itemId, '형광');
     expect(r.total).toBe(2);
     expect(r.pages.map((p) => p.pageIndex)).toEqual([1, 4]);
     expect(r.pages[0]!.snippet).toContain(MARK_START);
-    expect(searchPages(db, repo, a.itemId, 'earlier').pages.map((p) => p.pageIndex)).toEqual([1]);
-    expect(searchPages(db, repo, a.itemId, '형')).toEqual({ pages: [], total: 0 });
+    expect(searchPages(db, a.itemId, 'earlier').pages.map((p) => p.pageIndex)).toEqual([1]);
+    expect(searchPages(db, a.itemId, '형')).toEqual({ pages: [], total: 0 });
 
     const v = item('video');
     put(v.sha, 0, '형광');
-    expect(searchPages(db, repo, v.itemId, '형광')).toEqual({ pages: [], total: 0 });
+    expect(searchPages(db, v.itemId, '형광')).toEqual({ pages: [], total: 0 });
 
     repo.trash([a.itemId]);
-    expect(searchPages(db, repo, a.itemId, '형광')).toEqual({ pages: [], total: 0 });
+    expect(searchPages(db, a.itemId, '형광')).toEqual({ pages: [], total: 0 });
+  });
+
+  it('an item that does not exist is NOT_FOUND', () => {
+    expect(() => searchPages(db, newId(), '형광')).toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
   });
 });

@@ -1,4 +1,4 @@
-import { bodyItemIds, bodyLikeChunks, bodyPages, type Db, type LibraryRepository } from '@learn/db';
+import { bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '@learn/db';
 import { LearnError, bodyQueryWords, hasBodyWords } from '@learn/domain';
 import { mainStrings } from '../strings';
 
@@ -13,6 +13,8 @@ export async function searchBody(db: Db, query: string, signal: AbortSignal, chu
   const words = bodyQueryWords(query);
   if (!hasBodyWords(words)) return { itemIds: [], searched: false };
   if (words.fts.length > 0) {
+    // A newer query may have come while this one waited: the statement is not started for nothing.
+    if (signal.aborted) throw cancelled();
     const ids = bodyItemIds(db, words);
     if (signal.aborted) throw cancelled();
     return { itemIds: ids, searched: true };
@@ -27,13 +29,18 @@ export async function searchBody(db: Db, query: string, signal: AbortSignal, chu
 }
 
 /** The pages of one PDF item that match, in page order. The trash has no body matches; a file that is not a PDF has no pages. */
-export function searchPages(db: Db, repo: LibraryRepository, itemId: string, query: string): { pages: Array<{ pageIndex: number; snippet: string }>; total: number } {
+export function searchPages(db: Db, itemId: string, query: string): { pages: Array<{ pageIndex: number; snippet: string }>; total: number } {
   const none = { pages: [], total: 0 };
   const words = bodyQueryWords(query);
   if (!hasBodyWords(words)) return none;
-  const detail = repo.getItemDetail(itemId);
-  if (detail.item.type !== 'pdf') return none;
-  const trashed = db.prepare('SELECT deleted_at IS NOT NULL FROM items WHERE id = ?').pluck().get(itemId);
-  if (trashed) return none;
-  return bodyPages(db, detail.file.sha256, words);
+  const row = db
+    .prepare(
+      `SELECT i.type, i.deleted_at AS deletedAt, a.sha256
+       FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original' JOIN assets a ON a.id = ia.asset_id
+       WHERE i.id = ?`,
+    )
+    .get(itemId) as { type: string; deletedAt: string | null; sha256: string } | undefined;
+  if (!row) throw new LearnError('NOT_FOUND', mainStrings.itemFile.noItem);
+  if (row.type !== 'pdf' || row.deletedAt !== null) return none;
+  return bodyPages(db, row.sha256, words);
 }

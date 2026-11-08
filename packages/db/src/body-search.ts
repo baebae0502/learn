@@ -29,22 +29,25 @@ export function* bodyLikeChunks(db: Db, like: readonly string[], chunk: number =
   for (let lo = 0; lo < max; lo += chunk) yield stmt.pluck().all(lo, lo + chunk, ...patterns) as string[];
 }
 
+/**
+ * The statements of one file's pages that match a trigram query. `page_texts` is the outer loop (CROSS JOIN fixes the order):
+ * the file's own pages come from its (sha256, page_index) key in page order, and the index is asked for each of them by rowid —
+ * not the other way round, which would read the matches of the whole library before keeping this file's.
+ */
+const PAGES_FROM = (likes: number): string =>
+  `FROM page_texts p CROSS JOIN page_texts_fts f ON f.rowid = p.id WHERE p.sha256 = ? AND page_texts_fts MATCH ?${LIKE_CLAUSE.repeat(likes)}`;
+export const PAGES_SQL = (likes: number): string =>
+  `SELECT p.page_index AS pageIndex, snippet(page_texts_fts, 0, char(57344), char(57345), '…', 48) AS snippet ${PAGES_FROM(likes)} ORDER BY p.page_index LIMIT ${TEXT_LIMITS.pagesShown}`;
+export const PAGES_COUNT_SQL = (likes: number): string => `SELECT COUNT(*) ${PAGES_FROM(likes)}`;
+
 /** The pages of one file that match, in page order, with a snippet each; `total` counts all of them. */
 export function bodyPages(db: Db, sha256: string, words: BodyWords): { pages: Array<{ pageIndex: number; snippet: string }>; total: number } {
   const likes = words.like.map(likePattern);
   if (words.fts.length > 0) {
-    const where = `page_texts_fts MATCH ? AND p.sha256 = ?${LIKE_CLAUSE.repeat(likes.length)}`;
-    const match = ftsMatch(words.fts);
-    const rows = db
-      .prepare(
-        `SELECT p.page_index AS pageIndex, snippet(page_texts_fts, 0, char(57344), char(57345), '…', 48) AS snippet
-         FROM page_texts_fts f JOIN page_texts p ON p.id = f.rowid WHERE ${where} ORDER BY p.page_index LIMIT ${TEXT_LIMITS.pagesShown}`,
-      )
-      .all(match, sha256, ...likes) as Array<{ pageIndex: number; snippet: string }>;
-    const total = db
-      .prepare(`SELECT COUNT(*) FROM page_texts_fts f JOIN page_texts p ON p.id = f.rowid WHERE ${where}`)
-      .pluck()
-      .get(match, sha256, ...likes) as number;
+    const args = [sha256, ftsMatch(words.fts), ...likes];
+    const rows = db.prepare(PAGES_SQL(likes.length)).all(...args) as Array<{ pageIndex: number; snippet: string }>;
+    // Fewer than the limit: that is all of them, and the count is the rows.
+    const total = rows.length < TEXT_LIMITS.pagesShown ? rows.length : (db.prepare(PAGES_COUNT_SQL(likes.length)).pluck().get(...args) as number);
     return { pages: rows, total };
   }
   if (likes.length === 0) return { pages: [], total: 0 };

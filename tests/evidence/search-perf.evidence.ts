@@ -53,6 +53,9 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
     expect(body.values).toHaveLength(QUERIES.length * REPEATS);
     expect(body.hits['형광'], 'the seeded library answers a query that occurs').toBeGreaterThan(0);
     expect(body.hits['zq'], 'and one that never occurs finds nothing').toBe(0);
+    // The queries the budget is measured with answer too, so a fast answer is not a fast empty one.
+    for (const q of ['현미경', 'transduction', '단백질 신호']) expect(body.hits[q], `the seeded library has hits for ${q}`).toBeGreaterThan(0);
+    expect(body.hits['xylophone'], 'and none for xylophone').toBe(0);
 
     // search.pages: a random item (LCG, seed 7) for each query.
     const pages = await s.page.evaluate(

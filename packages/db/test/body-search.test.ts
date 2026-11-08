@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bodyQueryWords, MARK_END, MARK_START } from '@learn/domain';
-import { LIKE_CHUNK_SQL, LibraryRepository, bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '../src/index';
+import { LIKE_CHUNK_SQL, LibraryRepository, PAGES_COUNT_SQL, PAGES_SQL, bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -99,5 +99,30 @@ describe('bodyLikeChunks plan', () => {
     const plan = (db.prepare(`EXPLAIN QUERY PLAN ${LIKE_CHUNK_SQL(1)}`).all(0, 10, '%형광%') as Array<{ detail: string }>).map((r) => r.detail);
     expect(plan[0]).toMatch(/SEARCH p USING INTEGER PRIMARY KEY \(rowid>\? AND rowid<=?\?\)/);
     expect(plan.join('\n')).toMatch(/SEARCH a USING (COVERING )?INDEX assets_sha256/);
+  });
+});
+
+describe('bodyPages plan', () => {
+  it('walks the file\'s own pages by their key and asks the index for each by rowid, for the rows and for the count', () => {
+    const a = seedItem(db);
+    put(a.asset.sha256, 0, '형광 현미경');
+    expect(bodyPages(db, a.asset.sha256, bodyQueryWords('현미경')).total).toBe(1); // positive control: the query answers
+    for (const sql of [PAGES_SQL(0), PAGES_COUNT_SQL(0)]) {
+      const plan = (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(a.asset.sha256, '"현미경"') as Array<{ detail: string }>).map((r) => r.detail);
+      expect(plan[0], plan.join('\n')).toMatch(/SEARCH p USING (COVERING )?INDEX sqlite_autoindex_page_texts_1 \(sha256=\?\)/);
+      expect(plan.join('\n')).toMatch(/SCAN f VIRTUAL TABLE INDEX/);
+      expect(plan.join('\n')).not.toMatch(/SCAN p\b/);
+    }
+  });
+
+  it('counts past the pages it shows', () => {
+    const a = seedItem(db);
+    const b = seedItem(db);
+    for (let i = 0; i < 25; i++) put(a.asset.sha256, i, `형광 현미경 ${i}`);
+    for (let i = 0; i < 5; i++) put(b.asset.sha256, i, `형광 현미경 ${i}`);
+    const r = bodyPages(db, a.asset.sha256, bodyQueryWords('현미경'));
+    expect(r.pages).toHaveLength(20);
+    expect(r.total).toBe(25);
+    expect(bodyPages(db, b.asset.sha256, bodyQueryWords('현미경')).total).toBe(5);
   });
 });

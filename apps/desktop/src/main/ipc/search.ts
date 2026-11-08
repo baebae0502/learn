@@ -22,8 +22,7 @@ export function registerSearchIpc(
     }
   });
   handle(Channels.search.pages, bodyPagesInput, ({ itemId, query }) => {
-    const ctx = deps.getContext();
-    return impl.searchPages(ctx.db, ctx.repo, itemId, query);
+    return impl.searchPages(deps.getContext().db, itemId, query);
   });
   handle(Channels.search.progress, emptyInput, () => deps.getContext().text.progress());
 }

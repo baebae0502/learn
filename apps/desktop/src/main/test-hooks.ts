@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
-import { newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
+import { TEXT_LIMITS, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
 import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
 import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
@@ -10,8 +10,12 @@ import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
+import type { ExtractOutcome, TextExtractor } from './text/extractor';
+import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
 import type { RecordedRequest, TranslationNetIntercept } from './translation/net-intercept';
+
+const TEXT_LIMITS_FOR_HOOK: ExtractLimits = { maxPages: TEXT_LIMITS.maxPages, maxPageChars: TEXT_LIMITS.maxPageChars, maxDocChars: TEXT_LIMITS.maxDocChars, maxFileBytes: TEXT_LIMITS.maxFileBytes };
 
 /** One seeded item's facts, as E2E sends them (tests/e2e/helpers.ts seedRows): main keeps no sample data itself. */
 export interface SeedRow {
@@ -424,6 +428,8 @@ export interface LearnTestHooks {
   libraryCheck(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' };
   /** A fresh check, then recovery:show to the main window: the automatic sheet again (the tour, after it sized the window). */
   requestLibraryCheck(): Promise<void>;
+  /** Reads one PDF's body text through the app's worker and returns what it sent; nothing is written to the library. */
+  extractFile(input: { file: string; startPage?: number; limits?: Partial<ExtractLimits> }): Promise<{ outcome: ExtractOutcome; opened: number | null; batches: Array<{ from: number; texts: string[] }> }>;
   /** Sets how the fake translation engine answers (E2E always runs on it). */
   translationFake(mode: FakeMode): void;
   /** How many requests the fake translation engine has taken since launch (a cache hit or a refusal takes none). */
@@ -457,6 +463,8 @@ export function installTestHooks(deps: {
   seedFiles?: () => SeedAssetsDeps;
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
+  /** The body-text extractor and the folder of pdf.js's data it reads (index.ts); absent in tests that do not extract. */
+  text?: { extractor: TextExtractor; assetsDir: string };
   /** The fake translation engine (index.ts, E2E only). */
   translation?: { setMode(mode: FakeMode): void; calls(): number };
   /** The test's translation host (index.ts, E2E with LEARN_TRANSLATION_NET=intercept only). */
@@ -516,6 +524,24 @@ export function installTestHooks(deps: {
     failImportCommits({ code }) {
       stage ??= stageCommitFailures(deps.importCommits());
       stage(code);
+    },
+    async extractFile({ file, startPage = 0, limits }) {
+      if (!deps.text) throw new Error('extractFile: no extractor');
+      const batches: Array<{ from: number; texts: string[] }> = [];
+      let opened: number | null = null;
+      const outcome = await deps.text.extractor.run(
+        { jobId: newId(), file, startPage, limits: { ...TEXT_LIMITS_FOR_HOOK, ...limits }, assetsDir: deps.text.assetsDir },
+        {
+          opened: (pages) => {
+            opened = pages;
+          },
+          pages: (from, texts) => {
+            batches.push({ from, texts });
+            return true;
+          },
+        },
+      );
+      return { outcome, opened, batches };
     },
     importPause: ({ at }) => pause.pause(at),
     importResume: () => pause.resume(),

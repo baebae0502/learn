@@ -1725,3 +1725,19 @@ export async function selectInPage(page: Page, sentence: string, pageNumber = 1)
  */
 export const CLOSE_NOISE = /^Unable to get page .*Transport destroyed/s;
 export const isCloseNoise = (text: string): boolean => CLOSE_NOISE.test(text);
+
+// ---- M7c body text (main/text, the utility-process worker) --------------------------------------------------------------
+
+export interface ExtractFileResult {
+  outcome: { kind: 'done'; pages: number; truncated: boolean } | { kind: 'failed'; reason: 'locked' | 'damaged' | 'too-large' } | { kind: 'crashed' | 'timeout' | 'bad-message' | 'stopped' };
+  opened: number | null;
+  batches: Array<{ from: number; texts: string[] }>;
+}
+type WithTextHooks = {
+  __learnTest: { extractFile(input: { file: string; startPage?: number; limits?: Partial<{ maxPages: number; maxPageChars: number; maxDocChars: number; maxFileBytes: number }> }): Promise<ExtractFileResult> };
+};
+/** Reads a PDF's body text through the app's worker, without writing to the library. */
+export const extractFile = (
+  app: ElectronApplication,
+  input: Parameters<WithTextHooks['__learnTest']['extractFile']>[0],
+): Promise<ExtractFileResult> => app.evaluate((_e, arg) => (globalThis as unknown as WithTextHooks).__learnTest.extractFile(arg), input);

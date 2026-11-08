@@ -39,6 +39,8 @@ import { hardenApp } from './security';
 import { createSettingsWindow } from './settings-window';
 import { createSheetHost, sheetHeightKey, shortcutsDigest } from './sheets';
 import { mainStrings } from './strings';
+import { createTextExtractor } from './text/extractor';
+import { forkTextWorker, pdfjsAssetsDir } from './text/fork';
 import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
@@ -54,6 +56,9 @@ import { isSheetOpen, resyncAllWindowStates, sheetClosed, sheetShown } from './w
 import { windowUrl } from './window-url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+/** The body-text worker's keeper: one utility process, started by the first job and gone after thirty idle seconds. */
+const textExtractor = createTextExtractor({ fork: () => forkTextWorker(path.join(here, 'text-worker.js')) });
 
 // Same app name (and thus userData path) whether launched via `electron .` or the built entry.
 app.setName('Learn');
@@ -657,6 +662,7 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
+        text: { extractor: textExtractor, assetsDir: pdfjsAssetsDir(here) },
         translation: fakeTranslation ?? undefined,
         translationNet: translationNet ?? undefined,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
@@ -734,6 +740,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     applyLibrarySwitch();
     checkStopped = true;
+    textExtractor.dispose();
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });

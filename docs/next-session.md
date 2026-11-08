@@ -372,7 +372,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 
 ## M7b 리더 탭 결과 (2026-11-08)
 
-계획 [`superpowers/plans/2026-11-05-m7b-reader-tabs.md`](superpowers/plans/2026-11-05-m7b-reader-tabs.md), 명세 [`superpowers/specs/2026-11-05-m7b-reader-tabs-design.md`](superpowers/specs/2026-11-05-m7b-reader-tabs-design.md), 브랜치 `m7b-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7b 완료 조건", Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7b". 명세 정정과 컨트롤러 판정은 [`spec-amendments.md`](spec-amendments.md) 13절. 최종 Linux CI · Mac `all`의 결과는 (Mac all 실행 뒤 채움).
+계획 [`superpowers/plans/2026-11-05-m7b-reader-tabs.md`](superpowers/plans/2026-11-05-m7b-reader-tabs.md), 명세 [`superpowers/specs/2026-11-05-m7b-reader-tabs-design.md`](superpowers/specs/2026-11-05-m7b-reader-tabs-design.md), 브랜치 `m7b-reader`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7b 완료 조건", Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7b". 명세 정정과 컨트롤러 판정은 [`spec-amendments.md`](spec-amendments.md) 13절. 최종 Linux CI는 run 42451126772(41457d8) 성공이고, Mac `all`은 최종 코드에서 두 번(42447639094, 42451371771) 돌렸고 **완전한 녹색 실행은 없다** — 서로 다른 흔들림 하나씩(M5 dnd (i), `readers` 쪽 넘김 + M4 증거 ⌘F)이고 각각 다른 실행에서 통과했다(R48). 병합은 소유자 판단이다.
 
 ### M7b에서 해결한 것
 - **탭**: 자료 하나에 탭 하나(Zotero식). ↩·더블클릭은 그 자료의 탭으로, ⌘↩는 뒤에서 연다(여러 개 열기, 11개 이상은 확인 시트). 라이브러리 탭은 줄 맨 앞에 고정되고 리더 탭만 가로로 스크롤한다. ⌘1…⌘9 · ⌃⇥ · ⌘W · ⇧⌘T, 탭 컨텍스트 메뉴(네이티브), 끌어서 순서 바꾸기와 ⌥⇧←/→, 포커스된 탭의 Delete/Backspace. 탭 줄은 손으로 쓴 tablist다(R8).
@@ -382,7 +382,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **보기 모드와 쪽 놓기**: 스크롤(세로·가로·한 쪽씩) × 펼침(없음·홀수·짝수), 자료마다 기억. 쪽으로 가는 모든 이동이 `placePage` 하나를 거쳐 위 24/12 · 왼쪽 24 · 가장 넓은 쪽 맞춤(R-21, R-25)을 따른다.
 - **라이브러리 '읽기' 절**: 진행 막대 + 퍼센트 + "N / M쪽에서 멈춤 · 어제". 위치에 `pages`를 더했고(마이그레이션 없음) 100%는 "✓ 완료"만 보인다.
 - **M7a에서 넘긴 리더 고침**: 썸네일 DPR 재그리기·실패 재시도·실패 모양·`aria-activedescendant`, 큰 목차 가상화(RAC Virtualizer), 실패한 쪽 다시 그리기, 쪽 색 첫 프레임, 낡은 핸들, ⌘/ 시트 높이 키, 저장 타이머 정리, 번역 설정 전 누름, 스파이크 탐침을 제품 번들에서 뺌.
-- **검증**: Linux 최종(로컬): 단위·전체 E2E (Mac all 실행 뒤 채움), 1024×768 `history`+`keyboard` 통과, 투어 43개 시험. 성능(Linux 중앙값, 예산): 살려 둔 탭 전환 66.4ms(100) · 내려간 탭 347.6ms(2,000) · 뒤로 27.8ms(250) · 냉시작 5탭 872ms(1,500). 메모리(보고값, 렌더러 `workingSetSize`): 탭 1개 282,768KB · 4개 457,672KB. 중간 Mac `e2e` run 42161659263(02d9a61): 464 통과 · 시험 쪽 실패 3(+ 예상된 실패 1) — 셋은 시험을 고쳤고(R17) 나머지는 예상 밖 실패가 아니다(통과 464에 `test.fail` 하나가 들어 있다). M7b 데모는 Linux 186초 · 9장.
+- **검증**: Linux 최종(CI run 42451126772, 41457d8): 단위 2,519 · 전체 E2E 543 통과 · 4 건너뜀 · 증거 73 통과, 1024×768 `history`+`keyboard` 통과, 투어 43개 시험. 성능(Linux 중앙값, 예산): 살려 둔 탭 전환 66.4ms(100) · 내려간 탭 347.6ms(2,000) · 뒤로 27.8ms(250) · 냉시작 5탭 872ms(1,500). 메모리(보고값, 렌더러 `workingSetSize`): 탭 1개 282,768KB · 4개 457,672KB. 중간 Mac `e2e` run 42161659263(02d9a61): 464 통과 · 시험 쪽 실패 3(+ 예상된 실패 1) — 셋은 시험을 고쳤고(R17) 나머지는 예상 밖 실패가 아니다(통과 464에 `test.fail` 하나가 들어 있다). M7b 데모는 Linux 186초 · 9장, Mac(run 42439011165) 183.7초 · 9장. Mac 탭 성능(보고값): 살려 둔 탭 43.4ms · 내려간 탭 156.9ms · 뒤로 19.9ms · 냉시작 5탭 672ms.
 
 - **브랜치 전체 검토 뒤 고친 것**: I1 열린 정보 편집은 보이는 탭이 바뀌거나 닫히기 전에 묻는다(탭 줄 선택·닫기·Delete, ⌘W · ⌃⇥ · ⌘1…⌘9 · 마지막 탭 · 다른 탭 닫기 · 라이브러리에서 보기 · 뒤로 모두 `afterEditing`). I2 휴지통 탭은 재실행 뒤에도 이름이 있다(목록 행 → `library.detail` → 둘 다 없으면 탭 제거; 탭 줄·창 제목·패널 이름). I3 목차 검색·펼침은 탭마다(`ReaderSidebar`에 자료 key). I4 탭을 닫아도 내려간 탭은 다시 마운트되지 않아 '연 날짜'가 바뀌지 않는다(R32). 작은 것: Finder 항목은 휴지통 탭에서 꺼짐, 창 밖 끌기, `first-session` 폴링, 죽은 `visibleOutline` 삭제, pdf.js `abortSignal`, `scrolled` 선언 위치, 앵커 스파이크 시험 제목, 데모 노트.
 
@@ -416,6 +416,15 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - 데모(Task 13b): 8장의 장 프레임(3초 지점)이 종료·재실행 중이라 검다(영상은 정상). Mac에서 ⌘↩·⌃⇥는 `nativeKeyCode` 36/48, 탭 끌기는 `glide()`가 시스템 커서를 옮기는데 모두 Mac에서 시험하지 않았다.
 - 투어 `tab-states-light`의 호버 선택자(Task 13a M4)는 그대로 뒀다. 데모 증거가 다시 열기 뒤 쪽 20|21을 모두 받아들인다(`demo.evidence.ts`, Task 3). 120 폭 비활성 탭이 숨은 닫기 칸 24px을 비워 둔다(R5, 비평 n5 — M1 승인 사항). `Boot`가 `reader.pageColor` 읽기를 하나 더 기다린다(Task 11).
 - 같은 프레임의 잔여(R29)와 목차 현재 표시 스크롤(위 M7c 입력).
+- 정보 편집 중 아무것도 바꾸지 않는 누름(R34): 열린 편집 폼에서 지금 보는 탭의 ⌘1 같은 키도 `afterEditing`을 거쳐 폼이 닫힌다(편집은 저장되고 잃지 않는다, M7a부터 같음).
+- Mac 비평(run 42426802870) n1(R40): 한 쪽씩 + 펼침에서 쌍이 무대 위 12에 붙고 아래가 빈다. R-21의 위 12 규칙과 부딪혀 그대로 뒀다.
+- Mac 비평 수정의 재검토 minor(R41): 끝 상태(열기 실패·암호·원본 없음·휴지통)로 끝나는 PDF도 자료 읽기 한 번 동안 항목 패널을 보인다(R39에 딸린 것). `known` 전에 저장된 세션은 첫 실행 한 번 목록이 올 때까지 탭 종류를 모른다. shell store의 `known`이 닫힌 탭의 이름을 세션 끝까지 쥔다(저장하지 않음).
+- Mac 재비평(run 42439011165, R44): 데모의 끌기는 osascript 커서 이동을 단계마다 기다려 초당 약 7번 움직이고(최대 39px씩), 커서 이동만으로는 사건이 없어 끌기 시작점에 네이티브 툴팁이 약 5초 남는다(실제 끌기는 단추가 눌린 이동이라 생기지 않는다). 놓은 뒤 0.7초에 누름 고리가 한 번 깜빡인다. 다시 실행 뒤 첫 그리기에서 항목 패널 아래 절들이 1–3프레임 늦게 채워진다. 장 2의 커서가 썸네일 줄 위에 쉬고 자막이 지금 썸네일 40을 가린다(n4 남은 것).
+- M5 `dnd.spec` (i) 120개 컬렉션 트리의 키보드 놓기 '클릭' 변형이 Mac에서 두 번째로 흔들렸다(R43; run 41846187098에 이어 42439011165, Linux는 재현 안 됨). 진단 문구가 보기를 가져간 행과 포커스 기록을 남긴다 — 다음 Mac 실패에서 원인을 본다.
+- `reader-pdf.spec.ts` "leaving a PDF the moment its pages exist…"가 CI 42447621731(41457d8)과 00be50d의 로컬 전체 실행에서 pdf.js 콘솔 오류 "offsetParent is not set -- cannot scroll"(숨은 뷰어의 `PDFViewer#scrollIntoView`)로 한 번씩 실패했다(R46). 같은 head의 재실행과 Mac은 통과했고, 로컬 약 250번(2코어 · 1코어+부하 · spec 전체)에서 재현되지 않았다. 숨은 무대에서 pdf.js를 스크롤하는 앱의 길(`fitTo`는 `shownRef`, 자리 적용은 숨기면 풀리는 `stageSettled`)은 모두 막혀 있고 비평 고침은 뷰어를 부르지 않는다 — 원인 미확정. 다음에 나면 `console.error`의 호출 스택을 남기는 탐침부터 붙인다.
+- Mac 러너에서만 흔들린 시험 둘(R48, run 42451371771): `readers.spec.ts` "a page that cannot be drawn…"이 확대 1로 돌린 뒤 '다음 쪽'에서 2에 머물렀다(앞 다섯 번과 Linux는 통과 — 확대 뒤 다시 그리기가 끝나기 전의 쪽 넘김으로 보이나 확인 안 함). M4 증거의 ⌘F 시스템 키 입력은 세 번 중 두 번 앱에 닿지 않았다 — 두 번 다 포커스가 '사이드바 가리기'에 있었고, 바로 앞 시험이 실제 ⇧⌘R로 Finder를 앞으로 띄운다. `bringAppToFront` 뒤 앱이 실제로 앞에 올 때까지 기다리게 하는 것이 다음 고침이다.
+- Mac 러너 일회성(R45, run 42443540025): M5 사이드바 "주 창이 아닐 때" 증거 시험의 첫 `prefs.set`이 190초 멈췄다(로그에 충돌 없음, 같은 코드가 앞뒤 실행에서 통과). 같은 실행의 ⌘F 실패는 위 줄의 것과 같다.
+- React Aria 메뉴: 앞 메뉴가 사라지는 애니메이션 도중(약 200ms)에 보기 ▾를 다시 누르면 새 메뉴가 포커스를 받지 못해 화살표 키가 먹지 않는다(시험은 `menuClosed`로 기다린다, 7bc1dc6). 사람이 그 틈에 다시 누르는 일은 드물다.
 
 ### 실기에서만 확인할 것 (M7b)
 - **마우스 옆 단추 3/4**(P-15): 시험은 합성 사건뿐이다. 실제 마우스로 리더 무대에서 뒤로/앞으로가 되는지, Chromium의 기본 뒤로 가기가 막히는지 본다.

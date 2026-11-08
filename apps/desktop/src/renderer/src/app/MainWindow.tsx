@@ -68,6 +68,7 @@ import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { TabBar } from '../shell/TabBar';
+import { useTabKind } from '../shell/useTabItem';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
@@ -369,13 +370,18 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not after a
   // failed first read, and not in the reader, whose right slot is the tutor's.
   const showsTable = view.kind === 'library' && (tableShown || listPending);
-  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then, and so is its item panel
-  // (the video and the failure states keep the reader without one).
+  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then.
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
   const pdfScroll = useReader((s) => s.pdf?.scroll);
   const historyBack = useReader((s) => canGoBack(s.history));
   const historyForward = useReader((s) => canGoForward(s.history));
-  const showsInspector = showsTable || (view.kind === 'reader' && pdfOpen);
+  // A PDF that is still opening keeps the item panel's place, width and fold, its translation section disabled (R39, design-spec 6:
+  // a transient state keeps its controls). The ends that need the person (not opened, password, no file, trash) and the video
+  // reader have none: their reader says so in `noPages`, or the kind is not a PDF.
+  const readerKind = useTabKind(view.kind === 'reader' ? view.itemId : null);
+  const pdfEnded = useReader((s) => (s.noPages.host ?? s.noPages.reader) !== null);
+  const pdfOpening = view.kind === 'reader' && readerKind === 'pdf' && !pdfEnded && !pdfOpen;
+  const showsInspector = showsTable || (view.kind === 'reader' && (pdfOpen || pdfOpening));
   const inspectorHidden = useInspectorHidden(showsInspector);
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');

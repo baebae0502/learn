@@ -6,7 +6,7 @@ import type {
   AppInfo, Collection, DuplicateGroup, EditedCopy, ItemDetail, KeepOneResult, LibraryItem, PurgedRows, SearchText, Tag, TrashView,
 } from './library';
 import { itemMetadataSchema } from './metadata';
-import type { OrganizeSnapshot } from './organize';
+import type { OrganizeWire } from './organize';
 import { SCROLL_MODES, readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
@@ -337,7 +337,7 @@ export interface LearnApi {
     /** Abstracts and memos of the items that have one (quick search reads them from its first query on). */
     searchTexts(): Promise<Result<SearchText[]>>;
     /** Collections, tags, memberships, tag assignments and duplicate groups in one read (the sidebar's data). */
-    organize(): Promise<Result<OrganizeSnapshot>>;
+    organize(): Promise<Result<OrganizeWire>>;
     /** The non-trashed items among `ids`, once each in the order asked; unknown and trashed ids are skipped. */
     getItems(input: GetItemsInput): Promise<Result<LibraryItem[]>>;
     /** The copies another app saved beside the item's read-only copy, newest first (spec 6); [] when there are none. */

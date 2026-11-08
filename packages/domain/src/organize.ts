@@ -58,3 +58,60 @@ export const libraryScopeSchema: z.ZodType<LibraryScope> = z.discriminatedUnion(
   z.strictObject({ kind: z.literal('trash') }),
   z.strictObject({ kind: z.literal('collection'), id: z.uuid() }),
 ]);
+
+/**
+ * `library:organize` on the wire: every item id once in `itemIds`, and the members and tagged lists as indexes into it, so a
+ * 10,000-item library does not send each 36-character id again for every collection and tag it is in.
+ */
+export interface OrganizeWire {
+  collections: OrganizeCollection[];
+  tags: OrganizeTag[];
+  /** The items `members` and `tagged` point at, each once. */
+  itemIds: string[];
+  /** Collection id → numbers into `itemIds`, in the stored order. */
+  members: Record<string, Uint32Array>;
+  tagged: Record<string, Uint32Array>;
+  duplicates: string[][];
+  trashCount: number;
+}
+
+export function packOrganize(s: OrganizeSnapshot): OrganizeWire {
+  const itemIds: string[] = [];
+  const numbers = new Map<string, number>();
+  const pack = (lists: Record<string, string[]>): Record<string, Uint32Array> => {
+    const out: Record<string, Uint32Array> = {};
+    for (const [key, ids] of Object.entries(lists)) {
+      const arr = new Uint32Array(ids.length);
+      ids.forEach((id, i) => {
+        let n = numbers.get(id);
+        if (n === undefined) {
+          n = itemIds.length;
+          itemIds.push(id);
+          numbers.set(id, n);
+        }
+        arr[i] = n;
+      });
+      out[key] = arr;
+    }
+    return out;
+  };
+  const members = pack(s.members);
+  const tagged = pack(s.tagged);
+  return { collections: s.collections, tags: s.tags, itemIds, members, tagged, duplicates: s.duplicates, trashCount: s.trashCount };
+}
+
+export function unpackOrganize(w: OrganizeWire): OrganizeSnapshot {
+  const unpack = (lists: Record<string, Uint32Array>): Record<string, string[]> => {
+    const out: Record<string, string[]> = {};
+    for (const [key, nums] of Object.entries(lists)) out[key] = Array.from(nums, (n) => w.itemIds[n]!);
+    return out;
+  };
+  return { collections: w.collections, tags: w.tags, members: unpack(w.members), tagged: unpack(w.tagged), duplicates: w.duplicates, trashCount: w.trashCount };
+}
+
+/** What the wire form weighs when serialized: the JSON of everything but the arrays (their keys stay) plus the arrays' bytes. */
+export function organizeWireBytes(w: OrganizeWire): number {
+  const arrays = [...Object.values(w.members), ...Object.values(w.tagged)];
+  const head = JSON.stringify({ ...w, members: Object.keys(w.members), tagged: Object.keys(w.tagged) });
+  return new TextEncoder().encode(head).length + arrays.reduce((n, a) => n + a.byteLength, 0);
+}

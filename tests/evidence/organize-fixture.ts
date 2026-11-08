@@ -2,6 +2,7 @@
 // drawn from a seeded generator so a run measures the same library every time. Pure (the unit test checks it against
 // what its own input says); seedOrganizeFixture hands it to main's E2E hook and checks the snapshot main then sends.
 import { expect, type ElectronApplication, type Page } from '@playwright/test';
+import { unpackOrganize } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 
 export interface OrganizeSeedInput {
@@ -199,20 +200,22 @@ export async function seedOrganizeFixture(app: ElectronApplication, page: Page, 
     (_electron, input) => (globalThis as unknown as { __learnTest: { seedOrganize(i: typeof input): { collectionIds: string[]; tagIds: string[] } } }).__learnTest.seedOrganize(input),
     { ...fixture.input, items: ids },
   );
-  const snap = await page.evaluate(async () => {
+  const wire = await page.evaluate(async () => {
     const r = await window.learn.library.organize();
     if (!r.ok) throw new Error(`library.organize failed: ${r.code}`);
-    const sum = (m: Record<string, string[]>) => Object.values(m).reduce((a, v) => a + v.length, 0);
-    return {
-      collections: r.data.collections.length,
-      tags: r.data.tags.length,
-      positions: r.data.tags.flatMap((t) => (t.position === null ? [] : [t.position])).sort((a, b) => a - b),
-      members: sum(r.data.members),
-      tagged: sum(r.data.tagged),
-      duplicateGroups: r.data.duplicates.length,
-      duplicateItems: r.data.duplicates.reduce((a, g) => a + g.length, 0),
-    };
+    return r.data;
   });
+  const organize = unpackOrganize(wire);
+  const sum = (m: Record<string, string[]>) => Object.values(m).reduce((a, v) => a + v.length, 0);
+  const snap = {
+    collections: organize.collections.length,
+    tags: organize.tags.length,
+    positions: organize.tags.flatMap((t) => (t.position === null ? [] : [t.position])).sort((a, b) => a - b),
+    members: sum(organize.members),
+    tagged: sum(organize.tagged),
+    duplicateGroups: organize.duplicates.length,
+    duplicateItems: organize.duplicates.reduce((a, g) => a + g.length, 0),
+  };
   expect(snap, 'the snapshot main sends is the fixture spec 12 describes').toEqual({
     collections: spec.collections,
     tags: spec.tags,

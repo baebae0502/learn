@@ -6,7 +6,7 @@ import { COMMANDS, menuItemId, type CommandArgs, type CommandId } from '../../pa
 import type { LearnApi, UpdateMetadataInput } from '../../packages/domain/src/ipc';
 import type { JobProgress } from '../../packages/domain/src/backup';
 import type { ImportQueueState, ImportReport, LibraryCheck, LibraryItem, StorageMode } from '../../packages/domain/src/library';
-import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
+import { unpackOrganize, type OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
@@ -1318,7 +1318,7 @@ export async function setTagColor(page: Page, tagId: string, color: TagColorId |
 export async function organizeSnapshot(page: Page): Promise<OrganizeSnapshot> {
   const r = await page.evaluate(() => window.learn.library.organize());
   if (!r.ok) throw new Error(`library.organize failed: ${r.code}`);
-  return r.data;
+  return unpackOrganize(r.data);
 }
 
 /** Moves items to the trash through the page's API (library.trash), as ⌘⌫ does; the number that moved. */

@@ -115,11 +115,11 @@ describe('library.searchTexts', () => {
 
 describe('library.organize', () => {
   it('answers the snapshot of the library, and takes no input', async () => {
-    expect(await invoke('library:organize')).toEqual({ ok: true, data: { collections: [], tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 } });
+    expect(await invoke('library:organize')).toEqual({ ok: true, data: { collections: [], tags: [], itemIds: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 } });
     const coll = new CollectionsRepository(db).create({ name: '강의' });
     expect(await invoke('library:organize')).toEqual({
       ok: true,
-      data: { collections: [{ id: coll.id, name: '강의', parentId: null, createdAt: coll.createdAt }], tags: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 },
+      data: { collections: [{ id: coll.id, name: '강의', parentId: null, createdAt: coll.createdAt }], tags: [], itemIds: [], members: {}, tagged: {}, duplicates: [], trashCount: 0 },
     });
     expect(await invoke('library:organize', { extra: 1 })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
   });

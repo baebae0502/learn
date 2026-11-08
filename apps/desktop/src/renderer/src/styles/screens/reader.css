@@ -8,7 +8,7 @@
   }
   /* A reader narrower than 480 drops the page field's "/ N" so the toolbar fits 440 at 15 pt (the window's smallest with the panel open). */
   @container (max-width: 479px) { /* local: the approved mockup's breakpoint */
-    .reader-toolbar .page-count {
+    .reader .reader-toolbar .page-count-slot {
       display: none;
     }
   }

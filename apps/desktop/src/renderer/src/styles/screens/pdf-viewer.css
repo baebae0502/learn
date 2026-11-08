@@ -329,7 +329,23 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
-  /* The count takes its text's width (the mockup's "/ 17"), so the page chevrons stand one gap after it. */
+  /* The count takes its text's width (the mockup's "/ 17") but at least the width of "/ 000" (tabular figures), so a document of
+     another page count does not move the chevrons or the zoom field; only four digits widen it. */
+  .reader-toolbar .page-count-slot {
+    display: inline-grid;
+    flex: none;
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .reader-toolbar .page-count-slot::before {
+    content: '/ 000';
+    grid-area: 1 / 1;
+    visibility: hidden;
+  }
+  .reader-toolbar .page-count-slot > .page-count {
+    grid-area: 1 / 1;
+  }
   .reader-toolbar .page-count {
     color: var(--text-secondary);
     font: var(--type-footnote);

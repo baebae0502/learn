@@ -258,8 +258,11 @@ export function PdfReader({ item }: { item: LibraryItem }) {
           />
         </div>
         <PageField page={page} total={total} onGo={(n) => handle?.jumpToPage(n)} onEscape={() => stageRef.current?.focus()} />
-        <span className="page-count num" data-testid="pdf-page-count">
-          {total > 0 ? t.reader.pageOf(total) : ''}
+        {/* "/ N" has the room of "/ 000" at least, so a document of another page count does not move what follows it. */}
+        <span className="page-count-slot">
+          <span className="page-count num" data-testid="pdf-page-count">
+            {total > 0 ? t.reader.pageOf(total) : ''}
+          </span>
         </span>
         {/* Pages run top to bottom: up/down chevrons, never the toolbar's back chevron. */}
         <IconButton

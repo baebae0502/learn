@@ -410,7 +410,7 @@
 
 이 표는 목업의 `data-ms` 태그와 **같은 목록**이다. 렌더 스크립트가 모든 대화형 요소(버튼, 필드, 탭, 행, 칩, 메뉴 항목, 컨트롤 …)가 태그 안에 있는지 검사하고(`report.json`의 `milestones.missing`, 현재 0건), 태그 목록을 `docs/design/renders/milestones.txt`에 쓴다. `?ms=1`로 열면 같은 태그가 점선 테두리와 배지로 보인다. 공통 셸: M3 사이드바 토글·⌘K 실행기·통합 도구 막대 제목, M7 탭 줄(M3–M6은 탭 하나라 탭 줄 없음).
 
-### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`; M7c는 `&m=7c`와 함께 `?search=scope-states|scope-menu`(`&indexing=1`), `?scope=fulltext&q=형광`, `?matches=3|many|loading|indexing|empty|locked`(many는 `&scroll=end`), `?panel=image|image-large|pdf-indexing`, `?state=noresults&scope=fulltext`(`&indexing=1`))
+### 10.1 라이브러리 — `library.html` (`?state=none|multi|noresults|loading|empty-collection|trash|duplicates|edited`, M7a: `?columns=progress`; M7c는 `&m=7c`와 함께 `?search=scope-states|scope-menu`(`&indexing=1`), `?scope=fulltext&q=형광`, `?matches=3|many|loading|indexing|empty|locked`(many는 `&scroll=end`), `?panel=image|image-large|pdf-indexing|pdf-failed`, `?state=noresults&scope=fulltext`(`&indexing=1` | `&onechar=1`))
 | 요소 | 마일스톤 |
 |---|---|
 | 창(숨긴 제목 막대, 신호등, 비브런시, 테마, 밀도, 패널 크기 조절·기억), 사이드바 토글, ⌘K 실행기, 가져오기 단추·메뉴 | M3 |
@@ -531,11 +531,11 @@
 ### 10.10 이미지 리더 — `reader-image.html` (`?m=7c` 필수)
 쿼리 목록만 적는다(요소 표는 소유자 승인 뒤 정한다).
 - `?m=7c` — 큰 사진(시험 무늬), 창에 맞춤, 배경은 앱 테마를 따른다
-- `&bg=light|dark|checker`, `&img=small|transparent`(투명 PNG는 `&bg=checker`와)
+- `&bg=light|dark|checker`, `&img=small|transparent|diagram`(투명 PNG는 `&bg=checker`와, diagram은 흰 바탕 그림)
 - `&zoom=width|400`, `&rotate=90`
-- `&menu=zoom|view|view-bg`
+- `&menu=zoom|view`
 - `&state=loading|error|missing|trashed`, `&w=1024`
-- `&sidebar=nopages|folded`(판단 질문: 쪽 없음 안내 / 사이드바 자동 접기)
+- `&sidebar=nopages`(쪽 없음 안내)
 
 ## 부록 A. 목업 사용법
 - 쿼리: `theme=light|dark`, `layout=A|B`, `font=system|pretendard`, `density=compact|regular|comfortable`, `ms=1`, 그리고 화면별 `state` / `scene` / `page` / `menu` / `nav` / `part` / `m=7a`(탭 없는 리더, M7a) / `find` / `select` / `inspector` / `w` / `section` / `columns`(10절 제목 옆).

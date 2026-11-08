@@ -4244,8 +4244,8 @@ h2,
    The four image-background colours are the tokens of spec 12 (--image-bg-light, --image-bg-dark, --image-checker-a,
    --image-checker-b): a choice of the reader, independent of the app theme. Task 12 moves the values into tokens.ts. */
 :root {
-  --image-bg-light: oklch(97.5% 0.002 250); /* local: mockup value of the token, Task 12 moves it */
-  --image-bg-dark: oklch(15% 0.004 250); /* local: mockup value of the token, Task 12 moves it */
+  --image-bg-light: oklch(93.2% 0.004 250); /* local: mockup value of the token, Task 12 moves it */
+  --image-bg-dark: oklch(17.5% 0.004 250); /* local: mockup value of the token, Task 12 moves it */
   --image-checker-a: oklch(80% 0 0); /* local: mockup value of the token, Task 12 moves it */
   --image-checker-b: oklch(92% 0 0); /* local: mockup value of the token, Task 12 moves it */
 }
@@ -4261,7 +4261,8 @@ h2,
 }
 .image-stage[data-bg='checker'] {
   /* 8 px squares in two colours */
-  background: repeating-conic-gradient(var(--image-checker-a) 0 25%, var(--image-checker-b) 0 50%) 0 0 / 16px 16px;
+  background: repeating-conic-gradient(var(--image-checker-a) 0 25%, var(--image-checker-b) 0 50%) 0 0 / 16px 16px local;
+  background-attachment: local;
 }
 .image-stage.is-grab {
   cursor: grab;
@@ -4279,15 +4280,10 @@ h2,
   top: 50%;
 }
 .image-note {
-  position: absolute;
-  left: var(--space-12);
-  bottom: var(--space-12);
-  padding: var(--space-4) var(--space-12);
-  border-radius: var(--radius-md);
-  background: var(--bg-raised);
-  box-shadow: var(--shadow-e1);
-  color: var(--text-secondary);
-  font: var(--type-footnote);
+  padding: 0 var(--space-12);
+  color: var(--text-tertiary);
+  font: var(--type-caption);
+  white-space: nowrap;
 }
 .image-hand {
   position: absolute;
@@ -4334,7 +4330,7 @@ h2,
   color: var(--text-primary);
 }
 .scope-btn.is-focus {
-  box-shadow: 0 0 0 2px var(--focus);
+  box-shadow: inset 0 0 0 2px var(--focus);
 }
 .scope-states {
   position: absolute;
@@ -4369,8 +4365,14 @@ h2,
   flex-direction: column;
 }
 .menu .mi .mi-desc {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font: var(--type-caption);
+}
+.menu .mi.is-active .mi-desc {
+  color: var(--text-on-accent);
+}
+.menu .mi.info {
+  color: var(--text-secondary);
 }
 .table-row mark,
 .match-row mark {
@@ -4392,7 +4394,6 @@ h2,
   overflow: hidden;
 }
 .item-preview.icon-only {
-  height: 96px; /* local: the icon cell of an image over 50 megapixels */
   color: var(--text-tertiary);
 }
 .match-list {
@@ -4402,11 +4403,17 @@ h2,
 }
 .match-row {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
   column-gap: var(--space-8);
   padding: var(--space-4) var(--space-8);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   font: var(--type-footnote);
+}
+.match-row.is-hover {
+  background: var(--fill-hover);
+}
+.match-row.is-cursor {
+  box-shadow: inset 0 0 0 2px var(--focus);
 }
 .match-row .pg {
   color: var(--text-secondary);
@@ -4421,7 +4428,7 @@ h2,
   overflow: hidden;
 }
 .match-more {
-  padding: var(--space-4) var(--space-8) 0;
+  padding: var(--space-4) 0 0;
   color: var(--text-tertiary);
   font: var(--type-footnote);
 }
@@ -4432,9 +4439,10 @@ h2,
 .kv dd.status {
   white-space: normal;
   color: var(--text-secondary);
-  font: var(--type-footnote);
+  font: var(--type-body);
 }
 .empty-state .hints .row.formats {
-  max-width: 300px; /* local: the formats line is about 440 wide; at this width it breaks after 동영상, in every window */
+  max-width: 520px; /* local: as wide as the description above, so the line stays on one line */
   text-align: center;
+  text-wrap: balance;
 }

@@ -183,10 +183,7 @@ window.Mockup = (() => {
       const parent = row.closest('.menu').getBoundingClientRect();
       const host = sub.offsetParent.getBoundingClientRect();
       sub.style.top = `${Math.round(r.top - host.top - 5)}px`;
-      // Beside the parent; on the left of it when there is no room on the right (a menu opened near the window's edge).
-      let left = parent.right - host.left - 2;
-      if (left + sub.offsetWidth > host.width - 4) left = parent.left - host.left - sub.offsetWidth + 2;
-      sub.style.left = `${Math.round(left)}px`;
+      sub.style.left = `${Math.round(parent.right - host.left - 2)}px`;
     }
   }
 

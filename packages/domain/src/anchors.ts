@@ -63,7 +63,7 @@ export const webAnchor = z.object({
 });
 
 export const slideAnchor = z.object({
-  kind: z.literal('slide'),
+  kind: z.literal('slides'),
   revisionId: z.uuid(),
   derivedRevisionId: z.uuid(),
   slideIndex: z.number().int().min(0),

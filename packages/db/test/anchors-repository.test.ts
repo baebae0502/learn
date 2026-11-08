@@ -32,7 +32,7 @@ describe('AnchorsRepository', () => {
     const { revisionId } = seedItem(db);
     const repo = new AnchorsRepository(db);
     const video: SourceAnchor = { kind: 'video', revisionId, startMs: 0, endMs: 10 };
-    const slide: SourceAnchor = { kind: 'slide', revisionId, derivedRevisionId: newId(), slideIndex: 0, quads: [] };
+    const slide: SourceAnchor = { kind: 'slides', revisionId, derivedRevisionId: newId(), slideIndex: 0, quads: [] };
     expect(repo.get(repo.create(video).id)?.anchor).toEqual(video);
     const s = repo.create(slide);
     expect(repo.get(s.id)?.anchor).toEqual(slide);

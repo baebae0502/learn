@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { bodyQueryWords, MARK_END, MARK_START } from '@learn/domain';
-import { LibraryRepository, bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '../src/index';
+import { LIKE_CHUNK_SQL, LibraryRepository, bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -88,5 +88,16 @@ describe('bodyLikeChunks', () => {
     expect(chunks).toHaveLength(Math.ceil(7 / 2));
     expect(new Set(chunks.flat())).toEqual(new Set([a.itemId, b.itemId]));
     expect(new Set(chunks.flat())).toEqual(new Set([...bodyLikeChunks(db, ['형광'])].flat()));
+  });
+});
+
+describe('bodyLikeChunks plan', () => {
+  it('scans page_texts by its id range first and reaches the items through the sha', () => {
+    const a = seedItem(db);
+    put(a.asset.sha256, 0, '형광');
+    expect([...bodyLikeChunks(db, ['형광'])].flat()).toEqual([a.itemId]); // positive control: the query answers
+    const plan = (db.prepare(`EXPLAIN QUERY PLAN ${LIKE_CHUNK_SQL(1)}`).all(0, 10, '%형광%') as Array<{ detail: string }>).map((r) => r.detail);
+    expect(plan[0]).toMatch(/SEARCH p USING INTEGER PRIMARY KEY \(rowid>\? AND rowid<=?\?\)/);
+    expect(plan.join('\n')).toMatch(/SEARCH a USING (COVERING )?INDEX assets_sha256/);
   });
 });

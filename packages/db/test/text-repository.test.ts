@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { extractKey } from '@learn/domain';
-import { LibraryRepository, TextRepository, type Db } from '../src/index';
+import { LibraryRepository, NEXT_JOB_SQL, TextRepository, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -122,11 +122,16 @@ describe('stateOf', () => {
     expect(texts.stateOf(sha)).toEqual({ state: 'pending' });
     texts.backfill(T(1));
     expect(texts.stateOf(sha)).toEqual({ state: 'pending' });
-    setPayload(sha, { nextPage: 12, pages: 12, chars: 500 }, 'done');
+    // pages (the document's count) differs from nextPage (the pages read): the state counts the pages read
+    setPayload(sha, { nextPage: 12, pages: 40, chars: 500 }, 'done');
     expect(texts.stateOf(sha)).toEqual({ state: 'done', pages: 12, truncated: false });
     setPayload(sha, { chars: 50 });
     expect(texts.stateOf(sha)).toEqual({ state: 'empty', pages: 12 });
-    setPayload(sha, { truncated: true });
+    setPayload(sha, { chars: 130 }); // 130 >= 10 x 12 (done by pages read), < 10 x 40 (empty by the document count)
+    expect(texts.stateOf(sha)).toEqual({ state: 'done', pages: 12, truncated: false });
+    setPayload(sha, { nextPage: 0, pages: 0, chars: 0 }); // nothing read: at least one page's worth is needed
+    expect(texts.stateOf(sha)).toEqual({ state: 'empty', pages: 0 });
+    setPayload(sha, { nextPage: 12, pages: 40, chars: 50, truncated: true });
     expect(texts.stateOf(sha)).toEqual({ state: 'done', pages: 12, truncated: true });
     setPayload(sha, {}, 'failed', 'locked');
     expect(texts.stateOf(sha)).toEqual({ state: 'failed', reason: 'locked' });
@@ -170,5 +175,56 @@ describe('lookups', () => {
     new LibraryRepository(db).trash([a.itemId, dup.itemId]);
     expect(texts.hasLiveItem(a.asset.sha256)).toBe(false);
     expect(texts.itemIdsOfSha(a.asset.sha256).sort()).toEqual([a.itemId, dup.itemId].sort());
+  });
+});
+
+describe('finish', () => {
+  it('marks only a running job done: a late finish after a release or a stop changes nothing', () => {
+    const { sha, jobId } = running();
+    texts.writePages(jobId, 0, ['x'.repeat(200)], T(2));
+    texts.release(jobId, T(2));
+    texts.finish(jobId, { pages: 1, truncated: false }, T(3));
+    expect(texts.jobs()[0]).toMatchObject({ state: 'queued' });
+    expect(texts.stateOf(sha)).toEqual({ state: 'pending' });
+    texts.start(jobId, T(3)); // positive control: while it runs, finish works
+    texts.finish(jobId, { pages: 1, truncated: false }, T(3));
+    expect(texts.jobs()[0]).toMatchObject({ state: 'done' });
+    texts.fail(jobId, 'damaged', T(4));
+    texts.finish(jobId, { pages: 1, truncated: false }, T(5));
+    expect(texts.stateOf(sha)).toEqual({ state: 'failed', reason: 'damaged' });
+  });
+});
+
+describe('backfill order and plan', () => {
+  it('stamps a job with its newest PDF item, trashed ones included, so next() goes newest first', () => {
+    const old = seedItem(db, { sha: '1'.repeat(64) });
+    const older = seedItem(db, { sha: '2'.repeat(64) });
+    const trashed = seedItem(db, { sha: '3'.repeat(64) });
+    db.prepare('UPDATE items SET created_at = ? WHERE id = ?').run(T(2), old.itemId);
+    db.prepare('UPDATE items SET created_at = ? WHERE id = ?').run(T(1), older.itemId);
+    const dup = seedItem(db, { reuseAsset: old.asset }); // a later item of the first file lifts its job
+    db.prepare('UPDATE items SET created_at = ? WHERE id = ?').run(T(3), dup.itemId);
+    db.prepare('UPDATE items SET created_at = ? WHERE id = ?').run(T(2), trashed.itemId);
+    new LibraryRepository(db).trash([trashed.itemId]);
+    expect(texts.backfill(T(9))).toBe(3); // positive control: the trashed PDF has its job too
+    expect(db.prepare('SELECT dedupe_key, created_at, updated_at FROM jobs ORDER BY created_at').all()).toEqual([
+      { dedupe_key: extractKey('2'.repeat(64)), created_at: T(1), updated_at: T(9) },
+      { dedupe_key: extractKey('3'.repeat(64)), created_at: T(2), updated_at: T(9) },
+      { dedupe_key: extractKey('1'.repeat(64)), created_at: T(3), updated_at: T(9) },
+    ]);
+    const made = seedItem(db, { sha: '4'.repeat(64) }); // one queued by an import, newest
+    db.prepare(`INSERT INTO jobs (id, kind, dedupe_key, state, payload_json, created_at, updated_at) VALUES ('imp', 'extract', ?, 'queued', ?, ?, ?)`)
+      .run(extractKey(made.asset.sha256), JSON.stringify({ sha256: made.asset.sha256, type: 'pdf', nextPage: 0, pages: null, chars: 0, truncated: false }), T(5), T(5));
+    const order: string[] = [];
+    const skip = new Set<string>();
+    for (let job = texts.next(skip); job; job = texts.next(skip)) { order.push(job.sha256); skip.add(job.sha256); }
+    expect(order).toEqual(['4'.repeat(64), '1'.repeat(64), '2'.repeat(64)]); // the trashed file's job waits
+  });
+
+  it('looks each job up by the sha index, never scanning the assets per job', () => {
+    seedItem(db);
+    const plan = (db.prepare(`EXPLAIN QUERY PLAN ${NEXT_JOB_SQL}`).all() as Array<{ detail: string }>).map((r) => r.detail).join('\n');
+    expect(plan).toMatch(/SEARCH a USING (COVERING )?INDEX assets_sha256/);
+    expect(plan).not.toMatch(/SCAN a\b/);
   });
 });

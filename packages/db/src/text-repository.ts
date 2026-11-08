@@ -5,12 +5,22 @@ export interface ExtractJob { id: string; sha256: string; payload: ExtractPayloa
 
 interface JobRow { id: string; state: string; attempts: number; error: string | null; payload_json: string }
 
+/** Where the sha starts in a dedupe key (1-based), so a job's sha can be matched against the indexed assets column. */
+const SHA_AT = extractKey('#').indexOf('#') + 1;
 const KEY_SUFFIX = `:${PDF_TEXT_EXTRACTOR}`;
 /** The jobs of this extractor version; an older version's jobs are never touched. */
 const THIS_VERSION = `kind = 'extract' AND dedupe_key LIKE 'extract:%${KEY_SUFFIX}'`;
 /** The PDF items that are not in the trash, with the sha of their original file. */
 const LIVE_PDFS = `FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
                    JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf' AND i.deleted_at IS NULL`;
+
+/** The queued jobs, newest first, whose file still has a PDF outside the trash (exported for its query-plan test). */
+export const NEXT_JOB_SQL = `SELECT j.id, j.state, j.attempts, j.error, j.payload_json FROM jobs j
+  WHERE j.state = 'queued' AND j.${THIS_VERSION.replace(/ AND /, ' AND j.')}
+    AND EXISTS (SELECT 1 FROM assets a JOIN item_assets ia ON ia.asset_id = a.id AND ia.role = 'original'
+         JOIN items i ON i.id = ia.item_id AND i.type = 'pdf' AND i.deleted_at IS NULL
+         WHERE a.sha256 = substr(j.dedupe_key, ${SHA_AT}, 64))
+  ORDER BY j.created_at DESC, j.rowid DESC`;
 
 const parse = (row: JobRow): ExtractPayload => JSON.parse(row.payload_json) as ExtractPayload;
 const toJob = (row: JobRow): ExtractJob => {
@@ -34,18 +44,18 @@ export class TextRepository {
   /** One job per PDF file content that has none yet, older libraries included. Returns how many were added. */
   backfill(now: string): number {
     return this.db.transaction((): number => {
-      const shas = this.db
-        .prepare(`SELECT DISTINCT a.sha256 FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
-                  JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf' ORDER BY a.sha256`)
-        .pluck()
-        .all() as string[];
+      const files = this.db
+        .prepare(`SELECT a.sha256, MAX(i.created_at) AS created FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+                  JOIN assets a ON a.id = ia.asset_id WHERE i.type = 'pdf' GROUP BY a.sha256 ORDER BY created, a.sha256`)
+        .all() as Array<{ sha256: string; created: string }>;
       const insert = this.db.prepare(
-        `INSERT OR IGNORE INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at) VALUES (?, 'extract', ?, 'queued', 0, ?, ?, ?)`,
+        `INSERT INTO jobs (id, kind, dedupe_key, state, attempts, payload_json, created_at, updated_at) VALUES (?, 'extract', ?, 'queued', 0, ?, ?, ?)
+         ON CONFLICT(dedupe_key) DO NOTHING`,
       );
       let added = 0;
-      for (const sha256 of shas) {
+      for (const { sha256, created } of files) {
         const payload: ExtractPayload = { sha256, type: 'pdf', nextPage: 0, pages: null, chars: 0, truncated: false };
-        added += insert.run(newId(), extractKey(sha256), JSON.stringify(payload), now, now).changes;
+        added += insert.run(newId(), extractKey(sha256), JSON.stringify(payload), created, now).changes;
       }
       return added;
     })();
@@ -58,14 +68,7 @@ export class TextRepository {
   /** The newest queued job whose file still has a PDF outside the trash. */
   next(skip?: ReadonlySet<string>): ExtractJob | undefined {
     const rows = this.db
-      .prepare(
-        `SELECT j.id, j.state, j.attempts, j.error, j.payload_json FROM jobs j
-         WHERE j.state = 'queued' AND j.${THIS_VERSION.replace(/ AND /, ' AND j.')}
-           AND EXISTS (SELECT 1 FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
-                       JOIN assets a ON a.id = ia.asset_id
-                       WHERE i.type = 'pdf' AND i.deleted_at IS NULL AND j.dedupe_key = 'extract:' || a.sha256 || '${KEY_SUFFIX}')
-         ORDER BY j.created_at DESC, j.rowid DESC`,
-      )
+      .prepare(NEXT_JOB_SQL)
       .iterate() as Iterable<JobRow>;
     for (const row of rows) {
       const job = toJob(row);
@@ -123,9 +126,10 @@ export class TextRepository {
     })();
   }
 
+  /** Marks a running job done; a job that was stopped or released meanwhile stays as it is. */
   finish(jobId: string, r: { pages: number; truncated: boolean }, now: string): void {
     const row = this.row(jobId);
-    if (!row) return;
+    if (!row || row.state !== 'running') return;
     const payload: ExtractPayload = { ...parse(row), pages: r.pages, truncated: r.truncated };
     this.db.prepare(`UPDATE jobs SET state = 'done', progress = 1, error = NULL, payload_json = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(payload), now, jobId);
   }
@@ -153,8 +157,8 @@ export class TextRepository {
     if (row.state === 'failed') return isFailure(row.error) ? { state: 'failed', reason: row.error } : { state: 'failed', reason: 'damaged' };
     if (row.state !== 'done') return { state: 'pending' };
     const payload = parse(row);
-    const pages = payload.pages ?? payload.nextPage;
-    if (!payload.truncated && payload.chars < pages * TEXT_LIMITS.emptyPerPage) return { state: 'empty', pages };
+    const pages = payload.nextPage;
+    if (!payload.truncated && payload.chars < TEXT_LIMITS.emptyPerPage * Math.max(1, pages)) return { state: 'empty', pages };
     return { state: 'done', pages, truncated: payload.truncated };
   }
 

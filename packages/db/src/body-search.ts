@@ -5,6 +5,8 @@ import type { Db } from './connection';
 const LIVE_JOIN = `JOIN assets a ON a.sha256 = p.sha256
   JOIN item_assets ia ON ia.asset_id = a.id AND ia.role = 'original'
   JOIN items i ON i.id = ia.item_id AND i.deleted_at IS NULL AND i.type = 'pdf'`;
+/** The same join with the order fixed: page_texts is the outer loop, so an id range reads only its own rows. */
+const CHUNK_JOIN = LIVE_JOIN.replace(/\bJOIN\b/g, 'CROSS JOIN');
 const LIKE_CLAUSE = " AND p.text LIKE ? ESCAPE '\\'";
 
 /** The items with a page that holds every word: one page must have them all. */
@@ -15,12 +17,14 @@ export function bodyItemIds(db: Db, words: BodyWords): string[] {
 }
 
 /** Two-letter words cannot use the index: the table is scanned in id ranges so the caller can yield between them. */
+/** The statement of one id range (exported for its query-plan test). */
+export const LIKE_CHUNK_SQL = (likes: number): string =>
+  `SELECT DISTINCT i.id FROM page_texts p ${CHUNK_JOIN} WHERE p.id > ? AND p.id <= ?${LIKE_CLAUSE.repeat(likes)}`;
+
 export function* bodyLikeChunks(db: Db, like: readonly string[], chunk: number = TEXT_LIMITS.likeChunk): Generator<string[], void, void> {
   if (like.length === 0) return;
   const max = (db.prepare('SELECT MAX(id) FROM page_texts').pluck().get() as number | null) ?? 0;
-  const stmt = db.prepare(
-    `SELECT DISTINCT i.id FROM page_texts p ${LIVE_JOIN} WHERE p.id > ? AND p.id <= ?${LIKE_CLAUSE.repeat(like.length)}`,
-  );
+  const stmt = db.prepare(LIKE_CHUNK_SQL(like.length));
   const patterns = like.map(likePattern);
   for (let lo = 0; lo < max; lo += chunk) yield stmt.pluck().all(lo, lo + chunk, ...patterns) as string[];
 }

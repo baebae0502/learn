@@ -441,6 +441,18 @@ describe('hold (E2E)', () => {
 });
 
 describe('the trash, restore and purge (spec 5.7)', () => {
+  it('a change of the PDF counts asks for the index progress even when no job runs; another change does not', async () => {
+    const r = rig([]);
+    expect(r.progress.request).toBe(0);
+    for (const [k, reason] of (['trash', 'restore', 'purge', 'import'] as const).entries()) {
+      r.s.libraryChanged(reason);
+      expect(r.progress.request, reason).toBe(k + 1);
+    }
+    r.s.libraryChanged('metadata');
+    r.s.libraryChanged('collections');
+    expect(r.progress.request).toBe(4);
+  });
+
   it('trashing the last live PDF stops the job and leaves it queued; restoring continues from nextPage', async () => {
     const a = addPdf(1);
     const r = rig([reads(100), reads(100)]);

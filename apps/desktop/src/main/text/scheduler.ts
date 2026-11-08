@@ -10,7 +10,7 @@ export interface TextScheduler {
   startupChecked(): void;
   /** An import ended, an item came back from the trash, or the work line emptied. */
   wake(): void;
-  /** The trash, a restore or a purge: a running job whose file has no live PDF left is stopped. */
+  /** The trash, a restore, a purge or an import: the index progress is asked for again; a running job whose file has no live PDF left is stopped. */
   libraryChanged(reason: LibraryChangeReason): void;
   /** E2E: 'now' skips the five seconds but still waits for the startup check. */
   control(mode: 'pause' | 'resume' | 'now'): void;
@@ -249,6 +249,9 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     },
     libraryChanged(reason) {
       if (disposed) return;
+      // The PDF counts of the index progress moved (a file in or out of the trash, imported, purged), whether or not a job runs.
+      if (reason === 'trash' || reason === 'restore' || reason === 'purge' || reason === 'import') d.progress();
+      if (reason === 'import') return;
       if (reason === 'restore') {
         dirty = true;
         // Not inside the handler of the restore that announced it.

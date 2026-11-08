@@ -261,7 +261,7 @@ onBroadcast((e) => {
 onBroadcast((e) => {
   if (!text || e.name !== 'libraryChanged') return;
   const reason = e.payload.reason;
-  if (reason === 'trash' || reason === 'restore' || reason === 'purge') text.libraryChanged(reason);
+  if (reason === 'trash' || reason === 'restore' || reason === 'purge' || reason === 'import') text.libraryChanged(reason);
 });
 
 let nativeMenuOpen = false;
@@ -676,6 +676,7 @@ if (!app.requestSingleInstanceLock()) {
       // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
       prepareSettings: () => {
         settingsWindow.prepare();
+        if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
         firstScreenDrawn();
         text?.firstIdle();
       },

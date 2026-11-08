@@ -10,6 +10,8 @@
 | `paper-100.pdf` | pdf-lib, A4 100쪽, 두 단 Helvetica 10/13, 1쪽 첫 줄에 번역 시험 문장 넷, 2쪽 줄 끝 하이픈, 쪽 안·밖 링크 5개(쪽 50·100, https, mailto, 쪽 40의 한 점 x 56·y 600을 가리키는 "See figure 2 on page 40." — 쪽 40의 그 점에 "Figure 2" 상자), 장·절·소절 3단 목차 | 리더 스크롤·글 선택·링크·목차 |
 | `long-outline.pdf` | pdf-lib, 6쪽, 부 60개 × 소제목 4개 = 목차 300항목 | 긴 목차의 가상 목록 |
 | `korean.pdf` | pdf-lib + `@pdf-lib/fontkit`, Pretendard 가변 글꼴 전체 포함(`subset: false`), 3쪽(NFC · NFD · 한영 두 단) | 글 레이어의 한국어(글리프는 pdf.js가 그리지 못하고 글 내용과 폭만 맞다) |
+| `no-text.pdf` | pdf-lib, 2쪽, 도형(사각형·원)만 — 글 없음 | 본문 색인: '글자 없음' 상태 |
+| `search-30.pdf` | pdf-lib, Helvetica 30쪽, 쪽마다 `Page N: fluorescence signal transduction`과 Pretendard 가변 글꼴 전체 포함(`subset: false`)의 `형광 현미경 관찰 기록 N` | 본문 검색(영어·한국어 낱말, 쪽 번호) |
 | `locked.pdf` | `fixtures/static/locked.pdf` 복사(mutool로 한 번 만든 암호 `learn`, 명령은 `fixtures/static/README.md`) | 암호 입력 |
 | `transparent.png` `orient6.jpg` `alpha.webp` `two-frames.gif` `still.avif` | `fixtures/static/images/`의 같은 이름 복사 | 이미지 가져오기·읽기(E2E) |
 | `png-named.jpg` | `static/images/transparent.png`의 사본(확장자만 `.jpg`) | 확장자가 틀려도 머리로 가려냄 |

@@ -1,10 +1,12 @@
 // First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
 // performance.timeOrigin either way).
 import { markPerf } from './perf';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreferences, webContents, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
+import { resolveAssetPath } from '@learn/library';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
   type ErrorCode, type OrganizeSnapshot,
@@ -27,6 +29,7 @@ import { createRestoreJob } from './jobs/restore-job';
 import { createDuplicateAsker } from './jobs/duplicate-asker';
 import { createImportQueue } from './jobs/import-queue';
 import { createJobLane } from './jobs/lane';
+import { createThrottle } from './jobs/throttle';
 import { createQuitGuard, type QuitGuard } from './jobs/quit-guard';
 import { createLibrarySwitch, refuseLinkedInside, type LibrarySwitch } from './library-folder';
 import { createCheckSheets, startLibraryCheck, type AutoOutcome } from './library-check';
@@ -41,6 +44,7 @@ import { createSheetHost, sheetHeightKey, shortcutsDigest } from './sheets';
 import { mainStrings } from './strings';
 import { createTextExtractor } from './text/extractor';
 import { forkTextWorker, pdfjsAssetsDir } from './text/fork';
+import { createTextScheduler, type TextScheduler } from './text/scheduler';
 import { installTestHooks } from './test-hooks';
 import { applyTheme, currentTheme, onThemeChange } from './theme';
 import { createThemeFollower, shownPages, type ThemeMark } from './theme-follow';
@@ -91,6 +95,8 @@ const chrome = (): ChromeOptions => ({ platform: process.platform, theme: curren
 registerAppScheme();
 
 let ctx: LibraryContext | null = null;
+/** The body-text scheduler, made once the library is open (null before, and when it did not open). */
+let text: TextScheduler | null = null;
 let libraryError: { code: ErrorCode; message: string } | null = null;
 let mainWindow: BrowserWindow | null = null;
 
@@ -244,6 +250,13 @@ const menuRebuild = createMenuRebuilder(() => {
 // The collections and tags main announces change the menu bar's submenus, when it has any that list them.
 onBroadcast((e) => {
   if (menuUsesOrganize && e.name === 'libraryChanged' && (e.payload.reason === 'collections' || e.payload.reason === 'tags')) menuRebuild.request();
+});
+
+// The trash, a restore and a purge change what the body-text worker may read (spec 5.7).
+onBroadcast((e) => {
+  if (!text || e.name !== 'libraryChanged') return;
+  const reason = e.payload.reason;
+  if (reason === 'trash' || reason === 'restore' || reason === 'purge') text.libraryChanged(reason);
 });
 
 let nativeMenuOpen = false;
@@ -447,11 +460,41 @@ if (!app.requestSingleInstanceLock()) {
       },
       announce: (itemIds) => broadcast('libraryChanged', { reason: 'import', itemIds }),
     });
+    // Body text (spec 5.1): one file at a time while the work line is free, from the window's first idle on.
+    if (ctx) {
+      const openCtx = ctx;
+      const indexProgress = createThrottle(() => broadcast('search:progress', openCtx.text.progress()), 1000);
+      text = createTextScheduler({
+        repo: () => (openCtx.db.open ? openCtx.text : null),
+        extractor: textExtractor,
+        laneBusy: () => jobs.busy() !== null,
+        laneIdle: () => jobs.idle(),
+        // The managed copy first (findAssetsBySha orders them so): the first copy that is there and readable.
+        file: (sha256) => {
+          for (const asset of openCtx.repo.findAssetsBySha(sha256)) {
+            if (asset.availability !== 'available') continue;
+            try {
+              const file = resolveAssetPath(openCtx.layout, asset);
+              if (fs.existsSync(file)) return file;
+            } catch {
+              // A path that cannot be resolved is a copy that is not there.
+            }
+          }
+          return null;
+        },
+        assetsDir: pdfjsAssetsDir(here),
+        announce: (itemIds) => broadcast('libraryChanged', { reason: 'text', itemIds }),
+        progress: () => indexProgress.request(),
+        progressNow: () => indexProgress.flush(),
+        paused: isE2E(app.isPackaged, process.env) && process.env['LEARN_TEXT_EXTRACTION'] !== 'run',
+      });
+    }
     // Every window hears the queue (the progress toast, the busy screen); 기존 자료 열기 opens in the window it was
     // answered on, which may not be the one that put the file in (spec 3.4).
     imports.onProgress((state) => broadcast('import:progress', state));
     imports.onFinished((report, openIn) => {
       broadcast('import:finished', { report });
+      text?.wake();
       if (report.openItemId === null || openIn === null) return;
       const contents = webContents.fromId(openIn);
       if (contents && !contents.isDestroyed()) sendEvent(contents, 'item:openRequested', { itemId: report.openItemId });
@@ -626,6 +669,7 @@ if (!app.requestSingleInstanceLock()) {
       prepareSettings: () => {
         settingsWindow.prepare();
         firstScreenDrawn();
+        text?.firstIdle();
       },
       switchLibrary,
     };
@@ -662,7 +706,16 @@ if (!app.requestSingleInstanceLock()) {
           return { db: ctx.db, collections: ctx.collections, tags: ctx.tags };
         },
         broadcast,
-        text: { extractor: textExtractor, assetsDir: pdfjsAssetsDir(here) },
+        text: {
+          extractor: textExtractor,
+          assetsDir: pdfjsAssetsDir(here),
+          scheduler: () => text,
+          repo: () => deps.getContext().text,
+          shaOf: (itemId) => {
+            const item = ctx?.repo.getItem(itemId);
+            return (item && ctx?.repo.getAsset(item.assetId)?.sha256) || null;
+          },
+        },
         translation: fakeTranslation ?? undefined,
         translationNet: translationNet ?? undefined,
         imports: { importer: () => getContext().importer, queue: imports, mainWindowId: () => liveMainWindow()?.webContents.id ?? null, lane: jobs },
@@ -691,6 +744,7 @@ if (!app.requestSingleInstanceLock()) {
       void startLibraryCheck(ctx, {
         announce: announceAvailability,
         requestAuto: requestAutoCheck,
+        onChecked: () => text?.startupChecked(),
         gate: {
           firstScreen,
           busy: () => {
@@ -740,7 +794,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('will-quit', () => {
     applyLibrarySwitch();
     checkStopped = true;
-    textExtractor.dispose();
+    // The worker first, the database after: a running job stays 'running' and the next startup check interrupts it.
+    if (text) text.dispose();
+    else textExtractor.dispose();
     menuRebuild.cancel();
     if (ctx?.db.open) ctx.db.close();
   });

@@ -78,6 +78,8 @@ export interface StartCheckDeps {
   requestAuto(): void;
   gate: AutoGate;
   pollMs?: number;
+  /** The first check ended, whatever came of it: the jobs it found running are interrupted, so the body-text scheduler may wake (P-29). */
+  onChecked?(): void;
 }
 
 /**
@@ -87,7 +89,12 @@ export interface StartCheckDeps {
  */
 export async function startLibraryCheck(ctx: CheckContext, deps: StartCheckDeps): Promise<AutoOutcome> {
   markPerf('checkStart');
-  let check = await runCheck(ctx, deps.announce, { startup: true });
+  let check: LibraryCheck;
+  try {
+    check = await runCheck(ctx, deps.announce, { startup: true });
+  } finally {
+    deps.onChecked?.();
+  }
   markPerf('checkEnd');
   const { go, waited } = await clearToShow(deps.gate, deps.pollMs);
   if (!go) return 'stopped';

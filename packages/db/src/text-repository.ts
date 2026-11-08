@@ -143,6 +143,13 @@ export class TextRepository {
     this.db.prepare(`UPDATE jobs SET state = 'queued', updated_at = ? WHERE id = ? AND state = 'running'`).run(now, jobId);
   }
 
+  /** Back to the queue and the attempt given back: the run was stopped by the trash, not by a failure (spec 5.7). */
+  requeue(jobId: string, now: string): void {
+    this.db
+      .prepare(`UPDATE jobs SET state = 'queued', attempts = MAX(attempts - 1, 0), updated_at = ? WHERE id = ? AND state = 'running'`)
+      .run(now, jobId);
+  }
+
   hasLiveItem(sha256: string): boolean {
     return (
       this.db

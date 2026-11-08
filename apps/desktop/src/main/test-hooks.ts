@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { TEXT_LIMITS, newId, nowIso, type ImportQueueState, type JobProgress, type LibraryCheck, type ImportReport, type LearnEventMap, type StorageMode, type TagColorId } from '@learn/domain';
-import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository } from '@learn/db';
+import { SqliteError, type CollectionsRepository, type Db, type LibraryRepository, type TagsRepository, type TextRepository } from '@learn/db';
 import { fsyncDir, fsyncFile, managedRelativePath, type ImportHooks, type Importer, type LibraryLayout } from '@learn/library';
 import type { BackupJob } from './jobs/backup-job';
 import type { RestoreJob } from './jobs/restore-job';
@@ -11,6 +11,8 @@ import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
 import type { AutoOutcome } from './library-check';
 import type { ExtractOutcome, TextExtractor } from './text/extractor';
+import { seedBodyText, type SeedBodyTextInput } from './text/seed-body-text';
+import type { TextScheduler } from './text/scheduler';
 import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
 import type { RecordedRequest, TranslationNetIntercept } from './translation/net-intercept';
@@ -430,6 +432,19 @@ export interface LearnTestHooks {
   requestLibraryCheck(): Promise<void>;
   /** Reads one PDF's body text through the app's worker and returns what it sent; nothing is written to the library. */
   extractFile(input: { file: string; startPage?: number; limits?: Partial<ExtractLimits> }): Promise<{ outcome: ExtractOutcome; opened: number | null; batches: Array<{ from: number; texts: string[] }> }>;
+  /** PDF items with their body text already stored (J31): `docs` × `pages` pages of `chars` characters, finished jobs. */
+  seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+  /** The body-text scheduler starts paused under E2E: 'resume' runs it after its usual delay, 'now' without the delay (the startup check is still waited for). */
+  textExtraction(mode: 'pause' | 'resume' | 'now'): void;
+  /** Resolves when no PDF outside the trash has a queued job and nothing runs. */
+  textIdle(): Promise<void>;
+  /** How many pages of text are stored for an item's file, or for a file content. */
+  pageTextCount(input: { itemId: string } | { sha256: string }): number;
+  textJobs(): ReturnType<TextRepository['jobs']>;
+  /** Holds the write of the next batch once a job has written `afterPages` pages or more; null lets go and forgets. */
+  textHold(input: { afterPages: number | null }): void;
+  textHeld(): boolean;
+  textStats(): ReturnType<TextScheduler['stats']>;
   /** Sets how the fake translation engine answers (E2E always runs on it). */
   translationFake(mode: FakeMode): void;
   /** How many requests the fake translation engine has taken since launch (a cache hit or a refusal takes none). */
@@ -464,7 +479,15 @@ export function installTestHooks(deps: {
   /** The library check (index.ts); absent in tests that do not use it. */
   check?: { state(): { check: LibraryCheck | null; auto: AutoOutcome | 'pending' }; request(): Promise<void> };
   /** The body-text extractor and the folder of pdf.js's data it reads (index.ts); absent in tests that do not extract. */
-  text?: { extractor: TextExtractor; assetsDir: string };
+  text?: {
+    extractor: TextExtractor;
+    assetsDir: string;
+    /** The scheduler (null while the library is not open) and the library's text repository. */
+    scheduler?(): TextScheduler | null;
+    repo?(): TextRepository;
+    /** The sha256 of an item's original file, or null. */
+    shaOf?(itemId: string): string | null;
+  };
   /** The fake translation engine (index.ts, E2E only). */
   translation?: { setMode(mode: FakeMode): void; calls(): number };
   /** The test's translation host (index.ts, E2E with LEARN_TRANSLATION_NET=intercept only). */
@@ -492,6 +515,15 @@ export function installTestHooks(deps: {
   const queue = () => {
     if (!imports) throw new Error('installTestHooks: no import queue');
     return imports;
+  };
+  const textScheduler = (): TextScheduler => {
+    const s = deps.text?.scheduler?.();
+    if (!s) throw new Error('text hooks: no body-text scheduler');
+    return s;
+  };
+  const textRepo = (): TextRepository => {
+    if (!deps.text?.repo) throw new Error('text hooks: no text repository');
+    return deps.text.repo();
   };
   let heldJob: (() => void) | null = null;
   let backupHeld: { file: string; go: () => void } | null = null;
@@ -543,6 +575,23 @@ export function installTestHooks(deps: {
       );
       return { outcome, opened, batches };
     },
+    seedBodyText(input) {
+      if (!deps.seedFiles) throw new Error('seedBodyText: no library to seed');
+      const out = seedBodyText(deps.seedFiles(), input);
+      deps.broadcast('libraryChanged', { reason: 'import' });
+      return out;
+    },
+    textExtraction: (mode) => textScheduler().control(mode),
+    textIdle: () => textScheduler().idle(),
+    pageTextCount(input) {
+      const sha256 = 'sha256' in input ? input.sha256 : deps.text?.shaOf?.(input.itemId);
+      if (!sha256) throw new Error('pageTextCount: unknown item');
+      return textRepo().pageCount(sha256);
+    },
+    textJobs: () => textRepo().jobs(),
+    textHold: ({ afterPages }) => textScheduler().hold(afterPages),
+    textHeld: () => textScheduler().held(),
+    textStats: () => textScheduler().stats(),
     importPause: ({ at }) => pause.pause(at),
     importResume: () => pause.resume(),
     importWaiting: () => pause.waiting(),

@@ -261,6 +261,35 @@ async function makeKoreanCmap(file) {
   fs.writeFileSync(file, await doc.save());
 }
 
+// ---- no-text.pdf and search-30.pdf: body-text indexing (nothing to read; a long file with Latin and Korean on every page) ----
+
+/** Two pages of shapes and no text at all: a scan without a text layer reads as "empty". */
+async function makeNoText(file) {
+  const doc = await PDFDocument.create();
+  doc.setTitle('Learn fixture: shapes only');
+  for (let i = 1; i <= 2; i++) {
+    const page = doc.addPage([595, 842]);
+    page.drawRectangle({ x: 56, y: 560, width: 220 + i * 20, height: 120, borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 3 });
+    page.drawCircle({ x: 400, y: 300, size: 40 + i * 10, borderColor: rgb(0.5, 0.2, 0.2), borderWidth: 2 });
+  }
+  fs.writeFileSync(file, await doc.save());
+}
+
+/** 30 pages: "Page N: fluorescence signal transduction" in Helvetica and "형광 현미경 관찰 기록 N" in the whole Pretendard (as korean.pdf). */
+async function makeSearch30(file) {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const latin = await doc.embedFont(StandardFonts.Helvetica);
+  const korean = await doc.embedFont(fs.readFileSync(path.join(here, '../apps/desktop/src/renderer/src/design/fonts/PretendardVariable.woff2')), { subset: false });
+  doc.setTitle('Learn fixture: search 30');
+  for (let n = 1; n <= 30; n++) {
+    const page = doc.addPage([595, 842]);
+    page.drawText(`Page ${n}: fluorescence signal transduction`, { x: 56, y: 770, size: 14, font: latin });
+    page.drawText(`형광 현미경 관찰 기록 ${n}`, { x: 56, y: 740, size: 14, font: korean });
+  }
+  fs.writeFileSync(file, await doc.save());
+}
+
 // ffmpeg is only touched when a video fixture is actually missing, so a warm fixture dir needs no ffmpeg.
 const runFfmpeg = (args, opts) => {
   try {
@@ -283,6 +312,8 @@ if (need('paper-100.pdf')) await makePaper(path.join(out, 'paper-100.pdf'));
 if (need('long-outline.pdf')) await makeLongOutline(path.join(out, 'long-outline.pdf'));
 if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
 if (need('korean-cmap.pdf')) await makeKoreanCmap(path.join(out, 'korean-cmap.pdf'));
+if (need('no-text.pdf')) await makeNoText(path.join(out, 'no-text.pdf'));
+if (need('search-30.pdf')) await makeSearch30(path.join(out, 'search-30.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));
 

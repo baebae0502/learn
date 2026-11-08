@@ -10,6 +10,7 @@ import type { OrganizeSnapshot } from '../../packages/domain/src/organize';
 import { TAG_COLORS, type TagColorId } from '../../packages/domain/src/tag-colors';
 import { settingsContentHeight } from '../../apps/desktop/src/main/settings-geometry';
 import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResult } from '../../apps/desktop/src/main/test-hooks';
+import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 
 declare global {
@@ -1741,3 +1742,30 @@ export const extractFile = (
   app: ElectronApplication,
   input: Parameters<WithTextHooks['__learnTest']['extractFile']>[0],
 ): Promise<ExtractFileResult> => app.evaluate((_e, arg) => (globalThis as unknown as WithTextHooks).__learnTest.extractFile(arg), input);
+
+// ---- M7c body text scheduling (main/text/scheduler.ts, main/test-hooks.ts) -----------------------------------------------
+
+type TextJobRow = { sha256: string; state: string; attempts: number; nextPage: number; error: string | null };
+type WithTextSchedulerHooks = {
+  __learnTest: {
+    seedBodyText(input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] };
+    textExtraction(mode: 'pause' | 'resume' | 'now'): void;
+    textIdle(): Promise<void>;
+    pageTextCount(input: { itemId: string } | { sha256: string }): number;
+    textJobs(): TextJobRow[];
+    textHold(input: { afterPages: number | null }): void;
+    textHeld(): boolean;
+    textStats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
+  };
+};
+/** PDF items with their body text already stored (J31), without waiting for the worker; announces one import. */
+export const seedBodyText = (app: ElectronApplication, input: SeedBodyTextInput) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.seedBodyText(arg), input);
+/** Under E2E the body-text scheduler starts paused: 'now' runs it without the five-second delay (the startup check is still waited for). */
+export const textExtraction = (app: ElectronApplication, mode: 'pause' | 'resume' | 'now') => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textExtraction(arg), mode);
+/** Resolves when no PDF outside the trash has a queued job and nothing runs. */
+export const textIdle = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textIdle());
+export const pageTextCount = (app: ElectronApplication, input: { itemId: string } | { sha256: string }) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.pageTextCount(arg), input);
+export const textJobs = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textJobs());
+export const textHold = (app: ElectronApplication, afterPages: number | null) => app.evaluate((_e, arg) => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHold({ afterPages: arg }), afterPages);
+export const textHeld = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textHeld());
+export const textStats = (app: ElectronApplication) => app.evaluate(() => (globalThis as unknown as WithTextSchedulerHooks).__learnTest.textStats());

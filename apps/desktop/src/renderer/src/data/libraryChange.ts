@@ -20,6 +20,10 @@ export interface ChangeDeps {
   invalidateTrash(): void;
   invalidateItem(itemId: string): void;
   invalidateTexts(): void;
+  /** One item's detail (its body state is part of it), nothing else of the item. */
+  invalidateDetail(itemId: string): void;
+  /** The body search results (['search']): they are not under ['library']. */
+  invalidateBody(): void;
 }
 
 const same = (a: LibraryItem, b: LibraryItem): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -55,6 +59,7 @@ export function createChangeHandler(d: ChangeDeps): (change: LearnEventMap['libr
   const everything = (): void => {
     epoch += 1;
     d.invalidateAll();
+    d.invalidateBody();
   };
   return ({ reason, itemIds }) => {
     if (reason === 'collections' || reason === 'tags') {
@@ -63,6 +68,12 @@ export function createChangeHandler(d: ChangeDeps): (change: LearnEventMap['libr
       return;
     }
     const ids = itemIds === undefined ? [] : [...new Set(itemIds)];
+    // Body text moved on: the panel's state and the body matches change, no row of the list does.
+    if (reason === 'text') {
+      for (const id of ids) d.invalidateDetail(id);
+      d.invalidateBody();
+      return;
+    }
     if (!NARROW.has(reason) || ids.length === 0 || ids.length > NARROW_LIMIT || d.cached() === undefined || d.refetching()) {
       everything();
       return;

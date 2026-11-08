@@ -95,6 +95,8 @@ const onLibraryChanged = createChangeHandler({
     void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) });
   },
   invalidateTexts: () => void queryClient.invalidateQueries({ queryKey: keys.searchTexts }),
+  invalidateDetail: (itemId) => void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) }),
+  invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
 });
 export function useLibrarySync(): void {
   useLearnEvent('libraryChanged', onLibraryChanged);

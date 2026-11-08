@@ -10,7 +10,7 @@ const item = (id: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
 const LIST = [item('a'), item('b'), item('c')];
 
 function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; fresh?: (ids: string[]) => Promise<LibraryItem[]> } = {}) {
-  const calls = { all: 0, organize: 0, trash: 0, texts: 0, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
+  const calls = { all: 0, organize: 0, trash: 0, texts: 0, detail: [] as string[], body: 0, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
   let list: readonly LibraryItem[] | undefined = 'list' in over ? over.list : LIST;
   const deps: ChangeDeps = {
     cached: () => list,
@@ -28,12 +28,36 @@ function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; f
     invalidateTrash: () => void (calls.trash += 1),
     invalidateItem: (id) => void calls.items.push(id),
     invalidateTexts: () => void (calls.texts += 1),
+    invalidateDetail: (id) => void calls.detail.push(id),
+    invalidateBody: () => void (calls.body += 1),
   };
   return { handle: createChangeHandler(deps), calls, list: () => list };
 }
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 
 describe('the library list after a change notice (spec 10.3)', () => {
+  it('a text notice reads each item\'s detail and the body search again, and nothing else', async () => {
+    const { handle, calls } = setup();
+    handle({ reason: 'text', itemIds: ['a', 'b', 'a'] });
+    await settle();
+    expect(calls).toMatchObject({ detail: ['a', 'b'], body: 1, all: 0, organize: 0, trash: 0, texts: 0, items: [], getItems: [], put: [] });
+    handle({ reason: 'text' });
+    expect(calls).toMatchObject({ detail: ['a', 'b'], body: 2, all: 0 });
+  });
+
+  it('an import, trash, restore and purge notice read the body search again as well as the list', async () => {
+    for (const reason of ['import', 'trash', 'restore', 'purge'] as const) {
+      const { handle, calls } = setup();
+      handle({ reason, itemIds: ['a'] });
+      await settle();
+      expect(calls, reason).toMatchObject({ all: 1, body: 1 });
+    }
+    const { handle, calls } = setup();
+    handle({ reason: 'metadata', itemIds: ['a'] });
+    await settle();
+    expect(calls.body).toBe(0); // positive control: the others are not all that read it
+  });
+
   it('collections and tags read only the organize snapshot, whatever items they name; collections the trash view too', async () => {
     const { handle, calls } = setup();
     handle({ reason: 'tags', itemIds: ['a'] });

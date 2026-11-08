@@ -60,6 +60,20 @@ describe('next', () => {
   });
 });
 
+describe('requeue', () => {
+  it('gives the attempt back (release keeps it) and only for a running job', () => {
+    const { jobId } = running();
+    texts.release(jobId, T(2));
+    expect(texts.jobs()[0]).toMatchObject({ state: 'queued', attempts: 1 }); // positive control
+    texts.start(jobId, T(2));
+    expect(texts.jobs()[0]!.attempts).toBe(2);
+    texts.requeue(jobId, T(3));
+    expect(texts.jobs()[0]).toMatchObject({ state: 'queued', attempts: 1 });
+    texts.requeue(jobId, T(3));
+    expect(texts.jobs()[0]).toMatchObject({ state: 'queued', attempts: 1 }); // not running: nothing
+  });
+});
+
 describe('attempts and restarts', () => {
   it('counts an attempt at every start and gives up at the fourth', () => {
     const { sha, jobId } = running();

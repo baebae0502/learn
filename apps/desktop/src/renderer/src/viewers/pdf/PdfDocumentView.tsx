@@ -210,10 +210,13 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           if (args.allowNegativeOffset) return scrollPageIntoView(args);
           const keep = pointOf(args.destArray);
           jump(args, keep.top, keep.left);
-          // pdf.js takes a scroll in (the place a zoom keeps) only in the frame after its scroll event: a zoom before then kept the place
-          // from before the move and took the reader back there (Mac run 42451371771: ↓ at 125 %, 100 %, ↓ stayed on page 2). It is told
-          // now, as the restore, the modes and a quarter turn tell it after theirs.
-          viewer.update();
+          // pdf.js records the place a zoom keeps (its location) only in the frame after its scroll event: a zoom before then kept the
+          // place from before the move and took the reader back there (Mac run 42451371771: ↓ at 125 %, 100 %, ↓ stayed on page 2). The
+          // location is taken now, as its update() would take it — and only the location: update() also makes the most visible page the
+          // current one in a row or a spread, an earlier page at the document's end, where the stage cannot move, so the last page was
+          // never reached.
+          const { first } = viewer._getVisiblePages() as { first?: unknown };
+          if (first) viewer._updateLocation(first);
         };
         const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
           if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;

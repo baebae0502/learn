@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { Tag } from 'lucide-react';
 import { commandById, commandLabel } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
-import { useViewItems, useViewModel } from '../trash/useTrashSource';
-import { useScopeView } from '../library/useScopeView';
+import { useViewModel } from '../trash/useTrashSource';
+import { useScopeViewContext } from '../library/ScopeViewContext';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
@@ -14,8 +14,6 @@ import { viewCounts } from './tagCloud';
 import { focusTagStop } from './TagSelector';
 import { useTagsSelector } from './useTagsSelector';
 
-const NO_ITEMS: never[] = [];
-
 /**
  * The table body when the chosen tags leave no item and nothing is typed in the search (spec 3.6): the registry's
  * 태그 선택 해제 as its one button. The button goes with the state, so the focus moves to the selector's chips.
@@ -24,7 +22,7 @@ export function TagFilterEmpty() {
   const { run, isEnabled } = useCommands();
   const model = useViewModel();
   const filter = useLibrary((s) => s.tagFilter);
-  const { scoped } = useScopeView(useViewItems() ?? NO_ITEMS);
+  const { scoped } = useScopeViewContext();
   const { selector } = useTagsSelector();
   // The cloud's own order (colour slots, then the sort setting), so the line reads like the chips above it.
   const names = useMemo(

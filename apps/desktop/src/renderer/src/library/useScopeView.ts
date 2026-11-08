@@ -4,6 +4,7 @@ import { filterByTags } from '../organize/tagFilter';
 import type { OrganizeModel } from '../organize/model';
 import { resolveScope, scopeItems, scopeLabel, scopePath } from '../organize/scope';
 import { useLibrary } from '../state/library-store';
+import { countRender } from '../ui/renderCount';
 import { useViewModel } from '../trash/useTrashSource';
 import { useNow } from '../useNow';
 
@@ -22,11 +23,12 @@ export interface ScopeView {
 }
 
 /**
- * The first two steps of the table's rows (spec 3.1): the scope, then the tag filter — pure selectors over the snapshot,
+ * The window computes it once (MainWindow) and hands it down through ScopeViewContext. The first two steps of the table's rows (spec 3.1): the scope, then the tag filter — pure selectors over the snapshot,
  * no IPC. The quick search and the sort come after (useLibraryRows). `now` renews at midnight (useNow), which is when an
  * item can leave the recent view.
  */
 export function useScopeView(items: readonly LibraryItem[]): ScopeView {
+  countRender('useScopeView');
   const chosen = useLibrary((s) => s.scope);
   const tagFilter = useLibrary((s) => s.tagFilter);
   const model = useViewModel();

@@ -4,7 +4,7 @@ import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
 import { useItem, useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
-import { useScopeView } from '../library/useScopeView';
+import { useScopeViewContext } from '../library/ScopeViewContext';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { EmptyCollectionPanel } from '../sidebar/EmptyCollectionPanel';
 import { useLibrary } from '../state/library-store';
@@ -57,7 +57,7 @@ function LibraryInfo() {
   const list = useViewItems();
   const trash = useTrash().data;
   const items = list ?? NO_ITEMS;
-  const { scope, model, scoped, label } = useScopeView(items);
+  const { scope, model, scoped, label } = useScopeViewContext();
   const selected = useLibrary((s) => s.selected);
   const editingId = useLibrary((s) => s.editingId);
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);

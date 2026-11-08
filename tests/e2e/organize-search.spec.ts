@@ -6,7 +6,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, addToCollection, assignTag, createCollection, createTag, importPaths, launch, openItem, renderCounts, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, watchRenders,
+  FIXTURES, addToCollection, assignTag, createCollection, createTag, importPaths, launch, openItem, renderCounts, rowByTitle, runMenuCommand, seedLibrary, seedMetadata, specialRow, watchRenders,
 } from './helpers';
 
 const FILES = [
@@ -391,6 +391,26 @@ test('a long parent name gives way in a palette collection row: its ellipsis, ne
       };
     });
     expect(fits).toEqual({ countInside: true, countClipped: false, nameTruncated: true });
+  } finally {
+    await app.close();
+  }
+});
+
+test('the scope view is computed once per window render', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [a] = await library(page);
+    const collection = await createCollection(page, '묶음');
+    await addToCollection(page, collection, [a.id]);
+    await watchRenders(page);
+    await specialRow(page, 'unfiled').click();
+    await expect(page.getByTestId('toolbar-count')).toHaveText('3개');
+    await specialRow(page, 'all').click();
+    await expect(page.getByTestId('toolbar-count')).toHaveText('4개');
+    const counts = await settledRenders(page);
+    // positive control: the window did render for the switches
+    expect(counts['MainWindow'] ?? 0, 'the counter reaches the main window').toBeGreaterThan(0);
+    expect(counts['useScopeView'] ?? 0).toBe(counts['MainWindow']);
   } finally {
     await app.close();
   }

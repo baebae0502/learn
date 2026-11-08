@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Ellipsis } from 'lucide-react';
-import type { LibraryItem, OrganizeTag } from '@learn/domain';
+import type { OrganizeTag } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { runPicked } from '../commands/registry';
-import { useScopeView } from '../library/useScopeView';
+import { useScopeViewContext } from '../library/ScopeViewContext';
 import type { TagsSelector } from '../organize/viewSettings';
-import { useViewItems, useViewModel } from '../trash/useTrashSource';
+import { useViewModel } from '../trash/useTrashSource';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
 import { MenuIconButton } from '../ui/MenuButton';
@@ -19,7 +19,6 @@ import { useTagEdit } from './tagEdit';
 import { selectorMenu } from './selectorMenu';
 import { useTagsSelector } from './useTagsSelector';
 
-const NO_ITEMS: readonly LibraryItem[] = [];
 const NO_TAGS: readonly OrganizeTag[] = [];
 const NO_COUNTS: ReadonlyMap<string, number> = new Map();
 
@@ -35,8 +34,7 @@ export function focusTagStop(): void {
  */
 export function TagSelector() {
   const model = useViewModel();
-  const list = useViewItems() ?? NO_ITEMS;
-  const { scoped } = useScopeView(list);
+  const { scoped } = useScopeViewContext();
   const filter = useLibrary((s) => s.tagFilter);
   const toggleTag = useLibrary((s) => s.toggleTagFilter);
   const { selector, update, ready } = useTagsSelector();

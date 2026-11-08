@@ -37,6 +37,7 @@ import { restoreRefused, useRestoreJob } from '../jobs/restoreJob';
 import { importBusy, importBusyTotal, useJobProgress } from '../jobs/jobProgress';
 import { useLibrarySettings } from '../library/useLibrarySettings';
 import { LibraryToolbar } from '../library/LibraryToolbar';
+import { ScopeViewProvider } from '../library/ScopeViewContext';
 import { useScopeView } from '../library/useScopeView';
 import { Palette, openPalette } from '../palette/Palette';
 import { createTextSizeSetter } from '../settings/textSize';
@@ -673,6 +674,7 @@ export function MainWindow(_props: { info: AppInfo }) {
 
   return (
     <CommandProvider env={env}>
+      <ScopeViewProvider view={scopeView}>
       <Shell
         sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
@@ -694,6 +696,7 @@ export function MainWindow(_props: { info: AppInfo }) {
         {view.kind === 'library' && library}
         <ReaderTabs />
       </Shell>
+      </ScopeViewProvider>
       {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
       <ImportQueueMarker />
     </CommandProvider>

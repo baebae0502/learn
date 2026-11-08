@@ -5,7 +5,8 @@ import type { Match } from '../palette/hangul';
 import type { SearchResult } from './search';
 import { sortItems } from './sort';
 import { useLibrarySettings } from './useLibrarySettings';
-import { useScopeView, type ScopeView } from './useScopeView';
+import { useScopeViewContext } from './ScopeViewContext';
+import type { ScopeView } from './useScopeView';
 import { useSearch } from './useSearch';
 
 /** The rows the quick search keeps, in the order given. No search keeps them all. */
@@ -21,7 +22,7 @@ export function keepFound(rows: readonly LibraryItem[], found: SearchResult | nu
  */
 export function useLibraryRows(items: readonly LibraryItem[]): { rows: readonly LibraryItem[]; titleMatches: ReadonlyMap<string, Match> | null; view: ScopeView } {
   const { sort } = useLibrarySettings();
-  const view = useScopeView(items);
+  const view = useScopeViewContext();
   // 중복 항목 keeps each group's rows together whatever the sort (M6 spec 5): the group of the first row first.
   const sorted = useMemo(() => {
     const rows = sortItems(view.filtered, sort);

@@ -56,7 +56,7 @@ class FakeWindow extends EventEmitter {
 
 vi.mock('electron', () => ({ BrowserWindow: FakeWindow, nativeTheme: { shouldUseDarkColors: false } }));
 
-const { createSheetHost, FOLLOWING_SHEETS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
+const { createSheetHost, FOLLOWING_SHEETS, PREPARE_AGAIN_MS, followedHeight, SHEET_SHOW_TIMEOUT_MS, SHEET_TOP, UNRESPONSIVE_GRACE_MS, sheetHeightKey, shortcutsDigest } = await import('./sheets');
 
 type FakeParent = BrowserWindow & { focus: ReturnType<typeof vi.fn>; height: number };
 /** A parent window whose height a test may change (then emit 'resize'). */
@@ -106,7 +106,7 @@ describe('sheet host', () => {
     expect(w.contentSize).toEqual([780, 200]);
     expect(w.position).toEqual([100 + (1440 - 780) / 2, 50 + SHEET_TOP]);
     expect(w.shown).toBe(true);
-    expect(h.payloadFor(contentsOf(w))).toEqual({ kind: 'shortcuts' });
+    await expect(h.payloadFor(contentsOf(w))).resolves.toEqual({ kind: 'shortcuts' });
     expect(p.focus).not.toHaveBeenCalled();
     h.resolve(contentsOf(w), { kind: 'shortcuts' });
     await expect(result).resolves.toEqual({ kind: 'shortcuts' });
@@ -186,7 +186,7 @@ describe('sheet host', () => {
   it('answers only an open sheet: anyone else is PERMISSION_DENIED, a result of the wrong kind VALIDATION_FAILED', async () => {
     const h = host();
     const stranger = { id: 999 } as unknown as WebContents;
-    expect(() => h.payloadFor(stranger)).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    await expect(h.payloadFor(stranger)).rejects.toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     expect(() => h.resolve(stranger, { kind: 'shortcuts' })).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
     const result = h.open(parent(), { kind: 'shortcuts' });
     await tick(); // the window is created once nothing else is showing over this parent
@@ -195,7 +195,7 @@ describe('sheet host', () => {
     w.close();
     await expect(result).resolves.toBeNull();
     // Closed: its contents are a stranger now.
-    expect(() => h.payloadFor(contentsOf(w))).toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
+    await expect(h.payloadFor(contentsOf(w))).rejects.toThrow(expect.objectContaining({ code: 'PERMISSION_DENIED' }));
   });
 
   it('settles with null when the window closes without an answer, or its page fails to load or crashes', async () => {
@@ -598,7 +598,7 @@ describe('the library check sheet: acts while open (P-17), capped at the parent 
     expect(await first).toMatchObject({ items: 5 });
     expect(await second).toMatchObject({ items: 7 });
     expect(order).toEqual(['start cleanStaging', 'end', 'start revive', 'end']);
-    expect(h.payloadFor(contentsOf(w))).toMatchObject({ items: 7 });
+    await expect(h.payloadFor(contentsOf(w))).resolves.toMatchObject({ items: 7 });
   });
 
   it('refuses an action for another kind, a kind with no handler, and a window that is not an open sheet', async () => {
@@ -610,5 +610,118 @@ describe('the library check sheet: acts while open (P-17), capped at the parent 
     await expect(h.act(contentsOf(keys), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(h.act(contentsOf(check), { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
     await expect(h.act({ id: 999 } as unknown as WebContents, { kind: 'libraryCheck', act: 'cleanStaging' })).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
+  });
+});
+
+describe('the ⌘/ sheet window made ahead (P7)', () => {
+  const host = () => createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux' });
+  const settled = () => new Promise((r) => setTimeout(r, 0));
+  /** The prepared window with its page loaded (the real one fires did-finish-load once the document is in). */
+  function preparedWindow(h: ReturnType<typeof host>, p: FakeParent): FakeWindow {
+    h.prepare(p);
+    const w = FakeWindow.all[0]!;
+    w.webContents.emit('did-finish-load');
+    return w;
+  }
+
+  it('makes one hidden window that loads the sheet page, and holds its payload until a sheet opens in it', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    h.prepare(p); // one per parent
+    expect(FakeWindow.all).toHaveLength(1);
+    const w = FakeWindow.all[0]!;
+    expect(w.options).toMatchObject({ width: 780, modal: true });
+    expect(w.url).toBe('learn://app/index.html?window=sheet');
+    expect(w.shown).toBe(false);
+    expect(windowKindOf(w.webContents.id)).toBe('sheet');
+    let answered = false;
+    void h.payloadFor(contentsOf(w)).then(() => (answered = true));
+    await settled();
+    expect(answered).toBe(false);
+  });
+
+  it('shows the prepared window for the ⌘/ sheet instead of a new one, and releases the payload only then; measuring starts after that', async () => {
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    let payload: unknown;
+    void h.payloadFor(contentsOf(w)).then((x) => (payload = x));
+    await settled();
+    expect(payload).toBeUndefined();
+    expect(FakeWindow.scripts.filter((x) => x.includes('getBoundingClientRect'))).toHaveLength(0);
+    const result = h.open(p, { kind: 'shortcuts' });
+    for (let i = 0; i < 8 && !w.shown; i++) await settled();
+    expect(FakeWindow.all).toHaveLength(1);
+    expect(payload).toEqual({ kind: 'shortcuts' });
+    expect(FakeWindow.scripts.filter((x) => x.includes('getBoundingClientRect')).length).toBeGreaterThan(0);
+    expect(w.shown).toBe(true);
+    expect(w.contentSize).toEqual([780, 200]);
+    expect(w.position).toEqual([100 + (1440 - 780) / 2, 50 + SHEET_TOP]);
+    await expect(h.payloadFor(contentsOf(w))).resolves.toEqual({ kind: 'shortcuts' }); // a reloaded page asks again
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    expect(w.destroyed).toBe(true);
+    expect(p.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not used by another kind of sheet, nor before its page has loaded', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    const ahead = FakeWindow.all[0]!;
+    void h.open(p, { kind: 'shortcuts' }); // page not loaded yet
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
+    expect(FakeWindow.all[1]).not.toBe(ahead);
+    FakeWindow.all[1]!.close();
+    ahead.webContents.emit('did-finish-load');
+    void h.open(p, { kind: 'duplicate', name: 'a.pdf', existing: 'b.pdf', count: 1 } as never);
+    await settled();
+    expect(FakeWindow.all).toHaveLength(3);
+    expect(ahead.shown).toBe(false);
+    expect(ahead.destroyed).toBe(false);
+  });
+
+  it('makes the next one a second after the sheet closes, and not after discardPrepared', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    expect(FakeWindow.all).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS - 1);
+    expect(FakeWindow.all).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(FakeWindow.all).toHaveLength(2);
+    const next = FakeWindow.all[1]!;
+    expect(next.shown).toBe(false);
+    // the window is closing: the stock goes, and no new one comes
+    h.discardPrepared(p);
+    expect(next.destroyed).toBe(true);
+    const again = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    FakeWindow.all[2]!.webContents.emit('dom-ready');
+    FakeWindow.all[2]!.emit('ready-to-show');
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(FakeWindow.all[2]!), { kind: 'shortcuts' });
+    await again;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS * 2);
+    expect(FakeWindow.all).toHaveLength(3);
+  });
+
+  it('drops a prepared window whose page failed, and the next ⌘/ makes its own', async () => {
+    const h = host();
+    const p = parent();
+    h.prepare(p);
+    const ahead = FakeWindow.all[0]!;
+    ahead.webContents.emit('did-fail-load', {}, -2, 'ERR_FAILED', 'u', true);
+    expect(ahead.destroyed).toBe(true);
+    void h.open(p, { kind: 'shortcuts' });
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
   });
 });

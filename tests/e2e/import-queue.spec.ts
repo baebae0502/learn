@@ -7,7 +7,7 @@ import { expect, test } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
 import {
   backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, distinctPdfs, drag, dropSource, expectWindow, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, launch,
-  mainWindow, menuItemEnabled, releaseJob, rowByTitle, runMenuCommand, runPalette, stubFolderPicker, waitBackupIdle, waitImportIdle,
+  mainWindow, menuItemEnabled, openSheetPages, releaseJob, rowByTitle, runMenuCommand, runPalette, stubFolderPicker, waitBackupIdle, waitImportIdle,
 } from './helpers';
 
 /** A file that imports as a PDF (sniffed by its header), `bytes` long, with content of its own. */
@@ -151,7 +151,7 @@ test('the duplicates of a window\'s import are asked at the end: 확인을 기�
     await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText(items[0]!.title);
     await expect(toast(s.page)).toHaveCount(0); // nothing came in: the toast goes
     await waitImportIdle(s.page);
-    expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]); // the rest: skipped, unasked
+    expect(await openSheetPages(s.app)).toEqual([]); // the rest: skipped, unasked
   } finally {
     await s.app.close();
   }
@@ -171,7 +171,7 @@ test('취소 while the duplicate question is open closes its sheet and ends the 
     await expect(s.page.getByTestId('import-done')).toContainText('파일 3개를 가져오지 않았습니다.');
     await waitImportIdle(s.page);
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true); // the window is let go
-    expect(s.app.windows().filter((p) => !p.isClosed() && p.url().includes('window=sheet'))).toEqual([]);
+    expect(await openSheetPages(s.app)).toEqual([]);
   } finally {
     await s.app.close();
   }

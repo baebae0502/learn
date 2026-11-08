@@ -69,7 +69,18 @@ export interface SheetHost {
    * asked is over (an import stopped): the sheet closes unanswered, or is never opened if it is still waiting.
    */
   open(parent: BrowserWindow, payload: SheetPayload, signal?: AbortSignal): Promise<SheetResult | null>;
-  payloadFor(contents: WebContents): SheetPayload;
+  /**
+   * What the sheet page shows. A window made ahead (`prepare`) has its payload held until a sheet opens in it, so the page
+   * waits here; anyone that is not a sheet window is PERMISSION_DENIED (rejected).
+   */
+  payloadFor(contents: WebContents): Promise<SheetPayload>;
+  /**
+   * Makes the ⌘/ sheet's window ahead, hidden, with its page loaded and waiting for its payload: opening the sheet then
+   * costs the measuring and showing, not a window and a page. One per parent; made again a second after a ⌘/ sheet closes.
+   */
+  prepare(parent: BrowserWindow): void;
+  /** Closes the window made ahead for `parent` (its window is closing) and stops making new ones. */
+  discardPrepared(parent: BrowserWindow): void;
   resolve(contents: WebContents, result: SheetResult): void;
   /**
    * sheet:act (P-17): the open sheet's own action, run by its kind's handler; the sheet shows the payload answered, and a
@@ -79,6 +90,21 @@ export interface SheetHost {
   /** The handler of a kind's actions; a kind with none refuses every action. */
   onAct(kind: SheetPayload['kind'], handler: SheetActHandler): void;
 }
+
+/** A shortcuts sheet window made ahead: loaded, hidden, its page holding on for the payload. */
+interface Prepared {
+  window: BrowserWindow;
+  parent: BrowserWindow;
+  loaded: boolean;
+  /** What the page's payloadFor waits for. */
+  held: Promise<SheetPayload>;
+  release(payload: SheetPayload): void;
+  /** Stops the watching of the window's early failure: a sheet in it settles for itself. */
+  detach(): void;
+}
+
+/** A ⌘/ sheet made ahead is made again this long after one closes (the close and its focus hand-back settle first). */
+export const PREPARE_AGAIN_MS = 1000;
 
 interface Pending {
   payload: SheetPayload;
@@ -112,6 +138,119 @@ export function createSheetHost(opts: {
   const queues = new Map<number, Promise<unknown>>();
   const heights = new Map<string, number>(); // a static sheet's natural height, measured in its own font
   const handlers = new Map<SheetPayload['kind'], SheetActHandler>();
+  /** The window made ahead per parent window id, and the same by the window's contents. */
+  const prepared = new Map<number, Prepared>();
+  const preparedByContents = new Map<number, Prepared>();
+  /** Parents prepare() was called for: a ⌘/ sheet closing over one of them makes the next. */
+  const preparing = new Set<number>();
+  const prepareTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  function sheetWindow(parent: BrowserWindow, kind: SheetPayload['kind'], height: number): BrowserWindow {
+    const win = new BrowserWindow({
+      parent,
+      modal: true, // macOS: a sheet, centred over the parent and dimming it (the system's placement)
+      show: false,
+      width: SHEET_WIDTH[kind],
+      // Measured at full height first, then shrunk to the content; a static sheet measured before starts at that height.
+      height,
+      useContentSize: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      frame: opts.platform === 'darwin',
+      title: '',
+      backgroundColor: themeHex[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'].bgRaised,
+      webPreferences: {
+        preload: opts.preload,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: true,
+        spellcheck: false,
+        backgroundThrottling: false,
+      },
+    });
+    registerWindowKind(win.webContents, 'sheet');
+    return win;
+  }
+
+  function forgetPrepared(entry: Prepared): void {
+    if (prepared.get(entry.parent.id) === entry) prepared.delete(entry.parent.id);
+    preparedByContents.delete(entry.window.webContents.id);
+  }
+
+  /** The window made ahead for `parent`, when it is alive and its page has loaded; it leaves the stock either way it is taken. */
+  function takePrepared(parent: BrowserWindow): Prepared | null {
+    const entry = prepared.get(parent.id);
+    if (!entry || entry.window.isDestroyed() || !entry.loaded) return null;
+    forgetPrepared(entry);
+    entry.detach();
+    return entry;
+  }
+
+  function prepare(parent: BrowserWindow): void {
+    if (parent.isDestroyed()) return;
+    if (!preparing.has(parent.id)) {
+      // The window closing takes the one made ahead with it, and the stock stops.
+      const parentId = parent.id;
+      parent.once('closed', () => discardPreparedFor(parentId));
+    }
+    preparing.add(parent.id);
+    if (prepared.has(parent.id)) return;
+    const room = parent.getContentBounds();
+    const win = sheetWindow(parent, 'shortcuts', sheetHeightCap('shortcuts', room.height, opts.platform));
+    let release: (payload: SheetPayload) => void = () => {};
+    const held = new Promise<SheetPayload>((resolve) => (release = resolve));
+    const entry: Prepared = { window: win, parent, loaded: false, held, release, detach: () => {} };
+    prepared.set(parent.id, entry);
+    preparedByContents.set(win.webContents.id, entry);
+    // A window that fails before it is used is dropped; the next ⌘/ makes its own.
+    const drop = (): void => {
+      forgetPrepared(entry);
+      if (!win.isDestroyed()) win.close();
+    };
+    const onLoaded = (): void => void (entry.loaded = true);
+    const onFailed = (_event: unknown, _code: number, _description: string, _url: string, isMainFrame: boolean): void => {
+      if (isMainFrame) drop();
+    };
+    win.webContents.once('did-finish-load', onLoaded);
+    win.webContents.on('render-process-gone', drop);
+    win.webContents.on('did-fail-load', onFailed);
+    // The page's request for its payload is answered before the window goes: an unanswered one made the renderer, which the
+    // main window shares, stop answering.
+    win.once('close', () => release({ kind: 'shortcuts' }));
+    win.once('closed', () => forgetPrepared(entry));
+    entry.detach = () => {
+      win.webContents.off('did-finish-load', onLoaded);
+      win.webContents.off('render-process-gone', drop);
+      win.webContents.off('did-fail-load', onFailed);
+    };
+    win.loadURL(opts.url()).catch(drop);
+  }
+
+  /** By id: the parent may be destroyed already (its 'closed'), when its properties can no longer be read. */
+  function discardPreparedFor(parentId: number): void {
+    preparing.delete(parentId);
+    clearTimeout(prepareTimers.get(parentId));
+    prepareTimers.delete(parentId);
+    const entry = prepared.get(parentId);
+    if (!entry) return;
+    forgetPrepared(entry);
+    if (!entry.window.isDestroyed()) entry.window.close();
+  }
+  const discardPrepared = (parent: BrowserWindow): void => discardPreparedFor(parent.id);
+
+  function prepareLater(parent: BrowserWindow): void {
+    if (!preparing.has(parent.id)) return;
+    clearTimeout(prepareTimers.get(parent.id));
+    const timer = setTimeout(() => {
+      prepareTimers.delete(parent.id);
+      if (preparing.has(parent.id) && !parent.isDestroyed()) prepare(parent);
+    }, PREPARE_AGAIN_MS);
+    timer.unref?.();
+    prepareTimers.set(parent.id, timer);
+  }
   const find = (contents: WebContents): Pending => {
     const p = pending.get(contents.id);
     if (!p) throw new LearnError('PERMISSION_DENIED', mainStrings.callerRefused);
@@ -133,32 +272,9 @@ export function createSheetHost(opts: {
       let current = 0;
       const key = opts.staticKey?.(payload) ?? null;
       const known = key === null ? undefined : heights.get(key);
-      const win = new BrowserWindow({
-        parent,
-        modal: true, // macOS: a sheet, centred over the parent and dimming it (the system's placement)
-        show: false,
-        width,
-        // Measured at full height first, then shrunk to the content; a static sheet measured before starts at that height.
-        height: known === undefined ? maxHeight : Math.min(known, maxHeight),
-        useContentSize: true,
-        resizable: false,
-        minimizable: false,
-        maximizable: false,
-        fullscreenable: false,
-        frame: opts.platform === 'darwin',
-        title: '',
-        backgroundColor: themeHex[nativeTheme.shouldUseDarkColors ? 'dark' : 'light'].bgRaised,
-        webPreferences: {
-          preload: opts.preload,
-          sandbox: true,
-          contextIsolation: true,
-          nodeIntegration: false,
-          webSecurity: true,
-          spellcheck: false,
-          backgroundThrottling: false,
-        },
-      });
-      registerWindowKind(win.webContents, 'sheet');
+      // The ⌘/ sheet takes the window made ahead when there is a loaded one; every other sheet makes its own.
+      const reuse = payload.kind === 'shortcuts' ? takePrepared(parent) : null;
+      const win = reuse?.window ?? sheetWindow(parent, payload.kind, known === undefined ? maxHeight : Math.min(known, maxHeight));
       const id = win.webContents.id;
       let done = false;
       const giveUp = (): void => settle(null);
@@ -182,9 +298,13 @@ export function createSheetHost(opts: {
         clearTimeout(hung);
         pending.delete(id);
         resolve(result);
-        if (!win.isDestroyed()) win.close();
+        if (!win.isDestroyed()) {
+          if (reuse) win.hide();
+          win.close();
+        }
         // Keyboard focus goes back to the window the sheet hung over (Linux/Windows do not always hand it back).
         if (!parent.isDestroyed()) parent.focus();
+        if (payload.kind === 'shortcuts' && !parent.isDestroyed()) prepareLater(parent);
       };
       pending.set(id, { payload, settle, window: win, parent, acting: Promise.resolve() });
       signal?.addEventListener('abort', giveUp, { once: true });
@@ -213,8 +333,9 @@ export function createSheetHost(opts: {
       // Measured from the moment its document exists, alongside the first paint rather than after it: rendered, its
       // font loaded (at most 300 ms more), then measured again — never boxes with no text. null: the measurement
       // failed, and the sheet is shown unsized rather than the question lost.
+      let startMeasuring: () => void = () => {};
       const height = new Promise<number | null>((settled) => {
-        win.webContents.once('dom-ready', () => {
+        const measure = (): void => {
           void (async () => {
             const rendered = await contentHeight(win.webContents, '[data-sheet-root]');
             const fonts = await fontsReady(win.webContents, '[data-sheet-root]');
@@ -224,10 +345,14 @@ export function createSheetHost(opts: {
             if (key !== null && fonts) heights.set(key, natural); // a height in a fallback font is not worth keeping
             return Math.min(natural, maxHeight);
           })().then(settled, () => settled(null));
-        });
+        };
+        // A window made ahead is past dom-ready and its page waits for the payload: measuring starts when that is released.
+        if (reuse) startMeasuring = measure;
+        else win.webContents.once('dom-ready', measure);
       });
-      // Shown only once the page has painted (ready-to-show) and been sized: the first frame on screen is the sized one.
-      const painted = new Promise<void>((settled) => win.once('ready-to-show', () => settled()));
+      // Shown only once the page has painted (ready-to-show) and been sized: the first frame on screen is the sized one. A
+      // window made ahead painted long ago; the page's content is in by the time it has been measured.
+      const painted = reuse ? Promise.resolve() : new Promise<void>((settled) => win.once('ready-to-show', () => settled()));
       void Promise.all([height, painted]).then(async ([h]) => {
         if (win.isDestroyed()) return;
         if (h !== null) {
@@ -259,7 +384,13 @@ export function createSheetHost(opts: {
       watchdog = setTimeout(() => {
         if (!win.isDestroyed() && !win.isVisible()) settle(null);
       }, SHEET_SHOW_TIMEOUT_MS);
-      win.loadURL(opts.url()).catch(() => settle(null));
+      if (reuse) {
+        // The payload is in `pending` before the page can ask again (a reload); the page that waits gets it now.
+        reuse.release(payload);
+        startMeasuring();
+      } else {
+        win.loadURL(opts.url()).catch(() => settle(null));
+      }
     });
   }
 
@@ -276,7 +407,15 @@ export function createSheetHost(opts: {
       next.then(forget, forget);
       return next;
     },
-    payloadFor: (contents) => find(contents).payload,
+    async payloadFor(contents) {
+      const pendingSheet = pending.get(contents.id);
+      if (pendingSheet) return pendingSheet.payload;
+      const ahead = preparedByContents.get(contents.id);
+      if (ahead) return ahead.held;
+      return find(contents).payload; // refuses
+    },
+    prepare,
+    discardPrepared,
     resolve(contents, result) {
       const p = find(contents);
       if (p.payload.kind !== result.kind) throw new LearnError('VALIDATION_FAILED', mainStrings.badRequest);

@@ -10,7 +10,9 @@ const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
 const prefsFile = (ud: string) => JSON.parse(fs.readFileSync(path.join(ud, 'preferences.json'), 'utf8')) as Record<string, unknown>;
 /** Every window, on purpose: the settings window must be one window, opened once. */
-const windowCount = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+/** The windows there are, not counting the ⌘/ sheet window main keeps prepared, hidden. */
+const windowCount = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isVisible() || !w.webContents.getURL().includes('window=sheet')).length);
 /** The settings window's BrowserWindow, evaluated in main. */
 const settingsWindow = (app: ElectronApplication) =>
   app.evaluateHandle(({ BrowserWindow }) => {
@@ -307,7 +309,7 @@ test('a sheet keeps the main window main only while no other window of ours has 
   const html = page.locator('html');
   /** One of our windows takes the key, as a click on it would (Xvfb has no window manager to click through). */
   const focusWindow = (part: string) =>
-    app.evaluate(({ BrowserWindow }, part) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes(part))?.focus(), part);
+    app.evaluate(({ BrowserWindow }, part) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes(part))?.focus(), part);
   try {
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     const sheet = await expectWindow(app, 'sheet', () => runMenuCommand(app, 'app.shortcuts'));

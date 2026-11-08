@@ -29,6 +29,8 @@ async function closeTransient(app: ElectronApplication, main: Page): Promise<voi
   );
   for (const w of app.windows()) {
     if (w === main || w.isClosed() || (w.url().includes('window=settings') && !shown.has(w.url()))) continue;
+    // The ⌘/ sheet window main keeps prepared is a sheet page with nothing in it until a sheet opens.
+    if (w.url().includes('window=sheet') && (await w.locator('[data-sheet-root]').count().catch(() => 0)) === 0) continue;
     await w.waitForLoadState('domcontentloaded').catch(() => {});
     if (w.url().includes('window=sheet')) {
       // The sheet handles Escape only after its payload arrived and rendered; wait for it, then for the close.

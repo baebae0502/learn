@@ -250,7 +250,8 @@ test('the drawn pointer: a disc that follows, or only a click ring; gone when th
     const settings = await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     await expect(pointer).toHaveCount(0);
     await settings.close();
-    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1);
+    // (the hidden ⌘/ sheet window main keeps prepared is not one of the windows meant)
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isVisible()).length)).toBe(1);
     await (await mainWindow(app)).evaluate((w) => w.focus());
     // A made-up move (no movement, elsewhere) does not bring it back.
     await page.evaluate(() => dispatchEvent(new PointerEvent('pointermove', { clientX: 720, clientY: 450 })));

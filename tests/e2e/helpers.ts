@@ -126,12 +126,14 @@ export function mainWindow(app: ElectronApplication) {
 
 /**
  * Every window by its `?window=` kind, sorted, with " (hidden)" after one not on screen — e.g. ['main', 'settings (hidden)']:
- * the settings window main prepares ahead of ⌘, is there from launch on.
+ * the settings window main prepares ahead of ⌘, is there from launch on. The ⌘/ sheet window main keeps prepared, hidden,
+ * is left out: it comes and goes a second after each ⌘/ sheet closes, so no count of windows could rely on it.
  */
 export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
       .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed())
+      .filter((w) => w.isVisible() || !w.webContents.getURL().includes('window=sheet'))
       .map((w) => `${/[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? ''}${w.isVisible() ? '' : ' (hidden)'}`)
       .sort(),
   );
@@ -147,6 +149,13 @@ export async function settingsPreparedState(app: ElectronApplication): Promise<'
     if (w.webContents.isLoading()) return 'loading';
     return (await w.webContents.executeJavaScript("document.documentElement.dataset.sized === '1'", false)) === true ? 'ready' : 'unsized';
   });
+}
+
+/** Whether the ⌘/ sheet window main prepares ahead (hidden) has loaded its page and waits for its payload. */
+export async function sheetPrepared(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().some((x) => !x.isDestroyed() && !x.webContents.isDestroyed() && !x.isVisible() && x.webContents.getURL().includes('window=sheet') && !x.webContents.isLoading()),
+  );
 }
 
 /** Whether the settings window main prepares once the main window is idle exists, loaded and measured (data-sized). */
@@ -547,14 +556,28 @@ async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<v
     .poll(
       async () => {
         const shown = await app.evaluate(({ BrowserWindow }, url) => {
-          const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL() === url);
-          return w?.isVisible() ? w.getContentSize().join('x') : null;
+          // The ⌘/ sheet window made ahead has the same address, hidden: the one on screen is meant.
+          const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.isVisible() && x.webContents.getURL() === url);
+          return w ? w.getContentSize().join('x') : null;
         }, page.url());
         return shown !== null && shown === (await page.evaluate(() => `${innerWidth}x${innerHeight}`));
       },
       { message: 'the sheet is shown at its measured size' },
     )
     .toBe(true);
+}
+
+/**
+ * The sheet pages that have a sheet in them (their root rendered): the ⌘/ sheet window main keeps prepared has the same
+ * address and an empty page until a sheet opens in it.
+ */
+export async function openSheetPages(app: ElectronApplication): Promise<Page[]> {
+  const out: Page[] = [];
+  for (const p of app.windows()) {
+    if (p.isClosed() || !p.url().includes('window=sheet')) continue;
+    if ((await p.locator('[data-sheet-root]').count().catch(() => 0)) > 0) out.push(p);
+  }
+  return out;
 }
 
 /**
@@ -568,11 +591,18 @@ async function sheetShownAtSize(app: ElectronApplication, page: Page): Promise<v
  * ours has the focus (the app itself is not the active one, which macOS 14+ may refuse to change), shown is enough.
  */
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
-  // ⌘, shows the settings window main prepared when there is one; every sheet is a new window.
+  // ⌘, shows the settings window main prepared when there is one. A sheet is a page whose root has rendered: the ⌘/ sheet
+  // is the window main prepared (its page holds the payload until the sheet opens), any other a new window.
   const prepared = kind === 'settings' ? app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings')) : undefined;
-  const opened = prepared ? null : app.waitForEvent('window', { timeout: 15_000 });
+  const sheetsBefore = kind === 'sheet' ? await openSheetPages(app) : [];
+  const opened = prepared || kind === 'sheet' ? null : app.waitForEvent('window', { timeout: 15_000 });
   await trigger();
-  const page = prepared ?? (await opened!);
+  let page = prepared;
+  if (kind === 'sheet') {
+    await expect.poll(async () => (await openSheetPages(app)).some((p) => !sheetsBefore.includes(p)), { message: 'a new sheet window', timeout: 15_000 }).toBe(true);
+    page = (await openSheetPages(app)).find((p) => !sheetsBefore.includes(p))!;
+  } else page ??= await opened!;
+  if (page === undefined) throw new Error('no window');
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();
   if (kind === 'sheet') await sheetShownAtSize(app, page);
@@ -1495,10 +1525,8 @@ export async function removeChip(chip: Locator): Promise<void> {
  * measured size. A sheet a test asks for is expectWindow's.
  */
 export async function waitForSheet(app: ElectronApplication): Promise<Page> {
-  const isSheet = (p: Page) => !p.isClosed() && p.url().includes('window=sheet');
-  await expect.poll(() => app.windows().some(isSheet), { message: 'a sheet window', timeout: 20_000 }).toBe(true);
-  const page = app.windows().find(isSheet)!;
-  await page.locator('[data-sheet-root]').waitFor();
+  await expect.poll(async () => (await openSheetPages(app)).length > 0, { message: 'a sheet window', timeout: 20_000 }).toBe(true);
+  const page = (await openSheetPages(app))[0]!;
   await sheetShownAtSize(app, page);
   return page;
 }

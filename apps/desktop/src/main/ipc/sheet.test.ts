@@ -19,7 +19,9 @@ registerSheetIpc(
   stubDeps({
     sheets: {
       open: async () => null,
-      payloadFor: () => NEXT,
+      payloadFor: async () => NEXT,
+      prepare: () => {},
+      discardPrepared: () => {},
       resolve: () => {},
       act: async (contents, action) => {
         acted.push([contents, action]);

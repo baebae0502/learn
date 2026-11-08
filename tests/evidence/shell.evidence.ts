@@ -1296,7 +1296,7 @@ test('M3 chrome: ⌘, settings window over the main window, light and dark', TAG
       await s.page.waitForTimeout(600); // AppKit repaints the main window's lights; the colours ease in
       const elsewhere = await mainChrome();
       const shot = await fullScreenShot('m4-11-sheet-parent-not-main', 'the ⌘/ sheet on the main window while the settings window has the key: the main chrome dims with its lights (final review m5)');
-      await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.webContents.getURL().includes('window=sheet'))?.focus());
+      await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes('window=sheet'))?.focus());
       await expect(html).not.toHaveAttribute('data-window-not-main', '', { timeout: 5_000 }).catch(() => {});
       await s.page.waitForTimeout(600);
       const back = await mainChrome();

@@ -90,7 +90,7 @@ test('the sheet is a 440 px modal child of the main window, 8 px under the toolb
     const sheet = await expectWindow(s.app, 'sheet', () => importFiles(s, [PDF]));
     const geo = await s.app.evaluate(({ BrowserWindow }) => {
       const all = BrowserWindow.getAllWindows();
-      const child = all.find((w) => w.getParentWindow() !== null)!;
+      const child = all.find((w) => w.isVisible() && w.getParentWindow() !== null)!;
       const parent = child.getParentWindow()!;
       return { modal: child.isModal(), main: parent.getContentBounds(), sheet: child.getContentBounds() };
     });
@@ -107,7 +107,7 @@ test('the sheet is a 440 px modal child of the main window, 8 px under the toolb
 
     // Closing the window itself (창 닫기, ⌘W) answers 건너뛰기: nothing is added and the import ends.
     const closed = sheet.waitForEvent('close');
-    await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.getParentWindow() !== null)!.close());
+    await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.isVisible() && w.getParentWindow() !== null)!.close());
     await closed;
     await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(true);
     await expect(rows).toHaveCount(1);

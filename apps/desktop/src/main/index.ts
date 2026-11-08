@@ -676,7 +676,7 @@ if (!app.requestSingleInstanceLock()) {
       // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
       prepareSettings: () => {
         settingsWindow.prepare();
-        if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
+        // sheets.prepare(mainWindow) is not called yet: closing a window made ahead freezes the E2E run on Linux (task 9 report, P7).
         firstScreenDrawn();
         text?.firstIdle();
       },

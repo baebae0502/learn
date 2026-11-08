@@ -161,6 +161,7 @@ test('PDF: time to first rendered page', TAG, async () => {
     runs.push(await timeOpen(page, 'sample', 'pdf'));
   }
   await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+  await page.mouse.move(1, 1); // at rest: the library tab keeps no hover fill under the pointer (critique m7b-mac n2)
   await allShots(app, page, '02-pdf', 'PDF viewer, page 1 at 100%');
   await page.getByTestId('pdf-next').click();
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[2-9]\d*$/);
@@ -204,6 +205,7 @@ test('MP4 (H.264/AAC): first frame and seek error', TAG, async () => {
   }
   const meta = await video.evaluate((v: HTMLVideoElement) => ({ width: v.videoWidth, height: v.videoHeight, duration: v.duration }));
   const frame = await frameStats(page);
+  await page.mouse.move(1, 1); // at rest: the library tab keeps no hover fill under the pointer (critique m7b-mac n2)
   await allShots(app, page, '04-video', `H.264 video paused at ${SEEK_TARGET}s`);
   saveBaseline({
     mp4FirstFrameMs: { ...stats(firstFrame), note: 'click open → <video>.readyState ≥ 2 (HAVE_CURRENT_DATA)' },
@@ -273,6 +275,7 @@ test('unsupported codec notice (MPEG-4 Part 2)', TAG, async () => {
   const ms = await timeOpen(page, 'sample-mpeg4part2', 'video-error');
   await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   const error = await page.getByTestId('video').evaluate((v: HTMLVideoElement) => (v.error ? { code: v.error.code, message: v.error.message } : null));
+  await page.mouse.move(1, 1); // at rest: the library tab keeps no hover fill under the pointer (critique m7b-mac n2)
   await allShots(app, page, '06-unsupported', 'unsupported codec notice');
   saveBaseline({ unsupported: { msToNotice: Math.round(ms), error, uiText: await page.getByTestId('video-error').innerText() } });
 });

@@ -42,7 +42,7 @@ import { IS_MAC, outFile, record, startRecording, startScreencast, startX11Recor
 import { savedDisplayModes, switchDisplayForDemo, type DisplaySwitch } from './display-mac';
 import { captionBottom, parkSpot as parkAt } from './demo-geometry';
 import { pressKey } from './demo-keys';
-import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron } from './demo-mac';
+import { OSASCRIPT_MS, glideCursor, hideDock, neutralDesktop, renamedElectron, warpTo } from './demo-mac';
 import { PALETTE_TITLE, PDF_FOOTER, READ_TITLE, writeDemoMedia } from './demo-media';
 import { RecordingLost, exitedEarly, lossOf, recordingLoss, type RecordingEnd } from './demo-loss';
 import { mergeEnv } from './env';
@@ -398,11 +398,10 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     /**
      * Moves the pointer to (x, y) of a window's page, as the current cursor mode does it: about 420 ms along an eased
      * path (T13R2-m4), Playwright's mouse step by step, or the system cursor in one osascript call.
-     * `held`: Playwright's button is down (a scripted drag). A native mouse-moved event carries no button (the OS button is up),
-     * and the app ends a drag whose move comes with the button up (useTabReorder, as for a real drag that lost its button), so
-     * the system cursor travels by warps only, with no events; the caller's own mouse.move carries the drag.
+     * Not while Playwright's button is down (dragAlong does that: a native mouse-moved event carries no button, and the app ends a
+     * drag whose move comes with the button up).
      */
-    const glide = async (p: Page, kind: WindowKind, x: number, y: number, held = false) => {
+    const glide = async (p: Page, kind: WindowKind, x: number, y: number) => {
       await pointerTo(kind);
       /** Playwright's mouse along the same eased path, step by step (the drawn cursor's, and a held drag's own moves). */
       const stepped = async () => {
@@ -418,7 +417,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       if (cursor !== 'synthetic') {
         const o = await originOf(kind);
         const to = { x: o.x + x, y: o.y + y };
-        const once = () => glideCursor(to, { warpOnly: cursor === 'warp' || held });
+        const once = () => glideCursor(to, { warpOnly: cursor === 'warp' });
         // A glide that throws (a stuck Apple Event) is tried once more before the mode changes (round 3 m2).
         const moved = once()
           .catch(async (e: unknown) => {
@@ -429,12 +428,6 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
             notes.push(`moving the system cursor failed again (${errorText(e)}): the drawn cursor only`);
             return { moved: false, warped: false };
           });
-        if (held) {
-          // The warps carry the visible cursor while Playwright's mouse carries the drag beside them, on the same eased path.
-          const [r] = await Promise.all([moved, stepped()]);
-          if (!r.warped) notes.push('the held drag: the system cursor could not be warped, the drawn cursor only');
-          return;
-        }
         const r = await moved;
         if ((cursor === 'system' && !r.moved) || (cursor === 'warp' && !r.warped)) {
           await switchCursor(r.warped ? 'warp' : 'synthetic');
@@ -453,6 +446,31 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
       }
       await stepped();
     };
+    /**
+     * Moves the pointer along an eased path from (x0, y) to (x1, y) while Playwright's button is down: one clock. For each step
+     * the system cursor is warped to the point (no event: a native mouse-moved event carries no button and would end the drag) and
+     * Playwright's mouse is moved to the same point, both awaited before the next step, so the dragged tab is where the visible
+     * cursor is (critique m7b-mac M3). Synthetic input (Linux): the drawn cursor follows Playwright's mouse, which is the one clock.
+     */
+    const dragAlong = async (p: Page, kind: WindowKind, x0: number, x1: number, y: number) => {
+      const o = cursor === 'synthetic' ? null : await originOf(kind);
+      const steps = 24;
+      let failed = false;
+      for (let i = 1; i <= steps; i++) {
+        const x = x0 + (x1 - x0) * ease(i / steps);
+        const warped = o
+          ? warpTo({ x: o.x + x, y: o.y + y }).then(
+              (r) => r.warped,
+              () => false,
+            )
+          : Promise.resolve(true);
+        const [ok] = await Promise.all([warped, p.mouse.move(x, y)]);
+        if (!ok) failed = true;
+        if (!o) await pause(30);
+      }
+      if (failed) notes.push('the held drag: the system cursor could not be warped at some step, the drawn cursor only');
+      mouseAt.set(p, { x: x1, y });
+    };
     /** The main window's sidebar as drawn now: the tag selector's top (null: none drawn) and the bottom of the last tree row or of the hint. */
     const sidebarNow = (p: Page) =>
       p.evaluate(() => {
@@ -461,16 +479,20 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         // With no collections the tree shows a hint under its rows; the pointer must not rest on it.
         const hint = document.querySelector('[data-testid="sidebar-hint"]')?.getBoundingClientRect();
         if (hint && hint.height > 0) rows.push(hint.bottom);
-        return { h: innerHeight, w: innerWidth, tagTop: tags && tags.height > 0 ? tags.top : null, treeBottom: rows.length > 0 ? Math.max(...rows) : 0 };
+        // A PDF reader shown: the empty stretch of its toolbar between the page group and the zoom field (the sidebar there lists
+        // thumbnails under the caption, and the launcher sits at the top: neither is a place to rest on).
+        const gap = document.querySelector('[data-testid="tab-panel"][data-active="true"] .reader-toolbar .spacer')?.getBoundingClientRect();
+        const rest = gap && gap.width >= 24 ? { x: Math.round(gap.x + gap.width / 2), y: Math.round(gap.y + gap.height / 2) } : null;
+        return { h: innerHeight, w: innerWidth, tagTop: tags && tags.height > 0 ? tags.top : null, treeBottom: rows.length > 0 ? Math.max(...rows) : 0, rest };
       });
     /**
-     * Where the pointer rests when it hovers nothing and covers no overlay element (demo.css): in the main window the
-     * tree's empty part, clear of the tag chips and of the caption above them (demo-geometry.ts parkSpot); the settings
+     * Where the pointer rests when it hovers nothing and covers no overlay element (demo.css): in the main window a shown PDF
+     * reader's empty toolbar stretch, else the sidebar's tree's empty part, clear of the tag chips and of the caption above them (demo-geometry.ts parkSpot); the settings
      * window's empty header corner.
      */
     const parkSpot = async (p: Page, kind: WindowKind) => {
       const now = await sidebarNow(p);
-      return kind === 'main' ? parkAt(now.h, now.treeBottom, now.tagTop) : { x: now.w - 40, y: 18 };
+      return kind === 'main' ? (now.rest ?? parkAt(now.h, now.treeBottom, now.tagTop)) : { x: now.w - 40, y: 18 };
     };
     /**
      * After a scripted pointer action Playwright's own pointer (CDP) stays where the action ended, unseen while the system arrow
@@ -682,7 +704,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const onPage = (n: number) => expect(field()).toHaveValue(String(n));
 
     // 1. Three papers open as tabs: one in front (↩), two behind (⌘↩).
-    await chapter(`논문 셋을 탭에 엽니다. ↩ 키는 논문을 앞의 탭에, ${enterKey} 키는 뒤의 탭에 엽니다.`, page, 6000);
+    await chapter(`논문 셋을 탭에 엽니다. ↩ 키는 새 탭을 열고 그리로 가고, ${enterKey} 키는 보던 화면을 두고 뒤에서 엽니다.`, page, 6000);
     await pause(1500);
     await glideClick(page, 'main', rowByTitle(page, PAPER_TITLE));
     await pause(500);
@@ -706,7 +728,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(3500);
 
     // 2. Between the tabs by number and by ⌃⇥.
-    await chapter(`${key('CmdOrCtrl+3')}, ${key('CmdOrCtrl+4')} 처럼 탭 번호를 누르면 그 탭으로 가고, ${key('Ctrl+Tab')} 을 누르면 다음 탭으로 갑니다.`, page, 6000);
+    await chapter(`${key('CmdOrCtrl+4')}처럼 탭 번호를 누르면 그 탭으로 가고, ${key('Ctrl+Tab')}을 누르면 다음 탭으로 갑니다.`, page, 6000);
     await pause(800);
     const go3 = await press('3', ['command'], 'tab.goTo3', shownIs(ids.read));
     await expect.poll(shownTab).toBe(ids.read);
@@ -806,20 +828,28 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const from = (await strip(ids.paper).boundingBox())!;
     const lastBox = (await strip(ids.palette).boundingBox())!;
     const dragY = from.y + from.height / 2;
-    await glide(page, 'main', from.x + from.width / 2, dragY);
+    // The tab is held to the right of its middle and let go over the right half of the last tab: the boundary nearest the pointer
+    // decides the place (useTabReorder), and the dropped tab then lies under the pointer with its grab point where it was held,
+    // clear of its ×. The strip ends where it did, so the dropped tab ends at the old end of the last one.
+    const grab = Math.round(Math.min(from.width - 44, Math.max(from.width / 2, from.width - lastBox.width / 2 + 16)));
+    const grabX = from.x + grab;
+    const toX = lastBox.x + lastBox.width - from.width + grab;
+    await glide(page, 'main', grabX, dragY);
     await pause(500);
     await scriptedTag('끌기는 스크립트로 재현');
-    await page.mouse.move(from.x + from.width / 2, dragY);
+    await page.mouse.move(grabX, dragY);
+    // The press ring is the overlay's, drawn at Playwright's mouse: with the system cursor in view it would travel as a second pointer.
+    if (cursor !== 'synthetic') await drawnCursor(page, false);
     await page.mouse.down();
-    await page.mouse.move(from.x + from.width / 2 + 8, dragY, { steps: 2 });
-    mouseAt.set(page, { x: from.x + from.width / 2 + 8, y: dragY }); // the held glide's steps start where the drag is
-    const toX = lastBox.x + lastBox.width - 6;
-    await glide(page, 'main', toX, dragY, true); // the button is down: no native move events (they would end the drag)
-    await page.mouse.move(toX, dragY, { steps: 6 });
+    await page.mouse.move(grabX + 8, dragY, { steps: 2 });
+    await dragAlong(page, 'main', grabX + 8, toX, dragY);
     await pause(900);
     await page.mouse.up();
     await expect.poll(tabOrder).toEqual(['library', ids.read, ids.palette, ids.paper]);
     expect(await shownTab()).toBe(ids.paper); // dragging does not choose
+    // The button is up: one ordinary move lets the hover and the tooltip settle where the tab was dropped.
+    await glide(page, 'main', toX + 2, dragY);
+    if (cursor !== 'synthetic') await drawnCursor(page, true);
     await scriptedTag(null);
     await park(page, 'main');
     await pause(7000);

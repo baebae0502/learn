@@ -175,6 +175,27 @@ export function glideScript(to: { x: number; y: number }, opts: { ms?: number; w
   ].join(' ');
 }
 
+/**
+ * Puts the system cursor at a screen point (top-left global points) in one osascript call, by a warp: no event is posted, so the
+ * app sees nothing of it (a held scripted drag must not receive a native mouse-moved event, which carries no button). The caller
+ * moves Playwright's mouse to the same point and awaits both before the next step: one clock for the visible cursor and the drag
+ * (critique m7b-mac M3). `warped` is false when the cursor did not arrive.
+ */
+export async function warpTo(to: { x: number; y: number }): Promise<{ warped: boolean }> {
+  return { warped: (await jxa(warpScript(to)))['warped'] === true };
+}
+
+/** The JXA of warpTo (exported for its unit test): one warp, then the arrival check after the 50 ms the event queue needs. */
+export function warpScript(to: { x: number; y: number }): string {
+  return [
+    ...prelude(),
+    `var to = { x: ${Math.round(to.x)}, y: ${Math.round(to.y)} };`,
+    'warp(to);',
+    'nap(0.05);',
+    'JSON.stringify({ warped: near(loc(), to) });',
+  ].join(' ');
+}
+
 /** Re-review minor 2: lets the left button go where the cursor is (after a press-drag that failed half-way). */
 export async function releaseMouse(): Promise<void> {
   await jxa([...prelude(), 'post($.kCGEventLeftMouseUp, loc());', "JSON.stringify({ ok: true });"]);

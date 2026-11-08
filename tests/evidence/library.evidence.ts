@@ -7,9 +7,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, holdCopies, holdSaveDialog, importPaths, launch, mainWindow, menuItemEnabled, nativeKeyCode,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectWindow, frontmostProcess, holdCopies, holdSaveDialog, importPaths, launch, mainWindow, menuItemEnabled, nativeKeyCode,
   nativeKeystroke, recordedPopups, releaseCopies, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, saveDialogCalls, saveDialogLog, seedLibrary, seedMetadata, selectRows, shellCalls, stubContextMenu,
   stubShell, type Session,
 } from '../e2e/helpers';
@@ -46,6 +46,79 @@ async function guard(name: string, run: () => Promise<void>): Promise<void> {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * macOS: from now on main notes what the main window gets of the keyboard — each key at its web contents (before-input-event),
+ * each menu command and window state main sends it, its focus and blur — with the time (epoch ms). `keyMiss` reads the notes.
+ */
+const watchKeys = (app: ElectronApplication) =>
+  app.evaluate(({ BrowserWindow }) => {
+    type Watch = { notes: string[]; stop(): void };
+    const g = globalThis as { __learnKeyWatch?: Watch };
+    g.__learnKeyWatch?.stop();
+    const w = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().includes('window=main'));
+    if (!w) return;
+    const notes: string[] = [];
+    const contents = w.webContents;
+    const onInput = (_e: unknown, i: { type: string; key: string; meta: boolean }) => void notes.push(`${Date.now()} input ${i.type} ${i.meta ? '⌘' : ''}${i.key}`);
+    const onFocus = () => void notes.push(`${Date.now()} main focus`);
+    const onBlur = () => void notes.push(`${Date.now()} main blur`);
+    const send = contents.send;
+    contents.send = function (this: typeof contents, channel: string, ...args: unknown[]) {
+      if (channel === 'evt:menu-command' || channel === 'evt:window-state') notes.push(`${Date.now()} ${channel} ${JSON.stringify(args[0] ?? null)}`);
+      return send.call(this, channel, ...args);
+    };
+    contents.on('before-input-event', onInput);
+    w.on('focus', onFocus);
+    w.on('blur', onBlur);
+    g.__learnKeyWatch = {
+      notes,
+      stop: () => {
+        contents.send = send;
+        contents.off('before-input-event', onInput);
+        w.off('focus', onFocus);
+        w.off('blur', onBlur);
+      },
+    };
+  });
+const stopWatchingKeys = (app: ElectronApplication) =>
+  app.evaluate(() => {
+    const g = globalThis as { __learnKeyWatch?: { stop(): void } };
+    g.__learnKeyWatch?.stop();
+    delete g.__learnKeyWatch;
+  });
+/**
+ * macOS, after a native key the page did not act on: where the key went. Which app is frontmost now; which of our windows is key;
+ * whether 빠른 검색 is enabled; the page's focus; main's notes since `watchKeys` (the key at the main window, a menu command sent);
+ * and the screen.
+ */
+async function keyMiss(app: ElectronApplication, page: Page, sentAt: number | null): Promise<unknown> {
+  const safe = <T,>(get: () => Promise<T> | T) => Promise.resolve().then(get).catch((e: unknown) => errorText(e));
+  return {
+    sentAt,
+    frontmost: await safe(() => frontmostProcess()),
+    appPid: app.process().pid,
+    windows: await safe(() =>
+      app.evaluate(({ BrowserWindow }) => ({
+        focused: /[?&]window=(\w+)/.exec(BrowserWindow.getFocusedWindow()?.webContents.getURL() ?? '')?.[1] ?? null,
+        shown: BrowserWindow.getAllWindows().filter((w) => w.isVisible()).map((w) => /[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? '?'),
+      })),
+    ),
+    findEnabled: await safe(() => menuItemEnabled(app, 'library.find')),
+    page: await safe(() =>
+      page.evaluate(() => {
+        const a = document.activeElement;
+        return {
+          hasFocus: document.hasFocus(),
+          inactive: document.documentElement.hasAttribute('data-window-inactive'),
+          active: a ? `${a.tagName.toLowerCase()}${a.getAttribute('data-testid') ? `[${a.getAttribute('data-testid')}]` : ''}${a.getAttribute('aria-label') ? ` ${a.getAttribute('aria-label')}` : ''}` : null,
+        };
+      }),
+    ),
+    main: await safe(() => app.evaluate(() => (globalThis as { __learnKeyWatch?: { notes: string[] } }).__learnKeyWatch?.notes ?? null)),
+    screen: await safe(async () => (await fullScreenShot('m4-05-cmdf-missed', 'the screen when a real ⌘F did not reach the quick search field')).file),
+  };
+}
 /** The colour a token resolves to here (light-dark() resolved by the page's scheme), as getComputedStyle writes it. */
 const tokenColor = (page: Page, token: string) =>
   page.evaluate((t) => {
@@ -344,17 +417,27 @@ test('M4 library: quick search — a real ⌘F, 초성 ㅅㅎ with the count and
 
   await guard('search: ⌘F focuses the quick search field', async () => {
     let note: string | undefined;
+    let sentAt: number | null = null;
     if (IS_MAC) {
+      await watchKeys(s.app);
       try {
         await bringAppToFront(s.app);
-        await nativeKeystroke(s.app, 'f', ['command']);
+        sentAt = (await nativeKeystroke(s.app, 'f', ['command'])).sentAt;
       } catch (e) {
         if (!(e instanceof NativeInputNotPermitted)) throw e;
         note = 'keystroke not permitted: ran from the menu instead';
         await runMenuCommand(s.app, 'library.find');
       }
     } else await runMenuCommand(s.app, 'library.find');
-    await expect(field).toBeFocused({ timeout: 5_000 });
+    try {
+      await expect(field).toBeFocused({ timeout: 5_000 });
+    } catch (e) {
+      // Mac runs 42443540025 and 42451371771: the key went out with the app frontmost and the field never took the focus, and nothing
+      // said where the key went. The miss now carries it (one line: the guard keeps an error's first line).
+      throw new Error(`${errorText(e)} ${JSON.stringify(IS_MAC ? await keyMiss(s.app, s.page, sentAt) : null)}`);
+    } finally {
+      if (IS_MAC) await stopWatchingKeys(s.app);
+    }
     v['cmdF'] = { native: IS_MAC && note === undefined, ...(note ? { note } : {}) };
     check('search: ⌘F focuses the quick search field', true, v['cmdF']);
   });

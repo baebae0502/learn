@@ -636,8 +636,9 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     const scrollRenders = await renderCounts(page);
     expect(scroll.scrolledTo, 'the table scrolled').toBeGreaterThan(0);
     const frameMs = scroll.deltas.map(tenth);
-    // 150 frames of 40 px: the rows that scrolled in render once, the ones that stayed do not (a row is 32-40 px tall).
-    expect(scrollRenders['LibraryRow'] ?? 0, 'rows rendered while scrolling: only the ones that came into the range').toBeLessThanOrEqual(scroll.scrolledTo / 24 + 60);
+    // 150 frames of 40 px: a row renders when it comes into the range, and twice (react-aria's drag and drop hooks set state
+    // as they mount); the rows that stay in the range do not render again, which would be thousands of renders.
+    expect(scrollRenders['LibraryRow'] ?? 0, 'rows rendered while scrolling: only the ones that came into the range').toBeLessThanOrEqual(2 * (scroll.scrolledTo / 28 + 20));
 
     // Sort: a press on a column header's sort button → the first frame with the re-sorted rows. The button's onClick sorts
     // (a button's click() runs it, unlike a row's), the settings write is optimistic.

@@ -184,7 +184,7 @@ describe('collection and tag mutations broadcast reason collections / tags, only
     expect(await call('tags:unassign', { tagId: TAG, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: 2 });
     expect(await call('tags:togglePosition', { position: 1, itemIds: [ITEM] })).toEqual({ ok: true, data: null }); // no tag there
     tags.togglePositionChanged.mockReturnValueOnce({ tagId: TAG, assigned: true, itemIds: [OTHER] });
-    expect(await call('tags:togglePosition', { position: 1, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: { tagId: TAG, assigned: true } });
+    expect(await call('tags:togglePosition', { position: 1, itemIds: [ITEM, OTHER] })).toEqual({ ok: true, data: { tagId: TAG, assigned: true, itemIds: [OTHER] } });
     expect(sent).toEqual([
       [CHANGED, { reason: 'tags' }],
       [CHANGED, { reason: 'tags', itemIds: [ITEM, OTHER] }],

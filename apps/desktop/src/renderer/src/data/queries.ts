@@ -3,6 +3,7 @@ import type { LibraryItem, Prefs } from '@learn/domain';
 import { api, unwrap } from '../api';
 import { useLearnEvent } from '../events';
 import { carrySearchIndex } from '../library/search';
+import { whenIdle } from '../ui/whenIdle';
 import { createChangeHandler } from './libraryChange';
 import { queryClient } from './query-client';
 
@@ -82,7 +83,8 @@ export function putItems(client: QueryClient, prev: readonly LibraryItem[], next
   if (held) carrySearchIndex(prev, held);
 }
 
-const onLibraryChanged = createChangeHandler({
+/** The window's reading of what main announces; the tag actions say which changes they made themselves (expectEcho). */
+export const libraryChanges = createChangeHandler({
   cached: () => queryClient.getQueryData<LibraryItem[]>(keys.items),
   refetching: () => queryClient.isFetching({ queryKey: keys.items }) > 0,
   put: (prev, next) => putItems(queryClient, prev, next),
@@ -97,9 +99,13 @@ const onLibraryChanged = createChangeHandler({
   invalidateTexts: () => void queryClient.invalidateQueries({ queryKey: keys.searchTexts }),
   invalidateDetail: (itemId) => void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) }),
   invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
+  whenIdle,
+  setTimer: (fn, ms) => setTimeout(fn, ms),
+  clearTimer: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+  now: () => Date.now(),
 });
 export function useLibrarySync(): void {
-  useLearnEvent('libraryChanged', onLibraryChanged);
+  useLearnEvent('libraryChanged', libraryChanges.onChange);
 }
 
 /** prefsChanged carries the whole new prefs object (any window may have changed them). */

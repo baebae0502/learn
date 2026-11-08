@@ -1,7 +1,8 @@
 import type { OrganizeSnapshot, Tag, TagColorId } from '@learn/domain';
 import type { OrganizeModel } from '../organize/model';
 import { t } from '../strings';
-import { withTagColor, withTagMerged, withTagRemoved, withTagRenamed, withTagged } from './organizeCache';
+import { withTagged } from '../organize/patch';
+import { withTagColor, withTagMerged, withTagRemoved, withTagRenamed } from './organizeCache';
 import { tagColorId } from './tagColor';
 import { useTagEdit } from './tagEdit';
 import { sameTagName, tagNameVerdict } from './tagName';
@@ -17,13 +18,16 @@ export interface TagActionDeps {
     remove(input: { tagId: string }): Promise<void>;
     assign(input: { tagId: string; itemIds: string[] }): Promise<number>;
     unassign(input: { tagId: string; itemIds: string[] }): Promise<number>;
-    togglePosition(input: { position: number; itemIds: string[] }): Promise<{ tagId: string; assigned: boolean } | null>;
+    /** `itemIds`: the items whose tags changed (when adding: only those that lacked the tag). */
+    togglePosition(input: { position: number; itemIds: string[] }): Promise<{ tagId: string; assigned: boolean; itemIds: string[] } | null>;
   };
   /** ui.confirm: the native sheet. */
   confirm(input: { message: string; detail?: string; confirm: string; caution?: boolean }): Promise<boolean>;
   model(): OrganizeModel | undefined;
   /** Changes the organize snapshot in the cache; the notice main sends next brings the real one. */
   patch(update: (s: OrganizeSnapshot) => OrganizeSnapshot): void;
+  /** A tag change this window puts into the snapshot itself: the notice main sends for these items is not read again. */
+  expectEcho(itemIds: readonly string[]): void;
   /** The tag left the filter (deleted, or merged into `into`, which takes its place). */
   leaveFilter(tagId: string, into?: string): void;
   /** What has the focus now. */
@@ -166,12 +170,13 @@ export function createTagActions(deps: TagActionDeps): TagActions {
       if (itemIds.length === 0) return;
       try {
         if (itemIds.length <= TOGGLE_CHUNK) {
+          deps.expectEcho(itemIds);
           const done = await deps.tags.togglePosition({ position, itemIds: [...itemIds] });
           if (done === null) {
             deps.notice(t.organize.tags.noSlot(position));
             return;
           }
-          deps.patch((snap) => withTagged(snap, done.tagId, itemIds, done.assigned));
+          deps.patch((snap) => withTagged(snap, done.tagId, done.itemIds, done.assigned));
         } else {
           // Past what one call takes: the model says whether every item has the tag, and the calls go in pieces.
           const held = model.tagItems(tag.id);

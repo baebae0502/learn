@@ -64,6 +64,6 @@ export function registerOrganizeIpc(handle: Handle, deps: IpcDeps): void {
     const toggled = tags().togglePositionChanged(position, itemIds);
     if (!toggled) return null;
     changedItems('tags', toggled.itemIds);
-    return { tagId: toggled.tagId, assigned: toggled.assigned };
+    return { tagId: toggled.tagId, assigned: toggled.assigned, itemIds: toggled.itemIds };
   });
 }

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { keys } from '../data/queries';
+import { keys, libraryChanges } from '../data/queries';
 import { queryClient } from '../data/query-client';
 import { useLearnEvent } from '../events';
 import { afterEditing } from '../inspector/editGuard';
@@ -80,7 +80,10 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
     useJobProgress.getState().setImport(state);
     runner.progress(state);
   });
-  useLearnEvent('import:finished', ({ report }) => void runner.finished(report));
+  useLearnEvent('import:finished', ({ report }) => {
+    libraryChanges.flushImports(); // the put-off read starts now, and the runner waits for it
+    void runner.finished(report);
+  });
   // Not item.open through the registry: the question's sheet may still hold this window when the request comes.
   useLearnEvent('item:openRequested', ({ itemId }) => afterEditing(() => openTab(itemId)));
   return { runner, panelOpen };

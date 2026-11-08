@@ -369,7 +369,7 @@ export interface LearnApi {
     remove(input: TagIdInput): Promise<Result<void>>;
     assign(input: TagItemsInput): Promise<Result<number>>;
     unassign(input: TagItemsInput): Promise<Result<number>>;
-    togglePosition(input: TogglePositionInput): Promise<Result<{ tagId: string; assigned: boolean } | null>>;
+    togglePosition(input: TogglePositionInput): Promise<Result<{ tagId: string; assigned: boolean; itemIds: string[] } | null>>;
   };
   settings: {
     get(input: SettingGetInput): Promise<Result<unknown>>;

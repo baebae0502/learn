@@ -11,9 +11,24 @@ export const sheets = {
   /** The check box under the card while more duplicates wait (spec 3.4, dialogs.html?scene=duplicate). */
   applyToRest: (n: number) => `남은 중복 파일 ${n}개에도 같은 선택 적용`,
   shortcutsTitle: '단축키',
-  groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', organize: '정리', dialogs: '팔레트·대화상자' },
+  groups: { app: '앱', library: '라이브러리', viewer: '리더', item: '자료', organize: '정리', tabs: '탭', dialogs: '팔레트·대화상자' },
   /** The one line for the eight colour keys (spec 4.2), under 정리: "1–8 · 색 태그 붙이기/떼기". */
   colorKeys: { label: '색 태그 붙이기/떼기', spoken: (first: string, last: string) => `${first}부터 ${last}` },
+  /** The lines of design-spec 7.4 that name two keys ("A / B"): one row each; `tabNumbersTo` is spoken between ⌘1 and ⌘8. */
+  pairs: {
+    import: '파일 가져오기… / 외부 파일 연결…',
+    panes: '다음 / 이전 패널로 이동',
+    text: '글자 크게 / 작게',
+    zoom: '확대 / 축소',
+    tabClose: '탭 닫기 / 닫은 탭 다시 열기',
+    tabStep: '다음 / 이전 탭',
+    tabNumbers: '라이브러리 · 2–8번째 탭 / 마지막 탭',
+    find: '다음 / 이전 찾기',
+    rotate: '시계 / 반시계 방향으로 회전',
+    nav: '썸네일 / 목차 보기',
+    history: '뒤로 / 앞으로',
+  },
+  tabNumbersTo: '부터 ',
   /** The keys the ⌘K palette and every sheet understand (design-spec 7.4); sheets/shortcuts.ts spells them per platform. */
   dialogKeys: { move: '이동', run: '실행', close: '닫기' },
   /** 보기's 전체 화면, built by main outside the registry (main/menu/app-menu.ts FULL_SCREEN): the menu's neutral name. */

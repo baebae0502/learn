@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
-import { DEFAULT_PREFS, parseSetting, prefsSchema } from '../src/settings';
+import { DEFAULT_PREFS, SAVED_TAB_TITLE_MAX, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
 const code = (fn: () => unknown): string | undefined => {
@@ -22,6 +22,31 @@ describe('settings registry', () => {
     expect(code(() => parseSetting('layout.panes', { sidebar: 5000 }))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('ui.lastOpenItemId', 'not-a-uuid'))).toBe('VALIDATION_FAILED');
     expect(code(() => parseSetting('toString', 1))).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('ui.tabs', () => {
+  it('accepts a list with an active tab or none, and rejects more than fifty and unknown keys', () => {
+    const ids = Array.from({ length: 50 }, () => newId());
+    expect(parseSetting('ui.tabs', { items: ids, active: ids[0]! })).toEqual({ items: ids, active: ids[0] });
+    expect(parseSetting('ui.tabs', { items: [], active: null })).toEqual({ items: [], active: null });
+    expect(code(() => parseSetting('ui.tabs', { items: [...ids, newId()], active: null }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: [], active: null, extra: 1 }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: ['x'], active: null }))).toBe('VALIDATION_FAILED');
+  });
+
+  it('carries each tab\'s last known title and kind (R38): an older value without them still reads, a new one round-trips, and they are bounded', () => {
+    const [a, b] = [newId(), newId()] as [string, string];
+    // The value written before `known` existed.
+    expect(parseSetting('ui.tabs', { items: [a, b], active: a })).toEqual({ items: [a, b], active: a });
+    const known = { [a]: { title: 'Attention Is All You Need', type: 'pdf' }, [b]: { title: '', type: 'video' } };
+    expect(parseSetting('ui.tabs', { items: [a, b], active: b, known })).toEqual({ items: [a, b], active: b, known });
+    const longest = parseSetting('ui.tabs', { items: [a], active: a, known: { [a]: { title: 'x'.repeat(SAVED_TAB_TITLE_MAX), type: 'pdf' } } }) as { known: Record<string, { title: string }> };
+    expect(longest.known[a]!.title).toHaveLength(SAVED_TAB_TITLE_MAX);
+    expect(code(() => parseSetting('ui.tabs', { items: [a], active: a, known: { [a]: { title: 'x'.repeat(SAVED_TAB_TITLE_MAX + 1), type: 'pdf' } } }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: [a], active: a, known: { [a]: { title: 't', type: 'epub' } } }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: [a], active: a, known: { [a]: { title: 't', type: 'pdf', extra: 1 } } }))).toBe('VALIDATION_FAILED');
+    expect(code(() => parseSetting('ui.tabs', { items: [a], active: a, known: { notAnId: { title: 't', type: 'pdf' } } }))).toBe('VALIDATION_FAILED');
   });
 });
 

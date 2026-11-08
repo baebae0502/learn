@@ -70,22 +70,43 @@ async function pageOfDestination(doc: PDFDocumentProxy, dest: string | unknown[]
   return null;
 }
 
+/** Entries asked at once: a long outline fills in a batch at a time instead of one answer after another. */
+export const OUTLINE_BATCH = 32; /* local: entries per batch */
+
 /**
- * The page of every entry that goes to one. `isCancelled` is asked between entries: a document that is going away
+ * The page of every entry that goes to one, asked a batch at a time. `onBatch` gets the pages found so far after each batch
+ * (the numbers appear in order); `isCancelled` is asked before each batch and each entry: a document that is going away
  * rejects what is in flight, and nobody is left to read the answer.
  */
-export async function outlinePages(doc: PDFDocumentProxy, rows: readonly OutlineRow[], isCancelled: () => boolean): Promise<Map<string, number>> {
+export async function outlinePages(
+  doc: PDFDocumentProxy,
+  rows: readonly OutlineRow[],
+  isCancelled: () => boolean,
+  onBatch?: (pages: ReadonlyMap<string, number>) => void,
+): Promise<Map<string, number>> {
   const pages = new Map<string, number>();
-  for (const row of flattenOutline(rows)) {
+  const all = flattenOutline(rows);
+  for (let at = 0; at < all.length; at += OUTLINE_BATCH) {
     if (isCancelled()) break;
-    if (row.dest === null) continue;
-    try {
-      const page = await pageOfDestination(doc, row.dest);
-      if (page !== null) pages.set(row.id, page);
-    } catch (e) {
-      // An entry whose destination is broken just shows no page; a failure from the document closing is nobody's news.
-      if (!isCancelled()) console.warn(`[pdf] outline entry skipped: ${(e as Error)?.name ?? 'Error'}`);
-    }
+    const batch = all.slice(at, at + OUTLINE_BATCH);
+    const found = await Promise.all(
+      batch.map(async (row): Promise<number | null> => {
+        if (row.dest === null) return null;
+        try {
+          return await pageOfDestination(doc, row.dest);
+        } catch (e) {
+          // An entry whose destination is broken just shows no page; a failure from the document closing is nobody's news.
+          if (!isCancelled()) console.warn(`[pdf] outline entry skipped: ${(e as Error)?.name ?? 'Error'}`);
+          return null;
+        }
+      }),
+    );
+    if (isCancelled()) break;
+    batch.forEach((row, i) => {
+      const page = found[i];
+      if (page !== null && page !== undefined) pages.set(row.id, page);
+    });
+    onBatch?.(new Map(pages));
   }
   return pages;
 }

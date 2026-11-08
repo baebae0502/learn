@@ -117,7 +117,7 @@ test('⇧F10 and the menu key open the focused row\'s menu under it, once, for t
     await page.keyboard.press('Shift+F10');
     await opened(1);
     const labels = (items: Awaited<ReturnType<typeof recordedPopups>>[number]) => items.filter((i) => i.type !== 'separator').map((i) => [i.label, i.enabled]);
-    expect(labels((await recordedPopups(app))[0]!)).toEqual([['열기', true], [process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', true], ['사본 내보내기…', true], ['컬렉션에 추가', true], ['휴지통으로 이동', true]]);
+    expect(labels((await recordedPopups(app))[0]!)).toEqual([['열기', true], ['새\u00a0탭에서 열기', true], [process.platform === 'darwin' ? 'Finder에서 보기' : '폴더에서 보기', true], ['사본 내보내기…', true], ['컬렉션에 추가', true], ['휴지통으로 이동', true]]);
     // Under the row, a little in from its left edge.
     const box = (await rowByTitle(page, 'beta').boundingBox())!;
     const [at] = await recordedPopupPoints(app);
@@ -128,17 +128,19 @@ test('⇧F10 and the menu key open the focused row\'s menu under it, once, for t
     await page.keyboard.press('ContextMenu');
     await opened(2);
 
-    // Two rows selected: the menu judges both (열기 needs exactly one).
+    // Two rows selected: the menu judges both (열기 opens a tab each and says so; Finder needs exactly one).
     await selectRows(page, ['alpha', 'gamma']);
     await page.keyboard.press('Shift+F10');
     await opened(3);
-    expect((await recordedPopups(app))[2]!.find((i) => i.label === '열기')?.enabled).toBe(false);
+    const two = (await recordedPopups(app))[2]!;
+    expect(two.find((i) => i.label === '탭 2개로 열기')?.enabled).toBe(true);
+    expect(two.find((i) => i.label.endsWith('에서 보기'))?.enabled).toBe(false);
 
     // A pick runs on the row: 열기 opens the one that had the key.
     await stubContextMenu(app, '열기');
     await rowByTitle(page, 'gamma').click();
     await page.keyboard.press('Shift+F10');
-    await expect(page.getByTestId('viewer-title')).toHaveText('gamma');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('gamma');
   } finally {
     await app.close();
   }

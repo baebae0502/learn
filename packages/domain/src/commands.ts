@@ -2,6 +2,7 @@ import type { KeySpec } from './accelerator';
 import type { Availability, StorageMode } from './library';
 import { DEFAULT_COLUMN_CONFIG, columnsMask, type LibrarySortColumn } from './library-columns';
 import type { LibraryScope } from './organize';
+import type { ScrollModeName } from './reading';
 import { SUBMENUS, type SubmenuSource, type SubmenuSpec } from './submenus';
 import { COLOR_SLOTS } from './tag-colors';
 
@@ -24,7 +25,26 @@ export type CommandId =
   | 'library.find'
   | 'library.findEverywhere'
   | 'nav.back'
+  | 'nav.historyBack'
+  | 'nav.historyForward'
   | 'item.open'
+  | 'item.openInBackground'
+  | 'tab.close'
+  | 'tab.reopenClosed'
+  | 'tab.next'
+  | 'tab.previous'
+  | 'tab.goTo2'
+  | 'tab.goTo3'
+  | 'tab.goTo4'
+  | 'tab.goTo5'
+  | 'tab.goTo6'
+  | 'tab.goTo7'
+  | 'tab.goTo8'
+  | 'tab.last'
+  | 'tab.moveLeft'
+  | 'tab.moveRight'
+  | 'tab.closeOthers'
+  | 'tab.revealInLibrary'
   | 'item.showInFolder'
   | 'item.openExternally'
   | 'item.editInfo'
@@ -81,7 +101,13 @@ export type CommandId =
   | 'reader.pageColorAuto'
   | 'reader.pageColorOriginal'
   | 'reader.pageColorSepia'
-  | 'reader.pageColorDark';
+  | 'reader.pageColorDark'
+  | 'reader.scrollVertical'
+  | 'reader.scrollHorizontal'
+  | 'reader.scrollPage'
+  | 'reader.spreadNone'
+  | 'reader.spreadOdd'
+  | 'reader.spreadEven';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
@@ -98,8 +124,8 @@ export type ReaderNav = (typeof READER_NAVS)[number];
 export type CommandContext = 'app' | 'library' | 'viewer' | 'item' | 'collection' | 'tag' | 'trash';
 /** `app` is the macOS application menu (Linux/Windows put those items at the end of 파일); `help` is 도움말. */
 export type MenuName = 'app' | 'file' | 'edit' | 'view' | 'go' | 'window' | 'help';
-export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash'] as const;
-/** Native context menus (ADR-0005 §4): items now; collections, tags and table column headers from M4–M5. */
+export const CONTEXT_MENU_KINDS = ['item', 'collection', 'tag', 'column', 'trash', 'tab'] as const;
+/** Native context menus (ADR-0005 §4): items, collections, tags, table column headers, the trash's rows and a reader tab. */
 export type ContextMenuKind = (typeof CONTEXT_MENU_KINDS)[number];
 
 /**
@@ -170,14 +196,16 @@ export interface CommandSpec {
   paletteLabel?: string;
   /**
    * A name with the number it acts on (중복 N묶음 모두 정리, spec 11.1): the palette and the view's button say how many
-   * once the context reports it; `label` is the name without the number.
+   * once the context reports it; `label` is the name without the number. `selection`: the name when several items are
+   * selected (탭 N개로 열기).
    */
-  countLabel?: { duplicateGroups: (n: number) => string };
+  countLabel?: { duplicateGroups?: (n: number) => string; selection?: (n: number) => string };
   /** Electron accelerator, owned by the native menu. */
   accelerator?: string;
   /** Single-key shortcut, matched by physical key in the renderer keymap. */
   key?: KeySpec;
-  menu?: { menu: MenuName; group: number; order: number };
+  /** `hidden`: a menu item that is not drawn but keeps its key (⌘2…⌘9 in 윈도우); only the 윈도우 menu has such items. */
+  menu?: { menu: MenuName; group: number; order: number; hidden?: true };
   /** Native context menus listing this command; separators between groups. */
   contextMenu?: { kinds: readonly ContextMenuKind[]; group: number; order: number; onlyWhenAvailable?: boolean };
   /**
@@ -201,6 +229,8 @@ export interface CommandSpec {
 /** Electron accelerator grammar used by the registry (design-spec 7.4 keys included). */
 export const ACCELERATOR_SYNTAX = /^((CmdOrCtrl|Cmd|Ctrl|Alt|Shift)\+)*([A-Za-z0-9]|\[|\]|,|\/|-|Plus|F\d{1,2}|Enter|Delete|Backspace|Tab|Space|Escape)$/;
 
+/** ⌘2…⌘8: the second to the eighth tab (⌘1 is the library, ⌘9 the last). */
+const TAB_NUMBERS = [2, 3, 4, 5, 6, 7, 8] as const;
 const colorId = (n: number) => `tag.color${n}` as CommandId;
 const colorCommand = (n: (typeof COLOR_SLOTS)[number]): CommandSpec => ({
   id: colorId(n),
@@ -273,8 +303,17 @@ export const COMMANDS: readonly CommandSpec[] = [
     keywords: ['전체', '검색', '찾기', '라이브러리', '범위', 'search', 'everywhere', 'all'],
   },
   {
-    id: 'nav.back', label: '라이브러리로 돌아가기', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
+    id: 'nav.back', label: '라이브러리', accelerator: 'CmdOrCtrl+1', menu: { menu: 'go', group: 1, order: 1 }, contexts: ['viewer'],
     keywords: ['라이브러리', '뒤로', '목록', 'library', 'back'],
+  },
+  // ⌘[ / ⌘] (design-spec 7.4): the open PDF's own back and forward — where a link, the outline, a thumbnail or the page field took it from.
+  {
+    id: 'nav.historyBack', label: '뒤로', accelerator: 'CmdOrCtrl+[', menu: { menu: 'go', group: 2, order: 1 }, contexts: ['viewer'],
+    keywords: ['뒤로', '이전', '기록', 'back', 'history'],
+  },
+  {
+    id: 'nav.historyForward', label: '앞으로', accelerator: 'CmdOrCtrl+]', menu: { menu: 'go', group: 2, order: 2 }, contexts: ['viewer'],
+    keywords: ['앞으로', '다음', '기록', 'forward', 'history'],
   },
   // ⌥⌘G (design-spec 7.4 리더): the toolbar's page field takes the focus with its number selected.
   {
@@ -282,12 +321,46 @@ export const COMMANDS: readonly CommandSpec[] = [
     keywords: ['쪽', '이동', '페이지', '번호', '가기', 'page', 'go to'],
   },
   { id: 'item.relink', label: '다시 연결…', contexts: ['item'], contextMenu: { kinds: ['item'], group: 0, order: 1, onlyWhenAvailable: true } },
-  { id: 'item.open', label: '열기', contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
+  // ↩ and a double-click: the item's tab, or a new one right of the shown tab; several items open as several tabs (spec 3.3).
+  { id: 'item.open', label: '열기', countLabel: { selection: (n) => `탭 ${n}개로 열기` }, contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 1 } },
+  // ⌘↩: the same in the background — the shown tab stays. 파일's item group opens with it; the item menu has it under 열기.
+  {
+    id: 'item.openInBackground', label: '새\u00a0탭에서 열기', countLabel: { selection: (n) => `새\u00a0탭 ${n}개로 열기` }, accelerator: 'CmdOrCtrl+Enter',
+    menu: { menu: 'file', group: 2, order: 0 }, contexts: ['item'], contextMenu: { kinds: ['item'], group: 1, order: 2 },
+  },
+  // ⌘W closes the shown reader tab (the library's tab closes the window); ⇧⌘W, the window's own role, always closes the window.
+  // Last in 파일, above 창 닫기, and after 설정… where that joins 파일 (group 95). The tab menu runs it on the tab it was opened on.
+  {
+    id: 'tab.close', label: '탭 닫기', accelerator: 'CmdOrCtrl+W', menu: { menu: 'file', group: 95, order: 1 }, contexts: ['app'],
+    contextMenu: { kinds: ['tab'], group: 1, order: 1 }, keywords: ['탭', '닫기', '끄기', 'tab', 'close'],
+  },
+  {
+    id: 'tab.reopenClosed', label: '닫은 탭 다시 열기', accelerator: 'Shift+CmdOrCtrl+T', menu: { menu: 'file', group: 95, order: 2 }, contexts: ['app'],
+    keywords: ['탭', '닫은', '다시', '열기', '복구', 'tab', 'reopen', 'undo close'],
+  },
+  // ⌃⇥ / ⌃⇧⇥ go round through the library tab; ⌘2…⌘8 and ⌘9 are 윈도우's hidden items (the menu lists no tabs).
+  {
+    id: 'tab.next', label: '다음 탭', accelerator: 'Ctrl+Tab', menu: { menu: 'window', group: 2, order: 1 }, contexts: ['app'],
+    keywords: ['탭', '다음', 'next tab'],
+  },
+  {
+    id: 'tab.previous', label: '이전 탭', accelerator: 'Ctrl+Shift+Tab', menu: { menu: 'window', group: 2, order: 2 }, contexts: ['app'],
+    keywords: ['탭', '이전', 'previous tab'],
+  },
+  ...TAB_NUMBERS.map((n): CommandSpec => ({
+    id: `tab.goTo${n}` as CommandId, label: `${n}번째 탭`, accelerator: `CmdOrCtrl+${n}`, menu: { menu: 'window', group: 2, order: n + 1, hidden: true }, contexts: ['app'], palette: false,
+  })),
+  { id: 'tab.last', label: '마지막 탭', accelerator: 'CmdOrCtrl+9', menu: { menu: 'window', group: 2, order: 10, hidden: true }, contexts: ['app'], palette: false },
+  // ⌥⇧← / ⌥⇧→ are the tab strip's keys while a tab has the focus (the strip handles them); the palette moves the shown tab.
+  { id: 'tab.moveLeft', label: '탭을 왼쪽으로 옮기기', contexts: ['app'], keywords: ['탭', '왼쪽', '옮기기', '순서', 'tab', 'move left'] },
+  { id: 'tab.moveRight', label: '탭을 오른쪽으로 옮기기', contexts: ['app'], keywords: ['탭', '오른쪽', '옮기기', '순서', 'tab', 'move right'] },
+  { id: 'tab.closeOthers', label: '다른\u00a0탭 닫기', contexts: ['app'], contextMenu: { kinds: ['tab'], group: 1, order: 2 }, palette: false },
+  { id: 'tab.revealInLibrary', label: '라이브러리에서 보기', contexts: ['app'], contextMenu: { kinds: ['tab'], group: 2, order: 0 }, palette: false },
   // ⇧⌘R (design-spec 7.4 라이브러리): 파일 › and the item menu act on the one selected row; the menu bar judges the
   // reported selection counts, so it greys with no selection, several, or a missing file (and in the reader).
   {
     id: 'item.showInFolder', label: 'Finder에서 보기', labelOff: '폴더에서 보기', accelerator: 'Shift+CmdOrCtrl+R', menu: { menu: 'file', group: 2, order: 1 },
-    contexts: ['item'], contextMenu: { kinds: ['item'], group: 2, order: 1 }, palette: true,
+    contexts: ['item'], contextMenu: { kinds: ['item', 'tab'], group: 2, order: 1 }, palette: true,
     keywords: ['폴더', '위치', '파인더', 'Finder', 'reveal'],
   },
   // 파일 › and the palette on the selected row, besides the notices' buttons. Still no item context-menu entry:
@@ -474,6 +547,26 @@ export const COMMANDS: readonly CommandSpec[] = [
       keywords: ['쪽 색', '색', '배경', '종이', 'page color', ...extra],
     }),
   ),
+  // 스크롤 ▸ and 펼침 ▸ are groups in SUBMENUS like 쪽 색 ▸: the members carry no placement and no key, the groups hold them.
+  // The palette names each one with its group's word.
+  ...(
+    [
+      ['scrollVertical', '세로로 이어서', '스크롤', ['세로', '위아래', '이어서', 'vertical']],
+      ['scrollHorizontal', '가로로 이어서', '스크롤', ['가로', '옆으로', '좌우', 'horizontal']],
+      ['scrollPage', '한 쪽씩', '스크롤', ['쪽', '한 장씩', '페이지', '넘기기', 'page', 'single']],
+      ['spreadNone', '펼치지 않음', '펼침', ['한 쪽', '낱장', 'none', 'single']],
+      ['spreadOdd', '홀수 쪽부터', '펼침', ['두 쪽', '양면', '책', '홀수', 'odd', 'book']],
+      ['spreadEven', '짝수 쪽부터', '펼침', ['두 쪽', '양면', '책', '짝수', 'even']],
+    ] as const
+  ).map(
+    ([name, label, group, extra]): CommandSpec => ({
+      id: `reader.${name}` as CommandId,
+      label,
+      paletteLabel: `${group}: ${label}`,
+      contexts: ['viewer'],
+      keywords: [group, '보기', '모드', 'scroll', 'spread', ...extra],
+    }),
+  ),
   // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
   {
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
@@ -510,12 +603,14 @@ export function tagSlot(id: CommandId): number | null {
  * Whether the palette lists a command now, beside inPalette and availability: a colour key only while a tag holds its slot
  * (spec 4.2) — a row for an empty slot could not do what its name says. The key itself still runs (it tells the user).
  */
-export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 'tagPositions'>): boolean {
+export function paletteListed(spec: CommandSpec, ctx: Pick<CommandContextState, 'tagPositions'> & Partial<Pick<CommandContextState, 'view'>>): boolean {
+  // 탭 닫기 on the library tab closes the window: the palette, which is read by name, offers it only where a reader tab is shown.
+  if (spec.id === 'tab.close') return ctx.view === 'viewer';
   const slot = tagSlot(spec.id);
   return slot === null || hasTagPosition(ctx.tagPositions, slot);
 }
 /** What a state label follows: the pane states and the view's scope, as reported (absent ones name nothing). */
-export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view'>>;
+export type LabelState = Partial<Pick<CommandContextState, 'sidebar' | 'inspector' | 'scope' | 'duplicateGroups' | 'view' | 'selectionCount'>>;
 
 /**
  * The label a menu, tooltip or palette shows: the state label when the command has one and the state is known (`state`
@@ -528,7 +623,8 @@ export function commandLabel(c: CommandSpec, platform: string, state: LabelState
   const scoped = labels?.scope && state.scope ? labels.scope[state.scope] : undefined;
   if (scoped !== undefined) return scoped;
   if (labels?.view && state.view) return labels.view[state.view];
-  if (c.countLabel && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
+  if (c.countLabel?.selection && state.selectionCount !== undefined && state.selectionCount > 1) return c.countLabel.selection(state.selectionCount);
+  if (c.countLabel?.duplicateGroups && state.duplicateGroups !== undefined && state.duplicateGroups > 0) return c.countLabel.duplicateGroups(state.duplicateGroups);
   return platform !== 'darwin' && c.labelOff ? c.labelOff : c.label;
 }
 
@@ -592,6 +688,11 @@ export interface CommandContextState {
   trashCount: number;
   /** A PDF is open and its pages exist (the reader's view commands and ⌘+ ⌘− ⌘0 there need it): absent in the library, for a video and while a PDF opens. */
   pdfOpen?: boolean;
+  /** How the open PDF scrolls: 펼침 is off while it is 'horizontal'. Absent with no PDF open. */
+  pdfScroll?: ScrollModeName;
+  /** The open PDF has a place to go back to / forward to (⌘[ ⌘]): absent otherwise. */
+  historyBack?: boolean;
+  historyForward?: boolean;
   /** Text of the open PDF is selected (the reader's selection pop-up has something to translate): 선택한 글 번역. Absent otherwise. */
   pdfSelection?: boolean;
   /** Translation is switched off (the choice is made and it is no): 선택한 글 번역 does nothing then. Absent while on or not yet chosen (running it asks). */
@@ -607,6 +708,10 @@ export interface CommandContextState {
    * many. Absent where no library view reports it.
    */
   duplicateGroups?: number;
+  /** Reader tabs open (the library tab is not counted): the tab commands that switch, close the others or move need some. Absent with none. */
+  tabCount?: number;
+  /** Some closed tab's item can be opened again (not in the trash, not deleted): ⇧⌘T. Absent otherwise. */
+  closedOpenable?: boolean;
 }
 
 /** The view fields of a context with no library view yet: the first report, the fatal screen, a test's fixture. */
@@ -642,6 +747,8 @@ export interface ItemTargetInfo {
   kind: 'item';
   storageMode: StorageMode;
   availability: Availability;
+  /** The item is in the trash (only a tab can be about one): 라이브러리에서 보기 has no row to show then. */
+  trashed?: true;
 }
 export interface CollectionTargetInfo {
   kind: 'collection';
@@ -662,10 +769,11 @@ export const TRASH_TARGET: TrashTargetInfo = Object.freeze({ kind: 'trash' });
 export type CommandTargetInfo = ItemTargetInfo | CollectionTargetInfo | TagTargetInfo | TrashTargetInfo;
 
 /** The availability facts of an item (a list row, a freshly read item) as a target. */
-export const itemTarget = (item: { storageMode: StorageMode; availability: Availability }): ItemTargetInfo => ({
+export const itemTarget = (item: { storageMode: StorageMode; availability: Availability; trashed?: boolean }): ItemTargetInfo => ({
   kind: 'item',
   storageMode: item.storageMode,
   availability: item.availability,
+  ...(item.trashed ? { trashed: true as const } : {}),
 });
 
 /**
@@ -733,6 +841,10 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
+/** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
+const spreadAllowed: Rule = (c) => c.pdfOpen === true && c.pdfScroll !== 'horizontal';
+/** Tab number `n` (1 is the library) exists: reader tabs are numbered from 2. */
+const hasTab = (n: number): Rule => (c) => (c.tabCount ?? 0) >= n - 1;
 const RULES: Partial<Record<CommandId, Rule>> = {
   'library.find': (c) => (c.view === 'viewer' ? c.pdfOpen === true : c.libraryCount > 0),
   'reader.findNext': pdfOpen,
@@ -748,9 +860,29 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   // The sort acts on the table, which the empty library does not have (its first-run screen replaces it).
   'library.sortBy': (c) => c.libraryCount > 0,
   // Any availability: for a missing file the reader shows its 원본 없음 notice, which is where 다시 연결… lives.
-  'item.open': (_ctx, t) => t.items.length === 1,
+  'item.open': (_ctx, t) => t.items.length >= 1,
+  // The library's selection, as the menu bar judges it; the trash opens nothing (its rows are not item targets).
+  'item.openInBackground': (c, t) => c.view === 'library' && c.scope !== 'trash' && t.items.length >= 1,
+  'tab.reopenClosed': (c) => c.closedOpenable === true,
+  'tab.next': hasTab(2),
+  'tab.previous': hasTab(2),
+  'tab.goTo2': hasTab(2),
+  'tab.goTo3': hasTab(3),
+  'tab.goTo4': hasTab(4),
+  'tab.goTo5': hasTab(5),
+  'tab.goTo6': hasTab(6),
+  'tab.goTo7': hasTab(7),
+  'tab.goTo8': hasTab(8),
+  'tab.last': hasTab(2),
+  // The palette moves the shown reader tab; the strip's own keys move the one that has the focus.
+  'tab.moveLeft': (c) => c.view === 'viewer' && (c.tabCount ?? 0) >= 2,
+  'tab.moveRight': (c) => c.view === 'viewer' && (c.tabCount ?? 0) >= 2,
+  'tab.closeOthers': (c) => (c.tabCount ?? 0) >= 2,
+  // A trashed item has no row in the library to show.
+  'tab.revealInLibrary': (_c, t) => t.items.length === 1 && t.items[0]!.trashed !== true,
   'item.relink': (_ctx, t) => t.items.length === 1 && t.items[0]!.storageMode === 'linked' && t.items[0]!.availability === 'missing',
-  'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
+  // A trashed item has no file to show: main answers NOT_FOUND for it (the tab menu of a trashed tab).
+  'item.showInFolder': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available' && t.items[0]!.trashed !== true,
   'item.openExternally': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   'item.exportCopy': (_ctx, t) => t.items.length === 1 && t.items[0]!.availability === 'available',
   // The reader's panel carries the pencil too (its target is the open item); the palette gives the reader no target.
@@ -804,10 +936,18 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.rotateCw': pdfOpen,
   'reader.rotateCcw': pdfOpen,
   'reader.goToPage': pdfOpen,
+  'nav.historyBack': (c) => c.pdfOpen === true && c.historyBack === true,
+  'nav.historyForward': (c) => c.pdfOpen === true && c.historyForward === true,
   'reader.pageColorAuto': pdfOpen,
   'reader.pageColorOriginal': pdfOpen,
   'reader.pageColorSepia': pdfOpen,
   'reader.pageColorDark': pdfOpen,
+  'reader.scrollVertical': pdfOpen,
+  'reader.scrollHorizontal': pdfOpen,
+  'reader.scrollPage': pdfOpen,
+  'reader.spreadNone': spreadAllowed,
+  'reader.spreadOdd': spreadAllowed,
+  'reader.spreadEven': spreadAllowed,
 };
 
 /**
@@ -831,6 +971,9 @@ function neededTargets(spec: CommandSpec, ctx: CommandContextState, t: Targets):
  */
 export function commandAvailable(spec: CommandSpec, ctx: CommandContextState, targets: readonly CommandTargetInfo[] = [], surface?: CommandSurface): boolean {
   if (MAIN_OWNED_COMMANDS.has(spec.id)) return true;
+  // ⌘W closes a tab or the window whatever holds the window (the role it replaced was always on), except under a modal surface of
+  // the renderer's own (a sheet's question, the palette), which owns the keys.
+  if (spec.id === 'tab.close' && surface?.modal !== true) return true;
   if ((spec.duringWork && surface !== undefined) ? surface.modal : ctx.blocked) return false;
   const t = targetsByKind(targets);
   const needed = neededTargets(spec, ctx, t);

@@ -146,6 +146,11 @@ async function makePaper(file) {
       page.drawText(line, { x: COLUMN.x[column], y: top - (i % perColumn) * LEAD, size: 10, font });
     });
     if (n % 5 === 0) page.drawRectangle({ x: 56, y: 100, width: 483, height: 60, borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 2 });
+    // The target of the "See figure 2 on page 40." link (XYZ 56, 600) is a figure: its top-left corner is the point the link lands on.
+    if (n === 40) {
+      page.drawRectangle({ x: 56, y: 520, width: 483, height: 80, color: rgb(1, 1, 1), borderColor: rgb(0.18, 0.5, 0.48), borderWidth: 2 });
+      page.drawText('Figure 2', { x: 66, y: 580, size: 12, font: bold, color: rgb(0.18, 0.5, 0.48) });
+    }
     page.drawText(`${n}. Footnote of page ${n}.`, { x: 56, y: 60, size: 8, font });
   });
   const first = pages[0];
@@ -157,7 +162,23 @@ async function makePaper(file) {
   link(157, 'See page 100.', { Dest: [pages[99].ref, PDFName.of('XYZ'), null, null, null] });
   link(144, 'https://example.org/learn', { A: { Type: 'Action', S: 'URI', URI: PDFString.of('https://example.org/learn') } });
   link(131, 'mailto:learn@example.org', { A: { Type: 'Action', S: 'URI', URI: PDFString.of('mailto:learn@example.org') } });
+  link(118, 'See figure 2 on page 40.', { Dest: [pages[39].ref, PDFName.of('XYZ'), 56, 600, null] });
   writeOutline(doc, outlineNodes());
+  fs.writeFileSync(file, await doc.save());
+}
+
+// ---- long-outline.pdf: 300 outline entries over 6 pages (the sidebar draws a list this long virtualised) ------------
+async function makeLongOutline(file) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  doc.setTitle('Learn fixture: long outline');
+  for (let i = 1; i <= 6; i++) doc.addPage([595, 842]).drawText(`Long outline - page ${i}`, { x: 56, y: 780, size: 18, font });
+  const chapters = Array.from({ length: 60 }, (_, c) => ({
+    title: `Part ${c + 1}`,
+    page: Math.floor((c * 6) / 60) + 1,
+    children: Array.from({ length: 4 }, (_, s) => ({ title: `${c + 1}.${s + 1} Topic`, page: Math.floor((c * 6) / 60) + 1, children: [] })),
+  }));
+  writeOutline(doc, chapters);
   fs.writeFileSync(file, await doc.save());
 }
 
@@ -233,6 +254,7 @@ const has = (name) => {
 if (need('sample.pdf')) await makePdf(path.join(out, 'sample.pdf'), 'Sample PDF');
 if (need('한글 경로 (테스트) #1.pdf')) await makePdf(path.join(out, '한글 경로 (테스트) #1.pdf'), 'Korean path PDF');
 if (need('paper-100.pdf')) await makePaper(path.join(out, 'paper-100.pdf'));
+if (need('long-outline.pdf')) await makeLongOutline(path.join(out, 'long-outline.pdf'));
 if (need('korean.pdf')) await makeKorean(path.join(out, 'korean.pdf'));
 // Encrypted PDFs cannot be made with pdf-lib: the committed file is made once with mutool (fixtures/static/README.md).
 if (need('locked.pdf')) fs.copyFileSync(path.join(here, 'static', 'locked.pdf'), path.join(out, 'locked.pdf'));

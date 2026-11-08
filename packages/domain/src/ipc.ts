@@ -7,7 +7,7 @@ import type {
 } from './library';
 import { itemMetadataSchema } from './metadata';
 import type { OrganizeSnapshot } from './organize';
-import { readingLocatorSchema, type ReadingPosition } from './reading';
+import { SCROLL_MODES, readingLocatorSchema, type ReadingPosition } from './reading';
 import type { Result } from './result';
 import type { Prefs } from './settings';
 import { CHECK_ACTS, type PurgeVariant, type SheetAction, type SheetPayload } from './sheets';
@@ -148,6 +148,11 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
+    pdfScroll: z.enum(SCROLL_MODES).optional(),
+    /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */
+    historyBack: z.boolean().optional(),
+    historyForward: z.boolean().optional(),
     /** Text of the open PDF is selected: 선택한 글 번역 is on; absent otherwise. */
     pdfSelection: z.boolean().optional(),
     /** Translation is switched off: 선택한 글 번역 is off; absent otherwise. */
@@ -160,6 +165,10 @@ export const commandContextInput = z
     restoreRunning: z.boolean().optional(),
     /** Duplicate groups of two or more listed items: 중복 N묶음 모두 정리 needs two and names the count (spec 11.1). */
     duplicateGroups: contextCount.optional(),
+    /** Reader tabs open (not the library's): the tab commands that switch, close the others or move need some; absent with none. */
+    tabCount: contextCount.optional(),
+    /** A closed tab's item can be opened again: ⇧⌘T; absent otherwise. */
+    closedOpenable: z.boolean().optional(),
   })
   .strict() satisfies z.ZodType<CommandContextState>;
 export type CommandContextInput = z.input<typeof commandContextInput>;
@@ -208,6 +217,8 @@ export const showContextMenuInput = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('tag'), tagIds: z.array(z.uuid()).min(1).max(5000), ...point }),
   // The trash view's rows (P-10): trashed items and collection rows together; either list may be empty, main answers null when none is in the trash.
   z.object({ kind: z.literal('trash'), itemIds: z.array(z.uuid()).max(1_000_000), collectionIds: z.array(z.uuid()).max(5000), ...point }),
+  // A reader tab (spec 3.4): the item it shows; `active` says it is the shown tab, whose menu names the keys of its commands.
+  z.object({ kind: z.literal('tab'), itemId: z.uuid(), active: z.boolean().optional(), ...point }),
 ]);
 /** The table header's native menu: which columns show now, which a view forces on (drawn checked and fixed), and where the pointer is. */
 export const showColumnMenuInput = z

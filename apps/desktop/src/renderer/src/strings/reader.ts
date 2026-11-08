@@ -1,6 +1,8 @@
 // Reader chrome and the reader's final states (design-spec 6 끝난 상태, 9 원인 + 다음 행동). U+00A0 binds
 // determiner + noun and "원본 파일" (strings.test.ts).
 export const reader = {
+  /** The notices' second button: a verb of its own (the command's name, 라이브러리, is the menu's and the ⌘1 tab's). */
+  backToLibrary: '라이브러리로 돌아가기',
   prevPage: '이전 쪽',
   nextPage: '다음 쪽',
   /** After the page field: the field holds the current page. */
@@ -9,22 +11,27 @@ export const reader = {
   /** Disabled-button tooltips (M-2). */
   firstPage: '첫 쪽입니다',
   lastPage: '마지막 쪽입니다',
+  /** The toolbar's 뒤로 / 앞으로 while the tab's history has nothing in that direction (M-2). */
+  noHistoryBack: '뒤로 갈 곳이 없습니다',
+  noHistoryForward: '앞으로 갈 곳이 없습니다',
   opening: 'PDF를 여는 중입니다',
   needsFile: '원본\u00a0파일이 있어야 쓸 수 있습니다',
   pdfTools: 'PDF 도구',
   /** The zoom field holds the scale in percent; its ▾ opens the zoom menu (design-spec 7.3). */
   zoomField: '확대 비율',
   zoomMenu: '확대 메뉴',
-  /** The toolbar's 보기 menu: the page colour and the rotation. */
+  /** The toolbar's 보기 menu: the page colour, the scroll and spread submenus and the rotation. */
   viewMenu: '보기',
   pageColor: '쪽 색',
+  /** The two submenus of 보기 ▾ (the menu bar's groups carry the same names). */
+  scrollMode: '스크롤',
+  spreadMode: '펼침',
   pdfStage: 'PDF 쪽',
   lockedTitle: '암호로 보호된 PDF입니다',
   lockedBody: '암호를 입력하면 엽니다. 암호는 저장하지 않으므로 다음에 열 때 다시 묻습니다.',
   password: '암호',
   passwordOpen: '열기',
   passwordWrong: '암호가 맞지 않습니다.',
-  linkedMeta: '외부 연결',
   pdfErrorTitle: '이\u00a0PDF를 열 수 없습니다',
   // One cause, one next action (design-spec 6), as in reader-pdf.html?state=error.
   pdfErrorBody: '파일 내용이 손상되어 쪽을 읽을 수 없습니다. 원본\u00a0파일은 그대로 보관됩니다. 다른\u00a0사본이 있으면 다시 가져오세요.',
@@ -58,9 +65,11 @@ export const reader = {
   thumbnails: '썸네일',
   outline: '목차',
   thumbnailList: '쪽 썸네일',
+  thumbnailFailed: (page: number) => `${page}쪽, 썸네일을 만들 수 없습니다`,
   thumbnailOf: (page: number) => `${page}쪽`,
   outlineSearch: '목차에서 찾기',
   outlineSearchLabel: '목차 검색',
+  outlineRowName: (title: string, page: number) => `${title}, ${page}쪽`,
   outlineTree: 'PDF 목차',
   noOutlineTitle: '이\u00a0PDF에는 목차가 없습니다',
   /** The body names the page shortcut between its two halves (a keycap, not text: the keys differ by platform). */

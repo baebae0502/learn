@@ -1,0 +1,190 @@
+@layer components {
+  /* The tab strip (design-spec 2.2, mockup .tabs): the content column's top bar while a reader tab exists. The library tab is
+     pinned at the start; the reader tabs scroll in a box as tall as the strip, so an active tab's shadow and a lifted tab are not cut. */
+  .tab-bar .tabs {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    gap: var(--space-4);
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* Only the tabs take the pointer; the empty strip drags the window as the M7a toolbar did. The scrolling box takes it too once it
+     overflows (no empty part is left and the wheel and the trackpad must reach it). */
+  .tab-bar .tab-item,
+  .tabs-scroll:is([data-fade-start], [data-fade-end]) {
+    -webkit-app-region: no-drag;
+  }
+  .tab-item {
+    display: flex;
+    align-items: center;
+    height: var(--tab-height);
+    padding-right: var(--space-4);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    min-width: 120px; /* local: spec 3.2, the narrowest a reader tab gets before the strip scrolls */
+    flex: 0 1 240px; /* local: spec 3.2, the basis of a tab */
+    position: relative;
+    cursor: default;
+  }
+  .tab {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    padding-left: var(--space-8);
+    border-radius: var(--radius-md);
+  }
+  .tab .title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .tab .icon {
+    flex: none;
+    color: var(--text-tertiary);
+  }
+  .tab-item.is-active {
+    background: var(--bg-control);
+    box-shadow: var(--shadow-e0);
+    color: var(--text-primary);
+  }
+  .tab-item.is-active .icon {
+    color: var(--text-secondary);
+  }
+  /* Dragging (spec 3.2, 3.5): the tab in hand is lifted, the others step aside in --duration-move (0 under reduced motion). */
+  .tabs-scroll.is-reordering {
+    user-select: none;
+  }
+  .tabs-scroll.is-reordering .tab-item:not(.is-dragging) {
+    transition: transform var(--duration-move) var(--ease-standard);
+  }
+  .tab-item.is-dragging {
+    background: var(--bg-raised);
+    box-shadow: var(--shadow-e1);
+    color: var(--text-primary);
+    z-index: 1;
+  }
+  .tab-item.is-dragging::before {
+    display: none;
+  }
+  .tab-item.home {
+    flex: none;
+    min-width: 0;
+    padding-right: 0;
+  }
+  .tab-item.home .tab {
+    padding-right: var(--space-8);
+  }
+  .tab-item:hover:not(.is-active) {
+    background: var(--fill-hover);
+  }
+  .tab:focus-visible {
+    outline: none;
+  }
+  /* The ring is the whole tab's, the close mark inside it. */
+  .tab-item:has(> .tab:focus-visible) {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .tab-item .close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 18px; /* local: spec 3.2, the close button */
+    height: 18px; /* local: spec 3.2, the close button */
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    visibility: hidden;
+    cursor: default;
+  }
+  .tab-item.is-active .close,
+  .tab-item:hover .close {
+    visibility: visible;
+  }
+  .tab-item .close:hover {
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+  }
+  /* A hairline between tabs that neither is the shown one nor the hovered one (the gap is 4 on both sides of it). */
+  .tabs-scroll > .tab-item + .tab-item::before {
+    content: '';
+    position: absolute;
+    left: -3px; /* local: the middle of the 4 px gap */
+    top: 6px; /* local: the hairline is 16 px high on the 28 px tab (spec 3.2) */
+    bottom: 6px; /* local: the hairline is 16 px high on the 28 px tab (spec 3.2) */
+    width: 1px;
+    background: var(--separator);
+  }
+  .tabs-scroll > .tab-item.is-active + .tab-item::before,
+  .tabs-scroll > .tab-item:hover + .tab-item::before,
+  .tabs-scroll > .tab-item.is-active::before,
+  .tabs-scroll > .tab-item:hover::before {
+    display: none;
+  }
+  .tabs-sep {
+    flex: none;
+    width: 1px;
+    height: 16px; /* local: spec 3.2, the separator after the pinned library tab */
+    background: var(--separator);
+  }
+  .tabs-scroll {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    gap: var(--space-4);
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: calc(var(--space-2) * -1); /* the padding below must not widen the gap after the separator (4 on both sides) */
+    padding-inline: var(--space-2); /* room for the active tab's e0 ring */
+    scroll-padding-inline: 24px; /* local: the neighbour tab shows a little when the active one is scrolled in */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .tabs-scroll[data-fade-start='1'] {
+    mask-image: linear-gradient(to right, transparent, #000 24px); /* local: the 24 px fade of an overflowing edge */
+  }
+  .tabs-scroll[data-fade-end='1'] {
+    mask-image: linear-gradient(to left, transparent, #000 24px); /* local: the 24 px fade of an overflowing edge */
+  }
+  .tabs-scroll[data-fade-start='1'][data-fade-end='1'] {
+    mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent); /* local: both edges fade */
+  }
+  /* The library's head under the strip (approved mockup): title, count and the library's actions, as the unified toolbar had them. */
+  .pane-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+    height: var(--pane-header-height);
+    flex: none;
+    min-width: 0;
+    padding: 0 var(--space-12) 0 var(--space-16);
+    border-bottom: 1px solid var(--separator);
+    background: var(--bg-content);
+  }
+  .pane-header .title {
+    font: var(--type-title3);
+  }
+  .pane-header .count {
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .pane-header .tb-actions {
+    margin-left: auto;
+  }
+  /* A kept reader's box: what the content column holds of the reader that is shown (a hidden one is display: none). */
+  .tab-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+}

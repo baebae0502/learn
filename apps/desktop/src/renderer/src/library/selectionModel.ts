@@ -113,8 +113,5 @@ export function reduceSelection(state: SelectionState, action: SelectAction, ord
   }
 }
 
-/** The item ↩ opens: the selection when it is exactly one row (several tabs at once are M7, spec 3.3). */
-export const openTarget = (selected: ReadonlySet<string>): string | null => (selected.size === 1 ? selected.values().next().value! : null);
-
-/** The selected ids in table order (the item menu's targets). */
+/** The selected ids in table order (the item menu's targets, and what ↩ opens as tabs). */
 export const inOrder = (selected: ReadonlySet<string>, order: RowOrder): string[] => order.ids.filter((id) => selected.has(id));

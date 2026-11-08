@@ -9,7 +9,8 @@ import { registerWindowKind } from './window-kinds';
 
 export { SHEET_MARGIN, SHEET_TOP, sheetMaxHeight };
 
-export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 560, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
+/** The ⌘/ sheet is 780 wide so every pair line of design-spec 7.4 (registry names) fits one line: with Ctrl keycaps (Linux, Windows) a label has 74 px at 560, and with the Mac's symbols 560 still wraps five of the ten; 760 left 3 px on the longest Linux row, 780 leaves 13. */
+export const SHEET_WIDTH: Readonly<Record<SheetPayload['kind'], number>> = { duplicate: 440, shortcuts: 780, purge: 440, libraryCheck: 560, backupDone: 440, restoreDone: 560 };
 /** Room the library check keeps below its parent's height (P-26: at most the parent's height − 120, the list scrolls). */
 export const CHECK_SHEET_ROOM = 120;
 /** Sheets whose content changes while they are open (sheet:act): the window follows its content up to the cap; the backup and restore result sheets grow by their reveal error line. */
@@ -47,10 +48,10 @@ export const UNRESPONSIVE_GRACE_MS = 5_000;
 /**
  * The key of a static sheet's natural height: what that height can depend on. The ⌘/ sheet does not follow the text
  * size or density today (those apply to the main window); they are in the key so that a sheet that does is never sized
- * from another setting.
+ * from another setting. The view the sheet opened from is in it: the viewer's keys are listed by view.
  */
-export function sheetHeightKey(o: { platform: string; fontSize: number; density: string; digest: string }): string {
-  return `${o.platform}|${o.fontSize}|${o.density}|${o.digest}`;
+export function sheetHeightKey(o: { platform: string; fontSize: number; density: string; digest: string; view: string }): string {
+  return `${o.platform}|${o.fontSize}|${o.density}|${o.digest}|${o.view}`;
 }
 
 /** What the ⌘/ sheet is drawn from: every registry shortcut as it lists one (id, label, keys), hashed. */

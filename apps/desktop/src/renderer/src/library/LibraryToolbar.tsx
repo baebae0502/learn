@@ -24,6 +24,8 @@ export function LibraryToolbar(props: {
   filtered: readonly LibraryItem[];
   actions: ReactNode;
   trailing: ReactNode;
+  /** Under the tab strip (reader tabs exist) the head is the library's own, not the window's toolbar. */
+  place?: 'toolbar' | 'head';
 }) {
   countRender('LibraryToolbar');
   const found = useSearch(props.items);
@@ -37,5 +39,5 @@ export function LibraryToolbar(props: {
   );
   const total = props.scoped + collections.all.length;
   const count = props.items.length + collections.all.length === 0 ? undefined : found || tagCount > 0 ? t.shell.countOf(shown, total) : t.shell.count(total);
-  return <Toolbar title={props.title} titleTip={props.titleTip} count={count} actions={props.actions} trailing={props.trailing} />;
+  return <Toolbar title={props.title} titleTip={props.titleTip} count={count} actions={props.actions} trailing={props.trailing} place={props.place} />;
 }

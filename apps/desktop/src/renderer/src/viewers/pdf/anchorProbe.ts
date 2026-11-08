@@ -60,7 +60,7 @@ interface PageModel { page: PageText; /** the span of each item with text, by it
 
 const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-export function installAnchorProbe(o: { doc: PDFDocumentProxy; viewer: PDFViewer; revisionId: string }): () => void {
+export function installAnchorProbe(o: { doc: PDFDocumentProxy; viewer: PDFViewer; revisionId: string }): (() => void) & { claim(): void } {
   const { doc, viewer, revisionId } = o;
   // The same request the viewer's text layer makes, so the items are the ones its spans were made from.
   const texts = new Map<number, Promise<{ page: PageText; empty: boolean[] }>>();
@@ -255,8 +255,13 @@ export function installAnchorProbe(o: { doc: PDFDocumentProxy; viewer: PDFViewer
   };
 
   window.__learnPdf = probe;
-  return () => {
+  const remove = () => {
     if (window.__learnPdf === probe) delete window.__learnPdf;
     window.getSelection()?.removeAllRanges();
   };
+  // Several readers can be mounted: the one that has the screen takes the hook back when its tab is shown.
+  return Object.assign(remove, { claim: () => void (window.__learnPdf = probe) });
 }
+
+/** The default export is what the reader loads on demand (it does not name the probe, so the product's bundle does not either). */
+export default installAnchorProbe;

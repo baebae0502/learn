@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { COMMANDS, MAIN_OWNED_COMMANDS, type CommandId } from '../../packages/domain/src/commands';
-import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, releaseOpenDialog, recordedPopups, runMenuCommand, setPdfZoom, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
+import { FIXTURES, expectDisabledReason, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, menuSnapshot, openItem, pdfCanvas, releaseOpenDialog, recordedPopups, runMenuCommand, setPdfZoom, shellCalls, stubContextMenu, stubOpenDialog, stubShell, type MenuNode } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
@@ -90,13 +90,17 @@ async function expectStageUnderToolbar(page: Page, stage: string): Promise<void>
   expect(Math.round((await page.locator(stage).boundingBox())!.y)).toBe(52);
 }
 
-test('reader chrome: back button and ⌘1, title and kind · size in the toolbar, a 44 px reader toolbar', async ({}, testInfo) => {
+test('reader chrome: the tab strip with the library tab and ⌘1, the title in the reader tab, a 44 px reader toolbar', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(s.page, [PDF]);
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('sample');
-    await expect(s.page.getByTestId('toolbar-count')).toHaveText(/^PDF · \d+(\.\d)? KB$/);
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
+    // The window toolbar (back, title, kind · size) is the tab strip now: the library tab goes back, the tab carries the title.
+    await expect(s.page.getByTestId('toolbar')).toHaveCount(0);
+    await expect(s.page.getByTestId('tab-bar')).toBeVisible();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('title', 'sample');
+    expect(await heightOf(s.page, 'tab-bar')).toBe(52);
     await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('1');
     await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     expect(await heightOf(s.page, 'reader-toolbar')).toBe(44);
@@ -124,11 +128,11 @@ test('reader chrome: back button and ⌘1, title and kind · size in the toolbar
     await expectDisabledReason(s.page.getByTestId('pdf-prev'), null);
     await s.page.getByTestId('pdf-next').click({ force: true }); // soft-disabled: a press does nothing
     await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
-    await s.page.getByTestId('viewer-back').click();
+    await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(s.page.getByTestId('library-table')).toBeVisible();
     // ⌘1 (go menu) is the same registry command.
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('viewer-title')).toHaveText('sample');
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('sample');
     await runMenuCommand(s.app, 'nav.back');
     await expect(s.page.getByTestId('library-table')).toBeVisible();
   } finally {
@@ -187,7 +191,6 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
     await openItem(s.page, 'sample');
     const viewer = s.page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    const drawn = Number(await viewer.getAttribute('data-rendered'));
     // The next page's drawing fails (as a broken page's would): pdf.js asks the canvas for its context on each render.
     await s.page.evaluate(() => {
       const real = HTMLCanvasElement.prototype.getContext;
@@ -216,7 +219,18 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
     await s.page.getByTestId('pdf-next').click();
     await expect(s.page.getByTestId('pdf-page-field')).toHaveValue('3');
-    await expect.poll(async () => Number(await viewer.getAttribute('data-rendered'))).toBeGreaterThan(drawn);
+    // Page 3 is drawn: pdf.js sizes a canvas before it paints, so the pixels are read. Ink is counted: a draw that fails after pdf.js got its opaque context still leaves a white canvas, which is all opaque. A count of drawn pages cannot say so, all three can be drawn at once.
+    await expect
+      .poll(() =>
+        pdfCanvas(s.page, 3).evaluate((c: HTMLCanvasElement) => {
+          if (c.width === 0 || c.height === 0) return 0; // not sized yet
+          const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+          let dark = 0;
+          for (let i = 0; i < d.length; i += 4) if (d[i]! < 100 && d[i + 1]! < 100 && d[i + 2]! < 100) dark++;
+          return dark / (c.width * c.height);
+        }),
+      )
+      .toBeGreaterThan(0.001);
     await expect(s.page.getByTestId('pdf-page-error')).toHaveCount(0);
   } finally {
     await s.app.close();
@@ -271,10 +285,12 @@ const recordOpening = (page: Page) =>
     w.__opening = [];
     const content = document.querySelector('[data-testid="content"]')!;
     new MutationObserver(() => {
-      if (!document.querySelector('[data-testid="viewer-back"]')) return; // still the library
-      const stage = content.firstElementChild as HTMLElement | null;
-      const video = content.querySelector('video');
-      const canvas = content.querySelector('canvas');
+      if (!document.querySelector('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')) return; // still the library
+      // The shown reader's own panel: a kept tab that is not shown is in the page too, hidden.
+      const panel = content.querySelector('[data-testid="tab-panel"][data-active="true"]');
+      const stage = (panel?.firstElementChild ?? null) as HTMLElement | null;
+      const video = panel?.querySelector('video') ?? null;
+      const canvas = panel?.querySelector('canvas') ?? null;
       w.__opening.push({
         empty: stage === null,
         bg: getComputedStyle(stage ?? content).backgroundColor,
@@ -359,6 +375,7 @@ test('missing linked original: 다시 연결… first in the context menu and in
     expect(items!.filter((i) => i.type !== 'separator').map((i) => [i.label, i.enabled])).toEqual([
       ['다시 연결…', true],
       ['열기', true],
+      ['새\u00a0탭에서 열기', true],
       [REVEAL, false],
       ['사본 내보내기…', false],
       ['컬렉션에 추가', true], // filing needs no file
@@ -448,7 +465,9 @@ test('reopening an item whose file vanished silently shows the missing notice, n
     await importPaths(s.page, [file], { mode: 'linked' });
     await openItem(s.page, 'linked');
     await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/); // cached as available
-    await s.page.getByTestId('viewer-back').click();
+    // The tab is closed, so the item opens fresh below (a tab kept mounted shows its reader at once and reads the file on showing).
+    await s.page.getByTestId('tab-close').click();
+    await expect(s.page.getByTestId('tab-bar')).toHaveCount(0);
     fs.renameSync(file, path.join(src, 'moved.pdf')); // main does not watch the disk: no libraryChanged
     // Record every reader state that appears from here on.
     await s.page.evaluate(() => {
@@ -492,7 +511,7 @@ test('a library that cannot be opened: our own words, the newest real backup on 
     expect(await s.page.locator('.fatal-drag').evaluate((el) => getComputedStyle(el).getPropertyValue('-webkit-app-region'))).toBe('drag');
     const flat = (nodes: MenuNode[]): MenuNode[] => nodes.flatMap((n) => [n, ...flat(n.submenu ?? [])]);
     const registry = new Set<string>(COMMANDS.map((c) => c.id));
-    const enabled = flat(await menuSnapshot(s.app)).filter((n) => n.id !== null && registry.has(n.id) && n.enabled && !MAIN_OWNED_COMMANDS.has(n.id as CommandId));
+    const enabled = flat(await menuSnapshot(s.app)).filter((n) => n.id !== null && registry.has(n.id) && n.enabled && !MAIN_OWNED_COMMANDS.has(n.id as CommandId) && n.id !== 'tab.close'); // ⌘W closes the window, as the role did
     expect(enabled.map((n) => n.id)).toEqual([]);
   } finally {
     await s.app.close();

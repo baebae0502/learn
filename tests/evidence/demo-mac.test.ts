@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dragScript, glideScript } from './demo-mac';
+import { dragScript, glideScript, warpScript } from './demo-mac';
 
 interface Post {
   type: string;
@@ -86,6 +86,17 @@ describe('the macOS cursor scripts (critique mac1 m1, round 3 n4)', () => {
     expect(r.posts.at(-1)).toMatchObject({ type: 'up', x: 180, y: 300 });
     expect(r.posts.filter((p) => p.type === 'dragged').length).toBeGreaterThan(60);
     expect(r.elapsed).toBeGreaterThanOrEqual(80 + 600 + 50);
+  });
+});
+
+describe('one warp of the system cursor (critique m7b-mac M3)', () => {
+  it('puts the cursor on the point with a warp, posts no event, and checks the arrival after the 50 ms the queue needs', () => {
+    const r = run(warpScript({ x: 640.4, y: 281.6 }), { start: { x: 10, y: 10 } });
+    expect(r.result).toEqual({ warped: true });
+    expect(r.posts).toHaveLength(0);
+    expect(r.warps).toEqual([expect.objectContaining({ x: 640, y: 282 })]);
+    expect(r.cursor).toEqual({ x: 640, y: 282 });
+    expect(r.elapsed).toBe(50);
   });
 });
 

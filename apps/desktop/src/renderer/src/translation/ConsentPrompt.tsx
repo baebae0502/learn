@@ -7,7 +7,7 @@ import { useTranslation } from './store';
  * The question that comes before any text leaves the machine (owner decision 2), as the pop-up and the panel put it: what
  * goes where, the way back, and the two answers. `off` is the panel's line for a choice already made: only 켜기.
  */
-export function ConsentPrompt({ where, off = false, rootRef }: { where: 'popup' | 'panel'; off?: boolean; rootRef?: Ref<HTMLDivElement> }) {
+export function ConsentPrompt({ where, off = false, rootRef, isDisabled = false }: { where: 'popup' | 'panel'; off?: boolean; rootRef?: Ref<HTMLDivElement>; isDisabled?: boolean }) {
   const enable = useTranslation((s) => s.enable);
   const decline = useTranslation((s) => s.decline);
   const text = off ? t.translation.offText : t.translation.consentText;
@@ -16,11 +16,11 @@ export function ConsentPrompt({ where, off = false, rootRef }: { where: 'popup' 
   const size = where === 'popup' ? 'small' : 'regular';
   const answers = (
     <>
-      <Button variant={off ? 'secondary' : 'primary'} size={size} testId="consent-enable" onPress={() => void enable()}>
+      <Button variant={off ? 'secondary' : 'primary'} size={size} isDisabled={isDisabled} testId="consent-enable" onPress={() => void enable()}>
         {t.translation.enable}
       </Button>
       {!off && (
-        <Button size={size} testId="consent-decline" onPress={() => void decline()}>
+        <Button size={size} isDisabled={isDisabled} testId="consent-decline" onPress={() => void decline()}>
           {t.translation.decline}
         </Button>
       )}

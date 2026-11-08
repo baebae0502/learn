@@ -17,8 +17,11 @@ import { useTranslation, type TranslationView } from './store';
 
 type CopyKind = 'source' | 'result' | 'both';
 
-/** The reader panel's first section (spec 6.2): the consent or the two boxes, the toggles and the buttons; same result as the pop-up. */
-export function TranslationSection() {
+/**
+ * The reader panel's first section (spec 6.2): the consent or the two boxes, the toggles and the buttons; same result as the pop-up.
+ * `disabled`: the PDF is still opening, so the section is drawn but nothing in it can be used yet (R39, design-spec 6).
+ */
+export function TranslationSection({ disabled = false }: { disabled?: boolean }) {
   const prefs = usePrefs().data?.translation ?? readTranslationPrefs();
   const enabled = prefs.enabled === true;
   // The answer replaces the button that was pressed. The focus goes where the person works next: 번역 켜기 to the 원문 box,
@@ -51,17 +54,24 @@ export function TranslationSection() {
       placement="bottom end"
       items={directionEntries(prefs)}
       onAction={(id) => void useTranslation.getState().save(parseDirection(id))}
+      isDisabled={disabled}
       testId="translation-direction"
     />
   );
   return (
-    <Section id="translation" title={t.translation.title} extra={direction || undefined} testId="translation-section" className="tr" toggleRef={toggleRef}>
-      {prefs.enabled === null ? <ConsentPrompt where="panel" rootRef={consentRef} /> : prefs.enabled === false ? <ConsentPrompt where="panel" off rootRef={consentRef} /> : <Boxes areaRef={sourceRef} />}
+    <Section id="translation" title={t.translation.title} extra={direction || undefined} testId="translation-section" className={disabled ? 'tr is-disabled' : 'tr'} toggleRef={toggleRef}>
+      {prefs.enabled === null ? (
+        <ConsentPrompt where="panel" rootRef={consentRef} isDisabled={disabled} />
+      ) : prefs.enabled === false ? (
+        <ConsentPrompt where="panel" off rootRef={consentRef} isDisabled={disabled} />
+      ) : (
+        <Boxes areaRef={sourceRef} disabled={disabled} />
+      )}
     </Section>
   );
 }
 
-function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) {
+function Boxes({ areaRef, disabled }: { areaRef: RefObject<HTMLTextAreaElement | null>; disabled: boolean }) {
   const prefs = usePrefs().data?.translation ?? readTranslationPrefs();
   const { source, view, concat } = useTranslation();
   const { setSource, translate, clear, setConcat } = useTranslation.getState();
@@ -97,7 +107,7 @@ function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) 
         <span className="spacer" />
         {sourceNote && <span>{sourceNote}</span>}
       </div>
-      <TextField aria-label={t.translation.source} value={source} onChange={setSource}>
+      <TextField aria-label={t.translation.source} value={source} onChange={setSource} isDisabled={disabled}>
         <TextArea ref={area} className="tr-box src" rows={1} placeholder={t.translation.sourcePlaceholder} spellCheck={false} data-testid="translation-source" />
       </TextField>
       <div className="tr-label">
@@ -109,7 +119,7 @@ function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) 
         <Result view={view} toName={toName} />
       </div>
       <div className="tr-toggles">
-        <Checkbox className="checkbox" isSelected={prefs.autoOnSelect} onChange={(autoOnSelect) => void useTranslation.getState().save({ autoOnSelect })} data-testid="translation-auto">
+        <Checkbox className="checkbox" isDisabled={disabled} isSelected={prefs.autoOnSelect} onChange={(autoOnSelect) => void useTranslation.getState().save({ autoOnSelect })} data-testid="translation-auto">
           {({ isSelected }) => (
             <>
               <span className="box" aria-hidden="true">
@@ -119,7 +129,7 @@ function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) 
             </>
           )}
         </Checkbox>
-        <Checkbox className="checkbox" isSelected={concat} onChange={setConcat} data-testid="translation-concat">
+        <Checkbox className="checkbox" isDisabled={disabled} isSelected={concat} onChange={setConcat} data-testid="translation-concat">
           {({ isSelected }) => (
             <>
               <span className="box" aria-hidden="true">
@@ -131,13 +141,13 @@ function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) 
         </Checkbox>
       </div>
       <div className="tr-actions">
-        <Button size="small" isDisabled={empty && view.kind === 'idle'} onPress={clear} testId="translation-clear" aria-label={t.translation.clearTip}>
+        <Button size="small" isDisabled={disabled || (empty && view.kind === 'idle')} onPress={clear} testId="translation-clear" aria-label={t.translation.clearTip}>
           {t.translation.clear}
         </Button>
         <MenuButton
           label={t.translation.copy}
           size="small"
-          isDisabled={empty || busy}
+          isDisabled={disabled || empty || busy}
           items={[
             { id: 'source', label: t.translation.copySource, testId: 'translation-copy-source' },
             { id: 'result', label: t.translation.copyResult, isDisabled: !done, testId: 'translation-copy-result' },
@@ -147,7 +157,7 @@ function Boxes({ areaRef }: { areaRef: RefObject<HTMLTextAreaElement | null> }) 
           testId="translation-copy"
         />
         <span className="spacer" />
-        <Button size="small" isDisabled={cannotRun} onPress={() => void translate()} testId={failed ? 'translation-retry' : 'translation-run'}>
+        <Button size="small" isDisabled={disabled || cannotRun} onPress={() => void translate()} testId={failed ? 'translation-retry' : 'translation-run'}>
           {failed ? t.translation.retry : t.translation.run}
         </Button>
       </div>

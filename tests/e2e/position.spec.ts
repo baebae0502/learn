@@ -37,7 +37,7 @@ test('PDF reopens on the page it was left on; progress reaches library.list', as
     await page.waitForTimeout(400); // the brief's scenario wait (> 300 ms debounce); the save itself is confirmed by the poll below
     // Saved by the debounce while the viewer is still open (not only by the unmount flush): (pageIndex + 1) / pageCount.
     await expect.poll(() => progressOf(page, 'sample')).toBeCloseTo(2 / 3, 5);
-    await page.getByTestId('viewer-back').click();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
     // Every value the page field holds while reopening: empty until the restore is applied, never page 1 first. The sampler
@@ -77,7 +77,7 @@ test('opening a PDF records openedAt even when the page never changes', async ({
     expect((await listed(page, 'sample')).openedAt).toBeNull();
     await openItem(page, 'sample');
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
-    await page.getByTestId('viewer-back').click();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await expect(page.getByTestId('library-table')).toBeVisible();
 
     await expect.poll(async () => (await listed(page, 'sample')).openedAt).not.toBeNull();
@@ -130,6 +130,7 @@ test('video resumes at the paused time after a SIGKILL and relaunch; progress re
     killed = true;
     ({ app, page } = await launch(lib, ud));
     killed = false;
+    await backFromReader(page); // the session reopened the reader; the reopen below is the one measured
 
     // The stored position survived the kill (it was never flushed by a quit or unload).
     expect((await listed(page, 'sample-h264-aac')).progress).toBeCloseTo(pausedAt / duration, 2);
@@ -170,6 +171,8 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
     await openItem(page, 'paper-100');
     const viewer = page.getByTestId('pdf-viewer');
     await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The saved place (none yet) is applied once the stage has settled and it sets the rotation: a turn made before would be undone by it.
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
     await runMenuCommand(app, 'reader.rotateCw');
     await expect(viewer).toHaveAttribute('data-rotation', '90');
     await setPdfZoom(page, 1.5);
@@ -203,8 +206,10 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
     killed = true;
     ({ app, page } = await launch(lib, ud));
     killed = false;
-    // Every page the thumbnail list rings or lists while the document reopens: the restored page only, never page 1 first.
-    await page.evaluate(() => {
+    // The session reopens the reader at launch. Every page the thumbnail list rings or lists while the document comes up
+    // from a cold renderer: the restored page only, never page 1 first. The sampler is an init script of a fresh load
+    // of the window, so it runs from the first frame of the restore.
+    await page.addInitScript(() => {
       const seen = new Set<string>();
       (window as unknown as { __thumbs: Set<string> }).__thumbs = seen;
       const sample = () => {
@@ -213,7 +218,7 @@ test('a PDF reopens on the page, the place in it, the zoom and the rotation it w
       };
       sample();
     });
-    await openItem(page, 'paper-100');
+    await page.reload();
     const reopened = page.getByTestId('pdf-viewer');
     await expect(reopened).toHaveAttribute('data-page', '37');
     await expect(reopened).toHaveAttribute('data-scale', '1.5');
@@ -269,6 +274,99 @@ test('a page wider than the stage reopens with its 24 on the left, as it was lef
     // pdf.js scrolls a place to the page's left edge (it drops a left inside the margin): the room beside the page comes back,
     // as the room above it does.
     expect((await left()).room).toBeCloseTo(24, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+/** The room between the stage's top edge and a page's top edge, in px. */
+const roomAbove = (page: Page, pageNumber: number) =>
+  page.evaluate((n) => {
+    const scroll = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+    const el = document.querySelector<HTMLElement>(`[data-testid="pdf-viewer"] .page[data-page-number="${n}"]`)!;
+    return el.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+  }, pageNumber);
+
+test('a page jump keeps 12 above the page (24 for the first)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    const jumped = async (n: number) => {
+      await expect(viewer).toHaveAttribute('data-page', String(n));
+      // The viewer settles (pages above it take their size) before the room is read.
+      await expect.poll(() => roomAbove(page, n).then(Math.round)).toBeGreaterThanOrEqual(0);
+    };
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('7');
+    await field.press('Enter');
+    await jumped(7);
+    expect(await roomAbove(page, 7)).toBeCloseTo(12, 0);
+
+    await runMenuCommand(app, 'reader.showThumbnails');
+    // The list draws the thumbnails near the page in view only: at a small window page 1 is not drawn until the list is scrolled up.
+    await page.getByTestId('pdf-thumbnails').evaluate((el) => {
+      for (let e: Element | null = el; e; e = e.parentElement) e.scrollTop = 0;
+    });
+    await page.locator('[data-testid="pdf-thumb"][data-page="1"]').click();
+    await jumped(1);
+    expect(await roomAbove(page, 1)).toBeCloseTo(24, 0);
+
+    // A link to a page without a point (XYZ with no top).
+    await page.locator('.page[data-page-number="1"] .annotationLayer .linkAnnotation > a').nth(0).click();
+    await jumped(50);
+    expect(await roomAbove(page, 50)).toBeCloseTo(12, 0);
+
+    await runMenuCommand(app, 'reader.showOutline');
+    await page.getByTestId('pdf-outline').getByRole('row', { name: /Chapter 3/ }).first().click();
+    await jumped(21);
+    expect(await roomAbove(page, 21)).toBeCloseTo(12, 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a page wider than the stage keeps its 24 on the left after a page jump (R-25)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PAPER]);
+    await openItem(page, 'paper-100');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await setPdfZoom(page, 2);
+    await expect(viewer).toHaveAttribute('data-scale', '2');
+    const field = page.getByTestId('pdf-page-field');
+    await field.fill('2');
+    await field.press('Enter');
+    await expect(viewer).toHaveAttribute('data-page', '2');
+    const left = () =>
+      page.evaluate(() => {
+        const sc = document.querySelector<HTMLElement>('[data-testid="pdf-scroll"]')!;
+        const pg = document.querySelector('[data-testid="pdf-viewer"] .page[data-page-number="2"]')!.getBoundingClientRect();
+        return { room: pg.left - sc.getBoundingClientRect().left, overflow: sc.scrollWidth - sc.clientWidth };
+      });
+    expect((await left()).overflow).toBeGreaterThan(24);
+    await expect.poll(async () => Math.round((await left()).room)).toBe(24);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a mixed-size document fits its widest page (R-21)', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [PDF]);
+    await openItem(page, 'sample');
+    const viewer = page.getByTestId('pdf-viewer');
+    await expect(viewer).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(viewer).toHaveAttribute('data-zoom', 'auto');
+    // Page 2 is turned a quarter: at the first page's fit it would be wider than the stage.
+    await expect
+      .poll(() => page.getByTestId('pdf-scroll').evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .toBe(true);
   } finally {
     await app.close();
   }

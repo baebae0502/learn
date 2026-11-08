@@ -243,6 +243,34 @@ test('closing the window over invalid changes keeps it, the form saying why; val
   }
 });
 
+test('⌘W as the menu command (the renderer closes the library tab = the window) over invalid changes keeps the window, the form saying why; valid ones are saved, then it closes', async ({}, testInfo) => {
+  const [lib, ud] = dirs(testInfo);
+  let { app, page } = await launch(lib, ud);
+  try {
+    const [pdf] = await importPaths(page, [PDF]);
+    await showItemPanel(app, page);
+    await selectRows(page, ['sample']);
+    await page.getByTestId('info-edit').click();
+    await field(page, 'date').fill('2024-13');
+    // The menu's ⌘W is `tab.close` run in the page, not BrowserWindow.close() from main (the macOS path).
+    await runMenuCommand(app, 'tab.close');
+    await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+    await page.waitForTimeout(500);
+    expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']); // nothing closed
+    await expect(page.getByTestId('info-editor')).toBeVisible();
+    await field(page, 'date').fill('2024-03');
+    const quit = process.platform === 'darwin' ? null : app.waitForEvent('close');
+    await runMenuCommand(app, 'tab.close');
+    if (quit) await quit;
+    else await expect.poll(() => windowCount(app)).toBe(0);
+    await app.close().catch(() => {});
+    ({ app, page } = await launch(lib, ud));
+    expect((await detailOf(page, pdf!.id)).metadata.date).toBe('2024-03');
+  } finally {
+    await app.close().catch(() => {});
+  }
+});
+
 test('quitting (⌘Q, app.quit) over invalid changes is called off; valid ones are saved and the app really quits', async ({}, testInfo) => {
   const [lib, ud] = dirs(testInfo);
   let { app, page } = await launch(lib, ud);

@@ -114,33 +114,35 @@ test('right-click selects the row first, or keeps the selection it is in; the me
     await rowByTitle(page, 'alpha').click({ button: 'right' }); // outside it: alpha alone
     expect(await selectedTitles(page)).toEqual(['alpha']);
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(3);
-    // 열기 needs exactly one item (the item.open rule): enabled for one row, disabled for the kept pair.
-    const open = (await recordedPopups(app)).map((items) => items.find((i) => i.label === '열기')?.enabled);
-    expect(open).toEqual([true, false, true]);
+    // 열기 takes the whole selection (a tab each) and says how many; Finder takes exactly one item: on for one row, off for the kept pair.
+    const open = (await recordedPopups(app)).map((items) => items.find((i) => /열기$/.test(i.label) && !i.label.startsWith('새'))?.label);
+    expect(open).toEqual(['열기', '탭 2개로 열기', '열기']);
+    const reveal = (await recordedPopups(app)).map((items) => items.find((i) => i.label.endsWith('에서 보기'))?.enabled);
+    expect(reveal).toEqual([true, false, true]);
   } finally {
     await app.close();
   }
 });
 
-test('a single click only selects; double-click or ↩ opens the one selected row; ↩ with several selected opens nothing', async ({}, testInfo) => {
+test('a single click only selects; double-click or ↩ opens the one selected row; ↩ with several selected opens a tab each', async ({}, testInfo) => {
   const { app, page } = await launch(...dirs(testInfo));
   try {
     await importInOrder(page, testInfo.outputPath('src'), ['alpha', 'beta']);
     await rowByTitle(page, 'alpha').click();
     await frames(page);
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     await rowByTitle(page, 'alpha').dblclick();
-    await expect(page.getByTestId('viewer-title')).toHaveText('alpha');
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('alpha');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await rowByTitle(page, 'beta').click();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toHaveText('beta');
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('beta');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await selectRows(page, ['alpha', 'beta']);
     await page.keyboard.press('Enter');
-    await frames(page);
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
-    await expect(page.getByTestId('library-table')).toBeVisible();
+    // Both are open already: the first in table order (beta, the newer) is shown.
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('beta');
+    await expect(page.locator('[data-testid="tab"]')).toHaveCount(3);
   } finally {
     await app.close();
   }
@@ -291,7 +293,7 @@ test('a large library is virtualized: rows near the viewport only, End and PageU
     await expect.poll(async () => (await recordedPopups(app)).length).toBe(1);
     const items = (await recordedPopups(app))[0]!.filter((i) => i.type !== 'separator');
     expect(items.length).toBeGreaterThan(0);
-    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['컬렉션에 추가', '휴지통으로 이동']);
+    expect(items.filter((i) => i.enabled).map((i) => i.label)).toEqual(['탭 6000개로 열기', '새\u00a0탭 6000개로 열기', '컬렉션에 추가', '휴지통으로 이동']);
     await expect(page.getByTestId('action-error')).toHaveCount(0);
   } finally {
     await app.close();
@@ -406,8 +408,8 @@ test('showing the row you came back to scrolls the table vertically only, even w
     await page.keyboard.press('End');
     await expect(rowAt(page, 150)).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
-    await page.getByTestId('viewer-back').click();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     // Shown vertically (the row is wider than the table, so the viewport ratio says nothing): inside the view's top and bottom.
     await expect
       .poll(() =>

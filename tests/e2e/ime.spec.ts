@@ -86,11 +86,11 @@ test('palette: the 자료 group follows the composition; ↩ while composing ope
     await expect(result).toHaveAttribute('data-focused', 'true'); // filtered while still composing (spec §4.1)
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeVisible();
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     await cdp.send('Input.insertText', { text: 'ㅅㅎ' }); // commits the composition
     await expect(input).toHaveValue('ㅅㅎ');
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toHaveText('세포 신호');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('세포 신호');
   } finally {
     await app.close();
   }

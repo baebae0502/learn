@@ -17,6 +17,8 @@ export function Toolbar(props: {
   leading?: ReactNode;
   actions?: ReactNode;
   trailing?: ReactNode;
+  /** `head`: the view's head under the tab strip (the library while reader tabs exist), with none of the window's controls. */
+  place?: 'toolbar' | 'head';
 }) {
   const hidden = useSidebarHidden();
   // The window is named after its view, as native windows are after their folder or document (design-spec 2.1): the
@@ -25,10 +27,8 @@ export function Toolbar(props: {
   useEffect(() => {
     if (windowTitle) document.title = windowTitle;
   }, [windowTitle]);
-  return (
-    <header className="titlebar" data-testid="toolbar">
-      {hidden && <SidebarToggle place="toolbar" />}
-      {props.leading}
+  const body = (
+    <>
       <div className="tb-title">
         <h1 className="title ellipsis" title={props.titleTip ?? props.title} data-testid={props.titleTestId ?? 'toolbar-title'}>
           {props.title}
@@ -40,6 +40,20 @@ export function Toolbar(props: {
         )}
       </div>
       <div className="tb-actions">{props.actions}</div>
+    </>
+  );
+  if (props.place === 'head') {
+    return (
+      <div className="pane-header" data-testid="library-head">
+        {body}
+      </div>
+    );
+  }
+  return (
+    <header className="titlebar" data-testid="toolbar">
+      {hidden && <SidebarToggle place="toolbar" />}
+      {props.leading}
+      {body}
       {hidden && props.trailing}
     </header>
   );

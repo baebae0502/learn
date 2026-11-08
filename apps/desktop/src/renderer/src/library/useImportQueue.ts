@@ -48,7 +48,7 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
   const [panelOpen, setPanel] = useState(false);
   const names = useRef(collectionName);
   names.current = collectionName;
-  const setView = useShell((s) => s.setView);
+  const openTab = useShell((s) => s.openTab);
   const runner = useMemo(
     () =>
       createImportRunner({
@@ -82,6 +82,6 @@ export function useImportQueue(collectionName: (id: string) => string | null): {
   });
   useLearnEvent('import:finished', ({ report }) => void runner.finished(report));
   // Not item.open through the registry: the question's sheet may still hold this window when the request comes.
-  useLearnEvent('item:openRequested', ({ itemId }) => afterEditing(() => setView({ kind: 'reader', itemId })));
+  useLearnEvent('item:openRequested', ({ itemId }) => afterEditing(() => openTab(itemId)));
   return { runner, panelOpen };
 }

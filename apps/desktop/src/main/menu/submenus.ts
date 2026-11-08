@@ -133,10 +133,10 @@ export function colorTagGroup(spec: SubmenuSpec, commands: readonly CommandSpec[
 }
 
 /**
- * 쪽 색 ▸ (P-14): the four page colours, each row its command. The native menu shows no mark: which colour is in force is
- * checked in the reader's own 보기 menu, which knows the setting (the menu bar is told only the context).
+ * 쪽 색 ▸ (P-14), 스크롤 ▸ and 펼침 ▸: the members of a reader group, each row its command. The native menu shows no mark: which
+ * value is in force is checked in the reader's own 보기 menu, which knows the setting (the menu bar is told only the context).
  */
-export function pageColorGroup(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
+export function plainGroup(spec: SubmenuSpec, commands: readonly CommandSpec[], input: SubmenuInput): SubmenuEntry | null {
   const rows: CommandEntry[] = [];
   for (const id of spec.commands) {
     const command = commands.find((c) => c.id === id);
@@ -152,7 +152,9 @@ export function groupEntry(spec: SubmenuSpec, commands: readonly CommandSpec[], 
     case 'colorTags':
       return colorTagGroup(spec, commands, input);
     case 'pageColor':
-      return pageColorGroup(spec, commands, input);
+    case 'scrollMode':
+    case 'spreadMode':
+      return plainGroup(spec, commands, input);
   }
 }
 
@@ -185,6 +187,8 @@ export function menuNeedsOrganize(commands: readonly CommandSpec[], submenus: re
       case 'colorTags':
         return true;
       case 'pageColor': // reads nothing from the library
+      case 'scrollMode':
+      case 'spreadMode':
         return false;
     }
   };

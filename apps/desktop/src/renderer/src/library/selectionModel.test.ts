@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inOrder, openTarget, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
+import { inOrder, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
 
 // Rows a … h in table order.
 const order = rowOrder(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
@@ -74,10 +74,7 @@ describe('the table selection model (M4 spec 3.3, design-spec 7.1)', () => {
     for (const a of [move('down'), { kind: 'all' } as const]) expect(reduceSelection(NONE, a, empty)).toBe(NONE);
     expect(reduceSelection(NONE, { kind: 'clear' }, order)).toBe(NONE);
   });
-  it('↩ opens only a selection of one; the menu gets the selected ids in table order', () => {
-    expect(openTarget(new Set(['c']))).toBe('c');
-    expect(openTarget(new Set())).toBeNull();
-    expect(openTarget(new Set(['c', 'a']))).toBeNull();
+  it('↩ and the menu get the selected ids in table order', () => {
     expect(inOrder(new Set(['f', 'a', 'c']), order)).toEqual(['a', 'c', 'f']);
     expect(order.indexOf('d')).toBe(3);
     expect(order.indexOf('zz')).toBe(-1);

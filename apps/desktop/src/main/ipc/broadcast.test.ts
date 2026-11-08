@@ -256,6 +256,7 @@ describe('item context menu re-checks the file first', () => {
       { id: 'item.relink', label: '다시 연결…', enabled: true },
       'separator',
       { id: 'item.open', label: '열기', enabled: true },
+      { id: 'item.openInBackground', label: '새\u00a0탭에서 열기', enabled: true },
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: false },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: false },
@@ -280,6 +281,7 @@ describe('item context menu re-checks the file first', () => {
     await call('ui:showContextMenu', { kind: 'item', itemIds: [ITEM], x: 1, y: 2 });
     expect(popup.mock.calls[0]![0]).toEqual([
       { id: 'item.open', label: '열기', enabled: true },
+      { id: 'item.openInBackground', label: '새\u00a0탭에서 열기', enabled: true },
       'separator',
       { id: 'item.showInFolder', label: commandLabel(commandById('item.showInFolder'), process.platform), enabled: true },
       { id: 'item.exportCopy', label: '사본 내보내기…', enabled: true },

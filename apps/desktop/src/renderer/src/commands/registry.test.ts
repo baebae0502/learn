@@ -30,7 +30,15 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   deleteTag: vi.fn(),
   clearTagFilter: vi.fn(),
   back: vi.fn(),
-  open: vi.fn(),
+  openItems: vi.fn(),
+  closeTab: vi.fn(),
+  reopenClosedTab: vi.fn(),
+  selectRelativeTab: vi.fn(),
+  selectTabAt: vi.fn(),
+  selectLastTab: vi.fn(),
+  moveTab: vi.fn(),
+  closeOtherTabs: vi.fn(),
+  revealInLibrary: vi.fn(),
   relink: vi.fn(),
   toggleSidebar: vi.fn(),
   toggleInspector: vi.fn(),
@@ -56,7 +64,10 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   setZoom: vi.fn(),
   rotate: vi.fn(),
   setPageColor: vi.fn(),
+  setScroll: vi.fn(),
+  setSpread: vi.fn(),
   goToPage: vi.fn(),
+  history: vi.fn(),
   openFind: vi.fn(),
   findAgain: vi.fn(),
   findSelection: vi.fn(),
@@ -71,6 +82,18 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
 });
 
 describe('renderer command registry', () => {
+  it('⌘[ and ⌘] go back and forward in the open PDF only while its history has a place that way', () => {
+    const e = env({ view: 'viewer', pdfOpen: true, historyBack: true });
+    runCommand('nav.historyBack', e);
+    expect(e.history).toHaveBeenCalledWith('back');
+    expect(runCommand('nav.historyForward', e)).toBe(false); // nothing ahead
+    const both = env({ view: 'viewer', pdfOpen: true, historyBack: true, historyForward: true });
+    runCommand('nav.historyForward', both);
+    expect(both.history).toHaveBeenCalledWith('forward');
+    for (const off of [env({ view: 'viewer', historyBack: true }), env({ pdfOpen: true, historyBack: true }), env({ view: 'viewer', pdfOpen: true })]) expect(runCommand('nav.historyBack', off)).toBe(false);
+    expect(contextOf(e)).toMatchObject({ historyBack: true });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('historyBack');
+  });
   it('has a handler for every registry command and nothing else (no fake controls)', () => {
     expect(Object.keys(COMMAND_HANDLERS).sort()).toEqual(COMMANDS.map((c) => c.id).sort());
   });
@@ -265,6 +288,15 @@ describe('renderer command registry', () => {
     expect(lib.zoom).not.toHaveBeenCalled();
     expect(lib.setTextSize).toHaveBeenCalledTimes(1);
   });
+  it('turns the spread commands off while the PDF scrolls horizontally and reports how it scrolls', () => {
+    const horizontal = env({ view: 'viewer', pdfOpen: true, pdfScroll: 'horizontal' });
+    for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) expect(runCommand(id, horizontal), id).toBe(false);
+    expect(horizontal.setSpread).not.toHaveBeenCalled();
+    expect(runCommand('reader.scrollVertical', horizontal)).toBe(true);
+    expect(contextOf(horizontal)).toMatchObject({ pdfScroll: 'horizontal' });
+    expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfScroll');
+    expect(contextOf(env({ view: 'viewer', pdfScroll: 'page' }))).not.toHaveProperty('pdfScroll');
+  });
   it('runs the reader commands on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });
     const run = (id: CommandId) => runCommand(id, e);
@@ -275,6 +307,10 @@ describe('renderer command registry', () => {
     expect(vi.mocked(e.rotate).mock.calls).toEqual([[90], [-90]]);
     for (const id of ['reader.pageColorAuto', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.pageColorDark'] as const) run(id);
     expect(vi.mocked(e.setPageColor).mock.calls).toEqual([['auto'], ['original'], ['sepia'], ['dark']]);
+    for (const id of ['reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage'] as const) run(id);
+    expect(vi.mocked(e.setScroll).mock.calls).toEqual([['vertical'], ['horizontal'], ['page']]);
+    for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) run(id);
+    expect(vi.mocked(e.setSpread).mock.calls).toEqual([['none'], ['odd'], ['even']]);
     run('reader.goToPage');
     expect(e.goToPage).toHaveBeenCalledTimes(1);
     for (const off of [env({ view: 'viewer' }), env({ pdfOpen: true }), env({ view: 'viewer', pdfOpen: true, blocked: true })]) {
@@ -323,7 +359,7 @@ describe('renderer command registry', () => {
     expect(isCommandEnabled('item.relink', e, { itemIds: [ID] })).toBe(true);
     expect(isCommandEnabled('item.relink', env({ targetsOf: available }), { itemIds: [ID] })).toBe(false);
     expect(runCommand('item.open', e, { itemIds: [ID] })).toBe(true);
-    expect(e.open).toHaveBeenCalledWith(ID);
+    expect(e.openItems).toHaveBeenCalledWith([ID]);
   });
   it('Finder에서 보기 / 기본 앱으로 열기 run for one item whose file exists, in any view, never while blocked', () => {
     for (const view of ['library', 'viewer'] as const) {
@@ -442,7 +478,7 @@ describe('the handler target and the value of a menu row (P-2, spec 9.1)', () =>
   it('a value picked from a menu is added to the target it was opened for, and replaces none of it', () => {
     const e = env({ libraryCount: 3, targetsOf: () => [] });
     expect(runPicked({ commandId: 'item.open', args: { column: 'year' } }, e, { itemIds: [ID], collectionIds: ['c1'] })).toBe(true);
-    expect(e.open).toHaveBeenCalledWith(ID);
+    expect(e.openItems).toHaveBeenCalledWith([ID]);
   });
   it('judges a command on every kind of the target it is given', () => {
     const targetsOf = vi.fn(() => [] as CommandTargetInfo[]);
@@ -559,5 +595,57 @@ describe('the trash commands (P-10, P-11)', () => {
     const picked = env({ scope: 'duplicates' });
     expect(runPicked({ commandId: 'duplicates.keepOne' }, picked, { itemIds: [OTHER] })).toBe(true);
     expect(picked.keepOneOfDuplicates).toHaveBeenCalledWith([OTHER]);
+  });
+});
+
+describe('tab commands (M7b)', () => {
+  const tabs = (over: Partial<CommandEnv> = {}) => env({ tabCount: 3, closedOpenable: true, targetsOf: () => [{ kind: 'item', storageMode: 'managed', availability: 'available' }], ...over });
+  it('opens the whole selection as tabs, in the background with ⌘↩', () => {
+    const e = tabs({ libraryCount: 3 });
+    expect(runCommand('item.open', e, { itemIds: [ID, 'b', 'c'] })).toBe(true);
+    expect(e.openItems).toHaveBeenLastCalledWith([ID, 'b', 'c']);
+    expect(runCommand('item.openInBackground', e, { itemIds: [ID] })).toBe(true);
+    expect(e.openItems).toHaveBeenLastCalledWith([ID], { background: true });
+    expect(runCommand('item.openInBackground', tabs({ view: 'viewer' }), { itemIds: [ID] })).toBe(false); // the reader has no table selection
+  });
+  it('closes the shown tab, or the tab a menu names', () => {
+    const e = tabs();
+    expect(runCommand('tab.close', e)).toBe(true);
+    expect(e.closeTab).toHaveBeenLastCalledWith(undefined);
+    expect(runPicked({ commandId: 'tab.close' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.closeTab).toHaveBeenLastCalledWith(ID);
+    expect(runPicked({ commandId: 'tab.closeOthers' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.closeOtherTabs).toHaveBeenLastCalledWith(ID);
+    expect(runPicked({ commandId: 'tab.revealInLibrary' }, e, { itemIds: [ID] })).toBe(true);
+    expect(e.revealInLibrary).toHaveBeenCalledWith(ID);
+  });
+  it('switches by place: ⌘2 is the second place (index 1), ⌘9 the last, ⌃⇥ goes round', () => {
+    const e = tabs();
+    expect(runCommand('tab.goTo2', e)).toBe(true);
+    expect(e.selectTabAt).toHaveBeenLastCalledWith(1);
+    expect(runCommand('tab.goTo4', e)).toBe(true);
+    expect(e.selectTabAt).toHaveBeenLastCalledWith(3);
+    expect(runCommand('tab.goTo5', e)).toBe(false); // three reader tabs: no fifth place
+    expect(runCommand('tab.last', e)).toBe(true);
+    expect(e.selectLastTab).toHaveBeenCalledTimes(1);
+    expect(runCommand('tab.next', e)).toBe(true);
+    expect(e.selectRelativeTab).toHaveBeenLastCalledWith(1);
+    expect(runCommand('tab.previous', e)).toBe(true);
+    expect(e.selectRelativeTab).toHaveBeenLastCalledWith(-1);
+    expect(runCommand('tab.next', env())).toBe(false); // the library alone
+  });
+  it('reopens only with something to reopen; moves the shown tab from the palette and the focused one from the strip', () => {
+    expect(runCommand('tab.reopenClosed', tabs({ closedOpenable: false }))).toBe(false);
+    const e = tabs({ view: 'viewer' });
+    expect(runCommand('tab.reopenClosed', e)).toBe(true);
+    expect(e.reopenClosedTab).toHaveBeenCalledTimes(1);
+    expect(runCommand('tab.moveLeft', e)).toBe(true);
+    expect(e.moveTab).toHaveBeenLastCalledWith(-1, undefined);
+    expect(runPicked({ commandId: 'tab.moveRight' }, tabs(), { itemIds: [ID] })).toBe(true); // the strip: the tab with the focus, whichever tab shows
+  });
+  it('reports the tab facts only when there are some', () => {
+    expect(contextOf(env())).not.toHaveProperty('tabCount');
+    expect(contextOf(env())).not.toHaveProperty('closedOpenable');
+    expect(contextOf(tabs())).toMatchObject({ tabCount: 3, closedOpenable: true });
   });
 });

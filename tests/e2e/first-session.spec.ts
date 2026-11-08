@@ -80,9 +80,18 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // PDF
   await openItem(page, 'sample');
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-  const ink = await inkedPixels(page);
+  // The saved place is applied after the first draw on the macOS runner; its scale change redraws page 1, whose old canvas is
+  // emptied meanwhile (width 0: Mac run 42443540025). Read the page once it is placed, as drawn again.
+  await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+  let ink = { dark: 0, white: 0 };
+  // A share of the page, not a count: the page's size follows the fit (R-21), and ink is about 0.2 % of any size.
+  await expect
+    .poll(async () => {
+      ink = await inkedPixels(page).catch(() => ({ dark: 0, white: 0 }));
+      return ink.dark / Math.max(1, ink.dark + ink.white);
+    })
+    .toBeGreaterThan(0.001);
   console.log('[measure] pdf page1 ink', JSON.stringify(ink));
-  expect(ink.dark).toBeGreaterThan(300);
   expect(ink.white).toBeGreaterThan(10000);
   await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
   await page.getByTestId('pdf-next').click();
@@ -91,12 +100,12 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // Page 2 is rotated 90°.
   await expect.poll(() => pdfCanvas(page, 2).evaluate((c: HTMLCanvasElement) => c.width > c.height)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('02-pdf.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Korean path PDF
   await openItem(page, '한글 경로 (테스트) #1');
   await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Video: play + seek accuracy (AC05 target ≤ 500 ms)
   await openItem(page, 'sample-h264-aac');
@@ -119,15 +128,21 @@ test('import → open PDF and video → unsupported codec notice → survive SIG
   // Fullscreen must be permitted for our own pages (enter, then leave cleanly)
   await toggleFullscreen(app, page, video);
   await page.screenshot({ path: testInfo.outputPath('03-video.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
   // Unsupported codec → explained, not silent
   await openItem(page, 'sample-mpeg4part2');
   await expect(page.getByTestId('video-error')).toContainText('재생할 수 없습니다');
   await page.screenshot({ path: testInfo.outputPath('04-unsupported.png') });
-  await page.getByTestId('viewer-back').click();
+  await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
-  // Crash and restart (AC06 partial: saved state survives a hard kill)
+  // Crash and restart (AC06 partial: saved state survives a hard kill). The session is saved 300 ms after the last tab change.
+  await expect
+    .poll(async () => {
+      const r = await page.evaluate(() => window.learn.settings.get({ key: 'ui.tabs' }));
+      return r.ok ? (r.data as { active: string | null } | null)?.active : undefined;
+    })
+    .toBeNull();
   const proc = app.process();
   const exited = new Promise((r) => proc.once('exit', r));
   proc.kill('SIGKILL');

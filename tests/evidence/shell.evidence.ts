@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
-  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
+  FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeReaderTab, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
   launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog,
   type LaunchOptions,
   type Session,
@@ -137,8 +137,8 @@ function mainChrome() {
       rowIcon: css('[data-testid="nav-scope-all"] .icon').color,
       rowIconOpacity: css('[data-testid="nav-scope-all"] .icon').opacity,
       selectedRow: css('[data-testid="nav-scope-all"]').color,
-      toolbarFill: css('[data-testid="toolbar"]').backgroundColor,
-      toolbarLine: css('[data-testid="toolbar"]').borderBottomColor,
+      toolbarFill: css('[data-testid="toolbar"], [data-testid="tab-bar"]').backgroundColor,
+      toolbarLine: css('[data-testid="toolbar"], [data-testid="tab-bar"]').borderBottomColor,
       tokens,
       titleBox: box('[data-testid="toolbar-title"]'),
       selectedLabelBox: box('[data-testid="nav-scope-all"] .label'),
@@ -173,7 +173,7 @@ async function inactiveShot(name: string, description: string): Promise<Record<s
   // window's (1 on the runner, 2 on a Retina screen).
   const geometry = await s.page.evaluate(() => {
     const sb = document.querySelector('.sidebar')!.getBoundingClientRect();
-    const tb = document.querySelector('[data-testid="toolbar"]')!.getBoundingClientRect();
+    const tb = document.querySelector('[data-testid="toolbar"], [data-testid="tab-bar"]')!.getBoundingClientRect();
     return {
       width: innerWidth,
       sidebarEdge: [sb.right - 1, sb.top + sb.height * 0.6] as [number, number],
@@ -776,18 +776,18 @@ test('M3 chrome: collapsed sidebar, PDF, unplayable video, sheets (real ↩ and 
   await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
   await allShots(s.app, s.page, 'm3-05-pdf', 'PDF in the new chrome');
   // n6: a Latin-only title at 600 — SF Semibold (as the Hangul beside it is SemiBold), not Bold?
-  results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="viewer-title"]');
+  results['fontsLatinTitle'] = await platformFonts(s.page, '[data-testid="tab"][aria-selected="true"] .title');
   if (IS_MAC) {
     await setTheme(s.page, 'dark');
     await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
     await nativeWindowShot(s.app, 'm3-05b-pdf-dark', 'PDF, dark');
     await setTheme(s.page, 'light');
   }
-  await runMenuCommand(s.app, 'nav.back');
+  await closeReaderTab(s.page);
   latency['unplayable'] = await timedOpen(s.page, 'sample-mpeg4part2', '[data-testid="video-error"]');
   await expect(s.page.getByTestId('video-error')).toBeVisible();
   await allShots(s.app, s.page, 'm3-06-codec', 'unplayable video notice');
-  await runMenuCommand(s.app, 'nav.back');
+  await closeReaderTab(s.page);
   results['openLatencyMs'] = latency;
   save();
 
@@ -1163,7 +1163,7 @@ test('M3 chrome: a disabled shortcut does nothing; real ⌃⌘S and ⌘1 reach t
   } catch (e) {
     results['nativeAccelerators'] = e instanceof NativeInputNotPermitted ? `not permitted: ${e.message}` : `failed: ${errorText(e)}`;
     // Back to the library for the tests below, whatever failed.
-    if (await menuItemEnabled(s.app, 'nav.back')) await runMenuCommand(s.app, 'nav.back');
+    if (await menuItemEnabled(s.app, 'nav.back')) await closeReaderTab(s.page);
     if ((await s.page.getByTestId('shell').getAttribute('data-sidebar')) === 'hidden') await runMenuCommand(s.app, 'view.toggleSidebar');
   }
   check('real ⌃⌘S and ⌘1 reach the native menu', results['nativeAccelerators'] === 'ok', results['nativeAccelerators']);
@@ -1213,7 +1213,7 @@ test('M3 chrome: the focus ring on a control disabled with a reason is not dimme
     check('soft-disabled focus ring at full strength', before.focusVisible && before.outline.startsWith('solid') && before.opacity === '1' && after.focusVisible, { before, after });
     check('the disabled reason shows as a tooltip (m3-10)', (reasonTooltip?.includes('첫 쪽입니다') ?? false) && gateAtRead.tooltips === 1, { reasonTooltip, gateAtRead });
   });
-  if (await menuItemEnabled(s.app, 'nav.back')) await runMenuCommand(s.app, 'nav.back');
+  if (await menuItemEnabled(s.app, 'nav.back')) await closeReaderTab(s.page);
   await expect(s.page.getByTestId('library-table')).toBeVisible();
   save();
 });
@@ -1747,7 +1747,7 @@ test('M4 chrome: the real ⌘O open panel is a sheet on the main window, which s
       const g = globalThis as { __learnRealOpenDialog?: typeof dialog.showOpenDialog };
       return g.__learnRealOpenDialog === undefined || dialog.showOpenDialog === g.__learnRealOpenDialog;
     });
-    if (await s.page.getByTestId('viewer-back').isVisible()) await runMenuCommand(s.app, 'nav.back');
+    if (await s.page.locator('[data-testid="tab"][data-item-id="library"]').isVisible()) await runMenuCommand(s.app, 'nav.back');
     await expect(s.page.getByTestId('library-table')).toBeVisible();
     const rowsBefore = await s.page.getByTestId('item-row').count();
     const title = await win.evaluate((w) => w.getTitle()); // the view's name: what System Events calls the window

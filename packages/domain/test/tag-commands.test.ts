@@ -107,3 +107,11 @@ describe('태그 선택 해제 (spec 4.3)', () => {
     expect(isCommandAvailable('tags.clearFilter', { ...LIB, tagFilterCount: 2, blocked: true })).toBe(false);
   });
 });
+
+describe('the palette and 탭 닫기', () => {
+  it('lists it in the reader only: on the library tab it would close the window', () => {
+    const close = commandById('tab.close');
+    expect(paletteListed(close, { tagPositions: 0, view: 'viewer' })).toBe(true);
+    expect(paletteListed(close, { tagPositions: 0, view: 'library' })).toBe(false);
+  });
+});

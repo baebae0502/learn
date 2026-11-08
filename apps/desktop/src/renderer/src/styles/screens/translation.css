@@ -88,6 +88,10 @@
   .tr-label .spacer {
     flex: 1 1 auto;
   }
+  /* The PDF is still opening (R39): the section is there, and dims as a disabled control does (design-spec 6: 45 %). */
+  .tr.is-disabled :is(.tr-box, .checkbox) {
+    opacity: 0.45;
+  }
   .tr-box {
     display: block;
     width: 100%;

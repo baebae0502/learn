@@ -25,7 +25,13 @@ export const inspector = {
   /** Several selected (library.html?state=multi): the title and the "외 N개" line under the first eight titles. */
   multiTitle: (n: number) => `자료 ${n}개 선택`,
   more: (n: number) => `외 ${n}개`,
-  sections: { info: '정보', file: '파일' },
+  sections: { reading: '읽기', info: '정보', file: '파일' },
+  /** 읽기 section's line: where reading stopped; number and unit, and the date's words, bind with U+00A0 (design-spec 9). */
+  reading: {
+    stoppedAtPage: (page: number, pages: number | undefined) => `${pages === undefined ? `${page}` : `${page}\u00a0/\u00a0${pages}`}쪽에서\u00a0멈춤`,
+    stoppedAtTime: (time: string) => `${time}에서\u00a0멈춤`,
+    line: (where: string, date: string) => `${where}\u00a0· ${date}`,
+  },
   fields: {
     creators: '저자',
     date: '날짜',

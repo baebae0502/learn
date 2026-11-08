@@ -42,7 +42,8 @@ export function ZoomField({ onEscape }: { onEscape(): void }) {
   const { run } = useCommands();
   const [draft, setDraft] = useState<string | null>(null);
   const group = useRef<HTMLDivElement>(null);
-  const ready = pdf?.ready === true && handle !== null;
+  // The field shows "…" until the saved place has been applied: the first fit of a document is not the scale the reader keeps (R39).
+  const ready = pdf?.ready === true && pdf.placed && handle !== null;
   const shown = draft ?? (ready ? zoomPercent(pdf.scale) : '');
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (isComposingKey(e)) return;

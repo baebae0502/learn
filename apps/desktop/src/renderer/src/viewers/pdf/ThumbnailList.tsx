@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { RenderTask } from 'pdfjs-dist';
+import { TriangleAlert } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { t } from '../../strings';
+import { Icon } from '../../ui/Icon';
+import { watchDevicePixelRatio } from './displayChange';
 import { drawOrder } from './drawOrder';
 import { createThumbnailCache, type ThumbnailCache } from './thumbnailCache';
 import { useReader } from './readerStore';
@@ -31,9 +34,17 @@ export function ThumbnailList() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [ratios, setRatios] = useState<ReadonlyMap<number, number>>(new Map());
   const [drawn, setDrawn] = useState(0);
+  // The pictures are drawn for the display's pixel ratio: another screen draws them again.
+  const [ratio, setRatio] = useState(() => window.devicePixelRatio);
+  useEffect(() => watchDevicePixelRatio(() => setRatio(window.devicePixelRatio)), []);
+  // The pages whose picture could not be made, twice.
+  const [failedPages, setFailedPages] = useState<ReadonlySet<number>>(new Set());
   const cacheRef = useRef<ThumbnailCache | null>(null);
   const wantRef = useRef<number[]>([]);
   const wakeRef = useRef<(() => void) | null>(null);
+  /** Lets the drawing loop try the pages that failed once again: told what is in view and whether the page moved. */
+  const retryRef = useRef<((visible: ReadonlySet<number>, pageMoved: boolean) => void) | null>(null);
+  const lastPage = useRef(current);
 
   /** Height over width as the view shows the page: a quarter turn swaps the two. */
   const ratioOf = (page: number) => {
@@ -52,6 +63,9 @@ export function ThumbnailList() {
   // What to draw next: read by the drawing loop, which is woken when it changes.
   useEffect(() => {
     wantRef.current = drawOrder(visibleKey === '' ? [] : visibleKey.split(',').map(Number), current);
+    const visible = new Set(visibleKey === '' ? [] : visibleKey.split(',').map(Number));
+    retryRef.current?.(visible, lastPage.current !== current);
+    lastPage.current = current;
     wakeRef.current?.();
   }, [visibleKey, current]);
 
@@ -68,7 +82,23 @@ export function ThumbnailList() {
     cacheRef.current = cache;
     let cancelled = false;
     let task: RenderTask | null = null;
+    // A page that failed once waits for the next time it is in view (the list scrolled or the page moved); a second failure is final.
+    const waiting = new Set<number>();
     const failed = new Set<number>();
+    const retried = new Set<number>();
+    // A page that failed is tried again when the reader moves to another page, or when the page has left the view and is back in it:
+    // a shift of the rows' sizes that leaves it in view does not count.
+    const away = new Set<number>();
+    retryRef.current = (visible, pageMoved) => {
+      for (const n of [...waiting]) {
+        if (!visible.has(n)) away.add(n);
+        else if (pageMoved || away.has(n)) {
+          waiting.delete(n);
+          away.delete(n);
+        }
+      }
+    };
+    setFailedPages(new Set());
     // The pictures of the old rotation (or document) are gone: every cell reads the new cache.
     setDrawn((n) => n + 1);
 
@@ -79,8 +109,9 @@ export function ThumbnailList() {
       setRatios((before) => (before.get(pageNumber) === natural.height / natural.width ? before : new Map(before).set(pageNumber, natural.height / natural.width)));
       // The view's rotation is added to the page's own, so a thumbnail turns with its page.
       const turned = page.getViewport({ scale: 1, rotation: (page.rotate + rotation) % 360 });
-      const viewport = page.getViewport({ scale: (THUMB_WIDTH / turned.width) * window.devicePixelRatio, rotation: (page.rotate + rotation) % 360 });
+      const viewport = page.getViewport({ scale: (THUMB_WIDTH / turned.width) * ratio, rotation: (page.rotate + rotation) % 360 });
       const canvas = window.document.createElement('canvas');
+      canvas.dataset.purpose = 'thumbnail';
       canvas.width = Math.max(1, Math.ceil(viewport.width));
       canvas.height = Math.max(1, Math.ceil(viewport.height));
       task = page.render({ canvas, viewport });
@@ -98,7 +129,7 @@ export function ThumbnailList() {
 
     const run = async () => {
       while (!cancelled) {
-        const next = wantRef.current.find((n) => !failed.has(n) && cache.get(n) === undefined);
+        const next = wantRef.current.find((n) => !failed.has(n) && !waiting.has(n) && cache.get(n) === undefined);
         if (next === undefined) {
           await new Promise<void>((resolve) => {
             wakeRef.current = resolve;
@@ -111,8 +142,14 @@ export function ThumbnailList() {
           // A render cancelled or a page asked of a closing document is the list going away, not a failure to report.
           // The list or the document going away (a render cancelled, a page asked of a destroyed transport) is not a failure.
           if (cancelled || doc.loadingTask.destroyed || (e as Error)?.name === 'RenderingCancelledException') return;
-          failed.add(next);
           console.warn(`[pdf] thumbnail failed: ${(e as Error)?.name ?? 'Error'}`);
+          if (retried.has(next)) {
+            failed.add(next);
+            setFailedPages(new Set(failed));
+          } else {
+            retried.add(next);
+            waiting.add(next);
+          }
         }
       }
     };
@@ -125,14 +162,17 @@ export function ThumbnailList() {
       wakeRef.current = null;
       cache.clear();
       cacheRef.current = null;
+      retryRef.current = null;
     };
-  }, [doc, ready, rotation]);
+  }, [doc, ready, rotation, ratio]);
 
   // A new document starts with no page sizes.
   useEffect(() => setRatios(new Map()), [doc]);
   useLayoutEffect(() => virtualizer.measure(), [rotation, virtualizer]);
 
   const goTo = (page: number) => handle?.goToPage(page);
+  // A click is a jump (recorded for back); the arrows and ↩ only move the reader to the page the list already shows.
+  const jumpTo = (page: number) => handle?.jumpToPage(page);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     if (e.key === 'ArrowDown') goTo(Math.min(total, current + 1));
@@ -152,6 +192,7 @@ export function ThumbnailList() {
       role="listbox"
       tabIndex={0}
       aria-label={t.reader.thumbnailList}
+      aria-activedescendant={items.some((i) => i.index === current - 1) ? `pdf-thumb-${current}` : undefined}
       data-testid="pdf-thumbnails"
       data-page-color={pageColor}
       onKeyDown={onKeyDown}
@@ -159,6 +200,7 @@ export function ThumbnailList() {
       <div className="nav-thumbs-inner" style={{ height: virtualizer.getTotalSize() }}>
         {items.map((row) => {
           const page = row.index + 1;
+          const failedHere = failedPages.has(page);
           return (
             <div
               key={row.key}
@@ -166,16 +208,24 @@ export function ThumbnailList() {
               data-index={row.index}
               role="option"
               aria-selected={page === current}
-              aria-label={String(page)}
+              id={`pdf-thumb-${page}`}
+              aria-label={failedHere ? t.reader.thumbnailFailed(page) : String(page)}
+              title={failedHere ? t.reader.thumbnailFailed(page) : undefined}
               className="nav-thumb"
               data-testid="pdf-thumb"
               data-page={page}
+              data-failed={failedHere ? 'true' : undefined}
               data-current={page === current ? 'true' : undefined}
               style={{ transform: `translateY(${row.start}px)` }}
-              onClick={() => goTo(page)}
+              onClick={() => jumpTo(page)}
             >
               <div className="nav-thumb-page" style={{ aspectRatio: `1 / ${ratioOf(page)}` }}>
                 <ThumbnailCanvas page={page} cacheRef={cacheRef} drawn={drawn} />
+                {failedHere && (
+                  <div className="nav-thumb-failed" aria-hidden="true">
+                    <Icon icon={TriangleAlert} size="md" />
+                  </div>
+                )}
               </div>
               <span className="lbl num">{page}</span>
             </div>

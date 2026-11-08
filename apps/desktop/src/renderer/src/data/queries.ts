@@ -18,6 +18,7 @@ export const keys = {
   /** An item's edited copies (M6 spec 6): under its detail, so whatever reads the detail again reads these too. */
   editedCopies: (itemId: string) => ['library', 'detail', itemId, 'editedCopies'] as const,
   panes: ['settings', 'layout.panes'] as const,
+  tabs: ['settings', 'ui.tabs'] as const,
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
   columns: ['settings', 'library.columns'] as const,
   sort: ['settings', 'library.sort'] as const,
@@ -56,6 +57,9 @@ export const useSearchTexts = (enabled: boolean) =>
  */
 export const useItem = (itemId: string, fresh = false) =>
   useQuery({ queryKey: keys.item(itemId), queryFn: () => unwrap(api().library.get({ itemId })), refetchOnMount: fresh ? 'always' : true });
+/** The tabs open at the last quit, read once before the window's first paint (Boot). */
+export const useSavedTabs = () => useQuery({ queryKey: keys.tabs, queryFn: () => unwrap(api().settings.get({ key: 'ui.tabs' })), staleTime: Infinity });
+
 export const usePanes = () => useQuery({ queryKey: keys.panes, queryFn: () => unwrap(api().settings.get({ key: 'layout.panes' })) });
 
 /** The item panel's facts (metadata, file, SHA-256): the same cache entry as the reader's missing notice (ViewerHost). */

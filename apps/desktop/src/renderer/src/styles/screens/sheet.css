@@ -161,6 +161,16 @@
     flex: 1 1 auto;
     min-width: 0;
   }
+  /* A pair line of the key map ("⌘G / ⇧⌘G"): two chords with a slash between. */
+  .sheet .shortcut-row .sr-pair {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    gap: var(--space-6);
+  }
+  .sheet .shortcut-row .sr-slash {
+    color: var(--text-secondary);
+  }
   /* Here the keys are the content: primary text (secondary on a keycap on the card is 4.16:1 in dark, under 4.5). */
   .sheet .shortcut-row .kbd {
     color: var(--text-primary);

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import { ERROR_COPY, isTranslationTooLong, type ErrorCode, type TranslationPrefs } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { readTranslationPrefs, saveTranslationPrefs } from './prefs';
@@ -12,7 +12,7 @@ export type TranslationView =
   | { kind: 'error'; code: ErrorCode; message: string }
   | { kind: 'tooLong' };
 
-interface TranslationState {
+export interface TranslationStore {
   /** The text in the 원문 box: the last selection, the selections joined (이어 붙이기) or what the user typed. */
   source: string;
   view: TranslationView;
@@ -48,130 +48,135 @@ const COPY: Partial<Record<ErrorCode, string>> = {
   TRANSLATION_DISABLED: ERROR_COPY.translationDisabled,
 };
 
-/** The request that is current; a reply for any other never touches the view. */
-let seq = 0;
-let inFlight = false;
+/** One document's translation: its source text and what became of it. The preferences are the app's own (read from the prefs query). */
+export function createTranslationStore(): StoreApi<TranslationStore> {
+  return createStore<TranslationStore>()((set, get) => {
+    /** The request that is current in this store; a reply for any other never touches the view. */
+    let seq = 0;
+    let inFlight = false;
 
-/** Ends the request in flight at main; the reply it would have given is dropped by `seq`. */
-function cancelInFlight(): void {
-  seq += 1;
-  if (!inFlight) return;
-  inFlight = false;
-  void api().translation.cancel();
-}
-
-export const useTranslation = create<TranslationState>()((set, get) => {
-  const start = async (): Promise<void> => {
-    const { source } = get();
-    const text = source.trim();
-    // A new request: whatever is in flight is superseded (main cancels it too, and the cache is checked after that).
-    seq += 1;
-    const mine = seq;
-    if (text === '') {
-      cancelInFlight();
-      set({ view: { kind: 'idle' } });
-      return;
-    }
-    if (isTranslationTooLong(text)) {
-      cancelInFlight();
-      set({ view: { kind: 'tooLong' } });
-      return;
-    }
-    inFlight = true;
-    set({ view: { kind: 'pending' } });
-    const { from, to } = readTranslationPrefs();
-    try {
-      const r = await unwrap(api().translation.translate({ text: source, from, to }));
-      if (mine !== seq) return;
+    /** Ends the request in flight at main; the reply it would have given is dropped by `seq`. */
+    function cancelInFlight(): void {
+      seq += 1;
+      if (!inFlight) return;
       inFlight = false;
-      set({ view: { kind: 'done', text: r.text, detectedFrom: r.detectedFrom, cached: r.cached, sameLanguage: r.sameLanguage } });
-    } catch (e) {
-      if (mine !== seq) return;
-      inFlight = false;
-      const code: ErrorCode = e instanceof ApiError ? e.code : 'INTERNAL';
-      if (code === 'CANCELLED') set({ view: { kind: 'idle' } });
-      else if (code === 'TRANSLATION_TOO_LONG') set({ view: { kind: 'tooLong' } });
-      else set({ view: { kind: 'error', code, message: COPY[code] ?? (e instanceof ApiError ? e.message : ERROR_COPY.unknown) } });
+      void api().translation.cancel();
     }
-  };
 
-  /** A refusal from the preferences store is said where the control is, as the error state. */
-  const savePrefs = async (patch: Partial<TranslationPrefs>): Promise<boolean> => {
-    try {
-      await saveTranslationPrefs(patch);
-      return true;
-    } catch (e) {
-      cancelInFlight();
-      set({ view: { kind: 'error', code: e instanceof ApiError ? e.code : 'INTERNAL', message: e instanceof ApiError ? e.message : ERROR_COPY.unknown } });
-      return false;
-    }
-  };
-
-  /** The consent is given: the selection that is there is translated, or the view waits for one. */
-  const proceed = async (): Promise<void> => {
-    if (get().source.trim() !== '') await start();
-    else set({ view: { kind: 'idle' } });
-  };
-
-  return {
-    source: '',
-    view: { kind: 'idle' },
-    concat: false,
-    select(text) {
-      const { source, concat } = get();
-      set({ source: concat && source.trim() !== '' ? `${source}\n${text}` : text });
-      get().resume();
-    },
-    resume() {
-      const prefs = readTranslationPrefs();
-      if (prefs.enabled === null || prefs.enabled === false) {
-        cancelInFlight();
-        set({ view: { kind: prefs.enabled === null ? 'consent' : 'off' } });
-        return;
-      }
-      if (prefs.autoOnSelect) void start();
-      else {
+    const start = async (): Promise<void> => {
+      const { source } = get();
+      const text = source.trim();
+      // A new request: whatever is in flight is superseded (main cancels it too, and the cache is checked after that).
+      seq += 1;
+      const mine = seq;
+      if (text === '') {
         cancelInFlight();
         set({ view: { kind: 'idle' } });
+        return;
       }
-    },
-    setSource(text) {
-      cancelInFlight();
-      set({ source: text, view: { kind: 'idle' } });
-    },
-    translate: start,
-    clear() {
-      cancelInFlight();
-      set({ source: '', view: { kind: 'idle' } });
-    },
-    setConcat: (concat) => set({ concat }),
-    save: savePrefs,
-    async enable() {
-      if (!(await savePrefs({ enabled: true }))) return;
-      // The change may have been announced first (prefsChanged): the consent is answered once, by whichever comes first.
-      const { kind } = get().view;
-      if (kind !== 'consent' && kind !== 'off' && kind !== 'idle') return;
-      await proceed();
-    },
-    prefsChanged(enabled) {
-      const { view } = get();
-      if (enabled === false) {
-        // The request in flight is ended at main and its late reply dropped; the pop-up has nothing to say while off.
+      if (isTranslationTooLong(text)) {
         cancelInFlight();
-        if (view.kind !== 'off') set({ view: { kind: 'off' } });
-      } else if (enabled === true) {
-        if (view.kind === 'consent') void proceed();
-        else if (view.kind === 'off') set({ view: { kind: 'idle' } });
+        set({ view: { kind: 'tooLong' } });
+        return;
       }
-    },
-    async decline() {
-      if (!(await savePrefs({ enabled: false }))) return;
-      cancelInFlight();
-      set({ view: { kind: 'off' } });
-    },
-    reset() {
-      cancelInFlight();
-      set({ source: '', view: { kind: 'idle' }, concat: false });
-    },
-  };
-});
+      inFlight = true;
+      set({ view: { kind: 'pending' } });
+      const { from, to } = readTranslationPrefs();
+      try {
+        const r = await unwrap(api().translation.translate({ text: source, from, to }));
+        if (mine !== seq) return;
+        inFlight = false;
+        set({ view: { kind: 'done', text: r.text, detectedFrom: r.detectedFrom, cached: r.cached, sameLanguage: r.sameLanguage } });
+      } catch (e) {
+        if (mine !== seq) return;
+        inFlight = false;
+        const code: ErrorCode = e instanceof ApiError ? e.code : 'INTERNAL';
+        if (code === 'CANCELLED') set({ view: { kind: 'idle' } });
+        else if (code === 'TRANSLATION_TOO_LONG') set({ view: { kind: 'tooLong' } });
+        else set({ view: { kind: 'error', code, message: COPY[code] ?? (e instanceof ApiError ? e.message : ERROR_COPY.unknown) } });
+      }
+    };
+
+    /** A refusal from the preferences store is said where the control is, as the error state. */
+    const savePrefs = async (patch: Partial<TranslationPrefs>): Promise<boolean> => {
+      try {
+        await saveTranslationPrefs(patch);
+        return true;
+      } catch (e) {
+        cancelInFlight();
+        set({ view: { kind: 'error', code: e instanceof ApiError ? e.code : 'INTERNAL', message: e instanceof ApiError ? e.message : ERROR_COPY.unknown } });
+        return false;
+      }
+    };
+
+    /** The consent is given: the selection that is there is translated, or the view waits for one. */
+    const proceed = async (): Promise<void> => {
+      if (get().source.trim() !== '') await start();
+      else set({ view: { kind: 'idle' } });
+    };
+
+    return {
+      source: '',
+      view: { kind: 'idle' },
+      concat: false,
+      select(text) {
+        const { source, concat } = get();
+        set({ source: concat && source.trim() !== '' ? `${source}\n${text}` : text });
+        get().resume();
+      },
+      resume() {
+        const prefs = readTranslationPrefs();
+        if (prefs.enabled === null || prefs.enabled === false) {
+          cancelInFlight();
+          set({ view: { kind: prefs.enabled === null ? 'consent' : 'off' } });
+          return;
+        }
+        if (prefs.autoOnSelect) void start();
+        else {
+          cancelInFlight();
+          set({ view: { kind: 'idle' } });
+        }
+      },
+      setSource(text) {
+        cancelInFlight();
+        set({ source: text, view: { kind: 'idle' } });
+      },
+      translate: start,
+      clear() {
+        cancelInFlight();
+        set({ source: '', view: { kind: 'idle' } });
+      },
+      setConcat: (concat) => set({ concat }),
+      save: savePrefs,
+      async enable() {
+        if (!(await savePrefs({ enabled: true }))) return;
+        // The change may have been announced first (prefsChanged): the consent is answered once, by whichever comes first.
+        const { kind } = get().view;
+        if (kind !== 'consent' && kind !== 'off' && kind !== 'idle') return;
+        await proceed();
+      },
+      prefsChanged(enabled) {
+        const { view } = get();
+        if (enabled === false) {
+          // The request in flight is ended at main and its late reply dropped; the pop-up has nothing to say while off.
+          cancelInFlight();
+          if (view.kind !== 'off') set({ view: { kind: 'off' } });
+        } else if (enabled === true) {
+          if (view.kind === 'consent') void proceed();
+          else if (view.kind === 'off') set({ view: { kind: 'idle' } });
+        }
+      },
+      async decline() {
+        if (!(await savePrefs({ enabled: false }))) return;
+        cancelInFlight();
+        set({ view: { kind: 'off' } });
+      },
+      reset() {
+        cancelInFlight();
+        set({ source: '', view: { kind: 'idle' }, concat: false });
+      },
+    };
+  });
+}
+
+export { useTranslation } from '../viewers/readerScope';

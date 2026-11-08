@@ -2,7 +2,7 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
-import { useItem, useItemDetail } from '../data/queries';
+import { useItem, useItemDetail, useItems } from '../data/queries';
 import { sortItems } from '../library/sort';
 import { useScopeView } from '../library/useScopeView';
 import { useLibrarySettings } from '../library/useLibrarySettings';
@@ -16,11 +16,13 @@ import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { PaneEmpty } from '../ui/PaneEmpty';
 import { Spinner } from '../ui/Spinner';
+import { useReader } from '../viewers/pdf/readerStore';
 import { AddToCollectionButton } from './AddToCollectionButton';
 import { CollectionsSection } from './CollectionsSection';
 import { FileSection } from './FileSection';
 import { InfoHead } from './InfoHead';
 import { InfoSection } from './InfoSection';
+import { ReadingSection } from './ReadingSection';
 import { TagsSection } from './TagsSection';
 import { TrashSelection } from './TrashInfo';
 import { libraryStats, multiSummary } from './summary';
@@ -38,10 +40,14 @@ export function InfoPane() {
   return view.kind === 'reader' ? <ReaderInfo itemId={view.itemId} /> : <LibraryInfo />;
 }
 
-/** The reader's panel: 번역 first, then the item that is open, with the library's own sections and editing (no 읽기 section). */
+/** The reader's panel: 번역 first, then the item that is open, with the library's own sections and editing (the 읽기 section is the library's). */
 function ReaderInfo({ itemId }: { itemId: string }) {
-  const item = useItem(itemId).data;
-  const translation = <TranslationSection />;
+  // The list's row names the item before its own read has come: a PDF that is opening shows its info at once (R39).
+  const listed = useItems().data?.find((i) => i.id === itemId);
+  const item = useItem(itemId).data ?? listed;
+  // Until the pages are drawn the 번역 section is there but cannot be used (nothing is selected to translate yet).
+  const opening = useReader((s) => s.pdf?.ready !== true);
+  const translation = <TranslationSection disabled={opening} />;
   if (!item) return <div className="inspector-scroll">{translation}</div>;
   return <ItemInfo key={item.id} item={item} before={translation} inReader />;
 }
@@ -152,6 +158,7 @@ export function ItemInfo({ item, probe = true, trashedAt, before, inReader = fal
       <InfoHead item={item} probe={probe} trashedAt={trashedAt} inReader={inReader} />
       {detail.data ? (
         <>
+          {!inReader && trashedAt === undefined && <ReadingSection itemId={item.id} />}
           <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />
           <TagsSection ids={ids} readOnly={trashedAt !== undefined} />
           <CollectionsSection ids={ids} />

@@ -8,6 +8,7 @@ import { SearchField } from '../../ui/SearchField';
 import { dispatchFind } from './findControl';
 import { useFind } from './findStore';
 import { useReader } from './readerStore';
+import { useReaderScope } from '../readerScope';
 
 /** How long a wrap past the last match is told before the count is the count again. */
 const WRAP_NOTE_MS = 2000;
@@ -17,6 +18,7 @@ const WRAP_NOTE_MS = 2000;
  * pdf.js find controller's; this only asks (events on the viewer's bus) and shows what it answers (findStore).
  */
 export function FindBar({ onClose }: { onClose(): void }) {
+  const scope = useReaderScope();
   const query = useFind((s) => s.query);
   const status = useFind((s) => s.status);
   const matches = useFind((s) => s.matches);
@@ -24,6 +26,12 @@ export function FindBar({ onClose }: { onClose(): void }) {
   const focusSeq = useFind((s) => s.focusSeq);
   const bus = useReader((s) => s.handle?.eventBus() ?? null);
   const input = useRef<HTMLInputElement>(null);
+
+  // The bar opens with the query it kept (closing it cleared the marks in the pages, not the query): the search runs again, so the
+  // marks and the count agree. Once per opening.
+  useEffect(() => {
+    if (bus && scope.find.getState().query.trim() !== '') dispatchFind(bus, scope.find.getState().query, '');
+  }, [bus, scope]);
 
   // ⌘F again, or ⌘E: the field takes the focus with its text selected.
   useEffect(() => {
@@ -33,14 +41,14 @@ export function FindBar({ onClose }: { onClose(): void }) {
 
   useEffect(() => {
     if (status !== 'wrapped') return;
-    const timer = setTimeout(() => useFind.getState().report('found', useFind.getState().matches), WRAP_NOTE_MS);
+    const timer = setTimeout(() => scope.find.getState().report('found', scope.find.getState().matches), WRAP_NOTE_MS);
     return () => clearTimeout(timer);
   }, [status, reports]);
 
   const change = (value: string) => {
-    useFind.getState().setQuery(value);
+    scope.find.getState().setQuery(value);
     if (bus) dispatchFind(bus, value, '');
-    if (value.trim() === '') useFind.getState().report('idle', null);
+    if (value.trim() === '') scope.find.getState().report('idle', null);
   };
   const again = (previous: boolean) => {
     if (bus && query.trim() !== '') dispatchFind(bus, query, 'again', previous);

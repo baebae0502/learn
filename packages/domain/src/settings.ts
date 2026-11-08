@@ -21,6 +21,11 @@ const sortSchema = z.object({ column: z.enum(LIBRARY_SORT_COLUMNS), direction: z
 /** The most collection ids the sidebar remembers as open: a bound, so a runaway list cannot grow the settings value. */
 export const SIDEBAR_EXPANDED_MAX = 2000;
 
+/** What a saved reader tab last showed of its item (R38): the strip names the tab from the first frame, before the library list has come. */
+export const SAVED_TAB_TITLE_MAX = 300;
+export const savedTabItemSchema = z.object({ title: z.string().max(SAVED_TAB_TITLE_MAX), type: z.enum(['pdf', 'video']) }).strict();
+export type SavedTabItem = z.infer<typeof savedTabItemSchema>;
+
 /** Library-scoped settings (stored in the library DB). */
 export const SETTINGS = {
   'library.sort': sortSchema,
@@ -37,6 +42,11 @@ export const SETTINGS = {
   'library.columns': columnConfigSchema,
   'layout.panes': z.record(z.string(), z.number().int().min(0).max(4000)),
   'ui.lastOpenItemId': z.uuid().nullable(),
+  /**
+   * The reader tabs open at quit, in order, and the one that was shown (null = the library): the window reopens them. `known` is
+   * each tab's last known title and kind (R38), a cache the live item replaces; an older value without it still reads.
+   */
+  'ui.tabs': z.object({ items: z.array(z.uuid()).max(50), active: z.uuid().nullable(), known: z.record(z.uuid(), savedTabItemSchema).optional() }).strict(),
   /** The commands last run from the ⌘K palette, newest first (spec §4.4): an id that is gone makes the whole value unreadable, and the history starts over. */
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
   /** The colour of a PDF's pages (spec 8): unset reads as 'auto', the app theme's. */

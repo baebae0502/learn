@@ -95,6 +95,22 @@
     margin-top: var(--space-4);
   }
 
+  /* 읽기: the thick bar and the percent on one row, the line under it (mockup .reading-line). */
+  .inspector .reading-progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-8);
+  }
+  .inspector .reading-progress .pct {
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+  }
+  .inspector .reading-line {
+    margin-top: var(--space-4);
+    font: var(--type-footnote);
+    color: var(--text-secondary);
+  }
+
   /* Sections (library.html .section, .section-head). */
   .inspector .section {
     border-top: 1px solid var(--separator);

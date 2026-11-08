@@ -110,7 +110,7 @@ test('the trash view: collection rows on top, 삭제한 날짜 last and newest f
     // Opening does nothing (spec 4.3): a double-click and ↩ stay in the library.
     await rowByTitle(page, 'distinct-01').dblclick();
     await page.keyboard.press('Enter');
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0);
     // The panel: 복원 and the trash line; no pencil, no tag +, no × on a chip; the tags still read.
     await rowByTitle(page, 'distinct-02').click();
     const panel = page.getByTestId('inspector');
@@ -315,7 +315,7 @@ test('the reader: its item moved to the trash shows the notice; 복원 reopens i
   try {
     const [pdf] = await importPaths(page, distinctPdfs(testInfo.outputPath('in'), 1));
     await rowByTitle(page, 'distinct-01').dblclick();
-    await expect(page.getByTestId('viewer-title')).toBeVisible();
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await trashItems(page, [pdf!.id]);
     const notice = page.getByTestId('reader-trashed');
     await expect(notice).toContainText('이 자료는 휴지통에 있습니다');

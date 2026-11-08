@@ -1,7 +1,7 @@
 // Which mockup renders exist. Shared by scripts/render-mockups.mjs (Linux, xvfb) and
 // tests/evidence/mockups.evidence.ts (macOS runner, real SF fonts).
 
-/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6' | 'm7a', label: string }} Render */
+/** @typedef {{ name: string, page: string, query: Record<string, string>, group: 'base' | 'variant' | 'tutor' | 'm6' | 'm7a' | 'm7b', label: string }} Render */
 
 export const SCREENS = [
   ['library', '라이브러리'],
@@ -127,6 +127,32 @@ export const VARIANTS = [
     ['settings', { section: 'translation', tr: 'off' }, 'm7a-translation-off', 'M7a 설정 · 번역 끔'],
     ['library', { columns: 'progress' }, 'm7a-progress', 'M7a 라이브러리 · 진행 열'],
   ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m7a') }))),
+  // M7b (docs/superpowers/specs/2026-11-05-m7b-reader-tabs-design.md §11): layout B, both themes. `--only m7b` renders these.
+  // The tab strip (one reader tab, twelve that overflow, one being dragged), ‹ › in the reader toolbar, scroll and spread in
+  // the view menu, the horizontal / one-page / spread scenes, the tab menu, a collapsed sidebar, a 1024 window, and the
+  // library: its tab active with a reader tab open, and the item panel's 읽기 section.
+  ...[
+    ['reader-pdf', { m: '7b', tabs: '2' }, 'm7b', 'M7b 리더 · 탭 줄(라이브러리 + 리더 탭 하나) · 뒤로만'],
+    ['reader-pdf', { m: '7b', tabs: 'many' }, 'm7b-tabs-many', 'M7b 탭 12개 · 최소 폭 120에 닿아 넘침, 활성 탭이 보이게 스크롤'],
+    ['reader-pdf', { m: '7b', tabs: 'drag' }, 'm7b-tabs-drag', 'M7b 탭 끌기 중 · 이웃이 자리를 비킴'],
+    ['reader-pdf', { m: '7b', tabs: '2', history: 'none' }, 'm7b-history-none', 'M7b ‹ › 둘 다 꺼짐'],
+    ['reader-pdf', { m: '7b', tabs: '2', history: 'both' }, 'm7b-history-both', 'M7b ‹ › 둘 다 켜짐'],
+    ['reader-pdf', { m: '7b', tabs: '2', view: 'menu' }, 'm7b-view-menu', 'M7b 보기 ▾ · 스크롤 ▸ · 펼침 ▸'],
+    ['reader-pdf', { m: '7b', tabs: '2', view: 'menu-scroll' }, 'm7b-view-menu-scroll', 'M7b 보기 ▾ · 스크롤 하위 메뉴'],
+    ['reader-pdf', { m: '7b', tabs: '2', view: 'menu-spread' }, 'm7b-view-menu-spread', 'M7b 보기 ▾ · 펼침 하위 메뉴'],
+    ['reader-pdf', { m: '7b', tabs: '2', scroll: 'horizontal' }, 'm7b-scroll-horizontal', 'M7b 가로 스크롤 장면'],
+    ['reader-pdf', { m: '7b', tabs: '2', scroll: 'horizontal', view: 'menu' }, 'm7b-scroll-horizontal-menu', 'M7b 가로 스크롤 · 펼침 ▸ 꺼짐'],
+    ['reader-pdf', { m: '7b', tabs: '2', scroll: 'page' }, 'm7b-scroll-page', 'M7b 한 쪽씩 장면'],
+    ['reader-pdf', { m: '7b', tabs: '2', spread: 'odd' }, 'm7b-spread-odd', 'M7b 펼침 보기 · 홀수 쪽부터'],
+    ['reader-pdf', { m: '7b', menu: 'tab' }, 'm7b-menu-tab', 'M7b 탭 컨텍스트 메뉴'],
+    ['reader-pdf', { m: '7b', tabs: '2', sidebar: 'hidden' }, 'm7b-sidebar-hidden', 'M7b 사이드바 접힘 · 탭 줄에 신호등 인셋·토글·실행기'],
+    ['reader-pdf', { m: '7b', tabs: '2', w: '1000' }, 'm7b-w1000', 'M7b 창 1000×768 · 항목 패널이 펼쳐지는 가장 좁은 창'],
+    ['reader-pdf', { m: '7b', tabs: 'many', w: '1024' }, 'm7b-w1024', 'M7b 창 1024×768 · 탭 줄과 리더 도구 막대'],
+    ['library', { m: '7b', tabs: '2' }, 'm7b-library-tabs', 'M7b 라이브러리 탭 활성 · 리더 탭 하나'],
+    ['library', { m: '7b', tabs: '2', reading: 'pdf' }, 'm7b-reading-pdf', 'M7b 항목 패널 읽기 절 · PDF'],
+    ['library', { m: '7b', tabs: '2', reading: 'video' }, 'm7b-reading-video', 'M7b 항목 패널 읽기 절 · 동영상'],
+    ['library', { m: '7b', tabs: '2', reading: 'legacy' }, 'm7b-reading-legacy', 'M7b 항목 패널 읽기 절 · 쪽 수 없는 옛 값'],
+  ].flatMap(([screen, query, suffix, label]) => THEMES.map((t) => ({ ...variant(screen, t, 'B', query, suffix, label), group: /** @type {const} */ ('m7b') }))),
 ];
 
 /**

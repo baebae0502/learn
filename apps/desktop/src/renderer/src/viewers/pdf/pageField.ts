@@ -1,12 +1,8 @@
-let field: HTMLInputElement | null = null;
+import { activePageField } from '../readerScope';
 
-/** The ref of the toolbar's page field: ⌥⌘G reaches it from outside the toolbar. */
-export const pageFieldRef = (el: HTMLInputElement | null): void => {
-  field = el;
-};
-
-/** Focuses the page field with its number selected; nothing while the field is not there or cannot be used. */
+/** Focuses the active reader's page field with its number selected; nothing while the field is not there or cannot be used. */
 export function focusPageField(): void {
+  const field = activePageField();
   if (!field || field.disabled) return;
   field.focus();
   field.select();

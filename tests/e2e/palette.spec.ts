@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, runMenuCommand, stubOpenDialog } from './helpers';
+import { FIXTURES, closeSheet, drag, dropSource, expectTooltipText, expectWindow, hoverLikeUser, importPaths, launch, mainWindow, menuItemEnabled, openDialogCalls, openItem, readerTab, runMenuCommand, stubOpenDialog } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const IS_MAC = process.platform === 'darwin';
@@ -380,7 +380,7 @@ test('the reader lists reader commands and not library ones; its folded toolbar 
     expect(ids).not.toContain('app.palette'); // the palette does not list itself
     await page.keyboard.press('Escape');
     await runMenuCommand(app, 'view.toggleSidebar');
-    await expect(page.getByTestId('toolbar').getByTestId('launcher')).toHaveCount(1);
+    await expect(page.getByTestId('tab-bar').getByTestId('launcher')).toHaveCount(1);
   } finally {
     await app.close();
   }
@@ -505,7 +505,7 @@ test('item results: 자료 above the commands, five at most; title matches by po
     await expect(results.first()).toHaveAttribute('data-focused', 'true');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
-    await expect(page.getByTestId('viewer-title')).toHaveText('신호 증폭');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveText('신호 증폭');
   } finally {
     await app.close();
   }
@@ -575,7 +575,7 @@ test('↓ and ↑ cross from 자료 into 명령 and back; ↩ on a command row r
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('palette')).toBeHidden();
     await expect.poll(textSize).not.toBe(before); // the command ran
-    await expect(page.getByTestId('viewer-title')).toHaveCount(0); // and no item was opened
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]:not([data-item-id="library"])')).toHaveCount(0); // and no item was opened
   } finally {
     await app.close();
   }
@@ -665,5 +665,49 @@ test('recent: commands run from the palette come first with an empty query (five
     await expect.poll(() => listed(session.page)).toEqual(expected);
   } finally {
     await session.app.close();
+  }
+});
+
+test('⌘↩ on an item row opens it in a tab behind; the library stays shown, ↩ still opens and shows it', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [item] = await importPaths(page, [PDF]);
+    await expect(page.getByTestId('tab')).toHaveCount(0); // no strip while no reader is open
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('sample');
+    await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press(IS_MAC ? 'Meta+Enter' : 'Control+Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('tab')).toHaveCount(2); // the strip appears: the library's tab and the one reader behind it
+    await expect(readerTab(page, item!.id)).toHaveCount(1);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', 'library');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    // ↩ alone: the item opens and is shown.
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('sample');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', item!.id);
+  } finally {
+    await app.close();
+  }
+});
+
+test('⌘↩ on an item row in the reader opens it in a tab behind and the reader stays shown', async ({}, testInfo) => {
+  const { app, page } = await launch(...dirs(testInfo));
+  try {
+    const [a, b] = await importPaths(page, [PDF, path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+    await expect(page.getByTestId('tab')).toHaveCount(2); // the library tab and the sample's
+    await runMenuCommand(app, 'app.palette');
+    await page.getByTestId('palette-input').fill('paper-100');
+    await expect(page.getByTestId('palette-result').first()).toHaveAttribute('data-focused', 'true');
+    await page.keyboard.press(IS_MAC ? 'Meta+Enter' : 'Control+Enter');
+    await expect(page.getByTestId('palette')).toBeHidden();
+    await expect(page.getByTestId('tab')).toHaveCount(3);
+    await expect(readerTab(page, b!.id)).toHaveCount(1);
+    await expect(page.locator('[data-testid="tab"][aria-selected="true"]')).toHaveAttribute('data-item-id', a!.id);
+  } finally {
+    await app.close();
   }
 });

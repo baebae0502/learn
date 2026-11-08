@@ -192,12 +192,15 @@ test('page quotes become anchors: two lines, a hyphen break, NFD text found by a
   }
 });
 
-test('the probe exists only in a window that carries e2e=1', async ({}, testInfo) => {
+test('the probe is there in a window that carries e2e=1', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await importPaths(page, [PAPER]);
     await openItem(page, 'paper-100');
     await expect(viewer(page)).toHaveAttribute('data-pages', '100');
+    await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    // The probe is loaded on demand (a dynamic import), so it can arrive after the pages: waited for, not read once.
+    await page.waitForFunction(() => window.__learnPdf !== undefined);
     expect(await page.evaluate(() => typeof window.__learnPdf)).toBe('object');
     expect(await page.evaluate(() => new URLSearchParams(location.search).get('e2e'))).toBe('1');
   } finally {

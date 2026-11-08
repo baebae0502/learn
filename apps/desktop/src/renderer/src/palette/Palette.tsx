@@ -230,8 +230,9 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
     if (cursorElementId) document.getElementById(cursorElementId)?.scrollIntoView({ block: 'nearest' });
   }, [cursorElementId]);
 
-  const execute = (row: Row) => {
-    if (row.kind === 'item') closePalette(() => run('item.open', { itemIds: [row.ranked.item.id] }));
+  /** `background`: ⌘↩ on an item row opens its tab behind the shown one (design-spec 7.4) in every view where ↩ opens it: the tab action itself, not the library's selection command. */
+  const execute = (row: Row, background = false) => {
+    if (row.kind === 'item') closePalette(() => (background ? useShell.getState().openTab(row.ranked.item.id, { background: true }) : run('item.open', { itemIds: [row.ranked.item.id] })));
     else if (row.kind === 'collection') closePalette(() => showCollection(row.ranked.node.id, run, env.view));
     else if (row.kind === 'search') closePalette(() => searchLibrary(q, run, env.view));
     else {
@@ -251,6 +252,9 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
     } else if (e.key === 'Enter' && !(e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) && cursor >= 0) {
       e.preventDefault(); // no keypress for the opener, which has the focus again by then
       execute(rows[cursor]!);
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !(e.altKey || e.shiftKey) && cursor >= 0 && rows[cursor]!.kind === 'item') {
+      e.preventDefault();
+      execute(rows[cursor]!, true);
     }
   };
 

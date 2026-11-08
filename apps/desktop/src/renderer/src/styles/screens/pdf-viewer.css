@@ -1,6 +1,7 @@
 /* Portions adapted from PDF.js, Copyright 2014 Mozilla Foundation, Apache License 2.0
  * (https://www.apache.org/licenses/LICENSE-2.0): the viewer, page, canvas wrapper, text layer and link rules of
- * pdf_viewer.css, with the app's tokens in place of its colours. */
+ * pdf_viewer.css, with the app's tokens in place of its colours; the horizontal and spread layouts are rewritten from its
+ * .scrollHorizontal and .spread rules (flex rows in place of inline-block pages). */
 @layer screens {
   /* The stage is the positioned box; the viewer's container fills it (pdf.js needs an absolutely positioned container). */
   .pdf-stage {
@@ -53,6 +54,38 @@
     background-color: var(--page-bg-color);
     background-clip: content-box;
     box-shadow: var(--shadow-page);
+  }
+  /* A sideways flow (pdf.js's .scrollHorizontal): the pages stand in one row, 12 between them, 12 above and below and 24 at the ends
+     (the mockup); the first page's 24 is the room placement.ts gives it, the pages after it have 12 before them. */
+  .pdfViewer.scrollHorizontal {
+    display: flex;
+    align-items: center;
+    gap: var(--space-12);
+    width: max-content;
+    min-width: 100%;
+    padding: var(--space-12) var(--space-24);
+  }
+  .pdfViewer.scrollHorizontal .page {
+    flex: none;
+    margin: 0;
+  }
+  /* A page at a time shows the whole page: 12 above and below it, as the sideways flow (the page keeps no margin of its own below). The class is the viewer's own, set with its mode (pdf.js does the same for scrollHorizontal), so the layout is there when the page is placed. */
+  .pdfViewer.scrollPage {
+    padding: var(--space-12) var(--space-24);
+  }
+  .pdfViewer.scrollPage :is(.page, .spread .page) {
+    margin-bottom: 0;
+  }
+  /* A spread (pdf.js's .spread): two pages side by side with 12 between them, the row centred while it fits the stage. */
+  .pdfViewer .spread {
+    display: flex;
+    justify-content: safe center;
+    align-items: flex-start;
+    gap: var(--space-12);
+  }
+  .pdfViewer .spread .page {
+    flex: none;
+    margin: 0 0 var(--space-12);
   }
   .pdfViewer .dummyPage {
     position: relative;
@@ -260,6 +293,14 @@
     font: var(--type-footnote);
     text-align: center;
   }
+  /* The mockup's back and forward: a pair 2 apart (its .group gap) with one gap more before the page field, whatever the buttons' state
+     (a disabled button carries a hidden reason, so a sibling rule on the page field would miss). */
+  .reader-toolbar .history-nav {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+    margin-right: var(--space-2);
+  }
   .reader-toolbar .page-field:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
@@ -288,7 +329,23 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
-  /* The count takes its text's width (the mockup's "/ 17"), so the page chevrons stand one gap after it. */
+  /* The count takes its text's width (the mockup's "/ 17") but at least the width of "/ 000" (tabular figures), so a document of
+     another page count does not move the chevrons or the zoom field; only four digits widen it. */
+  .reader-toolbar .page-count-slot {
+    display: inline-grid;
+    flex: none;
+    font: var(--type-footnote);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .reader-toolbar .page-count-slot::before {
+    content: '/ 000';
+    grid-area: 1 / 1;
+    visibility: hidden;
+  }
+  .reader-toolbar .page-count-slot > .page-count {
+    grid-area: 1 / 1;
+  }
   .reader-toolbar .page-count {
     color: var(--text-secondary);
     font: var(--type-footnote);

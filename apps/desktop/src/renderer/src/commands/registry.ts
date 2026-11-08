@@ -1,5 +1,5 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
-import type { PageColor, StorageMode } from '@learn/domain';
+import type { PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 import type { ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
@@ -34,7 +34,24 @@ export interface CommandEnv extends CommandContextState {
   /** 태그 선택 해제. */
   clearTagFilter(): void;
   back(): void;
-  open(itemId: string): void;
+  /** ↩, a double-click and ⌘↩: one tab per item (the first one's shown unless `background`); eleven or more ask first. */
+  openItems(itemIds: readonly string[], opts?: { background?: boolean }): void;
+  /** ⌘W and the tab menu: the reader tab of this item, or the shown one (the library's tab closes the window). */
+  closeTab(itemId?: string): void;
+  /** ⇧⌘T. */
+  reopenClosedTab(): void;
+  /** ⌃⇥ / ⌃⇧⇥. */
+  selectRelativeTab(delta: 1 | -1): void;
+  /** ⌘2…⌘8: the tab at this place in the strip (0 is the library's). */
+  selectTabAt(index: number): void;
+  /** ⌘9. */
+  selectLastTab(): void;
+  /** ⌥⇧← / ⌥⇧→ and the palette: this item's tab, or the shown one, a place left or right. */
+  moveTab(delta: -1 | 1, itemId?: string): void;
+  /** 다른 탭 닫기: all reader tabs but this item's (or the shown one). */
+  closeOtherTabs(itemId?: string): void;
+  /** 라이브러리에서 보기: the library tab shows, with the item's row selected and in view. */
+  revealInLibrary(itemId: string): void;
   relink(itemId: string): void;
   /** ⌃⌘S (Task 4). */
   toggleSidebar(): void;
@@ -81,6 +98,13 @@ export interface CommandEnv extends CommandContextState {
   rotate(delta: 90 | -90): void;
   /** 쪽 색: saved as the reader's setting. */
   setPageColor(color: PageColor): void;
+  /** 스크롤 ▸ and 펼침 ▸: how the open PDF flows, and whether its pages pair up (the reader remembers both per item). */
+  setScroll(mode: ScrollModeName): void;
+  setSpread(mode: SpreadModeName): void;
+  /** How the open PDF scrolls (the spread commands are off while it is horizontal). Absent with no PDF open. */
+  pdfScroll?: ScrollModeName;
+  /** ⌘[ / ⌘]: the open PDF goes back or forward in its history (where a link, the outline, a thumbnail or the page field took it from). */
+  history(direction: 'back' | 'forward'): void;
   /** ⌥⌘G: the page field takes the focus with its number selected. */
   goToPage(): void;
   /** ⌘F in the reader: the find bar opens (or its field is taken again) with its text selected. */
@@ -175,7 +199,25 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.showOutline': (env) => env.showReaderNav('outline'),
   'library.findEverywhere': (env) => env.findEverywhere(),
   'nav.back': (env) => env.back(),
-  'item.open': (env, t) => env.open(itemOf(t)),
+  'item.open': (env, t) => env.openItems(t.itemIds ?? []),
+  'item.openInBackground': (env, t) => env.openItems(t.itemIds ?? [], { background: true }),
+  // A target names the tab a menu was opened on; without one the shown tab is meant (⌘W, the palette).
+  'tab.close': (env, t) => env.closeTab(t.itemIds?.[0]),
+  'tab.reopenClosed': (env) => env.reopenClosedTab(),
+  'tab.next': (env) => env.selectRelativeTab(1),
+  'tab.previous': (env) => env.selectRelativeTab(-1),
+  'tab.goTo2': (env) => env.selectTabAt(1),
+  'tab.goTo3': (env) => env.selectTabAt(2),
+  'tab.goTo4': (env) => env.selectTabAt(3),
+  'tab.goTo5': (env) => env.selectTabAt(4),
+  'tab.goTo6': (env) => env.selectTabAt(5),
+  'tab.goTo7': (env) => env.selectTabAt(6),
+  'tab.goTo8': (env) => env.selectTabAt(7),
+  'tab.last': (env) => env.selectLastTab(),
+  'tab.moveLeft': (env, t) => env.moveTab(-1, t.itemIds?.[0]),
+  'tab.moveRight': (env, t) => env.moveTab(1, t.itemIds?.[0]),
+  'tab.closeOthers': (env, t) => env.closeOtherTabs(t.itemIds?.[0]),
+  'tab.revealInLibrary': (env, t) => env.revealInLibrary(itemOf(t)),
   'item.showInFolder': (env, t) => env.showInFolder(itemOf(t)),
   'item.openExternally': (env, t) => env.openExternally(itemOf(t)),
   'item.exportCopy': (env, t) => env.exportCopy(itemOf(t)),
@@ -224,10 +266,18 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.rotateCw': (env) => env.rotate(90),
   'reader.rotateCcw': (env) => env.rotate(-90),
   'reader.goToPage': (env) => env.goToPage(),
+  'nav.historyBack': (env) => env.history('back'),
+  'nav.historyForward': (env) => env.history('forward'),
   'reader.pageColorAuto': (env) => env.setPageColor('auto'),
   'reader.pageColorOriginal': (env) => env.setPageColor('original'),
   'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
   'reader.pageColorDark': (env) => env.setPageColor('dark'),
+  'reader.scrollVertical': (env) => env.setScroll('vertical'),
+  'reader.scrollHorizontal': (env) => env.setScroll('horizontal'),
+  'reader.scrollPage': (env) => env.setScroll('page'),
+  'reader.spreadNone': (env) => env.setSpread('none'),
+  'reader.spreadOdd': (env) => env.setSpread('odd'),
+  'reader.spreadEven': (env) => env.setSpread('even'),
   'trash.empty': (env) => env.emptyTrash(),
   'view.nextPane': (env) => env.focusPane(1),
   'view.previousPane': (env) => env.focusPane(-1),
@@ -258,6 +308,9 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
+    ...(env.historyBack ? { historyBack: true } : {}),
+    ...(env.historyForward ? { historyForward: true } : {}),
     ...(env.pdfSelection ? { pdfSelection: true } : {}),
     ...(env.translationOff ? { translationOff: true } : {}),
     ...(env.sidebar ? { sidebar: env.sidebar } : {}),
@@ -266,6 +319,8 @@ export function contextOf(env: CommandEnv): CommandContextState {
     ...(env.backupRunning ? { backupRunning: true } : {}),
     ...(env.restoreRunning ? { restoreRunning: true } : {}),
     ...(env.duplicateGroups !== undefined ? { duplicateGroups: env.duplicateGroups } : {}),
+    ...(env.tabCount ? { tabCount: env.tabCount } : {}),
+    ...(env.closedOpenable ? { closedOpenable: true } : {}),
   };
 }
 
@@ -311,7 +366,7 @@ export function runCommand(id: CommandId, env: CommandEnv, target: CommandTarget
  */
 export function runPicked(picked: PickedCommand, env: CommandEnv, target: CommandTarget): boolean {
   const { commandId, args } = picked;
-  if (!Object.hasOwn(COMMAND_HANDLERS, commandId) || judged(env).blocked) return false; // COMMAND_HANDLERS has exactly the registry ids
+  if (!Object.hasOwn(COMMAND_HANDLERS, commandId) || (judged(env).blocked && commandId !== 'tab.close')) return false; // COMMAND_HANDLERS has exactly the registry ids
   COMMAND_HANDLERS[commandId](env, args ? { ...target, args } : target);
   return true;
 }

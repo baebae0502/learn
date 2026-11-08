@@ -22,6 +22,11 @@
     width: auto;
     flex: 1 1 auto;
   }
+  /* The item panel's 읽기 bar (mockup .progress.thick). */
+  .progress.thick {
+    height: 6px; /* local: the mockup's thick bar */
+    border-radius: 3px; /* local: half the thick bar's height */
+  }
   @media (prefers-reduced-motion: reduce) {
     .progress > i {
       transition: none;

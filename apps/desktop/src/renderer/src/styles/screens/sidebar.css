@@ -101,6 +101,17 @@
   .nav-thumb-canvas:not([data-drawn]) {
     visibility: hidden;
   }
+  /* A page whose picture could not be made: an empty groove with a warning mark, whatever the page colour; the number under it stays. */
+  .nav-thumbs .nav-thumb[data-failed] .nav-thumb-page {
+    background: var(--bg-track);
+  }
+  .nav-thumb-failed {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--text-secondary);
+  }
   .nav-thumbs[data-page-color='sepia'] .nav-thumb-page {
     background: var(--page-sepia-bg);
   }
@@ -132,13 +143,19 @@
     color: var(--text-on-accent);
   }
   .outline {
-    flex: 1 1 auto;
+    display: block; /* the virtualizer places the rows */
+    flex: 1 1 0;
     min-height: 0;
+    overflow-x: hidden; /* the virtualizer sizes its content to the rows' own width */
     overflow-y: auto;
-    padding: var(--space-4) var(--space-8);
+    padding: var(--space-4) 0;
     outline: none;
   }
   .outline .nav-row {
+    /* The virtualizer sizes a row to the list's full width: the 8 px side gutters are taken out of it here. */
+    margin-inline: var(--space-8);
+    max-width: calc(100% - 2 * var(--space-8));
+    flex: none; /* a row keeps its height when the open rows overflow the list */
     font: var(--type-body);
   }
   .outline .nav-row .page {

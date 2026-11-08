@@ -11,7 +11,7 @@ import {
   FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
-import { THEMES, TOUR_VIDEO_BYTES, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
+import { THEMES, TOUR_VIDEO_BYTES, closeReaderTabs, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
 
@@ -861,20 +861,21 @@ test('readers: PDF, unplayable video, PDF that cannot be opened, missing origina
       // differs between Debian and Ubuntu (CI). The page box, its shadow, the stage and both toolbars stay compared.
       // The thumbnails draw the same text; the item panel's dates and the fixture's SHA-256 change between runs (CI 41772935706).
       await shoot(s.page, `reader-pdf-${theme}`, { mask: [s.page.locator('[data-testid="pdf-viewer"] .canvasWrapper'), s.page.locator('[data-testid="pdf-thumbnails"] canvas'), ...panelMasks(s.page)] });
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'sample-mpeg4part2');
       await expect(s.page.getByTestId('video-error')).toContainText('이 동영상은 재생할 수 없습니다');
       await shoot(s.page, `reader-codec-${theme}`);
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'broken');
       await expect(s.page.getByTestId('pdf-error')).toBeVisible();
       await shoot(s.page, `reader-error-${theme}`);
-      await s.page.getByTestId('viewer-back').click();
+      await s.page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await openItem(s.page, 'gone');
       await expect(s.page.getByTestId('missing-notice').locator('.file')).toHaveText('~/Downloads/gone.pdf');
       await shoot(s.page, `reader-missing-${theme}`);
       await s.page.getByTestId('missing-back').click();
       await expect(s.page.getByTestId('library-table')).toBeVisible();
+      await closeReaderTabs(s.page); // the next theme's pass starts from the same strip
     }
   } finally {
     await s.app.close();
@@ -916,7 +917,7 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await openItem(page, 'locked');
       await expect(page.getByTestId('pdf-password')).toBeVisible();
       await shootReader(`reader-password-${theme}`);
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
 
       await openItem(page, 'paper-100');
       await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
@@ -981,8 +982,9 @@ test('reader v2: outline, find bar, zoom and view menus, password, the selection
       await shootReader(`reader-popup-error-${theme}`);
       await translationFake(s.app, 'ok');
       await unselect();
-      await page.getByTestId('viewer-back').click();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
       await expect(page.getByTestId('library-table')).toBeVisible();
+      await closeReaderTabs(page); // the next theme's pass starts from the same strip
     }
     // The settings window at the 번역 group: chosen on, light and dark.
     for (const theme of THEMES) {
@@ -1209,7 +1211,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'all').click();
     await openItem(s.page, 'sample');
-    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await runMenuCommand(s.app, 'nav.back');
     await importPaths(s.page, [path.join(FIXTURES, 'sample.pdf')], { allowDuplicate: true });
     for (const kind of ['recent', 'unfiled', 'duplicates'] as const) await expect(specialRow(s.page, kind)).toBeVisible();
@@ -1288,7 +1290,7 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await setTheme(s.page, 'light');
     await specialRow(s.page, 'all').click();
     await openItem(s.page, items[0]!.title);
-    await expect(s.page.getByTestId('viewer-title')).toBeVisible();
+    await expect(s.page.locator('[data-testid="tab"][aria-selected="true"]')).toBeVisible();
     await trashItems(s.page, [items[0]!.id]);
     await expect(s.page.getByTestId('reader-trashed')).toBeVisible();
     for (const theme of THEMES) {
@@ -1758,6 +1760,378 @@ test('import progress toast: waiting for a choice (and the sheet\'s box), the pa
     await releaseJob(s.app);
     await expect(s.page.getByTestId('import-done')).toHaveText('자료 2개를 가져왔습니다');
     await waitImportIdle(s.page);
+  } finally {
+    await s.app.close();
+  }
+});
+
+
+// Kept tabs shown again (M7b): the marks of a find and the focus of a password field come back with the tab.
+test('kept tabs: a find bar with its marks and a password field with its focus, shown again', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'locked.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'locked');
+      await expect(page.getByTestId('pdf-password')).toBeFocused();
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.locator('.page[data-page-number="1"] .textLayer span').first()).toBeAttached();
+      await runMenuCommand(s.app, 'library.find');
+      await page.getByTestId('pdf-find-field').getByRole('searchbox').fill('attention');
+      const total = await page.evaluate(async () => {
+        const probe = window.__learnPdf!;
+        let n = 0;
+        for (let i = 0; i < 100; i++) n += ((await probe.pageText(i)).toLowerCase().match(/attention/g) ?? []).length;
+        return n;
+      });
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(`1 / ${total}`);
+      await page.locator('[data-testid="tab"]:has-text("locked")').click();
+      await expect(page.getByTestId('pdf-password')).toBeFocused();
+      await shoot(page, `reader-kept-password-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
+      await expect(page.getByTestId('pdf-find-count')).toHaveText(`1 / ${total}`);
+      await expect.poll(() => page.locator('[data-testid="tab-panel"][data-active="true"] .textLayer .highlight').count()).toBeGreaterThan(0);
+      await shoot(page, `reader-kept-find-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('reader: back and forward off and on, the toolbar at 1000 and 1024 wide (the page count gives way), the ⌘/ sheet opened from the reader', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const width = async (w: number) => (await mainWindow(s.app)).evaluate((win, w) => win.setContentSize(w, win.getContentSize()[1]!), w);
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      // The pass before left the place at page 12: a page turn (no jump) starts from the top again.
+      await page.evaluate(() => (window as unknown as { __learnReader: { getState(): { handle: { goToPage(n: number): void } } } }).__learnReader.getState().handle.goToPage(1));
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      await expect(page.getByTestId('pdf-history-back')).toBeDisabled();
+      await shootReader(`reader-history-none-${theme}`);
+      // A jump (the page field) leaves something to go back to; going back leaves something to go forward to.
+      await page.getByTestId('pdf-page-field').fill('70');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('70');
+      await page.getByTestId('pdf-history-back').click();
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+      await expect(page.getByTestId('pdf-history-forward')).toBeEnabled();
+      await page.getByTestId('pdf-page-field').fill('70');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await page.getByTestId('pdf-page-field').fill('12');
+      await page.getByTestId('pdf-page-field').press('Enter');
+      await page.getByTestId('pdf-history-back').click();
+      await expect(page.getByTestId('pdf-history-back')).toBeEnabled();
+      await expect(page.getByTestId('pdf-history-forward')).toBeEnabled();
+      await shootReader(`reader-history-both-${theme}`);
+      // The reader's own ⌘/ sheet: the keys the library shares move under 리더.
+      await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+      const keys = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+      await shoot(keys, `sheet-shortcuts-reader-${theme}`);
+      await closeSheet(keys, 'Escape');
+      // The narrowest windows: the reader is 440 and 464 wide with the panel open, and the page field loses its "/ N".
+      for (const w of [1000, 1024]) {
+        await width(w);
+        await expect.poll(() => page.evaluate(() => innerWidth)).toBe(w);
+        await expect(page.getByTestId('pdf-page-count')).toBeHidden();
+        await shootReader(`reader-narrow-${w}-${theme}`);
+      }
+      await width(1440);
+      await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// 보기 ▾'s 스크롤 ▸ and 펼침 ▸ and the pages they lay out (reader-pdf.html?m=7b: view=menu-scroll|menu-spread, scroll=horizontal|page, spread=odd).
+test('reader: the view menu with its scroll and spread submenus, a horizontal scroll, a page at a time and odd spreads', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const goTo = async (n: number) => {
+    await page.getByTestId('pdf-page-field').fill(String(n));
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(n));
+  };
+  /** The scenes are the pages, not the keyboard's last stop: no focus ring (the other scenes cover the rings). */
+  const blur = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  const choose = async (submenu: 'scroll' | 'spread', name: string) => {
+    await page.getByTestId('pdf-view-menu').click();
+    await page.getByTestId(`pdf-${submenu}-menu`).click();
+    await page.getByRole('menuitemradio', { name }).click();
+  };
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      await goTo(3);
+      // The submenus, the one in force checked.
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      await shootReader(`reader-view-menu-scroll-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-spread-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '홀수 쪽부터' })).toBeVisible();
+      await shootReader(`reader-view-menu-spread-${theme}`);
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      // A row of pages, the spread row off.
+      await choose('scroll', '가로로 이어서');
+      await expect(page.getByTestId('pdf-viewer')).toHaveClass(/scrollHorizontal/);
+      await goTo(3);
+      await page.getByTestId('pdf-view-menu').click();
+      await expect(page.getByTestId('pdf-spread-menu')).toHaveAttribute('data-disabled', 'true');
+      // As the mockup: the menu is open and no row is lit; the check on 가로로 이어서 is the e2e's.
+      await shootReader(`reader-scroll-horizontal-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('pdf-view-menu')).toBeVisible();
+      await blur();
+      await shootReader(`reader-scroll-horizontal-${theme}`);
+      await choose('scroll', '한 쪽씩');
+      await goTo(3);
+      await blur();
+      await shootReader(`reader-scroll-page-${theme}`);
+      await choose('scroll', '세로로 이어서');
+      await choose('spread', '홀수 쪽부터');
+      await goTo(3);
+      await blur();
+      await shootReader(`reader-spread-odd-${theme}`);
+      await choose('spread', '펼치지 않음');
+      await closeReaderTabs(page);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('reader: with the item panel closed the scroll submenu flips to the left of 보기 ▾', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await runMenuCommand(s.app, 'view.toggleInspector');
+    await expect(page.getByTestId('inspector-panel')).toBeHidden();
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.getByTestId('pdf-view-menu').click();
+      await page.getByTestId('pdf-scroll-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '세로로 이어서' })).toBeVisible();
+      await shoot(page, `reader-view-menu-scroll-left-${theme}`, { style: CANVASES_OFF, mask: panelMasks(page) });
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('item panel: the 읽기 section — a PDF with its page count and one saved before the count was kept, the section after the head', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const masks = () => [s.page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(s.page)];
+  try {
+    const items = await importPaths(s.page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'sample.pdf')]);
+    const save = (id: string, revisionId: string, locator: object, progress: number) =>
+      s.page.evaluate(async (a) => {
+        const r = await window.learn.reader.savePosition({ itemId: a.id, revisionId: a.revisionId, locator: a.locator as never, progress: a.progress });
+        if (!r.ok) throw new Error(r.code);
+      }, { id, revisionId, locator, progress });
+    const paper = items.find((i) => i.title === 'paper-100')!;
+    const legacy = items.find((i) => i.title === 'sample')!;
+    await save(paper.id, paper.revisionId, { kind: 'pdf', pageIndex: 41, pages: 100 }, 0.62);
+    await save(legacy.id, legacy.revisionId, { kind: 'pdf', pageIndex: 11 }, 0.4);
+    // The day moves the line's date: the shot gets one fixed word and time in its place.
+    const fixDate = () =>
+      s.page.getByTestId('reading-line').evaluate((e) => {
+        e.textContent = (e.textContent ?? '').replace(/·.*$/, '·\u00a0오늘\u00a0오전\u00a09:24');
+      });
+    for (const [title, line] of [['paper-100', '42 / 100쪽에서 멈춤'], ['sample', '12쪽에서 멈춤']] as const) {
+      await selectRows(s.page, [title]);
+      await expect(s.page.getByTestId('reading-line')).toContainText(line);
+      for (const theme of THEMES) {
+        await setTheme(s.page, theme);
+        await fixDate();
+        await shoot(s.page, `inspector-reading-${title === 'sample' ? 'legacy' : 'pdf'}-${theme}`, { mask: masks() });
+      }
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// A thumbnail that could not be made (reader-pdf.spec.ts forces the failure through the e2e fault hook): the groove with its mark,
+// beside the current page, in the paper colour and on a dark page.
+test('reader: a thumbnail that could not be drawn, in the paper colour and on a dark page', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const goTo = async (n: number) => {
+    await page.getByTestId('pdf-page-field').fill(String(n));
+    await page.getByTestId('pdf-page-field').press('Enter');
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(n));
+  };
+  type Faults = { thumbnail: Record<number, number>; ready: boolean };
+  const faults = () => page.evaluate(() => (window as unknown as { __learnFaults: Faults }).__learnFaults);
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf')]);
+    await openItem(page, 'paper-100');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await expect.poll(async () => (await faults())?.ready ?? false).toBe(true);
+    await page.evaluate(() => void ((window as unknown as { __learnFaults: Faults }).__learnFaults.thumbnail[50] = 2));
+    await goTo(50);
+    await expect.poll(async () => (await faults()).thumbnail[50]).toBe(1);
+    await goTo(51);
+    await expect(page.locator('[data-testid="pdf-thumb"][data-page="50"]')).toHaveAttribute('data-failed', 'true');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await runMenuCommand(s.app, 'reader.pageColorAuto');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`reader-thumb-failed-${theme}`);
+      await runMenuCommand(s.app, 'reader.pageColorDark');
+      await expect(page.getByTestId('pdf-thumbnails')).toHaveAttribute('data-page-color', 'dark');
+      await shootReader(`reader-thumb-failed-dark-page-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// The outline of 300 entries, all open by a search: the Virtualizer draws a screenful of the tree's rows, 28 high.
+test('reader: a long outline with every part open, and its keyboard cursor', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'long-outline.pdf')]);
+    await openItem(page, 'long-outline');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await page.getByTestId('reader-nav-outline').click();
+    await expect(page.getByTestId('pdf-outline')).toBeVisible();
+    await page.getByTestId('pdf-outline-search').getByRole('searchbox').fill('Topic');
+    const rows = page.getByTestId('pdf-outline-row');
+    await expect(rows.first()).toHaveText(/Part 1/);
+    await expect(rows.first().locator('.page')).toHaveText('1');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.getByTestId('pdf-outline-search').getByRole('searchbox').blur();
+      await shootReader(`reader-outline-long-${theme}`);
+      await rows.nth(1).focus();
+      await page.keyboard.press('ArrowDown');
+      await shootReader(`reader-outline-long-cursor-${theme}`);
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// The tab strip's states (spec 3.2): the sidebar folded with the strip, twelve readers with the strip scrolled between its edge fades,
+// the library's head with a search typed beside a strip of readers, and a tab hovered, a tab with the keyboard's ring and a hovered close mark.
+test('tabs: the strip with the sidebar folded, twelve readers scrolled, the library head with a search, and the tab states', async ({}, testInfo) => {
+  const home = tourHome(testInfo.outputPath());
+  const s = await launchTour(home, { HOME: home });
+  const page = s.page;
+  const shootReader = (name: string) => shoot(page, name, { style: CANVASES_OFF, mask: panelMasks(page) });
+  const shootLibrary = (name: string, opts: { keepPointer?: boolean } = {}) =>
+    shoot(page, name, { mask: [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(page)], ...opts });
+  const tabOf = (title: string) => page.locator(`[data-testid="tab"]:has-text("${title}")`);
+  const field = page.getByTestId('search-field').locator('input');
+  try {
+    const distinct = distinctPdfs(testInfo.outputPath('more'), 11);
+    await importPaths(page, [path.join(FIXTURES, 'paper-100.pdf'), ...distinct]);
+    const titles = ['paper-100', ...distinct.map((f) => path.basename(f, '.pdf'))];
+    await selectRows(page, titles.slice(0, 3));
+    await runMenuCommand(s.app, 'item.openInBackground');
+    await expect(page.getByTestId('tab')).toHaveCount(4);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // The library's head with a search typed, and the strip beside it.
+      await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+      await runMenuCommand(s.app, 'library.find');
+      await expect(field).toBeFocused();
+      await field.fill('distinct');
+      await expect(field).toHaveValue('distinct');
+      await shootLibrary(`library-tabs-${theme}`);
+      await field.fill('');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      // A reader with the sidebar folded: the strip starts after the fold button.
+      await tabOf('paper-100').click();
+      await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+      await runMenuCommand(s.app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'hidden');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`tabs-sidebar-hidden-${theme}`);
+      await runMenuCommand(s.app, 'view.toggleSidebar');
+      await expect(page.getByTestId('shell')).toHaveAttribute('data-sidebar', 'shown');
+    }
+    // Hover, the keyboard's ring and the close mark's hover, side by side in the light theme (one pointer: the first hover is forced).
+    await setTheme(page, 'light');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await page.locator('[data-testid="tab"][data-item-id="library"]').focus();
+      await page.keyboard.press('ArrowRight');
+      await page.keyboard.press('ArrowRight'); // the second reader: the ring
+      await expect(page.locator('[data-testid="tab"]:focus-visible')).toHaveCount(1);
+      await cdp.send('DOM.enable');
+      await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '.tabs-scroll > .tab-item:nth-child(1)' });
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+      const close = (await page.locator('.tabs-scroll > .tab-item:nth-child(3) [data-testid="tab-close"]').boundingBox())!;
+      await page.mouse.move(close.x + close.width / 2, close.y + close.height / 2);
+      await expect(page.locator('.tabs-scroll > .tab-item:nth-child(3) [data-testid="tab-close"]:hover')).toHaveCount(1);
+      await shootLibrary('tab-states-light', { keepPointer: true });
+    } finally {
+      await cdp.detach().catch(() => {});
+    }
+    // Twelve readers: the strip scrolls, with a fade at the edge that has more.
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await selectRows(page, titles.slice(3));
+    await runMenuCommand(s.app, 'item.openInBackground');
+    await expect(page.getByTestId('tab')).toHaveCount(13);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await tabOf(titles[5]!).click();
+      await expect(page.getByTestId('pdf-viewer')).toBeVisible();
+      await page.getByTestId('tab-scroll').evaluate((el) => {
+        el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+      });
+      await expect(page.getByTestId('tab-scroll')).toHaveAttribute('data-fade-start', '1');
+      await expect(page.getByTestId('tab-scroll')).toHaveAttribute('data-fade-end', '1');
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await shootReader(`tabs-overflow-${theme}`);
+    }
   } finally {
     await s.app.close();
   }

@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileX } from 'lucide-react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
+import type { ScrollModeName, SpreadModeName } from '@learn/domain';
 import { t } from '../../strings';
 import { Icon } from '../../ui/Icon';
 import { pdfViewerModule, pdfjs } from '../pdfjs';
 import { readWindowParams } from '../../ui/platform';
-import { useFind } from './findStore';
-import { installAnchorProbe } from './anchorProbe';
 import { watchDevicePixelRatio } from './displayChange';
-import { INITIAL_PDF, useReader, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { INITIAL_PDF, useReader, type PdfPlace, type PdfViewHandle, type ZoomValue } from './readerStore';
+import { goBack, goForward, recordJump } from './history';
+import { linkHistory } from './historyAdapter';
 import { usePageColor } from './usePageColor';
 import { usePinchZoom } from './usePinchZoom';
-import { fitScale, type FitMode } from './fit';
+import { useReaderScope, useReaderShown } from '../readerScope';
+import { fitScale, tallestHeight, widestPage, type FitLayout, type FitMode } from './fit';
+import { roomAfterJump } from './placement';
+import { spreadStep } from './spread';
 import { nextZoom } from './zoom';
 
 type Rotation = 0 | 90 | 180 | 270;
@@ -27,17 +31,36 @@ const zoomOf = (presetValue: string | undefined, scale: number): ZoomValue =>
  * Owns the pdf.js viewer for one open document: the scroll container, the pages, the text and link layers. The viewer
  * fills the store (state and handle) for whatever else the reader mounts; React never renders into the pages.
  */
-export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: PDFDocumentProxy; revisionId: string; restored: boolean; onFailed(): void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScroller }: { doc: PDFDocumentProxy; revisionId: string; restored: boolean; onFailed(): void; onScroller?(node: HTMLElement | null): void }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  /** The scroller is known to the reader (its find bar's scroll bar watch) as it mounts and as it goes, so a view that attaches again is watched again. */
+  const setScroller = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      onScroller?.(node);
+    },
+    [onScroller],
+  );
   const viewerRef = useRef<HTMLDivElement>(null);
   const [pageDivs, setPageDivs] = useState<ReadonlyMap<number, HTMLElement>>(new Map());
   const [rendered, setRendered] = useState(0);
+  const scope = useReaderScope();
   const pdf = useReader((s) => s.pdf);
   const { resolved: pageColor } = usePageColor();
   usePinchZoom(scrollRef);
   /** The saved place is applied (PdfReader): until then a change of the stage's size is the stage settling, not a reason to fit again. */
   const restoredRef = useRef(restored);
   restoredRef.current = restored;
+  /**
+   * A kept tab that is not shown is display: none: its stage measures 0 and its scroll offset is lost with its box. Read by the
+   * observers (set while rendering, so a callback in the same frame as the change already sees it) and by the view's own
+   * hook, which the effect below calls when the tab is hidden or shown.
+   */
+  const shown = useReaderShown();
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  const onShown = useRef<((shown: boolean) => void) | null>(null);
+  useLayoutEffect(() => onShown.current?.(shown), [shown]);
 
   useEffect(() => {
     const container = scrollRef.current;
@@ -50,16 +73,28 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
       console.warn(`[pdf] open/render failed: ${(e as Error)?.name ?? 'Error'}`);
       onFailed();
     };
-    const store = useReader.getState();
+    const store = scope.reader.getState();
     void Promise.all([pdfViewerModule(), pdfjs()])
       .then(([viewerLib, lib]) => {
         if (cancelled) return;
-        const { EventBus, PDFFindController, PDFLinkService, PDFViewer, LinkTarget } = viewerLib;
+        const { EventBus, PDFFindController, PDFLinkService, PDFViewer, LinkTarget, ScrollMode, SpreadMode } = viewerLib;
+        const SCROLL_OF: Record<ScrollModeName, number> = { vertical: ScrollMode.VERTICAL, horizontal: ScrollMode.HORIZONTAL, page: ScrollMode.PAGE };
+        const SPREAD_OF: Record<SpreadModeName, number> = { none: SpreadMode.NONE, odd: SpreadMode.ODD, even: SpreadMode.EVEN };
+        /** The modes the viewer is in (it can refuse a scroll mode, a document with too many pages), by name. */
+        const scrollNow = (): ScrollModeName => (viewer.scrollMode === ScrollMode.HORIZONTAL ? 'horizontal' : viewer.scrollMode === ScrollMode.PAGE ? 'page' : 'vertical');
+        const spreadNow = (): SpreadModeName => (viewer.spreadMode === SpreadMode.ODD ? 'odd' : viewer.spreadMode === SpreadMode.EVEN ? 'even' : 'none');
+        /** The class goes with the mode in the same call: a jump right after the change must measure the new layout, which a rendered attribute would not give. */
+        const markScroll = () => viewerEl.classList.toggle('scrollPage', viewer.scrollMode === ScrollMode.PAGE);
+        const layoutNow = (): FitLayout => ({ flow: scrollNow(), columns: spreadNow() === 'none' ? 1 : 2 });
         const eventBus = new EventBus();
         const linkService = new PDFLinkService({ eventBus, externalLinkTarget: LinkTarget.BLANK });
         // The controller searches the document's text whether or not the find bar is open; the bar only asks and shows.
         const findController = new PDFFindController({ linkService, eventBus, updateMatchesCountOnProgress: true });
+        // pdf.js disconnects its own container observer and scroll listener when this aborts (the end of the view, in teardown).
+        // The option is read by pdf_viewer.mjs 6.4.299 (BaseViewer) but missing from its typings, hence the spread.
+        const lifetime = new AbortController();
         const viewer = new PDFViewer({
+          ...{ abortSignal: lifetime.signal },
           container,
           findController,
           viewer: viewerEl,
@@ -72,6 +107,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         const doneOnce = new Set<number>();
         /** One host element per page that failed: pdf.js empties a page's div when it redraws it, so React renders into a host it can still find. */
         const failed = new Map<number, HTMLElement>();
+        /** The pages that failed once and were drawn again: a second failure is shown, a success makes the next failure a first one. */
+        const redrawn = new Set<number>();
         /**
          * A fit mode is sized here, not by pdf.js: its fit keeps no room round the page when page borders are off, and the mockup
          * keeps 24 on every side (fit.ts). The number goes in as the viewer's scale; the preset keeps its name in the store, and
@@ -90,11 +127,35 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           return { pageNumber: viewer.currentPageNumber, share: Math.max(0, into) / div.clientHeight, above: Math.min(0, into) };
         };
         let turningFrom: { pageNumber: number; share: number; above: number } | null = null;
+        /** Every page's size is known from pagesloaded on; before it the views hold the first page's size. */
+        let pagesLoaded = false;
+        const widestShown = () => {
+          const turned = viewer.pagesRotation % 180 !== 0;
+          const sizes: { width: number; height: number }[] = [];
+          for (let i = 0; i < viewer.pagesCount; i++) {
+            const v = viewer.getPageView(i);
+            if (!v?.width || !v.scale) continue;
+            const [w, h] = [v.width / v.scale, v.height / v.scale];
+            sizes.push(turned ? { width: h, height: w } : { width: w, height: h });
+          }
+          const widest = widestPage(sizes, viewer.pagesRotation as Rotation);
+          // A row of pages (and a page at a time) is fitted to the stage's height by its tallest page, so no taller page spills past the stage.
+          return scrollNow() !== 'vertical' ? { width: widest.width, height: tallestHeight(sizes, viewer.pagesRotation as Rotation) } : widest;
+        };
+        /** A fit asked for while the tab is hidden (its stage measures nothing): done once it is shown. */
+        let fitWhenShown: FitMode | null = null;
         const fitTo = (mode: FitMode, again = true) => {
+          if (!shownRef.current) {
+            fitWhenShown = mode;
+            return;
+          }
           const view = viewer.getPageView(viewer.currentPageNumber - 1);
           if (!view?.width || !view.scale) return;
           const [width, height] = [container.clientWidth, container.clientHeight];
-          const scale = fitScale(mode, { width, height }, { width: view.width / view.scale, height: view.height / view.scale });
+          // Auto and page width are sized to the widest page once every page's size is known, so no page needs the stage to scroll
+          // sideways; before that, and for the whole-page fit, it is the page in view.
+          const size = pagesLoaded && mode !== 'page-fit' ? widestShown() : { width: view.width / view.scale, height: view.height / view.scale };
+          const scale = fitScale(mode, { width, height }, size, layoutNow());
           fitting = mode;
           try {
             viewer.currentScale = scale;
@@ -106,33 +167,189 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           // for the size the stage has now. Only once: the bar cannot depend on this second scale in a way the first did not settle.
           if (again && (container.clientWidth !== width || container.clientHeight !== height)) fitTo(mode, false);
         };
+        /**
+         * Every jump to a page runs through here: pdf.js lands the page flush at the stage's edge and the room the mockup draws
+         * round it (placement.ts) is added after. The viewer's own calls that pass allowNegativeOffset (a zoom keeping its place)
+         * are left as they are; links and the outline reach this through the link service.
+         */
+        const scrollPageIntoView = viewer.scrollPageIntoView.bind(viewer);
+        let jumped: { pageNumber: number; scrollTop: number; scrollLeft: number } | null = null;
+        // The scroll offset of the shown stage, kept to put back: a box that was display: none starts at 0 when it is shown again.
+        let scrolled = { top: 0, left: 0 };
+        const jump = (args: Parameters<typeof scrollPageIntoView>[0], keepTop: boolean, keepLeft: boolean) => {
+          scrollPageIntoView({ ...args, allowNegativeOffset: true });
+          const div = viewer.getPageView(args.pageNumber - 1)?.div;
+          const first = viewer.getPageView(0)?.div;
+          if (!div || !first) return;
+          const top = div.offsetTop + div.clientTop;
+          const left = div.offsetLeft + div.clientLeft;
+          const scroll = scrollNow();
+          const flow = scroll === 'horizontal' ? 'horizontal' : 'vertical';
+          const next = roomAfterJump({
+            flow,
+            page: { top, left, width: div.clientWidth, height: div.clientHeight },
+            // A page at a time has one page in the tree, so none is the first row: each has 12 above it, as the fit leaves.
+            firstRow: scroll !== 'page' && (flow === 'horizontal' ? Math.abs(left - (first.offsetLeft + first.clientLeft)) : Math.abs(top - (first.offsetTop + first.clientTop))) <= 1,
+            stage: { scrollTop: container.scrollTop, scrollLeft: container.scrollLeft, width: container.clientWidth, height: container.clientHeight },
+            keepTop,
+            keepLeft,
+          });
+          if (next.scrollTop !== container.scrollTop) container.scrollTop = next.scrollTop;
+          if (next.scrollLeft !== container.scrollLeft) container.scrollLeft = next.scrollLeft;
+          jumped = { pageNumber: args.pageNumber, scrollTop: container.scrollTop, scrollLeft: container.scrollLeft };
+          // The landing is where the stage is now, as place() leaves it: a text layer that arrives before this scroll is reported is no move away.
+          if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
+        };
+        /** A link that names a point of the page (an XYZ with a top or a left) is kept at that point. */
+        const pointOf = (dest: unknown): { top: boolean; left: boolean } => {
+          const d = Array.isArray(dest) ? (dest as unknown[]) : null;
+          const xyz = (d?.[1] as { name?: string } | undefined)?.name === 'XYZ';
+          return { top: xyz && d![3] != null, left: xyz && d![2] != null };
+        };
+        viewer.scrollPageIntoView = (args) => {
+          if (args.allowNegativeOffset) return scrollPageIntoView(args);
+          const keep = pointOf(args.destArray);
+          jump(args, keep.top, keep.left);
+        };
+        const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
+          if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;
+          // Any placed move (the chevrons, a page field, back and forward) leaves a pending link jump behind.
+          leaveLink();
+          viewer.scrollPageIntoView({ pageNumber, destArray: destArray ?? undefined });
+          // What a late focus of an abandoned page goes back to: the stage as this move left it, not the last scroll event's.
+          scrolled = { top: container.scrollTop, left: container.scrollLeft };
+        };
+        /**
+         * The place the reader is at, read from the viewer now (a scroll's report can still be on its way). Back and forward
+         * write it into the list before they leave it, and a jump writes it before it goes.
+         */
+        let reported: PdfPlace | null = null;
+        eventBus.on('updateviewarea', (e: { location: { pageNumber: number; top: number; left: number } }) => {
+          reported = { pageIndex: e.location.pageNumber - 1, top: e.location.top, left: e.location.left };
+        });
+        const hereNow = (): PdfPlace | null => {
+          // Before the saved place is applied the viewer reports its own start (page 1): that is no place of the reader's.
+          if (!scope.reader.getState().pdf?.placed) return null;
+          viewer.update();
+          return reported;
+        };
+        const recordHere = () => {
+          const here = hereNow();
+          if (here) store.setHistory(recordJump(scope.reader.getState().history, here));
+        };
+        /**
+         * pdf.js focuses the target page's text layer once it is drawn (goToDestination's one-shot listener, an internal one that runs
+         * before ours), and the browser scrolls the focused page into view. A reader who has already left that jump (back, forward,
+         * another jump) must not be taken to it by a text layer that was slow: the page is remembered here, and when its layer arrives
+         * the scroll goes back to where the stage was (the last scroll event's: the focus's own has not been reported yet).
+         */
+        let linkTarget: number | null = null;
+        const abandoned = new Set<number>();
+        const leaveLink = () => {
+          if (linkTarget !== null) abandoned.add(linkTarget);
+          linkTarget = null;
+          jumped = null;
+        };
+        eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
+          if (linkTarget === e.pageNumber) {
+            linkTarget = null;
+            // A scroll of the reader's own since the jump (wheel, scroll bar, keys) leaves the link as a move of ours does.
+            const landed = jumped?.pageNumber === e.pageNumber ? jumped : null;
+            if (landed && (Math.abs(scrolled.top - landed.scrollTop) > 2 || Math.abs(scrolled.left - landed.scrollLeft) > 2)) {
+              abandoned.add(e.pageNumber);
+              jumped = null;
+            }
+          }
+          if (!abandoned.delete(e.pageNumber) || !shownRef.current) return;
+          container.scrollTop = scrolled.top;
+          container.scrollLeft = scrolled.left;
+        });
+        const step = (direction: 'back' | 'forward') => {
+          const here = hereNow();
+          if (!here) return;
+          leaveLink();
+          const moved = (direction === 'back' ? goBack : goForward)(scope.reader.getState().history, here);
+          if (!moved) return;
+          store.setHistory(moved.history);
+          const { pageIndex, top, left } = moved.target;
+          // A point, so a place inside a page comes back exactly (placement.ts keeps what a link names).
+          place({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, left ?? 0, top ?? null, null] });
+        };
+        linkService.setHistory(
+          linkHistory({
+            jump: (pageNumber) => {
+              leaveLink();
+              linkTarget = pageNumber;
+              recordHere();
+            },
+            back: () => step('back'),
+            forward: () => step('forward'),
+          }),
+        );
+        const stepPage = (direction: 'next' | 'previous') => {
+          const target = spreadStep(viewer.currentPageNumber, viewer.pagesCount, spreadNow(), direction);
+          if (target !== null) place({ pageNumber: target });
+        };
+        /**
+         * Another scroll or spread mode. The spread goes first (a horizontal flow has none), then the flow; the page in view stays in
+         * view with the room the mockup draws, and a fit is sized again for the new layout. No jump: nothing is recorded for back.
+         */
+        const setModes = (scroll: ScrollModeName, spread: SpreadModeName) => {
+          const page = viewer.currentPageNumber;
+          const zoom = scope.reader.getState().pdf?.zoom;
+          leaveLink();
+          viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : spread];
+          viewer.scrollMode = SCROLL_OF[scroll];
+          markScroll();
+          store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
+          if (isFitMode(zoom)) fitTo(zoom);
+          if (page >= 1 && page <= viewer.pagesCount) jump({ pageNumber: page }, false, false);
+          viewer.update();
+        };
         const handle: PdfViewHandle = {
-          goToPage: (n) => {
-            if (Number.isInteger(n) && n >= 1 && n <= viewer.pagesCount) viewer.currentPageNumber = n;
+          place,
+          goToPage: (n) => place({ pageNumber: n }),
+          jumpToPage: (n) => {
+            if (!Number.isInteger(n) || n < 1 || n > viewer.pagesCount) return;
+            // The page already shown is no jump: back would only lead to where the reader is.
+            if (n !== viewer.currentPageNumber) {
+              leaveLink();
+              recordHere();
+            }
+            place({ pageNumber: n });
           },
-          next: () => void viewer.nextPage(),
-          previous: () => void viewer.previousPage(),
+          historyBack: () => step('back'),
+          historyForward: () => step('forward'),
+          // A spread turns two pages at a time, to the first page of the next one.
+          next: () => stepPage('next'),
+          previous: () => stepPage('previous'),
+          setScroll: (mode) => setModes(mode, mode === 'horizontal' ? 'none' : spreadNow()),
+          setSpread: (mode) => {
+            if (scrollNow() !== 'horizontal') setModes(scrollNow(), mode);
+          },
           setZoom: (z) => {
             if (typeof z === 'number') viewer.currentScale = z;
             else fitTo(z);
           },
           restore: (saved, pageIndex) => {
             const zoom = saved?.zoom ?? 'auto';
+            // The modes come first: the zoom is fitted to the layout and the place is a place of that layout.
+            const scroll = saved?.scroll ?? 'vertical';
+            viewer.spreadMode = SPREAD_OF[scroll === 'horizontal' ? 'none' : (saved?.spread ?? 'none')];
+            viewer.scrollMode = SCROLL_OF[scroll];
+            markScroll();
+            // In the store before the viewer reports, so the saver's first baseline carries the modes.
+            store.setPdf({ scroll: scrollNow(), spread: spreadNow() });
             viewer.pagesRotation = saved?.rotation ?? 0;
             if (typeof zoom === 'number') viewer.currentScale = zoom;
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
             else fitTo(zoom);
-            viewer.scrollPageIntoView({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] });
-            // A place at the top of a page keeps the room above it (24 over the first page, 12 between pages), as the mockup draws it.
-            const pageDiv = viewer.getPageView(pageIndex)?.div;
-            if (pageDiv && Math.abs(container.scrollTop - (pageDiv.offsetTop + pageDiv.clientTop)) <= 1) container.scrollTop -= pageIndex === 0 ? 24 : 12;
-            // So does a place at the page's left edge: pdf.js drops a negative left (the room beside the page) and scrolls to the edge,
-            // so when the stage scrolls sideways (a page wider than it, at a zoom or in a mixed-size document) the 24 beside the page
-            // shows again (R-25).
-            if (pageDiv && container.scrollLeft > 0 && Math.abs(container.scrollLeft - (pageDiv.offsetLeft + pageDiv.clientLeft)) <= 1) container.scrollLeft -= 24;
+            // Not a link: a place at the top or left edge of a page gets the room the mockup draws there (placement.ts), and one inside
+            // the margin, which a saved place can be, comes back exactly.
+            jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
-            store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation });
+            store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation, scroll: scrollNow(), spread: spreadNow() });
           },
           zoomIn: () => {
             viewer.currentScale = nextZoom(viewer.currentScale, 1);
@@ -156,16 +373,37 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           fitTo('auto'); // page 1 is the current page here (R-21)
           store.setPdf({ ready: true, pagesCount: viewer.pagesCount, pageNumber: viewer.currentPageNumber, scale: viewer.currentScale, zoom: 'auto', rotation: viewer.pagesRotation as Rotation });
         });
+        // Every page's size is known now: a mixed-size document is fitted once to its widest page (a fit before this had the page in view).
+        eventBus.on('pagesloaded', () => {
+          pagesLoaded = true;
+          const zoom = scope.reader.getState().pdf?.zoom;
+          if (zoom === 'auto' || zoom === 'page-width') {
+            fitTo(zoom);
+            viewer.update();
+          }
+          store.setPdf({ sized: true });
+        });
+        // pdf.js focuses a link's target page once its text is drawn, and the browser scrolls the page's top to the stage's edge to do
+        // it, which takes back the room the jump left above the page. The room is put back (once, and only when the page sits flush).
+        eventBus.on('textlayerrendered', (e: { pageNumber: number }) => {
+          const kept = jumped;
+          if (!kept || kept.pageNumber !== e.pageNumber) return;
+          jumped = null;
+          const div = viewer.getPageView(e.pageNumber - 1)?.div;
+          if (!div || Math.abs(container.scrollTop - (div.offsetTop + div.clientTop)) > 1 || kept.scrollTop === container.scrollTop) return;
+          container.scrollTop = kept.scrollTop;
+          container.scrollLeft = kept.scrollLeft;
+        });
         // pdf.js FindState: FOUND 0, NOT_FOUND 1, WRAPPED 2, PENDING 3.
         const reportFind = (e: { state?: number; matchesCount: { current: number; total: number } }) => {
-          const { query } = useFind.getState();
+          const { query } = scope.find.getState();
           const status = query.trim() === '' ? 'idle' : e.state === 1 ? 'notFound' : e.state === 2 ? 'wrapped' : 'found';
-          useFind.getState().report(status, e.matchesCount.total > 0 ? e.matchesCount : null);
+          scope.find.getState().report(status, e.matchesCount.total > 0 ? e.matchesCount : null);
         };
         eventBus.on('updatefindcontrolstate', reportFind);
         eventBus.on('updatefindmatchescount', (e: { matchesCount: { current: number; total: number } }) => {
           // The running count of a search still going keeps the status the control state gave.
-          useFind.getState().report(useFind.getState().status === 'idle' ? 'found' : useFind.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
+          scope.find.getState().report(scope.find.getState().status === 'idle' ? 'found' : scope.find.getState().status, e.matchesCount.total > 0 ? e.matchesCount : null);
         });
         eventBus.on('pagechanging', (e: { pageNumber: number }) => store.setPdf({ pageNumber: e.pageNumber }));
         eventBus.on('scalechanging', (e: { scale: number; presetValue?: string }) => store.setPdf({ scale: e.scale, zoom: fitting ?? zoomOf(e.presetValue, e.scale) }));
@@ -175,8 +413,14 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           turningFrom = null;
           if (!restoredRef.current) return;
           // A fit mode is sized for the turned page; the scroll position stays in pixels, which names another page once the pages change height.
-          const zoom = useReader.getState().pdf?.zoom;
+          const zoom = scope.reader.getState().pdf?.zoom;
           if (isFitMode(zoom)) fitTo(zoom);
+          // A sideways flow keeps the page, not a share of its height: the page is put back flush with its room.
+          if (scrollNow() === 'horizontal') {
+            jump({ pageNumber: from?.pageNumber ?? e.pageNumber }, false, false);
+            viewer.update();
+            return;
+          }
           const div = viewer.getPageView((from?.pageNumber ?? e.pageNumber) - 1)?.div;
           if (!div) return;
           container.scrollTop = div.offsetTop + div.clientTop + (from?.share ?? 0) * div.clientHeight + (from?.above ?? 0);
@@ -185,6 +429,16 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         eventBus.on('pagerendered', (e: { pageNumber: number; source: { div: HTMLElement }; error?: unknown }) => {
           if (e.error) {
             console.warn(`[pdf] open/render failed: ${(e.error as Error)?.name ?? 'Error'}`);
+            if (!redrawn.has(e.pageNumber)) {
+              // Once more: the page is reset and the viewer draws it again while it is in view (or when it comes into view).
+              redrawn.add(e.pageNumber);
+              requestAnimationFrame(() => {
+                if (cancelled) return;
+                viewer.getPageView(e.pageNumber - 1)?.reset();
+                viewer.update();
+              });
+              return;
+            }
             let host = failed.get(e.pageNumber);
             if (!host) {
               host = document.createElement('div');
@@ -195,12 +449,18 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
             setPageDivs(new Map(failed));
             return;
           }
+          redrawn.delete(e.pageNumber);
           if (failed.delete(e.pageNumber)) setPageDivs(new Map(failed));
           doneOnce.add(e.pageNumber);
           setRendered(doneOnce.size);
         });
         store.setPdf({ ...INITIAL_PDF, pagesCount: doc.numPages });
         store.setHandle(handle);
+        // E2E only: a viewer that fails to start, to show the notice that stands in for it.
+        if (readWindowParams(window.location.search).e2e && window.__learnFaults?.start) {
+          window.__learnFaults.start -= 1;
+          throw new Error('injected start fault');
+        }
         viewer.setDocument(doc);
         linkService.setDocument(doc);
         // pdf.js rejects its pages promise when the first page or the permissions cannot be read. Before pagesinit there is
@@ -212,13 +472,21 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         // The pages are drawn at the display's pixel ratio: moving to another screen draws them again.
         const stopWatchingDisplay = watchDevicePixelRatio(() => viewer.refresh());
         // E2E only: the spike's selection and anchor hooks (the window's address carries e2e=1 only in an unpackaged test run).
-        const removeProbe = readWindowParams(window.location.search).e2e ? installAnchorProbe({ doc, viewer, revisionId }) : null;
+        // Loaded on demand, so the product's bundle does not hold them.
+        let removeProbe: ((() => void) & { claim(): void }) | null = null;
+        if (readWindowParams(window.location.search).e2e) {
+          void import('./drawFaults').then(({ default: installFaults }) => (cancelled ? undefined : installFaults(doc)));
+          void import('./anchorProbe').then(({ default: installProbe }) => {
+            if (!cancelled) removeProbe = installProbe({ doc, viewer, revisionId });
+          });
+        }
         // A fit mode (auto, page width, whole page) follows the stage when it changes size (the item panel, the window, full screen);
         // a number stays. One fit per frame; assigning the preset again keeps the page and the place in it (pdf.js keeps its location).
         let fitFrame = 0;
         const refit = () => {
           fitFrame = 0;
-          const zoom = useReader.getState().pdf?.zoom;
+          if (!shownRef.current) return;
+          const zoom = scope.reader.getState().pdf?.zoom;
           if (!restoredRef.current || typeof zoom !== 'string') return;
           fitTo(zoom);
           viewer.update();
@@ -228,6 +496,9 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
         let lastWidth = -1;
         let lastHeight = -1;
         const stageObserver = new ResizeObserver((entries) => {
+          // Hidden, the stage is 0 by 0: that is neither a size to fit to nor one to remember (the size from before the hiding is what a
+          // later callback is compared with, so a stage that comes back the same size does not fit again).
+          if (!shownRef.current) return;
           const box = entries[entries.length - 1]?.borderBoxSize?.[0];
           if (box && box.inlineSize === lastWidth && box.blockSize === lastHeight) return;
           if (box) {
@@ -237,7 +508,32 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           if (!fitFrame) fitFrame = requestAnimationFrame(refit);
         });
         stageObserver.observe(container, { box: 'border-box' });
+        const onScroll = () => {
+          if (shownRef.current) scrolled = { top: container.scrollTop, left: container.scrollLeft };
+        };
+        container.addEventListener('scroll', onScroll);
+        let wasHidden = false;
+        onShown.current = (visible) => {
+          if (!visible) {
+            wasHidden = true;
+            // The jump's target belongs to the stage as it was: text layers drawn again on showing must not pull the scroll to it.
+            jumped = null;
+            return;
+          }
+          if (!wasHidden) return;
+          wasHidden = false;
+          container.scrollTop = scrolled.top;
+          container.scrollLeft = scrolled.left;
+          removeProbe?.claim();
+          const mode = fitWhenShown;
+          fitWhenShown = null;
+          if (mode) fitTo(mode);
+          // Once, for what the pages need to draw at this size; a stage that changed size is fitted by its observer in this frame.
+          viewer.update();
+        };
         teardown = () => {
+          onShown.current = null;
+          container.removeEventListener('scroll', onScroll);
           // Before the viewer lets go of the document: a fit scheduled for the next frame would draw pages of a document that is going away.
           stageObserver.disconnect();
           cancelAnimationFrame(fitFrame);
@@ -247,12 +543,20 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           viewer.renderingQueue!.renderView = () => false;
           // This also detaches the find controller (pdf.js hands it null): its text extraction asks the document for pages.
           viewer.setDocument(null);
-          useFind.getState().reset();
+          lifetime.abort();
+          scope.find.getState().reset();
           store.setHandle(null);
           store.setPdf(null);
         };
       })
-      .catch(fail);
+      .catch((e: unknown) => {
+        // A start that threw before the teardown exists leaves no handle behind: whoever reads the store sees no viewer.
+        if (!teardown && !cancelled) {
+          store.setHandle(null);
+          store.setPdf(null);
+        }
+        fail(e);
+      });
     return () => {
       cancelled = true;
       teardown?.();
@@ -261,7 +565,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
 
   return (
     <>
-      <div ref={scrollRef} className="pdf-scroll" data-testid="pdf-scroll" data-restored={restored ? '' : undefined}>
+      <div ref={setScroller} className="pdf-scroll" data-testid="pdf-scroll" data-restored={restored ? '' : undefined}>
         <div
           ref={viewerRef}
           className="pdfViewer"
@@ -272,6 +576,8 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed }: { doc: 
           data-zoom={String(pdf?.zoom ?? 'auto')}
           data-page-color={pageColor}
           data-rotation={pdf?.rotation ?? 0}
+          data-scroll={pdf?.scroll ?? 'vertical'}
+          data-spread={pdf?.spread ?? 'none'}
           data-rendered={rendered}
         />
       </div>

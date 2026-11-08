@@ -25,7 +25,7 @@ export function TrashedNotice({ itemId }: { itemId: string }) {
                 {commandById('item.restore').label}
               </Button>
               <Button testId="reader-trashed-back" isDisabled={!isEnabled('nav.back')} disabledReason={t.common.busy} onPress={() => run('nav.back')}>
-                {commandById('nav.back').label}
+                {t.reader.backToLibrary}
               </Button>
             </>
           }

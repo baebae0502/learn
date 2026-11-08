@@ -9,5 +9,11 @@ export const shell = {
   count: (n: number) => `${n}개`,
   /** The toolbar count while a quick search filters the table (design-spec 2.4: "0개 / 48개"). */
   countOf: (shown: number, total: number) => `${shown}개 / ${total}개`,
+  /** The tab strip's name for assistive technology, and the library's own tab. */
+  tabs: '탭',
+  libraryTab: '라이브러리',
+  /** The sheet that asks before eleven or more items open as tabs. */
+  openMany: (n: number) => `자료 ${n}개를 탭으로 열겠습니까?`,
+  openManyConfirm: '열기',
   listFailed: '목록을 새로 고치지 못했습니다',
 } as const;

@@ -50,6 +50,7 @@ import { Launcher } from '../shell/Launcher';
 import { focusPane } from '../shell/panes';
 import { Shell } from '../shell/Shell';
 import { useInspectorHidden, useToggleInspector } from '../shell/useInspector';
+import { useTabsPersistence } from './useTabsPersistence';
 import { usePanePersistence, useSidebarHidden, useToggleSidebar } from '../shell/useSidebar';
 import { useWindowState } from '../shell/useWindowState';
 import { duplicateActions, membershipCommands } from '../organize/actions';
@@ -66,6 +67,8 @@ import { tagActions } from '../tags/actions';
 import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
+import { TabBar } from '../shell/TabBar';
+import { useTabKind } from '../shell/useTabItem';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
 import { afterPaintOr } from '../ui/afterPaint';
@@ -75,9 +78,11 @@ import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
 import { useReader } from '../viewers/pdf/readerStore';
+import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
-import { ReaderToolbar } from '../viewers/ReaderToolbar';
-import { ViewerHost } from '../viewers/ViewerHost';
+import { ReaderTabs } from '../viewers/ReaderTabs';
+import { readerScopes } from '../viewers/readerScope';
+import { lastInput } from '../ui/inputModality';
 import { useReportIdle } from './useReportIdle';
 import { useWarmUp } from './useWarmUp';
 
@@ -91,6 +96,8 @@ const fileNameOf = (itemId: string): string => queryClient.getQueryData<LibraryI
 const fileAction = (kind: 'open' | 'reveal', itemId: string, call: () => Promise<Result<void>>): void => void runFileAction(kind, fileNameOf(itemId), call).catch(actionFailed);
 /** A window that paints no frame after a drop (hidden at once) still starts the import after this long. */
 const DROP_CLEAR_FALLBACK_MS = 250;
+/** Items opened at once past which the window asks first (spec 3.3). */
+const MANY_TABS = 11;
 /** The list before its first read: one array, so the command env's memo holds. */
 const NO_ITEMS: readonly LibraryItem[] = [];
 
@@ -101,6 +108,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useLibrarySync();
   const scopeReady = useRestoreView();
   usePanePersistence();
+  useTabsPersistence();
   const items = useItems();
   // The trash view (spec 4.3): its own list and collection rows; an emptied trash closes it.
   const inTrash = useInTrash();
@@ -113,7 +121,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   // Once the first list has settled and the page is idle, main prepares the settings window hidden.
   useReportIdle(items.isSuccess || items.isError);
   const view = useShell((s) => s.view);
-  const setView = useShell((s) => s.setView);
+  // Reader tabs make the tab strip the window's top bar; the library's own head then moves under it.
+  const tabCount = useShell((s) => s.tabs.tabs.length);
+  const tabsOpen = tabCount > 0;
+  const closedTabs = useShell((s) => s.tabs.closed);
+  const selectTab = useShell((s) => s.selectTab);
   const overlayOpen = useShell((s) => s.paletteOpen || s.dropOverlay);
   const toggleSidebar = useToggleSidebar();
   const sidebarHidden = useSidebarHidden();
@@ -312,6 +324,8 @@ export function MainWindow(_props: { info: AppInfo }) {
   // one here when a command is judged.
   const listRef = useRef(list);
   listRef.current = list;
+  /** A closed tab's item is still in the library (not in the trash, not deleted): ⇧⌘T has something to open. */
+  const closedOpenable = useMemo(() => closedTabs.some((id) => list.some((i) => i.id === id)), [closedTabs, list]);
   /** The trash view's read while it shows: the trash rows' targets and selection (P-10), read when a command is judged. */
   const trashRef = useRef(trash.data);
   trashRef.current = inTrash ? trash.data : undefined;
@@ -332,6 +346,9 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The colour tags every selected item has: the menu bar's 색 태그 ▸ draws the ✓ (a mask, so the report stays flat).
   const sharedTagPositions = useMemo(() => selectionTagPositions(scopeView.model, viewList, selected), [scopeView.model, viewList, selected]);
   const tagPositions = useMemo(() => tagPositionsMask((scopeView.model?.tags ?? []).map((tag) => tag.position)), [scopeView.model]);
+  // What the table shows now, read when 라이브러리에서 보기 runs: a row it hides sends the view to 내 라이브러리.
+  const filteredRef = useRef(scopeView.filtered);
+  filteredRef.current = scopeView.filtered;
   const scopeKind = scopeView.scope.kind;
   const collectionCount = scopeView.model?.collectionCount ?? 0;
   // 중복 N묶음 모두 정리 needs two groups and names the count (a number, so the reported context stays flat).
@@ -353,16 +370,55 @@ export function MainWindow(_props: { info: AppInfo }) {
   // The item panel is where the table is (spec 5.1, design-spec 2.4): not on the first-run or busy screen, not after a
   // failed first read, and not in the reader, whose right slot is the tutor's.
   const showsTable = view.kind === 'library' && (tableShown || listPending);
-  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then, and so is its item panel
-  // (the video and the failure states keep the reader without one).
+  // A PDF with its pages shown: the reader's view commands and its zoom keys are on only then.
   const pdfOpen = useReader((s) => s.pdf?.ready === true);
-  const showsInspector = showsTable || (view.kind === 'reader' && pdfOpen);
+  const pdfScroll = useReader((s) => s.pdf?.scroll);
+  const historyBack = useReader((s) => canGoBack(s.history));
+  const historyForward = useReader((s) => canGoForward(s.history));
+  // A PDF that is still opening keeps the item panel's place, width and fold, its translation section disabled (R39, design-spec 6:
+  // a transient state keeps its controls). The ends that need the person (not opened, password, no file, trash) and the video
+  // reader have none: their reader says so in `noPages`, or the kind is not a PDF.
+  const readerKind = useTabKind(view.kind === 'reader' ? view.itemId : null);
+  const pdfEnded = useReader((s) => (s.noPages.host ?? s.noPages.reader) !== null);
+  const pdfOpening = view.kind === 'reader' && readerKind === 'pdf' && !pdfEnded && !pdfOpen;
+  const showsInspector = showsTable || (view.kind === 'reader' && (pdfOpen || pdfOpening));
   const inspectorHidden = useInspectorHidden(showsInspector);
   // Text of the page is selected: 선택한 글 번역 is on (translation/useSelectionText.ts).
   const pdfSelection = useSelection((s) => s.text !== '');
   // Translation is switched off (the settings window, the pop-up's 사용 안 함): 선택한 글 번역 does nothing then. Not yet chosen asks, so it stays on.
   const translationOff = prefs?.translation.enabled === false;
   const toggleInspector = useToggleInspector();
+  /**
+   * One tab per item (spec 3.3), the first one's shown unless `background`. Eleven or more are asked first. Going to a reader
+   * leaves the library, so an open 정보 편집 is asked first (saved, or nothing to save); a tab behind it leaves nothing.
+   */
+  const openItems = useCallback((itemIds: readonly string[], background: boolean) => {
+    if (itemIds.length === 0) return;
+    const open = () => {
+      const run = () => useShell.getState().openTabs(itemIds, { background });
+      if (background) run();
+      else afterEditing(run);
+    };
+    if (itemIds.length < MANY_TABS) return open();
+    askInSheet(() => unwrap(api().ui.confirm({ message: t.shell.openMany(itemIds.length), confirm: t.shell.openManyConfirm })))
+      .then((ok) => {
+        if (ok) open();
+      })
+      .catch(actionFailed);
+  }, []);
+  /** 라이브러리에서 보기: the library tab, the row selected and brought into view; a view that hides it gives way to 내 라이브러리. */
+  const revealInLibrary = useCallback((itemId: string) => afterEditing(() => {
+    const library = useLibrary.getState();
+    if (library.query.trim() !== '') library.setQuery('');
+    if (filteredRef.current.some((i) => i.id === itemId) && !inTrash) {
+      library.setSelected([itemId]);
+      library.setLastOpened(itemId);
+    } else {
+      library.setScope(SCOPE_ALL, { keepSelected: itemId });
+      library.setLastOpened(itemId);
+    }
+    useShell.getState().selectTab('library');
+  }), [inTrash]);
   // Built from stable inputs only (state, the list, and callbacks that keep their identity), so CommandProvider's
   // context value and the menu and keymap hooks see a new env only when something in it changed (final review nit).
   const viewKind = view.kind;
@@ -375,6 +431,9 @@ export function MainWindow(_props: { info: AppInfo }) {
     restoreRunning,
     held,
     ...(pdfOpen ? { pdfOpen: true } : {}),
+    ...(pdfOpen && pdfScroll ? { pdfScroll } : {}),
+    ...(pdfOpen && historyBack ? { historyBack: true } : {}),
+    ...(pdfOpen && historyForward ? { historyForward: true } : {}),
     ...(pdfSelection ? { pdfSelection: true } : {}),
     ...(translationOff ? { translationOff: true } : {}),
     // The 보기 menu names what ⌃⌘S does now (사이드바 가리기 / 사이드바 보기).
@@ -398,6 +457,8 @@ export function MainWindow(_props: { info: AppInfo }) {
     sortDirection: sort.direction,
     columnsShown,
     trashCount,
+    tabCount,
+    closedOpenable,
     // Item commands from the menu bar and the palette run on these ids, in the order the table shows them.
     selection: () => inTableOrder(listRef.current, useLibrary.getState().selected, sortRef.current),
     // The freshest fact: the item's own read while it is current (library.get re-checked the file), else the list row; the
@@ -427,9 +488,37 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagColor: (tagId) => void tagActions.clearColor(tagId),
     deleteTag: (tagId) => void tagActions.remove(tagId),
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
-    back: () => setView({ kind: 'library' }),
-    // An open 정보 편집 is asked first: saved, or nothing to save, then the reader; invalid changes keep the library.
-    open: (itemId) => afterEditing(() => setView({ kind: 'reader', itemId })),
+    back: () => afterEditing(() => selectTab('library')),
+    openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
+    closeTab: (itemId) => {
+      const shell = useShell.getState();
+      const id = itemId ?? shell.tabs.active;
+      // The library's tab has nothing to close: ⌘W closes the window. The page's window.close() does not pass main's close
+      // handler (the edit flush), so the open edit form is asked here: invalid changes keep the window, valid ones are saved.
+      if (id === 'library') afterEditing(() => window.close());
+      // The shown tab leaves with its tab: an open 정보 편집 is asked first (a tab behind it leaves nothing).
+      else if (id === shell.tabs.active) afterEditing(() => useShell.getState().closeTab(id));
+      else shell.closeTab(id);
+    },
+    reopenClosedTab: () => afterEditing(() => useShell.getState().reopenClosedTab((id) => listRef.current.some((i) => i.id === id))),
+    selectRelativeTab: (delta) => afterEditing(() => useShell.getState().selectRelativeTab(delta)),
+    selectTabAt: (index) => afterEditing(() => useShell.getState().selectTabAt(index)),
+    selectLastTab: () => afterEditing(() => useShell.getState().selectLastTab()),
+    moveTab: (delta, itemId) => {
+      const shell = useShell.getState();
+      const id = itemId ?? shell.tabs.active;
+      const at = shell.tabs.tabs.indexOf(id);
+      if (at >= 0) shell.moveTab(id, at + delta);
+    },
+    closeOtherTabs: (itemId) => {
+      const shell = useShell.getState();
+      const id = itemId ?? shell.tabs.active;
+      if (id === 'library') return;
+      // Closing the others shows this one: when another is shown now, it leaves with its tab.
+      if (shell.tabs.active !== id) afterEditing(() => useShell.getState().closeOtherTabs(id));
+      else shell.closeOtherTabs(id);
+    },
+    revealInLibrary: (itemId) => revealInLibrary(itemId),
     relink: (itemId) => void relink(itemId),
     toggleSidebar,
     toggleInspector,
@@ -457,7 +546,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, setView, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);
@@ -465,6 +554,26 @@ export function MainWindow(_props: { info: AppInfo }) {
   useEffect(() => {
     envRef.current = env;
   });
+  // An item deleted for good takes its tab (spec 3.8); a trashed one keeps it and shows the trash notice.
+  useLearnEvent('libraryChanged', (change) => {
+    if (change.reason !== 'purge') return;
+    for (const id of change.itemIds ?? []) {
+      useShell.getState().removeTab(id);
+      readerScopes.drop(id);
+    }
+  });
+  // The library tab chosen with the pointer hands the focus to the library, as a reader tab hands it to its reader; chosen with
+  // the keyboard, or by a command while the focus is in the strip, it stays on the tab.
+  const wasLibrary = useRef(view.kind === 'library');
+  useEffect(() => {
+    const entered = view.kind === 'library' && !wasLibrary.current;
+    wasLibrary.current = view.kind === 'library';
+    if (!entered || lastInput() === 'keyboard') return;
+    if (!(document.activeElement instanceof Element && document.activeElement.closest('.tab-bar'))) return;
+    requestAnimationFrame(() => {
+      if (document.activeElement instanceof Element && document.activeElement.closest('.tab-bar')) document.querySelector<HTMLElement>('[data-testid="library-table"]')?.focus();
+    });
+  }, [view.kind]);
   // Every way into the reader passes here, so the table can show that row again on return (spec 3.3).
   const setLastOpened = useLibrary((s) => s.setLastOpened);
   useEffect(() => {
@@ -492,7 +601,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   }, []);
 
   /** Open from the list through the registry: refused while an import or a sheet holds the window (blocked). */
-  const openFromList = useCallback((itemId: string) => runCommand('item.open', envRef.current, { itemIds: [itemId] }), []);
+  const openFromList = useCallback((itemIds: readonly string[]) => runCommand('item.open', envRef.current, { itemIds }), []);
 
   // The screen before the list (first run, or the list-failed notice) had focus and left with it, so focus fell to
   // <body>: hand it to the table, whose grid passes it on to its first row; keyboard users keep their place. The
@@ -519,28 +628,27 @@ export function MainWindow(_props: { info: AppInfo }) {
   const dndOpen = view.kind === 'library' && !blocked && !held;
   useEffect(() => setDndGate(dndOpen), [dndOpen]);
   useEffect(() => installDndEvents(), []);
-  const toolbar =
-    view.kind === 'reader' ? (
-      <ReaderToolbar itemId={view.itemId} />
-    ) : (
-      <LibraryToolbar
-        title={scopeView.label}
-        titleTip={scopeView.tooltip}
-        items={viewList}
-        scoped={scopeView.scoped.length}
-        filtered={scopeView.filtered}
-        actions={
-          <>
-            <KeepAllDuplicatesButton />
-            {/* The trash view's head (approved mockup): 휴지통 비우기… in 가져오기's place — what is imported goes to 내 라이브러리. */}
-            {inTrash ? <EmptyTrashButton /> : <ImportMenuButton />}
-            {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}
-            {showsTable && <InspectorToggle pending={listPending} />}
-          </>
-        }
-        trailing={<Launcher />}
-      />
-    );
+  const libraryBar = (place: 'toolbar' | 'head') => (
+    <LibraryToolbar
+      place={place}
+      title={scopeView.label}
+      titleTip={scopeView.tooltip}
+      items={viewList}
+      scoped={scopeView.scoped.length}
+      filtered={scopeView.filtered}
+      actions={
+        <>
+          <KeepAllDuplicatesButton />
+          {/* The trash view's head (approved mockup): 휴지통 비우기… in 가져오기's place — what is imported goes to 내 라이브러리. */}
+          {inTrash ? <EmptyTrashButton /> : <ImportMenuButton />}
+          {(tableShown || listPending) && <LibrarySearch disabled={blocked || listPending} />}
+          {showsTable && <InspectorToggle pending={listPending} />}
+        </>
+      }
+      trailing={<Launcher />}
+    />
+  );
+  const toolbar = tabsOpen ? <TabBar trailing={<Launcher />} /> : libraryBar('toolbar');
   // N-5: until the first list has arrived the count is unknown, not 0 — show neither the first-run screen nor the
   // list (no empty-library flash). A first read that failed says so where the list would be, with a retry.
   const library = inTrash ? (
@@ -566,10 +674,11 @@ export function MainWindow(_props: { info: AppInfo }) {
   return (
     <CommandProvider env={env}>
       <Shell
-        sidebar={view.kind === 'reader' ? <ReaderSidebar /> : <LibrarySidebar onFilesDrop={onDrop} />}
+        sidebar={view.kind === 'reader' ? <ReaderSidebar key={view.itemId} /> : <LibrarySidebar onFilesDrop={onDrop} />}
         sidebarFoot={showsTable ? <TagSelector /> : undefined}
         launcher={<Launcher />}
         toolbar={toolbar}
+        head={view.kind === 'library' && tabsOpen ? libraryBar('head') : undefined}
         inspector={showsInspector ? <Inspector mode="info" /> : undefined}
         overlays={
           <>
@@ -582,7 +691,8 @@ export function MainWindow(_props: { info: AppInfo }) {
           </>
         }
       >
-        {view.kind === 'reader' ? <ViewerHost key={view.itemId} itemId={view.itemId} /> : library}
+        {view.kind === 'library' && library}
+        <ReaderTabs />
       </Shell>
       {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
       <ImportQueueMarker />

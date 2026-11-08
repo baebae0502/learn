@@ -546,7 +546,7 @@ test('a request still on its way when the reader closes is cancelled and leaves 
     await translationFake(app, 'slow');
     await selectInPage(page, S1);
     await expect(popup(page)).toHaveAttribute('data-state', 'pending');
-    await page.getByTestId('viewer-back').click();
+    await page.getByTestId('tab-close').click(); // closing the tab ends the reader (hiding it would not)
     await expect(viewer(page)).toHaveCount(0);
     await translationFake(app, 'ok');
     await page.waitForTimeout(1800); // past the slow engine's answer
@@ -554,6 +554,29 @@ test('a request still on its way when the reader closes is cancelled and leaves 
     await expect(viewer(page)).toHaveAttribute('data-pages', /^[1-9]/);
     await expect(page.getByTestId('translation-source')).toHaveValue('');
     await expect(popup(page)).toHaveCount(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a hidden reader does not cancel its request: the answer comes in the hidden tab, the pop-up is closed and the section keeps the text', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const errors = errorsOf(page);
+  try {
+    await openReader(page, PAPER, 'paper-100');
+    await setTranslation(page, { enabled: true });
+    await translationFake(app, 'slow');
+    await selectInPage(page, S1);
+    await expect(popup(page)).toHaveAttribute('data-state', 'pending');
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await translationFake(app, 'ok');
+    await page.waitForTimeout(1800); // past the slow engine's answer
+    await page.locator('[data-testid="tab"]:has-text("paper-100")').click();
+    await expect(page.getByTestId('translation-source')).not.toHaveValue('');
+    await expect(popup(page)).toHaveCount(0); // hiding closed it
+    await expect(page.getByTestId('translation-result')).toHaveAttribute('data-state', 'done');
     expect(errors).toEqual([]);
   } finally {
     await app.close();

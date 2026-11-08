@@ -3,7 +3,7 @@
 import { markPerf } from './perf';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { app, dialog, Menu, net, session, shell, systemPreferences, webContents, type BrowserWindow, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, Menu, net, session, shell, systemPreferences, webContents, type MessageBoxOptions, type OpenDialogOptions, type WebContents } from 'electron';
 import { readOrganizeSnapshot } from '@learn/db';
 import {
   COMMANDS, LearnError, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, sameCommandContext, toLearnError, type AppInfo, type CommandArgs, type CommandContextState, type CommandId,
@@ -20,6 +20,7 @@ import { broadcast, onBroadcast, sendEvent } from './events';
 import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
+import { endPositionNotices } from './ipc/reader';
 import { createHandle, type IpcDeps } from './ipc/register';
 import { createBackupJob } from './jobs/backup-job';
 import { createRestoreJob } from './jobs/restore-job';
@@ -125,6 +126,7 @@ function openMainWindow(): BrowserWindow {
   win.on('closed', () => {
     if (mainWindow !== win) return;
     mainWindow = null;
+    endPositionNotices();
     // A settings window prepared for this main window and never asked for goes with it on every platform: hidden, it
     // would keep a Linux app alive (window-all-closed) and hold a renderer for nobody on macOS.
     settingsWindow.discardPrepared();
@@ -305,6 +307,14 @@ function dispatchMenuCommand(commandId: CommandId, args?: CommandArgs, byKey?: t
     return;
   }
   const target = mainWindow;
+  // ⌘W in the settings window closes that window, as the window menu's role did before ⌘W became 탭 닫기.
+  if (commandId === 'tab.close') {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && focused !== target) {
+      focused.close();
+      return;
+    }
+  }
   if (!target || target.isDestroyed()) return;
   if (!target.isFocused()) target.focus();
   sendEvent(target.webContents, 'menuCommand', { commandId, ...(args ? { args } : {}), ...(byKey ? { byKey } : {}) });
@@ -392,7 +402,7 @@ if (!app.requestSingleInstanceLock()) {
       onSheetClosed,
       staticKey: (payload) =>
         payload.kind === 'shortcuts'
-          ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest })
+          ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest, view: payload.view ?? 'library' })
           : null,
     });
     /** Every native dialog with a parent window goes through this (IpcDeps.windows.asSheet). */

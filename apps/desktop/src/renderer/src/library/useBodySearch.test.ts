@@ -40,6 +40,15 @@ describe('the body answer as the readers see it', () => {
     expect(search).toHaveBeenCalledTimes(1);
     expect(state).toEqual({ on: true, answer: undefined, pending: false });
   });
+  it('while the settle is pending, a query typed again shows its cached answer at once, with no new search', async () => {
+    const c = client();
+    const cached = answer(['a', 'b']);
+    c.setQueryData(keys.bodySearch('형광'), cached);
+    const search = vi.fn<BodySearchCall>(() => Promise.resolve(answer([])));
+    const state = await read(c, '형광', '형광 현', search);
+    expect(search).not.toHaveBeenCalled();
+    expect(state).toEqual({ on: true, answer: cached, pending: false });
+  });
   it('while the settle is pending, a query with nothing cached waits, with no search yet', async () => {
     const search = vi.fn<BodySearchCall>(() => Promise.resolve(answer([])));
     const state = await read(client(), '형광', '', search);

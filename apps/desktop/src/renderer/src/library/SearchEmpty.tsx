@@ -7,6 +7,7 @@ import { t } from '../strings';
 import { useInTrash } from '../trash/useTrashSource';
 import { Button } from '../ui/Button';
 import { PaneEmpty } from '../ui/PaneEmpty';
+import { Spinner } from '../ui/Spinner';
 import { emptyNote } from './bodySearch';
 import { focusQuickSearch } from './LibrarySearch';
 import { useBodyProgress, useSearchScope } from './useBodySearch';
@@ -67,5 +68,20 @@ export function SearchEmpty({ query, view, tagCount, bodySearched }: { query: st
         </Fragment>
       ))}
     </PaneEmpty>
+  );
+}
+
+/**
+ * The body answer is still on its way, nothing else is in the table, and it has taken 300 ms (design-spec 6): the
+ * loading line in the body's place, as the list's own (LibraryLoading), until the rows or the no-results state come.
+ */
+export function SearchPending() {
+  return (
+    <div className="pane-empty top" data-testid="search-pending">
+      <div className="loading" role="status">
+        <Spinner />
+        {t.library.searching}
+      </div>
+    </div>
   );
 }

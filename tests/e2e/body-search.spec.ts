@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
+import { holdReplies } from './dnd-helpers';
 import {
   FIXTURES,
   expectTooltipText,
@@ -331,6 +332,44 @@ test('two Korean letters search the body, one letter does not and says so; an NF
     await expect.poll(() => titles(page)).toEqual([korean.title]);
     const pages = await page.evaluate((id) => window.learn.search.pages({ itemId: id, query: '변환기는' }), korean.id);
     expect(pages.ok && pages.data.pages.map((p) => p.pageIndex)).toContain(1);
+  } finally {
+    await app.close();
+  }
+});
+
+test('정보와 본문 with nothing else to show: 찾는 중… once the body answer has taken 300 ms, then the rows or no-results in its place', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    await holdReplies(app, ['search:body'], 1500);
+    // When the field's input came and when the waiting state first showed, as the page saw them.
+    await page.evaluate(() => {
+      const log = { input: [] as number[], shown: [] as number[] };
+      (window as unknown as { __pending: typeof log }).__pending = log;
+      document.addEventListener('input', (e) => void ((e.target as Element | null)?.closest('[data-testid="search-field"]') && log.input.push(performance.now())), true);
+      new MutationObserver(() => {
+        if (document.querySelector('[data-testid="search-pending"]') && log.shown.length < log.input.length) log.shown.push(performance.now());
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    const pending = page.getByTestId('search-pending');
+    // 현미경: in search-30's pages, in no title — no metadata row, so the table would otherwise stay blank.
+    await field(page).fill('현미경');
+    await expect(pending.getByRole('status')).toHaveText('찾는 중…');
+    await expect(page.getByTestId('toolbar-count')).toHaveText('0개 / 3개');
+    const first = await page.evaluate(() => (window as unknown as { __pending: { input: number[]; shown: number[] } }).__pending);
+    expect(first.shown[0]! - first.input[0]!, 'nothing for the first 300 ms').toBeGreaterThanOrEqual(300);
+    await expect.poll(() => titles(page)).toEqual([search30.title]);
+    await expect(pending).toHaveCount(0);
+    await expectNoSeriousA11y(page, '정보와 본문, a body match after the wait');
+    // A query nothing has: the wait, then no-results with the body searched.
+    await field(page).fill('효소 억제제');
+    await expect(pending.getByRole('status')).toHaveText('찾는 중…');
+    await expectNoSeriousA11y(page, '정보와 본문, waiting for the body');
+    await expect(page.getByTestId('search-empty').locator('.pe-text')).toContainText('PDF 본문에서 찾았습니다.');
+    await expect(pending).toHaveCount(0);
+    const second = await page.evaluate(() => (window as unknown as { __pending: { input: number[]; shown: number[] } }).__pending);
+    expect(second.shown[1]! - second.input[1]!, 'nothing for the first 300 ms').toBeGreaterThanOrEqual(300);
   } finally {
     await app.close();
   }

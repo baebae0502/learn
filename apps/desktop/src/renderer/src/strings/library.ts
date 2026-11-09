@@ -63,4 +63,6 @@ export const library = {
   /** In 정보와 본문 while PDFs are still being indexed: the body search may find more later. */
   searchEmptyIndexing: (done: number, total: number) => `본문 색인이 끝나면 더 찾을 수 있습니다(${done}\u00a0/\u00a0${total}).`,
   searchClear: '검색어 지우기',
+  /** In the table body's place while 정보와 본문 waits past 300 ms for the body answer and nothing else is shown. */
+  searching: '찾는 중…',
 } as const;

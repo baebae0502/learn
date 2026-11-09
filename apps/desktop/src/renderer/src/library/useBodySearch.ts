@@ -64,12 +64,13 @@ const searchBody: BodySearchCall = (query) => unwrap(api().search.body({ query }
 
 /**
  * The cache entry the readers of `target` (the query typed now) observe, and its fetch, which waits until the settled
- * query (BODY_SETTLE_MS without a key) has caught up with it.
+ * query (BODY_SETTLE_MS without a key) has caught up with it. Keyed by the typed query, so one typed again shows its
+ * cached answer at once rather than a blank table for the settle time.
  */
 export function bodyQueryOptions(target: string, settled: string, search: BodySearchCall = searchBody) {
   return {
-    queryKey: keys.bodySearch(settled),
-    queryFn: () => search(settled),
+    queryKey: keys.bodySearch(target),
+    queryFn: () => search(target),
     enabled: target !== '' && settled === target,
     gcTime: BODY_GC_MS,
     // Stopped by a search this window did not make for this field: asked once more.
@@ -78,12 +79,13 @@ export function bodyQueryOptions(target: string, settled: string, search: BodySe
   };
 }
 
-/** What that entry means to the readers. `live`: the settled query is the one typed now. */
+/** What that entry means to the readers. `live`: the settled query is the one typed now, so the entry may be fetched. */
 export function bodySearchState(on: boolean, live: boolean, read: { data: BodyAnswer | undefined; isError: boolean; error: unknown; isFetching: boolean }): BodySearch {
   if (!on) return OFF;
-  if (!live) return PENDING;
-  // The answer object stays the same until the cache holds another (readers key their memos on it).
+  // The answer object stays the same until the cache holds another (readers key their memos on it). Before the settle a
+  // cached answer is the one for this very query; a stale one is fetched again once the query settles.
   if (read.data !== undefined) return { on: true, answer: read.data, pending: false };
+  if (!live) return PENDING;
   // An error is final once nothing is fetched any more: a second stop after the one retry, or any other failure. The
   // readers then show no-results without the body claim instead of waiting for an answer that will not come. A stopped
   // query that is fetched again (typed again later) waits for that fetch.

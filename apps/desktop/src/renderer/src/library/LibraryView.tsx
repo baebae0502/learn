@@ -9,7 +9,9 @@ import { useTrashCollectionRows, useViewModel } from '../trash/useTrashSource';
 import { perfMarkLatest } from '../ui/perfMarks';
 import { countRender } from '../ui/renderCount';
 import { LibraryTable } from './LibraryTable';
-import { SearchEmpty } from './SearchEmpty';
+import { useShownAfter } from '../inspector/useShownAfter';
+import { BUSY_DELAY_MS } from './busyScreen';
+import { SearchEmpty, SearchPending } from './SearchEmpty';
 import { useQuickBodySearch } from './useBodySearch';
 import { useLibraryRows } from './useLibraryRows';
 import { useLibrarySettings } from './useLibrarySettings';
@@ -41,6 +43,8 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   const body = useQuickBodySearch();
   const shownRows = rows.length + collections.shown.length;
   const noResults = titleMatches !== null && shownRows === 0 && query !== '' && !body.pending;
+  // That wait, past 300 ms with nothing in the table, shows the loading line (nothing before, as every load).
+  const searching = useShownAfter(body.pending && shownRows === 0 && query !== '', BUSY_DELAY_MS);
   const revealId = useLibrary((s) => s.lastOpenedId);
   const chosen = useLibrary((s) => s.scope);
   const tagFilterSize = useLibrary((s) => s.tagFilter.size);
@@ -72,7 +76,7 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
       titleMatches={titleMatches}
       tagsOf={model?.tagsOfItem}
       duplicateMarks={marks}
-      empty={noResults ? <SearchEmpty query={query} view={view.scope.kind === 'all' ? null : view.label} tagCount={tagFilterSize} bodySearched={body.answer?.searched === true} /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
+      empty={noResults ? <SearchEmpty query={query} view={view.scope.kind === 'all' ? null : view.label} tagCount={tagFilterSize} bodySearched={body.answer?.searched === true} /> : searching ? <SearchPending /> : scopeEmpty ? <ScopeEmpty scope={scope} name={scopeName} /> : tagEmpty ? <TagFilterEmpty /> : undefined}
     />
   );
 }

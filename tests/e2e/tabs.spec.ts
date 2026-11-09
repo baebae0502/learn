@@ -102,8 +102,9 @@ for (const frame of ['held', 'let through'] as const) {
         // The turn is reported in its own task: what the reader saves never waits for a frame.
         expect.soft(inTurn).toBeGreaterThan(0);
       } else {
-        // Positive control: the frame's report comes, then the quit.
-        await expect.poll(() => page.evaluate(() => (window as unknown as { __areaReports: number }).__areaReports)).toBeGreaterThan(0);
+        // Positive control: the frame's report comes, then the quit. The turn's own report is already counted in `inTurn`, so
+        // only a count past it is the frame's.
+        await expect.poll(() => page.evaluate(() => (window as unknown as { __areaReports: number }).__areaReports)).toBeGreaterThan(inTurn);
       }
       await app.close();
       closed = true;

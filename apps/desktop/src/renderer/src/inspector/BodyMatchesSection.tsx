@@ -27,6 +27,7 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
   const read = on && text?.state === 'done';
   const pages = useQuery(bodyPagesOptions(item.id, target, settled, read));
   const loading = useShownAfter(read && pages.isPending, LOADING_DELAY_MS);
+  // A failed search:pages shows nothing, on purpose: the table's failed body answer claims nothing about the body either.
   useEffect(() => {
     if (pages.isError) console.warn(`[inspector] body pages failed: ${pages.error instanceof ApiError ? pages.error.code : 'INTERNAL'}`);
   }, [pages.isError, pages.error]);

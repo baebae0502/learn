@@ -180,6 +180,7 @@
     margin-left: auto;
     color: var(--text-tertiary);
     font: var(--type-footnote);
+    font-variant-numeric: tabular-nums; /* after the shorthand, which resets the .num utility */
   }
 
   /* 본문 일치 (M7c spec 5.8, library.html?m=7c&matches=…): a row per page — the page in a 48 column, the snippet in two
@@ -232,6 +233,7 @@
     padding-top: var(--space-4);
     color: var(--text-tertiary);
     font: var(--type-footnote);
+    font-variant-numeric: tabular-nums; /* after the shorthand, which resets the .num utility */
   }
   .inspector .match-status {
     color: var(--text-secondary);

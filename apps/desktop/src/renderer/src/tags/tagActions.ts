@@ -26,8 +26,8 @@ export interface TagActionDeps {
   model(): OrganizeModel | undefined;
   /** Changes the organize snapshot in the cache; the notice main sends next brings the real one. */
   patch(update: (s: OrganizeSnapshot) => OrganizeSnapshot): void;
-  /** A tag change this window puts into the snapshot itself: the notice main sends for these items is not read again. */
-  expectEcho(itemIds: readonly string[]): void;
+  /** A tag change this window puts into the snapshot itself: the notice main sends for these items is not read again. The answer withdraws it when no notice will come. */
+  expectEcho(itemIds: readonly string[]): () => void;
   /** The tag left the filter (deleted, or merged into `into`, which takes its place). */
   leaveFilter(tagId: string, into?: string): void;
   /** What has the focus now. */
@@ -168,14 +168,17 @@ export function createTagActions(deps: TagActionDeps): TagActions {
         return;
       }
       if (itemIds.length === 0) return;
+      let withdraw: (() => void) | null = null;
       try {
         if (itemIds.length <= TOGGLE_CHUNK) {
-          deps.expectEcho(itemIds);
+          withdraw = deps.expectEcho(itemIds);
           const done = await deps.tags.togglePosition({ position, itemIds: [...itemIds] });
           if (done === null) {
+            withdraw();
             deps.notice(t.organize.tags.noSlot(position));
             return;
           }
+          if (done.itemIds.length === 0) withdraw(); // nothing changed: no notice comes
           deps.patch((snap) => withTagged(snap, done.tagId, done.itemIds, done.assigned));
         } else {
           // Past what one call takes: the model says whether every item has the tag, and the calls go in pieces.
@@ -188,6 +191,7 @@ export function createTagActions(deps: TagActionDeps): TagActions {
           deps.patch((snap) => withTagged(snap, tag.id, itemIds, assigned));
         }
       } catch (e) {
+        withdraw?.();
         deps.failed(e);
       }
     },

@@ -45,8 +45,9 @@ export interface ChangeHandler {
   /**
    * A change this window made itself and already put into its snapshot: the next notice of this reason that names only
    * items among `itemIds` is not read again. Asked for before the call, so a notice that beats the answer is covered too.
+   * The answer withdraws the expectation (the call failed or changed nothing, so no notice is coming).
    */
-  expectEcho(reason: 'tags', itemIds: readonly string[]): void;
+  expectEcho(reason: 'tags', itemIds: readonly string[]): () => void;
 }
 
 const same = (a: LibraryItem, b: LibraryItem): boolean => JSON.stringify(a) === JSON.stringify(b);
@@ -188,6 +189,11 @@ export function createChangeHandler(d: ChangeDeps): ChangeHandler {
         echoes = echoes.filter((e) => e !== entry);
       }, ECHO_WAIT_MS);
       echoes.push(entry);
+      return () => {
+        if (!echoes.includes(entry)) return;
+        d.clearTimer(entry.timer);
+        echoes = echoes.filter((e) => e !== entry);
+      };
     },
   };
 }

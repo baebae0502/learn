@@ -293,6 +293,23 @@ describe('a tag change this window made is not read again (P3)', () => {
     expect(calls.organize).toBe(0);
   });
 
+  it('an expectation that was cancelled (the call came back null, threw or changed nothing) swallows no later notice', () => {
+    const { handle, changes, calls } = setup();
+    const cancelKept = changes.expectEcho('tags', ['a']);
+    handle({ reason: 'tags', itemIds: ['a'] });
+    expect(calls.organize).toBe(0); // positive control: the expectation holds until cancelled
+    cancelKept();
+    const cancel = changes.expectEcho('tags', ['a']);
+    cancel();
+    handle({ reason: 'tags', itemIds: ['a'] });
+    expect(calls.organize).toBe(1);
+    cancel(); // twice is nothing
+    changes.expectEcho('tags', ['a']);
+    cancel(); // does not withdraw another entry
+    handle({ reason: 'tags', itemIds: ['a'] });
+    expect(calls.organize).toBe(1);
+  });
+
   it('stops waiting after five seconds', () => {
     const { handle, changes, calls, time } = setup();
     changes.expectEcho('tags', ['a']);

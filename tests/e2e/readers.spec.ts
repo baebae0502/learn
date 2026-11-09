@@ -237,6 +237,31 @@ test('a page that cannot be drawn says so on its own stage; the toolbar stays an
   }
 });
 
+test('a zoom in the frame of a page turn keeps the page turned to (Mac run 42451371771: ↓ at 125 %, 100 %, ↓ stayed on page 2)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [PDF]);
+    await openItem(s.page, 'sample');
+    await expect(s.page.getByTestId('pdf-viewer')).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
+    await setPdfZoom(s.page, 1.25);
+    const field = s.page.getByTestId('pdf-page-field');
+    await expect(field).toHaveValue('1');
+    // The turn and the zoom in one task, so pdf.js's scroll handler (a frame after the scroll event) has not run in between, as on a
+    // loaded runner where the next frame comes after the zoom.
+    await s.page.evaluate(() => {
+      const handle = (window as unknown as { __learnReader: { getState(): { handle: { next(): void; setZoom(z: number): void } | null } } }).__learnReader.getState().handle;
+      if (!handle) throw new Error('no PDF is open');
+      handle.next();
+      handle.setZoom(1);
+    });
+    await expect(field, 'the zoom keeps the page turned to').toHaveValue('2');
+    await s.page.getByTestId('pdf-next').click();
+    await expect(field).toHaveValue('3');
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('unplayable video: the notice on the unmoved stage, Finder에서 보기 and 기본 앱으로 열기 through the registry', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

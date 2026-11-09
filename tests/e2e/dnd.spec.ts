@@ -46,6 +46,18 @@ const recordRowFocus = (page: Page) =>
     window.addEventListener('focusin', w.__onRowFocus, true);
   });
 const rowFocus = (page: Page) => page.evaluate(() => (window as unknown as { __rowFocus: string[] }).__rowFocus);
+/**
+ * ↩ on the focused drag button starts a keyboard drag. `data-dnd` is set at once, but React Aria's DragManager takes the drag's keys
+ * only from the next frame on, when it marks the first drop target (beginDragging sets the session up in a requestAnimationFrame):
+ * an esc before then is lost and the drag goes on, and an arrow goes to the tree as a plain key — ↓ moves the cursor, and the view
+ * with it, to the row below the viewed one, and the drag then starts from there (Mac runs 42439011165 and 42447639094: the first drop
+ * target announced was the row after that one, and the view had gone to it before the drop).
+ */
+const startKeyboardDrag = async (page: Page) => {
+  await page.keyboard.press('Enter');
+  await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
+  await expect.poll(() => marked(page), { message: 'the drag shows its first drop target' }).not.toEqual([]);
+};
 
 test.describe('rows, collections and tag chips', () => {
   test.describe.configure({ mode: 'serial' });
@@ -610,8 +622,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await treeRow(page, leaf).click();
     await page.keyboard.press('ArrowRight'); // a leaf: React Aria's own → goes into the row's buttons
     await expect(page.getByTestId(`drag-handle-${leaf}`)).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
+    await startKeyboardDrag(page);
     let found = false;
     for (let i = 0; i < 40 && !found; i++) {
       await page.keyboard.press('ArrowDown');
@@ -637,11 +648,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await treeRow(page, parent).click();
     await page.keyboard.press('Alt+ArrowRight');
     await expect(page.getByTestId(`drag-handle-${parent}`)).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
-    // React Aria takes the drag's keys only from its first frame on, when it marks the first drop target: an esc before then is
-    // lost and the drag goes on.
-    await expect.poll(() => marked(page), { message: 'the drag shows its first drop target' }).not.toEqual([]);
+    await startKeyboardDrag(page);
     await page.keyboard.press('Escape');
     await expect(page.locator('html')).not.toHaveAttribute('data-dnd');
     expect(await parentOf(parent)).toBe(tree.ids[0]);
@@ -651,7 +658,8 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     const nested = tree.ids[41]!;
     await treeRow(page, nested).click();
     await page.keyboard.press('ArrowRight');
-    await page.keyboard.press('Enter');
+    await expect(page.getByTestId(`drag-handle-${nested}`)).toBeFocused();
+    await startKeyboardDrag(page);
     let atHeading = false;
     for (const key of ['Tab', 'Shift+Tab']) {
       for (let i = 0; i < 4 && !atHeading; i++) {
@@ -850,8 +858,7 @@ test.describe('a tree of 120 collections under the Virtualizer', () => {
     await expect(treeRow(page, leaf)).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('ArrowRight'); // a leaf: React Aria's own → goes into the row's buttons
     await expect(page.getByTestId(`drag-handle-${leaf}`)).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page.locator('html')).toHaveAttribute('data-dnd', 'collection');
+    await startKeyboardDrag(page);
     // Far down the tree: the focus follows the drop target, and the tree scrolls the viewed row out of sight.
     for (let i = 0; i < 40; i++) await page.keyboard.press('ArrowDown');
     // The tree follows the focus a frame or two behind the keys: on a loaded machine it is not there after three frames.

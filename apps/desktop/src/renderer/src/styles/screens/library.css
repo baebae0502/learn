@@ -200,6 +200,8 @@
     font: var(--type-footnote);
   }
   .empty-state .hints .row {
+    max-width: 520px; /* local: as the sentence above (spec 11) */
+    text-wrap: balance;
     display: flex;
     align-items: center;
     justify-content: center;

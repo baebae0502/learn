@@ -128,6 +128,12 @@ for T in $PICKS; do
   N=$((N + 1))
   ffmpeg -v error -y -ss "$T" -i "$VIDEO" -frames:v 1 "$OUT/frames/$(printf 'ch-%02d.png' "$N")"
 done
+# A seek past the video's end writes nothing and still exits 0: every chapter must have its frame.
+GOT=$(find "$OUT/frames" -maxdepth 1 -name 'ch-*.png' -size +0 | wc -l)
+if (( GOT != N )); then
+  echo "chapter frames: $GOT of $N written" >&2
+  exit 1
+fi
 
 # The window fills the frame: the outermost 2 px on each side are the app's, not the black X root.
 EDGES=$(for crop in "iw:2:0:0" "iw:2:0:ih-2" "2:ih:0:0" "2:ih:iw-2:0"; do

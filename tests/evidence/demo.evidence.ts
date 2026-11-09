@@ -742,7 +742,7 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await pause(10000);
 
     // 2. The photo: fitted on opening, a pinch about a point, a drag, a quarter turn, the dark ground.
-    await chapter(`사진을 열면 창에 맞춰 보입니다. 핀치로 손가락 아래를 키우고, 끌어서 옮기고, ${key('CmdOrCtrl+R')}로 돌리고, 보기 메뉴에서 배경을 고릅니다. (핀치는 스크립트로 재현합니다)`, page, 6500);
+    await chapter(`사진을 열면 창에 맞춰 보입니다. 보기 메뉴에서 배경을 고르고, 핀치로 손가락 아래를 키우고, 끌어서 옮기고, ${key('CmdOrCtrl+R')}로 돌립니다. (핀치는 스크립트로 재현합니다)`, page, 6500);
     await pause(1200);
     await glideClick(page, 'main', rowByTitle(page, PHOTO_TITLE));
     await pause(400);

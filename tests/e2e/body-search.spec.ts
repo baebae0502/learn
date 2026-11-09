@@ -572,6 +572,48 @@ test('본문 일치: right under the head, "쪽 30개" and twenty pages named "N
   }
 });
 
+test('본문 일치 keys on the query typed now, as the table does: it empties in the update that drops the table\'s body rows (never the last query\'s pages after them), and a query typed again shows from the cache at once', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    // A second item of search-30's file stays in the table by its title; search-30 itself is a body-only row, the witness of
+    // the table's body answer.
+    const [copy] = await importPaths(page, [pdf('search-30.pdf')], { allowDuplicate: true });
+    const kept = await seedMetadata(page, copy!.id, { creators: [] }, 'fluorescence 12 관찰');
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'fluorescence', kept.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 30개');
+    await expect(rowByTitle(page, search30.title)).toBeVisible();
+    // Every DOM change from here: the section's count (null when there is no section) and whether the witness row is there.
+    await page.evaluate((witness) => {
+      const w = window as unknown as { __snaps: Array<{ count: string | null; witness: boolean }> };
+      w.__snaps = [];
+      const snap = () =>
+        w.__snaps.push({
+          count: document.querySelector('[data-testid="matches-count"]')?.textContent?.replace(/\u00a0/g, ' ') ?? null,
+          witness: document.querySelector(`[data-testid="item-row"][data-title=${JSON.stringify(witness)}]`) !== null,
+        });
+      new MutationObserver(snap).observe(document.body, { childList: true, subtree: true, characterData: true });
+    }, search30.title);
+    const snaps = () => page.evaluate(() => (window as unknown as { __snaps: Array<{ count: string | null; witness: boolean }> }).__snaps);
+    // A new query (page 12 only): the table drops its body rows until the answer, and the section goes with them.
+    await field(page).fill('fluorescence 12');
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 1개');
+    await expect(rowByTitle(page, search30.title)).toBeVisible();
+    const across = await snaps();
+    expect(across.some((s) => !s.witness), 'the table dropped its body rows on the way').toBe(true);
+    expect(across.filter((s) => !s.witness && s.count === '쪽 30개'), 'the last query\'s pages never outlive the table\'s body rows').toEqual([]);
+    // Typed again: both answers are cached, so the section shows its pages in the same update as the table, before the settle.
+    await page.evaluate(() => void ((window as unknown as { __snaps: unknown[] }).__snaps.length = 0));
+    await field(page).fill('fluorescence');
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 30개');
+    const back = await snaps();
+    expect(back.filter((s) => s.count === null), 'the section never left on the way back').toEqual([]);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a 본문 일치 row opens the reader at its page in the saved zoom, the find bar on the query with its first match there — ↩ and a click; an open tab jumps, and ⌘[ goes back', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

@@ -92,34 +92,73 @@ export function bodySearchState(on: boolean, live: boolean, read: { data: BodyAn
   return read.isError && !read.isFetching ? FAILED : PENDING;
 }
 
+/** A search field's body query: the one typed now (`target`, '' when the body is not searched for it) and the one that has settled. */
+export interface BodyTarget {
+  on: boolean;
+  target: string;
+  settled: string;
+}
+
+/** The deferred query as a body query, asked of the one settle store; whoever reads it gets the same settled value. */
+function useBodyTargetOf(query: string, enabled: boolean): BodyTarget {
+  const deferred = useDeferredValue(query);
+  const on = enabled && bodyQueryable(deferred);
+  const target = on ? deferred.trim() : '';
+  useEffect(() => settle.ask(target), [target]);
+  const settled = useSyncExternalStore(settle.subscribe, settle.get);
+  return { on, target, settled };
+}
+
+function useBodyAnswer({ on, target, settled }: BodyTarget): BodySearch {
+  const read = useQuery(bodyQueryOptions(target, settled));
+  return bodySearchState(on, target !== '' && settled === target, read);
+}
+
 /**
  * The body search for `query` (spec 5.6): off the input path — the deferred query, once it has held for 200 ms, goes to
  * search:body without waiting on anything typed. The answer is cached per query (['search','body', q]); libraryChanged
  * marks it stale (text, import, trash, restore, purge). An answer for a query no longer typed is not used.
  */
 export function useBodySearch(query: string, enabled: boolean): BodySearch {
-  const deferred = useDeferredValue(query);
-  const on = enabled && bodyQueryable(deferred);
-  const target = on ? deferred.trim() : '';
-  useEffect(() => settle.ask(target), [target]);
-  const settled = useSyncExternalStore(settle.subscribe, settle.get);
-  const read = useQuery(bodyQueryOptions(target, settled));
-  return bodySearchState(on, target !== '' && settled === target, read);
+  return useBodyAnswer(useBodyTargetOf(query, enabled));
 }
 
 /**
- * The query the body is searched for now: the quick search's, once it has held for BODY_SETTLE_MS ('' when the body is not
- * searched). The item panel's 본문 일치 asks search:pages for this one, so a page list follows the table's body answer, not
- * every keystroke.
+ * The library quick search's body query: the session's query, in the stored scope, never in the trash view. The table's body
+ * answer and the item panel's 본문 일치 both key on its target, so they empty and fill in the same update.
  */
-export function useSettledBodyQuery(): string {
-  return useSyncExternalStore(settle.subscribe, settle.get);
+export function useBodyTarget(): BodyTarget {
+  const query = useLibrary((s) => s.query);
+  const [scope] = useSearchScope();
+  const inTrash = useInTrash();
+  return useBodyTargetOf(query, scope === 'fulltext' && !inTrash);
 }
 
 /** The library's quick search in the body: the session's query, in the stored scope, never in the trash view. */
 export function useQuickBodySearch(): BodySearch {
-  const query = useLibrary((s) => s.query);
-  const [scope] = useSearchScope();
-  const inTrash = useInTrash();
-  return useBodySearch(query, scope === 'fulltext' && !inTrash);
+  return useBodyAnswer(useBodyTarget());
+}
+
+/** What search:pages answers for one item: its first pages that match (twenty at most), a snippet each, and how many match. */
+export interface BodyPages {
+  pages: Array<{ pageIndex: number; snippet: string }>;
+  total: number;
+}
+
+/** search:pages for one item and query: the app's IPC, or a stub in a test. */
+export type BodyPagesCall = (itemId: string, query: string) => Promise<BodyPages>;
+const searchPages: BodyPagesCall = (itemId, query) => unwrap(api().search.pages({ itemId, query }));
+
+/**
+ * 본문 일치's pages for one item, read as the table reads its body answer (bodyQueryOptions): the entry of `target`, the query
+ * typed now, fetched once the settled query has caught up with it. The list then empties and fills with the table's body rows,
+ * never once more when the query settles, and a query typed again shows from the cache at once. `read`: the item's body is indexed.
+ */
+export function bodyPagesOptions(itemId: string, target: string, settled: string, read: boolean, search: BodyPagesCall = searchPages) {
+  return {
+    queryKey: keys.bodyPages(itemId, target),
+    queryFn: () => search(itemId, target),
+    enabled: read && target !== '' && settled === target,
+    gcTime: BODY_GC_MS,
+  };
 }

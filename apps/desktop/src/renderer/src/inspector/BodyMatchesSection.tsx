@@ -2,10 +2,9 @@ import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ListBox, ListBoxItem } from 'react-aria-components';
 import type { BodyTextState, LibraryItem } from '@learn/domain';
-import { ApiError, api, unwrap } from '../api';
+import { ApiError } from '../api';
 import { useCommands } from '../commands/CommandProvider';
-import { keys } from '../data/queries';
-import { useSearchScope, useSettledBodyQuery } from '../library/useBodySearch';
+import { bodyPagesOptions, useBodyTarget } from '../library/useBodySearch';
 import { t } from '../strings';
 import { Spinner } from '../ui/Spinner';
 import { bodyStateLine, snippetParts } from './bodyText';
@@ -21,15 +20,11 @@ const LOADING_DELAY_MS = 300;
  * the state line in their place; a read body with no match has no section.
  */
 export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: BodyTextState | null }) {
-  const [scope] = useSearchScope();
-  const query = useSettledBodyQuery();
-  const on = scope === 'fulltext' && query !== '' && item.type === 'pdf';
+  // The query typed now, as the table's body answer has it: the list empties and fills with the table's body rows.
+  const { target, settled } = useBodyTarget();
+  const on = target !== '' && item.type === 'pdf';
   const read = on && text?.state === 'done';
-  const pages = useQuery({
-    queryKey: keys.bodyPages(item.id, query),
-    queryFn: () => unwrap(api().search.pages({ itemId: item.id, query })),
-    enabled: read,
-  });
+  const pages = useQuery(bodyPagesOptions(item.id, target, settled, read));
   const loading = useShownAfter(read && pages.isPending, LOADING_DELAY_MS);
   useEffect(() => {
     if (pages.isError) console.warn(`[inspector] body pages failed: ${pages.error instanceof ApiError ? pages.error.code : 'INTERNAL'}`);
@@ -67,7 +62,7 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
         </span>
       }
     >
-      <MatchList itemId={item.id} query={query} pages={found.pages} />
+      <MatchList itemId={item.id} query={target} pages={found.pages} />
       {found.total > found.pages.length && (
         <div className="match-more num" data-testid="matches-more">
           {t.inspector.matches.more(found.total - found.pages.length)}

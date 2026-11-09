@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
-import { api, ApiError, unwrap } from '../../api';
+import { api, unwrap } from '../../api';
 import { t } from '../../strings';
 import { lastInput } from '../../ui/inputModality';
 import { INITIAL_IMAGE, type ImageViewHandle } from '../pdf/readerStore';
 import { ImageErrorNotice } from '../ReaderNotices';
 import { useReaderScope, useReaderShown } from '../readerScope';
-import { usePosition, type LatestPosition } from '../usePosition';
+import { logFailure, usePosition, type LatestPosition } from '../usePosition';
 import {
   clampImageZoom, fitScale, imageLayout, imagePinchFactor, nextImageZoom, placedCentre, pointAt, rotatedSize, scrollFor, type ImageZoom, type Point, type Rotation, type Size,
 } from './imageFit';
@@ -31,7 +31,6 @@ interface Anchor {
 
 const centreOf = (size: Size): Point => ({ x: size.width / 2, y: size.height / 2 });
 
-const logFailure = (what: string, e: unknown) => console.warn(`${what} failed`, e instanceof ApiError ? e.code : 'UNKNOWN');
 
 /**
  * The image reader (spec 4.1–4.4): the 44 px toolbar over a stage that is an ordinary scroll area. The picture is decoded first and

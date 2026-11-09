@@ -18,7 +18,8 @@ export interface PositionHandle {
   flush(): void;
 }
 
-const logFailure = (what: string, e: unknown) => {
+/** A reading-position call that failed: the code goes to the log, never to the screen (the place is best kept, not required). */
+export const logFailure = (what: string, e: unknown) => {
   console.warn(`${what} failed`, e instanceof ApiError ? e.code : 'UNKNOWN');
 };
 

@@ -16,6 +16,7 @@ import { aboutPanelOptions } from './about';
 import { createActivateGate } from './activate-gate';
 import { APP_SCHEME, handleAppProtocol, registerAppScheme } from './app-protocol';
 import { isDemoOverlay } from './demo';
+import { registerUncaughtLog } from './uncaught-log';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E, isTranslationNetIntercept } from './deterministic';
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
@@ -82,6 +83,8 @@ const devServerUrl = !app.isPackaged ? (process.env['ELECTRON_RENDERER_URL'] ?? 
 const devOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
 /** "개발자 도구" menu item: unpackaged runs only; E2E (LEARN_E2E=1) tests the shipped menu. */
 const isDevBuild = !app.isPackaged && !isE2E(app.isPackaged, process.env);
+
+registerUncaughtLog(isE2E(app.isPackaged, process.env), process, (line) => void process.stderr.write(line));
 
 const deterministic = isDeterministic(app.isPackaged, process.env);
 if (deterministic) for (const [name, value] of DETERMINISTIC_SWITCHES) app.commandLine.appendSwitch(name, value);

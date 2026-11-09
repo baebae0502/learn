@@ -608,15 +608,19 @@ export async function openSheetPages(app: ElectronApplication): Promise<Page[]> 
 export async function expectWindow(app: ElectronApplication, kind: 'settings' | 'sheet', trigger: () => Promise<unknown>): Promise<Page> {
   // ⌘, shows the settings window main prepared when there is one. A sheet is a page whose root has rendered: the ⌘/ sheet
   // is the window main prepared (its page holds the payload until the sheet opens), any other a new window.
-  const prepared = kind === 'settings' ? app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings')) : undefined;
+  // The settings window is found by its address, not as the next new window: main may make the next ⌘/ sheet window
+  // ahead at the same moment, and that one would come first.
+  const settingsPage = () => app.windows().find((p) => !p.isClosed() && p.url().includes('window=settings'));
   const sheetsBefore = kind === 'sheet' ? await openSheetPages(app) : [];
-  const opened = prepared || kind === 'sheet' ? null : app.waitForEvent('window', { timeout: 15_000 });
   await trigger();
-  let page = prepared;
+  let page: Page | undefined;
   if (kind === 'sheet') {
     await expect.poll(async () => (await openSheetPages(app)).some((p) => !sheetsBefore.includes(p)), { message: 'a new sheet window', timeout: 15_000 }).toBe(true);
     page = (await openSheetPages(app)).find((p) => !sheetsBefore.includes(p))!;
-  } else page ??= await opened!;
+  } else {
+    await expect.poll(() => settingsPage() !== undefined, { message: 'a settings window', timeout: 15_000 }).toBe(true);
+    page = settingsPage();
+  }
   if (page === undefined) throw new Error('no window');
   await expect.poll(() => page.url(), { message: `a ${kind} window` }).toContain(`window=${kind}`);
   await page.locator(kind === 'sheet' ? '[data-sheet-root]' : '[data-settings-root]').waitFor();

@@ -329,6 +329,11 @@
     outline: var(--focus-ring-width) solid var(--focus);
     outline-offset: var(--focus-ring-offset);
   }
+  /* While the document opens (a passing state) the fields are drawn as a disabled control is (design-spec 6: 45 %), their box with
+     them: they are natively disabled, with no reason and no focus ring to keep at full strength. */
+  .reader-toolbar :is(.zoom-input, .page-field):disabled {
+    opacity: 0.45;
+  }
   /* The count takes its text's width (the mockup's "/ 17") but at least the width of "/ 000" (tabular figures), so a document of
      another page count does not move the chevrons or the zoom field; only four digits widen it. */
   .reader-toolbar .page-count-slot {

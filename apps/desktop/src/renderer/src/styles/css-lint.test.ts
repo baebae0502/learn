@@ -76,3 +76,9 @@ describe('the drop row\'s count colour (dark vibrancy material: nothing fails on
     expect(declarationsOf(file, selector)).toBe(COLOUR);
   });
 });
+
+describe('the reader toolbar\'s fields while a document opens (design-spec 6: a disabled control at 45 %)', () => {
+  it('dims the natively disabled zoom and page fields of both readers, box and all', () => {
+    expect(declarationsOf('screens/pdf-viewer.css', '.reader-toolbar :is(.zoom-input, .page-field):disabled')).toBe('opacity: 0.45;');
+  });
+});

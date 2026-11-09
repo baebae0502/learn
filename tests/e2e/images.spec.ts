@@ -172,6 +172,7 @@ test('while the picture opens: the stage’s ground only, the field "…" and th
     await expect(zoomField(page)).toBeDisabled();
     await expect(zoomField(page)).toHaveValue('');
     await expect(zoomField(page)).toHaveAttribute('placeholder', '…');
+    await expect(zoomField(page)).toHaveCSS('opacity', '0.45'); // drawn as a disabled control, its box with it
     await expectDisabledReason(zoomMenu(page), '이미지를 여는 중입니다');
     await expect(page.getByTestId('reader-sidebar-empty')).toHaveText('이미지에는 쪽이 없습니다');
     expect(await menuItemEnabled(app, 'view.textBigger')).toBe(false);
@@ -182,6 +183,7 @@ test('while the picture opens: the stage’s ground only, the field "…" and th
     await expect(stage(page)).not.toHaveAttribute('aria-busy', /.*/);
     await expectDisabledReason(zoomMenu(page), null);
     await expect(zoomField(page)).toHaveValue(`${Math.round(s.scale * 100)}%`);
+    await expect(zoomField(page)).toHaveCSS('opacity', '1');
     await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(true);
   } finally {
     await app.close();

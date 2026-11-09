@@ -24,10 +24,12 @@ export function useLibraryRows(items: readonly LibraryItem[]): { rows: readonly 
   const { sort } = useLibrarySettings();
   const view = useScopeViewContext();
   // 중복 항목 keeps each group's rows together whatever the sort (M6 spec 5): the group of the first row first.
+  // Only that view reads the model here: a tag toggled (a new model) must not sort the rows of any other view again.
+  const groupModel = view.scope.kind === 'duplicates' ? view.model : undefined;
   const sorted = useMemo(() => {
     const rows = sortItems(view.filtered, sort);
-    return view.scope.kind === 'duplicates' && view.model ? groupRows(rows, view.model.duplicateGroupOf) : rows;
-  }, [view.filtered, view.scope.kind, view.model, sort]);
+    return groupModel ? groupRows(rows, groupModel.duplicateGroupOf) : rows;
+  }, [view.filtered, groupModel, sort]);
   // Quick search filters the sorted rows: the order stays the table's (spec 4.2); relevance ranks only the palette.
   // The index is built once per list (buildSearchIndex) and each query searched once (search), shared with the toolbar.
   const found = useSearch(items);

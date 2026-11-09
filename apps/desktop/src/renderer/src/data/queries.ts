@@ -37,6 +37,10 @@ export const keys = {
   organize: ['library', 'organize'] as const,
   /** The trash view's rows (spec 4.3): read while the trash view shows; under ['library'], so trash, restore and purge notices mark it stale. */
   trash: ['library', 'trash'] as const,
+  /** search:body's answer for one query (spec 5.6): under ['search'], which the body's notices mark stale (libraryChange.ts). */
+  bodySearch: (query: string) => ['search', 'body', query] as const,
+  /** How far the body index is: main's search:progress notices put each new count here. */
+  bodyProgress: ['search', 'progress'] as const,
 };
 
 export const useAppInfo = () => useQuery({ queryKey: keys.info, queryFn: () => unwrap(api().app.info()) });

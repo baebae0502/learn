@@ -26,7 +26,7 @@ import { useNow } from '../useNow';
 import { columnTemplates, defaultColumns, fixedWidths, progressShown, toggleColumn, tradeWidths, visibleColumns, withWidths } from './columns';
 import { useRowDnd } from '../dnd/rowDnd';
 import { gridKey } from './gridKeys';
-import { wheelSteps } from './columnDrag';
+import { emptyHeadStep, wheelSteps } from './columnDrag';
 import { useColumnReorder } from './useColumnReorder';
 import { TagDots } from '../tags/TagDots';
 import { tagsDescription } from '../tags/dotTags';
@@ -412,10 +412,17 @@ export function LibraryTable(props: LibraryTableProps) {
   const onScrollerScroll = useCallback(() => {
     if (headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
   }, []);
-  // A wheel or sweep over the header, which no longer scrolls, goes to the body.
+  // A wheel or sweep over the header, which no longer scrolls, goes to the body. An empty table (no results) has no body to
+  // move: the header strip moves sideways itself, so the columns past the view stay within reach. It stays overflow: hidden,
+  // so it never becomes a scroll region of its own (a keyboard stop in Chromium, a region without a tab stop for axe).
   const onHeadWheel = useCallback((e: WheelEvent<HTMLDivElement>) => {
     const view = scroller.current;
-    if (!view) return;
+    const strip = headClip.current;
+    if (!view || !strip) return;
+    if (view.hasAttribute('data-empty')) {
+      strip.scrollLeft += emptyHeadStep(e, { width: strip.clientWidth, height: strip.clientHeight });
+      return;
+    }
     const step = wheelSteps(e, { width: view.clientWidth, height: view.clientHeight });
     view.scrollBy(step.x, step.y);
   }, []);
@@ -669,6 +676,10 @@ export function LibraryTable(props: LibraryTableProps) {
 
   const items = virtualizer.getVirtualItems();
   const showEmpty = count === 0 && props.empty !== undefined && props.empty !== null;
+  // The rows are back: the header, which may have been moved on its own while the table was empty, goes back over their columns.
+  useLayoutEffect(() => {
+    if (!showEmpty && headClip.current && scroller.current) headClip.current.scrollLeft = scroller.current.scrollLeft;
+  }, [showEmpty]);
   const vars = { '--head-cols': tracks.head, '--row-cols': tracks.row, '--table-min-width': `${tracks.minWidth}px` } as CSSProperties;
   return (
     <div

@@ -6,8 +6,10 @@ import { useOrganize } from '../organize/useOrganize';
 import { useLibrary } from '../state/library-store';
 import { useViewModel } from '../trash/useTrashSource';
 import { whenIdle } from '../ui/whenIdle';
+import { mergeBodyResult } from './bodySearch';
 import { searchCached, searchIndexFor, type SearchResult, type TagNames } from './search';
 import { tagNamesFor } from './tagField';
+import { useQuickBodySearch } from './useBodySearch';
 
 export interface SearchSources {
   /** The abstracts and memos, read once a query is typed. */
@@ -31,7 +33,8 @@ export function useSearchSources(queryTyped: boolean, model?: OrganizeModel): Se
  * The quick search result for this list, or null with an empty query (no filtering). The query comes deferred
  * (spec 4.2), so typing never waits for the table. The toolbar's count, the field and the table call it in the same
  * frame: they share the index of this list array and the last answer (search.ts caches). It reads the WHOLE list: the
- * view and the tag filter intersect its answer (useLibraryRows), so a view change builds no index.
+ * view and the tag filter intersect its answer (useLibraryRows), so a view change builds no index. In 정보와 본문 the
+ * PDF body matches join it when search:body answers, later than the metadata matches and never holding them up.
  */
 export function useSearch(items: readonly LibraryItem[]): SearchResult | null {
   const query = useLibrary((s) => s.query);
@@ -43,5 +46,7 @@ export function useSearch(items: readonly LibraryItem[]): SearchResult | null {
     if (items.length === 0 || !settled) return;
     return whenIdle(() => void searchIndexFor(items, texts, tags), 1000);
   }, [items, texts, tags, settled]);
-  return useMemo(() => (deferred.trim() === '' ? null : searchCached(searchIndexFor(items, texts, tags), deferred)), [items, texts, tags, deferred]);
+  const meta = useMemo(() => (deferred.trim() === '' ? null : searchCached(searchIndexFor(items, texts, tags), deferred)), [items, texts, tags, deferred]);
+  const body = useQuickBodySearch().answer;
+  return useMemo(() => mergeBodyResult(meta, body?.itemIds), [meta, body]);
 }

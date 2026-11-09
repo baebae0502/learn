@@ -27,6 +27,7 @@ import { startEditing } from '../inspector/startEditing';
 import { KeepAllDuplicatesButton } from '../library/KeepAllDuplicatesButton';
 import { ImportMenuButton } from '../library/ImportMenuButton';
 import { LibrarySearch, focusQuickSearch } from '../library/LibrarySearch';
+import { useBodyProgressSync } from '../library/useBodySearch';
 import { LibraryLoading } from '../library/LibraryLoading';
 import { LibraryView } from '../library/LibraryView';
 import { ListFailed } from '../library/ListFailed';
@@ -108,6 +109,7 @@ export function MainWindow(_props: { info: AppInfo }) {
   useApplyPrefs();
   useWindowState();
   useLibrarySync();
+  useBodyProgressSync();
   const scopeReady = useRestoreView();
   usePanePersistence();
   useTabsPersistence();

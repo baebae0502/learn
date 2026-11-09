@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DRAG_THRESHOLD, EDGE_BAND, EDGE_SPEED, dropSlot, edgeScroll, wheelSteps, type HeaderCell } from './columnDrag';
+import { DRAG_THRESHOLD, EDGE_BAND, EDGE_SPEED, dropSlot, edgeScroll, emptyHeadStep, wheelSteps, type HeaderCell } from './columnDrag';
 
 // 제목 200 · 저자 180 · 연도 64 · 종류 88 · 추가일 132, side by side from x = 0.
 const cells: HeaderCell[] = [
@@ -59,5 +59,12 @@ describe('a wheel over the header', () => {
   it('turns ⇧ + wheel into a sideways step', () => {
     expect(wheelSteps(wheel(0, 40, 0, true), view)).toEqual({ x: 40, y: 0 });
     expect(wheelSteps(wheel(10, 40, 0, true), view)).toEqual({ x: 10, y: 40 }); // a real sideways delta is kept
+  });
+  it('moves an empty table\'s header sideways for either wheel axis (sideways can be the only way it moves)', () => {
+    expect(emptyHeadStep(wheel(60, 0), view)).toBe(60);
+    expect(emptyHeadStep(wheel(0, 30), view)).toBe(30);
+    expect(emptyHeadStep(wheel(0, -3, 1), view)).toBe(-48);
+    expect(emptyHeadStep(wheel(0, 40, 0, true), view)).toBe(40);
+    expect(emptyHeadStep(wheel(-20, 90), view)).toBe(-20); // a sweep that has a sideways part goes by it
   });
 });

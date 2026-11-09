@@ -1,21 +1,31 @@
+import { Fragment } from 'react';
 import { SearchX } from 'lucide-react';
 import { commandById } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
+import { useInTrash } from '../trash/useTrashSource';
 import { Button } from '../ui/Button';
 import { PaneEmpty } from '../ui/PaneEmpty';
+import { emptyNote } from './bodySearch';
 import { focusQuickSearch } from './LibrarySearch';
+import { useBodyProgress, useSearchScope } from './useBodySearch';
 
 /**
  * Nothing matches the query (spec 3.3, 7.1), in the table body's place. It says where the search looked: the view's name
- * outside 내 라이브러리 (`view`, null in it), and how many tags narrowed the result. Two actions: empty the query, and —
- * outside 내 라이브러리 — search the whole library with the same query (the registry's library.findEverywhere).
+ * outside 내 라이브러리 (`view`, null in it), the PDFs' body when it was searched (`bodySearched`, search:body's answer),
+ * and how many tags narrowed the result. In 정보와 본문 a line under it says what the body search could not cover yet
+ * (one-letter words, PDFs still being indexed). Two actions: empty the query, and — outside 내 라이브러리 — search the
+ * whole library with the same query (the registry's library.findEverywhere).
  */
-export function SearchEmpty({ query, view, tagCount }: { query: string; view: string | null; tagCount: number }) {
+export function SearchEmpty({ query, view, tagCount, bodySearched }: { query: string; view: string | null; tagCount: number; bodySearched: boolean }) {
   const setQuery = useLibrary((s) => s.setQuery);
   const { run, isEnabled } = useCommands();
   const everywhere = commandById('library.findEverywhere');
+  const [scope] = useSearchScope();
+  const inTrash = useInTrash();
+  const progress = useBodyProgress();
+  const notes = emptyNote({ scope: inTrash ? 'metadata' : scope, query, searched: bodySearched, progress });
   return (
     <PaneEmpty
       icon={SearchX}
@@ -49,7 +59,13 @@ export function SearchEmpty({ query, view, tagCount }: { query: string; view: st
         </div>
       }
     >
-      {t.library.searchEmptyBody(view, tagCount)}
+      {t.library.searchEmptyBody(view, tagCount, bodySearched)}
+      {notes.map((note) => (
+        <Fragment key={note}>
+          <br />
+          {note}
+        </Fragment>
+      ))}
     </PaneEmpty>
   );
 }

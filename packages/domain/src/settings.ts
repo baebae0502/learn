@@ -26,6 +26,10 @@ export const SAVED_TAB_TITLE_MAX = 300;
 export const savedTabItemSchema = z.object({ title: z.string().max(SAVED_TAB_TITLE_MAX), type: z.enum(['pdf', 'video', 'image']) }).strict();
 export type SavedTabItem = z.infer<typeof savedTabItemSchema>;
 
+/** What the quick search reads (spec 5.8): the metadata only, or the metadata and the PDFs' body text. */
+export const SEARCH_SCOPES = ['metadata', 'fulltext'] as const;
+export type SearchScope = (typeof SEARCH_SCOPES)[number];
+
 /** Library-scoped settings (stored in the library DB). */
 export const SETTINGS = {
   'library.sort': sortSchema,
@@ -35,6 +39,8 @@ export const SETTINGS = {
   'library.sort.trash': sortSchema,
   /** The scope the table showed last (spec 3.1). A collection that is gone is dropped by the renderer on read, not here. */
   'library.view': libraryScopeSchema,
+  /** What the quick search reads (M7c): unset reads as 'metadata', the search before the body was indexed. */
+  'library.searchScope': z.enum(SEARCH_SCOPES),
   /** The collections the sidebar tree shows open. Ids of collections that no longer exist are dropped on read (the renderer). */
   'sidebar.expanded': z.array(z.uuid()).max(SIDEBAR_EXPANDED_MAX),
   /** The tag selector's display and order (spec 4.3). */

@@ -106,7 +106,7 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
     ['the toast for items already there', t.toast.filedExisting('학회 준비', 2), '’⁠에 넣었습니다'],
     ['the drop overlay title', t.drop.titleInto('분자생물학'), '’⁠으로 가져오기'],
     ['the search no-results title', t.library.searchEmptyTitle('형광'), '’⁠과 일치'],
-    ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0), '’⁠의 '],
+    ['the search no-results body in a collection', t.library.searchEmptyBody('형광 현미경', 0, false), '’⁠의 '],
     ['the palette no-results title', t.palette.emptyTitle('세포'), '’⁠와 일치'],
     ['the trash toast for one item', t.trash.movedOne('통계'), '’⁠를 휴지통'],
     ['the restore toast for one item', t.trash.restoredOne('통계'), '’⁠를 복원'],

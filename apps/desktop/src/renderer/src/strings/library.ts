@@ -33,15 +33,34 @@ export const library = {
   resizeColumn: (column: string) => `${column} 열 폭`,
   /** The toolbar's quick search (spec 7.1): the fields it reads that a person names. */
   searchPlaceholder: '제목, 저자, 태그 검색',
+  /** The same in the scope 정보와 본문 (M7c spec 5.8): 240 wide, it still fits beside the scope button. */
+  searchPlaceholderFull: '제목, 저자, 태그, 본문 검색',
+  /**
+   * The quick search's scope button and its menu (M7c spec 5.8, 11): the item panel's '정보' names the fields, so a person
+   * reads 정보 for them (design-spec 9: no internal words). The last line counts the PDFs whose body is indexed.
+   */
+  scope: {
+    label: '검색 범위',
+    metadata: '정보',
+    metadataDescription: SEARCHED_FIELDS,
+    fulltext: '정보와 본문',
+    fulltextDescription: 'PDF 본문 포함',
+    progress: (done: number, total: number) => `본문 색인 ${done}\u00a0/\u00a0${total}`,
+  },
   /** Read out politely as the results change; with none, the no-results state speaks instead. */
   searchStatus: (n: number) => `일치하는 자료 ${n}개`,
   /** In the table body's place when nothing matches (spec 4.3). */
   searchEmptyTitle: (query: string) => `‘${query}’\u2060${waGwa(query)} 일치하는 자료가 없습니다`,
   /**
    * Where the search looked (spec 7.1): in 내 라이브러리 the fields; in any other view that view's name first ("‘분자생물학’의 …").
-   * With a tag filter on, how many tags narrowed the result (spec 3.6).
+   * `body`: the PDFs' body text was searched too (said only when it was: no-results must not read as a false negative). With a tag filter on, how many tags
+   * narrowed the result (spec 3.6).
    */
-  searchEmptyBody: (view: string | null, tagCount: number) =>
-    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그\u00a0${tagCount}개로 거른 결과입니다.` : ''}`,
+  searchEmptyBody: (view: string | null, tagCount: number, body: boolean) =>
+    `${view === null ? '' : `‘${view}’\u2060의 `}${SEARCHED_FIELDS}${body ? '\u2060·PDF\u00a0본문' : ''}에서 찾았습니다.${tagCount > 0 ? ` 고른 태그\u00a0${tagCount}개로 거른 결과입니다.` : ''}`,
+  /** In 정보와 본문, a query of one-letter words only: the body was not searched, and why. */
+  searchEmptyOneLetter: '본문은 두\u00a0글자 이상인 낱말로 찾습니다.',
+  /** In 정보와 본문 while PDFs are still being indexed: the body search may find more later. */
+  searchEmptyIndexing: (done: number, total: number) => `본문 색인이 끝나면 더 찾을 수 있습니다(${done}\u00a0/\u00a0${total}).`,
   searchClear: '검색어 지우기',
 } as const;

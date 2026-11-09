@@ -2,11 +2,13 @@ import { ariaKeyShortcuts, commandById, commandLabel, type LibraryItem } from '@
 import { focusPaneNamed } from '../shell/panes';
 import { useLibrary } from '../state/library-store';
 import { t } from '../strings';
-import { useViewItems } from '../trash/useTrashSource';
+import { useInTrash, useViewItems } from '../trash/useTrashSource';
 import { SearchField } from '../ui/SearchField';
 import { countRender } from '../ui/renderCount';
 import { currentPlatform } from '../ui/platform';
+import { SearchScopeButton } from './SearchScopeMenu';
 import { focusFirstRow } from './tableDom';
+import { useSearchScope } from './useBodySearch';
 import { useSearch } from './useSearch';
 
 const NO_ITEMS: readonly LibraryItem[] = [];
@@ -26,7 +28,8 @@ export function focusQuickSearch(opts: { select?: boolean } = {}): void {
  * The toolbar's quick search (spec 4.1, design-spec 2.4): 240 wide after 가져오기, bound to the session's query.
  * esc empties it (RAC), and on an empty field hands the focus to the table, as F6 would land there; ↓ goes to the first
  * result. Named after its command, with ⌘F as its shortcut. `disabled` draws it held (the list is still loading, or a
- * sheet or an import holds the window): the transient states keep their controls (design-spec 6).
+ * sheet or an import holds the window): the transient states keep their controls (design-spec 6). The scope button
+ * comes first (M7c spec 5.8), and the placeholder names the body only where it is searched (not in the trash view).
  */
 export function LibrarySearch({ disabled = false }: { disabled?: boolean }) {
   countRender('LibrarySearch');
@@ -35,12 +38,16 @@ export function LibrarySearch({ disabled = false }: { disabled?: boolean }) {
   const found = useSearch(useViewItems() ?? NO_ITEMS);
   const find = commandById('library.find');
   const platform = currentPlatform();
+  const [scope] = useSearchScope();
+  const inTrash = useInTrash();
+  const body = scope === 'fulltext' && !inTrash;
   return (
     <>
       <SearchField
         aria-label={commandLabel(find, platform)}
         aria-keyshortcuts={ariaKeyShortcuts(find.accelerator!, platform)}
-        placeholder={t.library.searchPlaceholder}
+        placeholder={body ? t.library.searchPlaceholderFull : t.library.searchPlaceholder}
+        leading={<SearchScopeButton isDisabled={disabled} />}
         value={query}
         onChange={setQuery}
         inputRef={field}

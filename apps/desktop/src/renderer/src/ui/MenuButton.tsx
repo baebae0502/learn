@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type RefObject } from 'react';
 import { Check, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
-import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator, SubmenuTrigger } from 'react-aria-components';
+import { Button as AriaButton, Header, Menu, MenuItem, MenuSection, MenuTrigger, Popover, Separator, SubmenuTrigger, Text } from 'react-aria-components';
 import { acceleratorLabel } from '@learn/domain';
 import { IconButton, SoftDisabled, type ForcedState } from './Button';
 import { cx } from './cx';
@@ -29,6 +29,13 @@ export interface MenuButtonItem<K extends string> {
   marked?: boolean;
   /** Level in a tree list: the label is indented 16 px a level, as the sidebar tree steps. */
   indent?: number;
+  /** A second line under the label, in the secondary colour: what the choice covers (the search scope's fields). */
+  description?: string;
+  /**
+   * A line that tells, not an action (the body index's progress): it cannot be chosen or focused, and reads in the
+   * secondary colour rather than as a disabled action.
+   */
+  info?: boolean;
   /** State board only. */
   force?: ForcedState[];
 }
@@ -72,8 +79,8 @@ function Item<K extends string>({ item, platform }: { item: MenuButtonItem<K>; p
     <MenuItem
       id={item.id}
       textValue={item.label}
-      className="mi"
-      isDisabled={item.isDisabled}
+      className={cx('mi', item.description !== undefined && 'two', item.info && 'info')}
+      isDisabled={item.isDisabled || item.info}
       data-testid={item.testId}
       data-force={item.force?.join(' ')}
       data-indent={item.indent}
@@ -82,7 +89,19 @@ function Item<K extends string>({ item, platform }: { item: MenuButtonItem<K>; p
       <span className="check" aria-hidden="true">
         {(item.checked || item.marked) && <Icon icon={Check} size="sm" />}
       </span>
-      <span className="mi-label">{item.label}</span>
+      {item.description === undefined ? (
+        <span className="mi-label">{item.label}</span>
+      ) : (
+        // The label names the row and the line under it describes it (aria-labelledby and aria-describedby).
+        <span className="mi-text">
+          <Text slot="label" className="mi-label">
+            {item.label}
+          </Text>
+          <Text slot="description" className="mi-desc">
+            {item.description}
+          </Text>
+        </span>
+      )}
       {item.accelerator && <span className="shortcut">{acceleratorLabel(item.accelerator, platform)}</span>}
     </MenuItem>
   );

@@ -225,4 +225,42 @@
     width: 240px; /* local: design-spec 2.4 search field */
     flex: none;
   }
+  /* 검색 범위 ▾ (M7c spec 5.8): the field's first element, in the magnifier's place, the magnifier still where it was. */
+  .library-search .scope-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px; /* local: the arrow sits close to the magnifier */
+    flex: none;
+    height: 22px; /* local: inside the 28 field with 3 above and below */
+    margin-left: calc(-1 * var(--space-4)); /* the button's own padding reaches past the field's */
+    padding: 0 var(--space-4);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--field-placeholder, var(--text-tertiary));
+    outline: none;
+    cursor: default;
+  }
+  .library-search .scope-btn .icon {
+    color: inherit;
+  }
+  .library-search .scope-btn:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
+    background: var(--fill-hover);
+    color: var(--text-secondary);
+  }
+  .library-search .scope-btn:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
+    background: var(--fill-pressed);
+    color: var(--text-primary);
+  }
+  .library-search .scope-btn:is([data-focus-visible], [data-force~='focus']) {
+    box-shadow: inset 0 0 0 2px var(--focus); /* local: the field's own ring is its input's */
+  }
+  /* Held with the field (the list loads, a sheet or an import holds the window): dim as the field's glyphs are. */
+  .library-search.is-disabled > .scope-btn {
+    opacity: 0.4;
+  }
+  /* The menu is as wide as its descriptions need on one line (the approved mockup). */
+  .scope-popover .menu {
+    width: 320px; /* local: the approved mockup's scope menu */
+  }
 }

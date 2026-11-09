@@ -3,6 +3,7 @@ import { SETTINGS, type AppInfo } from '@learn/domain';
 import { ApiError } from '../api';
 import { FatalScreen } from '../components/FatalScreen';
 import { useAppInfo, usePanes, usePrefs, usePrefsSync, useSavedTabs } from '../data/queries';
+import { useSearchScopeSetting } from '../library/useBodySearch';
 import { useImageBackgroundSetting } from '../viewers/image/useImageBackground';
 import { usePageColorSetting } from '../viewers/pdf/usePageColor';
 import { useReaderNavSetting } from '../viewers/pdf/useReaderNav';
@@ -42,8 +43,10 @@ function PanesGate({ info }: { info: AppInfo }) {
   const imageBackground = useImageBackgroundSetting();
   // And the sidebar's list (thumbnails or outline): the segment is drawn with its saved choice from the first frame.
   const readerNav = useReaderNavSetting();
+  // And the quick search's scope: the field's placeholder is the stored scope's from the first frame.
+  const searchScope = useSearchScopeSetting();
   const seeded = useRef(false);
-  if (panes.isPending || savedTabs.isPending || pageColor.isPending || imageBackground.isPending || readerNav.isPending) return null;
+  if (panes.isPending || savedTabs.isPending || pageColor.isPending || imageBackground.isPending || readerNav.isPending || searchScope.isPending) return null;
   if (!seeded.current) {
     seeded.current = true; // a failed read falls back to the defaults
     // Both panes before the first paint: the item panel has its width in its first frame too.

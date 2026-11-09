@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LearnError } from '../src/errors';
-import { DEFAULT_PREFS, SAVED_TAB_TITLE_MAX, parseSetting, prefsSchema } from '../src/settings';
+import { DEFAULT_PREFS, SAVED_TAB_TITLE_MAX, SEARCH_SCOPES, parseSetting, prefsSchema } from '../src/settings';
 import { newId } from '../src/ids';
 
 const code = (fn: () => unknown): string | undefined => {
@@ -29,6 +29,14 @@ describe('reader.imageBackground', () => {
   it('takes the three backgrounds and nothing else', () => {
     for (const v of ['light', 'dark', 'checker']) expect(parseSetting('reader.imageBackground', v)).toBe(v);
     for (const v of ['auto', 'sepia', '', 1, null]) expect(code(() => parseSetting('reader.imageBackground', v))).toBe('VALIDATION_FAILED');
+  });
+});
+
+describe('library.searchScope', () => {
+  it('takes the two scopes of the quick search and nothing else', () => {
+    expect(SEARCH_SCOPES).toEqual(['metadata', 'fulltext']);
+    for (const v of SEARCH_SCOPES) expect(parseSetting('library.searchScope', v)).toBe(v);
+    for (const v of ['body', 'all', '', 1, null, ['fulltext']]) expect(code(() => parseSetting('library.searchScope', v))).toBe('VALIDATION_FAILED');
   });
 });
 

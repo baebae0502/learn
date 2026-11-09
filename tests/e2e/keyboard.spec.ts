@@ -9,7 +9,7 @@ import {
   FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
-  selectInPage,
+  selectInPage, textExtraction, textIdle,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -1344,6 +1344,47 @@ test('M7b keyboard only: ↩ opens → ⌘1 → ⌘↩ opens behind → Tab into
     await expect(odd).toHaveCount(0);
     await expect(viewer).toHaveAttribute('data-spread', 'odd'); // esc does not undo the choice
     await expectNoSeriousA11y(page, 'm7b-journey: odd spreads, the menu closed');
+  } finally {
+    await app.close();
+  }
+});
+
+test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 정보와 본문 → Tab back to the field → a word only a PDF body has → ↓ to the row it found, with axe at every new stop', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  const field = page.getByTestId('search-field').getByRole('searchbox');
+  try {
+    const [search30] = await importPaths(page, [path.join(FIXTURES, 'search-30.pdf'), PDF]);
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    await runMenuCommand(app, 'library.find');
+    await expect(field).toBeFocused();
+    // The scope button is the stop right before the field.
+    await page.keyboard.press('Shift+Tab');
+    expect(await focusedTestId(page)).toBe('search-scope');
+    await expectNoSeriousA11y(page, 'm7c-journey: the scope button focused');
+    // ↓ opens the menu on the checked row (정보), ↓ moves to 정보와 본문, ↩ chooses it and the focus returns to the button.
+    await page.keyboard.press('ArrowDown');
+    const menu = page.getByRole('menu', { name: '검색 범위' });
+    await expect(menu.getByRole('menuitemradio', { name: '정보', exact: true })).toBeFocused();
+    await expectNoSeriousA11y(page, 'm7c-journey: the scope menu open');
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByRole('menuitemradio', { name: '정보와 본문', exact: true })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(menu).toHaveCount(0);
+    expect(await focusedTestId(page)).toBe('search-scope');
+    await page.keyboard.press('Tab');
+    await expect(field).toBeFocused();
+    await expect(field).toHaveAttribute('placeholder', '제목, 저자, 태그, 본문 검색');
+    // 형광 is in search-30's pages, not in any title: the body match is the one row, and ↓ goes to it, selected.
+    await page.keyboard.type('형광');
+    const row = rowByTitle(page, search30!.title);
+    await expect(row).toBeVisible();
+    await expect(page.getByTestId('item-row')).toHaveCount(1);
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 2개');
+    await page.keyboard.press('ArrowDown');
+    await expect(row).toBeFocused();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+    await expectNoSeriousA11y(page, 'm7c-journey: the body match selected in the table');
   } finally {
     await app.close();
   }

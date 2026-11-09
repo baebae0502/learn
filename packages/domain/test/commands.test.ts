@@ -683,7 +683,7 @@ describe('the reader commands (P-9, P-14)', () => {
   });
 });
 
-describe('the image reader’s commands (M7c spec 9, J29)', () => {
+describe('the image reader’s commands (M7c spec 9)', () => {
   const IMAGE_OPEN: CommandContextState = { ...VIEWER, imageOpen: true };
   const SHARED = ['view.textBigger', 'view.textSmaller', 'view.textReset', 'reader.zoomPageWidth', 'reader.zoomPageFit', 'reader.rotateCw', 'reader.rotateCcw'] as const;
 

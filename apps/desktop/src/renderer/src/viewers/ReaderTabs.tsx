@@ -47,7 +47,7 @@ function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
   /** What had the focus in this reader when it was last shown: a hidden (inert) panel loses its focus, and shown again has none. */
   const lastFocus = useRef<HTMLElement | null>(null);
   const wasActive = useRef(active);
-  // Shown again, the reader takes the focus back where it was (or at its first target: the password field, the stage, the player) —
+  // Shown again, the reader takes the focus back where it was (or at its first target: the password field, a stage, the player) —
   // except when the tab was chosen from the strip by keyboard, where the focus stays on the tab (Tab goes on into the reader).
   useLayoutEffect(() => {
     const was = wasActive.current;
@@ -57,7 +57,7 @@ function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
     const onTab = document.activeElement instanceof Element && document.activeElement.closest('.tab-bar') !== null;
     if (onTab && lastInput() === 'keyboard') return;
     const last = lastFocus.current;
-    const target = last?.isConnected && panel.contains(last) ? last : panel.querySelector<HTMLElement>('input[type="password"], .pdf-stage, video');
+    const target = last?.isConnected && panel.contains(last) ? last : panel.querySelector<HTMLElement>('input[type="password"], .pdf-stage, .image-stage, video');
     target?.focus({ preventScroll: true });
   }, [active]);
   return (

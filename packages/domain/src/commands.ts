@@ -186,7 +186,7 @@ export interface CommandSpec {
     scope?: Readonly<Partial<Record<LibraryScope['kind'], string>>>;
     /** By the view shown (P-9): ⌘+ ⌘− ⌘0 size the library's text and zoom the reader's page, one command per key. */
     view?: Readonly<Record<'library' | 'viewer', string>>;
-    /** By what the reader shows (J29): a picture names the fit 창에 맞춤 where a PDF says 한 쪽 전체 보기 (one command, one key rule). */
+    /** By what the reader shows: a picture names the fit 창에 맞춤 where a PDF says 한 쪽 전체 보기 (one command keeps one key rule for both). */
     reader?: Readonly<{ image: string }>;
   };
   /** Label off macOS when the macOS one names a macOS app (Finder). */
@@ -501,7 +501,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     menu: { menu: 'view', group: 3, order: 3 }, contexts: ['library', 'viewer'], keywords: ['글자', '기본', '실제 크기', '100%', '배율', 'font', 'reset', 'actual size'],
   },
   // The reader's own view commands (M7a): they act on the open PDF, so a video or no document greys them (pdfOpen). The fits
-  // other than the automatic one and the turns act on a drawn picture too (imageOpen, M7c J29).
+  // other than the automatic one and the turns act on a drawn picture too (imageOpen).
   // 보기 group 4 is how the page fits, group 5 turns it and colours it.
   {
     id: 'reader.zoomAuto', label: '자동 맞춤', menu: { menu: 'view', group: 4, order: 1 }, contexts: ['viewer'],
@@ -850,7 +850,7 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
-/** The zoom, the two fits and the turns act on a drawn picture as on a PDF (M7c J29); the rest of the reader's view is the PDF's. */
+/** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
 const pdfOrImage = (c: CommandContextState): boolean => c.pdfOpen === true || c.imageOpen === true;
 /** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
 const spreadAllowed: Rule = (c) => c.pdfOpen === true && c.pdfScroll !== 'horizontal';

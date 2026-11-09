@@ -67,7 +67,7 @@ const SEP: Item = { type: 'separator' };
 
 /**
  * The reported state that state labels follow (design-spec 7.4): the pane states, the library's scope for ⌘⌫ (P-11), the view for
- * ⌘+ ⌘− ⌘0 (P-9) and a drawn picture for the fit's name (M7c J29).
+ * ⌘+ ⌘− ⌘0 (P-9) and a drawn picture for the fit's name.
  */
 export type MenuLabelState = LabelState;
 

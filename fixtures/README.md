@@ -15,6 +15,8 @@
 | `locked.pdf` | `fixtures/static/locked.pdf` 복사(mutool로 한 번 만든 암호 `learn`, 명령은 `fixtures/static/README.md`) | 암호 입력 |
 | `transparent.png` `orient6.jpg` `alpha.webp` `two-frames.gif` `still.avif` | `fixtures/static/images/`의 같은 이름 복사 | 이미지 가져오기·읽기(E2E) |
 | `png-named.jpg` | `static/images/transparent.png`의 사본(확장자만 `.jpg`) | 확장자가 틀려도 머리로 가려냄 |
+| `broken.png` | 생성기가 쓰는 33바이트: PNG 서명 + IHDR(64×48, CRC 맞음)뿐, 그 뒤 몸은 0바이트 | 가져오기는 되지만 그릴 수 없는 이미지(리더의 끝 상태) |
+| `photo-4032.jpg` | ffmpeg `testsrc2=size=4032x3024` 한 프레임, `-q:v 3` | 큰 사진(창에 맞춤 < 100%, 이미지 탭 열기 시간) |
 | `sample-h264-aac.mp4` | ffmpeg `testsrc2` + `sine`, 1280×720 30fps 10초, H.264 High/AAC, GOP 60, faststart | 재생·seek 정확도(AC05) |
 | `sample-mpeg4part2.mp4` | ffmpeg `testsrc2`, MPEG-4 Part 2 | Chromium 미지원 코덱 안내 |
 | `sample-hevc.mp4` | ffmpeg `libx265`(있을 때만) | 플랫폼 의존 코덱 기록용(판정 기준 아님) |

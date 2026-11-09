@@ -79,4 +79,15 @@ export const reader = {
   noPagesTrashed: '복원하면 쪽이 보입니다',
   noPagesLocked: '암호를 입력하면 쪽이 보입니다',
   noPages: '표시할 쪽이 없습니다',
+  /** The sidebar beside an image tab, in every state of it: a picture has no pages to list. */
+  noPagesImage: '이미지에는 쪽이 없습니다',
+  /**
+   * The image reader (M7c spec 11). Its zoom menu names come from the commands (창에 맞춤 · 너비에 맞춤 · 실제 크기 · 확대 · 축소);
+   * the field and the ▾ keep the PDF's names (확대 비율, 확대 메뉴).
+   */
+  imageTools: '이미지 도구',
+  imageStage: '이미지',
+  imageOpening: '이미지를 여는 중입니다',
+  imageErrorTitle: '이\u00a0이미지를 표시할 수 없습니다',
+  imageErrorBody: '파일 내용이 손상되었거나 그릴 수 없는 형식입니다. 원본\u00a0파일은 그대로 보관됩니다. 다른\u00a0사본이 있으면 다시 가져오세요.',
 } as const;

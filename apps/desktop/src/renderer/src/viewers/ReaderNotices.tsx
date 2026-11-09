@@ -1,4 +1,4 @@
-import { ExternalLink, FileX, FolderSearch, Link2Off, VideoOff } from 'lucide-react';
+import { ExternalLink, FileX, FolderSearch, ImageOff, Link2Off, VideoOff } from 'lucide-react';
 import { commandById, commandLabel, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import { useAppInfo } from '../data/queries';
@@ -83,6 +83,19 @@ export function PdfErrorNotice({ item }: { item: LibraryItem }) {
       <div className="stage-center">
         <Notice icon={FileX} title={t.reader.pdfErrorTitle} fileName={fileOf(item)} testId="pdf-error" actions={<FileButtons item={item} testIds={{ reveal: 'pdf-reveal', open: 'pdf-open' }} />}>
           {t.reader.pdfErrorBody}
+        </Notice>
+      </div>
+    </div>
+  );
+}
+
+/** A picture Chromium cannot decode (mockup reader-image ?state=error): the PDF error's shape, with the picture's tile and words. */
+export function ImageErrorNotice({ item }: { item: LibraryItem }) {
+  return (
+    <div className="reader-stage">
+      <div className="stage-center">
+        <Notice icon={ImageOff} title={t.reader.imageErrorTitle} fileName={fileOf(item)} testId="image-error" actions={<FileButtons item={item} testIds={{ reveal: 'image-reveal', open: 'image-open' }} />}>
+          {t.reader.imageErrorBody}
         </Notice>
       </div>
     </div>

@@ -23,7 +23,7 @@ export interface Point {
 export const IMAGE_MARGIN = 24;
 export const IMAGE_ZOOM_MIN = 0.05;
 export const IMAGE_ZOOM_MAX = 8;
-/** What ⌘+ and ⌘− walk. A large photo fits near 10 %, so the floor is well below the PDF's 25 % (J7). */
+/** What ⌘+ and ⌘− walk. A large photo fits near 10 %, so the floor is well below the PDF's 25 %. */
 export const IMAGE_ZOOM_STEPS: readonly number[] = [0.05, 0.1, 0.17, 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4, 6, 8];
 
 /** A scale this close to a step is that step. */
@@ -38,7 +38,7 @@ export function rotatedSize(natural: Size, rotation: Rotation): Size {
 }
 
 /**
- * The scale of a fit mode for the turned picture: 'fit' shows all of it and never enlarges a small one (J6), 'width' fills the
+ * The scale of a fit mode for the turned picture: 'fit' shows all of it and never enlarges a small one (an icon or a screenshot would blur), 'width' fills the
  * stage's width and does. Both leave 24 on every side and stay within 5–800 %.
  */
 export function fitScale(natural: Size, rotation: Rotation, stage: Size, mode: 'fit' | 'width'): number {

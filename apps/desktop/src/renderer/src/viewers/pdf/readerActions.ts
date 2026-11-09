@@ -7,19 +7,35 @@ import { keepFocusAcross } from '../../shell/useSidebar';
 import { dispatchFind, selectionQuery } from './findControl';
 import { useFind } from './findStore';
 import { focusPageField } from './pageField';
-import { useReader } from './readerStore';
+import type { ImageZoom } from '../image/imageFit';
+import { useReader, type ZoomValue } from './readerStore';
 
-/** What the reader's commands do to the open PDF (the CommandEnv's reader part): through the handle, so nothing runs without a viewer. */
+/** The PDF's fit names as the picture's: a whole page is the whole picture, the page's width the picture's; a picture has no automatic fit. */
+const imageZoomOf = (zoom: ZoomValue): ImageZoom | null => (zoom === 'page-fit' ? 'fit' : zoom === 'page-width' ? 'width' : zoom === 'auto' ? null : zoom);
+
+/**
+ * What the reader's commands do to the open document (the CommandEnv's reader part): through its handle, so nothing runs without
+ * a viewer. The zoom and the turns go to the picture when one is drawn, else to the PDF.
+ */
 export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'setScroll' | 'setSpread' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
   zoom: (dir) => {
-    const handle = useReader.getState().handle;
-    if (!handle) return;
-    if (dir === 'in') handle.zoomIn();
-    else if (dir === 'out') handle.zoomOut();
-    else handle.setZoom(1);
+    const { handle, imageHandle } = useReader.getState();
+    const target = imageHandle ?? handle;
+    if (!target) return;
+    if (dir === 'in') target.zoomIn();
+    else if (dir === 'out') target.zoomOut();
+    else target.setZoom(1);
   },
-  setZoom: (zoom) => useReader.getState().handle?.setZoom(zoom),
-  rotate: (delta) => useReader.getState().handle?.rotate(delta),
+  setZoom: (zoom) => {
+    const { handle, imageHandle } = useReader.getState();
+    if (!imageHandle) return handle?.setZoom(zoom);
+    const z = imageZoomOf(zoom);
+    if (z !== null) imageHandle.setZoom(z);
+  },
+  rotate: (delta) => {
+    const { handle, imageHandle } = useReader.getState();
+    (imageHandle ?? handle)?.rotate(delta);
+  },
   setPageColor: (color: PageColor) => saveSetting('reader.pageColor', color),
   setScroll: (mode: ScrollModeName) => useReader.getState().handle?.setScroll(mode),
   setSpread: (mode: SpreadModeName) => useReader.getState().handle?.setSpread(mode),

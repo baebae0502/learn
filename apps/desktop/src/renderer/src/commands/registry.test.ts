@@ -288,7 +288,7 @@ describe('renderer command registry', () => {
     expect(lib.zoom).not.toHaveBeenCalled();
     expect(lib.setTextSize).toHaveBeenCalledTimes(1);
   });
-  it('zooms, fits and turns a drawn picture through the same handlers, and reports it (M7c J29)', () => {
+  it('zooms, fits and turns a drawn picture through the same handlers, and reports it', () => {
     const picture = env({ view: 'viewer', imageOpen: true });
     expect(runCommand('view.textBigger', picture)).toBe(true);
     expect(picture.zoom).toHaveBeenCalledWith('in');

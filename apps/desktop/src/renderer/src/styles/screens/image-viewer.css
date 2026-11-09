@@ -1,0 +1,83 @@
+@layer screens {
+  /* The image reader (mockup reader-image): the zoom field in the middle of the 44 px toolbar, the two sides of equal share. */
+  .image-toolbar {
+    gap: 0;
+  }
+  .image-toolbar-side {
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .image-toolbar-side:first-child {
+    justify-content: flex-start;
+  }
+
+  /* The stage does not scroll: it holds the scroll area and draws the focus ring over it, as the PDF stage does. */
+  .image-frame {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: var(--bg-sunken);
+  }
+  .image-frame:has(> .image-stage:focus-visible)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5; /* local: over the picture inside the scroll area */
+    pointer-events: none;
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus);
+  }
+  /* An ordinary scroll area: the arrow keys, page keys, space, Home/End and the wheel scroll it. The ground is the PDF stage's surface. */
+  .image-stage {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: var(--bg-sunken);
+    user-select: none;
+  }
+  .image-stage:focus-visible {
+    outline: none;
+  }
+  /* Only a picture larger than the stage is dragged, with the hand. */
+  .image-stage[data-pannable] {
+    cursor: grab;
+  }
+  .image-stage[data-panning] {
+    cursor: grabbing;
+  }
+  /* What the stage scrolls: the picture with 24 round it, and at least the stage itself, the picture in its middle. */
+  .image-canvas {
+    box-sizing: border-box;
+    min-width: 100%;
+    min-height: 100%;
+    padding: var(--space-24);
+    display: grid;
+    place-items: center;
+  }
+  /* Until the saved place is applied the picture takes no room and is not seen: the stage's ground alone. */
+  .image-canvas[data-pending] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    visibility: hidden;
+  }
+  /* The turned picture's box: the img is turned about its centre inside it; no border, no shadow. */
+  .image-box {
+    position: relative;
+    overflow: hidden;
+  }
+  .image-box > img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    max-width: none;
+    image-orientation: from-image;
+    -webkit-user-drag: none;
+  }
+}

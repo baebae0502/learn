@@ -290,12 +290,12 @@ async function makeSearch30(file) {
   fs.writeFileSync(file, await doc.save());
 }
 
-// ffmpeg is only touched when a video fixture is actually missing, so a warm fixture dir needs no ffmpeg.
+// ffmpeg is only touched when a video fixture (or the large photo) is actually missing, so a warm fixture dir needs no ffmpeg.
 const runFfmpeg = (args, opts) => {
   try {
     return execFileSync('ffmpeg', args, opts);
   } catch (e) {
-    if (e?.code === 'ENOENT') throw new Error('ffmpeg not found on PATH — needed to generate the missing video fixtures');
+    if (e?.code === 'ENOENT') throw new Error('ffmpeg not found on PATH — needed to generate the missing video and photo fixtures');
     throw e;
   }
 };
@@ -324,12 +324,39 @@ for (const name of ['transparent.png', 'orient6.jpg', 'alpha.webp', 'two-frames.
 }
 if (need('png-named.jpg')) fs.copyFileSync(path.join(here, 'static', 'images', 'transparent.png'), path.join(out, 'png-named.jpg'));
 
+/** CRC-32 (ISO-HDLC, the PNG chunk check) of a byte array. */
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) {
+    c ^= b;
+    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1;
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+// A PNG that imports (its signature and IHDR say PNG, 64 × 48) but cannot be drawn: the 33-byte head and no body at all.
+if (need('broken.png')) {
+  const ihdr = Buffer.alloc(17);
+  ihdr.write('IHDR', 0, 'latin1');
+  ihdr.writeUInt32BE(64, 4);
+  ihdr.writeUInt32BE(48, 8);
+  ihdr.set([8, 6, 0, 0, 0], 12); // 8-bit RGBA, deflate, adaptive filter, not interlaced
+  const chunk = Buffer.alloc(25);
+  chunk.writeUInt32BE(13, 0);
+  ihdr.copy(chunk, 4);
+  chunk.writeUInt32BE(crc32(ihdr), 21);
+  fs.writeFileSync(path.join(out, 'broken.png'), Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk]));
+}
+
 if (need('sample-h264-aac.mp4')) {
   ffmpeg([
     '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30', '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000', '-t', '10',
     '-c:v', 'libx264', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-g', '60', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
     path.join(out, 'sample-h264-aac.mp4'),
   ]);
+}
+// A large photo for the image reader's open time (4032 × 3024, a phone camera's size): one frame of the test pattern.
+if (need('photo-4032.jpg')) {
+  ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=4032x3024', '-frames:v', '1', '-q:v', '3', path.join(out, 'photo-4032.jpg')]);
 }
 if (need('sample-mpeg4part2.mp4')) {
   ffmpeg(['-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30', '-t', '3', '-c:v', 'mpeg4', path.join(out, 'sample-mpeg4part2.mp4')]);

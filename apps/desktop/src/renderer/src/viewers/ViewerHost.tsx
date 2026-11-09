@@ -16,7 +16,9 @@ import { TrashedNotice } from './TrashedNotice';
 import { PdfReader } from './pdf/PdfReader';
 import { type NoPages } from './pdf/readerStore';
 import { ReaderScopeProvider, readerScopes, useReaderScope, useReaderShown } from './readerScope';
+import { ImageReader } from './image/ImageReader';
 import { VideoViewer } from './VideoViewer';
+import { useTabKind } from '../shell/useTabItem';
 
 /** One tab's reader: the document's scope shown to everything the reader mounts; `active` says whether the tab has the screen. */
 export function ViewerHost({ itemId, active }: { itemId: string; active: boolean }) {
@@ -85,9 +87,21 @@ function Viewer({ itemId }: { itemId: string }) {
   // frame can paint at once (the dark video stage, the PDF reader's strip and sunken stage) instead of the empty white
   // column (T13-m6). Nothing else is decided from the cache.
   const cachedType = useQueryClient().getQueryData<LibraryItem[]>(keys.items)?.find((x) => x.id === itemId)?.type;
-  // What the reader's sidebar says about the pages: gone with the trash, or nothing to show here (a video, a lost or missing file).
+  // The kind as far as anything knows it: the fresh read, the list's row, or the kind the tab was saved with (a trashed item is in no list).
+  const tabKind = useTabKind(itemId);
+  const kind = item.data?.type ?? cachedType ?? tabKind;
+  // What the reader's sidebar says about the pages: a picture has none, in every state of its tab (ahead of the trash); else gone
+  // with the trash, or nothing to show here (a video, a lost or missing file).
   const noPages: NoPages | null =
-    trashed !== 'no' ? 'trashed' : !item.isFetchedAfterMount ? null : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf' ? 'none' : null;
+    kind === 'image'
+      ? 'image'
+      : trashed !== 'no'
+        ? 'trashed'
+        : !item.isFetchedAfterMount
+          ? null
+          : readerLost(item) || !item.data || item.data.availability === 'missing' || item.data.type !== 'pdf'
+            ? 'none'
+            : null;
   useEffect(() => {
     scope.reader.getState().setNoPages('host', noPages);
     return () => scope.reader.getState().setNoPages('host', null);
@@ -122,7 +136,14 @@ function Viewer({ itemId }: { itemId: string }) {
     if (linkedMissing && detail.isPending) return <div className="reader-stage" aria-hidden="true" />;
     return <MissingNotice item={item.data} externalPath={detail.data?.file.externalPath ?? null} />;
   }
-  return item.data.type === 'pdf' ? <PdfReader key={item.data.id} item={item.data} /> : <VideoViewer key={item.data.id} item={item.data} />;
+  switch (item.data.type) {
+    case 'pdf':
+      return <PdfReader key={item.data.id} item={item.data} />;
+    case 'image':
+      return <ImageReader key={item.data.id} item={item.data} />;
+    case 'video':
+      return <VideoViewer key={item.data.id} item={item.data} />;
+  }
 }
 
 /**
@@ -131,11 +152,11 @@ function Viewer({ itemId }: { itemId: string }) {
  */
 function ReaderFrame({ type }: { type: LibraryItem['type'] | undefined }) {
   if (type === 'video') return <div className="video-stage" aria-hidden="true" />;
-  if (type === 'pdf') {
+  if (type === 'pdf' || type === 'image') {
     return (
       <div className="reader" aria-hidden="true">
         <div className="reader-toolbar" />
-        <div className="pdf-stage" />
+        <div className={type === 'pdf' ? 'pdf-stage' : 'image-frame'} />
       </div>
     );
   }

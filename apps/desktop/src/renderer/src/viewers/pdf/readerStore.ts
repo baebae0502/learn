@@ -3,6 +3,7 @@ import type { EventBus, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_vie
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { ReadingLocator, ReaderNav, ScrollModeName, SpreadModeName } from '@learn/domain';
 import { emptyHistory, type History } from './history';
+import type { ImageZoom, Rotation, Size } from '../image/imageFit';
 
 export type { ReaderNav };
 
@@ -59,13 +60,36 @@ export interface PdfViewHandle {
 
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
-/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, or has nothing to show. */
-export type NoPages = 'trashed' | 'locked' | 'none';
+/** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, or is a picture. */
+export type NoPages = 'trashed' | 'locked' | 'none' | 'image';
+
+/** The image reader's state: what its toolbar shows and what the commands need (a picture drawn is `shown`). */
+export interface ImageState {
+  status: 'loading' | 'shown' | 'error';
+  zoom: ImageZoom;
+  scale: number;
+  rotation: Rotation;
+  /** The picture's size as Chromium draws it at 0° (its EXIF orientation applied); null until it is decoded. */
+  natural: Size | null;
+}
+
+/** What the commands do to the open picture. */
+export interface ImageViewHandle {
+  zoomIn(): void;
+  zoomOut(): void;
+  setZoom(z: ImageZoom): void;
+  rotate(delta: 90 | -90): void;
+}
+
+export const INITIAL_IMAGE: ImageState = { status: 'loading', zoom: 'fit', scale: 1, rotation: 0, natural: null };
 
 export interface ReaderStore {
   /** null while no PDF is open. */
   pdf: PdfState | null;
   handle: PdfViewHandle | null;
+  /** null while no picture is open; its handle only once the picture is drawn. */
+  image: ImageState | null;
+  imageHandle: ImageViewHandle | null;
   /** Said by the host of the reader (the item's state) and by the PDF reader (the password): the sidebar shows the first. */
   noPages: Readonly<Record<'host' | 'reader', NoPages | null>>;
   /**
@@ -77,6 +101,8 @@ export interface ReaderStore {
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
+  setImage(p: Partial<ImageState> | null): void;
+  setImageHandle(h: ImageViewHandle | null): void;
 }
 
 /** One reader's state; the store of each document is made with its scope (viewers/readerScope). */
@@ -84,12 +110,16 @@ export function createReaderStore(): StoreApi<ReaderStore> {
   return createStore<ReaderStore>()((set) => ({
     pdf: null,
     handle: null,
+    image: null,
+    imageHandle: null,
     noPages: { host: null, reader: null },
     history: emptyHistory<PdfPlace>(),
     setHistory: (history) => set({ history }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),
+    setImage: (p) => set((s) => ({ image: p === null ? null : { ...(s.image ?? INITIAL_IMAGE), ...p } })),
+    setImageHandle: (imageHandle) => set({ imageHandle }),
   }));
 }
 

@@ -13,11 +13,25 @@ import type { FsyncProbeInput, FsyncProbeResult, SeedAssetsInput, SeedAssetsResu
 import type { SeedBodyTextInput } from '../../apps/desktop/src/main/text/seed-body-text';
 import { compareShots, isTranslucent, sidebarFallback, type Pixels } from './shot-compare';
 
+/** What the image reader shows (viewers/readerScope.tsx learnImageHook): its state, whose it is, and the picture point at the stage's centre. */
+export interface ImageReaderState {
+  status: 'loading' | 'shown' | 'error';
+  zoom: 'fit' | 'width' | number;
+  scale: number;
+  rotation: 0 | 90 | 180 | 270;
+  natural: { width: number; height: number } | null;
+  itemId: string;
+  cx: number;
+  cy: number;
+}
+
 declare global {
   interface Window {
     learn: LearnApi;
     /** The renderer's E2E switch (library/useImportQueue.ts): importPaths' runs show no busy screen and no toast. */
     __learnQuietImports?: number;
+    /** E2E only: the image reader of the shown tab, or of the tab of `itemId` (a hidden one too). */
+    __learnImage?: { getState(itemId?: string): ImageReaderState | null };
   }
 }
 
@@ -1138,6 +1152,9 @@ export async function closeReaderTab(page: Page): Promise<void> {
   await sheetReleased(page);
   await page.locator('.tab-item.is-active [data-testid="tab-close"]').click();
 }
+
+/** The image reader's state: the shown tab's, or the tab of `itemId` (hidden or not); null where no picture is open. */
+export const imageState = (page: Page, itemId?: string): Promise<ImageReaderState | null> => page.evaluate((id) => window.__learnImage!.getState(id ?? undefined), itemId ?? null);
 
 /** The tab strip's first tab: the library (a window with no reader tab has no strip, so none). */
 export const libraryTab = (page: Page): Locator => page.locator('[data-testid="tab"][data-item-id="library"]');

@@ -97,6 +97,10 @@ export function OutlineTree() {
   const pausedUntil = useRef(0);
   /** A click on a row moves the page and may leave the current row as it was (a sub-entry of the same page): it still shows the row. */
   const [nudge, setNudge] = useState(0);
+  /** Counts the times the list came back from a zero height (a hidden kept tab): it follows the page then. */
+  const [revealed, setRevealed] = useState(0);
+  /** The current row a follow skipped because the user had just scrolled the list; null when the last follow ran. */
+  const [held, setHeld] = useState<string | null>(null);
   useEffect(() => {
     const el = tree.current;
     if (!treeShown || !el) return;
@@ -114,6 +118,13 @@ export function OutlineTree() {
     const scrolled = () => {
       if (pointerHeld) pause();
     };
+    let height = el.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const was = height;
+      height = el.clientHeight;
+      if (was === 0 && height > 0) setRevealed((n) => n + 1);
+    });
+    observer.observe(el);
     el.addEventListener('wheel', pause, { passive: true });
     el.addEventListener('keydown', pause);
     el.addEventListener('pointerdown', down);
@@ -121,6 +132,7 @@ export function OutlineTree() {
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
     return () => {
+      observer.disconnect();
       el.removeEventListener('wheel', pause);
       el.removeEventListener('keydown', pause);
       el.removeEventListener('pointerdown', down);
@@ -129,19 +141,26 @@ export function OutlineTree() {
       window.removeEventListener('pointercancel', up);
     };
   }, [treeShown]);
-  /** The search a follow last ran under: typing in it moves the current row in the list, which is the user's doing and not the page's. */
-  const followedQuery = useRef(query);
+  /** What the last run of the follow saw, to tell the page's moves from the user's typing in the search. */
+  const last = useRef<{ current: string | null; nudge: number; revealed: number; query: string }>({ current, nudge, revealed, query });
   useEffect(() => {
+    const before = last.current;
+    last.current = { current, nudge, revealed, query };
     const el = tree.current;
     if (!treeShown || !el || currentIndex < 0) return;
-    if (followedQuery.current !== query) {
-      followedQuery.current = query;
-      return;
-    }
+    // Typing in the search moves the current row in the list by the user's own act; clearing it, or a page that moved with it, follows.
+    const moved = before.current !== current || before.nudge !== nudge || before.revealed !== revealed;
+    if (before.query !== query && query.trim() !== '' && !moved) return;
     let frame = 0;
     let tries = 0;
     const follow = () => {
-      if (performance.now() < pausedUntil.current) return;
+      // A hidden kept tab has no height to follow into; it follows when it is shown again.
+      if (el.clientHeight === 0) return;
+      if (performance.now() < pausedUntil.current) {
+        setHeld(current);
+        return;
+      }
+      setHeld(null);
       const pad = parseFloat(getComputedStyle(el).paddingTop) || 0;
       const to = outlineScrollTarget({ index: currentIndex, rowHeight, scrollTop: el.scrollTop - pad, viewport: el.clientHeight });
       if (to === null) return;
@@ -151,7 +170,7 @@ export function OutlineTree() {
     };
     follow();
     return () => cancelAnimationFrame(frame);
-  }, [treeShown, currentIndex, rowHeight, nudge, query]);
+  }, [treeShown, currentIndex, rowHeight, nudge, query, revealed, current]);
 
   if (outline.status === 'loading') return <div className="outline-wait" data-testid="pdf-outline-loading" />;
   if (rows.length === 0) {
@@ -206,7 +225,8 @@ export function OutlineTree() {
           aria-label={t.reader.outlineTree}
           className="nav-list outline"
           data-testid="pdf-outline"
-          data-current={current ?? undefined}
+          data-current-id={current ?? undefined}
+          data-follow-held={held ?? undefined}
           expandedKeys={expanded}
           onExpandedChange={(keys) => !searching && setOpened(keys)}
           onAction={(key) => {

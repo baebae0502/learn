@@ -219,6 +219,28 @@ test('tabs and panels are linked: a tab points at its mounted panel, a panel is 
   }
 });
 
+test('the tab strip appearing over the shown library keeps the list where it was: its scroll and its focus', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 60));
+    const scroller = page.getByTestId('library-scroller');
+    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
+    await page.getByTestId('item-row').first().click();
+    await scroller.evaluate((el) => (el.scrollTop = 400));
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(400);
+    const focusInTable = () => page.evaluate(() => document.querySelector('[data-testid="library-table"]')?.contains(document.activeElement) === true);
+    expect(await focusInTable()).toBe(true);
+    await runMenuCommand(app, 'item.openInBackground'); // the strip appears; the library stays shown
+    await expect(page.getByTestId('tab-bar')).toBeVisible();
+    await expect.poll(() => activeTab(page)).toBe('library');
+    await expect(page.locator('#tabpanel-library')).toHaveAttribute('role', 'tabpanel');
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(400);
+    expect(await focusInTable()).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a kept tab comes back at once, with its find bar and place', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

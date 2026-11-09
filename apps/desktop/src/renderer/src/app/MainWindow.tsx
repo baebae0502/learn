@@ -694,7 +694,7 @@ export function MainWindow(_props: { info: AppInfo }) {
           </>
         }
       >
-        {view.kind === 'library' && (tabsOpen ? <LibraryPanel>{library}</LibraryPanel> : library)}
+        {view.kind === 'library' && <LibraryPanel tabs={tabsOpen}>{library}</LibraryPanel>}
         <ReaderTabs />
       </Shell>
       </ScopeViewProvider>
@@ -704,11 +704,14 @@ export function MainWindow(_props: { info: AppInfo }) {
   );
 }
 
-/** The library's content while reader tabs exist: the panel of the library tab (the same box a reader's panel is). */
-function LibraryPanel({ children }: { children: ReactNode }) {
-  useTabPanelsMounted('library', ['library']);
+/**
+ * The library's content: the panel of the library tab while reader tabs exist. The box is always there (the strip appearing or going
+ * must not move the list under it to another parent, which would drop its scroll and focus); only its panel attributes come and go.
+ */
+function LibraryPanel({ tabs, children }: { tabs: boolean; children: ReactNode }) {
+  useTabPanelsMounted('library', tabs ? ['library'] : []);
   return (
-    <div className="tab-panel" id={tabPanelId('library')} role="tabpanel" aria-labelledby={tabId('library')} data-testid="library-panel">
+    <div className="tab-panel" id={tabs ? tabPanelId('library') : undefined} role={tabs ? 'tabpanel' : undefined} aria-labelledby={tabs ? tabId('library') : undefined} data-testid="library-panel">
       {children}
     </div>
   );

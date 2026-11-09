@@ -107,10 +107,10 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     // The old cadence: ⌘/ 300 ms after the last close, inside PREPARE_AGAIN_MS, so the sheet makes its own window. Reported only.
     const quickMs: number[] = [];
     for (let i = 0; i < OPENS; i++) {
+      await s.page.waitForTimeout(300); // the cadence measured, counted from the last close (for the first, the steady series')
       const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
       quickMs.push(await elapsed());
       await closeSheet(sheet, 'Escape');
-      await s.page.waitForTimeout(300);
     }
     for (let i = 0; i < OPENS; i++) {
       const settings = await expectWindow(s.app, 'settings', () => click('app.settings'));

@@ -36,6 +36,7 @@ export function ImageViewMenu() {
       placement="bottom end"
       variant="plain"
       size="small"
+      popoverClassName="view-menu"
       isDisabled={!ready}
       disabledReason={t.reader.imageOpening}
       testId="image-view-menu"

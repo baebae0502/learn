@@ -28,7 +28,7 @@ export function ReadingSection({ itemId }: { itemId: string }) {
         </div>
       )}
       {view.kind === 'done' && (
-        <div className="reading-progress">
+        <div className="reading-progress" data-done="">
           <span className="inline-flag c-success" title={t.library.progressDoneLabel} data-testid="reading-done">
             <Icon icon={Check} size="sm" />
             {t.library.progressDone}

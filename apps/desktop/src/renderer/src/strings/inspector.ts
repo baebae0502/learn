@@ -81,7 +81,7 @@ export const inspector = {
   monthDate: (y: number, m: number) => `${y}. ${m}.`,
   dayDate: (y: number, m: number, d: number) => `${y}. ${m}. ${d}.`,
   /** No info at all yet: what writing it gives (the pencil beside 정보 is the way). */
-  noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을 수 있습니다.',
+  noInfo: '저자와 연도를 적어 두면 표에서 정렬하고 찾을\u00a0수 있습니다.',
   showMore: '더 보기',
   showLess: '접기',
   file: { storage: '보관', size: '크기', originalName: '원래 이름', location: '위치' },

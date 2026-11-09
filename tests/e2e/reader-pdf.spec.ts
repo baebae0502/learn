@@ -1139,6 +1139,13 @@ test('the toolbar groups as the mockup has them: "/ 100" takes its own width wit
     const toggle = await page.locator('.reader-toolbar [aria-controls="inspector"]').evaluate((el) => el.getBoundingClientRect().left);
     expect(s.left - view.right).toBeCloseTo(8, 0);
     expect(toggle - s.right).toBeCloseTo(8, 0);
+    // 보기 ▾ opens as wide as the zoom menu beside it (the mockup's 232), its right edge on the button's.
+    await page.getByTestId('pdf-view-menu').click();
+    const menu = await page.getByRole('menu', { name: '보기' }).evaluate((el) => el.getBoundingClientRect().toJSON() as DOMRect);
+    expect(menu.width).toBe(232);
+    expect(menu.right).toBeCloseTo(view.right, 0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
   } finally {
     await app.close();
   }

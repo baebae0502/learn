@@ -185,6 +185,8 @@ export function MenuButton<K extends string>(props: {
   /** How the button is drawn, as Button's: the bordered secondary one (default) or the plain one inside a toolbar. */
   variant?: 'secondary' | 'plain';
   size?: 'regular' | 'small';
+  /** Extra class on the popover, for a menu that needs its own width. */
+  popoverClassName?: string;
   testId?: string;
 }) {
   const reason = useDisabledReason(props.isDisabled, props.disabledReason);
@@ -207,7 +209,7 @@ export function MenuButton<K extends string>(props: {
             <SoftDisabled>{trigger}</SoftDisabled>
           </Tooltip>
         )}
-        <Popover className="menu-popover" placement={props.placement ?? 'bottom start'} offset={4}>
+        <Popover className={cx('menu-popover', props.popoverClassName)} placement={props.placement ?? 'bottom start'} offset={4}>
           <MenuList entries={props.items} onAction={props.onAction} />
         </Popover>
       </MenuTrigger>

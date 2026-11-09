@@ -322,8 +322,9 @@
     font: var(--type-body);
     text-align: center;
   }
-  .zoom-menu .menu {
-    min-width: 232px; /* local: zoom menu width (design-spec 7.3 mockup) */
+  /* The reader toolbar's two menus are one width (an image's 보기 ▾ shares the rule): the mockup's 232, whatever the shortcut glyphs take. */
+  :is(.zoom-menu, .view-menu) .menu {
+    min-width: 232px; /* local: the reader menus' width (design-spec 7.3 mockup) */
   }
   .reader-toolbar .zoom-input:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus);

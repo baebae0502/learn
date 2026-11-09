@@ -125,6 +125,13 @@
     font: var(--type-footnote);
     font-variant-numeric: tabular-nums;
   }
+  /* Finished: 완료 at the panel's body size (library.html 읽기 절; the table's flag stays a footnote), its row on the 4 grid. */
+  .inspector .reading-progress[data-done] {
+    min-height: 20px; /* local: library.html's done row */
+  }
+  .inspector .reading-progress[data-done] .inline-flag {
+    font: var(--type-body);
+  }
   .inspector .reading-line {
     margin-top: var(--space-4);
     font: var(--type-footnote);

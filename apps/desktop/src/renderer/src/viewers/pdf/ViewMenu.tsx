@@ -55,6 +55,7 @@ export function ViewMenu() {
       placement="bottom end"
       variant="plain"
       size="small"
+      popoverClassName="view-menu"
       isDisabled={!ready}
       disabledReason={t.reader.opening}
       testId="pdf-view-menu"

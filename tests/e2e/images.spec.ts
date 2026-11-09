@@ -800,6 +800,8 @@ test('the image 보기 menu — 배경 as a group (the one in use checked) then 
     await expect(menu.locator('.mi-label')).toHaveText(['밝게', '어둡게', '체크무늬', '시계 방향으로 회전', '반시계 방향으로 회전']);
     await expect(menu.locator('[aria-checked="true"] .mi-label')).toHaveText(['밝게']);
     await expect(menu.getByRole('menuitem', { name: /^시계 방향으로 회전/ })).toContainText(process.platform === 'darwin' ? '⌘R' : 'Ctrl+R');
+    // As wide as the zoom menu of the same toolbar (the mockup's 232), whatever the shortcut glyphs take.
+    expect(await menu.evaluate((el) => el.getBoundingClientRect().width)).toBe(232);
     await expectNoSeriousA11y(page, 'image view menu');
 
     await menu.getByRole('menuitemradio', { name: '체크무늬' }).click();
@@ -1052,6 +1054,11 @@ test('images dropped on the window come in with their icon, the kind 이미지, 
     await expect(page.getByTestId('reading-done')).toHaveText('완료');
     await expect(page.getByTestId('reading-line')).toHaveText(/^열어\u00a0봄\u00a0· 오늘\u00a0/);
     await expect(page.getByTestId('reading-bar')).toHaveCount(0);
+    // 완료 at the panel's body size (the table's flag stays a footnote), and its row 24 high with the line's gap, on the 4 grid.
+    const done = await page.getByTestId('reading-done').evaluate((el) => ({ size: getComputedStyle(el).fontSize, top: el.parentElement!.getBoundingClientRect().top }));
+    expect(done.size).toBe('13px');
+    expect((await page.getByTestId('reading-line').boundingBox())!.y - done.top).toBe(24);
+    await expect(rowByTitle(page, 'still').locator('.inline-flag')).toHaveCSS('font-size', '12px');
   } finally {
     await app.close();
   }

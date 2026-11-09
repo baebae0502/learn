@@ -6,7 +6,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { commandById, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, backFromReader, closeReaderTab, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, rowByTitle, runMenuCommand, settled, trashItems,
+  FIXTURES, backFromReader, closeReaderTab, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, quiet, readerTab, rowByTitle, runMenuCommand, settled, trashItems,
   type ImageReaderState,
 } from './helpers';
 
@@ -706,10 +706,24 @@ test('a hidden image tab does not fit to a window that changes size; shown again
     await settled(page);
     // ... the hidden one keeps the scale it had.
     expect((await imageState(page, a!.id))?.scale).toBeCloseTo(fitA, 6);
-    // Shown, it fits once, to the stage it has now.
+    // Shown, it fits once, to the stage it has now: each change of the shown tab's picture state is one placement (the first is the switch to it).
+    await page.evaluate(() => {
+      const w = window as unknown as { __scales: number[]; __learnReader: { subscribe(f: () => void): () => void; getState(): { image: { scale: number } | null } } };
+      let last = w.__learnReader.getState().image;
+      w.__scales = [];
+      w.__learnReader.subscribe(() => {
+        const image = w.__learnReader.getState().image;
+        if (image === last) return;
+        last = image;
+        if (image) w.__scales.push(image.scale);
+      });
+    });
     await readerTab(page, a!.id).click();
     await expect.poll(async () => (await imageState(page))?.itemId).toBe(a!.id);
     await expect.poll(() => scaleOf(page)).toBeCloseTo(fitSmall, 6);
+    await quiet(page, '[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]');
+    const scales = await page.evaluate(() => (window as unknown as { __scales: number[] }).__scales);
+    expect(scales.map((x) => Number(x.toFixed(6)))).toEqual([Number(fitA.toFixed(6)), Number(fitSmall.toFixed(6))]);
     const box = await stageBox(page);
     expect(Math.min(box.left, box.top)).toBeCloseTo(24, 0);
   } finally {

@@ -63,6 +63,8 @@ export function ImageReader({ item }: { item: LibraryItem }) {
   const view = useRef<ImageView>({ ...DEFAULT_IMAGE_VIEW });
   /** The scroll a placement set: its scroll event is no move of the reader's. */
   const placedScroll = useRef<Point | null>(null);
+  /** The stage size the last placement was made for. */
+  const placedStage = useRef<Size | null>(null);
   const restored = useRef(false);
   const progressSent = useRef(false);
   const [pannable, setPannable] = useState(false);
@@ -145,11 +147,15 @@ export function ImageReader({ item }: { item: LibraryItem }) {
       const box = el.getBoundingClientRect();
       zoomAbout(clampImageZoom(c.scale * factor), c.rotation, { x: e.clientX - box.left, y: e.clientY - box.top });
     },
-    // The stage changed size: a fit is made again, a number stays; either way the centre is kept.
+    // The stage changed size: a fit is made again, a number stays; either way the centre is kept. A stage already placed at its size (a
+    // tab shown again places itself before its observer hears of the size) or about to be is left alone: one placement per change.
     refit: () => {
       const c = current();
-      if (!c || !restored.current || !shownRef.current) return;
-      place(c.zoom, c.rotation, pending.current?.anchor ?? { p: { x: view.current.cx, y: view.current.cy }, at: null });
+      if (!c || !restored.current || !shownRef.current || pending.current) return;
+      const size = stageSize();
+      const placed = placedStage.current;
+      if (placed && placed.width === size.width && placed.height === size.height) return;
+      place(c.zoom, c.rotation, { p: { x: view.current.cx, y: view.current.cy }, at: null });
     },
   };
 
@@ -233,6 +239,7 @@ export function ImageReader({ item }: { item: LibraryItem }) {
     el.scrollTop = target.y;
     const applied = { x: el.scrollLeft, y: el.scrollTop };
     placedScroll.current = applied;
+    placedStage.current = size;
     const centre = placedCentre(layout, placement.rotation, size, ask.anchor, applied);
     view.current = { zoom: placement.zoom, rotation: placement.rotation, cx: centre.x, cy: centre.y };
     scope.imageCentre.current = { cx: centre.x, cy: centre.y };

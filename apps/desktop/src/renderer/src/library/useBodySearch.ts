@@ -58,6 +58,38 @@ export function useBodyProgressSync(): void {
   useLearnEvent('search:progress', (progress) => queryClient.setQueryData(keys.bodyProgress, progress));
 }
 
+/** search:body for one query: the app's IPC, or a stub in a test. */
+export type BodySearchCall = (query: string) => Promise<BodyAnswer>;
+const searchBody: BodySearchCall = (query) => unwrap(api().search.body({ query }));
+
+/**
+ * The cache entry the readers of `target` (the query typed now) observe, and its fetch, which waits until the settled
+ * query (BODY_SETTLE_MS without a key) has caught up with it.
+ */
+export function bodyQueryOptions(target: string, settled: string, search: BodySearchCall = searchBody) {
+  return {
+    queryKey: keys.bodySearch(settled),
+    queryFn: () => search(settled),
+    enabled: target !== '' && settled === target,
+    gcTime: BODY_GC_MS,
+    // Stopped by a search this window did not make for this field: asked once more.
+    retry: (failures: number, error: unknown) => failures < 1 && cancelled(error),
+    retryDelay: 0,
+  };
+}
+
+/** What that entry means to the readers. `live`: the settled query is the one typed now. */
+export function bodySearchState(on: boolean, live: boolean, read: { data: BodyAnswer | undefined; isError: boolean; error: unknown; isFetching: boolean }): BodySearch {
+  if (!on) return OFF;
+  if (!live) return PENDING;
+  // The answer object stays the same until the cache holds another (readers key their memos on it).
+  if (read.data !== undefined) return { on: true, answer: read.data, pending: false };
+  // An error is final once nothing is fetched any more: a second stop after the one retry, or any other failure. The
+  // readers then show no-results without the body claim instead of waiting for an answer that will not come. A stopped
+  // query that is fetched again (typed again later) waits for that fetch.
+  return read.isError && !read.isFetching ? FAILED : PENDING;
+}
+
 /**
  * The body search for `query` (spec 5.6): off the input path — the deferred query, once it has held for 200 ms, goes to
  * search:body without waiting on anything typed. The answer is cached per query (['search','body', q]); libraryChanged
@@ -69,21 +101,8 @@ export function useBodySearch(query: string, enabled: boolean): BodySearch {
   const target = on ? deferred.trim() : '';
   useEffect(() => settle.ask(target), [target]);
   const settled = useSyncExternalStore(settle.subscribe, settle.get);
-  const live = target !== '' && settled === target;
-  const read = useQuery({
-    queryKey: keys.bodySearch(settled),
-    queryFn: () => unwrap(api().search.body({ query: settled })),
-    enabled: live,
-    gcTime: BODY_GC_MS,
-    // Stopped by a search this window did not make for this field: asked once more.
-    retry: (failures, error) => failures < 1 && cancelled(error),
-    retryDelay: 0,
-  });
-  if (!on) return OFF;
-  if (!live) return PENDING;
-  // The answer object stays the same until the cache holds another (readers key their memos on it).
-  if (read.data !== undefined) return { on: true, answer: read.data, pending: false };
-  return read.isError && !cancelled(read.error) ? FAILED : PENDING;
+  const read = useQuery(bodyQueryOptions(target, settled));
+  return bodySearchState(on, target !== '' && settled === target, read);
 }
 
 /** The library's quick search in the body: the session's query, in the stored scope, never in the trash view. */

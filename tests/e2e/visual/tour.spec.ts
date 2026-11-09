@@ -70,6 +70,14 @@ const BEHIND_PALETTE = [
 ]
   .map((sel) => `${sel} { visibility: hidden !important; }`)
   .join('\n');
+/**
+ * A masked date that sits in a line of text is as wide as the time it prints, so the words after it (and a centred line)
+ * moved with the clock between runs. While the picture is taken these take a fixed box, wider than any time they show.
+ */
+const FIXED_DATE_BOXES = [
+  '[data-testid="trash-note-when"] { display: inline-block; width: 104px; white-space: nowrap; overflow: hidden; vertical-align: bottom; }',
+  '[data-testid="collection-empty-meta"] { display: inline-block; width: 220px; white-space: nowrap; overflow: hidden; vertical-align: bottom; }',
+].join('\n');
 /** One item in the panel as it stays: its kind line (the page count or length is read from the file, later) and its sections. */
 async function panelSettled(page: Page, kind: string | RegExp): Promise<void> {
   await expect(page.getByTestId('inspector-kind')).toHaveText(kind);
@@ -1204,7 +1212,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     await expect(s.page.getByTestId('collection-empty')).toBeVisible();
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
-      await shoot(s.page, `collection-empty-${theme}`, { mask: [s.page.getByTestId('collection-empty-meta')] });
+      await shoot(s.page, `collection-empty-${theme}`, { mask: [s.page.getByTestId('collection-empty-meta')], style: FIXED_DATE_BOXES });
     }
 
     // The special views: 최근 연 자료 (an item was opened), 미분류 and 중복 항목 (the same file imported again, in no collection).
@@ -1222,7 +1230,7 @@ test('organize: the sidebar tree with a selection, a row being named, an empty c
     const signal = await createCollection(s.page, '세포막 신호 전달');
     await treeRow(s.page, signal).click();
     await expect(s.page.getByTestId('collection-empty')).toBeVisible();
-    await shoot(s.page, 'collection-empty-long-light', { mask: [s.page.getByTestId('collection-empty-meta')] });
+    await shoot(s.page, 'collection-empty-long-light', { mask: [s.page.getByTestId('collection-empty-meta')], style: FIXED_DATE_BOXES });
   } finally {
     await s.app.close();
   }
@@ -1256,7 +1264,7 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await panelSettled(s.page, /^PDF/);
     for (const theme of THEMES) {
       await setTheme(s.page, theme);
-      await shoot(s.page, `trash-view-${theme}`, { mask: dates() });
+      await shoot(s.page, `trash-view-${theme}`, { mask: dates(), style: FIXED_DATE_BOXES });
     }
 
     // 영구 삭제… on that row, and 휴지통 비우기….
@@ -1284,7 +1292,7 @@ test('trash: the undo toast, the trash view and its read-only panel, the purge a
     await setTheme(s.page, 'light');
     await s.page.locator('[data-testid="trash-collection-row"]').first().click();
     await expect(s.page.getByTestId('inspector-kind')).toContainText('컬렉션');
-    await shoot(s.page, 'trash-collection-light', { mask: dates() });
+    await shoot(s.page, 'trash-collection-light', { mask: dates(), style: FIXED_DATE_BOXES });
 
     // The reader: its item moved to the trash.
     await setTheme(s.page, 'light');

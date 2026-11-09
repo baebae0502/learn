@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PREVIEW_MAX_PIXELS, previewMode } from './imagePreview';
+import { PREVIEW_MAX_PIXELS, previewMode } from './previewMode';
 
 const item = (imageSize: { width: number; height: number } | null | undefined, availability: 'available' | 'missing' = 'available') => ({ imageSize, availability });
 

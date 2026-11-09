@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Image, ImageOff } from 'lucide-react';
 import { assetUrl, type LibraryItem } from '@learn/domain';
 import { Icon } from '../ui/Icon';
-import { previewMode } from './imagePreview';
+import { previewMode } from './previewMode';
 
-export { PREVIEW_MAX_PIXELS } from './imagePreview';
+export { PREVIEW_MAX_PIXELS } from './previewMode';
 
 /**
  * The head's picture for one image (spec 4.6): the panel's content width, the picture's own proportions up to 160 high, on

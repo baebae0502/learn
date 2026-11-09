@@ -15,6 +15,7 @@
  *   reader-image   ?m=7c (M7c): &bg=light|dark|checker &img=small|transparent|diagram &zoom=width|400 &rotate=90 &menu=zoom|view
  *                  &state=loading|error|missing|trashed &w=1024 &sidebar=nopages
  *   library        ?m=7c (M7c): &search=scope-states|scope-menu (&indexing=1) &scope=fulltext&q=형광 &matches=3|many|loading|indexing|empty|locked
+ *                  |truncated|truncated-none (an index cut at 5,000 pages: its line under the rows, or alone)
  *                  (many: &scroll=end) &panel=image|image-large|pdf-indexing|pdf-failed &state=noresults&scope=fulltext (&indexing=1 | &onechar=1)
  *   library-empty  ?m=7c (M7c): the formats line with images (&w=1024) and &state=drop with 파일 3개(PDF 1 · 이미지 2)
  *   palette        ?state=none
@@ -493,6 +494,7 @@
     empty: '글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.',
     failed: '본문을 색인하지 못했습니다. 파일이 복잡하거나 손상되었을 수 있습니다.',
     locked: '암호로 보호된 PDF라 본문을 색인하지 않았습니다.',
+    truncated: '앞 5,000쪽까지 색인했습니다.',
   };
   function matchSection(kind) {
     const rows = (pages, states = []) =>
@@ -512,12 +514,19 @@
     } else if (kind === 'many') {
       head = sectionHead('본문 일치', count('쪽\u00a034개'));
       body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows(D.matchPages)}</div><div class="match-more" id="match-more">외 14쪽</div>`;
+    } else if (kind === 'truncated') {
+      // R68: a done index cut at a limit says so under its rows (the more line's 4 above it).
+      head = sectionHead('본문 일치', count('쪽\u00a03개'));
+      body = `<div class="match-list" role="listbox" aria-label="본문 일치">${rows([12, 31, 44])}</div><div class="match-status" role="status">${TEXT_STATUS.truncated}</div>`;
+    } else if (kind === 'truncated-none') {
+      // R68: no page matched in the pages read, so the cut is said alone — no match must not read as none in the whole file.
+      body = `<div class="match-status" role="status">${TEXT_STATUS.truncated}</div>`;
     } else if (kind === 'loading') {
       body = `<div class="loading"><span class="spinner"></span>찾는 중…</div>`;
     } else {
       body = `<div class="match-status" role="status">${TEXT_STATUS[kind]}</div>`;
     }
-    return `<section class="section" ${ms('M7c', '본문 일치 절(쪽 + 조각, 최대 20쪽 · 외 N쪽 · 찾는 중 · 색인 중 · 글자 없음 · 암호)')}>${head}${body}</section>`;
+    return `<section class="section" ${ms('M7c', '본문 일치 절(쪽 + 조각, 최대 20쪽 · 외 N쪽 · 찾는 중 · 색인 중 · 글자 없음 · 암호 · 잘린 색인)')}>${head}${body}</section>`;
   }
   const textRow = (kind) => `<dt>본문 검색</dt><dd class="status">${TEXT_STATUS[kind]}</dd>`;
 
@@ -542,6 +551,35 @@
     ];
   };
 
+  /** R68: a PDF past the 5,000-page limit, matched by its title (형광), so it is listed even when no page read matched. */
+  const BIG_BOOK = {
+    ...D.selectedItem,
+    title: '형광 현미경 기법 대사전 · 합본',
+    authors: '현미경 기법 편찬회',
+    year: 2021,
+    kindText: 'PDF 문서 · 6,240쪽',
+    info: [
+      ['저자', '현미경 기법 편찬회'],
+      ['연도', '2021'],
+      ['쪽수', '6,240쪽'],
+      ['언어', '한국어'],
+      ['추가일', '2026. 10. 2. 오후 3:12'],
+      ['수정일', '2026. 10. 2. 오후 3:12'],
+    ],
+    reading: { page: 412, pages: 6240, percent: 7, opened: '어제 오후 10:05' },
+    file: [
+      ['보관', '복사본 · 라이브러리 안'],
+      ['크기', '486.3 MB'],
+      ['원래 이름', 'fluorescence_microscopy_handbook.pdf'],
+    ],
+    sha: 'c58e01f7…',
+    shaFull: 'c58e01f7a3d92b6e04f1c87d5b2a9e3f6c0d4b18e7a5f2c93d6b0e8a17f4c25d',
+    tags: [],
+    plainTags: [],
+    collections: [['분자생물학']],
+  };
+  const BIG_BOOK_ROW = { id: 503, kind: 'pdf', title: BIG_BOOK.title, authors: BIG_BOOK.authors, year: 2021, progress: 7, added: '2026. 10. 2.', tags: [], mark: '형광' };
+
   function libraryWindow7c() {
     const q = (k) => params.get(k);
     const search = q('search');
@@ -557,14 +595,16 @@
 
     if (matches || (q('scope') === 'fulltext' && q('q') && state !== 'noresults')) {
       const kind = matches || '3';
-      header = libraryHeader({ count: '7개 / 48개', scope7c: { scope: 'full', value: q('q') || '형광', focus: false } });
+      const cut = kind === 'truncated' || kind === 'truncated-none';
+      header = libraryHeader({ count: cut ? '8개 / 48개' : '7개 / 48개', scope7c: { scope: 'full', value: q('q') || '형광', focus: false } });
       // matches=3: the keyboard is in the match list, so the table's selection is the neutral (unfocused) one.
-      table = libraryTable({ items: fulltextRows(), selectedIds: [1], focused: matches !== '3', cols: COLS_KIND, kindCol: true });
-      const withStatus = ['indexing', 'empty', 'locked'].includes(kind);
+      const rowsShown = cut ? [...fulltextRows().slice(0, 3), BIG_BOOK_ROW, ...fulltextRows().slice(3)] : fulltextRows();
+      table = libraryTable({ items: rowsShown, selectedIds: [cut ? 503 : 1], focused: matches !== '3', cols: COLS_KIND, kindCol: true });
+      const withStatus = ['indexing', 'empty', 'locked', 'truncated', 'truncated-none'].includes(kind);
       insp = inspectorItem({
-        ...D.selectedItem,
+        ...(cut ? BIG_BOOK : D.selectedItem),
         matches: matchSection(kind),
-        fileExtra: withStatus ? textRow(kind) : '',
+        fileExtra: withStatus ? textRow(cut ? 'truncated' : kind) : '',
         scrollTo: q('scroll') === 'end' ? '#match-more' : '',
       });
     } else if (state === 'noresults') {
@@ -1147,7 +1187,7 @@
     return `<div class="reader-toolbar">
       <div class="group" ${ms('M7a', '쪽 입력과 이전·다음 쪽')}>
         ${nav7b}
-        <div class="page-field ${dis} ${history ? 'after-nav' : ''}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div>${narrow ? '' : `<span class="num">/ ${pages}</span>`}</div>
+        <div class="page-field v2 ${dis} ${history ? 'after-nav' : ''}"><div class="field" title="쪽 번호 ⌥⌘G">${page}</div>${narrow ? '' : `<span class="num">/ ${pages}</span>`}</div>
         <span class="icon-btn ${dis}" title="이전 쪽 ←">${icon('chevron-up')}</span>
         <span class="icon-btn ${dis}" title="다음 쪽 →">${icon('chevron-down')}</span>
       </div>
@@ -2996,7 +3036,7 @@
   }
 
   // ── M7c: the image reader ──────────────────────────────────────────────────────────────────────────────────────────
-  const NO_PAGES_SIDEBAR = `<div class="pane-empty top" ${ms('M7c', '쪽 없음(이미지 리더의 사이드바 — 판단 질문)')}>${icon('image')}<div class="pe-title">이미지에는 쪽이 없습니다</div></div>`;
+  const NO_PAGES_SIDEBAR = `<div class="pane-empty top" ${ms('M7c', '쪽 없음 안내(이미지 리더의 사이드바, 모든 상태)')}>${icon('image')}<div class="pe-title">이미지에는 쪽이 없습니다</div></div>`;
 
   function imageZoomMenu(mode) {
     return `<div class="menu" data-anchor="zoom-btn" style="width:232px" role="menu" ${ms('M7c', '이미지 확대 메뉴(창에 맞춤 · 너비에 맞춤 · 실제 크기 · 확대 · 축소)')}>
@@ -3020,7 +3060,7 @@
       <div class="l">${note ? `<span class="image-note">${note}</span>` : ''}</div>
       <div class="zoom-field ${dis}" id="zoom-btn" ${ms('M7c', '이미지 확대 필드·▾ 단추')}>
         <div class="field" title="확대 비율">${zoom}</div>
-        <span class="icon-btn sm ${menu === 'zoom' ? 'is-pressed' : ''} ${dis}" title="확대 메뉴">${icon('chevron-down', 'xs')}</span>
+        <span class="icon-btn sm ${menu === 'zoom' ? 'is-pressed' : ''} ${dis}" id="zoom-menu-btn" title="확대 메뉴">${icon('chevron-down', 'xs')}</span>
       </div>
       <div class="r"><span class="btn small plain has-menu ${menu === 'view' ? 'is-pressed' : ''} ${dis}" id="view-btn" title="보기" ${ms('M7c', '이미지 보기 ▾ 단추')}>보기${icon('chevron-down', 'xs')}</span></div>
     </div>`;
@@ -3113,7 +3153,8 @@
     let overlays = '';
     if (menu === 'zoom') overlays = imageZoomMenu(mode);
     else if (menu === 'view') overlays = imageViewMenu({ bg });
-    else if (loading) overlays = `<span class="tooltip" data-anchor="zoom-btn" role="tooltip">이미지를 여는 중입니다</span>`;
+    // R46: the ▾ is disabled with a reason, so its tooltip is the name and the reason in secondary colour (design-spec 6), as the app's.
+    else if (loading) overlays = `<span class="tooltip" data-anchor="zoom-menu-btn" role="tooltip">확대 메뉴<span class="why">이미지를 여는 중입니다</span></span>`;
 
     const tabs = [
       { id: 'library', title: '라이브러리', icon: 'library-big', home: true },

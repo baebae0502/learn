@@ -3897,7 +3897,7 @@ h2,
 
 /* ── M7a: reader v2 (reader-pdf?m=7a), selection pop-up, translation section ───────────────────────────────────
    Built from tokens; values that are not tokens say "local". */
-/* The 24 px zoom field (13 pt) in the 44 px reader toolbar, with its menu arrow. */
+/* The 22 px zoom field (13 pt, --control-height-small as the app's, R46) in the 44 px reader toolbar, with its menu arrow. */
 .zoom-field {
   display: inline-flex;
   align-items: center;
@@ -3905,7 +3905,7 @@ h2,
 }
 .zoom-field .field {
   width: 56px; /* local: "125%" in 13 pt with its inset */
-  height: 24px; /* local: the page field's height */
+  height: var(--control-height-small);
   padding: 0 var(--space-4);
   justify-content: center;
   border-radius: var(--radius-sm);
@@ -3914,6 +3914,10 @@ h2,
 }
 .zoom-field.is-disabled {
   opacity: 0.4;
+}
+/* The M7a reader's page field is as high as its zoom field (22, R46, as the app's); the M1 reader keeps its 24 beside its 24 zoom button. */
+.page-field.v2 .field {
+  height: var(--control-height-small);
 }
 /* The selected text on the page (the text layer's own selection): the accent at a low alpha, over any page colour. */
 .pdf-page .sel {
@@ -4332,6 +4336,10 @@ h2,
 .scope-btn.is-focus {
   box-shadow: inset 0 0 0 2px var(--focus);
 }
+/* The glyph takes the button's colour (hover secondary, pressed and open primary), not the field's tertiary icon colour. */
+.field .scope-btn .icon {
+  color: inherit;
+}
 .scope-states {
   position: absolute;
   z-index: 30;
@@ -4435,6 +4443,10 @@ h2,
 .match-status {
   color: var(--text-secondary);
   font: var(--type-footnote);
+}
+/* A cut index's line under the rows (or 외 N쪽): the more line's 4 above it (R68). */
+:is(.match-list, .match-more) + .match-status {
+  padding-top: var(--space-4);
 }
 .kv dd.status {
   white-space: normal;

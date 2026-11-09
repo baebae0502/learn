@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { lastInput } from '../ui/inputModality';
 import { mountedTabs } from '../state/tabs';
 import { useShell } from '../state/shell-store';
-import { useTabItem } from '../shell/useTabItem';
+import { tabId, tabPanelId, useTabPanelsMounted } from '../shell/tabPanels';
 import { ViewerHost } from './ViewerHost';
 import { readerScopes, setActiveReaderScope } from './readerScope';
 
@@ -32,6 +32,7 @@ export function ReaderTabs() {
     for (const id of readerScopes.ids()) if (!open.has(id)) readerScopes.drop(id);
   }, [tabs.tabs]);
 
+  useTabPanelsMounted('readers', order.current);
   return (
     <>
       {order.current.map((id) => (
@@ -42,7 +43,6 @@ export function ReaderTabs() {
 }
 
 function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
-  const title = useTabItem(itemId).item?.title;
   const box = useRef<HTMLDivElement>(null);
   /** What had the focus in this reader when it was last shown: a hidden (inert) panel loses its focus, and shown again has none. */
   const lastFocus = useRef<HTMLElement | null>(null);
@@ -64,8 +64,9 @@ function TabPanel({ itemId, active }: { itemId: string; active: boolean }) {
     <div
       ref={box}
       className="tab-panel"
+      id={tabPanelId(itemId)}
       role="tabpanel"
-      aria-label={title}
+      aria-labelledby={tabId(itemId)}
       hidden={!active}
       inert={!active}
       data-testid="tab-panel"

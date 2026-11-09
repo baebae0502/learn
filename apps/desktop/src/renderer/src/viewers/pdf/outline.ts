@@ -110,3 +110,15 @@ export async function outlinePages(
   }
   return pages;
 }
+
+/** After the user scrolls the outline themselves, the reader's page does not pull it back for this long. */
+export const OUTLINE_FOLLOW_PAUSE_MS = 2000;
+
+/** The scrollTop that shows row `index` of a virtual list by the least movement, or null when it is already in view. */
+export function outlineScrollTarget(o: { index: number; rowHeight: number; scrollTop: number; viewport: number }): number | null {
+  const top = o.index * o.rowHeight;
+  const bottom = top + o.rowHeight;
+  if (top < o.scrollTop) return top;
+  if (bottom > o.scrollTop + o.viewport) return Math.max(0, bottom - o.viewport);
+  return null;
+}

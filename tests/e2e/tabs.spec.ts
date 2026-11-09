@@ -6,6 +6,7 @@ import {
   holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 import { holdReplies } from './dnd-helpers';
+import { expectNoSeriousA11y } from './a11y';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages
 const PAGE = 7;
@@ -170,6 +171,49 @@ test('opening items makes tabs; the library tab switches back and forth', async 
     await expect(page.getByTestId('library-table')).toHaveCount(0);
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${a!.id}"]`)).toHaveAttribute('data-active', 'true');
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${b!.id}"]`)).toHaveAttribute('data-active', 'false');
+  } finally {
+    await app.close();
+  }
+});
+
+test('tabs and panels are linked: a tab points at its mounted panel, a panel is named by its tab, the library content is a panel', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const items = await importPaths(page, pdfCopies(testInfo.outputPath('src'), 5));
+    const titles = ['doc-01', 'doc-02', 'doc-03', 'doc-04', 'doc-05'];
+    for (const [i, title] of titles.entries()) {
+      if (i > 0) await libraryTab(page).click();
+      await openItem(page, title);
+      await expect(page.getByTestId('pdf-page-field')).toBeVisible();
+      await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${items[i]!.id}"]`)).toHaveAttribute('data-active', 'true');
+    }
+    // Five readers and a cap of four: the first reader's panel is gone, and its tab points at nothing.
+    await expect(panels(page)).toHaveCount(4);
+    await expect(readerTab(page, items[0]!.id)).not.toHaveAttribute('aria-controls', /.*/);
+    for (const item of items.slice(1)) {
+      const tab = readerTab(page, item.id);
+      await expect(tab).toHaveAttribute('id', `tab-${item.id}`);
+      await expect(tab).toHaveAttribute('aria-controls', `tabpanel-${item.id}`);
+      const panel = page.locator(`#tabpanel-${item.id}`);
+      await expect(panel).toHaveAttribute('data-item-id', item.id);
+      await expect(panel).toHaveAttribute('role', 'tabpanel');
+      await expect(panel).toHaveAttribute('aria-labelledby', `tab-${item.id}`);
+      await expect(panel).not.toHaveAttribute('aria-label', /.*/);
+    }
+    // The library's content leaves the page while a reader is shown, and its tab stops pointing at it.
+    await expect(page.locator('#tabpanel-library')).toHaveCount(0);
+    await expect(libraryTab(page)).not.toHaveAttribute('aria-controls', /.*/);
+    await libraryTab(page).click();
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(libraryTab(page)).toHaveAttribute('id', 'tab-library');
+    await expect(libraryTab(page)).toHaveAttribute('aria-controls', 'tabpanel-library');
+    const library = page.locator('#tabpanel-library');
+    await expect(library).toHaveAttribute('role', 'tabpanel');
+    await expect(library).toHaveAttribute('aria-labelledby', 'tab-library');
+    await expect(library.getByTestId('library-table')).toBeVisible();
+    await expect(page.getByRole('tabpanel', { name: '라이브러리' })).toHaveCount(1);
+    await expect(page.getByRole('tabpanel', { name: 'doc-02', includeHidden: true })).toHaveAttribute('data-item-id', items[1]!.id);
+    await expectNoSeriousA11y(page, 'tab strip with panels');
   } finally {
     await app.close();
   }
@@ -1049,7 +1093,7 @@ test('a relaunch names every tab in its first frame, and the sidebar segment nev
           title: t.querySelector('.title')?.textContent ?? '',
           icon: t.querySelector('svg')?.getAttribute('class')?.match(/lucide-[a-z-]+/)?.[0] ?? '',
         }));
-        const labels = [...document.querySelectorAll<HTMLElement>('[data-testid="tab-panel"]')].map((p) => p.getAttribute('aria-label') ?? '');
+        const labels = [...document.querySelectorAll<HTMLElement>('[data-testid="tab-panel"]')].map((p) => document.getElementById(p.getAttribute('aria-labelledby') ?? '')?.textContent?.trim() ?? '');
         const group = document.querySelector('[data-testid="reader-nav"]');
         const seg = group === null ? 'none' : (['thumbnails', 'outline'].find((v) => group.querySelector(`[data-testid="reader-nav-${v}"][data-selected]`)) ?? 'unchosen');
         frames.push({ tabs, labels, seg });

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
-import { currentOutlineId, filterOutline, OUTLINE_BATCH, outlinePages, outlineRows, type PdfOutlineNode } from './outline';
+import { currentOutlineId, filterOutline, OUTLINE_BATCH, outlineScrollTarget, outlinePages, outlineRows, type PdfOutlineNode } from './outline';
 
 const node = (title: string, items: PdfOutlineNode[] = [], extra: Partial<PdfOutlineNode> = {}): PdfOutlineNode =>
   ({ title, bold: false, italic: false, color: new Uint8ClampedArray([0, 0, 0]), dest: null, url: null, unsafeUrl: undefined, newWindow: undefined, count: undefined, items, ...extra }) as PdfOutlineNode;
@@ -148,5 +148,28 @@ describe('outlinePages', () => {
       });
       expect(batches).toEqual([32]);
     });
+  });
+});
+
+describe('outlineScrollTarget', () => {
+  const at = (index: number, scrollTop: number, viewport = 280) => outlineScrollTarget({ index, rowHeight: 28, scrollTop, viewport });
+  it('a row above the window is brought to its top edge', () => {
+    expect(at(2, 280)).toBe(56);
+  });
+  it('a row below the window is brought to the bottom edge', () => {
+    // Row 30 spans 840–868: the window ends there when it starts at 588.
+    expect(at(30, 0)).toBe(588);
+  });
+  it('a row in view needs no scroll, a row partly in view does', () => {
+    expect(at(5, 0)).toBeNull();
+    expect(at(9, 0)).toBeNull();
+    expect(at(10, 0)).toBe(28);
+    expect(at(3, 100)).toBe(84);
+  });
+  it('never goes below 0, whatever the window is', () => {
+    expect(at(0, 0)).toBeNull();
+    expect(at(1, 0, 10)).toBe(46);
+    expect(at(0, 0, 10)).toBe(18);
+    expect(outlineScrollTarget({ index: 0, rowHeight: 28, scrollTop: 14, viewport: 10 })).toBe(0);
   });
 });

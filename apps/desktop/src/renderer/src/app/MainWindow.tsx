@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { columnsMask, commandById, commandLabel, commandMention, tagPositionsMask, type AppInfo, type LibraryItem, type Prefs, type Result, type StorageMode } from '@learn/domain';
 import { ApiError, api, unwrap } from '../api';
 import { CommandProvider } from '../commands/CommandProvider';
@@ -69,6 +69,7 @@ import { TagSelector } from '../tags/TagSelector';
 import { useLibrary } from '../state/library-store';
 import { useShell } from '../state/shell-store';
 import { TabBar } from '../shell/TabBar';
+import { tabId, tabPanelId, useTabPanelsMounted } from '../shell/tabPanels';
 import { useTabKind } from '../shell/useTabItem';
 import { t } from '../strings';
 import { currentPlatform, readWindowParams } from '../ui/platform';
@@ -693,13 +694,23 @@ export function MainWindow(_props: { info: AppInfo }) {
           </>
         }
       >
-        {view.kind === 'library' && library}
+        {view.kind === 'library' && (tabsOpen ? <LibraryPanel>{library}</LibraryPanel> : library)}
         <ReaderTabs />
       </Shell>
       </ScopeViewProvider>
       {(items.isSuccess || items.isError) && scopeReady && sidebarReady && <div data-testid="app-ready" data-at={readyAt.current} hidden />}
       <ImportQueueMarker />
     </CommandProvider>
+  );
+}
+
+/** The library's content while reader tabs exist: the panel of the library tab (the same box a reader's panel is). */
+function LibraryPanel({ children }: { children: ReactNode }) {
+  useTabPanelsMounted('library', ['library']);
+  return (
+    <div className="tab-panel" id={tabPanelId('library')} role="tabpanel" aria-labelledby={tabId('library')} data-testid="library-panel">
+      {children}
+    </div>
   );
 }
 

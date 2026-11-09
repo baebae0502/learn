@@ -1626,6 +1626,63 @@ test('a long outline goes through the virtualizer with the same tree: rows keep 
 });
 
 test('the outline rows keep their height when many are open (paper-100, every chapter opened)', async ({}, testInfo) => {
+test('the outline scrolls its current entry into view, and leaves the list alone for two seconds after the user scrolled it', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [LONG_OUTLINE]);
+    await openItem(page, 'long-outline');
+    await expect(viewer(page)).toHaveAttribute('data-pages', '6');
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+    await page.getByTestId('reader-nav').getByText('목차', { exact: true }).click();
+    const tree = page.getByTestId('pdf-outline');
+    await expect(tree).toBeVisible();
+    const goTo = async (n: number) => {
+      await field(page).fill(String(n));
+      await field(page).press('Enter');
+    };
+    const scrollTop = () => tree.evaluate((el) => el.scrollTop);
+    /** Whether the current row is drawn and lies inside the tree's box. */
+    const currentInView = () =>
+      page.evaluate(() => {
+        const box = document.querySelector('[data-testid="pdf-outline"]')!.getBoundingClientRect();
+        const mark = document.querySelector('[data-testid="pdf-outline-row"] [aria-current="location"]');
+        const r = mark?.closest('[data-testid="pdf-outline-row"]')?.getBoundingClientRect();
+        return r !== undefined && r.top >= box.top - 1 && r.bottom <= box.bottom + 1;
+      });
+    await goTo(6);
+    await expect(viewer(page)).toHaveAttribute('data-page', '6');
+    await expect(tree).toHaveAttribute('data-current', '59.3');
+    await expect.poll(currentInView).toBe(true);
+    expect(await scrollTop()).toBeGreaterThan(0);
+
+    // The user scrolls the list to its top; the page moves on within two seconds: the current entry changes and the list stays.
+    await tree.hover();
+    await page.mouse.wheel(0, -100000);
+    await expect.poll(scrollTop).toBe(0);
+    await goTo(5);
+    await expect(viewer(page)).toHaveAttribute('data-page', '5');
+    // The same path followed the page above, so this is the pause and not a list that cannot follow.
+    await expect(tree).toHaveAttribute('data-current', '49.3');
+    expect(await scrollTop()).toBe(0);
+
+    // After the two seconds the next page turn is followed again.
+    let next = 6;
+    await expect
+      .poll(
+        async () => {
+          await goTo(next);
+          next = next === 6 ? 5 : 6;
+          return scrollTop();
+        },
+        { timeout: 15_000 },
+      )
+      .toBeGreaterThan(0);
+    await expect.poll(currentInView).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);

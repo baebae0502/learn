@@ -8,6 +8,7 @@ import { currentPlatform } from '../ui/platform';
 import { showToast } from '../ui/toasts';
 import { useTabReorder } from './useTabReorder';
 import { readerWindowTitle } from '../viewers/readerTitle';
+import { tabId, tabPanelId, useHasTabPanel } from './tabPanels';
 import { useTabItem } from './useTabItem';
 import { useShell } from '../state/shell-store';
 import type { TabId } from '../state/tabs';
@@ -191,6 +192,7 @@ function closeHint(): string {
 
 function Tab(props: { id: string; selected: boolean; title: string; icon: typeof FileText; home?: boolean; onChoose(): void; onClose?(): void; onMenu?(e: MouseEvent): void }) {
   const { id, selected, title, home } = props;
+  const hasPanel = useHasTabPanel(id);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
@@ -203,7 +205,9 @@ function Tab(props: { id: string; selected: boolean; title: string; icon: typeof
   return (
     <div className={cx('tab-item', home && 'home', selected && 'is-active')} onContextMenu={props.onMenu}>
       <div
+        id={tabId(id)}
         role="tab"
+        aria-controls={hasPanel ? tabPanelId(id) : undefined}
         className="tab"
         data-testid="tab"
         data-item-id={id}

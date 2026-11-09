@@ -1041,6 +1041,8 @@ test('images dropped on the window come in with their icon, the kind 이미지, 
     // Never opened: no reading section. Opened and drawn: ✓ 완료 and the day it was viewed.
     await rowByTitle(page, 'still').click();
     await expect(kindLine(page)).toHaveText('이미지 · 40 × 30');
+    // The section is cached as "never opened" before the open: the info section (rendered with the same detail) is there first.
+    await expect(page.getByTestId('info-section')).toBeVisible();
     await expect(page.getByTestId('reading-section')).toHaveCount(0);
     await openItem(page, 'still');
     await drawn(page);

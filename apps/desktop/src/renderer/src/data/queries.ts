@@ -18,6 +18,8 @@ export const keys = {
   detail: (itemId: string) => ['library', 'detail', itemId] as const,
   /** An item's edited copies (M6 spec 6): under its detail, so whatever reads the detail again reads these too. */
   editedCopies: (itemId: string) => ['library', 'detail', itemId, 'editedCopies'] as const,
+  /** The 읽기 section's position of one item; main's position and opened notices invalidate it (libraryChange.ts). */
+  reading: (itemId: string) => ['reading', itemId] as const,
   panes: ['settings', 'layout.panes'] as const,
   tabs: ['settings', 'ui.tabs'] as const,
   /** The table's library settings (spec §3.1, §3.2): read once, then written optimistically (useLibrarySettings). */
@@ -98,6 +100,10 @@ export const libraryChanges = createChangeHandler({
   },
   invalidateTexts: () => void queryClient.invalidateQueries({ queryKey: keys.searchTexts }),
   invalidateDetail: (itemId) => void queryClient.invalidateQueries({ queryKey: keys.detail(itemId) }),
+  invalidateReading: (ids) => {
+    if (ids === null) void queryClient.invalidateQueries({ queryKey: ['reading'] });
+    else for (const id of ids) void queryClient.invalidateQueries({ queryKey: keys.reading(id) });
+  },
   invalidateBody: () => void queryClient.invalidateQueries({ queryKey: ['search'] }),
   whenIdle,
   setTimer: (fn, ms) => setTimeout(fn, ms),

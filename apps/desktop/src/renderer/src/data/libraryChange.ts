@@ -22,6 +22,8 @@ export interface ChangeDeps {
   invalidateTexts(): void;
   /** One item's detail (its body state is part of it), nothing else of the item. */
   invalidateDetail(itemId: string): void;
+  /** The 읽기 section's cache of these items (null: all of them): a position or an open moved it, and the section is not mounted to hear it while a reader is shown. */
+  invalidateReading(itemIds: string[] | null): void;
   /** The body search results (['search']): they are not under ['library']. */
   invalidateBody(): void;
   /** Runs `fn` at the window's next idle moment, or after `ms` at the latest; the answer cancels it. */
@@ -149,6 +151,7 @@ export function createChangeHandler(d: ChangeDeps): ChangeHandler {
         return;
       }
       const ids = itemIds === undefined ? [] : [...new Set(itemIds)];
+      if (reason === 'position' || reason === 'opened') d.invalidateReading(ids.length === 0 ? null : ids);
       // Body text moved on: the panel's state changes now, the body matches once in a while (a job ends every few seconds).
       if (reason === 'text') {
         for (const id of ids) d.invalidateDetail(id);

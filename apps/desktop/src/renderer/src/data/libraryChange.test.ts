@@ -10,7 +10,7 @@ const item = (id: string, over: Partial<LibraryItem> = {}): LibraryItem => ({
 const LIST = [item('a'), item('b'), item('c')];
 
 function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; fresh?: (ids: string[]) => Promise<LibraryItem[]> } = {}) {
-  const calls = { all: 0, organize: 0, trash: 0, texts: 0, detail: [] as string[], body: 0, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
+  const calls = { all: 0, organize: 0, trash: 0, texts: 0, detail: [] as string[], body: 0, reading: [] as Array<string[] | null>, items: [] as string[], put: [] as (readonly LibraryItem[])[], getItems: [] as string[][] };
   let list: readonly LibraryItem[] | undefined = 'list' in over ? over.list : LIST;
   // A clock, timers and idle callbacks that the test runs by hand.
   const clock = { t: 0 };
@@ -35,6 +35,7 @@ function setup(over: { list?: LibraryItem[] | undefined; refetching?: boolean; f
     invalidateTexts: () => void (calls.texts += 1),
     invalidateDetail: (id) => void calls.detail.push(id),
     invalidateBody: () => void (calls.body += 1),
+    invalidateReading: (ids) => void calls.reading.push(ids),
     whenIdle: (fn) => {
       const id = nextId++;
       idles.set(id, fn);
@@ -319,3 +320,18 @@ describe('a tag change this window made is not read again (P3)', () => {
   });
 });
 
+describe('the reading section\'s cache (the panel is not mounted while a reader is shown, so this handler answers for it)', () => {
+  it('invalidates the readings of the items a saved position or an open names, and only those reasons', () => {
+    const { handle, calls } = setup();
+    handle({ reason: 'position', itemIds: ['a', 'b'] });
+    handle({ reason: 'opened', itemIds: ['c'] });
+    expect(calls.reading).toEqual([['a', 'b'], ['c']]);
+    for (const reason of ['metadata', 'relink', 'availability', 'tags', 'collections', 'text', 'trash', 'restore'] as const) handle({ reason, itemIds: ['a'] });
+    expect(calls.reading).toEqual([['a', 'b'], ['c']]);
+  });
+  it('invalidates every reading when the notice names no item', () => {
+    const { handle, calls } = setup();
+    handle({ reason: 'position' });
+    expect(calls.reading).toEqual([null]);
+  });
+});

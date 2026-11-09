@@ -104,6 +104,14 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
       sheetMs.push(await elapsed());
       await closeSheet(sheet, 'Escape');
     }
+    // The old cadence: ⌘/ 300 ms after the last close, inside PREPARE_AGAIN_MS, so the sheet makes its own window. Reported only.
+    const quickMs: number[] = [];
+    for (let i = 0; i < OPENS; i++) {
+      const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
+      quickMs.push(await elapsed());
+      await closeSheet(sheet, 'Escape');
+      await s.page.waitForTimeout(300);
+    }
     for (let i = 0; i < OPENS; i++) {
       const settings = await expectWindow(s.app, 'settings', () => click('app.settings'));
       settingsMs.push(await elapsed());
@@ -111,14 +119,14 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
       await s.page.waitForTimeout(300);
     }
     const result = {
-      runsMs: { sheet: sheetMs, settings: settingsMs },
-      medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
+      runsMs: { sheet: sheetMs, sheetQuickReopen: quickMs, settings: settingsMs },
+      medianMs: { sheet: median(sheetMs), sheetQuickReopen: median(quickMs), settings: median(settingsMs) },
       // The first open in a new session (report, not tune: checklist 7.1): the settings window shows the one main prepared.
       coldFirstMs: { runs: cold, median: { sheet: median(cold.sheet), settings: median(cold.settings) } },
       // The first open in this session: the ⌘/ sheet shows in the window main made ahead (as each one here), the settings
       // window was prepared.
       firstOpenMs: { sheet: sheetMs[0]!, settings: settingsMs[0]! },
-      // Targets, reported: the ⌘/ sheet's median, and the settings window's first open of a new session.
+      // Targets, reported: the ⌘/ sheet's median (sheet = steady state, the window made ahead is ready; sheetQuickReopen = a reopen 300 ms after a close, its own window, not gated), and the settings window's first open of a new session.
       targetMs: 250,
       firstOpenTargetMs: { settings: 300 },
       memory,

@@ -9,10 +9,13 @@ import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
 const prefsFile = (ud: string) => JSON.parse(fs.readFileSync(path.join(ud, 'preferences.json'), 'utf8')) as Record<string, unknown>;
-/** Every window, on purpose: the settings window must be one window, opened once. */
-/** The windows there are, not counting the ⌘/ sheet window main keeps prepared, hidden. */
-const windowCount = (app: ElectronApplication) =>
-  app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => w.isVisible() || !w.webContents.getURL().includes('window=sheet')).length);
+/**
+ * How many windows of one `?window=` kind there are: the settings window must be one window, opened once. Counted by kind, not
+ * all windows: the ⌘/ sheet window main prepares at a main window's first idle has no URL while it loads, so it cannot be told
+ * apart and a total races with it.
+ */
+const windowsOf = (app: ElectronApplication, kind: 'main' | 'settings') =>
+  app.evaluate(({ BrowserWindow }, kind) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed() && w.webContents.getURL().includes(`window=${kind}`)).length, kind);
 /** The settings window's BrowserWindow, evaluated in main. */
 const settingsWindow = (app: ElectronApplication) =>
   app.evaluateHandle(({ BrowserWindow }) => {
@@ -48,7 +51,7 @@ test('⌘, opens one 600 px settings window; theme, density and text size apply 
     await expect.poll(() => settings.title()).toBe('설정'); // set by an effect after the first render (R-21)
     expect(await (await settingsWindow(app)).evaluate((w) => w.isResizable())).toBe(false);
     await runMenuCommand(app, 'app.settings'); // brings the same window forward
-    expect(await windowCount(app)).toBe(2);
+    expect([await windowsOf(app, 'settings'), await windowsOf(app, 'main')]).toEqual([1, 1]);
     await expect.poll(() => settingsFitsContent(app, settings)).toBe(true);
 
     // Each window has its own window state: the settings window is key, the main window is not (and the reverse).
@@ -454,15 +457,16 @@ test('macOS: with only the settings window left, activate (dock click) opens a n
   try {
     await expectWindow(app, 'settings', () => runMenuCommand(app, 'app.settings'));
     await (await mainWindow(app)).evaluate((w) => w.close());
-    await expect.poll(() => windowCount(app)).toBe(1); // the settings window keeps the app running
+    // The settings window keeps the app running, alone.
+    await expect.poll(async () => [await windowsOf(app, 'settings'), await windowsOf(app, 'main')]).toEqual([1, 0]);
     const reopened = app.waitForEvent('window');
     await app.evaluate(({ app: electronApp }) => electronApp.emit('activate'));
     const main = await reopened;
     await expect.poll(() => main.url()).toContain('window=main');
     await expect(main.getByTestId('app-ready')).toBeAttached();
-    // ⌘, now places the existing settings window, still one.
+    // ⌘, now places the existing settings window, still one, beside the one new main window.
     await runMenuCommand(app, 'app.settings');
-    expect(await windowCount(app)).toBe(2);
+    expect([await windowsOf(app, 'settings'), await windowsOf(app, 'main')]).toEqual([1, 1]);
   } finally {
     await app.close();
   }

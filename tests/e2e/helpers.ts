@@ -141,13 +141,14 @@ export function mainWindow(app: ElectronApplication) {
 /**
  * Every window by its `?window=` kind, sorted, with " (hidden)" after one not on screen — e.g. ['main', 'settings (hidden)']:
  * the settings window main prepares ahead of ⌘, is there from launch on. The ⌘/ sheet window main keeps prepared, hidden,
- * is left out: it comes and goes a second after each ⌘/ sheet closes, so no count of windows could rely on it.
+ * is left out: it comes and goes a second after each ⌘/ sheet closes and is made again at a main window's first idle, so no
+ * count of windows could rely on it. While it loads it has no URL yet, so a hidden window with no kind is left out too.
  */
 export const windowKinds = (app: ElectronApplication): Promise<string[]> =>
   app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
       .filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed())
-      .filter((w) => w.isVisible() || !w.webContents.getURL().includes('window=sheet'))
+      .filter((w) => w.isVisible() || /[?&]window=(?!sheet\b)\w+/.test(w.webContents.getURL()))
       .map((w) => `${/[?&]window=(\w+)/.exec(w.webContents.getURL())?.[1] ?? ''}${w.isVisible() ? '' : ' (hidden)'}`)
       .sort(),
   );

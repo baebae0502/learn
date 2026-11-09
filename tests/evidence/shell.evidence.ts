@@ -14,7 +14,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import {
   FIXTURES, KEY_CODE, NativeInputNotPermitted, bringAppToFront, bringFinderToFront, closeReaderTab, closeSheet, expectDisabledReason, expectWindow, frontmostProcess, importFiles, importPaths,
-  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog,
+  launch, mainWindow, menuItemEnabled, menuSnapshot, nativeKeyCode, nativeKeystroke, openItem, osascript, restoreOpenDialog, rowByTitle, runMenuCommand, stubContextMenu, stubOpenDialog, windowKinds,
   type LaunchOptions,
   type Session,
 } from '../e2e/helpers';
@@ -392,7 +392,8 @@ async function leaveFullScreen(win: Awaited<ReturnType<typeof mainWindow>>): Pro
 let tmp = '';
 let s: Session;
 const windowWidth = async (app: ElectronApplication) => (await mainWindow(app)).evaluate((w) => w.getBounds().width);
-const windowCount = (app: ElectronApplication) => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
+/** The windows a person could see or open (windowKinds): not the ⌘/ sheet window main prepares hidden, which comes and goes on its own. */
+const windowCount = async (app: ElectronApplication) => (await windowKinds(app)).length;
 const padding = (page: Page) =>
   page.getByTestId('toolbar').evaluate((el) => ({ left: parseFloat(getComputedStyle(el).paddingLeft), right: parseFloat(getComputedStyle(el).paddingRight) }));
 

@@ -565,6 +565,11 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     await page.waitForTimeout(500);
     const inputToPaintMs: number[] = [];
     let unpainted = 0;
+    // A body answer's redraw is marked learn:table:body-painted (LibraryView), so it is never an input's paint. The inputs
+    // with such a redraw between them and their own paint are counted: read as one mark, they were timed by the answer.
+    let answerFirst = 0;
+    const answerPaintsBetween = (t0: number, t1: number) =>
+      page.evaluate(([t0, t1]) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === 'learn:table:body-painted' && m.at > t0 && m.at < t1).length, [t0, t1] as const);
     const timeInput = async (act: () => Promise<void>) => {
       const before = await inputCount();
       await act();
@@ -572,7 +577,10 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       const t0 = await page.evaluate((i) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.inputs[i]!, before);
       const painted = await paintedAfter(t0);
       if (painted === null) unpainted++;
-      else inputToPaintMs.push(Math.round(painted - t0));
+      else {
+        inputToPaintMs.push(Math.round(painted - t0));
+        if ((await answerPaintsBetween(t0, painted)) > 0) answerFirst++;
+      }
     };
     // The quick search measures of the timed inputs only: the warm-up query above is left out.
     const measuresBefore = (await page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures)).filter((m) => m.name === 'learn:search').length;
@@ -716,18 +724,20 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     const bodyCalls = async () => (await ipcCalls(s.app))['search:body'] ?? 0;
     // The first body search reads the page text from disk: not timed. Its answer adds the body matches, a frame of its own.
     const warm = await bodyCalls();
-    const paintsSince = (t0: number) =>
-      page.evaluate((t0) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === 'learn:table:painted' && m.at > t0).length, t0);
+    const paintsSince = (t0: number, name: string) =>
+      page.evaluate(([t0, name]) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === name && m.at > t0).length, [t0, name] as const);
     const warmFrom = await page.evaluate(() => performance.now());
     await page.keyboard.insertText('세포');
     await expect.poll(bodyCalls, { message: 'the warm-up query went to search:body' }).toBeGreaterThan(warm);
-    await expect.poll(() => paintsSince(warmFrom), { message: 'the metadata matches, then the body matches (every PDF added has 세포) were drawn' }).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => paintsSince(warmFrom, 'learn:table:painted'), { message: 'the metadata matches were drawn' }).toBeGreaterThanOrEqual(1);
+    await expect.poll(() => paintsSince(warmFrom, 'learn:table:body-painted'), { message: 'the body matches (every PDF added has 세포) were drawn' }).toBeGreaterThanOrEqual(1);
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Backspace');
     await expect(field).toHaveValue('');
     const fulltextMs: number[] = [];
     const inputsBefore = inputToPaintMs.length;
     const unpaintedBefore = unpainted;
+    const answerFirstMetadata = answerFirst;
     const callsBefore = await bodyCalls();
     for (const step of [...steps, ...extra.tag]) {
       for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
@@ -737,6 +747,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     }
     fulltextMs.push(...inputToPaintMs.splice(inputsBefore));
     const bodySearches = (await bodyCalls()) - callsBefore;
+    const answerFirstFulltext = answerFirst - answerFirstMetadata;
     expect(unpainted - unpaintedBefore, 'every search input in 정보와 본문 re-drew the rows').toBe(0);
     expect(fulltextMs.length, 'enough inputs in 정보와 본문 for a p95').toBeGreaterThanOrEqual(20);
 
@@ -748,8 +759,8 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       listIpcMs: { runs: listIpcMs, median: median(listIpcMs), m4BaselineMs: M4_LIST_IPC_MS, vsM4Ms: median(listIpcMs) - M4_LIST_IPC_MS },
       organizeFixture: { collections: organize.fixture.spec.collections, tags: organize.fixture.spec.tags, memberships: organize.fixture.spec.memberships, assignments: organize.fixture.spec.assignments, duplicateGroups: organize.fixture.spec.duplicateGroups },
       firstPaintMs: { runs: firstPaintMs, median: median(firstPaintMs) },
-      inputToPaintMs: { inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
-      inputToPaintFulltextMs: { scope: 'fulltext', bodyDocs, bodySearches, inputs: fulltextMs.length, runs: fulltextMs, median: median(fulltextMs), p95: percentile(fulltextMs, 95) },
+      inputToPaintMs: { answerPaintBeforeOwn: answerFirstMetadata, inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintFulltextMs: { scope: 'fulltext', bodyDocs, bodySearches, answerPaintBeforeOwn: answerFirstFulltext, inputs: fulltextMs.length, runs: fulltextMs, median: median(fulltextMs), p95: percentile(fulltextMs, 95) },
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
       searchTextsPayload,
       paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
@@ -764,7 +775,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     console.log(
       '[measure] library',
       JSON.stringify({
-        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, inputFulltextP95: result.inputToPaintFulltextMs.p95, searchP95: result.searchMs.p95,
+        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, inputFulltextP95: result.inputToPaintFulltextMs.p95, answerPaintBeforeOwn: result.inputToPaintFulltextMs.answerPaintBeforeOwn, searchP95: result.searchMs.p95,
         paletteP95: result.paletteInputToPaintMs.p95, textsBytes: result.searchTextsPayload.bytes,
         scrollP95: result.scrollFrameMs.p95, sort: result.sortToPaintMs.median, inspector: result.inspectorToPaintMs.median,
       }),

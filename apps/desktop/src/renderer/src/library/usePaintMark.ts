@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { perfMark, perfMarkLatest, type PerfMark } from '../ui/perfMarks';
 
 /** Names already marked once in this window (the first rows after the list arrived). */
@@ -12,15 +12,19 @@ const firstMarked = new Set<PerfMark>();
  * A window that draws no frames records nothing; it only measures.
  */
 export function usePaintMark(name: PerfMark, key: unknown, first?: PerfMark): void {
+  // The name may say why `key` changed (LibraryView: an input's rows or a body answer's): a new name alone is no redraw.
+  const latestName = useRef(name);
+  latestName.current = name;
   useLayoutEffect(() => {
     if (key === null) return;
+    const mark = latestName.current;
     const id = requestAnimationFrame(() => {
-      perfMarkLatest(name);
+      perfMarkLatest(mark);
       if (first && !firstMarked.has(first)) {
         firstMarked.add(first);
         perfMark(first);
       }
     });
     return () => cancelAnimationFrame(id);
-  }, [name, key, first]);
+  }, [key, first]);
 }

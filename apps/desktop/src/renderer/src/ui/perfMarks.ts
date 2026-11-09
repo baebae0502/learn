@@ -29,6 +29,7 @@ export type PerfMark =
   | 'import:end'
   | 'table:render'
   | 'table:painted'
+  | 'table:body-painted'
   | 'table:first-paint'
   | 'inspector:render'
   | 'palette:painted'

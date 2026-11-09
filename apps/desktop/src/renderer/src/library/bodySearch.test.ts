@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../strings';
-import { BODY_SETTLE_MS, bodyQueryable, createSettle, emptyNote, indexing, mergeBodyResult, parseSearchScope } from './bodySearch';
+import { BODY_SETTLE_MS, bodyQueryable, createSettle, emptyNote, indexing, mergeBodyResult, parseSearchScope, rowsPaintMark } from './bodySearch';
 import type { SearchResult } from './search';
 
 const meta = (ids: string[], marked: string[] = ids): SearchResult => ({
@@ -183,5 +183,22 @@ describe('createSettle (the query the body is searched for, one timer for the wi
     s.ask('형광');
     c.advance(BODY_SETTLE_MS);
     expect(calls).toBe(0);
+  });
+});
+
+describe('rowsPaintMark (which mark a redraw of the rows gets)', () => {
+  const a = { itemIds: ['x'], searched: true };
+  const b = { itemIds: ['x', 'y'], searched: true };
+  it('a body answer that came with no new query is its own paint, not an input\'s', () => {
+    expect(rowsPaintMark({ answer: undefined, query: '형광' }, { answer: a, query: '형광' })).toBe('table:body-painted');
+    expect(rowsPaintMark({ answer: a, query: '형광' }, { answer: b, query: '형광' })).toBe('table:body-painted');
+  });
+  it('a new query is an input\'s paint, whatever the answer did (a cached one comes with it)', () => {
+    expect(rowsPaintMark({ answer: undefined, query: '형' }, { answer: a, query: '형광' })).toBe('table:painted');
+    expect(rowsPaintMark({ answer: a, query: '형광' }, { answer: undefined, query: '형광 현' })).toBe('table:painted');
+  });
+  it('the same answer and query (a sort, a list read, a tag filter) is the table\'s paint', () => {
+    expect(rowsPaintMark({ answer: a, query: '형광' }, { answer: a, query: '형광' })).toBe('table:painted');
+    expect(rowsPaintMark({ answer: undefined, query: '' }, { answer: undefined, query: '' })).toBe('table:painted');
   });
 });

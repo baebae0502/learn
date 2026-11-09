@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo } from 'react';
+import { useDeferredValue, useLayoutEffect, useMemo, useRef } from 'react';
 import { duplicateMarks } from '../organize/duplicates';
 import type { LibraryItem } from '@learn/domain';
 import { resolveScope } from '../organize/scope';
@@ -12,6 +12,7 @@ import { LibraryTable } from './LibraryTable';
 import { useShownAfter } from '../inspector/useShownAfter';
 import { BUSY_DELAY_MS } from './busyScreen';
 import { SearchEmpty, SearchPending } from './SearchEmpty';
+import { rowsPaintMark, type RowsDrawnFor } from './bodySearch';
 import { useQuickBodySearch } from './useBodySearch';
 import { useLibraryRows } from './useLibraryRows';
 import { useLibrarySettings } from './useLibrarySettings';
@@ -31,8 +32,15 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   // The trash view's collection rows (spec 4.3, P-9): above its items in the same table; none in any other view.
   const collections = useTrashCollectionRows(settings.sort);
   // The frame that paints these rows (spec 9: input → paint, sort → paint, list → first rows). Before the stored columns
-  // and sort are read the view draws nothing, so nothing is marked.
-  usePaintMark('table:painted', settings.ready ? rows : null, 'table:first-paint');
+  // and sort are read the view draws nothing, so nothing is marked. A body answer's own redraw has its own mark.
+  const body = useQuickBodySearch();
+  const rowsQuery = useDeferredValue(useLibrary((s) => s.query));
+  const drawnFor = useRef<RowsDrawnFor>({ answer: body.answer, query: rowsQuery });
+  const paintMark = rowsPaintMark(drawnFor.current, { answer: body.answer, query: rowsQuery });
+  useLayoutEffect(() => {
+    drawnFor.current = { answer: body.answer, query: rowsQuery };
+  });
+  usePaintMark(paintMark, settings.ready ? rows : null, 'table:first-paint');
   // Rows that left the list (and, from the search, the ones it hides) leave the selection before the frame is
   // painted: no command then acts on a row that is not on screen (spec 3.3).
   const pruneSelected = useLibrary((s) => s.pruneSelected);
@@ -40,7 +48,6 @@ export function LibraryView({ items, onOpen, onItemMenu }: { items: readonly Lib
   // A query typed and no row left (the deferred result): the no-results state in the body's place, under the header. Not
   // while the body is still being searched for it: that would be a no-results the body's answer may take back.
   const query = useLibrary((s) => s.query).trim();
-  const body = useQuickBodySearch();
   const shownRows = rows.length + collections.shown.length;
   const noResults = titleMatches !== null && shownRows === 0 && query !== '' && !body.pending;
   // That wait, past 300 ms with nothing in the table, shows the loading line (nothing before, as every load).

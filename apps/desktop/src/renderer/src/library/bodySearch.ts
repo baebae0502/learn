@@ -107,3 +107,17 @@ export function createSettle(timers: SettleTimers): Settle {
     },
   };
 }
+
+/** What the rows were last drawn for: the body answer in them and the (deferred) query. */
+export interface RowsDrawnFor {
+  answer: unknown;
+  query: string;
+}
+
+/**
+ * The mark of a redraw of the rows: a body answer that came with no new query redraws them with no input, so its frame
+ * is `table:body-painted` — the time from an input to its own rows (`table:painted`) is never cut short by an answer.
+ */
+export function rowsPaintMark(drawn: RowsDrawnFor, now: RowsDrawnFor): 'table:painted' | 'table:body-painted' {
+  return drawn.answer !== now.answer && drawn.query === now.query ? 'table:body-painted' : 'table:painted';
+}

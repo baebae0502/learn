@@ -657,6 +657,27 @@ test('a 본문 일치 row opens the reader at its page in the saved zoom, the fi
   }
 });
 
+test('a 본문 일치 row whose reader cannot show the document leaves no page behind for a later open of that tab', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'fluorescence', search30.title);
+    // The viewer fails to start once (E2E fault), as a document that cannot be shown does.
+    await page.evaluate(() => {
+      (window as unknown as { __learnFaults: { thumbnail: object; page: object; ready: boolean; start: number } }).__learnFaults = { thumbnail: {}, page: {}, ready: false, start: 1 };
+    });
+    await matchRow(page, 7).click();
+    await expect(readerTab(page, search30.id)).toBeVisible();
+    await expect(page.getByTestId('pdf-error')).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { pendingJump: unknown } } }).__learnReader.getState().pendingJump))
+      .toBeNull();
+  } finally {
+    await app.close();
+  }
+});
+
 test('a 본문 일치 row while 정보 편집 cannot let go opens nothing, and the item opened later is not taken to that page; once the edit lets go the row opens it there', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

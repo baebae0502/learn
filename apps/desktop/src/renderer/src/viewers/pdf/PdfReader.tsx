@@ -23,7 +23,7 @@ import { dispatchFind } from './findControl';
 import { useFind } from './findStore';
 import { furthestPageSeen, type PageSpan } from './furthestPage';
 import { PdfDocumentView } from './PdfDocumentView';
-import { useReader, type PendingJump } from './readerStore';
+import { keepsPendingJump, useReader, type PendingJump } from './readerStore';
 import { canGoBack, canGoForward } from './history';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { pageStepAction, SCREEN_STEP, stageKeyAction } from './stageKeys';
@@ -166,6 +166,11 @@ export function PdfReader({ item }: { item: LibraryItem }) {
     bus.on('updateviewarea', onArea);
     return () => bus.off('updateviewarea', onArea);
   }, [ready, handle, pos.update]);
+
+  // A document that cannot be shown drops the page a 본문 일치 row left, also one left while this notice is up.
+  useEffect(() => {
+    if (pendingJump && !keepsPendingJump(open.status, viewFailed)) scope.reader.getState().setPendingJump(null);
+  }, [pendingJump, open.status, viewFailed]);
 
   /**
    * A 본문 일치 row's page is shown: the find bar opens on its query and searches, and pdf.js starts at the current page, so its

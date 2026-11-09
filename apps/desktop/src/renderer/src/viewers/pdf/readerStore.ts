@@ -65,6 +65,12 @@ export interface PendingJump {
   query: string;
 }
 
+/**
+ * Whether a reader keeps the page a 본문 일치 row left it: not once its document cannot be opened or shown, so a later open of
+ * that tab (relinked, or mounted again) is the reader's own. A password asked for keeps it: the page shows once it opens.
+ */
+export const keepsPendingJump = (open: 'opening' | 'ready' | 'password' | 'failed', viewFailed: boolean): boolean => open !== 'failed' && !viewFailed;
+
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
 
 /** Why the sidebar has no pages to list: the item is in the trash, asks for a password, has nothing to show, or is a picture. */

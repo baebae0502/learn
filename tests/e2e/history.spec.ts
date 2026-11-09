@@ -189,6 +189,34 @@ test('a scroll of the reader\'s own after a link keeps the stage when the target
   }
 });
 
+test('a scroll in the same task as the link target\'s late text layer keeps the stage: the layer lands before that scroll is reported', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await openPaper(page);
+    await holdTextLayers(page);
+    await clickLink(page);
+    await expect(field(page)).toHaveValue('50');
+    await expectHeld(page, 50);
+    const height = await pageHeight(page);
+    // One task: the scroll, then the layer. A scroll is reported at the next frame, so no scroll event comes between them.
+    const there = await page.getByTestId('pdf-scroll').evaluate((el) => {
+      const p52 = el.querySelector<HTMLElement>('.page[data-page-number="52"]')!;
+      el.scrollTop = p52.offsetTop + p52.clientTop + p52.clientHeight * 0.3;
+      const at = el.scrollTop;
+      (window as unknown as { releaseTextLayers: () => void }).releaseTextLayers();
+      return at;
+    });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { heldPages: () => number[] }).heldPages().length)).toBe(0);
+    await quiet(page);
+    // pdf.js's late focus of the target did run, so its pull was undone rather than skipped.
+    expect(await page.evaluate(() => document.activeElement?.closest('.page')?.getAttribute('data-page-number'))).toBe('50');
+    await expect(field(page)).toHaveValue('52');
+    expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
+  } finally {
+    await app.close();
+  }
+});
+
 test('going back before the link target\'s text layer is let through stays back: pdf.js\'s late focus of that page does not pull the view to it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

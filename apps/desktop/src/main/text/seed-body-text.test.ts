@@ -87,4 +87,17 @@ describe('seedBodyText', () => {
       db.close();
     }
   });
+
+  it('can write jobs that stopped at a limit: a cut index of the pages written', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-seed-body-'));
+    dirs.push(root);
+    const db = openDatabase(':memory:');
+    migrate(db, { dbFile: null });
+    try {
+      const out = seedBodyText({ db, repo: new LibraryRepository(db), layout: { root } }, { docs: 1, pages: 3, chars: 200, seed: 7, truncated: true });
+      expect(new TextRepository(db).stateOf(out.sha256[0]!)).toEqual({ state: 'done', pages: 3, truncated: true });
+    } finally {
+      db.close();
+    }
+  });
 });

@@ -6,6 +6,8 @@ export interface SeedBodyTextInput {
   pages: number;
   chars: number;
   seed: number;
+  /** The jobs finished at a limit (an index of the first `pages` pages only). */
+  truncated?: boolean;
 }
 
 const EN = ['signal', 'transduction', 'protein', 'receptor', 'membrane', 'kinase', 'pathway', 'expression', 'cellular', 'molecular',
@@ -37,7 +39,7 @@ const COMMIT_EVERY = 1000;
  * finished extract job, written in transactions of 1,000 pages. E2E only: a library of any size to search without waiting for the worker.
  */
 export function seedBodyText(deps: SeedAssetsDeps, input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] } {
-  const { docs, pages, chars, seed } = input;
+  const { docs, pages, chars, seed, truncated = false } = input;
   for (const [name, v] of Object.entries({ docs, pages, chars })) if (!Number.isInteger(v) || v < 0) throw new Error(`seedBodyText: ${name} must be a whole number`);
   const base = Date.now();
   const made = seedAssets(deps, {
@@ -69,7 +71,7 @@ export function seedBodyText(deps: SeedAssetsDeps, input: SeedBodyTextInput): { 
           inBatch = 0;
         }
       }
-      const payload: ExtractPayload = { sha256, type: 'pdf', nextPage: pages, pages, chars: pages * chars, truncated: false };
+      const payload: ExtractPayload = { sha256, type: 'pdf', nextPage: pages, pages, chars: pages * chars, truncated };
       insertJob.run(newId(), extractKey(sha256), JSON.stringify(payload), new Date(base - doc * 1000).toISOString(), now);
     });
     commit();

@@ -7,7 +7,7 @@ import { useCommands } from '../commands/CommandProvider';
 import { bodyPagesOptions, useBodyTarget } from '../library/useBodySearch';
 import { t } from '../strings';
 import { Spinner } from '../ui/Spinner';
-import { bodyLineFor, snippetParts } from './bodyText';
+import { matchesView, snippetParts } from './bodyText';
 import { Section } from './Section';
 import { useShownAfter } from './useShownAfter';
 
@@ -17,7 +17,8 @@ const LOADING_DELAY_MS = 300;
 /**
  * 본문 일치 (spec 5.8): in the library's panel for one PDF while the quick search looks in 정보와 본문 with a body word — the
  * pages whose text has every word, each with its snippet, opening the reader there. While the body is not read (or cannot be),
- * the state line in their place, unless the original is missing (nothing will read it); a read body with no match has no section.
+ * the state line in their place, unless the original is missing (nothing will read it); an index cut at a limit says so under its
+ * rows; a whole index with no match has no section (matchesView).
  */
 export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: BodyTextState | null }) {
   // The query typed now, as the table's body answer has it: the list empties and fills with the table's body rows.
@@ -30,19 +31,8 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
     if (pages.isError) console.warn(`[inspector] body pages failed: ${pages.error instanceof ApiError ? pages.error.code : 'INTERNAL'}`);
   }, [pages.isError, pages.error]);
   if (!on || text === null) return null;
-  if (text.state !== 'done') {
-    const line = bodyLineFor(text, { trashed: false, missing: item.availability === 'missing' });
-    if (line === null) return null;
-    return (
-      <Section id="matches" title={t.inspector.sections.matches} testId="matches-section">
-        <div className="match-status" data-testid="matches-status">
-          {line}
-        </div>
-      </Section>
-    );
-  }
   const found = pages.data;
-  if (found === undefined) {
+  if (text.state === 'done' && found === undefined) {
     return loading ? (
       <Section id="matches" title={t.inspector.sections.matches} testId="matches-section">
         <div className="loading" role="status" data-testid="matches-loading">
@@ -52,22 +42,31 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
       </Section>
     ) : null;
   }
-  if (found.total === 0) return null;
+  const view = matchesView(text, item.availability === 'missing', found?.total ?? 0);
+  if (view === null) return null;
+  const shown = view.rows ? found : undefined;
   return (
     <Section
       id="matches"
       title={t.inspector.sections.matches}
       testId="matches-section"
       extra={
-        <span className="section-count num" data-testid="matches-count">
-          {t.inspector.matches.count(found.total)}
-        </span>
+        shown && (
+          <span className="section-count num" data-testid="matches-count">
+            {t.inspector.matches.count(shown.total)}
+          </span>
+        )
       }
     >
-      <MatchList itemId={item.id} query={target} pages={found.pages} />
-      {found.total > found.pages.length && (
+      {shown && <MatchList itemId={item.id} query={target} pages={shown.pages} />}
+      {shown && shown.total > shown.pages.length && (
         <div className="match-more num" data-testid="matches-more">
-          {t.inspector.matches.more(found.total - found.pages.length)}
+          {t.inspector.matches.more(shown.total - shown.pages.length)}
+        </div>
+      )}
+      {view.line !== null && (
+        <div className="match-status" data-testid="matches-status">
+          {view.line}
         </div>
       )}
     </Section>

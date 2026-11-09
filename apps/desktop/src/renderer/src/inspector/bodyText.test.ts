@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MARK_END, MARK_START } from '@learn/domain';
-import { bodyLineFor, bodyStateLine, snippetParts } from './bodyText';
+import { bodyLineFor, bodyStateLine, matchesView, snippetParts } from './bodyText';
 
 describe('the body index state line (spec 5.8, 11: the file section\'s 본문 검색 and the 본문 일치 section)', () => {
   it('says each state that is not done, in the spec\'s words', () => {
@@ -36,6 +36,27 @@ describe('where the state line is said: only where the index will be read', () =
   });
   it('anything but a PDF has no state', () => {
     expect(bodyLineFor(null, here)).toBeNull();
+  });
+});
+
+describe('what 본문 일치 shows for a PDF once its pages are known', () => {
+  const cut = { state: 'done', pages: 5000, truncated: true } as const;
+  it('a whole index: the rows when pages match, no section when none does', () => {
+    expect(matchesView({ state: 'done', pages: 30, truncated: false }, false, 30)).toEqual({ rows: true, line: null });
+    expect(matchesView({ state: 'done', pages: 30, truncated: false }, false, 0)).toBeNull();
+  });
+  it('an index cut at a limit: the rows, then how far it went; that line alone when nothing matched', () => {
+    expect(matchesView(cut, false, 12)).toEqual({ rows: true, line: '앞 5,000쪽까지 색인했습니다.' });
+    expect(matchesView(cut, false, 0)).toEqual({ rows: false, line: '앞 5,000쪽까지 색인했습니다.' });
+  });
+  it('a body not read: its state line in place of the rows, none for a missing original', () => {
+    expect(matchesView({ state: 'pending' }, false, 0)).toEqual({ rows: false, line: '본문을 색인하는 중입니다.' });
+    expect(matchesView({ state: 'empty', pages: 2 }, false, 0)).toEqual({ rows: false, line: '글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.' });
+    expect(matchesView({ state: 'pending' }, true, 0)).toBeNull();
+  });
+  it('a missing original with a read index keeps its rows and says nothing more', () => {
+    expect(matchesView(cut, true, 4)).toEqual({ rows: true, line: null });
+    expect(matchesView(cut, true, 0)).toBeNull();
   });
 });
 

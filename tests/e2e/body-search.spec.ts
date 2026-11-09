@@ -763,3 +763,41 @@ test('no body state line where nothing will read the body: a PDF in the trash an
     await app.close();
   }
 });
+
+test('an index cut at a limit says so in 본문 일치: under its rows, and alone when no page matched', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    // Twelve pages written by a job that stopped at a limit; "transduction" is on seven of them, "xylophone" on none.
+    const seeded = await seedBodyText(app, { docs: 1, pages: 12, chars: 400, seed: 1, truncated: true });
+    const cut = await seedMetadata(page, seeded.itemIds[0]!, { creators: [] }, 'xylophone transduction 기록');
+    expect((await detailOf(page, cut.id)).text).toEqual({ state: 'done', pages: 12, truncated: true });
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'transduction', cut.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 7개');
+    await expect(matchList(page).getByRole('option')).toHaveCount(7);
+    await expect(matchStatus(page)).toHaveText('앞 12쪽까지 색인했습니다.');
+    await expect(bodyTextLine(page)).toHaveText('앞 12쪽까지 색인했습니다.');
+    // The rows come first, the line under them.
+    expect(await matches(page).evaluate((el) => {
+      const list = el.querySelector('[data-testid="match-list"]')!;
+      return (list.compareDocumentPosition(el.querySelector('[data-testid="matches-status"]')!) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+    })).toBe(true);
+    // Found by its title only: the section holds the line alone, so no match does not read as none in the whole file.
+    await field(page).fill('xylophone');
+    // One state that only the answer for this query gives: a section with the line and neither rows nor a count.
+    await expect
+      .poll(() =>
+        matches(page).evaluateAll((els) =>
+          els.map((el) => ({
+            line: el.querySelector('[data-testid="matches-status"]')?.textContent ?? null,
+            rows: el.querySelector('[data-testid="match-list"]') !== null,
+            count: el.querySelector('[data-testid="matches-count"]') !== null,
+          })),
+        ),
+      )
+      .toEqual([{ line: '앞 12쪽까지 색인했습니다.', rows: false, count: false }]);
+    await expectNoSeriousA11y(page, 'item panel, 본문 일치 of a cut index with no match');
+  } finally {
+    await app.close();
+  }
+});

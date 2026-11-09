@@ -27,6 +27,18 @@ export function bodyLineFor(text: BodyTextState | null, where: { trashed: boolea
   return bodyStateLine(text);
 }
 
+/**
+ * What 본문 일치 shows for a PDF once its matching pages are known (`total`, 0 for a body not read): while the body is not read,
+ * its state line in place of the rows; a read body's rows, then the line of an index cut at a limit (that line alone when nothing
+ * matched, so no match does not read as none in the whole file); nothing when a whole index has no match, or for a missing
+ * original that has nothing to show.
+ */
+export function matchesView(text: BodyTextState, missing: boolean, total: number): { rows: boolean; line: string | null } | null {
+  const line = bodyLineFor(text, { trashed: false, missing });
+  const rows = text.state === 'done' && total > 0;
+  return rows || line !== null ? { rows, line } : null;
+}
+
 export interface SnippetPart {
   text: string;
   mark: boolean;

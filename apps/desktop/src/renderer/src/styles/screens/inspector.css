@@ -237,6 +237,10 @@
     color: var(--text-secondary);
     font: var(--type-footnote);
   }
+  /* A cut index's line under the rows (or 외 N쪽): the more line's 4 above it. */
+  .inspector :is(.match-list, .match-more) + .match-status {
+    padding-top: var(--space-4);
+  }
   /* 파일's 본문 검색 line: a sentence, wrapped in the value column. */
   .inspector .kv dd.status {
     color: var(--text-secondary);

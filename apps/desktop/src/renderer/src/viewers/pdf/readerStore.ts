@@ -59,7 +59,7 @@ export interface PdfViewHandle {
   linkService(): PDFLinkService | null;
 }
 
-/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and the query its find bar then searches for. */
+/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and what its find bar then searches for (one word of the query). */
 export interface PendingJump {
   pageIndex: number;
   query: string;

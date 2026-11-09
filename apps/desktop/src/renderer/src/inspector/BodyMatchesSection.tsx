@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ListBox, ListBoxItem } from 'react-aria-components';
-import type { BodyTextState, LibraryItem } from '@learn/domain';
+import { findWordOf, type BodyTextState, type LibraryItem } from '@learn/domain';
 import { ApiError } from '../api';
 import { useCommands } from '../commands/CommandProvider';
 import { bodyPagesOptions, useBodyTarget } from '../library/useBodySearch';
@@ -74,9 +74,13 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
   );
 }
 
-/** The pages as one list (one Tab stop, the arrows within it); ↩ or a click opens the reader at the row's page with this query. */
+/**
+ * The pages as one list (one Tab stop, the arrows within it); ↩ or a click opens the reader at the row's page, its find bar on
+ * one word of this query: the page holds every word, not always side by side, and the find bar searches its text as one phrase.
+ */
 function MatchList({ itemId, query, pages }: { itemId: string; query: string; pages: ReadonlyArray<{ pageIndex: number; snippet: string }> }) {
   const { env } = useCommands();
+  const findWord = findWordOf(query);
   const rows = useMemo(
     () =>
       pages.map((p) => {
@@ -86,7 +90,7 @@ function MatchList({ itemId, query, pages }: { itemId: string; query: string; pa
     [pages],
   );
   return (
-    <ListBox aria-label={t.inspector.sections.matches} className="match-list" data-testid="match-list" onAction={(key) => env.openAtPage(itemId, { pageIndex: Number(key), query })}>
+    <ListBox aria-label={t.inspector.sections.matches} className="match-list" data-testid="match-list" onAction={(key) => env.openAtPage(itemId, { pageIndex: Number(key), query: findWord })}>
       {rows.map((row) => (
         // Named "12쪽, <snippet>". The space between the two columns is no box of the grid, but it keeps the shown words ("12쪽 <snippet>")
         // inside the name, as a label must (axe label-content-name-mismatch).

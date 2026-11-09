@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bodyQueryWords, extractKey, ftsMatch, hasBodyWords, likePattern, likeSnippet } from '../src/index';
+import { bodyQueryWords, extractKey, findWordOf, ftsMatch, hasBodyWords, likePattern, likeSnippet } from '../src/index';
 
 describe('body search words', () => {
   it('splits a query into body words: NFC, one of each, the first eight, by code points; one letter is metadata only', () => {
@@ -14,6 +14,21 @@ describe('body search words', () => {
     expect(hasBodyWords(bodyQueryWords('형광'))).toBe(true);
     expect(hasBodyWords(bodyQueryWords('현미경'))).toBe(true);
     expect(hasBodyWords(bodyQueryWords('a b'))).toBe(false);
+  });
+
+  it('picks the one body word a matched page\'s find bar opens on: the longest, three letters before two, the first on a tie', () => {
+    expect(findWordOf('transduction fluorescence')).toBe('transduction');
+    expect(findWordOf('fluorescence transduction')).toBe('fluorescence');
+    expect(findWordOf('a 형광')).toBe('형광');
+    expect(findWordOf('형광')).toBe('형광');
+    expect(findWordOf('transduction')).toBe('transduction');
+    expect(findWordOf('형광 현미경')).toBe('현미경');
+    expect(findWordOf('현미경 transduction 신호')).toBe('transduction');
+    expect(findWordOf('  형광  ')).toBe('형광');
+    expect(findWordOf('형광'.normalize('NFD'))).toBe('형광'.normalize('NFC'));
+    // Code points, as the index counts them: two astral letters are a two-letter word, shorter than three Hangul.
+    expect(findWordOf('𝒜𝒜 현미경')).toBe('현미경');
+    expect(findWordOf('𝒜𝒜𝒜 현미경신')).toBe('현미경신');
   });
 
   it('keys the extract job by file content and extractor version', () => {

@@ -657,6 +657,22 @@ test('a 본문 일치 row opens the reader at its page in the saved zoom, the fi
   }
 });
 
+test('a 본문 일치 row of two words not side by side opens the find bar on one of them, its match on the row\'s page', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    // Every page has both words, as "fluorescence signal transduction": a page matches, the phrase is on none.
+    await panelFor(app, page, 'transduction fluorescence', search30.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 30개');
+    await matchRow(page, 12).click();
+    await expect(readerTab(page, search30.id)).toBeVisible();
+    await expectReaderAt(page, 12, 'transduction', '12 / 30');
+  } finally {
+    await app.close();
+  }
+});
+
 test('a 본문 일치 row whose reader cannot show the document leaves no page behind for a later open of that tab', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

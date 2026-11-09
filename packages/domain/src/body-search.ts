@@ -38,6 +38,19 @@ export function bodyQueryWords(query: string): BodyWords {
 
 export const hasBodyWords = (w: BodyWords): boolean => w.fts.length + w.like.length > 0;
 
+/**
+ * The one body word the find bar opens on at a page the body search matched. The page holds every word, but pdf.js finds a
+ * query as one phrase, so words that are not side by side there would find nothing on that page, or move on to a later one.
+ * The longest word in code points (a three-letter one before a two-letter one), the first on a tie. A query with no body word
+ * has no matched page and is kept as it is.
+ */
+export function findWordOf(query: string): string {
+  const { fts, like } = bodyQueryWords(query);
+  let best: string | undefined;
+  for (const w of [...fts, ...like]) if (best === undefined || [...w].length > [...best].length) best = w;
+  return best ?? query;
+}
+
 /** Each word is one quoted phrase (a quote inside is doubled), all of them required on the same page. */
 export function ftsMatch(words: readonly string[]): string {
   return words.map((w) => `"${w.replace(/"/g, '""')}"`).join(' AND ');

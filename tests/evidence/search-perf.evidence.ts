@@ -1,7 +1,7 @@
 // @perf — M7c body search (spec 13): 1,000 PDFs of 12 pages and 4,000 characters (12,000 page texts) against the 300 ms of
-// search.body at p95 and the 100 ms of search.pages, the table's scroll while twenty papers are being indexed (p95 of the
-// frame gap at 16.7 ms), the index's throughput and the DB size. search-perf.json; Linux CI fails beyond twice each budget,
-// every other run reports.
+// search.body at p95 and the 100 ms of search.pages, the same 100 ms for search.pages on one 1,000-page book of that library,
+// the table's scroll while twenty papers are being indexed (p95 of the frame gap at 16.7 ms), the index's throughput and the
+// DB size. search-perf.json; Linux CI fails beyond twice each budget, every other run reports.
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
@@ -10,10 +10,12 @@ import { writeJson } from './capture';
 import { limitFailures, type Limit } from './budget';
 import { median, percentile } from './percentile';
 
-const BUDGET = { body: 300, pages: 100, scrollP95: 16.7 } as const;
+const BUDGET = { body: 300, pages: 100, bookPages: 100, scrollP95: 16.7 } as const;
 // Two-letter, three-letter, absent (index and scan), Korean and English, and two words on one page.
 const QUERIES = ['형광', '세포', 'zq', '현미경', 'transduction', '단백질 신호', 'xylophone'] as const;
 const REPEATS = 20;
+// On (nearly) every page of the thousand papers, and on the book's last page only.
+const BOOK_WORD = 'transduction';
 const tenth = (x: number) => Math.round(x * 10) / 10;
 
 test('body search over 1,000 PDFs, and the table while twenty papers index', { tag: '@perf' }, async ({}, testInfo) => {
@@ -89,6 +91,27 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
       return n + (fs.existsSync(file) ? fs.statSync(file).size : 0);
     }, 0);
 
+    // search.pages on one 1,000-page book of the same library, for a word the book has on its last page only: a plan whose cost
+    // grows with the file's length pays here for every page, and the papers' matches of the word are many.
+    const book = await seedBodyText(s.app, { docs: 1, pages: 1000, chars: 4000, seed: 43, rare: BOOK_WORD });
+    const bookPages = await s.page.evaluate(
+      async ({ itemId, query, repeats }) => {
+        const values: number[] = [];
+        let answer: { pages: number[]; total: number } | null = null;
+        for (let i = 0; i < repeats; i++) {
+          const t = performance.now();
+          const r = await window.learn.search.pages({ itemId, query });
+          const ms = performance.now() - t;
+          if (!r.ok) throw new Error(`search.pages on the book: ${r.code}`);
+          answer = { pages: r.data.pages.map((p) => p.pageIndex), total: r.data.total };
+          values.push(ms);
+        }
+        return { values, answer };
+      },
+      { itemId: book.itemIds[0]!, query: BOOK_WORD, repeats: REPEATS },
+    );
+    expect(bookPages.answer, 'the word is on the book\'s last page only').toEqual({ pages: [999], total: 1 });
+
     // The table's scroll while twenty 100-page papers are read: 40 px every frame, as the 10,000-item scroll in perf.evidence.ts.
     const copies = distinctPdfs(testInfo.outputPath('copies'), 20, 'paper-100.pdf');
     const imported = await importPaths(s.page, copies);
@@ -121,7 +144,7 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
 
     const scrollFrames = scroll.deltas.map(tenth);
     const p95 = (xs: number[]) => tenth(percentile(xs, 95));
-    const values = { body: p95(body.values), pages: p95(pages.values), scrollP95: p95(scrollFrames) };
+    const values = { body: p95(body.values), pages: p95(pages.values), bookPages: p95(bookPages.values), scrollP95: p95(scrollFrames) };
     const batchMs = after.batchMs.slice(before.batchMs.length);
     const throughput = {
       pagesPerSecond: tenth(((after.pagesWritten - before.pagesWritten) / (after.activeMs - before.activeMs)) * 1000),
@@ -132,6 +155,7 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
       values,
       bodyMs: { median: tenth(median(body.values)), max: tenth(Math.max(...body.values)), samples: body.values.length },
       pagesMs: { median: tenth(median(pages.values)), max: tenth(Math.max(...pages.values)), samples: pages.values.length },
+      bookPagesMs: { pages: 1000, word: BOOK_WORD, median: tenth(median(bookPages.values)), max: tenth(Math.max(...bookPages.values)), samples: bookPages.values.length },
       firstQueryMs: Object.fromEntries(QUERIES.map((q, i) => [q, tenth(body.first[i]!)])),
       hits: body.hits,
       dbBytes,
@@ -143,14 +167,15 @@ test('body search over 1,000 PDFs, and the table while twenty papers index', { t
       platform: `${process.platform}-${process.arch}`,
       ci: process.env['CI'] ?? null,
     };
-    writeJson('search-perf.json', result, 'M7c body search: search.body and search.pages p95 over 1,000 PDFs, the table scroll while twenty papers index, throughput, DB size');
-    console.log('[measure] search-perf', JSON.stringify({ values, firstQueryMs: result.firstQueryMs, dbBytes, seedMs, throughput, batchMs: result.batchMs }));
+    writeJson('search-perf.json', result, 'M7c body search: search.body and search.pages p95 over 1,000 PDFs, search.pages on a 1,000-page book, the table scroll while twenty papers index, throughput, DB size');
+    console.log('[measure] search-perf', JSON.stringify({ values, bookPagesMs: result.bookPagesMs, firstQueryMs: result.firstQueryMs, dbBytes, seedMs, throughput, batchMs: result.batchMs }));
     expect(throughput.pagesWrittenWhileScrolling, 'the index was working while the table scrolled').toBeGreaterThan(0);
 
     if (process.platform === 'linux' && process.env['CI']) {
       const limits: Limit[] = [
         { what: 'search.body p95', value: values.body, budget: BUDGET.body },
         { what: 'search.pages p95', value: values.pages, budget: BUDGET.pages },
+        { what: 'search.pages p95 on a 1,000-page book, a word on its last page only', value: values.bookPages, budget: BUDGET.bookPages },
         { what: 'scroll frame gap p95', value: values.scrollP95, budget: BUDGET.scrollP95 },
       ];
       expect(limitFailures(limits)).toEqual([]);

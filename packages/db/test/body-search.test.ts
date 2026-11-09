@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bodyQueryWords, MARK_END, MARK_START } from '@learn/domain';
-import { LIKE_CHUNK_SQL, LibraryRepository, PAGES_COUNT_SQL, PAGES_SQL, bodyItemIds, bodyLikeChunks, bodyPages, type Db } from '../src/index';
+import { LIKE_CHUNK_SQL, LibraryRepository, PAGES_COUNT_SQL, PAGES_SQL, PAGE_WALK_MAX, bodyItemIds, bodyLikeChunks, bodyPages, pagesPlan, type Db } from '../src/index';
 import { freshDb, seedItem } from './fixtures';
 
 let db: Db;
@@ -103,11 +103,11 @@ describe('bodyLikeChunks plan', () => {
 });
 
 describe('bodyPages plan', () => {
-  it('walks the file\'s own pages by their key and asks the index for each by rowid, for the rows and for the count', () => {
+  it('walks a short file\'s own pages by their key and asks the index for each by rowid, for the rows and for the count', () => {
     const a = seedItem(db);
     put(a.asset.sha256, 0, '형광 현미경');
     expect(bodyPages(db, a.asset.sha256, bodyQueryWords('현미경')).total).toBe(1); // positive control: the query answers
-    for (const sql of [PAGES_SQL(0), PAGES_COUNT_SQL(0)]) {
+    for (const sql of [PAGES_SQL(0, 'pages'), PAGES_COUNT_SQL(0, 'pages')]) {
       const plan = (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(a.asset.sha256, '"현미경"') as Array<{ detail: string }>).map((r) => r.detail);
       expect(plan[0], plan.join('\n')).toMatch(/SEARCH p USING (COVERING )?INDEX sqlite_autoindex_page_texts_1 \(sha256=\?\)/);
       expect(plan.join('\n')).toMatch(/SCAN f VIRTUAL TABLE INDEX/);
@@ -124,5 +124,80 @@ describe('bodyPages plan', () => {
     expect(r.pages).toHaveLength(20);
     expect(r.total).toBe(25);
     expect(bodyPages(db, b.asset.sha256, bodyQueryWords('현미경')).total).toBe(5);
+  });
+
+  it('walks a file of up to 64 pages page by page and reads a longer one from the index', () => {
+    const short = seedItem(db);
+    const long = seedItem(db);
+    for (let i = 0; i < PAGE_WALK_MAX; i++) put(short.asset.sha256, i, `현미경 ${i}`);
+    for (let i = 0; i <= PAGE_WALK_MAX; i++) put(long.asset.sha256, i, `현미경 ${i}`);
+    expect(PAGE_WALK_MAX).toBe(64);
+    expect(pagesPlan(db, short.asset.sha256)).toBe('pages');
+    expect(pagesPlan(db, long.asset.sha256)).toBe('index');
+    // bodyPages itself takes that plan: the statements it prepares are the plan's.
+    const prepared = vi.spyOn(db, 'prepare');
+    expect(bodyPages(db, long.asset.sha256, bodyQueryWords('현미경')).total).toBe(PAGE_WALK_MAX + 1);
+    const sqls = prepared.mock.calls.map(([sql]) => sql);
+    expect(sqls).toContain(PAGES_SQL(0, 'index'));
+    expect(sqls).toContain(PAGES_COUNT_SQL(0, 'index'));
+    expect(sqls).not.toContain(PAGES_SQL(0, 'pages'));
+    prepared.mockClear();
+    expect(bodyPages(db, short.asset.sha256, bodyQueryWords('현미경')).total).toBe(PAGE_WALK_MAX);
+    expect(prepared.mock.calls.map(([sql]) => sql)).toContain(PAGES_SQL(0, 'pages')); // positive control: the short file keeps its walk
+    prepared.mockRestore();
+  });
+
+  describe('on a file of 70 pages, both plans give the same pages and total', () => {
+    // Another file holds every word on every page: the index-driven plan must keep this file's pages only.
+    const seedLong = () => {
+      const other = seedItem(db);
+      for (let i = 0; i < 30; i++) put(other.asset.sha256, i, `현미경 형광 fluorescence ${i}`);
+      const a = seedItem(db);
+      for (let i = 0; i < 70; i++) put(a.asset.sha256, i, `쪽 ${i} 현미경 관찰${i % 3 === 0 ? ' 형광' : ''}${i === 69 ? ' fluorescence' : ''}`);
+      expect(pagesPlan(db, a.asset.sha256)).toBe('index');
+      return a.asset.sha256;
+    };
+    const both = (sha: string, query: string) => {
+      const byPages = bodyPages(db, sha, bodyQueryWords(query), 'pages');
+      const byIndex = bodyPages(db, sha, bodyQueryWords(query), 'index');
+      expect(byIndex).toEqual(byPages);
+      expect(bodyPages(db, sha, bodyQueryWords(query))).toEqual(byIndex);
+      return byIndex;
+    };
+
+    it('a word on every page', () => {
+      const r = both(seedLong(), '현미경');
+      expect(r.total).toBe(70);
+      expect(r.pages.map((p) => p.pageIndex)).toEqual([...Array(20).keys()]);
+      expect(r.pages[5]!.snippet).toContain(`${MARK_START}현미경${MARK_END}`);
+    });
+
+    it('a word on the last page only', () => {
+      const r = both(seedLong(), 'fluorescence');
+      expect(r).toEqual({ pages: [{ pageIndex: 69, snippet: expect.stringContaining(`${MARK_START}fluorescence${MARK_END}`) }], total: 1 });
+    });
+
+    it('no match', () => {
+      expect(both(seedLong(), 'xylophone')).toEqual({ pages: [], total: 0 });
+    });
+
+    it('a two-letter word with a three-letter one', () => {
+      const r = both(seedLong(), '현미경 형광');
+      expect(r.total).toBe(24);
+      expect(r.pages.map((p) => p.pageIndex)).toEqual(Array.from({ length: 20 }, (_, k) => k * 3));
+    });
+  });
+
+  it('reads the long file\'s matches from the index first and reaches each page by its rowid, for the rows and for the count', () => {
+    const a = seedItem(db);
+    put(a.asset.sha256, 0, '형광 현미경');
+    expect(bodyPages(db, a.asset.sha256, bodyQueryWords('현미경'), 'index').total).toBe(1); // positive control: the query answers
+    const args = [a.asset.sha256, '"현미경"'];
+    for (const [sql, likes] of [[PAGES_SQL(0, 'index'), []], [PAGES_COUNT_SQL(0, 'index'), []], [PAGES_SQL(1, 'index'), ['%형광%']]] as const) {
+      const plan = (db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args, ...likes) as Array<{ detail: string }>).map((r) => r.detail);
+      expect(plan[0], plan.join('\n')).toMatch(/SCAN f VIRTUAL TABLE INDEX/);
+      expect(plan.join('\n')).toMatch(/SEARCH p USING INTEGER PRIMARY KEY \(rowid=\?\)/);
+      expect(plan.join('\n')).not.toMatch(/sqlite_autoindex_page_texts_1/);
+    }
   });
 });

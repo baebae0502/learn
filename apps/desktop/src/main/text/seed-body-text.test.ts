@@ -88,6 +88,27 @@ describe('seedBodyText', () => {
     }
   });
 
+  it('can leave a word of the library out of every page but the last, which begins with it', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-seed-body-'));
+    dirs.push(root);
+    const db = openDatabase(':memory:');
+    migrate(db, { dbFile: null });
+    try {
+      // Positive control: without it, the word is on the first pages too.
+      expect(bodyTextPage(9, 0, 0, 4000)).toContain('transduction');
+      expect(bodyTextPage(9, 0, 0, 4000, 'transduction')).not.toContain('transduction');
+      expect(bodyTextPage(9, 0, 0, 4000, 'transduction')).toHaveLength(4000);
+      const out = seedBodyText({ db, repo: new LibraryRepository(db), layout: { root } }, { docs: 1, pages: 6, chars: 4000, seed: 9, rare: 'transduction' });
+      const texts = db.prepare('SELECT text FROM page_texts WHERE sha256 = ? ORDER BY page_index').pluck().all(out.sha256[0]!) as string[];
+      expect(texts.map((t) => t.includes('transduction'))).toEqual([false, false, false, false, false, true]);
+      expect(texts[5]!.startsWith('transduction ')).toBe(true);
+      expect(texts.every((t) => t.length === 4000)).toBe(true);
+      expect(() => seedBodyText({ db, repo: new LibraryRepository(db), layout: { root } }, { docs: 1, pages: 1, chars: 10, seed: 9, rare: 'two words' })).toThrow(/one word/);
+    } finally {
+      db.close();
+    }
+  });
+
   it('can write jobs that stopped at a limit: a cut index of the pages written', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-seed-body-'));
     dirs.push(root);

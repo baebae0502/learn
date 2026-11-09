@@ -8,6 +8,8 @@ export interface SeedBodyTextInput {
   seed: number;
   /** The jobs finished at a limit (an index of the first `pages` pages only). */
   truncated?: boolean;
+  /** A word left out of every page but the last, which begins with it: a word of the whole library that is rare in these documents. */
+  rare?: string;
 }
 
 const EN = ['signal', 'transduction', 'protein', 'receptor', 'membrane', 'kinase', 'pathway', 'expression', 'cellular', 'molecular',
@@ -17,15 +19,20 @@ const EN = ['signal', 'transduction', 'protein', 'receptor', 'membrane', 'kinase
 // Cell-biology words, written as escapes: main keeps its Hangul in strings.ts.
 const KO = ['\uD615\uAD11', '\uC138\uD3EC', '\uD604\uBBF8\uACBD', '\uB2E8\uBC31\uC9C8', '\uC2E0\uD638', '\uAD00\uCC30', '\uAE30\uB85D', '\uBD84\uC11D', '\uC2E4\uD5D8', '\uACB0\uACFC', '\uC870\uC9C1', '\uC2E0\uACBD', '\uC218\uC6A9\uCCB4', '\uD6A8\uC18C', '\uC720\uC804\uC790', '\uBC1C\uD604', '\uAD6C\uC870', '\uAE30\uB2A5', '\uBC18\uC751', '\uD45C\uBCF8'];
 
-/** One page of synthetic text: the same arguments always give the same text, one word in five Korean. "zq" and "xylophone" never occur. */
-export function bodyTextPage(seed: number, doc: number, page: number, chars: number): string {
+/**
+ * One page of synthetic text: the same arguments always give the same text, one word in five Korean. "zq" and "xylophone" never
+ * occur, nor does `leaveOut`.
+ */
+export function bodyTextPage(seed: number, doc: number, page: number, chars: number, leaveOut?: string): string {
   let x = (seed * 1_000_003 + doc * 1009 + page) % 2 ** 31;
   let text = '';
   for (let k = 0; text.length < chars; k++) {
     // 32-bit integer arithmetic: the product in doubles would lose its low bits, and with them half of the words.
     x = (Math.imul(1103515245, x) + 12345) & 0x7fffffff;
     const table = k % 5 === 4 ? KO : EN;
-    text += (k === 0 ? '' : ' ') + table[(x >>> 16) % table.length]!;
+    const word = table[(x >>> 16) % table.length]!;
+    if (word === leaveOut) continue;
+    text += (text === '' ? '' : ' ') + word;
   }
   return text.slice(0, chars);
 }
@@ -39,7 +46,8 @@ const COMMIT_EVERY = 1000;
  * finished extract job, written in transactions of 1,000 pages. E2E only: a library of any size to search without waiting for the worker.
  */
 export function seedBodyText(deps: SeedAssetsDeps, input: SeedBodyTextInput): { itemIds: string[]; sha256: string[] } {
-  const { docs, pages, chars, seed, truncated = false } = input;
+  const { docs, pages, chars, seed, truncated = false, rare } = input;
+  if (rare !== undefined && !/^\S+$/u.test(rare)) throw new Error('seedBodyText: rare must be one word');
   for (const [name, v] of Object.entries({ docs, pages, chars })) if (!Number.isInteger(v) || v < 0) throw new Error(`seedBodyText: ${name} must be a whole number`);
   const base = Date.now();
   const made = seedAssets(deps, {
@@ -64,7 +72,8 @@ export function seedBodyText(deps: SeedAssetsDeps, input: SeedBodyTextInput): { 
   try {
     made.sha256.forEach((sha256, doc) => {
       for (let page = 0; page < pages; page++) {
-        insertPage.run(sha256, page, bodyTextPage(seed, doc, page, chars));
+        const text = bodyTextPage(seed, doc, page, chars, rare);
+        insertPage.run(sha256, page, rare !== undefined && page === pages - 1 ? `${rare} ${text}`.slice(0, chars) : text);
         if (++inBatch >= COMMIT_EVERY) {
           commit();
           begin();

@@ -31,7 +31,12 @@
   - **1글자**: 본문에서 찾지 않는다(정보만). 1글자 낱말을 빼고 남는 것이 없으면 본문 검색을 하지 않는다(`searched: false`).
 - 낱말 사이는 AND이고 **한 쪽 안에** 모두 있어야 그 쪽이 일치한다(J19 — '본문 일치'의 쪽 목록과 같은 뜻. 자료 단위 AND는 쪽 하나를 가리킬 수 없다).
 - `search:body`(창마다 하나): 휴지통이 아닌 PDF 자료의 id만 돌려준다. 2글자 낱말만이면 FTS 없이 `page_texts`를 `id` 범위 2,000행씩 나눠 훑고 덩어리 사이에 `setImmediate`로 main을 놓아준다. 새 요청이 오면 앞의 것을 `AbortSignal`로 멈추고 앞의 것은 `CANCELLED`로 답한다(J20 — 1만 PDF의 2글자 훑기가 main을 수백 ms 잡지 않게, 그리고 취소할 자리가 생기게).
-- `search:pages`(자료 하나): 그 자료 원본의 sha에서 일치하는 쪽을 `page_index` 순서로 최대 20개, 쪽마다 조각 하나, 일치한 쪽 수 전체. 그 sha의 쪽을 열쇠로 걷고 쪽마다 색인에 rowid로 묻는다(Task 9 — 서재 전체의 `MATCH`를 두 번 돌리지 않는다). 조각은 3글자 낱말이 있으면 `snippet(page_texts_fts, 0, char(57344), char(57345), '…', 48)`(J21 — 약 50자, 320 폭 패널의 두 줄), 2글자 낱말만이면 main이 같은 규칙으로 첫 일치 앞 20자·뒤 28자를 낱말 경계에서 자른다. 표시 `U+E000`…`U+E001`은 렌더러가 `<mark>`로 바꾼다(HTML로 넣지 않는다). 휴지통 자료는 아무것도 돌려주지 않는다.
+- `search:pages`(자료 하나): 그 자료 원본의 sha에서 일치하는 쪽을 `page_index` 순서로 최대 20개, 쪽마다 조각 하나, 일치한 쪽 수 전체. 3글자 낱말의 질의 계획은 파일의 쪽 수(그 sha의 열쇠에서 센 수)로 고른다(R79):
+  - **64쪽까지**: 그 sha의 쪽을 열쇠로 걷고 쪽마다 색인에 rowid로 묻는다(Task 9 — 서재 전체의 `MATCH`를 두 번 돌리지 않는다). 쪽 하나에 약 0.4 ms이고, 일치가 드물면 행 질의가, 개수 질의는 늘 파일의 모든 쪽을 걷는다.
+  - **64쪽을 넘으면**: 색인을 먼저 읽고 그 파일의 쪽만 남긴다(`page_texts_fts CROSS JOIN page_texts … p.sha256 = ?`, 행과 개수 모두). 비용은 파일 길이가 아니라 그 낱말의 서재 전체 일치 수다. 짧은 파일에는 쓰지 않는다 — 12쪽 논문에서 33 ms 대 5 ms(최종 리뷰의 스크래치 측정).
+  - 측정(`search-perf.evidence.ts`, 1,000 PDF 시드에 1,000쪽 책 하나, 논문들에는 거의 모든 쪽에 있고 책에는 마지막 쪽에만 있는 낱말 "transduction", 표본 20, 로컬 Linux `taskset -c 0-3`): 고치기 전 p95 **722 ms**(중앙값 677.6) → 고친 뒤 **70.7 ms**(중앙값 51.1), 예산 100. 같은 실행에서 12쪽 논문의 p95는 8.6 → 8.8 ms로 그대로다. 최종 리뷰의 스크래치에서 5,000쪽 책은 쪽 걷기로 1.8–2.3초였다.
+  - 2글자 낱말만이면 그 sha의 쪽을 `LIKE`로 훑는다(5,000쪽에서 약 5 ms, 스크래치).
+  - 조각은 3글자 낱말이 있으면 `snippet(page_texts_fts, 0, char(57344), char(57345), '…', 48)`(J21 — 약 50자, 320 폭 패널의 두 줄), 2글자 낱말만이면 main이 같은 규칙으로 첫 일치 앞 20자·뒤 28자를 낱말 경계에서 자른다. 표시 `U+E000`…`U+E001`은 렌더러가 `<mark>`로 바꾼다(HTML로 넣지 않는다). 휴지통 자료는 아무것도 돌려주지 않는다.
 - `search:progress`: `{ done, total }` — 휴지통이 아닌 PDF 자료 가운데 이 버전의 작업이 끝난(완료 또는 실패) 것과 전체(P-9).
 
 ### 4. 추출 작업 — `jobs` 표 (5.1, J13–J15)
@@ -92,13 +97,13 @@
 - **DB 크기**: 같은 시드에서 **221,137,352 B**(약 221 MB). 시드 직후(20편을 더 색인하기 전) `library.sqlite`와 `library.sqlite-wal`을 합한 파일 크기다 — WAL 파일의 크기가 들어 있다. 명세 작성 중 스크래치 값(154.8 MB)보다 크지만 그 차이를 나눠 재지는 않았다. 색인이 글의 약 두 배라 백업·복원이 그만큼 길어진다. 실제 논문 1,000편의 크기는 재지 않았다(M14 실기 목록, `next-session.md`). 넘치면 `columnsize=0` 같은 선택을 판정으로 본다.
 - **알려진 한계 — 2글자의 대소문자**: SQLite `LIKE`는 ASCII만 접는다. "Éc"와 "éc"처럼 ASCII 밖 라틴 글자의 2글자 낱말은 대소문자가 다르면 찾지 못한다. 한국어와 ASCII에는 영향이 없다. 바꾸려면 접은 글 열을 하나 더 두는 비용(약 한 배 크기)이 든다.
 - **1글자 질의**는 본문을 찾지 않는다. 결과 없음이 그 사실을 말한다(J24).
-- **main 막힘**: 2글자 훑기는 나눠서, FTS는 한 문장이다. 1만 PDF 규모는 측정 밖이다(보고만).
+- **main 막힘**: 2글자 훑기는 나눠서, FTS는 한 문장이다. `search:pages`는 파일 길이로 계획을 골라(3절) 1,000쪽 책에서도 p95 70.7 ms다(고치기 전 722 ms, 로컬 `search-perf`). 그 '색인 먼저' 계획과 `search:body`의 비용은 낱말의 서재 전체 일치 수에 비례한다 — 1,000 PDF에서 수십 ms이고, 1만 PDF 규모는 측정 밖이다(보고만).
 - **pdf.js 찾기와 색인의 차이**: 하이픈·합자·NFC를 맞췄지만 어긋나면 쪽은 열리고 찾기 막대가 "찾을 수 없음"이다(쪽은 맞다). `search-30.pdf`·`korean.pdf`의 E2E가 지킨다.
 - **포장한 앱**: 일꾼이 asar 안의 `out/renderer/pdfjs`에서 cMap·글꼴을 `fs`로 읽는지는 확인하지 않았다(포장하지 않은 Electron에서는 `korean-cmap.pdf`로 확인). M14 실기 목록에 있다.
 - **스캔한 PDF**는 '글자 없음'이다. OCR은 M14다.
 - **추출이 주는 부하**: 한 번에 하나 · 낮은 우선순위 · 작업 줄이 쉴 때만 · 유휴 뒤에 시작. 위의 "추출 중 스크롤 p95"가 지킨다.
 
 ## 검증
-- 단위: `packages/domain/test/body-search.test.ts`(낱말 나누기 1·2·3글자 · 코드 포인트 · 8개 · 중복, FTS 구 따옴표, `LIKE` 이스케이프), `packages/db/test/body-search.test.ts`("finds by a two-letter scan and by a trigram phrase", "ignores case and diacritics in the index", "wants every word on one page", "leaves trashed items out and drops everything at a purge", `bodyPages`·`bodyLikeChunks`와 두 질의 계획), `packages/db/test/text-repository.test.ts`(중복 방지 · 순서 · 채워 넣기 · 다시 실행 · 시도 · 묶음 쓰기 전 확인), `packages/db/test/migrate.test.ts` "migration v4 (images-text)", `apps/desktop/src/main/text/*.test.ts`(쪽 글 정리 · 메시지 zod · 자료 팩터리 이름 검사 · 일정기 · 질의 · 시드), `apps/desktop/src/main/ipc/search.test.ts`(취소 · 창마다 하나 · 입력 거절).
+- 단위: `packages/domain/test/body-search.test.ts`(낱말 나누기 1·2·3글자 · 코드 포인트 · 8개 · 중복, FTS 구 따옴표, `LIKE` 이스케이프), `packages/db/test/body-search.test.ts`("finds by a two-letter scan and by a trigram phrase", "ignores case and diacritics in the index", "wants every word on one page", "leaves trashed items out and drops everything at a purge", `bodyPages`·`bodyLikeChunks`와 질의 계획 — 짧은 파일의 쪽 걷기, 65쪽 이상의 색인 먼저, 70쪽 파일에서 두 계획의 같은 답), `packages/db/test/text-repository.test.ts`(중복 방지 · 순서 · 채워 넣기 · 다시 실행 · 시도 · 묶음 쓰기 전 확인), `packages/db/test/migrate.test.ts` "migration v4 (images-text)", `apps/desktop/src/main/text/*.test.ts`(쪽 글 정리 · 메시지 zod · 자료 팩터리 이름 검사 · 일정기 · 질의 · 시드), `apps/desktop/src/main/ipc/search.test.ts`(취소 · 창마다 하나 · 입력 거절).
 - E2E: `tests/e2e/text-worker.spec.ts`(실제 일꾼 — `korean.pdf` NFC, `korean-cmap.pdf`의 cMap, 하이픈, `locked`·`damaged`·`too-large`, 한도, 프로세스 이름 — P-11: pdf.js 6.4.299는 Node 22의 vitest에서 돌지 않아 Electron 안에서 시험한다), `tests/e2e/body-search.spec.ts`(멈춘 채 시작 · SIGKILL 뒤 이어서 · 휴지통과 복원 · 영구 삭제 뒤 `pageTextCount` 0 · 진행 알림 · 범위 메뉴와 기억 · 합집합 · 2글자와 1글자 · NFD · 찾는 중 · 진행 줄 · 휴지통 · '본문 일치'의 쪽·조각·외 N쪽 · 행을 누르면 그 쪽과 찾기 막대 · 상태 줄 · 잘린 색인).
-- 증거: `tests/evidence/search-perf.evidence.ts` "body search over 1,000 PDFs, and the table while twenty papers index"(`search-perf.json`), `tests/evidence/perf.evidence.ts`의 범위별 검색 입력 줄. CI는 예산의 2배를 넘을 때만 실패한다(`tests/evidence/budget.ts`).
+- 증거: `tests/evidence/search-perf.evidence.ts` "body search over 1,000 PDFs, and the table while twenty papers index"(`search-perf.json` — 1,000쪽 책의 `search:pages` 줄 `bookPages` 포함), `tests/evidence/perf.evidence.ts`의 범위별 검색 입력 줄. CI는 예산의 2배를 넘을 때만 실패한다(`tests/evidence/budget.ts`).

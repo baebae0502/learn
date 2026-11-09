@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { Clapperboard, FileText, Folder, ListFilter, Search } from 'lucide-react';
+import { Folder, ListFilter, Search } from 'lucide-react';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
 import { COMMANDS, commandById, commandMention, inPalette, paletteLabel, paletteListed, type CommandId, type CommandSpec, type LibraryItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
@@ -24,6 +24,7 @@ import { rankCollections, type RankedCollection } from './collections';
 import { highlight } from './highlight';
 import { initialsExample, itemMeta, itemMetaMatch, rankItems, type RankedItem } from './items';
 import { rankCommands, type RankedCommand } from './rank';
+import { itemIcon } from '../library/itemIcon';
 import { usePaletteRecent } from './recent';
 import { searchLibrary, showCollection } from './searchRow';
 
@@ -281,7 +282,7 @@ function PaletteDialog({ recent, remember }: { recent: readonly CommandId[]; rem
       const { item, match } = row.ranked;
       return option(row, index, { 'data-testid': 'palette-result', 'data-item-id': item.id }, (
         <>
-          <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
+          <Icon icon={itemIcon(item.type)} />
           <span className="p-title ellipsis">{highlight(item.title, match)}</span>
           <span className="p-meta">
             {/* Only on a row whose title did not match: the author or the year that brought it in is marked instead. */}

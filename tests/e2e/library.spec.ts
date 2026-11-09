@@ -87,6 +87,50 @@ test('import, duplicate prompt, failure toast, missing linked file and relink', 
   await s.app.close();
 });
 
+test('the empty library names the three kinds, breaks its sentence at word boundaries and keeps the formats on one line at 1024 and at 1440', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const empty = s.page.getByTestId('empty-state');
+    await expect(empty).toBeVisible();
+    const text = (await empty.locator('p').textContent())!;
+    expect(text).toBe('PDF\u2060·동영상\u2060·이미지를 이\u00a0창에 끌어다 놓거나 가져올 파일을 선택하세요.원본은 그대로 두고 라이브러리에 사본을 만듭니다.');
+    const formats = empty.locator('.hints .row').last();
+    await expect(formats).toHaveText('PDF, MP4\u00a0·\u00a0MOV\u00a0·\u00a0WebM 동영상, PNG\u00a0·\u00a0JPEG\u00a0·\u00a0WebP\u00a0·\u00a0GIF\u00a0·\u00a0AVIF 이미지를 지원합니다.');
+    for (const width of [1440, 1024]) {
+      await (await mainWindow(s.app)).evaluate((w, width) => w.setContentSize(width, w.getContentSize()[1]!), width);
+      await expect.poll(() => s.page.evaluate(() => innerWidth)).toBe(width);
+      const lines = await empty.evaluate((root) => {
+        // The line each character of a text sits on; a line may only end after a space (or the U+2060-bound run never splits).
+        const linesOf = (el: Element) => {
+          const node = el.firstChild as Text;
+          const range = document.createRange();
+          const tops: number[] = [];
+          for (let i = 0; i < node.data.length; i++) {
+            range.setStart(node, i);
+            range.setEnd(node, i + 1);
+            const r = range.getClientRects()[0];
+            tops.push(r ? Math.round(r.top) : -1);
+          }
+          const broken: string[] = [];
+          for (let i = 1; i < node.data.length; i++) if (tops[i]! > tops[i - 1]! && tops[i] !== -1 && !/[ \u00a0]/.test(node.data[i - 1]!) && node.data[i] !== ' ') broken.push(node.data.slice(Math.max(0, i - 3), i + 3));
+          return { lines: new Set(tops.filter((t) => t >= 0)).size, broken };
+        };
+        const p = root.querySelector('p')!;
+        const first = document.createRange();
+        first.selectNodeContents(p.firstChild!);
+        const row = root.querySelector('.hints .row:last-child')!;
+        const rowBox = row.getBoundingClientRect();
+        return { body: linesOf(p), formatsHeight: rowBox.height, formatsWidth: Math.max(...Array.from(row.getClientRects()).map((r) => r.width)), lineHeight: parseFloat(getComputedStyle(row).lineHeight) };
+      });
+      expect(lines.body.broken, `a word is broken at ${width}`).toEqual([]);
+      expect(lines.formatsHeight, `the formats line wraps at ${width}`).toBeLessThanOrEqual(lines.lineHeight * 1.2);
+      expect(lines.formatsWidth).toBeLessThanOrEqual(520);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
 test('the empty-state buttons and the drop path need a real file location', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

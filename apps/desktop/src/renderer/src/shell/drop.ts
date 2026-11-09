@@ -5,26 +5,31 @@ export interface DropSummary {
   files: number;
   pdf: number;
   video: number;
+  image: number;
   other: number;
 }
 
+/** The raster formats the importer reads; any other image/* (HEIC, SVG) is an other file. */
+const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
+
 /** DataTransferItem kinds/types during dragenter (Finder gives the MIME type from the extension). */
 export function summarizeDrop(items: ReadonlyArray<{ kind: string; type: string }>): DropSummary {
-  const s: DropSummary = { files: 0, pdf: 0, video: 0, other: 0 };
+  const s: DropSummary = { files: 0, pdf: 0, video: 0, image: 0, other: 0 };
   for (const i of items) {
     if (i.kind !== 'file') continue;
     s.files++;
     if (i.type === 'application/pdf') s.pdf++;
     else if (i.type.startsWith('video/')) s.video++;
+    else if (IMAGE_TYPES.has(i.type)) s.image++;
     else s.other++;
   }
   return s;
 }
 
-/** "파일 3개(PDF 2 · 동영상 1)"; other files are named only next to a known kind (alone they are just "파일 N개"). */
+/** "파일 3개(PDF 2 · 동영상 1 · 이미지 3)"; other files are named only next to a known kind (alone they are just "파일 N개"). */
 export function dropSummaryText(s: DropSummary): string {
-  const known = s.pdf + s.video > 0;
-  const parts = [s.pdf ? `${t.drop.pdf} ${s.pdf}` : '', s.video ? `${t.drop.video} ${s.video}` : '', known && s.other ? `${t.drop.other} ${s.other}` : ''].filter(Boolean);
+  const known = s.pdf + s.video + s.image > 0;
+  const parts = [s.pdf ? `${t.drop.pdf} ${s.pdf}` : '', s.video ? `${t.drop.video} ${s.video}` : '', s.image ? `${t.drop.image} ${s.image}` : '', known && s.other ? `${t.drop.other} ${s.other}` : ''].filter(Boolean);
   return parts.length ? `${t.drop.files(s.files)}(${parts.join(' · ')})` : t.drop.files(s.files);
 }
 

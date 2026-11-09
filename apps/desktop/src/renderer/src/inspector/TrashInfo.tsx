@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Clapperboard, FileText, Files, Folder, Trash2 } from 'lucide-react';
+import { Files, Folder, Trash2 } from 'lucide-react';
 import { commandById, type TrashedCollection, type TrashedItem } from '@learn/domain';
 import { useCommands } from '../commands/CommandProvider';
 import type { CommandTarget } from '../commands/registry';
@@ -10,6 +10,7 @@ import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { useNow } from '../useNow';
+import { itemIcon } from '../library/itemIcon';
 import { multiSummary } from './summary';
 import { sharedTrashedAt } from './trashNote';
 
@@ -62,7 +63,7 @@ export function TrashSelection({ items, collections }: { items: readonly Trashed
   const titles = useMemo(
     () => [
       ...collections.map((c) => ({ id: c.id, title: c.name, icon: Folder })),
-      ...sortItems(items, sort).map((i) => ({ id: i.id, title: i.title, icon: i.type === 'video' ? Clapperboard : FileText })),
+      ...sortItems(items, sort).map((i) => ({ id: i.id, title: i.title, icon: itemIcon(i.type) })),
     ],
     [items, collections, sort],
   );

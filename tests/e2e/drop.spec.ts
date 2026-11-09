@@ -32,6 +32,24 @@ const THREE: Array<[string, string]> = [
   ['c.mp4', 'video/mp4'],
 ];
 
+test('the overlay counts images next to the other kinds; other image types are 기타', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const mixed: Array<[string, string]> = [['a.pdf', 'application/pdf'], ['b.png', 'image/png'], ['c.webp', 'image/webp']];
+    await drag(page, 'dragenter', mixed);
+    await expect(page.getByTestId('drop-summary')).toHaveText('파일 3개(PDF 1 · 이미지 2)');
+    await drag(page, 'dragleave', mixed);
+    await expect(page.getByTestId('drop-overlay')).toHaveCount(0);
+    // HEIC and SVG are image/* but not formats the library reads: other files, named next to a known kind.
+    const others: Array<[string, string]> = [['b.png', 'image/png'], ['c.heic', 'image/heic'], ['d.svg', 'image/svg+xml']];
+    await drag(page, 'dragenter', others);
+    await expect(page.getByTestId('drop-summary')).toHaveText('파일 3개(이미지 1 · 기타 2)');
+    await drag(page, 'dragleave', others);
+  } finally {
+    await app.close();
+  }
+});
+
 test('dragging files in shows the window-wide overlay with counts; ⌥ switches to 외부 파일로 연결; leaving hides it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

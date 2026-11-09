@@ -2,11 +2,12 @@
 // is stored with the asset; the image reader fits, zooms, moves, turns and remembers the picture (spec 4.1–4.4).
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { commandById, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, backFromReader, closeReaderTab, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, quiet, readerTab, rowByTitle, runMenuCommand, settled, trashItems,
+  FIXTURES, backFromReader, closeReaderTab, drag, dropSource, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, quiet, readerTab, rowByTitle, runMenuCommand, selectRows, settled, trashItems,
   type ImageReaderState,
 } from './helpers';
 
@@ -947,6 +948,154 @@ test('a live theme change while a picture is shown: an unset background follows 
     expect(await setTheme('light')).toMatchObject({ ok: true });
     await expect.poll(dark).toBe(false);
     await expect(stage(page)).toHaveAttribute('data-bg', 'checker');
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- M7c library: images where an item is listed, and the item panel's preview (spec 3.5, 4.6) --------------------------
+
+/** A PNG of one grey (a few KB whatever its size), for a picture of known proportions. */
+function greyPng(dir: string, name: string, width: number, height: number): string {
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, 'latin1');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])), 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // 8 bits, grey
+  const rows = Buffer.alloc((width + 1) * height, 0x70);
+  for (let y = 0; y < height; y++) rows[y * (width + 1)] = 0; // filter 0
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(rows, { level: 1 })), chunk('IEND', Buffer.alloc(0))]));
+  return file;
+}
+
+/** A PNG header that claims `width × height` and stops there: the size is readable, the picture is not (and need not be). */
+function headOnlyPng(dir: string, name: string, width: number, height: number): string {
+  const full = fs.readFileSync(greyPng(dir, 'head-source.png', 8, 8));
+  const ihdr = Buffer.from(full.subarray(8, 33)); // length, type, 13 data bytes, crc
+  ihdr.writeUInt32BE(width, 8);
+  ihdr.writeUInt32BE(height, 12);
+  ihdr.writeUInt32BE(zlib.crc32(ihdr.subarray(4, 21)), 21);
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, Buffer.concat([full.subarray(0, 8), ihdr]));
+  return file;
+}
+
+/** The item panel on show: a 1024 window folds it, and it is shown on demand (the menu command, as a person does). */
+async function showPanel(app: ElectronApplication, page: Page): Promise<void> {
+  if ((await page.getByTestId('shell').getAttribute('data-inspector')) !== 'shown') await runMenuCommand(app, 'view.toggleInspector');
+  await expect(page.getByTestId('shell')).toHaveAttribute('data-inspector', 'shown');
+}
+
+const preview = (page: Page) => page.getByTestId('image-preview');
+const kindLine = (page: Page) => page.getByTestId('inspector-kind');
+
+test('images dropped on the window come in with their icon, the kind 이미지, and the panel’s picture, size line and reading line', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const src = testInfo.outputPath('src');
+    fs.mkdirSync(src, { recursive: true });
+    // A PNG named .jpg: the bytes decide. A trailing byte makes it a file of its own (a PNG reader stops at IEND).
+    const wrong = path.join(src, 'wrong-ext.jpg');
+    fs.writeFileSync(wrong, Buffer.concat([fs.readFileSync(path.join(FIXTURES, 'transparent.png')), Buffer.from([0])]));
+    const names = ['transparent.png', 'orient6.jpg', 'alpha.webp', 'two-frames.gif', 'still.avif'].map((n) => path.join(FIXTURES, n));
+    await dropSource(page, [...names, wrong]);
+    for (const type of ['dragenter', 'dragover', 'drop'] as const) await drag(page, type, 'source');
+    await expect(page.getByTestId('import-done').filter({ hasText: '자료 6개를 가져왔습니다' })).toBeVisible();
+    for (const title of ['transparent', 'orient6', 'alpha', 'two-frames', 'still', 'wrong-ext']) {
+      const row = rowByTitle(page, title);
+      await expect(row.locator('[data-col="type"]')).toHaveText('이미지');
+      await expect(row.locator('[data-col="title"] svg.lucide-image')).toBeVisible();
+    }
+
+    // One image selected: its picture leads the head. A 64 × 48 picture in a 286-wide panel is 160 high.
+    await rowByTitle(page, 'transparent').click();
+    await showPanel(app, page);
+    await expect(kindLine(page)).toHaveText('이미지 · 64 × 48');
+    await expect(preview(page)).toHaveAttribute('data-state', 'picture');
+    const img = preview(page).locator('img');
+    await expect(img).toHaveAttribute('alt', 'transparent');
+    await expect(img).toHaveAttribute('loading', 'lazy');
+    await expect(img).toHaveAttribute('decoding', 'async');
+    await expect.poll(() => img.evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const box = (await preview(page).boundingBox())!;
+    const head = (await page.getByTestId('inspector-head').boundingBox())!;
+    expect(box.height).toBeLessThanOrEqual(160);
+    expect(box.height).toBeGreaterThan(150);
+    // The panel's content width: the head's padding on both sides.
+    expect(Math.abs(box.width - (head.width - 32))).toBeLessThanOrEqual(1);
+    expect(await preview(page).evaluate((e) => getComputedStyle(e).backgroundImage)).toBe('none'); // no checkerboard
+
+    // Several selected: no preview (a positive check on the single selection above, the same panel).
+    await selectRows(page, ['transparent', 'alpha']);
+    await expect(page.getByText('자료 2개 선택')).toBeVisible();
+    await expect(preview(page)).toHaveCount(0);
+
+    // Never opened: no reading section. Opened and drawn: ✓ 완료 and the day it was viewed.
+    await rowByTitle(page, 'still').click();
+    await expect(kindLine(page)).toHaveText('이미지 · 40 × 30');
+    await expect(page.getByTestId('reading-section')).toHaveCount(0);
+    await openItem(page, 'still');
+    await drawn(page);
+    await expect.poll(async () => (await stored(page, (await imageState(page))!.itemId))?.progress).toBe(1);
+    await backFromReader(page);
+    await rowByTitle(page, 'still').click();
+    await expect(page.getByTestId('reading-done')).toHaveText('완료');
+    await expect(page.getByTestId('reading-line')).toHaveText(/^열어\u00a0봄\u00a0· 오늘\u00a0/);
+    await expect(page.getByTestId('reading-bar')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('the panel’s preview keeps the picture’s proportions up to 160 high; no size, past fifty megapixels and a picture that cannot load show the icon box', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const src = testInfo.outputPath('src');
+    fs.mkdirSync(src, { recursive: true });
+    const wide = greyPng(src, 'wide.png', 4000, 1000);
+    const huge = headOnlyPng(src, 'huge.png', 8000, 7000); // 56 MP: over the limit, so the file is never loaded
+    const edge = headOnlyPng(src, 'edge.png', 10000, 5000); // exactly 50 MP: drawn (and fails here: there is no picture behind the header)
+    // The head of an AVIF and no size box in it: the file is an image, its size is not known.
+    const nosize = path.join(src, 'no-size.avif');
+    fs.writeFileSync(nosize, fs.readFileSync(path.join(FIXTURES, 'still.avif')).subarray(0, 32));
+    const items = await importPaths(page, [wide, huge, edge, nosize, BROKEN]);
+    expect(items.map((i) => i.imageSize ?? null)).toEqual([{ width: 4000, height: 1000 }, { width: 8000, height: 7000 }, { width: 10000, height: 5000 }, null, expect.anything()]);
+
+    await rowByTitle(page, 'wide').click();
+    await showPanel(app, page);
+    await expect(kindLine(page)).toHaveText('이미지 · 4000 × 1000');
+    await expect(preview(page)).toHaveAttribute('data-state', 'picture');
+    await expect.poll(() => preview(page).locator('img').evaluate((e) => (e as HTMLImageElement).naturalWidth)).toBe(4000);
+    const box = (await preview(page).boundingBox())!;
+    expect(Math.abs(box.height - box.width / 4)).toBeLessThanOrEqual(1); // 286 → 72: no 160-high box around a strip
+
+    await rowByTitle(page, 'huge').click();
+    await expect(kindLine(page)).toHaveText('이미지 · 8000 × 7000');
+    await expect(preview(page)).toHaveAttribute('data-state', 'icon');
+    await expect(preview(page).locator('svg.lucide-image')).toBeVisible();
+    await expect(preview(page).locator('img')).toHaveCount(0);
+    expect((await preview(page).boundingBox())!.height).toBe(160);
+
+    await rowByTitle(page, 'no-size').click();
+    await expect(kindLine(page)).toHaveText('이미지');
+    await expect(preview(page)).toHaveAttribute('data-state', 'icon');
+    await expect(preview(page).locator('img')).toHaveCount(0);
+
+    // At the limit the picture is tried; one that fails to load gives the broken-picture icon, still 160 high.
+    await rowByTitle(page, 'edge').click();
+    await expect(preview(page)).toHaveAttribute('data-state', 'broken');
+    await expect(preview(page).locator('svg.lucide-image-off')).toBeVisible();
+    expect((await preview(page).boundingBox())!.height).toBe(160);
+    await rowByTitle(page, 'broken').click();
+    await expect(preview(page)).toHaveAttribute('data-state', 'broken');
   } finally {
     await app.close();
   }

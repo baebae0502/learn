@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
-import { Clapperboard, FileText, Files, MousePointer2 } from 'lucide-react';
+import { Files, MousePointer2 } from 'lucide-react';
 import type { LibraryItem, TrashedItem } from '@learn/domain';
 import { ApiError } from '../api';
 import { useItem, useItemDetail, useItems } from '../data/queries';
@@ -25,6 +25,7 @@ import { InfoSection } from './InfoSection';
 import { ReadingSection } from './ReadingSection';
 import { TagsSection } from './TagsSection';
 import { TrashSelection } from './TrashInfo';
+import { itemIcon } from '../library/itemIcon';
 import { libraryStats, multiSummary } from './summary';
 import { useShownAfter } from './useShownAfter';
 
@@ -128,7 +129,7 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
         <ul className="multi-list">
           {shown.map((i) => (
             <li key={i.id} className="multi-row" data-testid="multi-row">
-              <Icon icon={i.type === 'video' ? Clapperboard : FileText} size="sm" />
+              <Icon icon={itemIcon(i.type)} size="sm" />
               <span className="ellipsis" title={i.title}>
                 {i.title}
               </span>

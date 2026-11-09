@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
-import { Check, ChevronDown, ChevronUp, Clapperboard, FileText, Folder } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Folder } from 'lucide-react';
 import {
   memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type FocusEvent, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type WheelEvent,
@@ -33,6 +33,7 @@ import { tagsDescription } from '../tags/dotTags';
 import { KeptMark, LinkMark, StatusFlags } from './ItemMarks';
 import type { DuplicateMarks } from '../organize/duplicates';
 import { inOrder, reduceSelection, rowOrder, type SelectAction, type SelectionState } from './selectionModel';
+import { itemIcon } from './itemIcon';
 import { useRevealRow } from './tableDom';
 import { firstDirection, type LibrarySort, type LibrarySortColumn } from './sort';
 
@@ -144,7 +145,7 @@ function ProgressCell({ progress }: { progress: number | null }) {
 function TitleCell({ item, match, tags, kept }: { item: LibraryItem; match: Match | null; tags: readonly OrganizeTag[]; kept: boolean }) {
   return (
     <>
-      <Icon icon={item.type === 'video' ? Clapperboard : FileText} />
+      <Icon icon={itemIcon(item.type)} />
       <span className="item-title ellipsis" title={item.title}>
         {highlight(item.title, match)}
       </span>

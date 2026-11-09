@@ -10,6 +10,8 @@ export const inspector = {
   detailFailedBody: '잠시 뒤 다시 시도해 주세요.',
   /** The head's kind line: "PDF · 68쪽" (the duration comes from format.ts formatDuration). */
   pages: (n: number) => `${n}쪽`,
+  /** An image's kind line: "이미지 · 4032 × 3024", the kind alone while its size is unknown. */
+  imageKind: (width: number | undefined, height: number | undefined) => (width === undefined || height === undefined ? '이미지' : `이미지\u00a0· ${width}\u00a0×\u00a0${height}`),
   /** Nothing selected (library.html?state=none); reading progress joins the sentence in M7. */
   noneTitle: '선택한 자료 없음',
   noneBody: '표에서 자료를 고르면 정보가 여기에 보입니다.',
@@ -30,6 +32,8 @@ export const inspector = {
   reading: {
     stoppedAtPage: (page: number, pages: number | undefined) => `${pages === undefined ? `${page}` : `${page}\u00a0/\u00a0${pages}`}쪽에서\u00a0멈춤`,
     stoppedAtTime: (time: string) => `${time}에서\u00a0멈춤`,
+    /** An image has no place to stop at: it was opened, on this day. */
+    viewed: (date: string) => `열어\u00a0봄\u00a0· ${date}`,
     line: (where: string, date: string) => `${where}\u00a0· ${date}`,
   },
   fields: {

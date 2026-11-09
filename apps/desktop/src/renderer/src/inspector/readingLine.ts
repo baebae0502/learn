@@ -7,8 +7,8 @@ import { t } from '../strings';
 export function readingLine(position: ReadingPosition, now: Date): string {
   const { locator } = position;
   const date = formatDate(position.openedAt ?? position.updatedAt, now).replace(/ /g, '\u00a0');
-  // An image has no page or time to stop at; its line is the day alone.
-  if (locator.kind === 'image') return date;
+  // An image has no page or time to stop at.
+  if (locator.kind === 'image') return t.inspector.reading.viewed(date);
   const where = locator.kind === 'pdf' ? t.inspector.reading.stoppedAtPage(locator.pageIndex + 1, locator.pages) : t.inspector.reading.stoppedAtTime(formatDuration(locator.timeMs));
   return t.inspector.reading.line(where, date);
 }

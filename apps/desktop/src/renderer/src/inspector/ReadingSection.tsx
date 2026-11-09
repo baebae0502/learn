@@ -15,7 +15,8 @@ const readingKey = (itemId: string) => ['reading', itemId] as const;
 export function ReadingSection({ itemId }: { itemId: string }) {
   const client = useQueryClient();
   const now = useNow();
-  const position = useQuery({ queryKey: readingKey(itemId), queryFn: () => unwrap(api().reader.getPosition({ itemId })) });
+  // Stale at once: the library's panel is not mounted while a reader is shown, so no 'position' event reaches it, and an item selected before it was first opened would keep "never opened" on coming back.
+  const position = useQuery({ queryKey: readingKey(itemId), queryFn: () => unwrap(api().reader.getPosition({ itemId })), staleTime: 0 });
   useLearnEvent('libraryChanged', ({ reason, itemIds }) => {
     if ((reason === 'position' || reason === 'opened') && (itemIds === undefined || itemIds.includes(itemId))) void client.invalidateQueries({ queryKey: readingKey(itemId) });
   });

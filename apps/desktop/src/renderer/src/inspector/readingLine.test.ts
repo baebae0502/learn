@@ -8,7 +8,14 @@ const base = { itemId: 'i', revisionId: 'r', progress: 0.4, updatedAt: at(new Da
 const pdf = (pageIndex: number, pages?: number, extra: Partial<ReadingPosition> = {}): ReadingPosition => ({ ...base, openedAt: at(new Date(2026, 10, 6, 9, 24)), locator: { kind: 'pdf', pageIndex, ...(pages ? { pages } : {}) }, ...extra });
 const video = (timeMs: number): ReadingPosition => ({ ...base, openedAt: at(new Date(2026, 10, 5, 20, 40)), locator: { kind: 'video', timeMs } });
 
+const image = (extra: Partial<ReadingPosition> = {}): ReadingPosition => ({ ...base, progress: 1, openedAt: at(new Date(2026, 10, 6, 9, 24)), locator: { kind: 'image' }, ...extra });
+
 describe('readingLine (the item panel 읽기 section)', () => {
+  it('gives an image the day it was viewed, today or yesterday, with no place to stop at', () => {
+    expect(readingLine(image(), now)).toBe('열어\u00a0봄\u00a0· 오늘 오전 9:24');
+    expect(readingLine(image({ openedAt: at(new Date(2026, 10, 5, 20, 40)) }), now)).toBe('열어\u00a0봄\u00a0· 어제 오후 8:40');
+    expect(readingLine(image({ openedAt: null }), now)).toBe('열어\u00a0봄\u00a0· 2026.\u00a011.\u00a01.');
+  });
   it('names the page out of the total, binding number and unit with U+00A0', () => {
     expect(readingLine(pdf(11, 100), now)).toBe('12 / 100쪽에서 멈춤 · 오늘 오전 9:24');
   });

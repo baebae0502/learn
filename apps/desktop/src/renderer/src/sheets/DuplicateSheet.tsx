@@ -1,12 +1,13 @@
 import { useRef, useState } from 'react';
 import { Checkbox } from 'react-aria-components';
-import { Check, Clapperboard, Copy, FileText } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import type { DuplicateChoice, SheetPayload } from '@learn/domain';
 import { formatDate, formatSize } from '../format';
 import { t } from '../strings';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { resolveSheet } from './SheetApp';
+import { itemIcon } from '../library/itemIcon';
 import { useScrollRegion } from './scrollRegion';
 import { useSheetKeys } from './sheetKeys';
 
@@ -50,7 +51,7 @@ export function DuplicateSheet({ payload }: { payload: Extract<SheetPayload, { k
         </p>
         <div className="card item-card" data-testid="dup-card">
           <span className="thumb">
-            <Icon icon={e.type === 'video' ? Clapperboard : FileText} />
+            <Icon icon={itemIcon(e.type)} />
           </span>
           <div className="card-text">
             <div className="t-headline ellipsis" title={e.title}>

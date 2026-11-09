@@ -98,6 +98,9 @@ const BEHIND_PALETTE = [
 const FIXED_DATE_BOXES = [
   '[data-testid="trash-note-when"] { display: inline-block; width: 104px; white-space: nowrap; overflow: hidden; vertical-align: bottom; }',
   '[data-testid="collection-empty-meta"] { display: inline-block; width: 220px; white-space: nowrap; overflow: hidden; vertical-align: bottom; }',
+  // The backup and restore sheets' time under their title, and the settings window's last backup beside its button.
+  '[data-testid="backup-when"], [data-testid="restore-when"] { width: 200px; white-space: nowrap; overflow: hidden; }',
+  '[data-testid="last-backup-date"] { display: inline-block; width: 160px; white-space: nowrap; overflow: hidden; vertical-align: bottom; }',
 ].join('\n');
 /** One item in the panel as it stays: its kind line (the page count or length is read from the file, later) and its sections. */
 async function panelSettled(page: Page, kind: string | RegExp): Promise<void> {
@@ -775,12 +778,12 @@ test('backup: its toast with an import waiting behind it, the result sheet (and 
       await expect(s.page.getByTestId('import-progress')).toHaveCount(0);
       const sheet = await expectWindow(s.app, 'sheet', () => backupResume(s.app));
       await expect(sheet.getByTestId('backup-files')).toContainText('손상 없음');
-      await shoot(sheet, `sheet-backup-${theme}`, { mask: sheetMasks(sheet) });
+      await shoot(sheet, `sheet-backup-${theme}`, { mask: sheetMasks(sheet), style: FIXED_DATE_BOXES });
       await closeSheet(sheet, 'Enter');
       await waitImportIdle(s.page);
       const settings = await expectWindow(s.app, 'settings', () => runMenuCommand(s.app, 'app.settings'));
       await expect(settings.getByTestId('last-backup-date')).toBeVisible();
-      await shoot(settings, `settings-backup-${theme}`, { mask: [settings.getByTestId('last-backup-date')] });
+      await shoot(settings, `settings-backup-${theme}`, { mask: [settings.getByTestId('last-backup-date')], style: FIXED_DATE_BOXES });
       await settings.close();
       await (await mainWindow(s.app)).evaluate((w) => w.focus());
     }
@@ -792,7 +795,7 @@ test('backup: its toast with an import waiting behind it, the result sheet (and 
     await stubFolderPicker(s.app, documents);
     const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'file.backup'));
     await expect(sheet.getByTestId('backup-missing-note')).toBeVisible();
-    await shoot(sheet, 'sheet-backup-missing-light', { mask: sheetMasks(sheet) });
+    await shoot(sheet, 'sheet-backup-missing-light', { mask: sheetMasks(sheet), style: FIXED_DATE_BOXES });
     await closeSheet(sheet, 'Enter');
   } finally {
     await s.app.close();
@@ -832,7 +835,7 @@ test('restore: the result sheet (and with problems), its toast', async ({}, test
       await setTheme(s.page, theme);
       const sheet = await restoreFrom(backup);
       await expect(sheet.getByTestId('restore-files')).toHaveText('3개 확인 · 손상 없음');
-      await shoot(sheet, `sheet-restore-${theme}`, { mask: masks(sheet) });
+      await shoot(sheet, `sheet-restore-${theme}`, { mask: masks(sheet), style: FIXED_DATE_BOXES });
       await closeSheet(sheet, 'Escape');
     }
     // A file the backup no longer holds and one whose contents changed (?scene=restore-issues).
@@ -843,7 +846,7 @@ test('restore: the result sheet (and with problems), its toast', async ({}, test
     fs.appendFileSync(path.join(backup, ...changed!.relativePath!.split('/')), 'changed on the way');
     const issues = await restoreFrom(backup);
     await expect(issues.getByTestId('restore-badge')).toHaveAttribute('data-tone', 'warning');
-    await shoot(issues, 'sheet-restore-issues-light', { mask: masks(issues) });
+    await shoot(issues, 'sheet-restore-issues-light', { mask: masks(issues), style: FIXED_DATE_BOXES });
     await closeSheet(issues, 'Escape');
     // The restore's toast while it copies (the backup's machine, P-3).
     await restorePause(s.app);

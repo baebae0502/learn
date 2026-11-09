@@ -262,8 +262,12 @@ export function searchIndexFor(items: readonly LibraryItem[], texts?: readonly S
   const hit = indexes.get(items);
   if (hit && hit.texts === texts && hit.tags === tags) return hit.index;
   // The same list and texts with other tag names: swap the changed items' tag field when only a few changed.
-  const retagged = hit && hit.texts === texts ? timed('search:index', () => retagIndex(hit.index, hit.tags, tags)) : null;
-  const index = retagged ?? timed('search:index', () => buildSearchIndex(items, texts, tags));
+  // One measure either way (a retag that answers null falls through to the full build inside the same one).
+  const made = timed('search:index', () => {
+    const retagged = hit && hit.texts === texts ? retagIndex(hit.index, hit.tags, tags) : null;
+    return { retagged, index: retagged ?? buildSearchIndex(items, texts, tags) };
+  });
+  const { retagged, index } = made;
   if (retagged) {
     const { long: _l, longStarts: _s, longItems: _i, ...part } = retagged;
     shortParts.set(items, { tags, part });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { LibraryItem, SearchText } from '@learn/domain';
 import { matchKorean } from '../palette/hangul';
 import { RETAG_LIMIT, buildSearchIndex, carrySearchIndex, foldText, parseQuery, retagIndex, search, searchCached, searchIndexFor, type TagNames } from './search';
@@ -321,5 +321,24 @@ describe('retagging the index (key 1 at ten thousand items)', () => {
     expect(after).not.toBe(before);
     same(after, buildSearchIndex(ITEMS, TEXTS, b));
     expect(found('beta', after)).toEqual([middle.title]);
+  });
+
+  it('records one search:index measure per index, whether it was retagged or rebuilt in full', () => {
+    const measure = vi.spyOn(performance, 'measure');
+    const count = () => measure.mock.calls.filter((c) => c[0] === 'learn:search:index').length;
+    try {
+      const list = [...ITEMS];
+      const a = names([[middle, 'alpha']]);
+      searchIndexFor(list, TEXTS, a);
+      expect(count()).toBe(1); // the first index is a build
+      searchIndexFor(list, TEXTS, names([[middle, 'beta']]));
+      expect(count()).toBe(2); // positive control: a retag is one measure
+      const many = new Map<string, string>();
+      for (let k = 0; k <= RETAG_LIMIT; k++) many.set(`id${k}`, `t${k}`);
+      searchIndexFor(list, TEXTS, many); // retagIndex answers null: a full rebuild
+      expect(count()).toBe(3);
+    } finally {
+      measure.mockRestore();
+    }
   });
 });

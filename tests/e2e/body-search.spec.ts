@@ -16,6 +16,7 @@ import {
   runMenuCommand,
   seedBodyText,
   seedMetadata,
+  settled,
   showItemPanel,
   textExtraction,
   textHeld,
@@ -229,11 +230,14 @@ test('the scope button: at the field start in its own Tab stop, a menu by pointe
     await hoverLikeUser(page, 'search-scope');
     await expectTooltipText(page, '검색 범위', 'search-scope');
 
-    // Pointer: two rows, each with what it searches, the current one checked.
+    // Pointer: two rows, each with what it searches, the current one checked — and none filled until the pointer is on it.
     await scopeButton(page).click();
     await expect(scopeMenu(page)).toBeVisible();
     await expect(scopeRow(page, '정보')).toHaveAttribute('aria-checked', 'true');
+    await expect(scopeRow(page, '정보').locator('.check svg')).toHaveCount(1);
     await expect(scopeRow(page, '정보와 본문')).toHaveAttribute('aria-checked', 'false');
+    await settled(page);
+    await expect(scopeMenu(page).locator('[role="menuitemradio"][data-focused]')).toHaveCount(0);
     await expect(scopeRow(page, '정보')).toContainText('제목⁠·저자⁠·태그⁠·출판사⁠·원래 이름⁠·초록⁠·메모');
     await expect(scopeRow(page, '정보와 본문')).toContainText('PDF 본문 포함');
     await expectNoSeriousA11y(page, 'the search scope menu');
@@ -244,21 +248,20 @@ test('the scope button: at the field start in its own Tab stop, a menu by pointe
     // The longer placeholder fits the 240 field on one line.
     expect(await field(page).evaluate((el) => (el as HTMLInputElement).scrollWidth <= (el as HTMLInputElement).clientWidth)).toBe(true);
 
-    // Keys: the button comes right before the field (Shift+Tab from it), ↓ opens the menu on the checked row, ↑ ↩ chooses.
+    // Keys: the button comes right before the field (Shift+Tab from it), ↓ opens the menu on its first row, ↩ chooses.
     await runMenuCommand(app, 'library.find');
     await expect(field(page)).toBeFocused();
     await page.keyboard.press('Shift+Tab');
     await expect(scopeButton(page)).toBeFocused();
     await page.keyboard.press('ArrowDown');
-    await expect(scopeRow(page, '정보와 본문')).toBeFocused();
-    await page.keyboard.press('ArrowUp');
     await expect(scopeRow(page, '정보')).toBeFocused();
+    await expect(scopeRow(page, '정보와 본문')).toHaveAttribute('aria-checked', 'true');
     await page.keyboard.press('Enter');
     await expect(scopeMenu(page)).toHaveCount(0);
     await expect(scopeButton(page)).toBeFocused();
     await expect(field(page)).toHaveAttribute('placeholder', PLACEHOLDER.metadata);
     await expect.poll(() => storedScope(page)).toBe('metadata');
-    // And back: ↓ ↓ ↩ from the button (the menu opens on 정보, the checked row).
+    // And back: ↓ ↓ ↩ from the button (the menu opens on 정보, its first row).
     await page.keyboard.press('ArrowDown');
     await expect(scopeRow(page, '정보')).toBeFocused();
     await page.keyboard.press('ArrowDown');

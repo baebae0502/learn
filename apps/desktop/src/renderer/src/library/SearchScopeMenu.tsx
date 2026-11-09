@@ -23,9 +23,15 @@ export function SearchScopeButton({ isDisabled = false }: { isDisabled?: boolean
   const progress = useBodyProgress();
   // Controlled, so a held button can never open the menu.
   const [isOpen, setOpen] = useState(false);
+  // The choice is a group of its own, as in 확대 ▾ and 보기 ▾: the menu itself has no selection, so opening it by pointer
+  // fills no row (a filled checked row reads as just chosen), and opening it by keys starts on the first row.
   const entries: MenuEntry<ScopeKey>[] = [
-    { id: 'metadata', label: t.library.scope.metadata, description: t.library.scope.metadataDescription, checked: scope === 'metadata', testId: 'search-scope-metadata' },
-    { id: 'fulltext', label: t.library.scope.fulltext, description: t.library.scope.fulltextDescription, checked: scope === 'fulltext', testId: 'search-scope-fulltext' },
+    {
+      items: [
+        { id: 'metadata', label: t.library.scope.metadata, description: t.library.scope.metadataDescription, checked: scope === 'metadata', testId: 'search-scope-metadata' },
+        { id: 'fulltext', label: t.library.scope.fulltext, description: t.library.scope.fulltextDescription, checked: scope === 'fulltext', testId: 'search-scope-fulltext' },
+      ],
+    },
   ];
   // Its own group: a line that tells is not one of the choices.
   if (indexing(progress)) entries.push(MENU_SEPARATOR, { items: [{ id: 'progress', label: t.library.scope.progress(progress.done, progress.total), info: true, testId: 'search-scope-progress' }] });

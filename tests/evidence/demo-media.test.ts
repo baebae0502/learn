@@ -5,7 +5,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { matchKorean } from '../../apps/desktop/src/renderer/src/palette/hangul';
 import { itemMetadataSchema } from '../../packages/domain/src/metadata';
-import { DEMO_METADATA, DEMO_ORGANIZE, EXTRA_TITLES, PALETTE_TITLE, READ_TITLE, VIDEOS, writeDemoMedia } from './demo-media';
+import { DEMO_METADATA, DEMO_ORGANIZE, DOCS, EXTRA_TITLES, MATCHES_TITLE, PALETTE_TITLE, PHOTO_TITLE, PICTURES, READ_TITLE, SEARCH_WORD, TRASHED_TITLE, VIDEOS, writeDemoMedia, writeDemoPictures } from './demo-media';
 
 const pdfsIn = (dir: string) => fs.readdirSync(dir).filter((f) => f.endsWith('.pdf'));
 const hash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -89,5 +89,40 @@ describe('the demo material of the organise chapters (M5)', () => {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(fixtures, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the M7c demo material', () => {
+  it('writes the five pictures under their names, or distinct fixture copies once drawing fails, and says so once', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-pictures-'));
+    const fixtures = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-demo-fixtures-'));
+    for (const name of ['photo-4032.jpg', 'transparent.png', 'alpha.webp']) fs.writeFileSync(path.join(fixtures, name), `stand-in ${name}`);
+    try {
+      const notes: string[] = [];
+      const draw = vi.fn().mockResolvedValueOnce(Buffer.from('drawn')).mockRejectedValue(new Error('drawing took over 20 s'));
+      const files = await writeDemoPictures(dir, draw, (text) => notes.push(text), fixtures);
+      expect(files.map((f) => path.basename(f))).toEqual(PICTURES.map((p) => p.file));
+      expect(draw).toHaveBeenCalledTimes(2);
+      expect(notes).toHaveLength(1);
+      expect(notes[0]).toMatch(/drawing the demo pictures failed .*20 s.*fixture/);
+      expect(new Set(files.map(hash)).size).toBe(PICTURES.length); // no two the same bytes: no duplicate question on camera
+      expect(fs.readdirSync(dir).sort()).toEqual(PICTURES.map((p) => p.file).sort()); // the drawing page is gone
+      expect(path.basename(files[0]!, '.jpg')).toBe(PHOTO_TITLE);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(fixtures, { recursive: true, force: true });
+    }
+  });
+
+  it('finds the search word in the bodies of three notes (the panel\'s note and the trashed one among them), in one title, and in no picture\'s name', () => {
+    const body = (title: string) => DOCS.find((d) => d.title === title)!.pages.flatMap((p) => [p.heading, ...p.paragraphs, ...(p.bullets ?? [])]).join(' ');
+    const inBody = DOCS.filter((d) => body(d.title).includes(SEARCH_WORD)).map((d) => d.title);
+    expect(inBody).toHaveLength(3);
+    expect(inBody).toContain(MATCHES_TITLE);
+    expect(inBody).toContain(TRASHED_TITLE);
+    expect(DOCS.filter((d) => d.title.includes(SEARCH_WORD)).map((d) => d.title)).toHaveLength(1);
+    expect(PICTURES.filter((p) => p.file.includes(SEARCH_WORD))).toEqual([]);
+    expect(EXTRA_TITLES.filter((t) => body(t).includes(SEARCH_WORD))).toEqual([]); // the notes of the index chapter add no row
+    expect(MATCHES_TITLE).toBe(READ_TITLE);
   });
 });

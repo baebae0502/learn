@@ -304,10 +304,10 @@ test('reader budgets @2: the frame gaps of a 30-page scroll at the automatic fit
 // ---- the image tab ---------------------------------------------------------------------------------------------------------------
 
 /**
- * Opens the photo from the library list; returns the time from the double click to the first animation frame after the reader says
+ * Opens a photo from the library list; returns the time from the double click to the first animation frame after the reader says
  * the picture is drawn (its saved place applied, the picture shown): the frame that paints it.
  */
-async function openPicture(page: Page): Promise<number> {
+async function openPicture(page: Page, title: string): Promise<number> {
   await page.evaluate(() => {
     const w = window as unknown as {
       __open?: number;
@@ -324,29 +324,38 @@ async function openPicture(page: Page): Promise<number> {
       });
     });
   });
-  await openItem(page, 'photo-4032');
+  await openItem(page, title);
   return page.evaluate(async () => {
     const w = window as unknown as { __open: number; __drawn: Promise<number> };
     return (await w.__drawn) - w.__open;
   });
 }
 
-test('reader budgets @3: an image tab opened (5 times, a 4032 × 3024 JPEG) → the first frame with the picture', { tag: '@perf' }, async ({}, testInfo) => {
+test('reader budgets @3: an image tab opened (5 times, each a 4032 × 3024 JPEG never opened before) → the first frame with the picture', { tag: '@perf' }, async ({}, testInfo) => {
   test.setTimeout(linuxCi ? 90_000 : 150_000);
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    const [photo] = await importPaths(page, [PHOTO]);
-    expect(photo?.title).toBe('photo-4032');
-    // The first open reads and decodes the file cold; it is reported beside the five, not judged (later opens may find the bytes cached).
-    const cold = await openPicture(page);
+    // Every open is of its own file — the photo with one byte more after its end, so another asset and another address — and so reads
+    // and decodes cold: the decode is what the budget is about. One more is opened first and reported apart: the session's first image.
+    const bytes = fs.readFileSync(PHOTO);
+    const dir = testInfo.outputPath('photos');
+    fs.mkdirSync(dir, { recursive: true });
+    const files = Array.from({ length: RUNS.imageOpen + 1 }, (_, i) => {
+      const file = path.join(dir, `photo-${i}.jpg`);
+      fs.writeFileSync(file, Buffer.concat([bytes, Buffer.from([i])]));
+      return file;
+    });
+    const items = await importPaths(page, files);
+    expect(new Set(items.map((i) => i.assetId)).size).toBe(files.length);
+    const first = await openPicture(page, 'photo-0');
     await closeReaderTab(page);
     const opens: number[] = [];
-    for (let i = 0; i < RUNS.imageOpen; i++) {
-      opens.push(await openPicture(page));
+    for (let i = 1; i <= RUNS.imageOpen; i++) {
+      opens.push(await openPicture(page, `photo-${i}`));
       await closeReaderTab(page);
     }
-    save({ imageFirstFrame: { ...summary(opens), cold: tenth(cold) } });
-    console.log('[measure] image tab open → first frame', JSON.stringify({ ...summary(opens), cold: tenth(cold) }));
+    save({ imageFirstFrame: { ...summary(opens), first: tenth(first) } });
+    console.log('[measure] image tab open → first frame', JSON.stringify({ ...summary(opens), first: tenth(first) }));
   } finally {
     await app.close();
   }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, importPaths, launch, libraryTab, mainWindow, openItem, readerTab, runMenuAccelerator, runMenuCommand } from './helpers';
+import { FIXTURES, importPaths, launch, libraryTab, mainWindow, openItem, readerTab, runMenuAccelerator, runMenuCommand, settled } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf'); // 100 pages, "See page 50." on page 1, an outline of ten chapters
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -175,9 +175,10 @@ test('a scroll of the reader\'s own after a link keeps the stage when the target
     await expect(field(page)).toHaveValue('52');
     const there = await scrollTop(page);
     const height = await pageHeight(page);
-    await page.waitForTimeout(100); // the scroll event is reported
+    await settled(page, 2); // the scroll event is reported (the field shows its page above)
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
+    // The held text layers were seen drawn above; what they would do late (pull the view to their page) happens after they are let through.
+    await settled(page);
     await expect(field(page)).toHaveValue('52');
     expect(Math.abs((await scrollTop(page)) - there)).toBeLessThanOrEqual(height * 0.02);
   } finally {
@@ -198,7 +199,8 @@ test('going back before the link target\'s text layer is let through stays back:
     await runMenuCommand(app, 'nav.historyBack');
     await expect(field(page)).toHaveValue('1');
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
+    // As above: the layers were held (seen), and their late effect would show after the release.
+    await settled(page);
     await expect(field(page)).toHaveValue('1');
     expect(Math.abs((await scrollTop(page)) - start)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
   } finally {
@@ -218,7 +220,8 @@ test('a page turn right after a link, before its text layer is let through, stay
     await expect(field(page)).toHaveValue('51');
     const at = await scrollTop(page);
     await releaseTextLayers(page);
-    await page.waitForTimeout(500);
+    // As above: the layers were held (seen), and their late effect would show after the release.
+    await settled(page);
     await expect(field(page)).toHaveValue('51');
     expect(Math.abs((await scrollTop(page)) - at)).toBeLessThanOrEqual((await pageHeight(page)) * 0.02);
   } finally {

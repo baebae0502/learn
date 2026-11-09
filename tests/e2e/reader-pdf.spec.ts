@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, backFromReader, closeReaderTab, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
+import { FIXTURES, backFromReader, closeReaderTab, dragAlong, darkestPixel, importPaths, isCloseNoise, launch, menuItemEnabled, menuSnapshot, openExternalCalls, openItem, pdfCanvas, pixelAt, shotPixels, readClipboard, resolveColor, runMenuCommand, setPdfZoom, settled, showItemPanel, stubOpenExternal, trashItems, type MenuNode } from './helpers';
 
 const PAPER = path.join(FIXTURES, 'paper-100.pdf');
 const SAMPLE = path.join(FIXTURES, 'sample.pdf');
@@ -710,7 +710,8 @@ test('the item panel has its width in its first frame when a PDF opens', async (
     });
     await openItem(page, 'paper-100');
     await expect(viewer(page)).toHaveAttribute('data-rendered', /^[1-9]\d*$/);
-    await page.waitForTimeout(300);
+    // The sampler runs once a frame: the frames after the first render are in before the widths are read.
+    await settled(page);
     const widths = await page.evaluate(() => (window as unknown as { __panelWidths: number[] }).__panelWidths);
     expect(widths.length).toBeGreaterThan(0);
     expect(Math.min(...widths)).toBeGreaterThan(0);
@@ -1625,7 +1626,6 @@ test('a long outline goes through the virtualizer with the same tree: rows keep 
   }
 });
 
-test('the outline rows keep their height when many are open (paper-100, every chapter opened)', async ({}, testInfo) => {
 test('the outline scrolls its current entry into view, and leaves the list alone for two seconds after the user scrolled it', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -1683,6 +1683,7 @@ test('the outline scrolls its current entry into view, and leaves the list alone
   }
 });
 
+test('the outline rows keep their height when many are open (paper-100, every chapter opened)', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
     await openPaper(page);

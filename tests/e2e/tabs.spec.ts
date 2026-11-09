@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
-  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
+  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, settled, sheetReleased, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 import { holdReplies } from './dnd-helpers';
 import { expectNoSeriousA11y } from './a11y';
@@ -254,8 +254,8 @@ test('a kept tab comes back at once, with its find bar and place', async ({}, te
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
     expect((await reader(page))!.pageNumber).toBe(30);
     await expect(page.locator('[data-testid="pdf-viewer"][data-mark="kept"]')).toHaveCount(1);
-    // The scroll stood where it was: no jump back to the first page afterwards either.
-    await page.waitForTimeout(600);
+    // The scroll stood where it was: no jump back to the first page afterwards either (the page field showed 30 above, so a jump would show in it).
+    await settled(page);
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
   } finally {
     await app.close();
@@ -312,14 +312,15 @@ test('a hidden tab does not refit while the window changes size', async ({}, tes
     await expect(page.getByTestId('pdf-page-field')).toBeVisible();
     await win.evaluate((w) => w.setContentSize(1280, w.getContentSize()[1]!));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(1200);
-    await page.waitForTimeout(500);
+    // The hidden reader refits on no size change: absent here, present just below by the same scalechanging event once it is shown.
+    await settled(page);
     const scaled = () => page.evaluate(() => (window as unknown as { __scaled: number }).__scaled);
     expect(await scaled()).toBe(0);
 
     await readerTab(page, a!.id).click();
     await expect(readerTab(page, a!.id)).toHaveAttribute('aria-selected', 'true');
     await expect.poll(scaled).toBe(1);
-    await page.waitForTimeout(500);
+    await settled(page);
     expect(await scaled()).toBe(1);
   } finally {
     await app.close();
@@ -527,7 +528,8 @@ test('eleven items ask first; cancelling opens nothing, confirming opens them al
     await runMenuCommand(app, 'item.openInBackground');
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
     expect((await confirmCalls(app))[0]).toMatchObject({ message: '자료 11개를 탭으로 열겠습니까?', buttons: ['열기', '취소'] });
-    await page.waitForTimeout(300);
+    // Nothing is opened by a cancel; the same command opens them all once confirmed, below.
+    await sheetReleased(page);
     await expect(page.getByTestId('tab-bar')).toHaveCount(0);
 
     await stubConfirm(app, 'confirm');
@@ -637,7 +639,8 @@ test('a tab menu opens at the pointer without choosing the tab; 다른 탭 닫�
     await expect.poll(() => activeTab(page)).toBe(c);
     // The library tab has no menu.
     await libraryTab(page).click({ button: 'right' });
-    await page.waitForTimeout(200);
+    // A menu would be asked of main on that click; the reader tabs' menus above were recorded the same way.
+    await settled(page);
     expect((await recordedPopups(app)).length).toBe(1);
 
     // 탭 닫기 on a tab that is not shown closes that one.
@@ -729,7 +732,7 @@ test('dragging a reader tab reorders it; the library tab cannot be passed; esc p
     await page.mouse.move(own.x + own.width / 2, own.y + own.height / 2, { steps: 4 });
     await page.mouse.up();
     await expect(page.locator('.tab-item.is-dragging')).toHaveCount(0);
-    await page.waitForTimeout(100);
+    await settled(page);
     await expect.poll(() => activeTab(page)).toBe(c);
     await expect.poll(() => order(page)).toEqual(['library', b, c, a]);
     expect(await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.tab-item')].every((e) => e.style.transform === ''))).toBe(true);
@@ -970,7 +973,8 @@ test('an open 정보 편집 is asked before the shown tab changes or closes: val
     await expect(readerTab(page, a)).toHaveAttribute('aria-selected', 'false');
     // The same for the keyboard's way (⌃⇥) and for closing the shown tab with the strip's mark: a tab behind the shown one closes freely.
     await runMenuCommand(app, 'tab.next');
-    await page.waitForTimeout(300);
+    // The guard held the tab above (the unsaved notice); it holds it for the key's way too.
+    await settled(page);
     await expect(libraryTab(page)).toHaveAttribute('aria-selected', 'true');
     await page.getByTestId('editor-discard').click();
     await expect(page.getByTestId('info-editor')).toHaveCount(0);
@@ -1028,12 +1032,13 @@ test('closing a tab never mounts an evicted reader: it is not opened again and k
       return r.ok ? r.data.item.openedAt : null;
     };
     const before = await openedAt();
-    await page.waitForTimeout(50);
+    await settled(page, 2); // a later opened date differs from this one
     await runMenuCommand(app, 'tab.close'); // the shown doc-05
     await expect(readerTab(page, id('doc-05'))).toHaveCount(0);
     await expect(panels(page)).toHaveCount(3);
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveCount(0);
-    await page.waitForTimeout(600);
+    // The close builds no reader for doc-01, so its opened date stays.
+    await settled(page);
     expect(await openedAt()).toBe(before);
     // Shown, it is mounted again, as now.
     await readerTab(page, id('doc-01')).click();
@@ -1298,7 +1303,7 @@ test('a restored reader opens the outline on its own chapter only: page 1 is nev
     await page.reload();
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('33');
     await expect(page.locator('[data-testid="pdf-outline-row"][data-current-page="true"]')).toHaveCount(1);
-    await page.waitForTimeout(300);
+    await settled(page);
     const frames = await page.evaluate(() => (window as unknown as { __outline: OutlineFrame[] }).__outline);
     expect(frames.filter((f) => f.rows > 0).length, 'the outline was drawn').toBeGreaterThan(3);
     // Only rows of chapter 4 are ever the current entry or opened; nothing of chapter 1.

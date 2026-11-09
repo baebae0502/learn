@@ -1083,6 +1083,18 @@ export async function sheetReleased(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
 }
 
+/**
+ * What the page and main have already been told has been applied: one round trip to main (what was sent before it is answered
+ * before it) and `frames` paint frames. For the check that something did NOT happen, after the same path was seen to make it
+ * happen: it replaces a guessed pause with the point after which a late effect would already have shown.
+ */
+export async function settled(page: Page, frames = 3): Promise<void> {
+  await page.evaluate(async (n) => {
+    await window.learn.ui.windowState();
+    for (let i = 0; i < n; i++) await new Promise<void>((done) => requestAnimationFrame(() => done()));
+  }, frames);
+}
+
 /** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
 export async function backFromReader(page: Page): Promise<void> {
   await sheetReleased(page);

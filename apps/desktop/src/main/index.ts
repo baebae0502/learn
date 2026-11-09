@@ -114,6 +114,8 @@ const editFlush = createFlushGate({
 /** A library switch waiting for the quit to go ahead (library-folder.ts): forgotten when a gate keeps the app, applied in will-quit. */
 let cancelLibrarySwitch = (): void => {};
 let applyLibrarySwitch = (): void => {};
+/** Lets go of the ⌘/ sheet window made ahead for a main window that closed (the sheet host exists once the app is ready). */
+let discardPreparedSheet = (_win: BrowserWindow): void => {};
 
 /** The work line (spec 3.1): imports, backups and restores run on it one at a time. */
 const jobs = createJobLane();
@@ -138,9 +140,11 @@ function openMainWindow(): BrowserWindow {
     if (mainWindow !== win) return;
     mainWindow = null;
     endPositionNotices();
-    // A settings window prepared for this main window and never asked for goes with it on every platform: hidden, it
-    // would keep a Linux app alive (window-all-closed) and hold a renderer for nobody on macOS.
+    // A settings window prepared for this main window and never asked for goes with it on every platform, and so does the
+    // ⌘/ sheet window made ahead for it: hidden, either would keep a Linux app alive (window-all-closed) and hold a
+    // renderer for nobody on macOS.
     settingsWindow.discardPrepared();
+    discardPreparedSheet(win);
     // Linux/Windows: closing the main window ends the app (window-all-closed), so the settings window goes with it;
     // there is no dock to bring a main window back. macOS keeps the app, and the settings window, open (R-22).
     if (process.platform !== 'darwin') settingsWindow.current()?.close();
@@ -428,6 +432,7 @@ if (!app.requestSingleInstanceLock()) {
           ? sheetHeightKey({ platform: process.platform, fontSize: prefs.get().fontSize, density: prefs.get().density, digest: shortcutsSheetDigest, view: payload.view ?? 'library' })
           : null,
     });
+    discardPreparedSheet = (win) => sheets.discardPrepared(win);
     /** Every native dialog with a parent window goes through this (IpcDeps.windows.asSheet). */
     const asSheet = async <T>(owner: BrowserWindow, show: () => Promise<T>): Promise<T> => {
       onSheetShown(owner, { native: true }); // the dialog takes the key: owner is not key under it (critique m2)
@@ -673,10 +678,11 @@ if (!app.requestSingleInstanceLock()) {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
-      // The main window drew its first list and went idle: the settings window is prepared, and the automatic check may show.
+      // The main window drew its first list and went idle: the settings window and the ⌘/ sheet's window are prepared, and
+      // the automatic check may show.
       prepareSettings: () => {
         settingsWindow.prepare();
-        // sheets.prepare(mainWindow) is not called yet: closing a window made ahead freezes the E2E run on Linux (task 9 report, P7).
+        if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
         firstScreenDrawn();
         text?.firstIdle();
       },

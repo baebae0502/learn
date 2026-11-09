@@ -4,7 +4,7 @@ import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { COMMANDS } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, windowKinds } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, sheetPrepared, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -155,6 +155,12 @@ test('⌘/ lists every registry shortcut in a sheet; only the main window opens 
 test('a ⌘/ sheet is made at the height an earlier one measured (measured once, in its own font)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
+    // Main makes the ⌘/ sheet's window ahead, hidden, once the main window is idle, and again after each one closes:
+    // every ⌘/ here is shown in one of those (each asked once the next is ready).
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
+    const firstMadeAt = await s.app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && !w.isVisible() && w.webContents.getURL().includes('window=sheet'))!.getContentSize()[1]!,
+    );
     await s.app.evaluate(({ app }) => {
       const g = globalThis as { __sheetMadeAt?: number[] };
       g.__sheetMadeAt = [];
@@ -162,17 +168,52 @@ test('a ⌘/ sheet is made at the height an earlier one measured (measured once,
     });
     const shown: number[] = [];
     for (let i = 0; i < 3; i++) {
+      await expect.poll(() => sheetPrepared(s.app), { message: 'the next ⌘/ sheet window made ahead' }).toBe(true);
       const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
       shown.push(await sheet.evaluate(() => innerHeight));
       await closeSheet(sheet, 'Escape');
       await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
     }
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the one made after the last closed' }).toBe(true);
     const madeAt = await s.app.evaluate(() => (globalThis as { __sheetMadeAt?: number[] }).__sheetMadeAt!);
     expect(new Set(shown).size).toBe(1); // every one shown as tall as its content
     // The first is made as tall as the room and fitted; once a measurement was taken in its font (the first, or the
-    // second when the font came late), the next ones are made at that height.
-    expect(madeAt[0]).toBeGreaterThanOrEqual(shown[0]!);
+    // second when the font came late), the next ones are made at that height. One is made after each close, none for a ⌘/.
+    expect(firstMadeAt).toBeGreaterThanOrEqual(shown[0]!);
+    expect(madeAt).toHaveLength(3);
     expect(madeAt[2]).toBe(shown[0]);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('the ⌘/ sheet shows in the window main made ahead once the main window was idle, and the next is made after it closes', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
+    const hiddenSheet = () =>
+      s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && !w.isVisible() && w.webContents.getURL().includes('window=sheet'))?.id ?? null);
+    const ahead = await hiddenSheet();
+    // Waiting there, hidden, it holds nothing of the main window: not greyed, its commands open.
+    await expect(s.page.getByTestId('import-menu')).toBeEnabled();
+    expect(await menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    await s.app.evaluate(({ app }) => {
+      const g = globalThis as { __sheetsMade?: number };
+      g.__sheetsMade = 0;
+      app.on('browser-window-created', () => void (g.__sheetsMade! += 1));
+    });
+    const made = () => s.app.evaluate(() => (globalThis as { __sheetsMade?: number }).__sheetsMade ?? 0);
+    const sheet = await expectWindow(s.app, 'sheet', () => runMenuCommand(s.app, 'app.shortcuts'));
+    expect(await s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible() && w.webContents.getURL().includes('window=sheet'))?.id)).toBe(ahead);
+    await expect(sheet.getByTestId('sheet-root')).toHaveAttribute('data-kind', 'shortcuts');
+    await closeSheet(sheet, 'Escape');
+    // Main answers, the menu bar is let go, the focus is back; then the next one is made, hidden: the one window made
+    // since the ⌘/ (none was made for the sheet itself).
+    await expect.poll(() => menuItemEnabled(s.app, 'app.shortcuts')).toBe(true);
+    await mainHasFocus(s.app);
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the next ⌘/ sheet window made ahead' }).toBe(true);
+    expect(await made()).toBe(1);
+    expect(await hiddenSheet()).not.toBe(ahead);
   } finally {
     await s.app.close();
   }
@@ -294,17 +335,23 @@ test('a ⌘/ sheet whose list scrolls (a short window) is a keyboard stop with a
 test('the window greys only when the ⌘/ sheet is on screen; until then its commands are already refused (T13M-n4)', async ({}, testInfo) => {
   const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    // The next window's page becomes ready 1.5 s late: the sheet is asked for but not on screen yet.
-    await s.app.evaluate(({ app }) => {
-      app.once('browser-window-created', (_event, win) => {
-        const once = win.once.bind(win) as (event: string, listener: (...args: unknown[]) => void) => typeof win;
-        (win as unknown as { once: typeof once }).once = (event, listener) =>
-          once(event, event === 'ready-to-show' ? (...args) => void setTimeout(() => listener(...args), 1500) : listener);
-      });
-    });
+    // The ⌘/ sheet shows in the window main made ahead, hidden; waiting there, it greys nothing.
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
     const importMenu = s.page.getByTestId('import-menu');
     await expect(importMenu).toBeEnabled();
-    const opened = s.app.waitForEvent('window');
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive');
+    // Its page answers its first measurement 1.5 s late: the sheet is asked for but not on screen yet.
+    await s.app.evaluate(({ BrowserWindow }) => {
+      const contents = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && !w.isVisible() && w.webContents.getURL().includes('window=sheet'))!.webContents;
+      const run = contents.executeJavaScript.bind(contents);
+      let late = true;
+      contents.executeJavaScript = (code, gesture) => {
+        if (!late) return run(code, gesture);
+        late = false;
+        return new Promise((resolve) => setTimeout(resolve, 1500)).then(() => run(code, gesture));
+      };
+    });
+    const sheet = s.app.windows().find((p) => !p.isClosed() && p.url().includes('window=sheet'))!;
     await runMenuCommand(s.app, 'app.shortcuts');
     // Main's menu bar refuses at once (the context says blocked) …
     await expect.poll(() => menuItemEnabled(s.app, 'app.palette')).toBe(false);
@@ -312,7 +359,6 @@ test('the window greys only when the ⌘/ sheet is on screen; until then its com
     // … but nothing in the window is drawn disabled before the sheet appears.
     await expect(importMenu).toBeEnabled();
     await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive');
-    const sheet = await opened;
     await expect.poll(() => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL().includes('window=sheet') && w.isVisible()))).toBe(true);
     await expect(importMenu).toBeDisabled();
     await closeSheet(sheet, 'Enter');

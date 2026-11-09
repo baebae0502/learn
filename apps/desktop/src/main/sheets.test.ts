@@ -804,6 +804,30 @@ describe('the ⌘/ sheet window made ahead (P7)', () => {
     expect(FakeWindow.all.every((x) => x.destroyed)).toBe(true);
   });
 
+  it('is made at the height a ⌘/ sheet measured before (the library\'s: the view the next ⌘/ comes from is not known yet), capped to the room', async () => {
+    vi.useFakeTimers();
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux', staticKey: (x) => (x.kind === 'shortcuts' ? `k|${x.view ?? 'library'}` : null) });
+    const p = parent();
+    FakeWindow.pageHeight = 743;
+    const w = preparedWindow(h, p);
+    expect(w.options.height).toBe(900 - SHEET_TOP - 16); // nothing measured yet: as tall as the room
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all[1]!.options.height).toBe(743);
+    // The parent got shorter: the next is made at the room it leaves.
+    const again = h.open(p, { kind: 'shortcuts' });
+    FakeWindow.all[1]!.webContents.emit('did-finish-load');
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(FakeWindow.all[1]!), { kind: 'shortcuts' });
+    await again;
+    p.height = 500;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all[2]!.options.height).toBe(500 - SHEET_TOP - 16);
+  });
+
   it('drops a prepared window whose page failed, and the next ⌘/ makes its own', async () => {
     const h = host();
     const p = parent();

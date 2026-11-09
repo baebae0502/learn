@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, renderCounts, runMenuCommand, seedRows, watchRenders } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, renderCounts, runMenuCommand, seedRows, sheetPrepared, watchRenders } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
@@ -98,10 +98,11 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
     const sheetMs: number[] = [];
     const settingsMs: number[] = [];
     for (let i = 0; i < OPENS; i++) {
+      // Each ⌘/ once main has made the next sheet window ahead (a second after the last one closed): the open a user meets.
+      await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
       const sheet = await expectWindow(s.app, 'sheet', () => click('app.shortcuts'));
       sheetMs.push(await elapsed());
       await closeSheet(sheet, 'Escape');
-      await s.page.waitForTimeout(300);
     }
     for (let i = 0; i < OPENS; i++) {
       const settings = await expectWindow(s.app, 'settings', () => click('app.settings'));
@@ -114,7 +115,8 @@ test('opening the ⌘/ sheet and the settings window: menu command → window sh
       medianMs: { sheet: median(sheetMs), settings: median(settingsMs) },
       // The first open in a new session (report, not tune: checklist 7.1): the settings window shows the one main prepared.
       coldFirstMs: { runs: cold, median: { sheet: median(cold.sheet), settings: median(cold.settings) } },
-      // The first open in this session: the sheet is made (sheets are never prepared), the settings window was prepared.
+      // The first open in this session: the ⌘/ sheet shows in the window main made ahead (as each one here), the settings
+      // window was prepared.
       firstOpenMs: { sheet: sheetMs[0]!, settings: settingsMs[0]! },
       // Targets, reported: the ⌘/ sheet's median, and the settings window's first open of a new session.
       targetMs: 250,

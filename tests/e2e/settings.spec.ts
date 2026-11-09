@@ -4,7 +4,7 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { windowBackground } from '../../apps/desktop/src/renderer/src/design/tokens.generated';
 import { mainWindowChrome, shouldUseVibrancy } from '../../apps/desktop/src/main/window-options';
-import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand, settingsFitsContent, settingsPrepared, windowKinds } from './helpers';
+import { FIXTURES, closeSheet, expectWindow, holdOpenDialog, importPaths, launch, mainWindow, menuItemEnabled, releaseOpenDialog, rowAt, runMenuCommand, settingsFitsContent, settingsPrepared, sheetPrepared, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 const dirs = (i: { outputPath(...p: string[]): string }) => [i.outputPath('library'), i.outputPath('userdata')] as const;
@@ -437,6 +437,8 @@ test('Linux/Windows: a prepared settings window nobody opened never keeps the ap
   const { app } = await launch(...dirs(testInfo));
   try {
     expect(await windowKinds(app)).toEqual(['main', 'settings (hidden)']);
+    // The ⌘/ sheet window made ahead (hidden, a child of the main window) is there too, and keeps nothing alive either.
+    await expect.poll(() => sheetPrepared(app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
     const quit = app.waitForEvent('close');
     await (await mainWindow(app)).evaluate((w) => w.close());
     await quit; // window-all-closed came: the hidden window went with the main window

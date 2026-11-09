@@ -201,8 +201,12 @@ export function createSheetHost(opts: {
     if (!preparing.has(parent)) parent.once('closed', () => discardPrepared(parent));
     preparing.add(parent);
     if (prepared.has(parent)) return;
-    const room = parent.getContentBounds();
-    const win = sheetWindow(parent, 'shortcuts', sheetHeightCap('shortcuts', room.height, opts.platform));
+    // Made at the height a ⌘/ sheet measured before, as show() makes one; the view the next ⌘/ comes from is not known
+    // yet, so the library's. The window is sized again before it shows.
+    const cap = sheetHeightCap('shortcuts', parent.getContentBounds().height, opts.platform);
+    const key = opts.staticKey?.({ kind: 'shortcuts' }) ?? null;
+    const known = key === null ? undefined : heights.get(key);
+    const win = sheetWindow(parent, 'shortcuts', known === undefined ? cap : Math.min(known, cap));
     let release: (payload: SheetPayload) => void = () => {};
     const held = new Promise<SheetPayload>((resolve) => (release = resolve));
     const entry: Prepared = { window: win, contentsId: win.webContents.id, parent, loaded: false, held, release, detach: () => {} };

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, type Locator, type Page } from '@playwright/test';
-import { ROOT, launch, mainWindow, type Session } from '../helpers';
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { ROOT, launch, mainWindow, textExtraction, textIdle, type Session } from '../helpers';
 
 /** @2x captures for the design critic (same size as docs/design/renders, 2880×1800). Not committed. */
 export const TOUR_DIR = path.join(ROOT, 'test-results', 'tour');
@@ -21,7 +21,21 @@ export async function launchTour(dir: string, env: Record<string, string> = {}):
     w.setPosition(0, 0);
   });
   await expect.poll(() => s.page.evaluate(() => [innerWidth, innerHeight].join('x'))).toBe('1440x900');
+  tourApps.set(s.page, s.app);
   return s;
+}
+
+const tourApps = new WeakMap<Page, ElectronApplication>();
+
+/**
+ * Every PDF in this tour window's library has had its body read: the pictures show a library a little after its imports, whose
+ * done index says nothing. The reading, held under E2E, runs at once from the first call (a window with no library has none).
+ */
+export async function bodyIndexDone(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  if (!app) return;
+  await textExtraction(app, 'now');
+  await textIdle(app);
 }
 
 /**

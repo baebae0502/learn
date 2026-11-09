@@ -8,10 +8,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
   makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
-import { THEMES, TOUR_VIDEO_BYTES, closeReaderTabs, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
+import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
+
+/** The scene's files imported and, for its PDFs, their body read: the item panel shows a done index (nothing said), as it is soon after an import. */
+async function importPaths(page: Page, paths: string[], opts?: Parameters<typeof importNow>[2]): ReturnType<typeof importNow> {
+  const items = await importNow(page, paths, opts);
+  await bodyIndexDone(page);
+  return items;
+}
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
 

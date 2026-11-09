@@ -22,6 +22,7 @@ test.beforeAll(() => {
 const stage = (page: Page) => page.getByTestId('image-stage');
 const zoomField = (page: Page) => page.getByTestId('image-zoom-field');
 const zoomMenu = (page: Page) => page.getByTestId('image-zoom-menu');
+const viewMenu = (page: Page) => page.getByTestId('image-view-menu');
 
 /** Until the shown tab's picture is drawn (item `itemId` when given); its state then. */
 async function drawn(page: Page, itemId?: string): Promise<ImageReaderState> {
@@ -174,6 +175,8 @@ test('while the picture opens: the stage’s ground only, the field "…" and th
     await expect(zoomField(page)).toHaveAttribute('placeholder', '…');
     await expect(zoomField(page)).toHaveCSS('opacity', '0.45'); // drawn as a disabled control, its box with it
     await expectDisabledReason(zoomMenu(page), '이미지를 여는 중입니다');
+    await expectDisabledReason(viewMenu(page), '이미지를 여는 중입니다');
+    await expect.poll(() => menuItemEnabled(app, 'reader.imageBackgroundDark')).toBe(false);
     await expect(page.getByTestId('reader-sidebar-empty')).toHaveText('이미지에는 쪽이 없습니다');
     await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(false);
     await expectNoSeriousA11y(page, 'image reader, opening');
@@ -182,6 +185,8 @@ test('while the picture opens: the stage’s ground only, the field "…" and th
     await expect(stage(page).locator('img')).toBeVisible();
     await expect(stage(page)).not.toHaveAttribute('aria-busy', /.*/);
     await expectDisabledReason(zoomMenu(page), null);
+    await expectDisabledReason(viewMenu(page), null);
+    await expect.poll(() => menuItemEnabled(app, 'reader.imageBackgroundDark')).toBe(true);
     await expect(zoomField(page)).toHaveValue(`${Math.round(s.scale * 100)}%`);
     await expect(zoomField(page)).toHaveCSS('opacity', '1');
     await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(true);
@@ -680,10 +685,13 @@ test('the keyboard: an image opened from the table has its stage focused; F6 goe
     await page.keyboard.press('Tab');
     await expect(zoomMenu(page)).toBeFocused();
     await page.keyboard.press('Tab');
+    await expect(viewMenu(page)).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(stage(page)).toBeFocused();
-    await page.keyboard.press('Shift+Tab');
-    await page.keyboard.press('Shift+Tab');
-    await expect(zoomField(page)).toBeFocused();
+    for (const back of [viewMenu, zoomMenu, zoomField]) {
+      await page.keyboard.press('Shift+Tab');
+      await expect(back(page)).toBeFocused();
+    }
     for (let i = 0; i < 6 && !(await readerTab(page, photo!.id).evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Shift+Tab');
     await expect(readerTab(page, photo!.id)).toBeFocused();
   } finally {
@@ -734,6 +742,130 @@ test('a hidden image tab does not fit to a window that changes size; shown again
     expect(Math.min(box.left, box.top)).toBeCloseTo(24, 0);
   } finally {
     await win.evaluate((x, [cw, ch]) => x.setContentSize(cw!, ch!), [w, h]).catch(() => {});
+    await app.close();
+  }
+});
+
+/** The stage's `data-bg` and what it paints, with the colour each token resolves to (read from a probe, so the check holds in either theme). */
+async function ground(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector<HTMLElement>('[data-testid="image-stage"]')!;
+    const css = getComputedStyle(el);
+    const token = (name: string): string => {
+      const probe = document.createElement('div');
+      probe.style.backgroundColor = `var(${name})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    };
+    return {
+      bg: el.dataset['bg'],
+      color: css.backgroundColor,
+      image: css.backgroundImage,
+      attachment: css.backgroundAttachment,
+      light: token('--image-bg-light'),
+      dark: token('--image-bg-dark'),
+      checkerA: token('--image-checker-a'),
+      checkerB: token('--image-checker-b'),
+      border: css.borderTopWidth,
+    };
+  });
+}
+
+test('the image 보기 menu — 배경 as a group (the one in use checked) then the two turns; each background sets data-bg and the ground, and comes back after a relaunch', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  try {
+    await importPaths(page, [PHOTO]);
+    await openItem(page, 'photo-4032');
+    await drawn(page);
+    // Nothing chosen: the light theme's ground.
+    let g = await ground(page);
+    expect(g.bg).toBe('light');
+    expect(g.color).toBe(g.light);
+    expect(g.image).toBe('none');
+
+    await viewMenu(page).click();
+    const menu = page.getByRole('menu', { name: '보기' });
+    await expect(menu.locator('.mhead')).toHaveText(['배경']);
+    await expect(menu.locator('.mi-label')).toHaveText(['밝게', '어둡게', '체크무늬', '시계 방향으로 회전', '반시계 방향으로 회전']);
+    await expect(menu.locator('[aria-checked="true"] .mi-label')).toHaveText(['밝게']);
+    await expect(menu.getByRole('menuitem', { name: /^시계 방향으로 회전/ })).toContainText(process.platform === 'darwin' ? '⌘R' : 'Ctrl+R');
+    await expectNoSeriousA11y(page, 'image view menu');
+
+    await menu.getByRole('menuitemradio', { name: '체크무늬' }).click();
+    await expect(stage(page)).toHaveAttribute('data-bg', 'checker');
+    g = await ground(page);
+    expect(g.image).toContain('conic-gradient');
+    expect(g.image).toContain(g.checkerA);
+    expect(g.image).toContain(g.checkerB);
+    expect(g.attachment).toBe('local');
+    expect(g.border).toBe('0px');
+    await viewMenu(page).click();
+    await expect(menu.locator('[aria-checked="true"] .mi-label')).toHaveText(['체크무늬']);
+    await menu.getByRole('menuitemradio', { name: '어둡게' }).click();
+    await expect(stage(page)).toHaveAttribute('data-bg', 'dark');
+    g = await ground(page);
+    expect(g.color).toBe(g.dark);
+    expect(g.image).toBe('none');
+    // A turn from the same menu.
+    await viewMenu(page).click();
+    await menu.getByRole('menuitem', { name: /^시계 방향으로 회전/ }).click();
+    await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
+
+    await app.close();
+    ({ app, page } = await launch(lib, ud));
+    await drawn(page);
+    await expect(stage(page)).toHaveAttribute('data-bg', 'dark');
+    // The menu bar's 배경 ▸ row is the same command (the native menu shows no mark).
+    await runMenuCommand(app, 'reader.imageBackgroundLight');
+    await expect(stage(page)).toHaveAttribute('data-bg', 'light');
+    await runMenuCommand(app, 'reader.imageBackgroundDark');
+    await expect(stage(page)).toHaveAttribute('data-bg', 'dark');
+    await viewMenu(page).click();
+    // A new window after the relaunch: the locator is made again.
+    await expect(page.getByRole('menu', { name: '보기' }).locator('[aria-checked="true"] .mi-label')).toHaveText(['어둡게']);
+  } finally {
+    await app.close().catch(() => {});
+  }
+});
+
+for (const [scheme, expected] of [['light', 'light'], ['dark', 'dark']] as const) {
+  test(`with no background chosen the ground follows the ${scheme} theme (data-bg ${expected}), and a choice wins over it`, async ({}, testInfo) => {
+    const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: scheme });
+    try {
+      await importPaths(page, [PHOTO]);
+      await openItem(page, 'photo-4032');
+      await drawn(page);
+      await expect(stage(page)).toHaveAttribute('data-bg', expected);
+      await viewMenu(page).click();
+      await expect(page.getByRole('menu', { name: '보기' }).locator('[aria-checked="true"] .mi-label')).toHaveText([expected === 'dark' ? '어둡게' : '밝게']);
+      await page.keyboard.press('Escape');
+      const other = expected === 'dark' ? 'light' : 'dark';
+      await runMenuCommand(app, expected === 'dark' ? 'reader.imageBackgroundLight' : 'reader.imageBackgroundDark');
+      await expect(stage(page)).toHaveAttribute('data-bg', other);
+      const g = await ground(page);
+      expect(g.color).toBe(other === 'dark' ? g.dark : g.light); // the same ground in either theme
+    } finally {
+      await app.close();
+    }
+  });
+}
+
+test('the background commands run on a picture only: a PDF has none in its menu bar', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(page, [path.join(FIXTURES, 'sample.pdf')]);
+    await openItem(page, 'sample');
+    await expect(page.getByTestId('pdf-view-menu')).toBeVisible();
+    await expect.poll(() => menuItemEnabled(app, 'reader.pageColorSepia')).toBe(true); // the PDF's own group is on: the check can see an enabled item
+    for (const id of ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as const) {
+      expect(await menuItemEnabled(app, id), id).toBe(false);
+    }
+  } finally {
     await app.close();
   }
 });

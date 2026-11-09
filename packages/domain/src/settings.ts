@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { COMMAND_IDS, PAGE_COLORS, READER_NAVS } from './commands';
+import { COMMAND_IDS, IMAGE_BACKGROUNDS, PAGE_COLORS, READER_NAVS } from './commands';
 import { LearnError } from './errors';
 import { COLUMN_WIDTH_MAX, STORED_COLUMN_IDS_MAX, LIBRARY_SORT_COLUMNS } from './library-columns';
 import { libraryScopeSchema } from './organize';
@@ -51,6 +51,8 @@ export const SETTINGS = {
   'palette.recent': z.array(z.enum(COMMAND_IDS)).max(20),
   /** The colour of a PDF's pages (spec 8): unset reads as 'auto', the app theme's. */
   'reader.pageColor': z.enum(PAGE_COLORS),
+  /** The ground behind a picture (M7c): unset reads as the app theme's light or dark. */
+  'reader.imageBackground': z.enum(IMAGE_BACKGROUNDS),
   /** What the reader's sidebar lists (spec 4.7): unset reads as the thumbnails. */
   'reader.nav': z.enum(READER_NAVS),
   /** The fingerprint of the library check's list the user was last shown (spec 7.1): the same list never opens the sheet by itself again. */

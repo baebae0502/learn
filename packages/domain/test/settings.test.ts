@@ -25,6 +25,13 @@ describe('settings registry', () => {
   });
 });
 
+describe('reader.imageBackground', () => {
+  it('takes the three backgrounds and nothing else', () => {
+    for (const v of ['light', 'dark', 'checker']) expect(parseSetting('reader.imageBackground', v)).toBe(v);
+    for (const v of ['auto', 'sepia', '', 1, null]) expect(code(() => parseSetting('reader.imageBackground', v))).toBe('VALIDATION_FAILED');
+  });
+});
+
 describe('ui.tabs', () => {
   it('accepts a list with an active tab or none, and rejects more than fifty and unknown keys', () => {
     const ids = Array.from({ length: 50 }, () => newId());

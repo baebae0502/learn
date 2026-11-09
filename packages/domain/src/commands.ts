@@ -107,11 +107,17 @@ export type CommandId =
   | 'reader.scrollPage'
   | 'reader.spreadNone'
   | 'reader.spreadOdd'
-  | 'reader.spreadEven';
+  | 'reader.spreadEven'
+  | 'reader.imageBackgroundLight'
+  | 'reader.imageBackgroundDark'
+  | 'reader.imageBackgroundChecker';
 
 /** The colour of a PDF page (settings 'reader.pageColor'): 자동 follows the app theme. */
 export const PAGE_COLORS = ['auto', 'original', 'sepia', 'dark'] as const;
 export type PageColor = (typeof PAGE_COLORS)[number];
+/** The ground behind a picture (settings 'reader.imageBackground'): unset follows the app theme's light or dark. */
+export const IMAGE_BACKGROUNDS = ['light', 'dark', 'checker'] as const;
+export type ImageBackground = (typeof IMAGE_BACKGROUNDS)[number];
 /** What the reader's sidebar lists (settings 'reader.nav'). */
 export const READER_NAVS = ['thumbnails', 'outline'] as const;
 export type ReaderNav = (typeof READER_NAVS)[number];
@@ -570,6 +576,22 @@ export const COMMANDS: readonly CommandSpec[] = [
       keywords: [group, '보기', '모드', 'scroll', 'spread', ...extra],
     }),
   ),
+  // 배경 ▸ is a group in SUBMENUS like 쪽 색 ▸: the members carry no placement and no key; the palette names each with the group's word.
+  ...(
+    [
+      ['Light', '밝게', ['흰', '하양', 'light', 'white']],
+      ['Dark', '어둡게', ['검정', '다크', '밤', 'dark', 'black']],
+      ['Checker', '체크무늬', ['바둑판', '투명', '격자', 'checker', 'checkerboard', 'transparent']],
+    ] as const
+  ).map(
+    ([name, label, extra]): CommandSpec => ({
+      id: `reader.imageBackground${name}` as CommandId,
+      label,
+      paletteLabel: `배경: ${label}`,
+      contexts: ['viewer'],
+      keywords: ['배경', '그림', '이미지', '바탕', 'background', 'image', ...extra],
+    }),
+  ),
   // 휴지통 비우기… ⇧⌘⌫ (spec 4.5, 11.1): 파일 before ⌘⌫ and the trash view's head; the purge sheet asks first.
   {
     id: 'trash.empty', label: '휴지통 비우기…', accelerator: 'Shift+CmdOrCtrl+Backspace', menu: { menu: 'file', group: 4, order: 1 }, contexts: ['library'],
@@ -850,6 +872,8 @@ type Rule = (ctx: CommandContextState, targets: Targets) => boolean;
 /** The colour keys act on the library table's selection (the key map and the palette hand it over). */
 const colorKey: Rule = (c, t) => c.view === 'library' && t.items.length >= 1;
 const pdfOpen: Rule = (c) => c.pdfOpen === true;
+/** The picture's own commands (its background). */
+const imageOpen = (c: CommandContextState): boolean => c.imageOpen === true;
 /** The zoom, the two fits and the turns act on a drawn picture as on a PDF; the rest of the reader's view is the PDF's. */
 const pdfOrImage = (c: CommandContextState): boolean => c.pdfOpen === true || c.imageOpen === true;
 /** A horizontal scroll has no spreads (two pages side by side along a row are hard to read), so the three are off then. */
@@ -953,6 +977,9 @@ const RULES: Partial<Record<CommandId, Rule>> = {
   'reader.pageColorOriginal': pdfOpen,
   'reader.pageColorSepia': pdfOpen,
   'reader.pageColorDark': pdfOpen,
+  'reader.imageBackgroundLight': imageOpen,
+  'reader.imageBackgroundDark': imageOpen,
+  'reader.imageBackgroundChecker': imageOpen,
   'reader.scrollVertical': pdfOpen,
   'reader.scrollHorizontal': pdfOpen,
   'reader.scrollPage': pdfOpen,

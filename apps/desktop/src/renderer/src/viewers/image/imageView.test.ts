@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { DEFAULT_IMAGE_VIEW, imageLocator, imageViewFrom } from './imageView';
+import { DEFAULT_IMAGE_VIEW, effectiveBackground, imageLocator, imageViewFrom } from './imageView';
 
 test('the default view is fit, centred, upright, and its locator carries none of it', () => {
   expect(DEFAULT_IMAGE_VIEW).toEqual({ zoom: 'fit', cx: 0.5, cy: 0.5, rotation: 0 });
@@ -33,4 +33,12 @@ test('a view goes to its locator and back', () => {
   ] as const) {
     expect(imageViewFrom(imageLocator(v))).toEqual(v);
   }
+});
+
+test('the background in use is the stored one, else the theme\'s', () => {
+  expect(effectiveBackground(undefined, 'dark')).toBe('dark');
+  expect(effectiveBackground(undefined, 'light')).toBe('light');
+  expect(effectiveBackground('checker', 'dark')).toBe('checker');
+  expect(effectiveBackground('light', 'dark')).toBe('light');
+  expect(effectiveBackground('dark', 'light')).toBe('dark');
 });

@@ -12,6 +12,7 @@ import {
 } from './imageFit';
 import { DEFAULT_IMAGE_VIEW, imageLocator, imageViewFrom, type ImageView } from './imageView';
 import { ImageToolbar } from './ImageToolbar';
+import { useImageBackground } from './useImageBackground';
 
 /** Saved 300 ms after the last change, as the PDF's page. */
 const POSITION_SAVE = { kind: 'debounce', ms: 300 } as const;
@@ -39,6 +40,7 @@ const centreOf = (size: Size): Point => ({ x: size.width / 2, y: size.height / 2
  */
 export function ImageReader({ item }: { item: LibraryItem }) {
   const scope = useReaderScope();
+  const { resolved: background } = useImageBackground();
   const shown = useReaderShown();
   const shownRef = useRef(shown);
   shownRef.current = shown;
@@ -387,6 +389,7 @@ export function ImageReader({ item }: { item: LibraryItem }) {
           aria-busy={placement === null || undefined}
           tabIndex={0}
           data-testid="image-stage"
+          data-bg={background}
           data-pannable={pannable ? '' : undefined}
           data-panning={panning ? '' : undefined}
           onScroll={onScroll}

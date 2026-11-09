@@ -1,5 +1,5 @@
 import { COMMANDS, isCommandAvailable, type CommandArgs, type CommandContextState, type CommandId, type CommandTargetInfo, type PickedCommand } from '@learn/domain/commands';
-import type { PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
+import type { ImageBackground, PageColor, ScrollModeName, SpreadModeName, StorageMode } from '@learn/domain';
 import type { TextSize, TextSizeUpdate } from '../settings/textSize';
 import type { ReaderNav, ZoomValue } from '../viewers/pdf/readerStore';
 
@@ -98,6 +98,8 @@ export interface CommandEnv extends CommandContextState {
   rotate(delta: 90 | -90): void;
   /** 쪽 색: saved as the reader's setting. */
   setPageColor(color: PageColor): void;
+  /** 배경: saved as the reader's setting (one for the library). */
+  setImageBackground(bg: ImageBackground): void;
   /** 스크롤 ▸ and 펼침 ▸: how the open PDF flows, and whether its pages pair up (the reader remembers both per item). */
   setScroll(mode: ScrollModeName): void;
   setSpread(mode: SpreadModeName): void;
@@ -272,6 +274,9 @@ export const COMMAND_HANDLERS: Record<CommandId, Handler> = {
   'reader.pageColorOriginal': (env) => env.setPageColor('original'),
   'reader.pageColorSepia': (env) => env.setPageColor('sepia'),
   'reader.pageColorDark': (env) => env.setPageColor('dark'),
+  'reader.imageBackgroundLight': (env) => env.setImageBackground('light'),
+  'reader.imageBackgroundDark': (env) => env.setImageBackground('dark'),
+  'reader.imageBackgroundChecker': (env) => env.setImageBackground('checker'),
   'reader.scrollVertical': (env) => env.setScroll('vertical'),
   'reader.scrollHorizontal': (env) => env.setScroll('horizontal'),
   'reader.scrollPage': (env) => env.setScroll('page'),

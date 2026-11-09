@@ -1,4 +1,4 @@
-import type { ReadingLocator } from '@learn/domain';
+import { IMAGE_BACKGROUNDS, type ImageBackground, type ReadingLocator } from '@learn/domain';
 import { clampImageZoom, type ImageZoom, type Rotation } from './imageFit';
 
 /** What the image reader remembers (spec 4.4): the zoom, the picture point at the stage's centre (0–1, upright picture) and the turn. */
@@ -42,4 +42,14 @@ export function imageLocator(v: ImageView): ImageLocator {
     ...(!fit && cy !== 0.5 ? { cy } : {}),
     ...(v.rotation !== 0 ? { rotation: v.rotation } : {}),
   };
+}
+
+/** The stored setting, or nothing for anything unset or unreadable. */
+export function parseImageBackground(raw: unknown): ImageBackground | undefined {
+  return IMAGE_BACKGROUNDS.find((b) => b === raw);
+}
+
+/** The ground a picture is drawn on: the choice made, else the app theme's light or dark. */
+export function effectiveBackground(stored: ImageBackground | undefined, theme: 'light' | 'dark'): ImageBackground {
+  return stored ?? theme;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { acceleratorKeys, acceleratorLabel } from '../src/accelerator';
 import {
-  ACCELERATOR_SYNTAX, COMMANDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
+  ACCELERATOR_SYNTAX, COMMANDS, IMAGE_BACKGROUNDS, COMMAND_IDS, CONTEXT_MENU_KINDS, MAIN_OWNED_COMMANDS, NO_LIBRARY_VIEW, SUBMENUS, availableMenuCommands, commandById, commandLabel, commandMention, inPalette, isCommandAvailable, paletteLabel,
   sameCommandContext, selectionTargets, submenuProblems, type CommandContextState, type CommandSpec, type CommandTargetInfo, type ItemTargetInfo,
 } from '../src/commands';
 import { Channels } from '../src/ipc-channels';
@@ -122,7 +122,7 @@ describe('command registry', () => {
     expect(COMMANDS.map((c) => c.id).sort()).toEqual([
       'app.palette', 'app.settings', 'app.shortcuts', 'collection.addItems', 'collection.delete', 'collection.importInto', 'collection.new', 'collection.newChild', 'collection.removeItems', 'collection.rename', 'duplicates.keepOne', 'duplicates.keepOneAll', 'file.backup', 'file.cancelImport', 'file.checkLibrary', 'file.importLinked', 'file.importManaged',
       'file.restore', 'item.editInfo', 'item.exportCopy', 'item.open', 'item.openExternally', 'item.openInBackground', 'item.relink', 'item.restore', 'item.showInFolder', 'item.trash', 'library.find', 'library.findEverywhere', 'library.sortBy', 'nav.back', 'nav.historyBack', 'nav.historyForward',
-      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
+      'reader.findNext', 'reader.findPrevious', 'reader.findSelection', 'reader.goToPage', 'reader.imageBackgroundChecker', 'reader.imageBackgroundDark', 'reader.imageBackgroundLight', 'reader.pageColorAuto', 'reader.pageColorDark', 'reader.pageColorOriginal', 'reader.pageColorSepia', 'reader.rotateCcw', 'reader.rotateCw', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.scrollVertical', 'reader.showOutline', 'reader.showThumbnails', 'reader.spreadEven', 'reader.spreadNone', 'reader.spreadOdd', 'reader.zoomAuto', 'reader.zoomPageFit', 'reader.zoomPageWidth',
       'tab.close', 'tab.closeOthers', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.next', 'tab.previous', 'tab.reopenClosed', 'tab.revealInLibrary',
       'tag.clearColor', 'tag.color1', 'tag.color2', 'tag.color3', 'tag.color4', 'tag.color5', 'tag.color6', 'tag.color7', 'tag.color8', 'tag.delete', 'tag.rename', 'tag.setColor', 'tags.clearFilter', 'translation.translateSelection', 'trash.empty',
       'view.nextPane', 'view.previousPane', 'view.textBigger', 'view.textReset', 'view.textSmaller', 'view.toggleInspector', 'view.toggleSidebar',
@@ -561,7 +561,7 @@ describe('duplicate clean-up (M6 spec 5, 11.1)', () => {
 describe('the reader commands (P-9, P-14)', () => {
   const PDF_OPEN: CommandContextState = { ...VIEWER, pdfOpen: true };
   const SHARED = ['view.textBigger', 'view.textSmaller', 'view.textReset'] as const;
-  const READER = COMMANDS.filter((c) => c.id.startsWith('reader.'));
+  const READER = COMMANDS.filter((c) => c.id.startsWith('reader.') && !c.id.startsWith('reader.imageBackground'));
 
   it('stateLabels.view names both views: the library keeps its text size names, the reader zooms', () => {
     const names = Object.fromEntries(SHARED.map((id) => [id, commandById(id).stateLabels?.view]));
@@ -699,7 +699,7 @@ describe('the image reader’s commands (M7c spec 9)', () => {
     expect(availableMenuCommands(IMAGE_OPEN)).toEqual(expect.arrayContaining([...SHARED]));
   });
   it('keeps the PDF’s own commands off: the automatic fit, the page colours, the flow, find, pages, history and the item panel', () => {
-    const pdfOnly = COMMANDS.filter((c) => c.id.startsWith('reader.') && !(SHARED as readonly string[]).includes(c.id)).map((c) => c.id);
+    const pdfOnly = COMMANDS.filter((c) => c.id.startsWith('reader.') && !(SHARED as readonly string[]).includes(c.id) && !c.id.startsWith('reader.imageBackground')).map((c) => c.id);
     expect(pdfOnly).toEqual(expect.arrayContaining(['reader.zoomAuto', 'reader.pageColorAuto', 'reader.scrollVertical', 'reader.spreadOdd', 'reader.findNext', 'reader.goToPage', 'reader.showThumbnails']));
     for (const id of [...pdfOnly, 'library.find', 'nav.historyBack', 'nav.historyForward', 'view.toggleInspector', 'translation.translateSelection'] as const) {
       expect(isCommandAvailable(id, { ...IMAGE_OPEN, historyBack: true, historyForward: true, pdfSelection: true }), id).toBe(false);
@@ -719,6 +719,29 @@ describe('the image reader’s commands (M7c spec 9)', () => {
     expect(commandLabel(commandById('reader.zoomPageWidth'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('너비에 맞춤');
     expect(commandLabel(commandById('view.textBigger'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('확대');
     expect(commandLabel(commandById('view.textReset'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('실제 크기');
+  });
+  it('has the three backgrounds as commands of the picture alone, grouped as 배경 ▸ in 보기, with a palette name and no key', () => {
+    const ids = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as const;
+    expect(ids.map((id) => [commandById(id).label, commandById(id).paletteLabel])).toEqual([['밝게', '배경: 밝게'], ['어둡게', '배경: 어둡게'], ['체크무늬', '배경: 체크무늬']]);
+    for (const id of ids) {
+      const c = commandById(id);
+      expect(c.contexts, id).toEqual(['viewer']);
+      expect(c.menu, id).toBeUndefined();
+      expect(c.accelerator, id).toBeUndefined();
+      expect(inPalette(c), id).toBe(true);
+      expect(isCommandAvailable(id, IMAGE_OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, { ...IMAGE_OPEN, blocked: true }), id).toBe(false);
+      expect(isCommandAvailable(id, VIEWER), id).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, imageOpen: false }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, pdfOpen: true }), id).toBe(false); // a PDF has page colours instead
+      expect(isCommandAvailable(id, { ...LIB, imageOpen: true }), id).toBe(false);
+      expect(c.keywords?.some((k) => /[가-힣]/.test(k)), `${id}: a Korean keyword`).toBe(true);
+    }
+    expect(IMAGE_BACKGROUNDS).toEqual(['light', 'dark', 'checker']);
+    expect(SUBMENUS.find((s) => s.id === 'imageBackground')).toEqual({
+      id: 'imageBackground', label: '배경', commands: [...ids], menu: { menu: 'view', group: 5, order: 6 },
+    });
+    expect(submenuProblems(COMMANDS, SUBMENUS)).toEqual([]);
   });
   it('carries imageOpen like the other flat fields', () => {
     expect(sameCommandContext(IMAGE_OPEN, { ...VIEWER, imageOpen: true })).toBe(true);

@@ -64,6 +64,7 @@ const env = (over: Partial<CommandEnv> = {}): CommandEnv => ({
   setZoom: vi.fn(),
   rotate: vi.fn(),
   setPageColor: vi.fn(),
+  setImageBackground: vi.fn(),
   setScroll: vi.fn(),
   setSpread: vi.fn(),
   goToPage: vi.fn(),
@@ -310,6 +311,15 @@ describe('renderer command registry', () => {
     expect(contextOf(horizontal)).toMatchObject({ pdfScroll: 'horizontal' });
     expect(contextOf(env({ view: 'viewer', pdfOpen: true }))).not.toHaveProperty('pdfScroll');
     expect(contextOf(env({ view: 'viewer', pdfScroll: 'page' }))).not.toHaveProperty('pdfScroll');
+  });
+  it('runs the three backgrounds on a drawn picture only', () => {
+    const ids = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as const;
+    const pdf = env({ view: 'viewer', pdfOpen: true });
+    expect(ids.map((id) => runCommand(id, pdf))).toEqual([false, false, false]);
+    expect(pdf.setImageBackground).not.toHaveBeenCalled();
+    const image = env({ view: 'viewer', imageOpen: true });
+    expect(ids.map((id) => runCommand(id, image))).toEqual([true, true, true]);
+    expect(vi.mocked(image.setImageBackground).mock.calls).toEqual([['light'], ['dark'], ['checker']]);
   });
   it('runs the reader commands on the open PDF only', () => {
     const e = env({ view: 'viewer', pdfOpen: true });

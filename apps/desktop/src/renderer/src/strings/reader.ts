@@ -23,6 +23,8 @@ export const reader = {
   /** The toolbar's 보기 menu: the page colour, the scroll and spread submenus and the rotation. */
   viewMenu: '보기',
   pageColor: '쪽 색',
+  /** The picture's 보기 menu head for its three grounds (the menu bar's group carries the same name). */
+  imageBackground: '배경',
   /** The two submenus of 보기 ▾ (the menu bar's groups carry the same names). */
   scrollMode: '스크롤',
   spreadMode: '펼침',

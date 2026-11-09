@@ -9,7 +9,7 @@ import { COLOR_SLOTS } from '../src/tag-colors';
 
 describe('submenus.ts holds the registry\'s submenu definitions (E1)', () => {
   it('loads before the registry and holds the colour group and the value-submenu sources', () => {
-    expect(SUBMENUS.map((s) => s.id)).toEqual(['colorTags', 'pageColor', 'scrollMode', 'spreadMode']);
+    expect(SUBMENUS.map((s) => s.id)).toEqual(['colorTags', 'pageColor', 'scrollMode', 'spreadMode', 'imageBackground']);
     expect(SUBMENUS[0]!.commands).toEqual(COLOR_SLOTS.map((n) => `tag.color${n}`));
     expect(Object.keys(SUBMENU_SOURCES).sort()).toEqual(['collections', 'sortColumns', 'tagColors']);
     expect(submenuProblems(registry.COMMANDS, SUBMENUS)).toEqual([]);

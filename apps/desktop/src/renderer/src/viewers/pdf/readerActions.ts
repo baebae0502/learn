@@ -1,4 +1,4 @@
-import type { PageColor, ScrollModeName, SpreadModeName } from '@learn/domain';
+import type { ImageBackground, PageColor, ScrollModeName, SpreadModeName } from '@learn/domain';
 import type { CommandEnv } from '../../commands/registry';
 import { saveSetting } from '../../data/saveSetting';
 import { useShell } from '../../state/shell-store';
@@ -17,7 +17,7 @@ const imageZoomOf = (zoom: ZoomValue): ImageZoom | null => (zoom === 'page-fit' 
  * What the reader's commands do to the open document (the CommandEnv's reader part): through its handle, so nothing runs without
  * a viewer. The zoom and the turns go to the picture when one is drawn, else to the PDF.
  */
-export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'setScroll' | 'setSpread' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
+export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'setPageColor' | 'setImageBackground' | 'setScroll' | 'setSpread' | 'goToPage' | 'history' | 'openFind' | 'findAgain' | 'findSelection' | 'showReaderNav'> = {
   zoom: (dir) => {
     const { handle, imageHandle } = useReader.getState();
     const target = imageHandle ?? handle;
@@ -37,6 +37,7 @@ export const readerActions: Pick<CommandEnv, 'zoom' | 'setZoom' | 'rotate' | 'se
     (imageHandle ?? handle)?.rotate(delta);
   },
   setPageColor: (color: PageColor) => saveSetting('reader.pageColor', color),
+  setImageBackground: (bg: ImageBackground) => saveSetting('reader.imageBackground', bg),
   setScroll: (mode: ScrollModeName) => useReader.getState().handle?.setScroll(mode),
   setSpread: (mode: SpreadModeName) => useReader.getState().handle?.setSpread(mode),
   goToPage: focusPageField,

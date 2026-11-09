@@ -7,13 +7,14 @@ import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { COMMANDS, commandById, type CommandArgs, type CommandId } from '../../packages/domain/src/commands';
 import {
-  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, launch, makeTags,
+  FIXTURES, assignTag, clickToCloseSheet, closeSheet, confirmCalls, createCollection, enabledMenuCommands, expectWindow, importPause, importPaths, isCloseNoise, importResume, importWaiting, imageState, launch, makeTags,
   libraryTab, menuItemEnabled, menuSnapshot, openDialogCalls, openItem, organizeSnapshot, readerTab, recordedPopups, rowByTitle, runMenuCommand, runPalette, saveDialogCalls, sheetReleased, shellCalls, specialRow, stubConfirm,
   stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, stubSaveDialog, stubShell, tagChip, trashItems, treeRow, waitImportIdle,
   type MenuNode,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
+const PHOTO = path.join(FIXTURES, 'photo-4032.jpg');
 const MPEG4 = path.join(FIXTURES, 'sample-mpeg4part2.mp4');
 const KO_PDF = path.join(FIXTURES, '한글 경로 (테스트) #1.pdf');
 /** The Korean fixture's title (titleFromFile). */
@@ -108,6 +109,12 @@ const M7B_COMMANDS: readonly CommandId[] = [
   'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary', 'nav.historyBack', 'nav.historyForward',
   'reader.scrollVertical', 'reader.scrollHorizontal', 'reader.scrollPage', 'reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven',
 ] as CommandId[];
+
+/**
+ * The three backgrounds the picture reader's 보기 menu holds (M7c): only a drawn picture enables them, so the menu loop (a PDF) never
+ * reaches them; a block of their own runs each from the menu bar on a picture.
+ */
+const M7C_COMMANDS: readonly CommandId[] = ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as CommandId[];
 
 /**
  * Enabled in the library with one row selected, but running them here would trash the one sample the rest of the loop
@@ -311,7 +318,7 @@ test('every registry command runs without a page error (library and reader menus
       // ⌘F (찾기) and ⌥⌘I (the reader's own panel) are the library commands that are also on in the reader.
       const readerOwn = ids.filter((id) => id.startsWith('reader.'));
       if (view === 'library') expect(readerOwn).toEqual([]);
-      else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.')).map((c) => c.id).sort());
+      else expect(readerOwn.sort()).toEqual(COMMANDS.filter((c) => c.id.startsWith('reader.') && !M7C_COMMANDS.includes(c.id)).map((c) => c.id).sort()); // a PDF's: the picture's backgrounds are off
       if (view === 'library') expect(libraryOnly.sort()).toEqual(['collection.addItems', 'item.exportCopy', 'item.openExternally', 'item.openInBackground', 'item.showInFolder', 'item.trash', 'library.find', 'library.sortBy', 'view.toggleInspector']);
       else expect(libraryOnly.sort()).toEqual(['library.find', 'view.toggleInspector']); // ⌥⌘I is the reader's too while a PDF is open
       for (const id of ids) {
@@ -719,6 +726,23 @@ test('every registry command runs without a page error (library and reader menus
       await expect.poll(strip).toEqual([]); // the last reader tab gone: no strip
     }
 
+    // The picture reader's commands (M7c): off with a PDF shown (the loop above) and on with a drawn picture, each run from the menu bar.
+    {
+      const [photo] = await importPaths(page, [PHOTO]);
+      await openItem(page, 'photo-4032');
+      await expect.poll(async () => (await imageState(page, photo!.id))?.status).toBe('shown');
+      expect((await enabledMenuCommands(app)).filter((id) => id.startsWith('reader.imageBackground')).sort()).toEqual([...M7C_COMMANDS].sort());
+      const stage = page.getByTestId('image-stage');
+      const wanted: Record<string, string> = { 'reader.imageBackgroundLight': 'light', 'reader.imageBackgroundDark': 'dark', 'reader.imageBackgroundChecker': 'checker' };
+      for (const id of M7C_COMMANDS) {
+        await runMenuCommand(app, id);
+        await expect(stage).toHaveAttribute('data-bg', wanted[id]!);
+        ran.add(id);
+      }
+      await runMenuCommand(app, 'tab.close');
+      await expect.poll(() => menuItemEnabled(app, 'reader.imageBackgroundLight')).toBe(false);
+    }
+
     // The ledger: every registry command ran here, or is named with the test that runs it. A command added later fails
     // here until it is in one of the two; a ledger entry for a command that is gone fails too.
     const all = COMMANDS.map((c) => c.id);
@@ -735,11 +759,15 @@ test('every registry command runs without a page error (library and reader menus
     expect(M7B_COMMANDS.filter((id) => !all.includes(id)), 'M7b commands gone from the registry').toEqual([]);
     expect(M7B_COMMANDS.filter((id) => !ran.has(id)), 'M7b commands this test did not run itself').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7B_COMMANDS.includes(id as CommandId)), 'M7b commands left to another test').toEqual([]);
+    // The M7c commands (the picture's backgrounds): each ran in the block above, none is left to another test, and every one is in the registry.
+    expect(M7C_COMMANDS.filter((id) => !all.includes(id)), 'M7c commands gone from the registry').toEqual([]);
+    expect(M7C_COMMANDS.filter((id) => !ran.has(id)), 'M7c commands this test did not run itself').toEqual([]);
+    expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7C_COMMANDS.includes(id as CommandId)), 'M7c commands left to another test').toEqual([]);
     // The M7a commands: each ran here or is named in COVERED_ELSEWHERE with the test that runs it. The reader's and the translation's commands
     // are exactly the two lists' (M7a's and M7b's), compared by id: a new one is added to the list of the milestone that made it.
     expect(M7A_COMMANDS.filter((id) => !all.includes(id)), 'M7a commands gone from the registry').toEqual([]);
     const readerOrTranslation = all.filter((id) => id.startsWith('reader.') || id.startsWith('translation.')).sort();
-    expect(readerOrTranslation, 'the reader and translation commands in the registry').toEqual([...M7A_COMMANDS, ...M7B_COMMANDS.filter((id) => id.startsWith('reader.'))].sort());
+    expect(readerOrTranslation, 'the reader and translation commands in the registry').toEqual([...M7A_COMMANDS, ...M7B_COMMANDS.filter((id) => id.startsWith('reader.')), ...M7C_COMMANDS].sort());
     expect(all.filter((id) => (id.startsWith('tab.') || id === 'item.openInBackground' || id.startsWith('nav.history'))).sort(), 'the tab and history commands in the registry').toEqual([...M7B_COMMANDS.filter((id) => !id.startsWith('reader.'))].sort());
     expect(M7A_COMMANDS.filter((id) => !ran.has(id) && !(id in COVERED_ELSEWHERE)), 'M7a commands neither run here nor covered elsewhere').toEqual([]);
     expect(Object.keys(COVERED_ELSEWHERE).filter((id) => M7A_COMMANDS.includes(id as CommandId)), 'M7a commands named as covered elsewhere').toEqual(['translation.translateSelection']);

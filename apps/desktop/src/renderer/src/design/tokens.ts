@@ -50,6 +50,14 @@ export const colors = {
   bgRaised: { light: 'oklch(100% 0 0)', dark: 'oklch(30% 0.005 250)' },
   /** Reader backdrop behind PDF pages. */
   bgSunken: { light: 'oklch(93.2% 0.004 250)', dark: 'oklch(17.5% 0.004 250)' },
+  /**
+   * The ground behind a picture, chosen in the image reader's 보기 menu and so the same in both themes (a light ground stays light in
+   * a dark app): the PDF stage's two surfaces, and a checkerboard (8 px squares) for pictures with transparency.
+   */
+  imageBgLight: { light: 'oklch(93.2% 0.004 250)', dark: 'oklch(93.2% 0.004 250)' },
+  imageBgDark: { light: 'oklch(17.5% 0.004 250)', dark: 'oklch(17.5% 0.004 250)' },
+  imageCheckerA: { light: 'oklch(80% 0 0)', dark: 'oklch(80% 0 0)' },
+  imageCheckerB: { light: 'oklch(92% 0 0)', dark: 'oklch(92% 0 0)' },
   /** Text fields and search fields. */
   bgField: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0 / 0.055)' },
   /** Push buttons (secondary) and segmented controls. */

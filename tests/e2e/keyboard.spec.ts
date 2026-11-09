@@ -9,7 +9,7 @@ import {
   FIXTURES, addToCollection, closeSheet, createCollection, distinctPdfs, drag, dropSource, enabledMenuCommands, expectWindow, holdCopies, holdOpenDialog, holdSaveDialog, importFiles, importPause, importPaths, importResume, importWaiting, launch, libraryTab, mainWindow, readerTab, runMenuAccelerator,
   makeTags, menuItemEnabled, openItem, organizeSnapshot, releaseCopies, releaseOpenDialog, releaseSaveDialog, rowAt, rowByTitle, runMenuCommand, selectRows, sheetReleased, showItemPanel,
   specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubOpenDialog, tagChip, trashItems, translationFake, treeRow, waitImportIdle,
-  selectInPage, textExtraction, textIdle,
+  selectInPage, textExtraction, textIdle, imageState, quiet,
 } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
@@ -1349,11 +1349,12 @@ test('M7b keyboard only: ↩ opens → ⌘1 → ⌘↩ opens behind → Tab into
   }
 });
 
-test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 정보와 본문 → Tab back to the field → a word only a PDF body has → ↓ to the row it found → F6 to the item panel → Tab to 본문 일치 → ↓ ↓ ↩ opens the reader at that page, with axe at every new stop', async ({}, testInfo) => {
+test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 정보와 본문 → Tab back to the field → a word only a PDF body has → ↓ to the row it found → F6 to the item panel → Tab to 본문 일치 → ↓ ↓ ↩ opens the reader at that page → ⌘1 → ⌘F empties the search → ↓ to the photo → ↩ → F6 round to the stage → ⌘0 → ↓ → scroll → ⌘R, with axe at every new stop', async ({}, testInfo) => {
+  test.setTimeout(150_000);
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const field = page.getByTestId('search-field').getByRole('searchbox');
   try {
-    const [search30] = await importPaths(page, [path.join(FIXTURES, 'search-30.pdf'), PDF]);
+    const [search30, , photo] = await importPaths(page, [path.join(FIXTURES, 'search-30.pdf'), PDF, path.join(FIXTURES, 'photo-4032.jpg')]);
     await textExtraction(app, 'now');
     await textIdle(app);
     await runMenuCommand(app, 'library.find');
@@ -1380,7 +1381,7 @@ test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 
     const row = rowByTitle(page, search30!.title);
     await expect(row).toBeVisible();
     await expect(page.getByTestId('item-row')).toHaveCount(1);
-    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 2개');
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1개 / 3개');
     await page.keyboard.press('ArrowDown');
     await expect(row).toBeFocused();
     await expect(row).toHaveAttribute('aria-selected', 'true');
@@ -1407,6 +1408,61 @@ test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 
     await expect(find).toBeFocused();
     await expect(page.getByTestId('pdf-find-count')).toHaveText('3 / 30');
     await expectNoSeriousA11y(page, 'm7c-journey: the reader at the row\'s page, the find bar on the query');
+
+    // ⌘1 back to the library; ⌘F takes the field with its words selected, ⌫ empties it, and every item is listed again.
+    await runMenuAccelerator(app, 'nav.back');
+    await expect.poll(() => shownTab(page)).toBe('library');
+    await runMenuAccelerator(app, 'library.find');
+    await expect(field).toBeFocused();
+    await expect.poll(() => field.evaluate((el) => (el as HTMLInputElement).selectionEnd! - (el as HTMLInputElement).selectionStart!)).toBe(2);
+    await page.keyboard.press('Backspace');
+    await expect(field).toHaveValue('');
+    await expect(page.getByTestId('item-row')).toHaveCount(3);
+    // ↓ from the field into the table, then on until the photo's row is the cursor row; ↩ opens it with its stage focused.
+    await page.keyboard.press('ArrowDown');
+    const photoRow = rowByTitle(page, photo!.title);
+    for (let i = 0; i < 4; i++) {
+      // Each key is waited for: the cursor row is settled before it is read.
+      if (await expect.poll(() => photoRow.getAttribute('aria-selected'), { timeout: 1_000 }).toBe('true').then(() => true, () => false)) break;
+      await page.keyboard.press('ArrowDown');
+    }
+    await expect(photoRow).toHaveAttribute('aria-selected', 'true');
+    await expect(photoRow).toBeFocused();
+    await page.keyboard.press('Enter');
+    const stage = page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]');
+    await expect.poll(async () => (await imageState(page))?.status).toBe('shown');
+    await expect(stage).toBeFocused();
+    await expectNoSeriousA11y(page, 'm7c-journey: the image reader, its stage focused');
+    // F6 goes round the panes and back into the reader at its toolbar; Tab past the zoom field and both menus reaches the stage.
+    await page.keyboard.press('F6');
+    await expect.poll(() => inPane(page)).toBe('sidebar');
+    await f6To(page, 'content');
+    await expect(page.getByTestId('image-zoom-field')).toBeFocused();
+    await tabTo(page, 'image-stage', 4);
+    await expect(stage).toBeFocused();
+    // ⌘0 shows the photo at its own size, larger than the stage: the arrows scroll it 40 a press, as any scroll area.
+    await runMenuAccelerator(app, 'view.textReset');
+    await expect.poll(async () => (await imageState(page))?.scale).toBe(1);
+    await expect(stage).toBeFocused();
+    await stage.evaluate((el) => {
+      el.scrollLeft = 0;
+      el.scrollTop = 0;
+    });
+    await expect.poll(() => stage.evaluate((el) => `${el.scrollLeft},${el.scrollTop}`)).toBe('0,0');
+    const stageSelector = '[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]';
+    // A key scroll that comes within a frame or two of the end of the scroll before it is dropped: each waits for a still stage.
+    await quiet(page, stageSelector);
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => stage.evaluate((el) => el.scrollTop)).toBe(40);
+    await quiet(page, stageSelector);
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => stage.evaluate((el) => el.scrollLeft)).toBe(40);
+    await expectNoSeriousA11y(page, 'm7c-journey: the photo at its own size, scrolled by the arrows');
+    // ⌘R turns it a quarter; the stage keeps the keys.
+    await runMenuAccelerator(app, 'reader.rotateCw');
+    await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
+    await expect(stage).toBeFocused();
+    await expectNoSeriousA11y(page, 'm7c-journey: the photo turned');
   } finally {
     await app.close();
   }

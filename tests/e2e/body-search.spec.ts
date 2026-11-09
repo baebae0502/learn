@@ -410,6 +410,40 @@ test('the index progress: the menu counts the PDFs indexed while some wait, no-r
   }
 });
 
+test('the index progress leaves out a PDF whose original is missing: counted while it is there, the menu line and the no-results note go once the rest is indexed', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const gone = testInfo.outputPath('gone.pdf');
+    fs.copyFileSync(pdf('korean.pdf'), gone);
+    await importPaths(page, [pdf('search-30.pdf')]);
+    const [linked] = await importPaths(page, [gone], { mode: 'linked' });
+    // Positive control: while its original is there, the linked PDF is one the index waits for.
+    await scopeButton(page).click();
+    await expect(progressRow(page)).toHaveText('본문 색인 0 / 2');
+    await page.keyboard.press('Escape');
+    await expect(scopeMenu(page)).toHaveCount(0);
+    // Its original goes, as on an unplugged drive: looked at again, the item is marked missing.
+    fs.rmSync(gone);
+    await page.evaluate((id) => window.learn.library.get({ itemId: id }), linked!.id);
+    await expect(rowByTitle(page, linked!.title).getByTestId('missing-flag')).toBeVisible();
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    // The rest is indexed and the missing file left for when it is back: nothing more will be read now.
+    expect((await textJobs(app)).map((j) => j.state).sort()).toEqual(['done', 'queued']);
+    await expect.poll(() => page.evaluate(() => window.learn.search.progress().then((r) => (r.ok ? r.data : null)))).toEqual({ done: 1, total: 1 });
+    await chooseScope(page, '정보와 본문');
+    await field(page).fill('효소 억제제');
+    const text = page.getByTestId('search-empty').locator('.pe-text');
+    await expect(text).toContainText('PDF 본문에서 찾았습니다.');
+    await expect(text).not.toContainText('본문 색인이 끝나면');
+    await scopeButton(page).click();
+    await expect(scopeRow(page, '정보와 본문')).toBeVisible();
+    await expect(progressRow(page)).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test('a body match leaves with its item for the trash and comes back on restore; the trash view searches no body', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {

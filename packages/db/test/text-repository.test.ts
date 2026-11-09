@@ -179,6 +179,23 @@ describe('progress', () => {
     expect(texts.progress()).toEqual({ done: 3, total: 4 }); // a and its duplicate, b; c still waits
     expect(c.itemId).not.toBe(dup.itemId);
   });
+
+  it('leaves out a PDF whose original is missing: nothing reads it until it is back, so the rest done is the index done', () => {
+    const repo = new LibraryRepository(db);
+    const a = seedItem(db);
+    const b = seedItem(db);
+    const gone = seedItem(db, { mode: 'linked' });
+    texts.backfill(T(1));
+    setPayload(a.asset.sha256, {}, 'done');
+    setPayload(b.asset.sha256, {}, 'done');
+    // Positive control: while its original is there, the linked PDF is waited for.
+    expect(texts.progress()).toEqual({ done: 2, total: 3 });
+    repo.setAvailability(gone.asset.id, 'missing', T(2));
+    expect(texts.progress()).toEqual({ done: 2, total: 2 });
+    // Back again, it is waited for again.
+    repo.setAvailability(gone.asset.id, 'available', T(3));
+    expect(texts.progress()).toEqual({ done: 2, total: 3 });
+  });
 });
 
 describe('hasJob', () => {

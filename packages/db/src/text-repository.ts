@@ -177,13 +177,18 @@ export class TextRepository {
     return { state: 'done', pages, truncated: payload.truncated };
   }
 
-  /** Of the PDF items outside the trash, how many have an answer (read or failed) — counted by item, not by file. */
+  /**
+   * Of the PDF items outside the trash, how many have an answer (read or failed) — counted by item, not by file. An item whose
+   * original is missing is left out: nothing reads it until it is back, so it would hold the index unfinished for as long as a
+   * drive is unplugged.
+   */
   progress(): { done: number; total: number } {
     const r = this.db
       .prepare(
         `SELECT COUNT(*) AS total,
                 COALESCE(SUM(CASE WHEN j.state IN ('done', 'failed') THEN 1 ELSE 0 END), 0) AS done
-         ${LIVE_PDFS.replace('WHERE', `LEFT JOIN jobs j ON j.dedupe_key = 'extract:' || a.sha256 || '${KEY_SUFFIX}' WHERE`)}`,
+         ${LIVE_PDFS.replace('WHERE', `LEFT JOIN jobs j ON j.dedupe_key = 'extract:' || a.sha256 || '${KEY_SUFFIX}' WHERE`)}
+           AND a.availability <> 'missing'`,
       )
       .get() as { total: number; done: number };
     return { done: r.done, total: r.total };

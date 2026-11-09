@@ -22,11 +22,20 @@ class FakeWindow extends EventEmitter {
   contentSize: [number, number];
   position: [number, number] | null = null;
   url = '';
-  readonly webContents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown>; isDestroyed(): boolean };
+  readonly #contents: EventEmitter & { id: number; executeJavaScript(script: string): Promise<unknown>; isDestroyed(): boolean };
+  /** As Electron's: a closed window's properties can no longer be read ("Object has been destroyed"), in its 'closed' too. */
+  get webContents(): FakeWindow['contents'] {
+    if (this.destroyed) throw new TypeError('Object has been destroyed');
+    return this.#contents;
+  }
+  /** The window's contents, read the way a test may after it closed. */
+  get contents() {
+    return this.#contents;
+  }
   constructor(readonly options: { width: number; height: number; parent: unknown; modal: boolean; frame: boolean }) {
     super();
     this.contentSize = [options.width, options.height];
-    const contents = new EventEmitter() as FakeWindow['webContents'];
+    const contents = new EventEmitter() as FakeWindow['contents'];
     contents.id = FakeWindow.nextId++;
     contents.isDestroyed = () => this.destroyed;
     // contentHeight polls in the page; fontsReady waits for document.fonts; markSized sets a flag.
@@ -35,7 +44,7 @@ class FakeWindow extends EventEmitter {
       if (script.includes('ResizeObserver')) return new Promise((resolve) => FakeWindow.followers.push(resolve));
       return script.includes('getBoundingClientRect') ? FakeWindow.pageHeight : script.includes('document.fonts') ? FakeWindow.fontsReady : undefined;
     };
-    this.webContents = contents;
+    this.#contents = contents;
     FakeWindow.all.push(this);
   }
   isDestroyed = () => this.destroyed;
@@ -47,7 +56,14 @@ class FakeWindow extends EventEmitter {
     this.url = url;
     if (url.includes('fail')) throw new Error('ERR_FAILED (-2) loading url'); // as Electron rejects a failed load
   };
+  /** As Electron's close(): 'close', then the window goes and 'closed' comes with it destroyed. */
   close = () => {
+    if (this.destroyed) return;
+    this.emit('close');
+    this.destroy();
+  };
+  /** As Electron's destroy(), and its closing of a child window with its parent: no 'close', only 'closed'. */
+  destroy = () => {
     if (this.destroyed) return;
     this.destroyed = true;
     this.emit('closed');
@@ -64,7 +80,21 @@ const parent = (id = 1, height = 900): FakeParent => {
   const p = Object.assign(new EventEmitter(), { id, height, isDestroyed: () => false, focus: vi.fn() });
   return Object.assign(p, { getContentBounds: () => ({ x: 100, y: 50, width: 1440, height: p.height }) }) as unknown as FakeParent;
 };
-const contentsOf = (w: FakeWindow) => w.webContents as unknown as WebContents;
+/**
+ * As Electron closes a window: its child windows go first (destroyed: 'closed' and no 'close'), then the window itself is
+ * destroyed — its properties throw from then on, in its own 'closed' too — and says 'closed'.
+ */
+function closeParent(p: FakeParent): void {
+  for (const w of FakeWindow.all) if (w.options.parent === p) w.destroy();
+  const gone = () => {
+    throw new TypeError('Object has been destroyed');
+  };
+  Object.defineProperty(p, 'id', { get: gone });
+  Object.assign(p, { isDestroyed: () => true, getContentBounds: gone });
+  p.emit('closed');
+}
+/** A window's contents as an IPC event hands them over: the object outlives its window (a closed sheet's page is a stranger). */
+const contentsOf = (w: FakeWindow) => w.contents as unknown as WebContents;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 /** Lets the host measure, size and show the newest window. */
 async function ready(w: FakeWindow): Promise<void> {
@@ -711,6 +741,67 @@ describe('the ⌘/ sheet window made ahead (P7)', () => {
     await again;
     await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS * 2);
     expect(FakeWindow.all).toHaveLength(3);
+  });
+
+  // Electron throws on any read of a window that has closed, in its own 'closed' too; uncaught in main, that error opens
+  // Electron's error box, which holds main for good (gtk_dialog_run on Linux): the main window's closing did not quit
+  // the app, and after a ⌘/ sheet in the window made ahead closed, main answered nothing more.
+  it('reads nothing of the window made ahead once it has closed unused, and the page\'s request for its payload ends with it', async () => {
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    let answered: unknown;
+    void h.payloadFor(contentsOf(w)).then((x) => (answered = x));
+    expect(() => w.close()).not.toThrow();
+    expect(() => w.webContents).toThrow('Object has been destroyed'); // positive control: the fake is as strict as Electron
+    await settled();
+    expect(answered).toEqual({ kind: 'shortcuts' });
+    void h.open(p, { kind: 'shortcuts' }); // the next ⌘/ makes its own
+    await settled();
+    expect(FakeWindow.all).toHaveLength(2);
+  });
+
+  it('a ⌘/ sheet in the window made ahead tells its parent it closed (the menu bar is let go) and reads nothing of the closed window', async () => {
+    vi.useFakeTimers();
+    const onSheetShown = vi.fn();
+    const onSheetClosed = vi.fn();
+    const h = createSheetHost({ preload: '/p.cjs', url: () => 'learn://app/index.html?window=sheet', platform: 'linux', onSheetShown, onSheetClosed });
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    expect(w.shown).toBe(true);
+    expect(onSheetShown).toHaveBeenCalledTimes(1);
+    expect(() => h.resolve(contentsOf(w), { kind: 'shortcuts' })).not.toThrow();
+    await expect(result).resolves.toEqual({ kind: 'shortcuts' });
+    expect(w.destroyed).toBe(true);
+    expect(onSheetClosed).toHaveBeenCalledTimes(1);
+    expect(onSheetClosed).toHaveBeenCalledWith(p);
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    expect(FakeWindow.all).toHaveLength(2); // and the next one is made
+  });
+
+  it('goes with its parent, which main then lets go of in the parent\'s own closed (its id unreadable): nothing throws and none is made again', async () => {
+    vi.useFakeTimers();
+    const h = host();
+    const p = parent();
+    const w = preparedWindow(h, p);
+    const result = h.open(p, { kind: 'shortcuts' });
+    await vi.advanceTimersByTimeAsync(10);
+    h.resolve(contentsOf(w), { kind: 'shortcuts' });
+    await result;
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS);
+    const next = FakeWindow.all[1]!;
+    next.webContents.emit('did-finish-load');
+    void h.open(p, { kind: 'duplicate', name: 'a.pdf', existing: 'b.pdf', count: 1 } as never); // a sheet over it, made ahead of nothing
+    await vi.advanceTimersByTimeAsync(10);
+    expect(() => closeParent(p)).not.toThrow();
+    expect(() => p.id).toThrow('Object has been destroyed'); // positive control: the parent is as unreadable as Electron's
+    expect(next.destroyed).toBe(true);
+    expect(() => h.discardPrepared(p)).not.toThrow();
+    await vi.advanceTimersByTimeAsync(PREPARE_AGAIN_MS * 2);
+    expect(FakeWindow.all).toHaveLength(3);
+    expect(FakeWindow.all.every((x) => x.destroyed)).toBe(true);
   });
 
   it('drops a prepared window whose page failed, and the next ⌘/ makes its own', async () => {

@@ -79,7 +79,7 @@ export interface SheetHost {
    * costs the measuring and showing, not a window and a page. One per parent; made again a second after a ⌘/ sheet closes.
    */
   prepare(parent: BrowserWindow): void;
-  /** Closes the window made ahead for `parent` (its window is closing) and stops making new ones. */
+  /** Closes the window made ahead for `parent` (its window is closing) and stops making new ones; `parent` may have closed already. */
   discardPrepared(parent: BrowserWindow): void;
   resolve(contents: WebContents, result: SheetResult): void;
   /**
@@ -94,6 +94,8 @@ export interface SheetHost {
 /** A shortcuts sheet window made ahead: loaded, hidden, its page holding on for the payload. */
 interface Prepared {
   window: BrowserWindow;
+  /** Its contents' id, kept: a window that has closed can no longer be read, in its own 'closed' too. */
+  contentsId: number;
   parent: BrowserWindow;
   loaded: boolean;
   /** What the page's payloadFor waits for. */
@@ -138,12 +140,16 @@ export function createSheetHost(opts: {
   const queues = new Map<number, Promise<unknown>>();
   const heights = new Map<string, number>(); // a static sheet's natural height, measured in its own font
   const handlers = new Map<SheetPayload['kind'], SheetActHandler>();
-  /** The window made ahead per parent window id, and the same by the window's contents. */
-  const prepared = new Map<number, Prepared>();
+  /**
+   * The window made ahead per parent window, and the same by the window's contents id. Keyed by the window itself, never
+   * by reading it: main lets go of a parent in the parent's 'closed', when Electron throws on any read of it, and an
+   * uncaught error in main opens Electron's error box, which holds main until someone answers it.
+   */
+  const prepared = new Map<BrowserWindow, Prepared>();
   const preparedByContents = new Map<number, Prepared>();
   /** Parents prepare() was called for: a ⌘/ sheet closing over one of them makes the next. */
-  const preparing = new Set<number>();
-  const prepareTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const preparing = new Set<BrowserWindow>();
+  const prepareTimers = new Map<BrowserWindow, ReturnType<typeof setTimeout>>();
 
   function sheetWindow(parent: BrowserWindow, kind: SheetPayload['kind'], height: number): BrowserWindow {
     const win = new BrowserWindow({
@@ -176,13 +182,13 @@ export function createSheetHost(opts: {
   }
 
   function forgetPrepared(entry: Prepared): void {
-    if (prepared.get(entry.parent.id) === entry) prepared.delete(entry.parent.id);
-    preparedByContents.delete(entry.window.webContents.id);
+    if (prepared.get(entry.parent) === entry) prepared.delete(entry.parent);
+    preparedByContents.delete(entry.contentsId);
   }
 
   /** The window made ahead for `parent`, when it is alive and its page has loaded; it leaves the stock either way it is taken. */
   function takePrepared(parent: BrowserWindow): Prepared | null {
-    const entry = prepared.get(parent.id);
+    const entry = prepared.get(parent);
     if (!entry || entry.window.isDestroyed() || !entry.loaded) return null;
     forgetPrepared(entry);
     entry.detach();
@@ -191,20 +197,17 @@ export function createSheetHost(opts: {
 
   function prepare(parent: BrowserWindow): void {
     if (parent.isDestroyed()) return;
-    if (!preparing.has(parent.id)) {
-      // The window closing takes the one made ahead with it, and the stock stops.
-      const parentId = parent.id;
-      parent.once('closed', () => discardPreparedFor(parentId));
-    }
-    preparing.add(parent.id);
-    if (prepared.has(parent.id)) return;
+    // The window closing takes the one made ahead with it (Electron closes a child with its parent), and the stock stops.
+    if (!preparing.has(parent)) parent.once('closed', () => discardPrepared(parent));
+    preparing.add(parent);
+    if (prepared.has(parent)) return;
     const room = parent.getContentBounds();
     const win = sheetWindow(parent, 'shortcuts', sheetHeightCap('shortcuts', room.height, opts.platform));
     let release: (payload: SheetPayload) => void = () => {};
     const held = new Promise<SheetPayload>((resolve) => (release = resolve));
-    const entry: Prepared = { window: win, parent, loaded: false, held, release, detach: () => {} };
-    prepared.set(parent.id, entry);
-    preparedByContents.set(win.webContents.id, entry);
+    const entry: Prepared = { window: win, contentsId: win.webContents.id, parent, loaded: false, held, release, detach: () => {} };
+    prepared.set(parent, entry);
+    preparedByContents.set(entry.contentsId, entry);
     // A window that fails before it is used is dropped; the next ⌘/ makes its own.
     const drop = (): void => {
       forgetPrepared(entry);
@@ -217,10 +220,12 @@ export function createSheetHost(opts: {
     win.webContents.once('did-finish-load', onLoaded);
     win.webContents.on('render-process-gone', drop);
     win.webContents.on('did-fail-load', onFailed);
-    // The page's request for its payload is answered before the window goes: an unanswered one made the renderer, which the
-    // main window shares, stop answering.
-    win.once('close', () => release({ kind: 'shortcuts' }));
-    win.once('closed', () => forgetPrepared(entry));
+    // Closed unused (with its parent, or its page failed): the page's request for its payload ends with it rather than
+    // staying pending in main for good. A window a sheet opened in was answered already.
+    win.once('closed', () => {
+      forgetPrepared(entry);
+      release({ kind: 'shortcuts' });
+    });
     entry.detach = () => {
       win.webContents.off('did-finish-load', onLoaded);
       win.webContents.off('render-process-gone', drop);
@@ -229,27 +234,26 @@ export function createSheetHost(opts: {
     win.loadURL(opts.url()).catch(drop);
   }
 
-  /** By id: the parent may be destroyed already (its 'closed'), when its properties can no longer be read. */
-  function discardPreparedFor(parentId: number): void {
-    preparing.delete(parentId);
-    clearTimeout(prepareTimers.get(parentId));
-    prepareTimers.delete(parentId);
-    const entry = prepared.get(parentId);
+  /** Reads nothing of `parent`: it may have closed already (main calls this from its 'closed'). */
+  function discardPrepared(parent: BrowserWindow): void {
+    preparing.delete(parent);
+    clearTimeout(prepareTimers.get(parent));
+    prepareTimers.delete(parent);
+    const entry = prepared.get(parent);
     if (!entry) return;
     forgetPrepared(entry);
     if (!entry.window.isDestroyed()) entry.window.close();
   }
-  const discardPrepared = (parent: BrowserWindow): void => discardPreparedFor(parent.id);
 
   function prepareLater(parent: BrowserWindow): void {
-    if (!preparing.has(parent.id)) return;
-    clearTimeout(prepareTimers.get(parent.id));
+    if (!preparing.has(parent)) return;
+    clearTimeout(prepareTimers.get(parent));
     const timer = setTimeout(() => {
-      prepareTimers.delete(parent.id);
-      if (preparing.has(parent.id) && !parent.isDestroyed()) prepare(parent);
+      prepareTimers.delete(parent);
+      if (preparing.has(parent) && !parent.isDestroyed()) prepare(parent);
     }, PREPARE_AGAIN_MS);
     timer.unref?.();
-    prepareTimers.set(parent.id, timer);
+    prepareTimers.set(parent, timer);
   }
   const find = (contents: WebContents): Pending => {
     const p = pending.get(contents.id);

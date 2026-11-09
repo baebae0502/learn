@@ -189,6 +189,8 @@ export const VARIANTS = [
     ['library', { m: '7c', matches: 'indexing' }, 'm7c-matches-indexing', '⑤ 본문 일치 · 색인 중'],
     ['library', { m: '7c', matches: 'empty' }, 'm7c-matches-empty', '⑤ 본문 일치 · 글자 없음'],
     ['library', { m: '7c', matches: 'locked' }, 'm7c-matches-locked', '⑤ 본문 일치 · 암호'],
+    ['library', { m: '7c', matches: 'truncated' }, 'm7c-matches-truncated', '⑤ 본문 일치 · 잘린 색인(행 아래 줄)'],
+    ['library', { m: '7c', matches: 'truncated-none' }, 'm7c-matches-truncated-none', '⑤ 본문 일치 · 잘린 색인(그 줄만)'],
     ['library', { m: '7c', panel: 'image' }, 'm7c-panel-image', '⑥ 이미지 항목 패널 · 미리보기'],
     ['library', { m: '7c', panel: 'image-large' }, 'm7c-panel-image-large', '⑥ 이미지 항목 패널 · 5,000만 화소 넘음(아이콘 칸)'],
     ['library', { m: '7c', panel: 'pdf-indexing' }, 'm7c-panel-pdf-indexing', '⑥ PDF 항목 패널 · 파일 절의 본문 검색 줄'],

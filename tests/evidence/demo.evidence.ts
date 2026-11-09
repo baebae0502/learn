@@ -513,6 +513,11 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
         // With no collections the tree shows a hint under its rows; the pointer must not rest on it.
         const hint = document.querySelector('[data-testid="sidebar-hint"]')?.getBoundingClientRect();
         if (hint && hint.height > 0) rows.push(hint.bottom);
+        // A reader with no pages (a picture) shows a note in the sidebar instead: the pointer rests under it, not on the launcher.
+        for (const note of document.querySelectorAll('[data-testid="reader-sidebar-empty"]')) {
+          const r = note.getBoundingClientRect();
+          if (r.height > 0) rows.push(r.bottom);
+        }
         // A PDF reader shown: the empty stretch of its toolbar between the page group and the zoom field (the sidebar there lists
         // thumbnails under the caption, and the launcher sits at the top: neither is a place to rest on).
         const gap = document.querySelector('[data-testid="tab-panel"][data-active="true"] .reader-toolbar .spacer')?.getBoundingClientRect();
@@ -721,12 +726,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await chapter('사진과 도판 다섯 장을 창에 끌어다 놓으면 이미지 자료로 들어옵니다. PNG, JPEG, WebP 모두 됩니다. (끌어 놓기는 스크립트로 재현합니다)', page, 6500);
     await pause(1500);
     await dropSource(page, pictures);
-    const middle = await page.evaluate(() => ({ x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 2) }));
-    await glide(page, 'main', middle.x, middle.y);
     await scriptedTag('끌어 놓기는 스크립트로 재현');
     await drag(page, 'dragenter', 'source');
     await drag(page, 'dragover', 'source');
     await expect(page.getByTestId('drop-summary')).toContainText(`${PICTURES.length}개`);
+    // The files are let go over the empty stretch under the two cards: the pointer covers none of the overlay's words.
+    const cards = (await page.getByTestId('drop-copy').boundingBox())!;
+    await glide(page, 'main', Math.round(await page.evaluate(() => innerWidth / 2)), Math.round(cards.y + cards.height + 56));
     await pause(4500);
     await drag(page, 'drop', 'source');
     await expect(page.getByTestId('import-done').filter({ hasText: `자료 ${PICTURES.length}개를 가져왔습니다` })).toBeVisible();
@@ -743,6 +749,13 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     await page.keyboard.press('Enter');
     await drawn();
     expect((await imageState(page))!.zoom).toBe('fit');
+    await park(page, 'main');
+    await pause(4500);
+    // The ground first, while the whole picture is in the window: it shows on every side of it.
+    await glideClick(page, 'main', page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-view-menu"]'));
+    await pause(1500);
+    await glideClick(page, 'main', page.getByRole('menuitemradio', { name: '어둡게' }));
+    await expect(stage()).toHaveAttribute('data-bg', 'dark');
     await park(page, 'main');
     await pause(4500);
     const box = (await stage().boundingBox())!;
@@ -768,12 +781,8 @@ async function demoAttempt(plan: DemoPlan, history: readonly string[]): Promise<
     const turned = await press('r', ['command'], 'reader.rotateCw', async () => (await imageState(page))?.rotation === 90);
     await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
     await afterKey(turned, 1800);
-    await glideClick(page, 'main', page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-view-menu"]'));
-    await pause(1500);
-    await glideClick(page, 'main', page.getByRole('menuitemradio', { name: '어둡게' }));
-    await expect(stage()).toHaveAttribute('data-bg', 'dark');
     await park(page, 'main');
-    await pause(6500);
+    await pause(5000);
 
     // 3. The tab closed and opened again: the same zoom, the same point in the middle, the same turn.
     await chapter(`탭을 닫았다가 ${key('Shift+CmdOrCtrl+T')}로 다시 열어도 확대 배율과 보던 자리, 회전이 그대로 돌아옵니다.`, page, 6000);

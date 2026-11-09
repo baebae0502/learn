@@ -112,16 +112,22 @@ ffprobe -v error -show_chapters -of csv=p=0 "$VIDEO" | wc -l | xargs -I{} echo "
 
 # One frame per chapter: 3 s in, or halfway to the next chapter when it is shorter (n3).
 DURATION=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$VIDEO")
-SELECT=$(python3 -I - "${VIDEO%.*}.chapters.json" "$DURATION" <<'PY'
+PICKS=$(python3 -I - "${VIDEO%.*}.chapters.json" "$DURATION" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1], encoding='utf-8'))
 end = float(sys.argv[2])
 starts = [c['start'] for c in d['chapters']]  # on the finished video's timeline
 picks = [min(s + 3, (s + (starts[i + 1] if i + 1 < len(starts) else end)) / 2) for i, s in enumerate(starts)]
-print('+'.join(f'gte(t,{t:.4f})*lt(t,{t + 1 / 30:.4f})' for t in picks))  # [t, t + 1 frame): exactly one frame each
+print(' '.join(f'{t:.4f}' for t in picks))
 PY
 )
-ffmpeg -v error -y -i "$VIDEO" -vf "select='$SELECT'" -fps_mode vfr -start_number 1 "$OUT/frames/ch-%02d.png"
+# One seek per chapter, so ch-NN is chapter NN: a select window one frame wide could miss a frame of the trimmed video's
+# shifted timestamps and number the rest one off.
+N=0
+for T in $PICKS; do
+  N=$((N + 1))
+  ffmpeg -v error -y -ss "$T" -i "$VIDEO" -frames:v 1 "$OUT/frames/$(printf 'ch-%02d.png' "$N")"
+done
 
 # The window fills the frame: the outermost 2 px on each side are the app's, not the black X root.
 EDGES=$(for crop in "iw:2:0:0" "iw:2:0:ih-2" "2:ih:0:0" "2:ih:iw-2:0"; do

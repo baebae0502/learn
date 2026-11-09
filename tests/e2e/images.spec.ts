@@ -175,7 +175,7 @@ test('while the picture opens: the stage’s ground only, the field "…" and th
     await expect(zoomField(page)).toHaveCSS('opacity', '0.45'); // drawn as a disabled control, its box with it
     await expectDisabledReason(zoomMenu(page), '이미지를 여는 중입니다');
     await expect(page.getByTestId('reader-sidebar-empty')).toHaveText('이미지에는 쪽이 없습니다');
-    expect(await menuItemEnabled(app, 'view.textBigger')).toBe(false);
+    await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(false);
     await expectNoSeriousA11y(page, 'image reader, opening');
     await page.evaluate(() => (window as unknown as { __releaseDecode: () => void }).__releaseDecode());
     const s = await drawn(page);
@@ -262,6 +262,7 @@ test('the zoom menu — 창에 맞춤 · 너비에 맞춤 · 실제 크기 · �
     await menu.getByRole('menuitem', { name: '실제 크기' }).click();
     await expect.poll(() => scaleOf(page)).toBe(1);
     await zoomMenu(page).click();
+    await expect(menu.locator('.mi-label')).toHaveText(['창에 맞춤', '너비에 맞춤', '실제 크기', '확대', '축소']);
     await expect(menu.locator('[aria-checked="true"]')).toHaveCount(0); // a number is no mode
     await menu.getByRole('menuitemradio', { name: '창에 맞춤' }).click();
     await expect.poll(async () => (await imageState(page))?.zoom).toBe('fit');
@@ -331,11 +332,12 @@ test('a pinch zooms about the point under the pointer; the picture is dragged on
     await expect(stage(page)).toHaveCSS('cursor', 'default'); // the app's own
     await page.mouse.move(x, y);
     await page.mouse.down();
+    await page.mouse.move(x - 100, y - 50, { steps: 4 });
     await page.mouse.move(x - 200, y - 100, { steps: 4 });
-    await page.mouse.up();
+    // Held as above, where the drag showed at once: no drag starts on a picture that fits.
     await settled(page);
     expect(await stage(page).getAttribute('data-panning')).toBeNull();
-    expect((await stageBox(page)).scrollLeft).toBe(0);
+    await page.mouse.up();
   } finally {
     await app.close();
   }
@@ -473,6 +475,113 @@ test('the zoom, the centre and the turn come back with the tab — closed and re
   }
 });
 
+for (const frames of ['let through', 'held'] as const) {
+  test(`a graceful quit right after a change of view keeps the zoom, the centre and the turn (the frames after the change ${frames})`, async ({}, testInfo) => {
+    test.setTimeout(90_000);
+    const lib = testInfo.outputPath('library');
+    const ud = testInfo.outputPath('userdata');
+    let { app, page } = await launch(lib, ud);
+    let closed = false;
+    try {
+      const [photo] = await importPaths(page, [PHOTO]);
+      await openItem(page, 'photo-4032');
+      await drawn(page);
+      await runMenuCommand(app, 'reader.rotateCw');
+      await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
+      await zoomField(page).fill('200');
+      await zoomField(page).press('Enter');
+      await expect.poll(() => scaleOf(page)).toBe(2);
+      // The last change is a scroll the reader has taken (its scroll event comes with a frame) ...
+      const p = await scrollStageTo(page, 1500, 1100);
+      let scale = 2;
+      if (frames === 'held') {
+        // ... or, with no frame let through after it, a step of ⌘+: what the saver hears must not wait for a frame.
+        await page.evaluate(() => {
+          window.requestAnimationFrame = (() => 0) as typeof window.requestAnimationFrame;
+        });
+        await runMenuCommand(app, 'view.textBigger');
+        await expect.poll(() => scaleOf(page)).toBe(3);
+        scale = 3;
+      }
+      // Only the reader's state was waited for, never the disk.
+      const s = (await imageState(page))!;
+      expectNear({ x: s.cx, y: s.cy }, p, 'the reader’s centre before the quit');
+      await app.close();
+      closed = true;
+      ({ app, page } = await launch(lib, ud));
+      closed = false;
+      const back = await drawn(page, photo!.id);
+      expect(back.zoom).toBe(scale);
+      expect(back.rotation).toBe(90);
+      expectNear({ x: back.cx, y: back.cy }, p, 'after the quit: the reader’s centre');
+      expectNear(await pictureAt(page), p, 'after the quit: the picture at the centre');
+    } finally {
+      if (!closed) await app.close().catch(() => {});
+    }
+  });
+}
+
+test('an image tab not shown while its picture comes — opened with ⌘↩, or hidden before its decode ends — is drawn at its stage’s fit and counted read only once shown', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const second = path.join(testInfo.outputPath('in'), 'photo-b.jpg');
+    fs.mkdirSync(path.dirname(second), { recursive: true });
+    fs.copyFileSync(PHOTO, second);
+    const [photo, gif, other] = await importPaths(page, [PHOTO, GIF, second], { allowDuplicate: true });
+    const progress = async (id: string) => (await stored(page, id))?.progress ?? null;
+    const fitted = async (what: string) => {
+      const b = await stageBox(page);
+      expect(Math.min(b.left, b.top), what).toBeCloseTo(24, 0);
+      expect(Math.abs(b.left - b.right), what).toBeLessThanOrEqual(1);
+      expect(Math.abs(b.top - b.bottom), what).toBeLessThanOrEqual(1);
+    };
+
+    // ⌘↩: a tab behind the library. The shown tab gives the positive: the GIF opened by hand is drawn and counted read.
+    await rowByTitle(page, 'photo-4032').click();
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect(readerTab(page, photo!.id)).toBeVisible();
+    await openItem(page, 'two-frames');
+    await drawn(page, gif!.id);
+    await expect.poll(() => progress(gif!.id)).toBe(1);
+    await settled(page);
+    expect((await imageState(page, photo!.id))?.status ?? 'not mounted').not.toBe('shown');
+    expect(await progress(photo!.id)).toBeNull();
+    await readerTab(page, photo!.id).click();
+    expect(await drawn(page, photo!.id)).toMatchObject({ zoom: 'fit' });
+    await fitted('⌘↩ tab, shown');
+    await expect.poll(() => progress(photo!.id)).toBe(1);
+
+    // Hidden while its decode is held, then let go: decoded behind the library, placed and counted only when shown.
+    await page.evaluate(() => {
+      const own = HTMLImageElement.prototype.decode;
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      (window as unknown as { __releaseDecode: () => void }).__releaseDecode = release;
+      HTMLImageElement.prototype.decode = function (this: HTMLImageElement) {
+        return gate.then(() => own.call(this));
+      };
+    });
+    await libraryTab(page).click();
+    await openItem(page, 'photo-b');
+    await expect.poll(async () => (await imageState(page))?.itemId).toBe(other!.id);
+    expect((await imageState(page))!.status).toBe('loading');
+    await libraryTab(page).click();
+    await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${other!.id}"]`)).toHaveAttribute('data-active', 'false');
+    await page.evaluate(() => (window as unknown as { __releaseDecode: () => void }).__releaseDecode());
+    await expect.poll(async () => (await imageState(page, other!.id))?.natural, { message: 'decoded while hidden' }).toEqual({ width: 4032, height: 3024 });
+    await settled(page);
+    expect((await imageState(page, other!.id))!.status).toBe('loading');
+    expect(await progress(other!.id)).toBeNull();
+    await readerTab(page, other!.id).click();
+    expect(await drawn(page, other!.id)).toMatchObject({ zoom: 'fit' });
+    await fitted('hidden while decoded, shown');
+    await expect.poll(() => progress(other!.id)).toBe(1);
+  } finally {
+    await app.close();
+  }
+});
+
 test('the progress column says 완료 once the picture is drawn; one that cannot be drawn says so and is not counted read', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
@@ -496,7 +605,7 @@ test('the progress column says 완료 once the picture is drawn; one that cannot
     expect(await imageState(page)).toMatchObject({ itemId: broken!.id, status: 'error' });
     await expect(page.getByTestId('image-toolbar')).toHaveCount(0); // a final state: the notice alone
     await expect(page.getByTestId('reader-sidebar-empty')).toHaveText('이미지에는 쪽이 없습니다');
-    expect(await menuItemEnabled(app, 'view.textBigger')).toBe(false);
+    await expect.poll(() => menuItemEnabled(app, 'view.textBigger')).toBe(false);
     await expectNoSeriousA11y(page, 'image that cannot be drawn');
     // Not read: the open is recorded, no progress (the photo above reached 1 by the same path).
     await settled(page);

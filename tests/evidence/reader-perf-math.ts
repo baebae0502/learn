@@ -1,8 +1,8 @@
 // The arithmetic of reader-perf.json (M7a spec 11), apart from the app so it is unit-tested.
 import type { Limit } from './budget';
 
-/** M7a spec 11; ms. Linux CI fails beyond twice each (budget.ts); the Mac reports. */
-export const READER_BUDGET_MS = { firstPage: 2000, scrollFrameP95: 16.7, zoomStep: 250, findFirstMatch: 500, thumbnailsVisible: 1000, popupCachedPaint: 100 } as const;
+/** M7a spec 11, and the image tab's open from M7c spec 13; ms. Linux CI fails beyond twice each (budget.ts); the Mac reports. */
+export const READER_BUDGET_MS = { firstPage: 2000, scrollFrameP95: 16.7, zoomStep: 250, findFirstMatch: 500, thumbnailsVisible: 1000, popupCachedPaint: 100, imageFirstFrame: 500 } as const;
 
 /** Differences of consecutive frame times (ms); none for fewer than two frames. */
 export function frameGaps(times: readonly number[]): number[] {
@@ -16,6 +16,7 @@ const WHAT: Record<keyof typeof READER_BUDGET_MS, string> = {
   findFirstMatch: 'find first match (median of 5)',
   thumbnailsVisible: 'thumbnails visible (median of 5)',
   popupCachedPaint: 'cached translation pop-up paint p95',
+  imageFirstFrame: 'image tab open → first frame with the picture (median of 5)',
 };
 
 export function readerLimits(values: Readonly<Record<keyof typeof READER_BUDGET_MS, number>>): Limit[] {

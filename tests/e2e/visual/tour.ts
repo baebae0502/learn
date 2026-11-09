@@ -99,6 +99,9 @@ export async function settle(page: Page, park = true): Promise<void> {
  * Optional @2x capture for the critic (LEARN_TOUR_2X=1) + committed 1x baseline (Linux). The @2x shot comes first:
  * a state that differs from its baseline still reaches the critic (R-2). Critic captures run without updating; the
  * baselines are updated by the 1x run only (README).
+ * `keepPointer`: the pointer stays where the scene left it. A keyboard ring on a react-aria item (a ListBox, GridList or Menu row,
+ * the image stage) needs it, with the pointer parked before the keys: a pointer move after them makes the modality the pointer's,
+ * and the item drawn again later (a query settling) loses its ring.
  */
 export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean; style?: string } = {}): Promise<void> {
   await readEndedImports(page);

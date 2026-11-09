@@ -2282,6 +2282,23 @@ test('M7c image reader: the photo in both themes with its zoom and view menus op
         await shoot(page, `reader-image-${bg}-${theme}`);
       }
     }
+    // The stage's keyboard ring on 체크무늬 (the colour that ground asks for), fitted to the width: the checks at the sides and the
+    // ring drawn over the scroll bar too. The pointer rests on the sidebar first and stays: a move after the keys takes the ring away.
+    await runMenuCommand(s.app, 'reader.zoomPageWidth');
+    await expect.poll(async () => (await imageState(page))?.zoom).toBe('width');
+    await expect.poll(() => stage.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    const inPane = () => page.evaluate(() => document.activeElement?.closest('[data-pane]')?.getAttribute('data-pane') ?? null);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await page.mouse.move(120, 600);
+      await blurFocus(page);
+      for (let i = 0; i < 4 && (await inPane()) !== 'content'; i++) await page.keyboard.press('F6');
+      await expect(panel.getByTestId('image-zoom-field')).toBeFocused();
+      for (let i = 0; i < 4 && !(await stage.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('Tab');
+      await expect(stage).toBeFocused();
+      await expect(panel.locator('[data-testid="image-stage"]:focus-visible')).toHaveCount(1);
+      await shoot(page, `reader-image-focus-checker-${theme}`, { keepPointer: true });
+    }
     // The library's item panel for the photo, read: its picture, the size line, 읽기 with 완료 (the day it was viewed masked).
     await page.locator('[data-testid="tab"][data-item-id="library"]').click();
     await rowByTitle(page, '수용체 분포 형광 현미경 사진').click();

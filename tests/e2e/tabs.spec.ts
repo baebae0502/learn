@@ -71,6 +71,51 @@ for (const how of ['a graceful quit', 'a hard kill'] as const) {
   });
 }
 
+for (const frame of ['held', 'let through'] as const) {
+  test(`a graceful quit right after a page turn keeps the page (the frame after the turn ${frame})`, async ({}, testInfo) => {
+    const lib = testInfo.outputPath('library');
+    const ud = testInfo.outputPath('userdata');
+    let { app, page } = await launch(lib, ud);
+    let closed = false;
+    try {
+      await importPaths(page, [PAPER]);
+      await openItem(page, 'paper-100');
+      await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', /.*/);
+      // The restore's own scroll has been reported: no report asked for before the turn is still waiting for its frame.
+      await quiet(page);
+      const inTurn = await page.evaluate(
+        ({ target, hold }) => {
+          type Bus = { on(name: string, fn: () => void): void };
+          const w = window as unknown as { __areaReports: number; __learnReader: { getState(): { handle: { goToPage(n: number): void; eventBus(): Bus } } } };
+          const { handle } = w.__learnReader.getState();
+          w.__areaReports = 0;
+          handle.eventBus().on('updateviewarea', () => void w.__areaReports++);
+          // pdf.js reports a scroll from a requestAnimationFrame. Held, no frame comes between the turn and the quit, as on a slow runner.
+          if (hold) window.requestAnimationFrame = (() => 0) as typeof window.requestAnimationFrame;
+          handle.goToPage(target);
+          return w.__areaReports;
+        },
+        { target: PAGE, hold: frame === 'held' },
+      );
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(PAGE));
+      if (frame === 'held') {
+        // The turn is reported in its own task: what the reader saves never waits for a frame.
+        expect.soft(inTurn).toBeGreaterThan(0);
+      } else {
+        // Positive control: the frame's report comes, then the quit.
+        await expect.poll(() => page.evaluate(() => (window as unknown as { __areaReports: number }).__areaReports)).toBeGreaterThan(0);
+      }
+      await app.close();
+      closed = true;
+      ({ app, page } = await launch(lib, ud));
+      closed = false;
+      await expect(page.getByTestId('pdf-page-field')).toHaveValue(String(PAGE));
+    } finally {
+      if (!closed) await app.close().catch(() => {});
+    }
+  });
+}
+
 for (const gone of ['trashed', 'purged'] as const) {
   test(`an item ${gone} before quit: ${gone === 'trashed' ? 'its tab is restored and shows the trash notice' : 'its tab is gone on launch'}`, async ({}, testInfo) => {
     const lib = testInfo.outputPath('library');

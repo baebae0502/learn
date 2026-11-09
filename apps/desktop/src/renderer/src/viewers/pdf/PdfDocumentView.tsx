@@ -237,7 +237,12 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
           // current one in a row or a spread, an earlier page at the document's end, where the stage cannot move, so the last page was
           // never reached.
           const { first } = viewer._getVisiblePages() as { first?: unknown };
-          if (first) viewer._updateLocation(first);
+          if (first) {
+            viewer._updateLocation(first);
+            // And reported now, as update() reports it a frame later: the reader's place is saved from that report, so a quit or a
+            // closed tab in the frame after a turn kept the page from before it. Only the report: no current page is picked, as above.
+            eventBus.dispatch('updateviewarea', { source: viewer, location: viewer._location });
+          }
         };
         const place: PdfViewHandle['place'] = ({ pageNumber, destArray }) => {
           if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > viewer.pagesCount) return;

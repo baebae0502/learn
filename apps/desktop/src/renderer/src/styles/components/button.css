@@ -53,7 +53,8 @@
   .btn-primary:is([data-hovered], [data-force~='hover']):not([aria-disabled='true']) {
     background: var(--accent-hover);
   }
-  .btn-primary:is([data-pressed], [data-force~='pressed']):not([aria-disabled='true']) {
+  /* As heavy as .btn's pressed rule (its menu-open argument weighs two), so the accent's own pressed fill wins over the overlay. */
+  .btn-primary:is([data-pressed], [data-force~='pressed'], [aria-haspopup][aria-expanded='true']):not([aria-disabled='true']) {
     background: var(--accent-pressed);
   }
   .btn:is(.btn-plain, .btn-plain-accent, .btn-plain-danger) {

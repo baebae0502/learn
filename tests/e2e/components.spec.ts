@@ -257,3 +257,25 @@ test('board geometry: toasts 42 / 58 with icon and × on the title line, tooltip
   expect((await box('.menu .msep')).height).toBe(1);
   expect((await box('.field.small')).height).toBe(24);
 });
+
+test('a pressed primary button fills with --accent-pressed and takes no pressed overlay, in both themes (darker than at rest)', async () => {
+  const { page } = s;
+  for (const scheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.goto('learn://app/index.html?window=gallery&part=1&platform=linux&det=1');
+    await page.getByTestId('gallery').waitFor();
+    await expect.poll(() => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(scheme === 'dark');
+    const pressed = page.locator('.btn-primary[data-force~="pressed"]').first();
+    await expect(pressed).toBeVisible();
+    const got = await pressed.evaluate((el) => {
+      const probe = document.createElement('div');
+      probe.style.background = 'var(--accent-pressed)';
+      document.body.append(probe);
+      const token = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      const cs = getComputedStyle(el);
+      return { color: cs.backgroundColor, image: cs.backgroundImage, token };
+    });
+    expect(got, scheme).toEqual({ color: got.token, image: 'none', token: got.token });
+  }
+});

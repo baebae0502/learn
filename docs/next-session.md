@@ -474,6 +474,9 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 - **본문 상태는 PDF만**: `ItemDetail.text`는 PDF가 아니면 `null`이다. 동영상의 자막 상태 줄을 둘지 정한다.
 - **새 자료 종류의 CHECK**: `items.type` CHECK는 `('pdf','video','epub','slides','web','image')`다. 오디오를 자료 종류로 더하면 004처럼 실행기의 `foreignKeysOff` 길로 표를 다시 만든다(순서 규칙: 새 표 → 옮기기 → 옛 표 지우기 → 이름 바꾸기, ADR-0003 "스키마 v4").
 - **영상 쪽의 남은 시험 부채**(명세 2절 "M7b 입력 가운데 승인한 셋 밖의 것"): 읽기 절 영상 줄의 E2E, `getByTestId` 패치가 raw locator와 `locator.getByTestId`를 덮지 않음, 위치 표본기가 진짜 재실행이 아니라 reload — 다음 시험 작업.
+- **'글자 없음'·'실패' 파일의 '본문 일치' 행**(최종 리뷰 M2): 표는 `empty` 색인(뽑은 몇 글자도 색인한다)이나 실패 전에 쪽을 저장한 `failed` 파일을 본문 일치로 보일 수 있지만, 절은 `done`일 때만 `search:pages`를 불러 상태 줄만 보인다(`BodyMatchesSection.tsx`의 `read`, `bodyText.ts`의 `matchesView`). 저장된 쪽이 있으면 행을 그 줄 위에 보인다 — 값은 낮다(거의 빈 스캔본의 일치는 대개 쪽 번호).
+- **v4 이전 백업의 끊긴 외래 키를 복원할 때의 문구**(최종 리뷰 M3): 004의 `foreign_key_check`가 그런 백업을 MIGRATION_FAILED로 거절하고, 문구는 버린 임시 폴더 안의 `.pre-v4.bak`과 다시 시작을 말한다(예전에는 `RESTORE_COPY.damagedDatabase`). 라이브러리는 그대로이고 복원은 어느 쪽이든 거절된다. 고친다면 복원이 `migrate()` 전에 외래 키를 검사한다(`backup.ts` 479줄, `migrate.ts` 71–78줄).
+- **`finish()`가 `payload.pages`를 덮어씀**(최종 리뷰 M4): 일꾼이 끝낸 쪽 번호를 P-9가 문서의 쪽 수로 정한 `payload.pages`에 쓴다 — 앞 5,000쪽에서 잘린 6,000쪽 문서가 5,000으로 읽힌다. 지금은 이 값으로 상태를 만드는 곳이 없다(`stateOf`는 `nextPage`). `opened`가 쓴 값을 지킨다(`text-repository.ts`의 `finish`).
 - **M8 밖으로 넘긴 것**: 인용 단위 `extracted_chunks`는 T1(ADR-0008 8절), `image` 앵커를 만드는 화면은 M9·T1, HEIC·TIFF·OCR은 M14.
 
 ### 소유자 결정 (M7c, 2026-11-08)

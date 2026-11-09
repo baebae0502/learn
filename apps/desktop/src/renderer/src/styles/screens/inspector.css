@@ -82,10 +82,11 @@
     background: var(--bg-sunken);
     overflow: hidden;
   }
+  /* The whole picture, centred on the box's ground: bounded by the box, never cropped or stretched. */
   .inspector .item-head .item-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
+    max-width: 100%;
+    max-height: 160px; /* local: spec 4.6 maximum height */
+    -webkit-user-drag: none;
   }
   .inspector .item-head .item-preview.icon-only {
     height: 160px; /* local: spec 4.6 maximum height */

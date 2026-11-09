@@ -76,7 +76,7 @@ function LibraryInfo() {
     if (trashed.length === 1 && collections.length === 0) return <ItemInfo key={trashed[0]!.id} item={trashed[0]!} trashedAt={trashed[0]!.deletedAt} />;
     return <TrashSelection items={trashed} collections={collections} />;
   }
-  if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} />;
+  if (editing) return <ItemInfo key={editing.id} item={editing} probe={selected.size <= 1} preview={selected.size <= 1} />;
   // An empty collection: its name and the day it was made instead of numbers that would all be zero (spec 3.6). Items only in a
   // sub-collection make it non-empty (scoped counts them).
   const viewed = scope.kind === 'collection' ? model?.node(scope.id) : undefined;
@@ -146,7 +146,7 @@ function MultiSelection({ items }: { items: readonly LibraryItem[] }) {
 }
 
 /** One item: the head at once from the list row, the sections when the item's detail has come (300 ms rule meanwhile). */
-export function ItemInfo({ item, probe = true, trashedAt, before, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; before?: ReactNode; inReader?: boolean }) {
+export function ItemInfo({ item, probe = true, preview = true, trashedAt, before, inReader = false }: { item: LibraryItem; probe?: boolean; preview?: boolean; trashedAt?: string; before?: ReactNode; inReader?: boolean }) {
   const detail = useItemDetail(item.id);
   const ids = useMemo(() => [item.id], [item.id]);
   const loading = useShownAfter(detail.isPending, LOADING_DELAY_MS);
@@ -156,7 +156,7 @@ export function ItemInfo({ item, probe = true, trashedAt, before, inReader = fal
   return (
     <div className="inspector-scroll" data-testid="inspector-item" data-item-id={item.id}>
       {before}
-      <InfoHead item={item} probe={probe} trashedAt={trashedAt} inReader={inReader} />
+      <InfoHead item={item} probe={probe} preview={preview} trashedAt={trashedAt} inReader={inReader} />
       {detail.data ? (
         <>
           {!inReader && trashedAt === undefined && <ReadingSection itemId={item.id} />}

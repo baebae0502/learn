@@ -7,7 +7,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { commandById, commandLabel } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
 import {
-  FIXTURES, backFromReader, closeReaderTab, drag, dropSource, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, quiet, readerTab, rowByTitle, runMenuCommand, selectRows, settled, trashItems,
+  FIXTURES, backFromReader, closeReaderTab, drag, dropSource, expectDisabledReason, hardKill, imageState, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, quiet, readerTab, rowByTitle, runMenuCommand, selectRows, settled, specialRow, trashItems,
   type ImageReaderState,
 } from './helpers';
 
@@ -1098,6 +1098,76 @@ test('the panel’s preview keeps the picture’s proportions up to 160 high; no
     expect((await preview(page).boundingBox())!.height).toBe(160);
     await rowByTitle(page, 'broken').click();
     await expect(preview(page)).toHaveAttribute('data-state', 'broken');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the preview shows the whole picture — a 4:3 photo, a portrait and a strip — inside its box, in its own proportions, and the picture is not draggable', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const src = testInfo.outputPath('src');
+    fs.mkdirSync(src, { recursive: true });
+    await importPaths(page, [PHOTO, ORIENT6, greyPng(src, 'wide.png', 4000, 1000)]);
+    for (const title of ['photo-4032', 'orient6', 'wide']) {
+      await rowByTitle(page, title).click();
+      await showPanel(app, page);
+      await expect(preview(page)).toHaveAttribute('data-state', 'picture');
+      const img = preview(page).locator('img');
+      await expect.poll(() => img.evaluate((e) => (e as HTMLImageElement).naturalWidth), { message: `${title} loaded` }).toBeGreaterThan(0);
+      const m = await preview(page).evaluate((box) => {
+        const el = box.querySelector('img')!;
+        const b = box.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return { box: { l: b.left, t: b.top, r: b.right, b: b.bottom }, img: { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }, nw: el.naturalWidth, nh: el.naturalHeight, draggable: el.draggable };
+      });
+      expect(m.img.h, `${title}: at most 160 high`).toBeLessThanOrEqual(160.5);
+      // The whole picture: its own proportions (a crop or a stretch changes them), and inside the box.
+      expect(Math.abs(m.img.w - (m.img.h * m.nw) / m.nh), `${title}: proportions`).toBeLessThanOrEqual(1);
+      expect(m.img.l, title).toBeGreaterThanOrEqual(m.box.l - 0.5);
+      expect(m.img.r, title).toBeLessThanOrEqual(m.box.r + 0.5);
+      expect(m.img.t, title).toBeGreaterThanOrEqual(m.box.t - 0.5);
+      expect(m.img.b, title).toBeLessThanOrEqual(m.box.b + 0.5);
+      expect(m.draggable, `${title}: not draggable`).toBe(false);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
+test('no preview in the trash view or in the reader; a missing original shows the icon box', async ({}, testInfo) => {
+  const lib = testInfo.outputPath('library');
+  const { app, page } = await launch(lib, testInfo.outputPath('userdata'));
+  try {
+    const [photo, gif, still] = await importPaths(page, [PHOTO, GIF, path.join(FIXTURES, 'still.avif')]);
+    // Positive: the panel shows the photo's preview.
+    await rowByTitle(page, 'photo-4032').click();
+    await showPanel(app, page);
+    await expect(preview(page)).toHaveAttribute('data-state', 'picture');
+
+    // The reader has no item panel: the picture is drawn there, and no preview box exists.
+    await openItem(page, 'photo-4032');
+    await drawn(page, photo!.id);
+    await expect(preview(page)).toHaveCount(0);
+    await backFromReader(page);
+
+    // The trash view: the item's panel is up (its 복원 button), and has no preview.
+    await trashItems(page, [still!.id]);
+    await specialRow(page, 'trash').click();
+    await rowByTitle(page, 'still').click();
+    await expect(page.getByTestId('inspector-kind')).toHaveText('이미지 · 40 × 30');
+    await expect(preview(page)).toHaveCount(0);
+    await specialRow(page, 'all').click();
+
+    // A missing original: the icon box, not a picture that cannot load.
+    const assets = path.join(lib, 'assets');
+    for (const d of fs.readdirSync(assets)) fs.rmSync(path.join(assets, d), { recursive: true, force: true });
+    await page.evaluate((id) => window.learn.library.get({ itemId: id }), gif!.id);
+    await expect(rowByTitle(page, 'two-frames').getByTestId('missing-flag')).toBeVisible();
+    await rowByTitle(page, 'two-frames').click();
+    await expect(page.getByTestId('inspector-kind')).toHaveText('이미지 · 24 × 16');
+    await expect(preview(page)).toHaveAttribute('data-state', 'icon');
+    await expect(preview(page).locator('img')).toHaveCount(0);
   } finally {
     await app.close();
   }

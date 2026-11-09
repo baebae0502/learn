@@ -20,7 +20,7 @@ import { RestoreButton, TrashNote } from './TrashInfo';
  * with 열기; Finder에서 보기 stays in place, disabled with the reason. While the item is being edited 열기 is secondary.
  * A trashed item (the trash view, read-only): 복원 is the head's one action, the trash line under it.
  */
-export function InfoHead({ item, probe = true, trashedAt, inReader = false }: { item: LibraryItem; probe?: boolean; trashedAt?: string; inReader?: boolean }) {
+export function InfoHead({ item, probe = true, preview = true, trashedAt, inReader = false }: { item: LibraryItem; probe?: boolean; preview?: boolean; trashedAt?: string; inReader?: boolean }) {
   const { env, run, isEnabled } = useCommands();
   const facts = useFileFacts(item, probe);
   const platform = currentPlatform();
@@ -40,7 +40,7 @@ export function InfoHead({ item, probe = true, trashedAt, inReader = false }: { 
   return (
     <header className="item-head" data-testid="inspector-head">
       {/* One image on show in the library: its picture leads the head. Not in the trash, the reader or a several-item selection. */}
-      {item.type === 'image' && probe && !inReader && trashedAt === undefined && <ImagePreview item={item} />}
+      {item.type === 'image' && preview && !inReader && trashedAt === undefined && <ImagePreview item={item} />}
       <div className="kind" data-testid="inspector-kind">
         <Icon icon={itemIcon(item.type)} size="sm" />
         <span className="num">{kind.filter(Boolean).join(' · ')}</span>

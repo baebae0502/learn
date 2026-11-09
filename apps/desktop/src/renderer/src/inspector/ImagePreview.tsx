@@ -18,7 +18,7 @@ export function ImagePreview({ item }: { item: LibraryItem }) {
   if (previewMode(item) === 'picture' && size && failed !== item.assetId) {
     return (
       <div className="item-preview" data-testid="image-preview" data-state="picture" style={{ aspectRatio: `${size.width} / ${size.height}` }}>
-        <img src={assetUrl(item.assetId)} loading="lazy" decoding="async" alt={item.title} onError={() => setFailed(item.assetId)} />
+        <img src={assetUrl(item.assetId)} loading="lazy" decoding="async" alt={item.title} draggable={false} onError={() => setFailed(item.assetId)} />
       </div>
     );
   }

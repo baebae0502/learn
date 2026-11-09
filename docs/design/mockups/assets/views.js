@@ -289,7 +289,7 @@
         r?.done
           ? `<section class="section" ${ms('M7c', '읽기 절(이미지: 한 번 보면 ✓ 완료)')}>
         ${sectionHead('읽기')}
-        <div class="inline-flag c-success">${icon('check', 'sm')}완료</div>
+        <div class="inline-flag c-success" style="display:flex;min-height:20px">${icon('check', 'sm')}완료</div>
         <div class="t-footnote c-secondary reading-line" style="margin-top:4px">열어\u00a0봄\u00a0· ${esc(r.opened)}</div>
       </section>`
           : r
@@ -2106,7 +2106,7 @@
       orphans: ci({
         ic: 'triangle-alert', cls: 'c-warning', title: '쓰이지 않는 사본 3개',
         text: '어느&nbsp;자료도 쓰지 않는 라이브러리 폴더의 파일입니다.',
-        meta: '96 MB', stack: true, action: '<div class="btn small">자료로 되살리기</div><div class="btn small">정리…</div>',
+        meta: '96 MB', stack: true, action: '<div class="btn small">자료로 되살리기</div><div class="btn small">지우기…</div>',
       }),
       lost: ci({
         ic: 'triangle-alert', cls: 'c-warning', title: '사본이 사라진 자료 4개',

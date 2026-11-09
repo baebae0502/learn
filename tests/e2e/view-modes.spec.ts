@@ -449,7 +449,12 @@ test('leaving a page at a time keeps the page: page 50 comes back as page 50 wit
     await expect(field(page)).toHaveValue('50');
     await expect.poll(async () => Math.round((await box(page, 50)).top - (await scroller(page).evaluate((el) => el.scrollTop)))).toBe(12);
     // Page 50 was saved in a page at a time; the save after leaving it names the vertical flow (absent is vertical).
-    await expect.poll(async () => ((await savedLocator(page, 'paper-100'))?.scroll ?? 'vertical') === 'vertical' && (await savedLocator(page, 'paper-100'))?.pageIndex === 49).toBe(true);
+    await expect
+      .poll(async () => {
+        const saved = await savedLocator(page, 'paper-100');
+        return saved !== null && (saved.scroll ?? 'vertical') === 'vertical' && saved.pageIndex === 49;
+      })
+      .toBe(true);
     const listed = await page.evaluate(() => window.learn.library.list());
     if (!listed.ok) throw new Error('list failed');
     const item = listed.data.find((i) => i.title === 'paper-100')!;

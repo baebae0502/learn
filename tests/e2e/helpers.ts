@@ -1095,6 +1095,37 @@ export async function settled(page: Page, frames = 3): Promise<void> {
   }, frames);
 }
 
+/**
+ * Resolves once `frames` paint frames in a row passed with no scroll event on `selector` (default the PDF stage) and no DOM change
+ * under it: what the stage did late (pdf.js focusing a page, a place applied) has been done. The check that something did NOT
+ * happen goes after this, and after the same event was seen to happen once.
+ */
+export async function quiet(page: Page, selector = '[data-testid="pdf-scroll"]', frames = 12): Promise<void> {
+  await page.evaluate(
+    ({ selector, frames }) =>
+      new Promise<void>((done) => {
+        const el = document.querySelector(selector);
+        let idle = 0;
+        let total = 0;
+        const reset = () => {
+          idle = 0;
+        };
+        el?.addEventListener('scroll', reset, { passive: true });
+        const observer = new MutationObserver(reset);
+        if (el) observer.observe(el, { subtree: true, childList: true, attributes: true });
+        const tick = () => {
+          if (++idle >= frames || ++total > 180) {
+            el?.removeEventListener('scroll', reset);
+            observer.disconnect();
+            done();
+          } else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { selector, frames },
+  );
+}
+
 /** 목록으로 돌아가기 from the reader, once a sheet closed before it has let go of the window. */
 export async function backFromReader(page: Page): Promise<void> {
   await sheetReleased(page);

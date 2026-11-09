@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import {
   FIXTURES, backFromReader, confirmCalls, createCollection, addToCollection, hardKill, importPaths, launch, libraryTab, mainWindow, menuItemEnabled, openItem, readerTab, recordedPopupPoints, recordedPopups,
-  holdOpenDialog, releaseOpenDialog, rowByTitle, runMenuCommand, runPalette, selectRows, settled, sheetReleased, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
+  holdOpenDialog, releaseOpenDialog, quiet, rowByTitle, runMenuCommand, runPalette, selectRows, settled, sheetReleased, showItemPanel, stubConfirm, stubContextMenu, trashItems, windowKinds,
 } from './helpers';
 import { holdReplies } from './dnd-helpers';
 import { expectNoSeriousA11y } from './a11y';
@@ -276,8 +276,9 @@ test('a kept tab comes back at once, with its find bar and place', async ({}, te
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
     expect((await reader(page))!.pageNumber).toBe(30);
     await expect(page.locator('[data-testid="pdf-viewer"][data-mark="kept"]')).toHaveCount(1);
-    // The scroll stood where it was: no jump back to the first page afterwards either (the page field showed 30 above, so a jump would show in it).
-    await settled(page);
+    // The scroll stood where it was: no jump back to the first page afterwards either. The place is applied late, so the stage is
+    // waited on until it has stopped scrolling and changing; the page field showed 30 above, so a jump would show in it.
+    await quiet(page);
     await expect(page.getByTestId('pdf-page-field')).toHaveValue('30');
   } finally {
     await app.close();
@@ -329,21 +330,30 @@ test('a hidden tab does not refit while the window changes size', async ({}, tes
       w.__scaled = 0;
       w.__learnReader.getState().handle.eventBus().on('scalechanging', () => void (w.__scaled = (w.__scaled ?? 0) + 1));
     });
+    const scaled = () => page.evaluate(() => (window as unknown as { __scaled: number }).__scaled);
+    // The path first: shown, the reader refits when the window grows, and the counter sees it.
+    await win.evaluate((w) => w.setContentSize(1280, w.getContentSize()[1]!));
+    await expect.poll(scaled).toBeGreaterThan(0);
+    await win.evaluate((w) => w.setContentSize(1024, w.getContentSize()[1]!));
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThan(1100);
+    await quiet(page);
+    const shown = await scaled();
+
     await libraryTab(page).click();
     await openItem(page, 'doc-01');
     await expect(page.getByTestId('pdf-page-field')).toBeVisible();
     await win.evaluate((w) => w.setContentSize(1280, w.getContentSize()[1]!));
     await expect.poll(() => page.evaluate(() => innerWidth)).toBeGreaterThan(1200);
-    // The hidden reader refits on no size change: absent here, present just below by the same scalechanging event once it is shown.
+    // Hidden, the same window change refits nothing; the other reader is shown and has settled meanwhile.
+    await quiet(page, '[data-testid="tab-panel"][data-active="true"]');
     await settled(page);
-    const scaled = () => page.evaluate(() => (window as unknown as { __scaled: number }).__scaled);
-    expect(await scaled()).toBe(0);
+    expect(await scaled()).toBe(shown);
 
     await readerTab(page, a!.id).click();
     await expect(readerTab(page, a!.id)).toHaveAttribute('aria-selected', 'true');
-    await expect.poll(scaled).toBe(1);
+    await expect.poll(scaled).toBe(shown + 1);
     await settled(page);
-    expect(await scaled()).toBe(1);
+    expect(await scaled()).toBe(shown + 1);
   } finally {
     await app.close();
   }
@@ -543,24 +553,29 @@ test('↩ on several selected rows opens a tab each and shows the first one; the
 test('eleven items ask first; cancelling opens nothing, confirming opens them all', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   try {
-    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 11));
-    await rowByTitle(page, 'doc-01').click();
-    await page.keyboard.press('ControlOrMeta+a');
-    await stubConfirm(app, 'cancel');
+    await importPaths(page, pdfCopies(testInfo.outputPath('src'), 22));
+    const first = Array.from({ length: 11 }, (_, i) => `doc-${String(i + 1).padStart(2, '0')}`);
+    // Confirming opens them all (the path first); eleven are asked about once.
+    await rowByTitle(page, first[0]!).click();
+    await rowByTitle(page, first[10]!).click({ modifiers: ['Shift'] });
+    await stubConfirm(app, 'confirm');
     await runMenuCommand(app, 'item.openInBackground');
     await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
     expect((await confirmCalls(app))[0]).toMatchObject({ message: '자료 11개를 탭으로 열겠습니까?', buttons: ['열기', '취소'] });
-    // Nothing is opened by a cancel; the same command opens them all once confirmed, below.
-    await sheetReleased(page);
-    await expect(page.getByTestId('tab-bar')).toHaveCount(0);
-
-    await stubConfirm(app, 'confirm');
-    await expect.poll(() => page.evaluate(() => window.learn.ui.windowState().then((r) => (r.ok ? r.data.sheetOpen : null)))).toBe(false);
-    await runMenuCommand(app, 'item.openInBackground');
     await expect(page.locator('[data-testid="tab"]')).toHaveCount(12);
     await expect.poll(() => activeTab(page)).toBe('library');
-    // Ten do not ask.
+    await sheetReleased(page);
     expect((await confirmCalls(app)).length).toBe(1);
+
+    // The next eleven are asked about and cancelled: nothing is opened by that.
+    await rowByTitle(page, 'doc-12').click();
+    await rowByTitle(page, 'doc-22').click({ modifiers: ['Shift'] });
+    await stubConfirm(app, 'cancel');
+    await runMenuCommand(app, 'item.openInBackground');
+    await expect.poll(async () => (await confirmCalls(app)).length).toBe(1);
+    await sheetReleased(page);
+    await settled(page);
+    await expect(page.locator('[data-testid="tab"]')).toHaveCount(12);
   } finally {
     await app.close();
   }
@@ -1053,18 +1068,21 @@ test('closing a tab never mounts an evicted reader: it is not opened again and k
       const r = await page.evaluate((x) => window.learn.library.detail({ itemId: x }), id('doc-01'));
       return r.ok ? r.data.item.openedAt : null;
     };
+    // doc-01 was stamped when it was opened, before four more tabs were opened and the reader was evicted: a mount now stamps a later time.
     const before = await openedAt();
-    await settled(page, 2); // a later opened date differs from this one
     await runMenuCommand(app, 'tab.close'); // the shown doc-05
     await expect(readerTab(page, id('doc-05'))).toHaveCount(0);
     await expect(panels(page)).toHaveCount(3);
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveCount(0);
-    // The close builds no reader for doc-01, so its opened date stays.
+    // The close builds no reader for doc-01, so its opened date stays: checked once the page has stopped changing and main has answered
+    // after the close (a mount and its stamp would be in by then), and the same stamp is seen to move below when the tab is shown.
+    await quiet(page, 'body');
     await settled(page);
     expect(await openedAt()).toBe(before);
-    // Shown, it is mounted again, as now.
+    // Shown, it is mounted again, as now, and stamped.
     await readerTab(page, id('doc-01')).click();
     await expect(page.locator(`[data-testid="tab-panel"][data-item-id="${id('doc-01')}"]`)).toHaveAttribute('data-active', 'true');
+    await expect.poll(openedAt).not.toBe(before);
   } finally {
     await app.close();
   }

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, launch, renderCounts, runMenuCommand, seedRows, sheetPrepared, watchRenders } from '../e2e/helpers';
+import { FIXTURES, ROOT, closeSheet, drag, dropSource, expectWindow, importPaths, ipcCalls, launch, renderCounts, runMenuCommand, seedBodyText, seedRows, sheetPrepared, watchRenders } from '../e2e/helpers';
 import { writeJson } from './capture';
 import { stallCause, summarizeLongFrames, type LongFrame, type Mark } from './long-frames';
 import { coldFirstOpens, openTimer } from './open-latency';
@@ -696,6 +696,50 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       inspectorToPaintMs.push(Math.round(ms));
     }
 
+    // 정보와 본문 (M7c spec 13, P6): the same inputs with the PDF body searched too, each timed to the frame that paints the
+    // metadata matches. Last, so the PDFs added for it change nothing timed above: 300 of them with body text whose Korean
+    // words the seeded titles share (세포, 신호, 효소 …), so the body search finds rows. After each word the body's own
+    // search goes out (200 ms after the last key) before the word is erased: its answer comes in among the timed erasures.
+    const bodyDocs = 300;
+    // Each build is one measure in the log (timed() keeps only the last one on the timeline).
+    const indexBuilds = () => page.evaluate(() => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.measures.filter((m) => m.name === 'learn:search:index').length);
+    const indexesBefore = await indexBuilds();
+    await seedBodyText(s.app, { docs: bodyDocs, pages: 12, chars: 4000, seed: 42 });
+    await expect.poll(() => shownTotal(page), { timeout: 30_000 }).toBe(organize.fixture.n + bodyDocs);
+    await expect.poll(indexBuilds, { timeout: 15_000, message: 'the search index of the longer list was built at an idle moment' }).toBeGreaterThan(indexesBefore);
+    await page.getByTestId('search-scope').click();
+    await page.getByRole('menuitemradio', { name: '정보와 본문', exact: true }).click();
+    const field = page.getByTestId('search-field').locator('input');
+    await expect(field).toHaveAttribute('placeholder', '제목, 저자, 태그, 본문 검색');
+    await runMenuCommand(s.app, 'library.find');
+    await expect(field).toBeFocused();
+    const bodyCalls = async () => (await ipcCalls(s.app))['search:body'] ?? 0;
+    // The first body search reads the page text from disk: not timed. Its answer adds the body matches, a frame of its own.
+    const warm = await bodyCalls();
+    const paintsSince = (t0: number) =>
+      page.evaluate((t0) => (window as unknown as { __learnPerfLog: PerfLog }).__learnPerfLog.marks.filter((m) => m.name === 'learn:table:painted' && m.at > t0).length, t0);
+    const warmFrom = await page.evaluate(() => performance.now());
+    await page.keyboard.insertText('세포');
+    await expect.poll(bodyCalls, { message: 'the warm-up query went to search:body' }).toBeGreaterThan(warm);
+    await expect.poll(() => paintsSince(warmFrom), { message: 'the metadata matches, then the body matches (every PDF added has 세포) were drawn' }).toBeGreaterThanOrEqual(2);
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Backspace');
+    await expect(field).toHaveValue('');
+    const fulltextMs: number[] = [];
+    const inputsBefore = inputToPaintMs.length;
+    const unpaintedBefore = unpainted;
+    const callsBefore = await bodyCalls();
+    for (const step of [...steps, ...extra.tag]) {
+      for (const ch of step.chars) await timeInput(() => page.keyboard.insertText(ch));
+      const sent = await bodyCalls();
+      await expect.poll(bodyCalls, { message: `the body was searched for ${step.chars.join('')}` }).toBeGreaterThan(sent);
+      for (let i = 0; i < step.chars.length; i++) await timeInput(() => page.keyboard.press('Backspace'));
+    }
+    fulltextMs.push(...inputToPaintMs.splice(inputsBefore));
+    const bodySearches = (await bodyCalls()) - callsBefore;
+    expect(unpainted - unpaintedBefore, 'every search input in 정보와 본문 re-drew the rows').toBe(0);
+    expect(fulltextMs.length, 'enough inputs in 정보와 본문 for a p95').toBeGreaterThanOrEqual(20);
+
     const result = {
       items: listed.count,
       runs: LIBRARY_RUNS,
@@ -705,6 +749,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       organizeFixture: { collections: organize.fixture.spec.collections, tags: organize.fixture.spec.tags, memberships: organize.fixture.spec.memberships, assignments: organize.fixture.spec.assignments, duplicateGroups: organize.fixture.spec.duplicateGroups },
       firstPaintMs: { runs: firstPaintMs, median: median(firstPaintMs) },
       inputToPaintMs: { inputs: inputToPaintMs.length, groups: [...steps, ...extra.tag].map((x) => x.group), runs: inputToPaintMs, median: median(inputToPaintMs), p95: percentile(inputToPaintMs, 95) },
+      inputToPaintFulltextMs: { scope: 'fulltext', bodyDocs, bodySearches, inputs: fulltextMs.length, runs: fulltextMs, median: median(fulltextMs), p95: percentile(fulltextMs, 95) },
       searchMs: { runs: searchMs, p95: percentile(searchMs, 95) },
       searchTextsPayload,
       paletteInputToPaintMs: { inputs: paletteMs.length, runs: paletteMs, median: median(paletteMs), p95: percentile(paletteMs, 95) },
@@ -719,7 +764,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
     console.log(
       '[measure] library',
       JSON.stringify({
-        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, searchP95: result.searchMs.p95,
+        list: result.listIpcMs.median, firstPaint: result.firstPaintMs.median, inputP95: result.inputToPaintMs.p95, inputFulltextP95: result.inputToPaintFulltextMs.p95, searchP95: result.searchMs.p95,
         paletteP95: result.paletteInputToPaintMs.p95, textsBytes: result.searchTextsPayload.bytes,
         scrollP95: result.scrollFrameMs.p95, sort: result.sortToPaintMs.median, inspector: result.inspectorToPaintMs.median,
       }),
@@ -733,6 +778,7 @@ test('10,000 items: list, first rows, quick search, scroll, sort and the item pa
       gate(result.listIpcMs.median, LIBRARY_BUDGET_MS.listIpc, 'library.list of 10,000 items, median');
       gate(result.firstPaintMs.median, LIBRARY_BUDGET_MS.firstPaint, 'list arrived → first rows painted, median');
       gate(result.inputToPaintMs.p95, LIBRARY_BUDGET_MS.inputToPaintP95, 'search input → rows painted, p95');
+      gate(result.inputToPaintFulltextMs.p95, LIBRARY_BUDGET_MS.inputToPaintP95, 'search input in 정보와 본문 → metadata rows painted, p95');
       gate(result.paletteInputToPaintMs.p95, LIBRARY_BUDGET_MS.paletteInputToPaintP95, 'palette input → rows painted, p95');
       gate(result.searchMs.p95, LIBRARY_BUDGET_MS.searchP95, 'metadata search, p95');
       gate(result.scrollFrameMs.p95, LIBRARY_BUDGET_MS.scrollFrameP95, 'scroll frame interval, p95');

@@ -1418,15 +1418,15 @@ test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 
     await page.keyboard.press('Backspace');
     await expect(field).toHaveValue('');
     await expect(page.getByTestId('item-row')).toHaveCount(3);
-    // ↓ from the field into the table, then on until the photo's row is the cursor row; ↩ opens it with its stage focused.
-    await page.keyboard.press('ArrowDown');
+    // ↓ from the field takes the first row; then exactly as many ↓ as rows stand before the photo's, each waited for on the row it
+    // reaches; ↩ opens it with its stage focused.
     const photoRow = rowByTitle(page, photo!.title);
-    for (let i = 0; i < 4; i++) {
-      // Each key is waited for: the cursor row is settled before it is read.
-      if (await expect.poll(() => photoRow.getAttribute('aria-selected'), { timeout: 1_000 }).toBe('true').then(() => true, () => false)) break;
+    const photoIndex = Number(await photoRow.getAttribute('data-index'));
+    for (let i = 0; i <= photoIndex; i++) {
       await page.keyboard.press('ArrowDown');
+      await expect(rowAt(page, i)).toBeFocused();
+      await expect(rowAt(page, i)).toHaveAttribute('aria-selected', 'true');
     }
-    await expect(photoRow).toHaveAttribute('aria-selected', 'true');
     await expect(photoRow).toBeFocused();
     await page.keyboard.press('Enter');
     const stage = page.locator('[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]');

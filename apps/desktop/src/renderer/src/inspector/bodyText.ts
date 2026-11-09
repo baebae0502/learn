@@ -18,6 +18,15 @@ export function bodyStateLine(s: BodyTextState): string | null {
   }
 }
 
+/**
+ * The state line where the index will be read (spec 5.7): none for an item in the trash, whose job waits for its restore, nor
+ * for one whose original is missing, which cannot be read (the head says the original is missing).
+ */
+export function bodyLineFor(text: BodyTextState | null, where: { trashed: boolean; missing: boolean }): string | null {
+  if (text === null || where.trashed || where.missing) return null;
+  return bodyStateLine(text);
+}
+
 export interface SnippetPart {
   text: string;
   mark: boolean;

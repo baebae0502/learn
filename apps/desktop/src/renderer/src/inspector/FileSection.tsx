@@ -7,7 +7,7 @@ import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { showToast } from '../ui/toasts';
-import { bodyStateLine } from './bodyText';
+import { bodyLineFor } from './bodyText';
 import { EditedCopies } from './EditedCopies';
 import { Section } from './Section';
 
@@ -24,9 +24,10 @@ interface FileRow {
 
 /**
  * 파일 (spec §5.3): where the technical values live (design-spec 9), paths and the hash in mono, end-ellipsised with the whole value as tooltip.
- * A PDF whose body index is not done says where it stands in a 본문 검색 line (M7c spec 5.8); a done one is quiet.
+ * A PDF whose body index is not done says where it stands in a 본문 검색 line (M7c spec 5.8); a done one is quiet, and so is one
+ * in the trash or without its original (bodyLineFor).
  */
-export function FileSection({ detail }: { detail: ItemDetail }) {
+export function FileSection({ detail, trashed = false, missing = false }: { detail: ItemDetail; trashed?: boolean; missing?: boolean }) {
   const home = useAppInfo().data?.homeDir;
   const f = detail.file;
   const rows: FileRow[] = [
@@ -37,7 +38,7 @@ export function FileSection({ detail }: { detail: ItemDetail }) {
       ? [{ field: 'location' as const, label: t.inspector.file.location, value: homeRelative(f.externalPath, home), title: f.externalPath, mono: true }]
       : []),
   ];
-  const bodyLine = detail.text === null ? null : bodyStateLine(detail.text);
+  const bodyLine = bodyLineFor(detail.text, { trashed, missing });
   return (
     <Section id="file" title={t.inspector.sections.file} testId="file-section">
       <dl className="kv">

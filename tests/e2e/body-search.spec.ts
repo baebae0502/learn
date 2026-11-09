@@ -1,5 +1,6 @@
 // M7c body search: the scheduler reads each PDF's text once the window is idle, resumes after a kill, stops for the trash,
 // and tells the screen how far it is; the quick search's scope (정보 / 정보와 본문) searches that text with the metadata.
+import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { expectNoSeriousA11y } from './a11y';
@@ -721,6 +722,43 @@ test('the body index state: 색인 중 in 본문 일치 and the file section whi
     await expect(matchStatus(page)).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
     await expect(bodyTextLine(page)).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
     await expectNoSeriousA11y(page, 'item panel, 본문 일치 for a locked PDF');
+  } finally {
+    await app.close();
+  }
+});
+
+test('no body state line where nothing will read the body: a PDF in the trash and one whose original is missing say nothing, though both said 색인 중 in place', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await textExtraction(app, 'pause');
+    const gone = testInfo.outputPath('gone.pdf');
+    fs.copyFileSync(pdf('korean.pdf'), gone);
+    const [sample] = await importPaths(page, [pdf('sample.pdf')]);
+    const [linked] = await importPaths(page, [gone], { mode: 'linked' });
+    await chooseScope(page, '정보와 본문');
+    // The linked PDF while its original is there: the line in the section and in the file section.
+    await panelFor(app, page, 'gone', linked!.title);
+    await expect(matchStatus(page)).toHaveText('본문을 색인하는 중입니다.');
+    await expect(bodyTextLine(page)).toHaveText('본문을 색인하는 중입니다.');
+    // Its original goes: the head says so, and neither place says the body is being indexed.
+    fs.rmSync(gone);
+    await page.evaluate((id) => window.learn.library.get({ itemId: id }), linked!.id);
+    await expect(page.getByTestId('inspector-head').locator('.inline-flag')).toHaveText('파일 없음');
+    await expect(page.getByTestId('file-section')).toBeVisible();
+    await expect(bodyTextLine(page)).toHaveCount(0);
+    await expect(matches(page)).toHaveCount(0);
+
+    // A PDF in place says it; in the trash its panel says nothing about the body.
+    await field(page).fill('');
+    await selectRows(page, [sample!.title]);
+    await expect(bodyTextLine(page)).toHaveText('본문을 색인하는 중입니다.');
+    expect(await trashItems(page, [sample!.id])).toBe(1);
+    await page.getByTestId('nav-scope-trash').click();
+    await selectRows(page, [sample!.title]);
+    await expect(page.getByTestId('inspector-head').locator('h2')).toHaveText(sample!.title);
+    await expect(page.getByTestId('file-section')).toBeVisible();
+    await expect(page.locator('[data-testid="file-row"][data-field="sha256"]')).toBeVisible();
+    await expect(bodyTextLine(page)).toHaveCount(0);
   } finally {
     await app.close();
   }

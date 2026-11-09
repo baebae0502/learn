@@ -7,7 +7,7 @@ import { useCommands } from '../commands/CommandProvider';
 import { bodyPagesOptions, useBodyTarget } from '../library/useBodySearch';
 import { t } from '../strings';
 import { Spinner } from '../ui/Spinner';
-import { bodyStateLine, snippetParts } from './bodyText';
+import { bodyLineFor, snippetParts } from './bodyText';
 import { Section } from './Section';
 import { useShownAfter } from './useShownAfter';
 
@@ -17,7 +17,7 @@ const LOADING_DELAY_MS = 300;
 /**
  * 본문 일치 (spec 5.8): in the library's panel for one PDF while the quick search looks in 정보와 본문 with a body word — the
  * pages whose text has every word, each with its snippet, opening the reader there. While the body is not read (or cannot be),
- * the state line in their place; a read body with no match has no section.
+ * the state line in their place, unless the original is missing (nothing will read it); a read body with no match has no section.
  */
 export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: BodyTextState | null }) {
   // The query typed now, as the table's body answer has it: the list empties and fills with the table's body rows.
@@ -31,10 +31,12 @@ export function BodyMatchesSection({ item, text }: { item: LibraryItem; text: Bo
   }, [pages.isError, pages.error]);
   if (!on || text === null) return null;
   if (text.state !== 'done') {
+    const line = bodyLineFor(text, { trashed: false, missing: item.availability === 'missing' });
+    if (line === null) return null;
     return (
       <Section id="matches" title={t.inspector.sections.matches} testId="matches-section">
         <div className="match-status" data-testid="matches-status">
-          {bodyStateLine(text)}
+          {line}
         </div>
       </Section>
     );

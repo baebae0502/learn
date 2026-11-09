@@ -168,7 +168,7 @@ export function ItemInfo({ item, probe = true, preview = true, matches = true, t
           <InfoSection item={item} detail={detail.data} readOnly={trashedAt !== undefined} />
           <TagsSection ids={ids} readOnly={trashedAt !== undefined} />
           <CollectionsSection ids={ids} />
-          <FileSection detail={detail.data} />
+          <FileSection detail={detail.data} trashed={trashedAt !== undefined} missing={item.availability === 'missing'} />
         </>
       ) : detail.isError ? (
         <div className="pane-empty top" data-testid="inspector-failed">

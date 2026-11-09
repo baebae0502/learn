@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MARK_END, MARK_START } from '@learn/domain';
-import { bodyStateLine, snippetParts } from './bodyText';
+import { bodyLineFor, bodyStateLine, snippetParts } from './bodyText';
 
 describe('the body index state line (spec 5.8, 11: the file section\'s 본문 검색 and the 본문 일치 section)', () => {
   it('says each state that is not done, in the spec\'s words', () => {
@@ -15,6 +15,27 @@ describe('the body index state line (spec 5.8, 11: the file section\'s 본문 �
     expect(bodyStateLine({ state: 'done', pages: 30, truncated: false })).toBeNull();
     expect(bodyStateLine({ state: 'done', pages: 5000, truncated: true })).toBe('앞 5,000쪽까지 색인했습니다.');
     expect(bodyStateLine({ state: 'done', pages: 812, truncated: true })).toBe('앞 812쪽까지 색인했습니다.');
+  });
+});
+
+describe('where the state line is said: only where the index will be read', () => {
+  const here = { trashed: false, missing: false };
+  it('an item in the library with its original says its state (a done one is quiet)', () => {
+    expect(bodyLineFor({ state: 'pending' }, here)).toBe('본문을 색인하는 중입니다.');
+    expect(bodyLineFor({ state: 'failed', reason: 'locked' }, here)).toBe('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
+    expect(bodyLineFor({ state: 'done', pages: 5000, truncated: true }, here)).toBe('앞 5,000쪽까지 색인했습니다.');
+    expect(bodyLineFor({ state: 'done', pages: 3, truncated: false }, here)).toBeNull();
+  });
+  it('an item in the trash says nothing: its job waits for the restore', () => {
+    expect(bodyLineFor({ state: 'pending' }, { trashed: true, missing: false })).toBeNull();
+    expect(bodyLineFor({ state: 'empty', pages: 2 }, { trashed: true, missing: false })).toBeNull();
+  });
+  it('an item whose original is missing says nothing: it cannot be read', () => {
+    expect(bodyLineFor({ state: 'pending' }, { trashed: false, missing: true })).toBeNull();
+    expect(bodyLineFor({ state: 'failed', reason: 'damaged' }, { trashed: false, missing: true })).toBeNull();
+  });
+  it('anything but a PDF has no state', () => {
+    expect(bodyLineFor(null, here)).toBeNull();
   });
 });
 

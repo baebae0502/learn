@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test';
-import { ROOT, launch, mainWindow, textExtraction, textIdle, type Session } from '../helpers';
+import { ROOT, importQueueState, launch, mainWindow, textExtraction, textIdle, type Session } from '../helpers';
 
 /** @2x captures for the design critic (same size as docs/design/renders, 2880×1800). Not committed. */
 export const TOUR_DIR = path.join(ROOT, 'test-results', 'tour');
@@ -36,6 +36,31 @@ export async function bodyIndexDone(page: Page): Promise<void> {
   if (!app) return;
   await textExtraction(app, 'now');
   await textIdle(app);
+}
+
+/** Per tour window: how many import runs main had reported when an import that reads no bodies itself began (importStarting). */
+const unread = new WeakMap<Page, number>();
+const importRuns = (app: ElectronApplication) =>
+  app.evaluate(() => (globalThis as unknown as { __learnTest: { importReports(): unknown[] } }).__learnTest.importReports().length);
+
+/** An import that does not wait for its PDFs' bodies begins in this window (the menu's import, a drop): see readEndedImports. */
+export async function importStarting(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  if (app && !unread.has(page)) unread.set(page, await importRuns(app));
+}
+
+/**
+ * Before a picture: the PDFs of an import that has ended since importStarting have had their body read, as importPaths' have (a
+ * done index says nothing). A run still going — held, asking about a duplicate, waiting for another job — is the picture's own
+ * subject and is left as it is; its reading comes at the first picture after it ends.
+ */
+export async function readEndedImports(page: Page): Promise<void> {
+  const app = tourApps.get(page);
+  const since = unread.get(page);
+  if (!app || since === undefined) return;
+  if ((await importRuns(app)) <= since || (await importQueueState(app)).state !== 'idle') return;
+  unread.delete(page);
+  await bodyIndexDone(page);
 }
 
 /**
@@ -76,6 +101,7 @@ export async function settle(page: Page, park = true): Promise<void> {
  * baselines are updated by the 1x run only (README).
  */
 export async function shoot(page: Page, name: string, opts: { mask?: Locator[]; keepPointer?: boolean; style?: string } = {}): Promise<void> {
+  await readEndedImports(page);
   if (TOUR_2X) await capture2x(page, name, opts.keepPointer !== true);
   await settle(page, opts.keepPointer !== true);
   // Tight on purpose: at most 300 pixels may differ by more than the default per-pixel threshold (0.2), so a moved

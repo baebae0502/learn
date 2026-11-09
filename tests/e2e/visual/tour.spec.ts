@@ -6,18 +6,32 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
 import {
-  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, expectWindow, holdCopies, holdJob, importFiles, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
-  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
+  FIXTURES, addToCollection, assignTag, backupPause, backupResume, backupWaiting, clickToCloseSheet, closeSheet, createCollection, createTag, distinctPdfs, drag, dropSource, expectWindow, holdCopies, holdJob, imageState, importFiles as importFilesNow, importPause, importPaths as importNow, importResume, importWaiting, mainWindow, menuItemEnabled, openItem, releaseCopies, releaseJob, requestLibraryCheck, rowAt, recordedPopups, restorePause, restoreResume, restoreWaiting, rowByTitle, runMenuCommand, seedLibrary, selectInPage, translationFake, seedMetadata, selectRows,
+  makeTags, setTagColor, specialRow, stubContextMenu, stubFolderPicker, stubFolderPicks, stubSaveDialog, tagChip, textExtraction, trashItems, treeRow, waitForSheet, waitImportIdle, type Session,
 } from '../helpers';
-import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, launchTour, setTheme, shoot } from './tour';
+import { THEMES, TOUR_VIDEO_BYTES, bodyIndexDone, closeReaderTabs, fixedSizeCopy, importStarting, launchTour, readEndedImports, setTheme, shoot } from './tour';
 
 /** The scene's files imported and, for its PDFs, their body read: the item panel shows a done index (nothing said), as it is soon after an import. */
 async function importPaths(page: Page, paths: string[], opts?: Parameters<typeof importNow>[2]): ReturnType<typeof importNow> {
   const items = await importNow(page, paths, opts);
   await bodyIndexDone(page);
   return items;
+}
+
+/** The menu's import (its sheet, toasts and holds are the scene's): the first picture after its run has ended reads its PDFs first (shoot). */
+async function importFiles(s: Session, paths: string[], mode?: 'managed' | 'linked'): Promise<void> {
+  await importStarting(s.page);
+  await importFilesNow(s, paths, mode);
+}
+
+/** Real files dropped on the window, as from Finder: the first picture after the import has ended reads their PDFs first (shoot). */
+async function dropFiles(page: Page, paths: string[]): Promise<void> {
+  await importStarting(page);
+  await dropSource(page, paths);
+  for (const type of ['dragenter', 'dragover', 'drop'] as const) await drag(page, type, 'source');
 }
 
 test.skip(process.platform !== 'linux', 'Linux baselines only; macOS chrome is captured by tests/evidence/shell.evidence.ts');
@@ -2146,6 +2160,282 @@ test('tabs: the strip with the sidebar folded, twelve readers scrolled, the libr
       await expect(page.getByTestId('tab-scroll')).toHaveAttribute('data-fade-end', '1');
       await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await shootReader(`tabs-overflow-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+// ---- M7c: the image reader, the quick search's scope, 본문 일치, an image in the item panel ----------------------------------
+
+/**
+ * A 1600 × 1200 test card drawn here — colour bars, a sky with a sun, two hills, water, a 100 px grid and a centred crosshair —
+ * so every machine decodes the same pixels: a PNG written by this test (the Sub filter keeps it small), zero-extended to a fixed
+ * size that the item panel shows (a PNG reader stops at its end marker). A photo fixture is encoded by the machine's ffmpeg.
+ */
+function tourPicture(dir: string, name: string, bytes = 1_200_000): string {
+  const W = 1600;
+  const H = 1200;
+  const bars = [[242, 242, 242], [232, 214, 40], [40, 200, 212], [48, 190, 80], [200, 64, 196], [214, 56, 56], [52, 80, 214]];
+  const mix = (a: number[], b: number[], t: number) => a.map((v, i) => v + (b[i]! - v) * t);
+  const stride = W * 3 + 1;
+  const raw = Buffer.alloc(stride * H);
+  for (let y = 0; y < H; y++) {
+    raw[y * stride] = 1; // Sub: each byte less the one a pixel before it
+    const prev = [0, 0, 0];
+    for (let x = 0; x < W; x++) {
+      const u = x / W;
+      const v = y / H;
+      let c: number[];
+      if (v < 0.055) c = bars[Math.min(6, Math.floor(u * 7))]!;
+      else if (v > 0.8) c = mix([43, 124, 140], [18, 58, 70], (v - 0.8) / 0.2);
+      else if (v > 0.68 + 0.035 * Math.sin(u * 12.6 + 1.7)) c = [39, 92, 99];
+      else if (v > 0.56 + 0.05 * Math.sin(u * 8.2 + 0.5)) c = [63, 122, 122];
+      else {
+        c = mix([31, 58, 107], [127, 168, 214], (v - 0.055) / 0.55);
+        const d = Math.hypot((u - 0.72) * (W / H), v - 0.45);
+        if (d < 0.2) c = mix(c, [255, 226, 150], (1 - d / 0.2) ** 2);
+        if (d < 0.06) c = [255, 243, 205];
+      }
+      if (v >= 0.055 && (x % 100 < 2 || y % 100 < 2)) c = mix(c, [255, 255, 255], 0.35);
+      const r = Math.hypot(x - W / 2, y - H / 2);
+      if (Math.abs(r - 0.2 * H) < 2 || (r < 0.2 * H && (Math.abs(x - W / 2) < 2 || Math.abs(y - H / 2) < 2))) c = [236, 240, 242];
+      const at = y * stride + 1 + x * 3;
+      for (let k = 0; k < 3; k++) {
+        const value = Math.round(c[k]!);
+        raw[at + k] = (value - prev[k]! + 256) & 255;
+        prev[k] = value;
+      }
+    }
+  }
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, 'latin1');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(Buffer.concat([head.subarray(4), data])), 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(W, 0);
+  ihdr.writeUInt32BE(H, 4);
+  ihdr[8] = 8; // 8 bits
+  ihdr[9] = 2; // RGB
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+  if (png.length > bytes) throw new Error(`${name} outgrew its tour size (${bytes} B)`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, Buffer.concat([png, Buffer.alloc(bytes - png.length)]));
+  return file;
+}
+
+/** The shown image tab's picture is drawn (window.__learnImage, E2E). */
+const imageDrawn = (page: Page) => expect.poll(async () => (await imageState(page))?.status, { message: 'the picture is drawn' }).toBe('shown');
+const blurFocus = (page: Page) => page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+test('M7c image reader: the photo in both themes with its zoom and view menus open, turned, on each of the three grounds; an image in the item panel; a picture that cannot be drawn', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const page = s.page;
+  const panel = page.locator('[data-testid="tab-panel"][data-active="true"]');
+  const stage = panel.getByTestId('image-stage');
+  try {
+    const dir = testInfo.outputPath('pictures');
+    const photo = tourPicture(dir, '수용체 분포 형광 현미경 사진.png');
+    const broken = path.join(dir, '손상된 도판.png');
+    fs.copyFileSync(path.join(FIXTURES, 'broken.png'), broken);
+    await importPaths(page, [photo, broken]);
+    await openItem(page, '수용체 분포 형광 현미경 사진');
+    await imageDrawn(page);
+    await expect(panel.getByTestId('image-zoom-field')).toHaveValue('63%');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // No ground chosen: the theme's. 확대 ▾ and 보기 ▾ (배경 as a group, the one in use checked, then the turns).
+      await expect(stage).toHaveAttribute('data-bg', theme);
+      await panel.getByTestId('image-zoom-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '너비에 맞춤' })).toBeVisible();
+      await shoot(page, `reader-image-zoom-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await panel.getByTestId('image-view-menu').click();
+      await expect(page.getByRole('menuitemradio', { name: '체크무늬' })).toBeVisible();
+      await shoot(page, `reader-image-view-menu-${theme}`);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      // A quarter turn: the photo stands up, fitted again.
+      await runMenuCommand(s.app, 'reader.rotateCw');
+      await expect.poll(async () => (await imageState(page))?.rotation).toBe(90);
+      await blurFocus(page);
+      await shoot(page, `reader-image-turned-${theme}`);
+      await runMenuCommand(s.app, 'reader.rotateCcw');
+      await expect.poll(async () => (await imageState(page))?.rotation).toBe(0);
+    }
+    // Each ground, chosen (one for every picture of the library from then on), in both themes.
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      for (const [id, bg] of [['reader.imageBackgroundLight', 'light'], ['reader.imageBackgroundDark', 'dark'], ['reader.imageBackgroundChecker', 'checker']] as const) {
+        await runMenuCommand(s.app, id);
+        await expect(stage).toHaveAttribute('data-bg', bg);
+        await blurFocus(page);
+        await shoot(page, `reader-image-${bg}-${theme}`);
+      }
+    }
+    // The library's item panel for the photo, read: its picture, the size line, 읽기 with 완료 (the day it was viewed masked).
+    await page.locator('[data-testid="tab"][data-item-id="library"]').click();
+    await rowByTitle(page, '수용체 분포 형광 현미경 사진').click();
+    await expect(page.getByTestId('inspector-kind')).toHaveText('이미지 · 1600 × 1200');
+    await expect.poll(() => page.getByTestId('image-preview').locator('img').evaluate((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth)).toBe(1600);
+    await expect(page.getByTestId('reading-done')).toHaveText('완료');
+    await expect(rowByTitle(page, '수용체 분포 형광 현미경 사진').getByTestId('progress-done')).toBeVisible();
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await shoot(page, `panel-image-${theme}`, { mask: [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), page.getByTestId('reading-line'), ...panelMasks(page)] });
+    }
+    // A picture that cannot be drawn: the notice alone, no toolbar.
+    await openItem(page, '손상된 도판');
+    await expect(panel.getByTestId('image-error').getByRole('heading')).toHaveText('이 이미지를 표시할 수 없습니다');
+    await expect(panel.getByTestId('image-toolbar')).toHaveCount(0);
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await blurFocus(page);
+      await shoot(page, `reader-image-error-${theme}`);
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+const scopeButton = (page: Page) => page.getByTestId('search-scope');
+const scopeMenu = (page: Page) => page.getByRole('menu', { name: '검색 범위' });
+/** The quick search's scope, chosen from its menu by the pointer (the menu has closed when this returns). */
+async function chooseScope(page: Page, name: '정보' | '정보와 본문'): Promise<void> {
+  await scopeButton(page).click();
+  await scopeMenu(page).getByRole('menuitemradio', { name, exact: true }).click();
+  await expect(scopeMenu(page)).toHaveCount(0);
+  await expect(page.getByTestId('search-field').locator('input')).toHaveAttribute('placeholder', name === '정보' ? '제목, 저자, 태그 검색' : '제목, 저자, 태그, 본문 검색');
+}
+const bodyProgress = (page: Page) => page.evaluate(() => window.learn.search.progress().then((r) => (r.ok ? r.data : null)));
+
+test('M7c quick search: the 정보와 본문 table, its no-results notes (searched, one letter, still indexing) and the scope menu with the index progress line', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const page = s.page;
+  const field = page.getByTestId('search-field').locator('input');
+  const dates = () => [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(page)];
+  const empty = page.getByTestId('search-empty');
+  try {
+    const [search30, korean, sample] = await importPaths(page, [path.join(FIXTURES, 'search-30.pdf'), path.join(FIXTURES, 'korean.pdf'), path.join(FIXTURES, 'sample.pdf')]);
+    await seedMetadata(page, search30!.id, { creators: [{ name: '연구실 공용', role: 'author' }], date: '2026' }, '실험 3 · 웨스턴 블롯 프로토콜');
+    await seedMetadata(page, korean!.id, { creators: [{ name: '한서진', role: 'author' }], date: '2024' }, '분자생물학 6장 · 신호 전달');
+    await seedMetadata(page, sample!.id, { creators: [{ name: '연구실 공용', role: 'author' }], date: '2026' }, '형광 단백질 표지 실험 노트');
+    await expect.poll(() => bodyProgress(page)).toEqual({ done: 3, total: 3 });
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // 형광: the title that has it (marked) and the PDF whose pages have it; the body match selected, its 본문 일치 in the panel.
+      await chooseScope(page, '정보와 본문');
+      await field.fill('형광');
+      await expect(page.getByTestId('item-row')).toHaveCount(2);
+      await expect(page.getByTestId('toolbar-count')).toHaveText('2개 / 3개');
+      await rowByTitle(page, '실험 3 · 웨스턴 블롯 프로토콜').click();
+      await expect(page.getByTestId('matches-section').getByTestId('matches-more')).toBeVisible();
+      await shoot(page, `search-fulltext-${theme}`, { mask: dates() });
+      // No results: searched in the bodies too (the field list ends with PDF 본문); one letter, which the bodies are not searched by.
+      await field.fill('효소 억제제');
+      await expect(empty).toContainText('PDF\u00a0본문');
+      await shoot(page, `search-none-fulltext-${theme}`, { mask: dates() });
+      await field.fill('효');
+      await expect(empty).toContainText('본문은 두\u00a0글자 이상인 낱말로 찾습니다.');
+      await shoot(page, `search-none-onechar-${theme}`, { mask: dates() });
+      await field.fill('');
+      await chooseScope(page, '정보');
+    }
+    // Two more PDFs wait to be read (the reading held): the menu counts the read ones, no-results says more may be found.
+    await textExtraction(s.app, 'pause');
+    await importNow(page, [path.join(FIXTURES, 'paper-100.pdf'), path.join(FIXTURES, 'no-text.pdf')]);
+    await expect.poll(() => bodyProgress(page)).toEqual({ done: 3, total: 5 });
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      await scopeButton(page).click();
+      await expect(page.getByTestId('search-scope-progress')).toHaveText('본문 색인 3\u00a0/\u00a05');
+      // Hidden, not masked: a mask paints over the menu that floats above the table's dates.
+      await shoot(page, `search-scope-menu-${theme}`, { style: BEHIND_PALETTE });
+      await page.keyboard.press('Escape');
+      await expect(scopeMenu(page)).toHaveCount(0);
+      await chooseScope(page, '정보와 본문');
+      await field.fill('효소 억제제');
+      await expect(empty).toContainText('본문 색인이 끝나면 더 찾을 수 있습니다(3\u00a0/\u00a05).');
+      await shoot(page, `search-none-indexing-${theme}`, { mask: dates() });
+      await field.fill('');
+      await chooseScope(page, '정보');
+    }
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('M7c item panel: 본문 일치 with the keyboard on its third page and the table\'s selection neutral; a locked PDF\'s state in the section and the file section', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const page = s.page;
+  const field = page.getByTestId('search-field').locator('input');
+  const dates = () => [page.locator('[data-testid="item-row"] [data-col="createdAt"]'), ...panelMasks(page)];
+  const matches = page.getByTestId('matches-section');
+  const list = page.getByRole('listbox', { name: '본문 일치' });
+  try {
+    const [korean, locked] = await importPaths(page, [path.join(FIXTURES, 'korean.pdf'), path.join(FIXTURES, 'locked.pdf')]);
+    await seedMetadata(page, korean!.id, { creators: [{ name: '한서진', role: 'author' }, { name: '윤재하', role: 'author' }], date: '2024', language: '한국어' }, '분자생물학 6장 · 신호 전달');
+    await seedMetadata(page, locked!.id, { creators: [{ name: 'Varga', role: 'author' }], date: '2022' }, '형광 공명 에너지 전이 (보호됨)');
+    await expect.poll(() => page.evaluate((id) => window.learn.library.detail({ itemId: id }).then((r) => (r.ok ? r.data.text : null)), locked!.id)).toMatchObject({ state: 'failed', reason: 'locked' });
+    await chooseScope(page, '정보와 본문');
+    for (const theme of THEMES) {
+      await setTheme(page, theme);
+      // korean.pdf's three pages: F6 to the panel, Tab into 본문 일치, ↓ ↓ to the third — the table's selection is then neutral.
+      await field.fill('메커니즘은');
+      await rowByTitle(page, '분자생물학 6장 · 신호 전달').click();
+      await expect(list.locator('[data-page="3"]')).toBeVisible();
+      // The pointer rests before the keys and stays for the picture: a pointer move after them makes the modality the pointer's,
+      // and a row drawn again then (the query settling after its cached answer showed) loses its keyboard ring.
+      await page.mouse.move(1439, 899);
+      await page.keyboard.press('F6');
+      for (let i = 0; i < 12 && !(await list.evaluate((el) => el.contains(document.activeElement))); i++) await page.keyboard.press('Tab');
+      await expect(list.locator('[data-page="1"]')).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      await expect(list.locator('[data-page="3"]')).toBeFocused();
+      await expect(page.locator('[data-page="3"]:focus-visible')).toHaveCount(1);
+      await shoot(page, `matches-${theme}`, { mask: dates(), keepPointer: true });
+      // locked.pdf: the section's state line and the file section's two-line value say the same.
+      await field.fill('형광');
+      await rowByTitle(page, '형광 공명 에너지 전이 (보호됨)').click();
+      await expect(matches.getByTestId('matches-status')).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
+      await expect(page.locator('[data-testid="file-row"][data-field="bodyText"] dd')).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
+      await blurFocus(page);
+      await shoot(page, `matches-locked-${theme}`, { mask: dates() });
+      await field.fill('');
+    }
+    // The scope goes back to 정보, so a scene after these keeps the field's placeholder.
+    await chooseScope(page, '정보');
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('the menu\'s import and a drop: the PDFs they bring are read before the next picture, as importPaths\' are', async ({}, testInfo) => {
+  const s = await launchTour(testInfo.outputPath());
+  const { app, page } = s;
+  const bodyLine = page.locator('[data-testid="file-row"][data-field="bodyText"] dd');
+  try {
+    for (const [how, file] of [['menu', 'sample.pdf'], ['drop', 'korean.pdf']] as const) {
+      // Held, so the line stays until something reads it (the first reading lets the reader run on).
+      await textExtraction(app, 'pause');
+      if (how === 'menu') await importFiles(s, [path.join(FIXTURES, file)]);
+      else await dropFiles(page, [path.join(FIXTURES, file)]);
+      const row = rowByTitle(page, path.basename(file, '.pdf'));
+      await expect(row).toBeVisible();
+      await waitImportIdle(page);
+      await row.click();
+      await expect(bodyLine, how).toHaveText('본문을 색인하는 중입니다.');
+      await readEndedImports(page);
+      await expect(bodyLine, how).toHaveCount(0);
+      const id = (await row.getAttribute('data-item-id'))!;
+      await expect.poll(() => page.evaluate((itemId) => window.learn.library.detail({ itemId }).then((r) => (r.ok ? r.data.text?.state : null)), id)).toBe('done');
     }
   } finally {
     await s.app.close();

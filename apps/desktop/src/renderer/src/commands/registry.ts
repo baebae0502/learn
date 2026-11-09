@@ -308,6 +308,7 @@ export function contextOf(env: CommandEnv): CommandContextState {
     columnsShown: env.columnsShown,
     trashCount: env.trashCount,
     ...(env.pdfOpen ? { pdfOpen: true } : {}),
+    ...(env.imageOpen ? { imageOpen: true } : {}),
     ...(env.pdfOpen && env.pdfScroll ? { pdfScroll: env.pdfScroll } : {}),
     ...(env.historyBack ? { historyBack: true } : {}),
     ...(env.historyForward ? { historyForward: true } : {}),

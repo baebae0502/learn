@@ -288,6 +288,20 @@ describe('renderer command registry', () => {
     expect(lib.zoom).not.toHaveBeenCalled();
     expect(lib.setTextSize).toHaveBeenCalledTimes(1);
   });
+  it('zooms, fits and turns a drawn picture through the same handlers, and reports it (M7c J29)', () => {
+    const picture = env({ view: 'viewer', imageOpen: true });
+    expect(runCommand('view.textBigger', picture)).toBe(true);
+    expect(picture.zoom).toHaveBeenCalledWith('in');
+    expect(runCommand('view.textReset', picture)).toBe(true);
+    expect(picture.zoom).toHaveBeenCalledWith('actual');
+    expect(runCommand('reader.zoomPageFit', picture)).toBe(true);
+    expect(picture.setZoom).toHaveBeenCalledWith('page-fit');
+    expect(runCommand('reader.rotateCcw', picture)).toBe(true);
+    expect(picture.rotate).toHaveBeenCalledWith(-90);
+    expect(runCommand('reader.zoomAuto', picture)).toBe(false); // the PDF's own
+    expect(contextOf(picture)).toMatchObject({ imageOpen: true });
+    expect(contextOf(env({ view: 'viewer' }))).not.toHaveProperty('imageOpen');
+  });
   it('turns the spread commands off while the PDF scrolls horizontally and reports how it scrolls', () => {
     const horizontal = env({ view: 'viewer', pdfOpen: true, pdfScroll: 'horizontal' });
     for (const id of ['reader.spreadNone', 'reader.spreadOdd', 'reader.spreadEven'] as const) expect(runCommand(id, horizontal), id).toBe(false);

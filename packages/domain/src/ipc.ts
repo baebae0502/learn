@@ -152,6 +152,8 @@ export const commandContextInput = z
     trashCount: contextCount,
     /** A PDF is open with its pages: the reader's view commands and its ⌘+ ⌘− ⌘0 need it; absent otherwise. */
     pdfOpen: z.boolean().optional(),
+    /** A reader tab with its picture drawn is shown: the zoom, the two fits and the turns act on it; absent otherwise. */
+    imageOpen: z.boolean().optional(),
     /** How the open PDF scrolls: the spread commands are off while horizontal; absent otherwise. */
     pdfScroll: z.enum(SCROLL_MODES).optional(),
     /** The open PDF can go back / forward in its history (⌘[ ⌘]); absent otherwise. */

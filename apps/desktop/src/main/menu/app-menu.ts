@@ -65,22 +65,31 @@ function fullScreenItems(opts: AppMenuOptions): Item[] {
 type Item = MenuItemConstructorOptions;
 const SEP: Item = { type: 'separator' };
 
-/** The reported state that state labels follow (design-spec 7.4): the pane states, the library's scope for ⌘⌫ (P-11) and the view for ⌘+ ⌘− ⌘0 (P-9). */
+/**
+ * The reported state that state labels follow (design-spec 7.4): the pane states, the library's scope for ⌘⌫ (P-11), the view for
+ * ⌘+ ⌘− ⌘0 (P-9) and a drawn picture for the fit's name (M7c J29).
+ */
 export type MenuLabelState = LabelState;
 
 /** The label state of a reported context, without the absent parts (the fatal screen reports no pane). */
 export function menuLabelState<T extends LabelState>(ctx: T): MenuLabelState {
   // Several selected items name 새 탭 N개로 열기 (not in the trash view, where nothing opens).
   const several = ctx.selectionCount !== undefined && ctx.selectionCount > 1 && ctx.scope !== 'trash';
-  return { ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}), ...(several ? { selectionCount: ctx.selectionCount } : {}) };
+  return {
+    ...(ctx.sidebar ? { sidebar: ctx.sidebar } : {}), ...(ctx.inspector ? { inspector: ctx.inspector } : {}), ...(ctx.scope ? { scope: ctx.scope } : {}), ...(ctx.view ? { view: ctx.view } : {}),
+    ...(several ? { selectionCount: ctx.selectionCount } : {}), ...(ctx.imageOpen ? { imageOpen: true } : {}),
+  };
 }
 
 /** The selected-item count a label names: only several count (a report works for a raw context and for a label state alike). */
 const manyOf = (s: MenuLabelState): number | undefined => (s.selectionCount !== undefined && s.selectionCount > 1 && s.scope !== 'trash' ? s.selectionCount : undefined);
 
-/** Whether a new report renames a menu item: a pane state or the view that a state label follows has changed. */
+/** Whether a new report renames a menu item: a pane state, the view or the drawn picture that a state label follows has changed. */
 export function menuLabelsChanged(before: MenuLabelState, after: MenuLabelState): boolean {
-  return before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view || manyOf(before) !== manyOf(after);
+  return (
+    before.sidebar !== after.sidebar || before.inspector !== after.inspector || before.scope !== after.scope || before.view !== after.view || manyOf(before) !== manyOf(after) ||
+    (before.imageOpen === true) !== (after.imageOpen === true)
+  );
 }
 
 /** ⌘+ is typed as ⌘= on US keyboards: a hidden item with the same command answers it. */

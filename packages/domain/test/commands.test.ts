@@ -683,6 +683,49 @@ describe('the reader commands (P-9, P-14)', () => {
   });
 });
 
+describe('the image reader’s commands (M7c spec 9, J29)', () => {
+  const IMAGE_OPEN: CommandContextState = { ...VIEWER, imageOpen: true };
+  const SHARED = ['view.textBigger', 'view.textSmaller', 'view.textReset', 'reader.zoomPageWidth', 'reader.zoomPageFit', 'reader.rotateCw', 'reader.rotateCcw'] as const;
+
+  it('zooms, fits and turns a picture that is drawn, as it does a PDF', () => {
+    for (const id of SHARED) {
+      expect(isCommandAvailable(id, IMAGE_OPEN), id).toBe(true);
+      expect(isCommandAvailable(id, { ...IMAGE_OPEN, blocked: true }), id).toBe(false);
+      expect(isCommandAvailable(id, { ...VIEWER, imageOpen: false }), id).toBe(false); // opening, or one that cannot be drawn
+    }
+    // The library sizes its text by its own rule whatever a hidden reader reports.
+    expect(isCommandAvailable('view.textBigger', { ...LIB, imageOpen: true, textSize: 15 })).toBe(false);
+    expect(isCommandAvailable('reader.zoomPageFit', { ...LIB, imageOpen: true })).toBe(false);
+    expect(availableMenuCommands(IMAGE_OPEN)).toEqual(expect.arrayContaining([...SHARED]));
+  });
+  it('keeps the PDF’s own commands off: the automatic fit, the page colours, the flow, find, pages, history and the item panel', () => {
+    const pdfOnly = COMMANDS.filter((c) => c.id.startsWith('reader.') && !(SHARED as readonly string[]).includes(c.id)).map((c) => c.id);
+    expect(pdfOnly).toEqual(expect.arrayContaining(['reader.zoomAuto', 'reader.pageColorAuto', 'reader.scrollVertical', 'reader.spreadOdd', 'reader.findNext', 'reader.goToPage', 'reader.showThumbnails']));
+    for (const id of [...pdfOnly, 'library.find', 'nav.historyBack', 'nav.historyForward', 'view.toggleInspector', 'translation.translateSelection'] as const) {
+      expect(isCommandAvailable(id, { ...IMAGE_OPEN, historyBack: true, historyForward: true, pdfSelection: true }), id).toBe(false);
+    }
+  });
+  it('names 한 쪽 전체 보기 창에 맞춤 for a picture, ahead of the view, in every surface', () => {
+    const fit = commandById('reader.zoomPageFit');
+    expect(fit.stateLabels).toEqual({ reader: { image: '창에 맞춤' } });
+    for (const platform of ['darwin', 'linux', 'win32']) {
+      expect(commandLabel(fit, platform, { view: 'viewer', imageOpen: true }), platform).toBe('창에 맞춤');
+      expect(commandLabel(fit, platform, { view: 'viewer' }), platform).toBe('한 쪽 전체 보기');
+      expect(commandLabel(fit, platform, { view: 'viewer', imageOpen: false }), platform).toBe('한 쪽 전체 보기');
+      expect(commandLabel(fit, platform), platform).toBe('한 쪽 전체 보기');
+      expect(paletteLabel(fit, platform, { view: 'viewer', imageOpen: true }), platform).toBe('창에 맞춤');
+    }
+    // The other zoom names do not change for a picture: 너비에 맞춤, and 확대 · 축소 · 실제 크기 by the view.
+    expect(commandLabel(commandById('reader.zoomPageWidth'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('너비에 맞춤');
+    expect(commandLabel(commandById('view.textBigger'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('확대');
+    expect(commandLabel(commandById('view.textReset'), 'darwin', { view: 'viewer', imageOpen: true })).toBe('실제 크기');
+  });
+  it('carries imageOpen like the other flat fields', () => {
+    expect(sameCommandContext(IMAGE_OPEN, { ...VIEWER, imageOpen: true })).toBe(true);
+    expect(sameCommandContext(IMAGE_OPEN, VIEWER)).toBe(false);
+  });
+});
+
 describe('tab commands (M7b spec 3.4, 9)', () => {
   const TABS = ['tab.close', 'tab.reopenClosed', 'tab.next', 'tab.previous', 'tab.goTo2', 'tab.goTo3', 'tab.goTo4', 'tab.goTo5', 'tab.goTo6', 'tab.goTo7', 'tab.goTo8', 'tab.last', 'tab.moveLeft', 'tab.moveRight', 'tab.closeOthers', 'tab.revealInLibrary'] as const;
   const withTabs = (n: number, over: Partial<CommandContextState> = {}): CommandContextState => ({ ...VIEWER, tabCount: n, ...over });

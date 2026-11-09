@@ -430,6 +430,20 @@ describe('both panes\' state labels and the menu bar\'s item commands (P-2, P-3)
     expect(menuLabelsChanged(base, next({ blocked: true, textSize: 15 }))).toBe(false);
     expect(menuLabelsChanged(base, next({ pdfOpen: true }))).toBe(false);
   });
+  it('relabels when a picture is drawn or goes, and carries that in the label state (한 쪽 전체 보기 is 창에 맞춤 for a picture)', () => {
+    const reader = next({ view: 'viewer', inspector: undefined });
+    expect(menuLabelState(next({ view: 'viewer', inspector: undefined, imageOpen: true }))).toEqual({ sidebar: 'shown', scope: 'all', view: 'viewer', imageOpen: true });
+    expect(menuLabelState(reader)).toEqual({ sidebar: 'shown', scope: 'all', view: 'viewer' });
+    expect(menuLabelsChanged(reader, { ...reader, imageOpen: true })).toBe(true);
+    expect(menuLabelsChanged({ ...reader, imageOpen: true }, reader)).toBe(true);
+    expect(menuLabelsChanged(menuLabelState({ ...reader, imageOpen: true }), menuLabelState({ ...reader, imageOpen: true }))).toBe(false);
+    const fit = commandById('reader.zoomPageFit');
+    const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: [fit], enabled: ALL, onCommand: vi.fn(), labels: menuLabelState({ ...reader, imageOpen: true }) });
+    const byId = byIdOf(template);
+    expect(byId.get('reader.zoomPageFit')?.label).toBe('창에 맞춤');
+    applyMenuLabels({ getMenuItemById: (id: string) => byId.get(id) ?? null }, 'darwin', menuLabelState(reader), [fit]);
+    expect(byId.get('reader.zoomPageFit')?.label).toBe('한 쪽 전체 보기');
+  });
   it('builds and relabels each toggle from its own pane state, in place', () => {
     const template = buildAppMenu({ isDev: false, platform: 'darwin', commands: toggles, enabled: ALL, onCommand: vi.fn(), labels: { sidebar: 'shown', inspector: 'hidden' } });
     const byId = byIdOf(template);

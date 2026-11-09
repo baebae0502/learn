@@ -4,7 +4,7 @@ import { sheetMaxHeight } from '../../apps/desktop/src/main/sheet-geometry';
 import { acceleratorLabel } from '../../packages/domain/src/accelerator';
 import { COMMANDS } from '../../packages/domain/src/commands';
 import { expectNoSeriousA11y } from './a11y';
-import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, runMenuCommand, sheetPrepared, windowKinds } from './helpers';
+import { FIXTURES, clickToCloseSheet, closeSheet, expectWindow, importFiles, importPaths, launch, mainWindow, menuItemEnabled, openSheetPages, runMenuCommand, sheetPrepared, windowKinds } from './helpers';
 
 const PDF = path.join(FIXTURES, 'sample.pdf');
 /** The keyboard focus ring (outline) of a button: 'none' or 'solid'. */
@@ -364,6 +364,44 @@ test('the window greys only when the ⌘/ sheet is on screen; until then its com
     await closeSheet(sheet, 'Enter');
     await expect(importMenu).toBeEnabled();
     await expect.poll(() => menuItemEnabled(s.app, 'app.palette')).toBe(true);
+  } finally {
+    await s.app.close();
+  }
+});
+
+test('a sheet whose window is made on open greys the window only once it is on screen; until then its commands are already refused (T13M-n4)', async ({}, testInfo) => {
+  const s = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await importPaths(s.page, [PDF]);
+    await expect(s.page.getByTestId('item-row')).toHaveCount(1);
+    // The duplicate sheet makes its own window. Every new sheet page answers its first measurement 1.5 s late, so the
+    // sheet is asked for but not on screen yet (the ⌘/ window made ahead exists already and is not patched).
+    await expect.poll(() => sheetPrepared(s.app), { message: 'the ⌘/ sheet window made ahead' }).toBe(true);
+    await s.app.evaluate(({ app }) => {
+      app.on('web-contents-created', (_e, contents) => {
+        const run = contents.executeJavaScript.bind(contents);
+        let late = true;
+        contents.executeJavaScript = (code, gesture) => {
+          if (!late || !contents.getURL().includes('window=sheet')) return run(code, gesture);
+          late = false;
+          return new Promise((resolve) => setTimeout(resolve, 1500)).then(() => run(code, gesture));
+        };
+      });
+    });
+    const sheetShown = () => s.app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().some((w) => w.webContents.getURL().includes('window=sheet') && w.isVisible()));
+    const importMenu = s.page.getByTestId('import-menu');
+    await importFiles(s, [PDF]);
+    // Main's menu bar refuses at once …
+    await expect.poll(() => menuItemEnabled(s.app, 'file.importManaged')).toBe(false);
+    // … while the sheet is not on screen and nothing in the window is drawn disabled.
+    expect(await sheetShown()).toBe(false); // positive control: the late answer holds the sheet back
+    await expect(importMenu).toBeEnabled();
+    await expect(s.page.locator('html')).not.toHaveAttribute('data-window-inactive');
+    await expect.poll(sheetShown).toBe(true);
+    await expect(importMenu).toBeDisabled();
+    const sheet = (await openSheetPages(s.app)).at(-1)!;
+    await clickToCloseSheet(sheet, sheet.getByTestId('dup-skip'));
+    await expect(importMenu).toBeEnabled();
   } finally {
     await s.app.close();
   }

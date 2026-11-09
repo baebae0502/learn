@@ -106,7 +106,7 @@
 
 근거 실행. Linux 줄은 아래 CI 실행이고, Mac 줄은 컨트롤러가 최종 `all` 뒤에 채운다.
 - Linux CI run: 42654046397 (a197d45, Task 15까지 — 성공): 단위 2,810 통과 · 1 건너뜀, 전체 E2E 616 통과 · 4 건너뜀(28.6분), 증거(`CI=1`) 75 통과 · 8 건너뜀(7.2분). 그 뒤의 커밋(Task 16: 투어 · axe · 키보드 여정 · 데모 · 문서)은 최종 CI가 본다.
-- 중간 Mac `e2e`: run 42660475115 (a197d45) — 러너를 받지 못해 시험 전에 취소(R72, [`mac-verification.md`](mac-verification.md) "M7c").
+- 중간 Mac `e2e`: run 42667344829 (a197d45) — 574 통과 · 1 실패(`settings.spec.ts:451`, 시험 쪽 — P7의 미리 만든 시트 창, R74) · 45 건너뜀; 먼저 보낸 42660475115는 러너를 받지 못해 취소([`mac-verification.md`](mac-verification.md) "M7c").
 - Mac `all` (M7c): 컨트롤러가 채운다
 
 1. **열림(컨트롤러)** — Linux CI · Mac `all` · Mac 디자인 비평: Linux는 위 CI가 녹색이다. Mac `all`(증거 · 기능 E2E · 데모 영상)과 Mac 데모 프레임의 디자인 비평(라이트 · 다크, blocker/major 0건)은 위 컨트롤러 줄이다. 작업마다의 Linux 디자인 비평(opus, 투어 PNG와 목업 대조): Task 11 이미지 리더 0 · 1 · 1 · 1, Task 12 배경 0 · 1 · 1 · 1, Task 13 이미지 항목 패널 0 · 1 · 2 · 1, Task 14 검색 범위 0 · 0 · 2 · 2, Task 15 '본문 일치' 0 · 0 · 1 · 2(blocker · major · minor · nit) — major는 모두 고쳤다(R45 · R50 · 패널 미리보기가 그림을 자르던 것).

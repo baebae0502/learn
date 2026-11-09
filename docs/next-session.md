@@ -438,7 +438,7 @@ GitHub 러너로는 확인할 수 없다. Scaleway Mac mini나 사용자 Mac에�
 
 계획 [`superpowers/plans/2026-11-08-m7c-images-search-perf.md`](superpowers/plans/2026-11-08-m7c-images-search-perf.md), 명세 [`superpowers/specs/2026-11-08-m7c-images-search-perf-design.md`](superpowers/specs/2026-11-08-m7c-images-search-perf-design.md), 브랜치 `m7c-images-search`. 검증 숫자는 [`acceptance.md`](acceptance.md) "M7c 완료 조건"과 AC16, Mac 실행은 [`mac-verification.md`](mac-verification.md) "M7c". 결정은 [ADR-0008](decisions/0008-body-search.md)(본문 검색, 새로), [ADR-0003](decisions/0003-storage-layout.md) "스키마 v4", [ADR-0007](decisions/0007-settings-and-preferences.md)(`reader.imageBackground`·`library.searchScope`), [ADR-0009](decisions/0009-anchor-hub-and-links.md) "M7c 결과", [ADR-0012](decisions/0012-translation.md) "M7c 재확인 (2026-11-10)". 명세 정정과 컨트롤러 판정은 [`spec-amendments.md`](spec-amendments.md) 14절.
 - Linux CI: run 42654046397(a197d45, Task 15까지) 성공 — 단위 2,810 통과 · 1 건너뜀, 전체 E2E 616 통과 · 4 건너뜀(28.6분), 증거(`CI=1`) 75 통과 · 8 건너뜀(7.2분). 그 뒤의 커밋(투어 · axe · 키보드 여정 · 데모 · 문서)은 최종 CI가 본다.
-- 중간 Mac `e2e`: run 42660475115(a197d45)는 macOS arm64 러너를 받지 못해 시험 전에 취소됐다(R72 — 중간 확인은 최종 `all`이 맡는다).
+- 중간 Mac `e2e`: run 42667344829(a197d45, 과금 29분) — 기능 E2E 574 통과 · 1 실패(`settings.spec.ts:451`, 시험 쪽 — P7이 미리 만든 시트 창을 시험이 설정 창으로 셈, R74로 고침) · 45 건너뜀. 먼저 보낸 42660475115는 macOS arm64 러너를 받지 못해 시험 전에 취소됐다(R72).
 - Mac `all` (M7c): 컨트롤러가 채운다
 
 ### M7c에서 해결한 것

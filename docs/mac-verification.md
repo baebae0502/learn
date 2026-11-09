@@ -766,13 +766,14 @@ Mac 값과 나란히 보려고 옮긴다(예산은 M7c 명세 6·13절, CI는 2�
 | 토스트 그리기 p95(P9) | 14 ms(표본 23) | 16.7 ms |
 | 냉시작 → app-ready | 466 ms | 1,500 ms |
 
-### 중간 실행 (run 42660475115, a197d45)
-[run 42660475115](https://github.com/baebae0502/learn/actions/runs/42660475115) — 11-09 17:01 UTC에 `e2e` / 아니오로 보냈다. mac 잡이 15분 동안 러너를 받지 못해("not acquired by Runner of type hosted even after multiple attempts", GitHub macOS arm64 용량) **시험 전에 취소됐다**. artifact도 시험 결과도 없다. 러너를 받지 못한 것은 시험 결과가 아니다. 컨트롤러 판정 R72: 같은 head로 약 25분 뒤 한 번만 다시 보내고, 또 받지 못하면 중간 실행을 건너뛰어 최종 `all`이 Mac 확인을 맡는다. 다시 보낸 run 42667344829(11-09 17:43 UTC)의 결과는 이 갱신의 입력에 없다 — 아래 줄과 함께 컨트롤러가 적는다.
+### 중간 실행 (run 42660475115 → 42667344829, a197d45)
+[run 42660475115](https://github.com/baebae0502/learn/actions/runs/42660475115) — 11-09 17:01 UTC에 `e2e` / 아니오로 보냈다. mac 잡이 15분 동안 러너를 받지 못해("not acquired by Runner of type hosted even after multiple attempts", GitHub macOS arm64 용량) **시험 전에 취소됐다**. artifact도 시험 결과도 없다. 러너를 받지 못한 것은 시험 결과가 아니다. 컨트롤러 판정 R72: 같은 head로 약 25분 뒤 한 번만 다시 보내고, 또 받지 못하면 중간 실행을 건너뛰어 최종 `all`이 Mac 확인을 맡는다. 다시 보낸 [run 42667344829](https://github.com/baebae0502/learn/actions/runs/42667344829)(11-09 17:43 UTC, a197d45)는 러너를 받아 끝났다: 기능 E2E 574 통과 · 1 실패 · 45 건너뜀. 실패는 `settings.spec.ts:451` 하나이고 시험 쪽 경합이다 — P7이 미리 만든 시트 창을 시험이 설정 창으로 센다. 앱은 설계대로 동작한다(컨트롤러 판정 R74: 최종 확인이 설정 창 하나와 주 창만 세도록 고친다). 중간 확인은 이 실행이 했고, 최종 `all`이 고침을 확인한다.
 
 ### `all` 실행 (최종 코드)
 | # | run id | 날짜(UTC) | suite / 패키지 / head | mac 잡 (과금 분) | 결과 |
 |---|---|---|---|---|---|
-| 115 | [42660475115](https://github.com/baebae0502/learn/actions/runs/42660475115) | 11-09 17:01 | e2e / 아니오 / a197d45 | 0분(러너 없음) | **취소**: 위 "중간 실행" |
+| 115 | [42660475115](https://github.com/baebae0502/learn/actions/runs/42660475115) | 11-09 17:01 | e2e / 아니오 / a197d45 | 0분(러너 없음) | **취소**: 위 "중간 실행"(같은 head로 다시 보냄 → 116) |
+| 116 | [42667344829](https://github.com/baebae0502/learn/actions/runs/42667344829) | 11-09 17:43 | e2e / 아니오 / a197d45 | 29분 | **574 통과 · 1 실패 · 45 건너뜀**: `settings.spec.ts:451` — 시험 쪽 경합(P7이 미리 만든 시트 창을 창 수에 셈), R74로 고침. 위 "중간 실행" |
 
 - Mac `all` (M7c): 컨트롤러가 채운다
 

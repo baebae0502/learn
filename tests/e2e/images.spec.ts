@@ -315,13 +315,19 @@ test('a pinch zooms about the point under the pointer; the picture is dragged on
     expect(after.scrollTop - before.scrollTop).toBeCloseTo(100, 0);
     await expect(stage(page)).toBeFocused(); // pressed, the stage takes the keys
 
-    // The arrow keys scroll the stage as any scroll area: 40 a press.
+    // The arrow keys scroll the stage as any scroll area: 40 a press. Each key waits for the stage to stop scrolling: Chromium drops a key
+    // scroll that comes within a frame or two of the end of the scroll animation before it (12 of 25 ArrowRight presses right after an
+    // ArrowDown's 40 was reached; none after a quiet stage).
+    const stageSelector = '[data-testid="tab-panel"][data-active="true"] [data-testid="image-stage"]';
     await stage(page).evaluate((el) => {
       el.scrollLeft = 0;
       el.scrollTop = 0;
     });
+    await expect.poll(() => stage(page).evaluate((el) => `${el.scrollLeft},${el.scrollTop}`)).toBe('0,0');
+    await quiet(page, stageSelector);
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => stage(page).evaluate((el) => el.scrollTop)).toBe(40);
+    await quiet(page, stageSelector);
     await page.keyboard.press('ArrowRight');
     await expect.poll(() => stage(page).evaluate((el) => el.scrollLeft)).toBe(40);
 

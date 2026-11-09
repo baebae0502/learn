@@ -91,7 +91,7 @@ kind별 타입 유니언이 정본이고, 좌표는 ADR-0002 그대로다. 그 �
 | M10 | 기억·복습: `study_events`·`concepts`·`memory_claims`·`memory_evidence`·`reviews`·`review_attempts` |
 
 - 새 kind 값을 `anchors.kind` CHECK에 M7에서 한 번에 넣을지, kind를 처음 쓰는 마일스톤마다 넣을지는 M7 스파이크에서 정한다.
-- `extracted_chunks`(인용 가능한 최소 단위, FTS 연동)의 시점은 검색 ADR(ADR-0008, 예약)과 함께 정한다.
+- `extracted_chunks`(인용 가능한 최소 단위, FTS 연동)의 시점은 검색 ADR(ADR-0008, 예약)과 함께 정한다. → M7c의 [ADR-0008](0008-body-search.md)(본문 검색, 2026-11-10)이 쪽 글 표와 FTS를 정하고 `extracted_chunks`는 T1로 미뤘다(그 ADR 8절).
 
 ### 7. 채택 조건 — M7 첫 작업의 스파이크
 - (1) PDF 선택 → 앵커 → 확대·회전 뒤 다시 표시(AC03, 허용 오차 2pt). (2) Claude의 쪽 단위 인용 → 앵커. T1의 인용은 Citations API가 아니라, 프롬프트로 받은 인용을 그 턴의 도구 기록으로 검증한 것이다(ADR-0010 3절).

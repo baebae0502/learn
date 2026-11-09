@@ -10,6 +10,7 @@ import {
   imagePinchFactor,
   nextImageZoom,
   parseImageZoomInput,
+  placedCentre,
   pointAt,
   rotatedSize,
   scrollFor,
@@ -113,5 +114,53 @@ describe('the rest of the arithmetic', () => {
     expect(pointAt(l180, 180, { x: 0, y: 0 }, { x: 24, y: 24 })).toEqual({ x: 1, y: 1 }); // the top-left of the stage shows the bottom-right
     const l270 = imageLayout({ width: 100, height: 100 }, 270, { width: 148, height: 148 }, 1);
     expect(pointAt(l270, 270, { x: 0, y: 0 }, { x: 24, y: 24 })).toEqual({ x: 1, y: 0 }); // top-right of the image goes top-left
+  });
+});
+
+describe('the centre a placement leaves', () => {
+  const photo = { width: 4032, height: 3024 };
+  const middle = { x: 500, y: 350 };
+
+  test('⌘− from the top-left corner: the scroll is held at 0, so the centre is the point the stage shows, not the one zoomed about', () => {
+    const at100 = imageLayout(photo, 0, stage, 1);
+    const p = pointAt(at100, 0, { x: 0, y: 0 }, middle);
+    expect(p.x).toBeCloseTo(0.118, 3);
+    expect(p.y).toBeCloseTo(0.108, 3);
+    const at75 = imageLayout(photo, 0, stage, 0.75);
+    const applied = scrollFor(at75, 0, stage, p, middle);
+    expect(applied).toEqual({ x: 0, y: 0 });
+    const c = placedCentre(at75, 0, stage, { p, at: null }, applied);
+    expect(c.x).toBeCloseTo(0.157, 3);
+    expect(c.y).toBeCloseTo(0.144, 3);
+  });
+
+  test('an anchor that landed (within a pixel) is the centre itself, so a restore stores what it read', () => {
+    const l = imageLayout(photo, 90, stage, 2);
+    const p = { x: 0.4123, y: 0.6789 };
+    const exact = scrollFor(l, 90, stage, p, middle);
+    expect(placedCentre(l, 90, stage, { p, at: null }, { x: Math.round(exact.x), y: Math.round(exact.y) })).toEqual(p);
+  });
+
+  test('width from an off-centre view: no sideways scroll, so the centre is the middle across (no stray cx)', () => {
+    const tall = { width: 1000, height: 3000 };
+    const l = imageLayout(tall, 0, stage, fitScale(tall, 0, stage, 'width'));
+    const p = { x: 0.3, y: 0.4 };
+    const c = placedCentre(l, 0, stage, { p, at: null }, scrollFor(l, 0, stage, p, middle));
+    expect(c.x).toBeCloseTo(0.5, 9);
+    expect(c.y).toBeCloseTo(0.4, 6);
+  });
+
+  test('fit puts the picture in the middle whatever it was anchored at', () => {
+    const l = imageLayout(photo, 0, stage, fitScale(photo, 0, stage, 'fit'));
+    const p = { x: 0.2, y: 0.9 };
+    expect(placedCentre(l, 0, stage, { p, at: null }, scrollFor(l, 0, stage, p, middle))).toEqual({ x: expect.closeTo(0.5, 9), y: expect.closeTo(0.5, 9) });
+  });
+
+  test('a pinch anchors at the pointer: the centre is read from the stage', () => {
+    const l = imageLayout(photo, 0, stage, 2);
+    const p = { x: 0.6, y: 0.3 };
+    const at = { x: 200, y: 100 };
+    const applied = scrollFor(l, 0, stage, p, at);
+    expect(placedCentre(l, 0, stage, { p, at }, applied)).toEqual(pointAt(l, 0, applied, middle));
   });
 });

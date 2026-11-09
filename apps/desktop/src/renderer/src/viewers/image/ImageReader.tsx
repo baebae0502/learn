@@ -8,7 +8,7 @@ import { ImageErrorNotice } from '../ReaderNotices';
 import { useReaderScope, useReaderShown } from '../readerScope';
 import { usePosition, type LatestPosition } from '../usePosition';
 import {
-  clampImageZoom, fitScale, imageLayout, imagePinchFactor, nextImageZoom, pointAt, rotatedSize, scrollFor, type ImageZoom, type Point, type Rotation, type Size,
+  clampImageZoom, fitScale, imageLayout, imagePinchFactor, nextImageZoom, placedCentre, pointAt, rotatedSize, scrollFor, type ImageZoom, type Point, type Rotation, type Size,
 } from './imageFit';
 import { DEFAULT_IMAGE_VIEW, imageLocator, imageViewFrom, type ImageView } from './imageView';
 import { ImageToolbar } from './ImageToolbar';
@@ -233,9 +233,7 @@ export function ImageReader({ item }: { item: LibraryItem }) {
     el.scrollTop = target.y;
     const applied = { x: el.scrollLeft, y: el.scrollTop };
     placedScroll.current = applied;
-    // Where the anchor landed as asked (a scroll is in whole pixels), its own point is the centre; a clamped one leaves another.
-    const landed = ask.anchor.at === null && Math.abs(applied.x - target.x) < 1 && Math.abs(applied.y - target.y) < 1;
-    const centre = landed ? ask.anchor.p : pointAt(layout, placement.rotation, applied, centreOf(size));
+    const centre = placedCentre(layout, placement.rotation, size, ask.anchor, applied);
     view.current = { zoom: placement.zoom, rotation: placement.rotation, cx: centre.x, cy: centre.y };
     scope.imageCentre.current = { cx: centre.x, cy: centre.y };
     setPannable(layout.content.width > size.width + 0.5 || layout.content.height > size.height + 0.5);

@@ -112,11 +112,28 @@ export function pointAt(l: ImageLayout, rotation: Rotation, scroll: Point, at: P
   return { x: clamp(p.x, 0, 1), y: clamp(p.y, 0, 1) };
 }
 
+/** The scroll that puts point `p` of the upright picture at stage point `at`, before it is held to what the stage can scroll. */
+function wantedScroll(l: ImageLayout, rotation: Rotation, p: Point, at: Point): Point {
+  const q = turn(p, rotation);
+  return { x: l.offset.x + q.x * l.box.width - at.x, y: l.offset.y + q.y * l.box.height - at.y };
+}
+
 /** The scroll that puts point `p` of the upright picture at stage point `at`, clamped to what the stage can scroll. */
 export function scrollFor(l: ImageLayout, rotation: Rotation, stage: Size, p: Point, at: Point): Point {
-  const q = turn(p, rotation);
-  return {
-    x: clamp(l.offset.x + q.x * l.box.width - at.x, 0, Math.max(0, l.content.width - stage.width)),
-    y: clamp(l.offset.y + q.y * l.box.height - at.y, 0, Math.max(0, l.content.height - stage.height)),
-  };
+  const want = wantedScroll(l, rotation, p, at);
+  return { x: clamp(want.x, 0, Math.max(0, l.content.width - stage.width)), y: clamp(want.y, 0, Math.max(0, l.content.height - stage.height)) };
+}
+
+/**
+ * The picture point at the stage's centre once a placement that asked for point `anchor.p` at stage point `anchor.at` (the centre when
+ * null) has left the stage scrolled to `applied`. An anchor that landed where it asked (within the pixel a scroll rounds to) is its own
+ * point, so a restore keeps the value it read; one held at an end of the scroll, or anchored elsewhere, leaves the point the stage shows.
+ */
+export function placedCentre(l: ImageLayout, rotation: Rotation, stage: Size, anchor: { p: Point; at: Point | null }, applied: Point): Point {
+  const centre = { x: stage.width / 2, y: stage.height / 2 };
+  if (anchor.at === null) {
+    const want = wantedScroll(l, rotation, anchor.p, centre);
+    if (Math.abs(applied.x - want.x) < 1 && Math.abs(applied.y - want.y) < 1) return { x: anchor.p.x, y: anchor.p.y };
+  }
+  return pointAt(l, rotation, applied, centre);
 }

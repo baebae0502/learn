@@ -369,6 +369,57 @@ test('⌘R and ⌘L turn the picture a quarter at a time and keep the point at t
   }
 });
 
+test('⌘− at a corner records the point the stage shows, and that point is at the centre after a resize and after a relaunch', async ({}, testInfo) => {
+  test.setTimeout(90_000);
+  const lib = testInfo.outputPath('library');
+  const ud = testInfo.outputPath('userdata');
+  let { app, page } = await launch(lib, ud);
+  let closed = false;
+  try {
+    const [photo] = await importPaths(page, [PHOTO]);
+    await openItem(page, 'photo-4032');
+    await drawn(page);
+    await runMenuCommand(app, 'view.textReset');
+    await expect.poll(() => scaleOf(page)).toBe(1);
+    const zoomedAbout = await scrollStageTo(page, 0, 0);
+    await runMenuCommand(app, 'view.textSmaller');
+    await expect.poll(() => scaleOf(page)).toBe(0.75);
+    // The scroll is held at the top left, so the centre moved off the point zoomed about.
+    const shows = await pictureAt(page);
+    expect(shows.x - zoomedAbout.x).toBeGreaterThan(0.02);
+    const s = (await imageState(page))!;
+    expectNear({ x: s.cx, y: s.cy }, shows, 'the reader’s centre after ⌘− at the corner');
+    await expect
+      .poll(async () => {
+        const l = (await stored(page, photo!.id))?.locator;
+        return l?.kind === 'image' && l.zoom === 0.75 && Math.abs((l.cx ?? 0.5) - shows.x) <= 0.002 && Math.abs((l.cy ?? 0.5) - shows.y) <= 0.002;
+      }, { message: 'the stored centre is the point the stage shows' })
+      .toBe(true);
+
+    // A smaller window: the scale stays and the same point is at the centre.
+    const win = await mainWindow(app);
+    const [w, h] = await win.evaluate((x) => x.getContentSize());
+    const before = (await stageBox(page)).clientWidth;
+    await win.evaluate((x, [cw, ch]) => x.setContentSize(cw!, ch!), [w! - 60, h! - 120]);
+    await expect.poll(async () => (await stageBox(page)).clientWidth).toBeLessThan(before);
+    await expect.poll(async () => {
+      const p = await pictureAt(page);
+      return Math.abs(p.x - shows.x) <= 0.01 && Math.abs(p.y - shows.y) <= 0.01;
+    }, { message: 'the same point at the centre of the smaller stage' }).toBe(true);
+    expect(await scaleOf(page)).toBe(0.75);
+
+    await app.close();
+    closed = true;
+    ({ app, page } = await launch(lib, ud));
+    closed = false;
+    await drawn(page, photo!.id);
+    expect(await scaleOf(page)).toBe(0.75);
+    expectNear(await pictureAt(page), shows, 'after a relaunch');
+  } finally {
+    if (!closed) await app.close().catch(() => {});
+  }
+});
+
 test('the zoom, the centre and the turn come back with the tab — closed and reopened (⇧⌘T), after a quit and after a SIGKILL', async ({}, testInfo) => {
   test.setTimeout(120_000);
   const lib = testInfo.outputPath('library');

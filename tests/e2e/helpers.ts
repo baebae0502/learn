@@ -791,7 +791,8 @@ export function seedRows(count: number, seed = 1, base = Date.parse('2026-10-01T
 
 /**
  * Adds `count` items that share `from`'s file — one managed copy, one transaction — through main's E2E hook.
- * Resolves once main has written them; the list follows its one libraryChanged.
+ * Resolves once main has written them. The list follows its one libraryChanged through the throttled import read (up to
+ * IMPORT_READ_GAP_MS after the last one, at an idle moment), so a caller that uses the table waits for `toolbar-count`.
  */
 export async function seedLibrary(app: ElectronApplication, opts: { count: number; from: LibraryItem; seed?: number }): Promise<void> {
   const input = { fromItemId: opts.from.id, rows: seedRows(opts.count, opts.seed) };

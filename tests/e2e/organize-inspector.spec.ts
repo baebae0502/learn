@@ -334,6 +334,8 @@ test('1,000 items selected: the common tag, the common collection and the menu\'
   try {
     const [pdf] = await importPaths(page, [PDF]);
     await seedLibrary(app, { count: 999, from: pdf! });
+    // The table has the seeded rows: the list is read up to a second after the seed, and a ⌘A before then selects only the one row shown.
+    await expect(page.getByTestId('toolbar-count')).toHaveText('1000개');
     const everyone = await page.evaluate(async () => {
       const r = await window.learn.library.list();
       return r.ok ? r.data.map((i) => i.id) : [];

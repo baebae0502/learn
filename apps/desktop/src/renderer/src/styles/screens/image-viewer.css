@@ -28,6 +28,16 @@
     pointer-events: none;
     box-shadow: inset 0 0 0 var(--focus-ring-width) var(--focus);
   }
+  /* The ground is the reader's choice, not the theme's: the ring takes the colour that holds 3:1 on it. */
+  .image-frame:has(> .image-stage[data-bg='light']:focus-visible)::after {
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--image-focus-light);
+  }
+  .image-frame:has(> .image-stage[data-bg='dark']:focus-visible)::after {
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--image-focus-dark);
+  }
+  .image-frame:has(> .image-stage[data-bg='checker']:focus-visible)::after {
+    box-shadow: inset 0 0 0 var(--focus-ring-width) var(--image-focus-checker);
+  }
   /* An ordinary scroll area: the arrow keys, page keys, space, Home/End and the wheel scroll it. The ground is the reader's own choice, the same in both themes. */
   .image-stage {
     position: absolute;

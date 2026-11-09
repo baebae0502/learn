@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { DEFAULT_IMAGE_VIEW, effectiveBackground, imageLocator, imageViewFrom } from './imageView';
+import { DEFAULT_IMAGE_VIEW, effectiveBackground, parseImageBackground, imageLocator, imageViewFrom } from './imageView';
 
 test('the default view is fit, centred, upright, and its locator carries none of it', () => {
   expect(DEFAULT_IMAGE_VIEW).toEqual({ zoom: 'fit', cx: 0.5, cy: 0.5, rotation: 0 });
@@ -41,4 +41,12 @@ test('the background in use is the stored one, else the theme\'s', () => {
   expect(effectiveBackground('checker', 'dark')).toBe('checker');
   expect(effectiveBackground('light', 'dark')).toBe('light');
   expect(effectiveBackground('dark', 'light')).toBe('dark');
+});
+
+test('a stored background reads as itself; anything else, or nothing, as unset', () => {
+  for (const b of ['light', 'dark', 'checker'] as const) expect(parseImageBackground(b)).toBe(b);
+  for (const raw of ['auto', 'sepia', 'Light', '', 0, null, {}, ['dark']]) expect(parseImageBackground(raw), String(raw)).toBeUndefined();
+  expect(parseImageBackground(undefined)).toBeUndefined();
+  // Unset follows the theme; a value that cannot be read does too.
+  expect(effectiveBackground(parseImageBackground('sepia'), 'dark')).toBe('dark');
 });

@@ -768,7 +768,11 @@ async function ground(page: Page) {
       dark: token('--image-bg-dark'),
       checkerA: token('--image-checker-a'),
       checkerB: token('--image-checker-b'),
-      border: css.borderTopWidth,
+      // The picture's own box and the picture: no border, outline or shadow of the app's round it, on any ground.
+      box: ['.image-box', '.image-box img'].map((sel) => {
+        const c = getComputedStyle(el.querySelector(sel)!);
+        return [c.borderTopWidth, c.borderRightWidth, c.borderBottomWidth, c.borderLeftWidth, c.outlineStyle, c.boxShadow].join(' ');
+      }),
     };
   });
 }
@@ -787,6 +791,7 @@ test('the image 보기 menu — 배경 as a group (the one in use checked) then 
     expect(g.bg).toBe('light');
     expect(g.color).toBe(g.light);
     expect(g.image).toBe('none');
+    expect(g.box, 'light: no border, outline or shadow on the picture').toEqual(Array(2).fill('0px 0px 0px 0px none none'));
 
     await viewMenu(page).click();
     const menu = page.getByRole('menu', { name: '보기' });
@@ -803,7 +808,7 @@ test('the image 보기 menu — 배경 as a group (the one in use checked) then 
     expect(g.image).toContain(g.checkerA);
     expect(g.image).toContain(g.checkerB);
     expect(g.attachment).toBe('local');
-    expect(g.border).toBe('0px');
+    expect(g.box, 'checker: no border, outline or shadow on the picture').toEqual(Array(2).fill('0px 0px 0px 0px none none'));
     await viewMenu(page).click();
     await expect(menu.locator('[aria-checked="true"] .mi-label')).toHaveText(['체크무늬']);
     await menu.getByRole('menuitemradio', { name: '어둡게' }).click();
@@ -811,6 +816,7 @@ test('the image 보기 menu — 배경 as a group (the one in use checked) then 
     g = await ground(page);
     expect(g.color).toBe(g.dark);
     expect(g.image).toBe('none');
+    expect(g.box, 'dark: no border, outline or shadow on the picture').toEqual(Array(2).fill('0px 0px 0px 0px none none'));
     // A turn from the same menu.
     await viewMenu(page).click();
     await menu.getByRole('menuitem', { name: /^시계 방향으로 회전/ }).click();
@@ -865,6 +871,82 @@ test('the background commands run on a picture only: a PDF has none in its menu 
     for (const id of ['reader.imageBackgroundLight', 'reader.imageBackgroundDark', 'reader.imageBackgroundChecker'] as const) {
       expect(await menuItemEnabled(app, id), id).toBe(false);
     }
+  } finally {
+    await app.close();
+  }
+});
+
+/** The colour of the stage's focus ring (the frame's ::after) and the colour each ring token resolves to, read from a probe. */
+async function ring(page: Page) {
+  return page.evaluate(() => {
+    const frame = document.querySelector('[data-testid="image-stage"]')!.parentElement!;
+    const shadow = getComputedStyle(frame, '::after').boxShadow;
+    const token = (name: string): string => {
+      const probe = document.createElement('div');
+      probe.style.backgroundColor = `var(${name})`;
+      document.body.append(probe);
+      const colour = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return colour;
+    };
+    return { shadow, light: token('--image-focus-light'), dark: token('--image-focus-dark'), checker: token('--image-focus-checker') };
+  });
+}
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`the stage's focus ring is drawn in the colour its background asks for, whatever the ${scheme} app theme (3:1 on every ground)`, async ({}, testInfo) => {
+    const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: scheme });
+    try {
+      const [photo] = await importPaths(page, [PHOTO]);
+      await rowByTitle(page, 'photo-4032').click();
+      await page.keyboard.press('Enter');
+      await drawn(page, photo!.id);
+      await expect(stage(page)).toBeFocused(); // by the keyboard, so :focus-visible
+      const expected = { light: 'light', dark: 'dark', checker: 'checker' } as const;
+      let drawnRings = 0;
+      for (const [id, bg] of [['reader.imageBackgroundLight', 'light'], ['reader.imageBackgroundDark', 'dark'], ['reader.imageBackgroundChecker', 'checker']] as const) {
+        await runMenuCommand(app, id);
+        await expect(stage(page)).toHaveAttribute('data-bg', bg);
+        await stage(page).focus();
+        await expect.poll(async () => (await ring(page)).shadow, { message: `${bg}: a ring is drawn` }).not.toBe('none');
+        const r = await ring(page);
+        expect(r.shadow, `${bg} in the ${scheme} theme`).toContain(r[expected[bg]]);
+        drawnRings += 1;
+      }
+      expect(drawnRings).toBe(3);
+      const r = await ring(page);
+      expect(new Set([r.light, r.dark, r.checker]).size, 'three different rings').toBe(3);
+    } finally {
+      await app.close();
+    }
+  });
+}
+
+test('a live theme change while a picture is shown: an unset background follows it, a chosen one does not', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'), { colorScheme: null });
+  const setTheme = (theme: 'light' | 'dark') => page.evaluate((t) => window.learn.prefs.set({ theme: t }), theme);
+  const dark = () => page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  try {
+    await importPaths(page, [PHOTO]);
+    await openItem(page, 'photo-4032');
+    await drawn(page);
+    expect(await setTheme('light')).toMatchObject({ ok: true });
+    await expect.poll(dark).toBe(false);
+    await expect(stage(page)).toHaveAttribute('data-bg', 'light'); // nothing stored: the theme's
+    expect(await setTheme('dark')).toMatchObject({ ok: true });
+    await expect.poll(dark).toBe(true);
+    await expect(stage(page)).toHaveAttribute('data-bg', 'dark');
+    expect(await setTheme('light')).toMatchObject({ ok: true });
+    await expect(stage(page)).toHaveAttribute('data-bg', 'light');
+    // A choice is the reader's, not the theme's.
+    await runMenuCommand(app, 'reader.imageBackgroundChecker');
+    await expect(stage(page)).toHaveAttribute('data-bg', 'checker');
+    expect(await setTheme('dark')).toMatchObject({ ok: true });
+    await expect.poll(dark).toBe(true);
+    await expect(stage(page)).toHaveAttribute('data-bg', 'checker');
+    expect(await setTheme('light')).toMatchObject({ ok: true });
+    await expect.poll(dark).toBe(false);
+    await expect(stage(page)).toHaveAttribute('data-bg', 'checker');
   } finally {
     await app.close();
   }

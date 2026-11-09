@@ -172,6 +172,23 @@ describe('colour tokens', () => {
     }
   }
 
+  it('the image stage\'s focus ring keeps 3:1 on each ground it is drawn over, in either app theme (the grounds ignore the theme, so the ring does too)', () => {
+    const colour = (key: ColorToken, theme: Theme): Rgba => parseColor(colors[key][theme]);
+    const rings: [ColorToken, ColorToken[]][] = [
+      ['imageFocusLight', ['imageBgLight']],
+      ['imageFocusDark', ['imageBgDark']],
+      ['imageFocusChecker', ['imageCheckerA', 'imageCheckerB']], // both squares: the ring crosses them
+    ];
+    for (const theme of THEMES) {
+      for (const [ring, grounds] of rings) {
+        for (const ground of grounds) expectContrast(`${ring}/${ground} (${theme})`, colour(ring, theme), colour(ground, theme), 3);
+      }
+    }
+    // The light and dark rings are the app's own focus colours: a theme's ring on its own ground is what it always was.
+    expect(colors.imageFocusLight.light).toBe(colors.focus.light);
+    expect(colors.imageFocusDark.dark).toBe(colors.focus.dark);
+  });
+
   it('the drop ring (tree row, 컬렉션 heading, table row) and the header drop line are --accent-ring, which keeps 3:1 on the surface and on its own soft fill in both themes', () => {
     for (const theme of THEMES) {
       const c = palette(theme);

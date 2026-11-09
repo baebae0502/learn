@@ -58,6 +58,13 @@ export const colors = {
   imageBgDark: { light: 'oklch(17.5% 0.004 250)', dark: 'oklch(17.5% 0.004 250)' },
   imageCheckerA: { light: 'oklch(80% 0 0)', dark: 'oklch(80% 0 0)' },
   imageCheckerB: { light: 'oklch(92% 0 0)', dark: 'oklch(92% 0 0)' },
+  /**
+   * The stage's focus ring on each of those grounds, 3:1 or more on it, in either app theme: the first two are the app's own focus
+   * colours (the light theme's on 밝게, the dark theme's on 어둡게), the third a darker teal (3.4:1 and 5:1) for both squares of the checkerboard.
+   */
+  imageFocusLight: { light: 'oklch(57% 0.096 190)', dark: 'oklch(57% 0.096 190)' },
+  imageFocusDark: { light: 'oklch(72% 0.11 190)', dark: 'oklch(72% 0.11 190)' },
+  imageFocusChecker: { light: 'oklch(48% 0.08 190)', dark: 'oklch(48% 0.08 190)' },
   /** Text fields and search fields. */
   bgField: { light: 'oklch(100% 0 0)', dark: 'oklch(100% 0 0 / 0.055)' },
   /** Push buttons (secondary) and segmented controls. */

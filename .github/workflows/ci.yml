@@ -17,8 +17,9 @@ concurrency:
 jobs:
   linux:
     runs-on: ubuntu-24.04
-    # M5's main run took 18 min (E2E 13, evidence 4); M6 adds its specs, the P1 gate and p1-perf. A hang still stops here.
-    timeout-minutes: 40
+    # M5's main run took 18 min (E2E 13, evidence 4); M7c's took 37 (E2E 29) on one runner and the E2E alone 37 on a slower
+    # one, which left the evidence step no room under 40. A hang still stops here.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

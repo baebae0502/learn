@@ -43,9 +43,10 @@ export interface PdfViewHandle {
   setZoom(zoom: ZoomValue): void;
   /**
    * Puts the viewer where it was left: the rotation, the zoom, then the page and the place in it (a saved value without
-   * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place.
+   * them opens at the top of the page, zoomed to fit). Done in one step, so no frame shows another place. `at: 'page'`
+   * places page `pageIndex` as a jump to it lands (a 본문 일치 row), in the saved rotation, zoom and modes.
    */
-  restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number): void;
+  restore(saved: Extract<ReadingLocator, { kind: 'pdf' }> | undefined, pageIndex: number, at?: 'saved' | 'page'): void;
   /** The pages flow another way: the page in view stays in view. Horizontal also ends any spread. Not a jump (no history). */
   setScroll(mode: ScrollModeName): void;
   setSpread(mode: SpreadModeName): void;
@@ -56,6 +57,12 @@ export interface PdfViewHandle {
   viewer(): PDFViewer | null;
   eventBus(): EventBus | null;
   linkService(): PDFLinkService | null;
+}
+
+/** A page to show once the reader is placed (a 본문 일치 row, spec 5.8), and the query its find bar then searches for. */
+export interface PendingJump {
+  pageIndex: number;
+  query: string;
 }
 
 export const INITIAL_PDF: PdfState = { ready: false, sized: false, placed: false, pageNumber: 1, pagesCount: 0, scale: 1, zoom: 'auto', rotation: 0, scroll: 'vertical', spread: 'none' };
@@ -98,6 +105,12 @@ export interface ReaderStore {
    */
   history: History<PdfPlace>;
   setHistory(h: History<PdfPlace>): void;
+  /**
+   * Left by a 본문 일치 row for this tab's reader: placed at that page when it first opens, or taken there by a jump when it
+   * is already placed; then the find bar opens on the query. With the scope, so a tab whose view is not mounted gets it too.
+   */
+  pendingJump: PendingJump | null;
+  setPendingJump(j: PendingJump | null): void;
   setNoPages(source: 'host' | 'reader', reason: NoPages | null): void;
   setPdf(p: Partial<PdfState> | null): void;
   setHandle(h: PdfViewHandle | null): void;
@@ -115,6 +128,8 @@ export function createReaderStore(): StoreApi<ReaderStore> {
     noPages: { host: null, reader: null },
     history: emptyHistory<PdfPlace>(),
     setHistory: (history) => set({ history }),
+    pendingJump: null,
+    setPendingJump: (pendingJump) => set({ pendingJump }),
     setNoPages: (source, reason) => set((s) => (s.noPages[source] === reason ? s : { noPages: { ...s.noPages, [source]: reason } })),
     setPdf: (p) => set((s) => ({ pdf: p === null ? null : { ...(s.pdf ?? INITIAL_PDF), ...p } })),
     setHandle: (handle) => set({ handle }),

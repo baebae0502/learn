@@ -6,17 +6,23 @@ import { expectNoSeriousA11y } from './a11y';
 import { holdReplies } from './dnd-helpers';
 import {
   FIXTURES,
+  closeReaderTab,
   expectTooltipText,
   hardKill,
   hoverLikeUser,
   importPaths,
   launch,
+  libraryTab,
   mainWindow,
+  openItem,
   pageTextCount,
+  readerTab,
   rowByTitle,
   runMenuCommand,
   seedBodyText,
   seedMetadata,
+  selectRows,
+  setPdfZoom,
   settled,
   showItemPanel,
   textExtraction,
@@ -459,6 +465,220 @@ test('an empty result at 1024: the column header strip still scrolls sideways (n
     await field(page).fill('');
     await expect(page.getByTestId('item-row')).toHaveCount(2);
     await expect.poll(async () => (await clip.evaluate((e) => e.scrollLeft)) - (await scroller.evaluate((e) => e.scrollLeft))).toBe(0);
+  } finally {
+    await app.close();
+  }
+});
+
+// ---- The item panel's 본문 일치 (spec 5.8): one PDF's pages that match, each opening the reader at that page ------------------
+
+const matches = (page: Page) => page.getByTestId('matches-section');
+const matchList = (page: Page) => matches(page).getByRole('listbox', { name: '본문 일치' });
+const matchRow = (page: Page, n: number) => matchList(page).locator(`[data-testid="match-row"][data-page="${n}"]`);
+const matchPages = (page: Page) => matchList(page).getByRole('option').evaluateAll((els) => els.map((e) => Number(e.getAttribute('data-page'))));
+const matchStatus = (page: Page) => matches(page).getByTestId('matches-status');
+const bodyTextLine = (page: Page) => page.locator('[data-testid="file-row"][data-field="bodyText"] dd');
+/** The test ids of the item panel's parts, top to bottom. */
+const panelParts = (page: Page) => page.getByTestId('inspector-item').evaluate((el) => [...el.children].map((c) => c.getAttribute('data-testid')));
+/** The shown reader's page as its store has it (the E2E-only window.__learnReader). */
+const readerPage = (page: Page) => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { pdf: { pageNumber: number } | null } } }).__learnReader.getState().pdf?.pageNumber ?? null);
+const findInput = (page: Page) => page.getByTestId('pdf-find-field').getByRole('searchbox');
+const findCount = (page: Page) => page.getByTestId('pdf-find-count');
+/** The page whose text layer holds the find bar's current match (pdf.js marks it .highlight.selected), in the shown reader. */
+const selectedMatchPage = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-testid="tab-panel"][data-active="true"] .textLayer .highlight.selected')?.closest('.page')?.getAttribute('data-page-number') ?? null);
+const editorField = (page: Page, name: string) => page.locator(`[data-testid="editor-field"][data-field="${name}"] :is(input, textarea)`);
+
+/** From now on, the pages the shown reader is at once it is placed: the first is where it was placed (never the saved page, then a jump). */
+async function recordPlacedPages(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __placed: number[]; __learnReader: { subscribe(f: () => void): () => void; getState(): { pdf: { placed: boolean; pageNumber: number } | null } } };
+    w.__placed = [];
+    w.__learnReader.subscribe(() => {
+      const pdf = w.__learnReader.getState().pdf;
+      if (pdf?.placed && w.__placed.at(-1) !== pdf.pageNumber) w.__placed.push(pdf.pageNumber);
+    });
+  });
+}
+const placedPages = (page: Page) => page.evaluate(() => (window as unknown as { __placed: number[] }).__placed);
+
+/** The reader shown at page `n`, the find bar on `query` with its current match in that page (`index` of `total` in the document). */
+async function expectReaderAt(page: Page, n: number, query: string, count: string): Promise<void> {
+  await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+  await expect.poll(() => readerPage(page)).toBe(n);
+  await expect(findInput(page)).toHaveValue(query);
+  await expect(findCount(page)).toHaveText(count);
+  await expect.poll(() => selectedMatchPage(page)).toBe(String(n));
+}
+
+/** bodyLibrary in 정보와 본문 with `query` typed and the row `title` selected in the shown item panel. */
+async function panelFor(app: ElectronApplication, page: Page, query: string, title: string): Promise<void> {
+  await field(page).fill(query);
+  await expect(rowByTitle(page, title)).toBeVisible();
+  await showItemPanel(app, page);
+  await selectRows(page, [title]);
+  await expect(page.getByTestId('inspector-head').locator('h2')).toHaveText(title);
+}
+
+test('본문 일치: right under the head, "쪽 30개" and twenty pages named "N쪽, …" with the word marked, then 외 10쪽; korean.pdf lists its pages 1–3; a PDF with no match has none after its 300 ms wait', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30, korean, titled } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'fluorescence', search30.title);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 30개');
+    await expect(matchList(page).getByRole('option')).toHaveCount(20);
+    expect(await matchPages(page)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    await expect(matchRow(page, 1)).toHaveAccessibleName(/^1쪽, .*fluorescence/);
+    await expect(matchRow(page, 1).locator('.pg')).toHaveText('1쪽');
+    await expect(matchRow(page, 1).locator('mark')).toHaveText('fluorescence');
+    await expect(matches(page).getByTestId('matches-more')).toHaveText('외 10쪽');
+    // The section's place: right under the head (an item never opened has no 읽기), above 정보.
+    expect((await panelParts(page)).slice(0, 3)).toEqual(['inspector-head', 'matches-section', 'info-section']);
+    // A done index says nothing in the file section.
+    await expect(page.getByTestId('file-section')).toBeVisible();
+    await expect(bodyTextLine(page)).toHaveCount(0);
+    await expectNoSeriousA11y(page, 'item panel, 본문 일치 with twenty pages and more');
+
+    // korean.pdf: page 2 is NFD in the file; its NFC text is found as on pages 1 and 3.
+    await panelFor(app, page, '메커니즘은', korean.title);
+    await expect.poll(() => matchPages(page)).toEqual([1, 2, 3]);
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 3개');
+    await expect(matches(page).getByTestId('matches-more')).toHaveCount(0);
+
+    // A PDF whose index is done and has no match: nothing for 300 ms, 찾는 중… while search:pages is held, then no section.
+    await holdReplies(app, ['search:pages'], 1200);
+    await field(page).fill('형광');
+    // The body answer is in the table: the query has settled, so the panel asks for this query's pages only.
+    await expect.poll(() => titles(page)).toEqual([search30.title, titled.title].sort());
+    // When the row is chosen and when the waiting line first shows, as the page sees them.
+    await page.evaluate(() => {
+      const log = { asked: performance.now(), shown: 0 };
+      (window as unknown as { __matchWait: typeof log }).__matchWait = log;
+      new MutationObserver(() => {
+        if (!log.shown && document.querySelector('[data-testid="matches-loading"]')) log.shown = performance.now();
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await selectRows(page, [titled.title]);
+    await expect(matches(page).getByTestId('matches-loading')).toHaveText('찾는 중…');
+    await expect(matches(page).getByRole('status')).toHaveText('찾는 중…');
+    const wait = await page.evaluate(() => (window as unknown as { __matchWait: { asked: number; shown: number } }).__matchWait);
+    expect(wait.shown - wait.asked, 'nothing for the first 300 ms').toBeGreaterThanOrEqual(300);
+    await expect(matches(page)).toHaveCount(0);
+    await expect(page.getByTestId('info-section')).toBeVisible();
+    await holdReplies(app, ['search:pages'], 0);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a 본문 일치 row opens the reader at its page in the saved zoom, the find bar on the query with its first match there — ↩ and a click; an open tab jumps, and ⌘[ goes back', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'fluorescence', search30.title);
+    await recordPlacedPages(page);
+    // ↩: the arrows move in the list, ↩ opens the row's page; a new reader is placed there at once.
+    await matchRow(page, 6).focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(matchRow(page, 7)).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(readerTab(page, search30.id)).toBeVisible();
+    await expectReaderAt(page, 7, 'fluorescence', '7 / 30');
+    expect((await placedPages(page))[0], 'placed at the page, not at the saved place first').toBe(7);
+
+    // The tab is open and placed: another row jumps there (recorded for back), the find bar searching from that page.
+    await libraryTab(page).click();
+    await expect(matchRow(page, 12)).toBeVisible();
+    // Opened once, the item has a 읽기 section: 본문 일치 stays above it.
+    await expect.poll(async () => (await panelParts(page)).slice(0, 3)).toEqual(['inspector-head', 'matches-section', 'reading-section']);
+    await matchRow(page, 12).click();
+    await expectReaderAt(page, 12, 'fluorescence', '12 / 30');
+    await runMenuCommand(app, 'nav.historyBack');
+    await expect.poll(() => readerPage(page)).toBe(7);
+
+    // A zoom of the reader's own is kept: closed and opened from a row, it comes back at that row's page in that zoom.
+    await setPdfZoom(page, 1.5);
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', '1.5');
+    await closeReaderTab(page);
+    await expect(readerTab(page, search30.id)).toHaveCount(0);
+    await expect(matchRow(page, 20)).toBeVisible();
+    await recordPlacedPages(page);
+    await matchRow(page, 20).click();
+    await expectReaderAt(page, 20, 'fluorescence', '20 / 30');
+    await expect(page.getByTestId('pdf-viewer')).toHaveAttribute('data-zoom', '1.5');
+    expect((await placedPages(page))[0], 'placed at the page in the saved zoom, not at the saved place first').toBe(20);
+  } finally {
+    await app.close();
+  }
+});
+
+test('a 본문 일치 row while 정보 편집 cannot let go opens nothing, and the item opened later is not taken to that page; once the edit lets go the row opens it there', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    const { search30 } = await bodyLibrary(app, page);
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, 'fluorescence', search30.title);
+    await page.getByTestId('info-edit').click();
+    await editorField(page, 'date').fill('어제');
+    await matchRow(page, 5).click();
+    // Asked first and refused (a marked field): the form says why, and no tab opens.
+    await expect(page.getByTestId('editor-unsaved')).toBeVisible();
+    await expect(editorField(page, 'date')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.getByTestId('library-table')).toBeVisible();
+    await expect(readerTab(page, search30.id)).toHaveCount(0);
+    await page.getByTestId('editor-discard').click();
+    await expect(page.getByTestId('info-editor')).toHaveCount(0);
+    // Opened the usual way: at its saved place (page 1), no find bar — the refused row left nothing behind.
+    await openItem(page, search30.title);
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await expect.poll(() => readerPage(page)).toBe(1);
+    await expect(page.getByTestId('pdf-page-field')).toHaveValue('1');
+    await expect(page.getByTestId('pdf-find-bar')).toHaveCount(0);
+
+    // Positive control: a valid edit is saved, then the row opens its page.
+    await libraryTab(page).click();
+    await page.getByTestId('info-edit').click();
+    await editorField(page, 'publisher').fill('학습출판');
+    await matchRow(page, 5).click();
+    await expectReaderAt(page, 5, 'fluorescence', '5 / 30');
+    expect((await detailOf(page, search30.id)).metadata.publisher).toBe('학습출판');
+  } finally {
+    await app.close();
+  }
+});
+
+test('the body index state: 색인 중 in 본문 일치 and the file section while it waits; once read, a done PDF lists its pages, 글자 없음 and 실패(암호) say so in both', async ({}, testInfo) => {
+  const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
+  try {
+    await textExtraction(app, 'pause');
+    const [search30, noText, locked] = await importPaths(page, [pdf('search-30.pdf'), pdf('no-text.pdf'), pdf('locked.pdf')]);
+    const waiting = await seedMetadata(page, search30!.id, { creators: [] }, '형광 관찰 기록');
+    const scan = await seedMetadata(page, noText!.id, { creators: [] }, '형광 스캔본');
+    const secret = await seedMetadata(page, locked!.id, { creators: [] }, '형광 암호 문서');
+    await chooseScope(page, '정보와 본문');
+    await panelFor(app, page, '형광', waiting.title);
+    await expect(matchStatus(page)).toHaveText('본문을 색인하는 중입니다.');
+    await expect(matchList(page)).toHaveCount(0);
+    await expect(bodyTextLine(page)).toHaveText('본문을 색인하는 중입니다.');
+    await expect(page.locator('[data-testid="file-row"][data-field="bodyText"] dt')).toHaveText('본문 검색');
+    await expectNoSeriousA11y(page, 'item panel, 본문 일치 while the index waits');
+
+    await textExtraction(app, 'now');
+    await textIdle(app);
+    // The index's notice brings the detail again: the rows take the line's place, and the file section is quiet.
+    await expect(matches(page).getByTestId('matches-count')).toHaveText('쪽 30개');
+    await expect(matchStatus(page)).toHaveCount(0);
+    await expect(bodyTextLine(page)).toHaveCount(0);
+
+    await selectRows(page, [scan.title]);
+    await expect(matchStatus(page)).toHaveText('글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.');
+    await expect(bodyTextLine(page)).toHaveText('글자를 찾지 못했습니다. 스캔한 PDF일 수 있습니다.');
+    await selectRows(page, [secret.title]);
+    await expect(matchStatus(page)).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
+    await expect(bodyTextLine(page)).toHaveText('암호로 보호된 PDF라 본문을 색인하지 않았습니다.');
+    await expectNoSeriousA11y(page, 'item panel, 본문 일치 for a locked PDF');
   } finally {
     await app.close();
   }

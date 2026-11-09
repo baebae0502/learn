@@ -7,6 +7,7 @@ import { t } from '../strings';
 import { IconButton } from '../ui/Button';
 import { cx } from '../ui/cx';
 import { showToast } from '../ui/toasts';
+import { bodyStateLine } from './bodyText';
 import { EditedCopies } from './EditedCopies';
 import { Section } from './Section';
 
@@ -21,7 +22,10 @@ interface FileRow {
   mono?: boolean;
 }
 
-/** 파일 (spec §5.3): where the technical values live (design-spec 9), paths and the hash in mono, end-ellipsised with the whole value as tooltip. */
+/**
+ * 파일 (spec §5.3): where the technical values live (design-spec 9), paths and the hash in mono, end-ellipsised with the whole value as tooltip.
+ * A PDF whose body index is not done says where it stands in a 본문 검색 line (M7c spec 5.8); a done one is quiet.
+ */
 export function FileSection({ detail }: { detail: ItemDetail }) {
   const home = useAppInfo().data?.homeDir;
   const f = detail.file;
@@ -33,6 +37,7 @@ export function FileSection({ detail }: { detail: ItemDetail }) {
       ? [{ field: 'location' as const, label: t.inspector.file.location, value: homeRelative(f.externalPath, home), title: f.externalPath, mono: true }]
       : []),
   ];
+  const bodyLine = detail.text === null ? null : bodyStateLine(detail.text);
   return (
     <Section id="file" title={t.inspector.sections.file} testId="file-section">
       <dl className="kv">
@@ -44,6 +49,12 @@ export function FileSection({ detail }: { detail: ItemDetail }) {
             </dd>
           </div>
         ))}
+        {bodyLine !== null && (
+          <div className="kv-row" data-testid="file-row" data-field="bodyText">
+            <dt>{t.inspector.bodyText.label}</dt>
+            <dd className="status">{bodyLine}</dd>
+          </div>
+        )}
         <div className="kv-row" data-testid="file-row" data-field="sha256">
           <dt>{t.inspector.fileSha}</dt>
           <dd className="sha">

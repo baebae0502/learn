@@ -1349,7 +1349,7 @@ test('M7b keyboard only: ↩ opens → ⌘1 → ⌘↩ opens behind → Tab into
   }
 });
 
-test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 정보와 본문 → Tab back to the field → a word only a PDF body has → ↓ to the row it found, with axe at every new stop', async ({}, testInfo) => {
+test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 정보와 본문 → Tab back to the field → a word only a PDF body has → ↓ to the row it found → F6 to the item panel → Tab to 본문 일치 → ↓ ↓ ↩ opens the reader at that page, with axe at every new stop', async ({}, testInfo) => {
   const { app, page } = await launch(testInfo.outputPath('library'), testInfo.outputPath('userdata'));
   const field = page.getByTestId('search-field').getByRole('searchbox');
   try {
@@ -1385,6 +1385,28 @@ test('M7c keyboard only: ⌘F → ⇧Tab to 검색 범위 → ↓ ↓ ↩ picks 
     await expect(row).toBeFocused();
     await expect(row).toHaveAttribute('aria-selected', 'true');
     await expectNoSeriousA11y(page, 'm7c-journey: the body match selected in the table');
+    // F6 to the item panel; its 본문 일치 list is one Tab stop that lands on the first row, the arrows move in it, ↩ opens.
+    await showItemPanel(app, page);
+    await f6To(page, 'inspector');
+    const list = page.getByRole('listbox', { name: '본문 일치' });
+    await expect(list.locator('[data-page="1"]')).toBeVisible();
+    for (let i = 0; i < 12 && !(await list.evaluate((el) => el.contains(document.activeElement))); i++) await page.keyboard.press('Tab');
+    await expect(list.locator('[data-page="1"]')).toBeFocused();
+    await expectNoSeriousA11y(page, 'm7c-journey: a 본문 일치 row focused');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(list.locator('[data-page="3"]')).toBeFocused();
+    await page.keyboard.press('Enter');
+    // The reader opens at page 3 with the find bar on the query, its field taking the keys (↩ goes on to the next match).
+    await expect(page.getByTestId('pdf-scroll')).toHaveAttribute('data-restored', '');
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as { __learnReader: { getState(): { pdf: { pageNumber: number } | null } } }).__learnReader.getState().pdf?.pageNumber ?? null))
+      .toBe(3);
+    const find = page.getByTestId('pdf-find-field').getByRole('searchbox');
+    await expect(find).toHaveValue('형광');
+    await expect(find).toBeFocused();
+    await expect(page.getByTestId('pdf-find-count')).toHaveText('3 / 30');
+    await expectNoSeriousA11y(page, 'm7c-journey: the reader at the row\'s page, the find bar on the query');
   } finally {
     await app.close();
   }

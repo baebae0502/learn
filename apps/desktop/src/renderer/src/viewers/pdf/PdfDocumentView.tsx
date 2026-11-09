@@ -366,7 +366,7 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
             if (typeof z === 'number') viewer.currentScale = z;
             else fitTo(z);
           },
-          restore: (saved, pageIndex) => {
+          restore: (saved, pageIndex, at = 'saved') => {
             const zoom = saved?.zoom ?? 'auto';
             // The modes come first: the zoom is fitted to the layout and the place is a place of that layout.
             const scroll = saved?.scroll ?? 'vertical';
@@ -380,8 +380,10 @@ export function PdfDocumentView({ doc, revisionId, restored, onFailed, onScrolle
             // The fit follows the current page, which is page 1 until the scroll below (R-21: a mixed-size document is fitted to the page in view, as pdf.js does).
             else fitTo(zoom);
             // Not a link: a place at the top or left edge of a page gets the room the mockup draws there (placement.ts), and one inside
-            // the margin, which a saved place can be, comes back exactly.
-            jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
+            // the margin, which a saved place can be, comes back exactly. A page asked for lands as place() lands it; the saved
+            // point belongs to another page.
+            if (at === 'page') jump({ pageNumber: pageIndex + 1 }, false, false);
+            else jump({ pageNumber: pageIndex + 1, destArray: [null, { name: 'XYZ' }, saved?.left ?? 0, saved?.top ?? null, null] }, false, false);
             // Reports the place the viewer is at now, so the saver starts from it and saves only what the reader changes.
             viewer.update();
             store.setPdf({ placed: true, pageNumber: pageIndex + 1, scale: viewer.currentScale, zoom, rotation: viewer.pagesRotation as Rotation, scroll: scrollNow(), spread: spreadNow() });

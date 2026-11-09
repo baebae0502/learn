@@ -107,6 +107,15 @@ export function useBodySearch(query: string, enabled: boolean): BodySearch {
   return bodySearchState(on, target !== '' && settled === target, read);
 }
 
+/**
+ * The query the body is searched for now: the quick search's, once it has held for BODY_SETTLE_MS ('' when the body is not
+ * searched). The item panel's 본문 일치 asks search:pages for this one, so a page list follows the table's body answer, not
+ * every keystroke.
+ */
+export function useSettledBodyQuery(): string {
+  return useSyncExternalStore(settle.subscribe, settle.get);
+}
+
 /** The library's quick search in the body: the session's query, in the stored scope, never in the trash view. */
 export function useQuickBodySearch(): BodySearch {
   const query = useLibrary((s) => s.query);

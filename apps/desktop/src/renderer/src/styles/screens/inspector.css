@@ -175,6 +175,72 @@
     margin-left: auto;
     margin-right: -6px; /* local: the glyph on the section's right inset, as the mockup's */
   }
+  /* A section's count at the head's end (본문 일치 "쪽 34개"): tertiary, on the section's right inset. */
+  .inspector .section-head > .section-count {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+
+  /* 본문 일치 (M7c spec 5.8, library.html?m=7c&matches=…): a row per page — the page in a 48 column, the snippet in two
+     lines — whose hover fill and focus ring reach 8 into the section's inset; the pages past twenty, then the state line. */
+  .inspector .match-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0 calc(var(--space-8) * -1);
+    outline: none;
+  }
+  .inspector .match-row {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr); /* local: the page column, "9999쪽" at most */
+    column-gap: var(--space-8);
+    padding: var(--space-4) var(--space-8);
+    border-radius: var(--radius-md);
+    font: var(--type-footnote);
+    cursor: default;
+    outline: none;
+  }
+  .inspector .match-row[data-hovered] {
+    background: var(--fill-hover);
+  }
+  .inspector .match-row[data-pressed] {
+    background: var(--fill-pressed);
+  }
+  .inspector .match-row[data-focus-visible] {
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: calc(var(--focus-ring-width) * -1);
+  }
+  .inspector .match-row .pg {
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .inspector .match-row .snip {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    color: var(--text-primary);
+  }
+  /* The words found, as the table marks a title's (library.css .item-title mark). */
+  .inspector .match-row mark {
+    background: none;
+    color: var(--accent-text);
+    font-weight: var(--weight-semibold);
+  }
+  .inspector .match-more {
+    padding-top: var(--space-4);
+    color: var(--text-tertiary);
+    font: var(--type-footnote);
+  }
+  .inspector .match-status {
+    color: var(--text-secondary);
+    font: var(--type-footnote);
+  }
+  /* 파일's 본문 검색 line: a sentence, wrapped in the value column. */
+  .inspector .kv dd.status {
+    color: var(--text-secondary);
+  }
 
   /* Label–value rows (library.html .kv). */
   .inspector .kv {

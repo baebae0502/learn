@@ -80,7 +80,7 @@ import { countRender } from '../ui/renderCount';
 import { Toasts, showToast } from '../ui/toasts';
 import { ReaderSidebar } from '../viewers/pdf/ReaderSidebar';
 import { readerActions } from '../viewers/pdf/readerActions';
-import { useReader } from '../viewers/pdf/readerStore';
+import { useReader, type PendingJump } from '../viewers/pdf/readerStore';
 import { canGoBack, canGoForward } from '../viewers/pdf/history';
 import { reopenSelection, useSelection } from '../translation/useSelectionText';
 import { ReaderTabs } from '../viewers/ReaderTabs';
@@ -412,6 +412,15 @@ export function MainWindow(_props: { info: AppInfo }) {
       })
       .catch(actionFailed);
   }, []);
+  /**
+   * A 본문 일치 row (spec 5.8): item.open's way — an open 정보 편집 is asked first, then the tab rules. The reader of the item's tab
+   * is told the page and the query before the tab shows, so a new reader is placed there and one already placed jumps. A
+   * refused edit leaves nothing behind.
+   */
+  const openAtPage = useCallback((itemId: string, at: PendingJump) => afterEditing(() => {
+    readerScopes.get(itemId).reader.getState().setPendingJump(at);
+    useShell.getState().openTabs([itemId]);
+  }), []);
   /** 라이브러리에서 보기: the library tab, the row selected and brought into view; a view that hides it gives way to 내 라이브러리. */
   const revealInLibrary = useCallback((itemId: string) => afterEditing(() => {
     const library = useLibrary.getState();
@@ -497,6 +506,7 @@ export function MainWindow(_props: { info: AppInfo }) {
     clearTagFilter: () => useLibrary.getState().clearTagFilter(),
     back: () => afterEditing(() => selectTab('library')),
     openItems: (itemIds, opts) => openItems(itemIds, opts?.background === true),
+    openAtPage,
     closeTab: (itemId) => {
       const shell = useShell.getState();
       const id = itemId ?? shell.tabs.active;
@@ -553,7 +563,7 @@ export function MainWindow(_props: { info: AppInfo }) {
       if (next) setSort(next);
     },
     modal,
-  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
+  }), [viewKind, blocked, held, pdfOpen, imageDrawn, pdfScroll, historyBack, historyForward, pdfSelection, translationOff, sidebarHidden, showsInspector, inspectorHidden, textSize, count, imports, importRunning, backupRunning, startBackup, restoreRunning, startRestore, selectTab, openItems, openAtPage, revealInLibrary, tabCount, closedOpenable, relink, exportCopy, toggleSidebar, toggleInspector, showShortcuts, checkLibrary, setTextSize, modal, selection.count, selection.available, selection.relinkable, sharedTagPositions, scopeKind, collectionCount, duplicateGroupCount, tagPositions, tagCount, searching, sort.column, sort.direction, columnsShown, trashCount, setSort]);
   useMenuCommands(env);
   useReportContext(env);
   useKeymap(env, !modal);

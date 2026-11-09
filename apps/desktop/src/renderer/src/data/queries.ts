@@ -39,6 +39,8 @@ export const keys = {
   trash: ['library', 'trash'] as const,
   /** search:body's answer for one query (spec 5.6): under ['search'], which the body's notices mark stale (libraryChange.ts). */
   bodySearch: (query: string) => ['search', 'body', query] as const,
+  /** search:pages for one item and query (the item panel's 본문 일치): under ['search'] with the body's other answers. */
+  bodyPages: (itemId: string, query: string) => ['search', 'pages', itemId, query] as const,
   /** How far the body index is: main's search:progress notices put each new count here. */
   bodyProgress: ['search', 'progress'] as const,
 };

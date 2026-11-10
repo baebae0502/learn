@@ -10,6 +10,7 @@ import {
   createImportPause, fsyncProbe, installTestHooks, seedAssets, seedItems, seedOrganize, stageCommitFailures,
   type LearnTestHooks, type OrganizeSeedDeps, type SeedAssetsInput, type SeedAssetsResult, type SeedOrganizeInput, type SeedRepo, type SeedRow,
 } from './test-hooks';
+import type { TextScheduler } from './text/scheduler';
 
 const FROM = { id: 'from-id', type: 'video', storageMode: 'managed', assetId: 'asset-1', revisionId: 'rev-1' } as LibraryItem;
 const ROWS: SeedRow[] = [
@@ -339,6 +340,30 @@ describe('the library check\'s hooks (Task 8)', () => {
     expect(hooks.libraryCheck()).toEqual({ check: null, auto: 'not-due' });
     await hooks.requestLibraryCheck();
     expect(request).toHaveBeenCalledTimes(1);
+    delete (globalThis as { __learnTest?: unknown }).__learnTest;
+  });
+});
+
+describe('the body-text scheduler\'s state hook', () => {
+  it('textState reads the scheduler\'s state and main\'s steps its first start waits on; main is null when index.ts gives none', () => {
+    const state = { live: false, sawChecked: false, events: [{ at: 1, what: 'firstIdle' }] };
+    const main = { firstIdle: null, checkStart: 5, checkEnd: 0, auto: 'pending', lane: null, imports: 'idle' } as const;
+    const scheduler = { state: vi.fn(() => state) } as unknown as TextScheduler;
+    const install = (withMain: boolean) =>
+      installTestHooks({
+        importCommits: () => ({}) as never,
+        repo: () => ({}) as never,
+        organize: () => {
+          throw new Error('not used');
+        },
+        broadcast: vi.fn(),
+        text: { extractor: {} as never, assetsDir: '/assets', scheduler: () => scheduler, ...(withMain ? { main: () => main } : {}) },
+      });
+    install(true);
+    const hooks = (globalThis as { __learnTest?: LearnTestHooks }).__learnTest!;
+    expect(hooks.textState()).toEqual({ scheduler: state, main });
+    install(false);
+    expect((globalThis as { __learnTest?: LearnTestHooks }).__learnTest!.textState()).toEqual({ scheduler: state, main: null });
     delete (globalThis as { __learnTest?: unknown }).__learnTest;
   });
 });

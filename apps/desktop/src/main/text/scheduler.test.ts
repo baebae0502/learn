@@ -4,7 +4,7 @@ import { TEXT_LIMITS, newId } from '@learn/domain';
 import type { ExtractEvents, ExtractOutcome, TextExtractor } from './extractor';
 import type { ExtractRequest } from './messages';
 import { createThrottle } from '../jobs/throttle';
-import { createTextScheduler, type TextScheduler } from './scheduler';
+import { EVENTS_KEPT, createTextScheduler, type TextScheduler } from './scheduler';
 
 let db: Db;
 let repo: TextRepository;
@@ -621,5 +621,107 @@ describe('library broadcasts', () => {
     r.s.libraryChanged('restore');
     expect(r.x.calls).toHaveLength(calls); // nothing ran inside the call
     await until(() => r.x.calls.length === calls + 1);
+  });
+});
+
+describe('state (E2E textState)', () => {
+  const whats = (s: TextScheduler) => s.state().events.map((e) => (e.detail === undefined ? e.what : `${e.what} ${e.detail}`));
+
+  it('says what the first start still waits for, then the trail of a run, with times', async () => {
+    const a = addPdf(1);
+    const r = rig([reads(2)], { paused: true });
+    r.s.firstIdle();
+    r.s.control('now');
+    expect(r.s.state()).toMatchObject({
+      live: false, paused: false, looping: false, sawFirstIdle: true, sawChecked: false, skipDelay: true, current: null, lastError: null,
+    });
+    expect(whats(r.s)).toEqual(['firstIdle', 'start-waits paused', 'control now', 'start-waits startupChecked']);
+    const before = Date.now();
+    r.s.startupChecked();
+    await r.s.idle();
+    const id = (db.prepare('SELECT id FROM jobs').pluck().get() as string).slice(0, 8);
+    expect(job(a.sha).state).toBe('done');
+    expect(whats(r.s).slice(4)).toEqual([
+      'startupChecked', 'begin', 'loop-start', `job-start ${id}`, 'idle-wait', `job-end ${id} done`, 'loop-end empty', 'idle-settled 1',
+    ]);
+    expect(r.s.state()).toMatchObject({ live: true, looping: false, sawChecked: true, current: null, idleWaiters: 0, unavailable: 0 });
+    for (const e of r.s.state().events.slice(4)) expect(e.at).toBeGreaterThanOrEqual(before);
+  });
+
+  it('a loop that throws before its job starts: the job stays queued with no attempt, idle() waits, and the state keeps the code', async () => {
+    const a = addPdf(1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const busy = Object.assign(new Error('database is locked: /Users/someone/Library/papers/secret.pdf'), { code: 'SQLITE_BUSY' });
+      const r = rig([reads(1)], { paused: true, files: () => { throw busy; } });
+      r.s.firstIdle();
+      r.s.startupChecked();
+      r.s.control('now');
+      const settled = vi.fn();
+      void r.s.idle().then(settled);
+      await tick();
+      await tick();
+      expect(settled).not.toHaveBeenCalled();
+      expect(job(a.sha)).toMatchObject({ state: 'queued', attempts: 0 }); // what the database of a stalled run shows
+      expect(r.s.state()).toMatchObject({ live: true, looping: false, lastError: 'INTERNAL/SQLITE_BUSY', idleWaiters: 1 });
+      expect(whats(r.s).slice(-4)).toEqual(['loop-start', 'idle-wait', 'loop-error INTERNAL/SQLITE_BUSY', 'loop-end error']);
+      expect(warn.mock.calls).toEqual([['[text] the body text loop stopped: INTERNAL/SQLITE_BUSY']]);
+      expect(JSON.stringify(r.s.state())).not.toContain('secret');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a loop parked on a busy work line says so, and that the line came free', async () => {
+    const a = addPdf(1);
+    const r = rig([reads(1)]);
+    r.busy.value = true;
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    expect(r.s.state()).toMatchObject({ live: true, looping: true, laneBusy: true });
+    expect(whats(r.s).at(-1)).toBe('lane-wait');
+    r.busy.release();
+    await r.s.idle();
+    expect(job(a.sha).state).toBe('done');
+    expect(whats(r.s)).toContain('lane-free');
+    expect(r.s.state()).toMatchObject({ looping: false, laneBusy: false });
+  });
+
+  it('a wake before the first start is refused and says why; an unavailable file is counted', async () => {
+    const gone = addPdf(1);
+    const r = rig([], { paused: true, files: () => null });
+    r.s.wake();
+    expect(whats(r.s)).toEqual(['wake', 'kick-refused not-live']);
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    await r.s.idle();
+    expect(r.s.state().unavailable).toBe(1);
+    expect(whats(r.s)).toContain(`job-skip ${(db.prepare('SELECT id FROM jobs').pluck().get() as string).slice(0, 8)} unavailable`);
+    expect(job(gone.sha)).toMatchObject({ state: 'queued', attempts: 0 });
+  });
+
+  it('a held batch is told apart from a stuck worker: what is held and after how many pages', async () => {
+    addPdf(1);
+    const r = rig([reads(100)]);
+    r.s.hold(20);
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    await until(() => r.s.held());
+    expect(r.s.state()).toMatchObject({ looping: true, held: 1, holdAfter: 20 });
+    r.s.hold(null);
+    await r.s.idle();
+    expect(r.s.state()).toMatchObject({ looping: false, held: 0, holdAfter: null });
+  });
+
+  it(`keeps the newest ${EVENTS_KEPT} steps`, () => {
+    const r = rig([], { paused: true });
+    r.s.firstIdle();
+    for (let i = 0; i < 100; i++) r.s.libraryChanged('collections');
+    const { events } = r.s.state();
+    expect(events).toHaveLength(EVENTS_KEPT);
+    expect(events.every((e) => e.what === 'libraryChanged' && e.detail === 'collections')).toBe(true); // the oldest went first
   });
 });

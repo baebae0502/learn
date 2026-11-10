@@ -9,10 +9,11 @@ import type { BackupJob } from './jobs/backup-job';
 import type { RestoreJob } from './jobs/restore-job';
 import type { ImportQueue } from './jobs/import-queue';
 import type { JobKind, JobLane } from './jobs/lane';
+import type { FirstIdleReport } from './first-idle';
 import type { AutoOutcome } from './library-check';
 import type { ExtractOutcome, TextExtractor } from './text/extractor';
 import { seedBodyText, type SeedBodyTextInput } from './text/seed-body-text';
-import type { TextScheduler } from './text/scheduler';
+import type { TextScheduler, TextSchedulerState } from './text/scheduler';
 import type { ExtractLimits } from './text/messages';
 import type { FakeMode } from './translation/fake';
 import type { RecordedRequest, TranslationNetIntercept } from './translation/net-intercept';
@@ -445,12 +446,28 @@ export interface LearnTestHooks {
   textHold(input: { afterPages: number | null }): void;
   textHeld(): boolean;
   textStats(): ReturnType<TextScheduler['stats']>;
+  /** What the scheduler waits for and did last, and main's steps its first start waits on (codes only). */
+  textState(): { scheduler: TextSchedulerState; main: TextMainState | null };
   /** Sets how the fake translation engine answers (E2E always runs on it). */
   translationFake(mode: FakeMode): void;
   /** How many requests the fake translation engine has taken since launch (a cache hit or a refusal takes none). */
   translationCalls(): number;
   /** What the test's translation host took and refused (only when the app runs the real engine over it, LEARN_TRANSLATION_NET=intercept). */
   translationNet(): { requests: RecordedRequest[]; refused: string[] };
+}
+
+/** Main's side of the body-text scheduler's first start (textState): what it waits on, as main saw it. */
+export interface TextMainState {
+  /** The main window's first idle, step by step; null before it came. */
+  firstIdle: FirstIdleReport | null;
+  /** The startup check's perf marks (epoch ms, 0 = not reached): checkEnd stays 0 when the check threw. */
+  checkStart: number;
+  checkEnd: number;
+  /** What the startup check did about the automatic sheet ('pending' until it decided). */
+  auto: AutoOutcome | 'pending';
+  /** The work line's running job, and the import queue's state. */
+  lane: JobKind | null;
+  imports: ImportQueueState['state'];
 }
 
 /**
@@ -487,6 +504,8 @@ export function installTestHooks(deps: {
     repo?(): TextRepository;
     /** The sha256 of an item's original file, or null. */
     shaOf?(itemId: string): string | null;
+    /** Main's steps the scheduler's first start waits on (textState). */
+    main?(): TextMainState;
   };
   /** The fake translation engine (index.ts, E2E only). */
   translation?: { setMode(mode: FakeMode): void; calls(): number };
@@ -592,6 +611,7 @@ export function installTestHooks(deps: {
     textHold: ({ afterPages }) => textScheduler().hold(afterPages),
     textHeld: () => textScheduler().held(),
     textStats: () => textScheduler().stats(),
+    textState: () => ({ scheduler: textScheduler().state(), main: deps.text?.main?.() ?? null }),
     importPause: ({ at }) => pause.pause(at),
     importResume: () => pause.resume(),
     importWaiting: () => pause.waiting(),

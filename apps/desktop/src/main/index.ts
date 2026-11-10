@@ -1,6 +1,6 @@
 // First: ESM evaluates imports in order, so the cold-start marks module runs before anything else (its value is
 // performance.timeOrigin either way).
-import { markPerf } from './perf';
+import { markPerf, perf } from './perf';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,7 @@ import { registerUncaughtLog } from './uncaught-log';
 import { DETERMINISTIC_SWITCHES, isDeterministic, isE2E, isTranslationNetIntercept } from './deterministic';
 import { createFlushGate } from './edit-flush';
 import { broadcast, onBroadcast, sendEvent } from './events';
+import { runFirstIdle, type FirstIdleReport } from './first-idle';
 import { registerAllIpc } from './ipc/all';
 import { revealBackupFolder, revealRestoredFolder } from './ipc/backup';
 import { IMPORT_FILTERS } from './ipc/library';
@@ -128,6 +129,8 @@ let quitGuard: QuitGuard | null = null;
 let checkStopped = false;
 /** What the startup check did about the automatic sheet (E2E reads it). */
 let autoCheck: AutoOutcome | 'pending' = 'pending';
+/** The main window's newest first idle, step by step (E2E's textState reads it); null before the first. */
+let firstIdle: FirstIdleReport | null = null;
 
 function openMainWindow(): BrowserWindow {
   const win = createMainWindow({
@@ -681,13 +684,17 @@ if (!app.requestSingleInstanceLock()) {
         changed: (theme) => themeFollower.pageChanged(theme),
         shown: (sender, shade) => themeFollower.shown(sender.id, shade),
       },
-      // The main window drew its first list and went idle: the settings window and the ⌘/ sheet's window are prepared, and
-      // the automatic check may show.
+      // The main window drew its first list and went idle: the automatic check may show, the body text may start, and the
+      // settings window and the ⌘/ sheet's window are prepared.
       prepareSettings: () => {
-        settingsWindow.prepare();
-        if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
-        firstScreenDrawn();
-        text?.firstIdle();
+        firstIdle = runFirstIdle({
+          screen: () => firstScreenDrawn(),
+          text: () => text?.firstIdle(),
+          settings: () => settingsWindow.prepare(),
+          sheets: () => {
+            if (mainWindow && !mainWindow.isDestroyed()) sheets.prepare(mainWindow);
+          },
+        });
       },
       switchLibrary,
     };
@@ -729,6 +736,15 @@ if (!app.requestSingleInstanceLock()) {
           assetsDir: pdfjsAssetsDir(here),
           scheduler: () => text,
           repo: () => deps.getContext().text,
+          // What the scheduler's first start waits for, as main saw it.
+          main: () => ({
+            firstIdle,
+            checkStart: perf.checkStart,
+            checkEnd: perf.checkEnd,
+            auto: autoCheck,
+            lane: jobs.busy(),
+            imports: imports.state().state,
+          }),
           shaOf: (itemId) => {
             const item = ctx?.repo.getItem(itemId);
             return (item && ctx?.repo.getAsset(item.assetId)?.sha256) || null;

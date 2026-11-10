@@ -30,6 +30,15 @@ describe('isolation', () => {
     expect({ meta: sessionMeta('claude'), system: systemPromptParam('I') }).toMatchSnapshot();
   });
 
+  it('names the record folders by both rules the CLI may use, and refuses a Claude launch without its CLI', () => {
+    const dirs = historyDirs({ agentHome: '/a', work: '/Users/a/Library/Application Support/Learn/Tutor/work/x.y', home: '/h' });
+    expect(dirs).toEqual([
+      '/a/projects/-Users-a-Library-Application Support-Learn-Tutor-work-x-y', '/h/.cache/claude-cli-nodejs/-Users-a-Library-Application Support-Learn-Tutor-work-x-y', '/h/Library/Caches/claude-cli-nodejs/-Users-a-Library-Application Support-Learn-Tutor-work-x-y',
+      '/a/projects/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y', '/h/.cache/claude-cli-nodejs/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y', '/h/Library/Caches/claude-cli-nodejs/-Users-a-Library-Application-Support-Learn-Tutor-work-x-y',
+    ]);
+    expect(() => agentEnv('claude', { PATH: '/x' }, { path: '/p', agentHome: '/a', tmpDir: '/t', cliPath: null })).toThrow();
+  });
+
   it('hands the fake agent its script and log instead of the isolation variables', () => {
     const base = { PATH: '/x', HOME: '/h', LEARN_FAKE_AGENT_SCRIPT: 'ignored', ANTHROPIC_API_KEY: 'k' };
     const env = agentEnv('fake', base, { path: '/p', agentHome: '/a', tmpDir: '/t', cliPath: null, fake: { script: '/s.json', log: '/l.log' } });

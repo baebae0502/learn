@@ -4,23 +4,30 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AGENT_CATALOG, installAdapter } from './catalog';
 import { compareVersions, createAgentDetector, run, searchDirs, type DetectDeps } from './detect';
+import { launchSpec } from './isolation';
 
 const made: string[] = [];
+/** Every folder a test made: the only place a test may execute anything from. */
+const roots: string[] = [];
 const tempRoot = () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'learn-detect-'));
   made.push(d);
+  roots.push(d);
   return d;
 };
-afterEach(() => {
-  for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true });
-});
 
 // Never created: the detector only names these, and the user data is not inside the home (so the login command is absolute).
 const USERDATA = path.join(os.tmpdir(), `learn-detect-userdata-${process.pid}`);
 const HOME = path.join(os.tmpdir(), `learn-detect-home-${process.pid}`);
+roots.push(USERDATA, HOME);
+afterEach(() => {
+  runs.length = 0;
+  for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  fs.rmSync(USERDATA, { recursive: true, force: true }); // the detector makes the Learn-only folder for --version
+});
 const PKG = '@agentclientprotocol/claude-agent-acp';
 
-interface FakeLayout { cli?: string; cliOutput?: string; adapter?: string; outside?: boolean }
+interface FakeLayout { cli?: string; cliOutput?: string; adapter?: string; outside?: boolean; nodeShebang?: boolean }
 /** An npm-global-shaped install in a fresh folder; returns the folder to search. */
 function fakeInstall(layout: FakeLayout): string {
   const root = tempRoot();
@@ -28,7 +35,12 @@ function fakeInstall(layout: FakeLayout): string {
   fs.mkdirSync(bin, { recursive: true });
   if (layout.cli !== undefined || layout.cliOutput !== undefined) {
     const file = path.join(bin, 'claude');
-    fs.writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' '${layout.cliOutput ?? `${layout.cli} (Claude Code)`}'\n`, { mode: 0o755 });
+    const out = layout.cliOutput ?? `${layout.cli} (Claude Code)`;
+    if (layout.nodeShebang) {
+      // the interpreter is a fake script of its own, found only through PATH
+      fs.writeFileSync(path.join(bin, 'node'), `#!/bin/sh\nprintf '%s\\n' '${out}'\n`, { mode: 0o755 });
+      fs.writeFileSync(file, '#!/usr/bin/env node\n', { mode: 0o755 });
+    } else fs.writeFileSync(file, `#!/bin/sh\nprintf '%s\\n' '${out}'\n`, { mode: 0o755 });
   }
   if (layout.adapter !== undefined) {
     const pkg = path.join(root, 'lib', 'node_modules', PKG);
@@ -45,13 +57,17 @@ function fakeInstall(layout: FakeLayout): string {
 }
 
 type Probe = 'ok' | 'login' | 'old' | 'failed';
+const runs: Array<{ file: string; args: string[]; opts: Parameters<DetectDeps['run']>[2] }> = [];
 function deps(o: Partial<DetectDeps> & { probe?: Probe } = {}): DetectDeps & { calls: string[] } {
   const calls: string[] = [];
   const { probe = 'ok', ...rest } = o;
   return {
     env: {}, home: HOME, platform: 'linux', searchPath: tempRoot(), loginShellAllowed: false,
+    knownDirs: [],
     run: async (file, args, opts) => {
+      if (!roots.some((r) => file.startsWith(r + path.sep))) throw new Error(`test refused to run ${file}`);
       calls.push(`run ${path.basename(file)}`);
+      runs.push({ file, args, opts });
       return run(file, args, opts);
     },
     loginShellPath: async () => {
@@ -76,6 +92,94 @@ describe('detect', () => {
     expect(await state({ cli: '2.1.300', adapter: '0.103.0' })).toMatchObject({ state: 'old', note: null });
     expect(await state({ cli: '2.1.318', adapter: '0.103.0' }, 'login')).toMatchObject({ state: 'login', command: `CLAUDE_CONFIG_DIR="${path.join(USERDATA, 'Tutor', 'agents', 'claude')}" claude auth login` });
     expect(await state({ cli: '2.1.318', adapter: '0.103.0' })).toMatchObject({ state: 'ready', cliVersion: '2.1.318', adapterVersion: '0.103.0' });
+  });
+
+  it('keeps a lockdown that was reported while the login check ran', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.103.0' });
+    const d = deps({ searchPath });
+    const detector = createAgentDetector(d);
+    d.probeLogin = async () => {
+      detector.markLockedOut('claude');
+      return 'ok';
+    };
+    expect((await detector.report('cached')).agents[0]).toMatchObject({ state: 'old', note: 'lockdown' });
+    expect(detector.cachedReport()!.agents[0]).toMatchObject({ state: 'old', note: 'lockdown' });
+  });
+
+  it('says old for an adapter below the minimum', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.99.9' });
+    expect((await createAgentDetector(deps({ searchPath })).report('cached')).agents[0]).toMatchObject({ state: 'old', note: null, adapterVersion: '0.99.9' });
+  });
+
+  it('turns a throwing login check into adapter and a throwing login shell into nothing, and the report still resolves', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.103.0' });
+    const d = deps({ searchPath });
+    d.probeLogin = async () => {
+      throw new Error('boom');
+    };
+    expect((await createAgentDetector(d).report('cached')).agents[0]).toMatchObject({ state: 'adapter' });
+    const s = deps({ searchPath: null, env: { PATH: '' }, loginShellAllowed: true });
+    s.loginShellPath = async () => {
+      throw new Error('boom');
+    };
+    expect((await createAgentDetector(s).report('research')).agents[0]).toMatchObject({ state: 'missing' });
+  });
+
+  it('keeps the file detection verified for the launch although the bin link is retargeted afterwards', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.103.0' });
+    const detector = createAgentDetector(deps({ searchPath }));
+    await detector.report('cached');
+    const verified = fs.realpathSync(path.join(searchPath, 'claude-agent-acp'));
+    const evil = path.join(searchPath, 'evil.js');
+    fs.writeFileSync(evil, '');
+    fs.rmSync(path.join(searchPath, 'claude-agent-acp'));
+    fs.symlinkSync(evil, path.join(searchPath, 'claude-agent-acp'));
+    const d = detector.detected('claude')!;
+    expect(d.adapterEntry).toBe(verified);
+    expect(launchSpec(d, { execPath: '/electron', fakeEntry: '/f', env: {}, cwd: '/c' }).args).toEqual([verified]);
+  });
+
+  it('reads --version with the allow-listed environment in the Learn-only folder, and hands the searched folders on as Detected.path', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.103.0' });
+    const d = deps({
+      searchPath,
+      env: {
+        PATH: '/should/not/leak', HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1', ANTHROPIC_API_KEY: 'k', anthropic_api_key: 'k', MY_API_KEY: 'k',
+        NODE_OPTIONS: '--inspect', XDG_CACHE_HOME: '/c', ELECTRON_RUN_AS_NODE: '1', CLAUDE_CONFIG_DIR: '/users/own',
+      },
+    });
+    const detector = createAgentDetector(d);
+    await detector.report('cached');
+    const home = path.join(USERDATA, 'Tutor', 'agents', 'claude');
+    const call = runs.find((r) => r.args[0] === '--version')!;
+    expect(call.opts.env).toEqual({
+      HOME: '/h', USER: 'u', LANG: 'ko_KR.UTF-8', HTTPS_PROXY: 'http://p:1', PATH: searchPath, DISABLE_AUTOUPDATER: '1', CLAUDE_CONFIG_DIR: home,
+    });
+    expect(call.opts.cwd).toBe(home);
+    expect(fs.statSync(home).mode & 0o777).toBe(0o700);
+    expect(detector.detected('claude')!.path).toBe(searchPath);
+  });
+
+  it('reads the version of a CLI whose interpreter is only in the searched folder', async () => {
+    const searchPath = fakeInstall({ cli: '2.1.318', adapter: '0.103.0', nodeShebang: true });
+    const report = await createAgentDetector(deps({ searchPath, env: { PATH: '/nowhere' } })).report('cached');
+    expect(report.agents[0]).toMatchObject({ state: 'ready', cliVersion: '2.1.318' });
+  });
+
+  it('keeps the login shell\'s folders for the run: a recheck still finds what only the login shell showed', async () => {
+    const found = fakeInstall({ cli: '2.1.318', adapter: '0.103.0' });
+    const d = deps({ loginShellAllowed: true, searchPath: null, env: { PATH: '' }, probe: 'login' });
+    d.loginShellPath = async () => found;
+    const detector = createAgentDetector(d);
+    expect((await detector.report('research')).agents[0]).toMatchObject({ state: 'login' });
+    expect((await detector.report('recheck', 'claude')).agents[0]).toMatchObject({ state: 'login' });
+    expect(detector.detected('claude')!.path.split(':')).toContain(found);
+    expect(d.calls.filter((c) => c === 'loginShell')).toHaveLength(0);
+  });
+
+  it('refuses to run anything outside the test\'s own folders', async () => {
+    const d = deps();
+    await expect(d.run('/usr/local/bin/claude', ['--version'], { timeoutMs: 100, maxBytes: 10 })).rejects.toThrow('refused');
   });
 
   it('reports one row, claude', async () => {
@@ -122,7 +226,7 @@ describe('detect', () => {
     const detector = createAgentDetector(deps({ searchPath: fakeInstall({ cli: '2.1.318', adapter: '0.103.0' }) }));
     expect((await detector.report('cached')).agents[0]).toMatchObject({ state: 'ready' });
     detector.markLogin('claude');
-    expect(detector.cachedReport()!.agents[0]).toMatchObject({ state: 'login', command: expect.stringContaining('claude auth login') });
+    expect(detector.cachedReport()!.agents[0]).toMatchObject({ state: 'login', command: `CLAUDE_CONFIG_DIR="${path.join(USERDATA, 'Tutor', 'agents', 'claude')}" claude auth login` });
   });
 
   it('answers cached from memory, shares one detection between simultaneous callers, and never starts one for cachedReport', async () => {
@@ -183,6 +287,13 @@ describe('searchDirs', () => {
     expect(searchDirs({ env: { PATH: '/p' }, home: '/h', platform: 'linux', searchPath: '/a:/b::/a' })).toEqual(['/a', '/b']);
   });
 
+  it('drops entries that are not absolute, from the search path, PATH and the login shell alike', () => {
+    expect(searchDirs({ env: { PATH: 'bin:/p:.' }, home: '/h', platform: 'linux', searchPath: '' , knownDirs: [] }, '/x:rel')).toEqual([]);
+    const dirs = searchDirs({ env: { PATH: 'bin:/p:.' }, home: '/h', platform: 'linux', searchPath: null, knownDirs: [] }, '/x:rel');
+    expect(dirs.filter((d) => !d.startsWith('/h/'))).toEqual(['/p', '/x']);
+    expect(searchDirs({ env: {}, home: '/h', platform: 'linux', searchPath: '/a:rel' })).toEqual(['/a']);
+  });
+
   it('puts PATH first, then the known folders in the spec\'s order, and leaves the macOS-only ones out on Linux', () => {
     const linux = searchDirs({ env: { PATH: '/usr/bin:/usr/local/bin' }, home: '/h', platform: 'linux', searchPath: null });
     expect(linux).toEqual(['/usr/bin', '/usr/local/bin', '/h/.local/bin', '/h/.claude/local', '/h/.npm-global/bin', '/h/.volta/bin', '/h/.bun/bin', '/h/.asdf/shims', '/h/.local/share/mise/shims']);
@@ -232,6 +343,6 @@ describe('run', () => {
     const spy = vi.fn(run);
     const detector = createAgentDetector(deps({ searchPath: fakeInstall({ cli: '2.1.318', adapter: '0.103.0' }), run: spy }));
     await detector.report('cached');
-    expect(spy).toHaveBeenCalledWith(expect.stringMatching(/claude$/), ['--version'], { timeoutMs: 5000, maxBytes: 4096 });
+    expect(spy).toHaveBeenCalledWith(expect.stringMatching(/claude$/), ['--version'], expect.objectContaining({ timeoutMs: 5000, maxBytes: 4096 }));
   });
 });

@@ -3,16 +3,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { TUTOR_TIMEOUTS, type AgentId, type AgentState, type AgentStatus, type AgentsReport, type RealAgentId } from '@learn/domain';
 import { AGENT_CATALOG, installAdapter, type AgentCatalogEntry } from './catalog';
-import { agentHomePath, loginCommand } from './isolation';
+import { ENV_ALLOW, agentHome, agentHomePath, loginCommand } from './isolation';
 
-export interface Detected { entry: AgentCatalogEntry; cliPath: string | null; cliVersion: string | null; adapterEntry: string | null; adapterVersion: string | null }
+/** path: the ':'-joined absolute folders searched for it, login shell's included; the agent's PATH. */
+export interface Detected { entry: AgentCatalogEntry; path: string; cliPath: string | null; cliVersion: string | null; adapterEntry: string | null; adapterVersion: string | null }
 export interface DetectDeps {
   env: NodeJS.ProcessEnv; home: string; platform: NodeJS.Platform;
   /** E2E (LEARN_E2E): LEARN_AGENT_SEARCH_PATH, or an empty folder when unset (I8). Live (LEARN_AGENT_LIVE=1): LEARN_AGENT_LIVE_PATH. Otherwise null. */
   searchPath: string | null;
   /** false under E2E and live runs. */
   loginShellAllowed: boolean;
-  run(file: string, args: string[], o: { timeoutMs: number; maxBytes: number }): Promise<{ stdout: string; code: number | null }>;
+  /** Replaces the fixed system folders (/usr/local/bin, /opt/homebrew/bin) so a test never reaches a real CLI. */
+  knownDirs?: readonly string[];
+  run(file: string, args: string[], o: { timeoutMs: number; maxBytes: number; env?: Record<string, string>; cwd?: string }): Promise<{ stdout: string; code: number | null }>;
   /** $SHELL -ilc 'printf %s "$PATH"', 3 s, 64 KiB. */
   loginShellPath(): Promise<string | null>;
   /** Task 12 runs it through the supervisor. */
@@ -26,9 +29,9 @@ export interface DetectDeps {
 const VERSION = /(\d+\.\d+\.\d+)/;
 
 /** A program run without a shell: output capped at maxBytes, killed at timeoutMs (code null), rejected when it cannot start. */
-export function run(file: string, args: string[], o: { timeoutMs: number; maxBytes: number }): Promise<{ stdout: string; code: number | null }> {
+export function run(file: string, args: string[], o: { timeoutMs: number; maxBytes: number; env?: Record<string, string>; cwd?: string }): Promise<{ stdout: string; code: number | null }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'ignore'], shell: false });
+    const child = spawn(file, args, { stdio: ['ignore', 'pipe', 'ignore'], shell: false, detached: true, ...(o.env ? { env: o.env } : {}), ...(o.cwd ? { cwd: o.cwd } : {}) });
     const chunks: Buffer[] = [];
     let size = 0;
     let settled = false;
@@ -39,7 +42,11 @@ export function run(file: string, args: string[], o: { timeoutMs: number; maxByt
       resolve({ stdout: Buffer.concat(chunks).toString('utf8'), code });
     };
     const stop = () => {
-      child.kill('SIGKILL');
+      try {
+        if (child.pid !== undefined) process.kill(-child.pid, 'SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
       child.stdout.destroy();
     };
     const timer = setTimeout(() => {
@@ -90,8 +97,8 @@ const versionDirs = (root: string, suffix: string): string[] => {
     .map((n) => path.join(root, n, suffix));
 };
 
-export function searchDirs(deps: Pick<DetectDeps, 'env' | 'home' | 'platform' | 'searchPath'>, extraPath?: string): string[] {
-  const split = (p: string | undefined) => (p ?? '').split(':').filter((d) => d !== '');
+export function searchDirs(deps: Pick<DetectDeps, 'env' | 'home' | 'platform' | 'searchPath' | 'knownDirs'>, extraPath?: string): string[] {
+  const split = (p: string | undefined) => (p ?? '').split(':').filter((d) => d !== '' && path.isAbsolute(d));
   const out: string[] = [];
   const add = (dirs: string[]) => {
     for (const d of dirs) if (!out.includes(d)) out.push(d);
@@ -104,7 +111,7 @@ export function searchDirs(deps: Pick<DetectDeps, 'env' | 'home' | 'platform' | 
   const mac = deps.platform === 'darwin';
   add(split(deps.env.PATH));
   add([
-    ...(mac ? ['/opt/homebrew/bin'] : []), '/usr/local/bin', path.join(h, '.local/bin'), path.join(h, '.claude/local'),
+    ...(deps.knownDirs ?? [...(mac ? ['/opt/homebrew/bin'] : []), '/usr/local/bin']), path.join(h, '.local/bin'), path.join(h, '.claude/local'),
     path.join(h, '.npm-global/bin'), path.join(h, '.volta/bin'), path.join(h, '.bun/bin'),
     ...(mac ? [path.join(h, 'Library/pnpm')] : []),
     ...versionDirs(path.join(h, '.nvm/versions/node'), 'bin'),
@@ -140,7 +147,7 @@ function readAdapter(binFile: string, pkgName: string): { entry: string; version
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { name?: unknown; version?: unknown };
       if (pkg.name === pkgName) {
         if (real !== path.join(dir, 'dist', 'index.js')) return null;
-        return { entry: binFile, version: typeof pkg.version === 'string' ? (VERSION.exec(pkg.version)?.[1] ?? null) : null };
+        return { entry: real, version: typeof pkg.version === 'string' ? (VERSION.exec(pkg.version)?.[1] ?? null) : null };
       }
     } catch {
       // not a package folder; keep going up
@@ -166,6 +173,8 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
   const statusBy = new Map<RealAgentId, AgentStatus>();
   const lockedOut = new Set<AgentId>();
   const loginMarked = new Set<AgentId>();
+  /** What the login shell showed on a research: kept for the run, so a recheck finds the same things. */
+  let loginShellDirs: string | undefined;
   let hasReport = false;
   let inflight: Promise<AgentsReport> | null = null;
 
@@ -175,9 +184,9 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
     status(e, d, 'login', loginCommand(e.id, agentHomePath(deps.tutorHome, e.id), deps.home), null);
   const lockStatus = (e: AgentCatalogEntry, d: Detected) => status(e, d, 'old', null, 'lockdown');
 
-  async function find(e: AgentCatalogEntry, extraPath: string | undefined): Promise<Detected> {
-    const dirs = searchDirs(deps, extraPath);
-    const d: Detected = { entry: e, cliPath: null, cliVersion: null, adapterEntry: null, adapterVersion: null };
+  async function find(e: AgentCatalogEntry): Promise<Detected> {
+    const dirs = searchDirs(deps, loginShellDirs);
+    const d: Detected = { entry: e, path: dirs.join(':'), cliPath: null, cliVersion: null, adapterEntry: null, adapterVersion: null };
     for (const dir of dirs) {
       const file = path.join(dir, e.cli);
       if (isFile(file, true)) {
@@ -187,7 +196,16 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
     }
     if (d.cliPath !== null) {
       try {
-        const out = await deps.run(d.cliPath, ['--version'], { timeoutMs: TUTOR_TIMEOUTS.versionMs, maxBytes: 4096 });
+        const home = agentHome(deps.tutorHome, e.id);
+        const env: Record<string, string> = {};
+        for (const key of ENV_ALLOW) {
+          const value = deps.env[key];
+          if (value !== undefined) env[key] = value;
+        }
+        env.PATH = d.path;
+        env.DISABLE_AUTOUPDATER = '1';
+        env.CLAUDE_CONFIG_DIR = home;
+        const out = await deps.run(d.cliPath, ['--version'], { timeoutMs: TUTOR_TIMEOUTS.versionMs, maxBytes: 4096, env, cwd: home });
         d.cliVersion = VERSION.exec(out.stdout)?.[1] ?? null;
       } catch {
         d.cliVersion = null;
@@ -214,16 +232,22 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
     if (d.cliVersion === null || d.adapterVersion === null || compareVersions(d.cliVersion, min.cli) < 0 || compareVersions(d.adapterVersion, min.adapter) < 0) {
       return status(e, d, 'old', null, null);
     }
-    const probe = await deps.probeLogin(d);
+    let probe: Awaited<ReturnType<DetectDeps['probeLogin']>>;
+    try {
+      probe = await deps.probeLogin(d);
+    } catch {
+      probe = 'failed';
+    }
+    if (lockedOut.has(e.id)) return lockStatus(e, d);
     if (probe === 'failed') return status(e, d, 'adapter', installAdapter(e), null);
     if (probe === 'old') return status(e, d, 'old', null, null);
     if (probe === 'login' || loginMarked.has(e.id)) return loginStatus(e, d);
     return status(e, d, 'ready', null, null);
   }
 
-  async function detectOne(e: AgentCatalogEntry, extraPath?: string): Promise<void> {
+  async function detectOne(e: AgentCatalogEntry): Promise<void> {
     loginMarked.delete(e.id);
-    const d = await find(e, extraPath);
+    const d = await find(e);
     detectedBy.set(e.id, d);
     statusBy.set(e.id, await judge(e, d));
   }
@@ -239,11 +263,17 @@ export function createAgentDetector(deps: DetectDeps): AgentDetector {
     const entries = mode === 'recheck' && agent !== undefined && hasReport ? AGENT_CATALOG.filter((e) => e.id === agent) : AGENT_CATALOG;
     for (const e of entries) await detectOne(e);
     if (mode === 'research' && deps.loginShellAllowed && entries.some((e) => detectedBy.get(e.id)!.cliPath === null || detectedBy.get(e.id)!.adapterEntry === null)) {
-      const extra = await deps.loginShellPath();
+      let extra: string | null = null;
+      try {
+        extra = await deps.loginShellPath();
+      } catch {
+        extra = null;
+      }
       if (extra !== null) {
+        loginShellDirs = extra;
         for (const e of entries) {
           const d = detectedBy.get(e.id)!;
-          if (d.cliPath === null || d.adapterEntry === null) await detectOne(e, extra);
+          if (d.cliPath === null || d.adapterEntry === null) await detectOne(e);
         }
       }
     }

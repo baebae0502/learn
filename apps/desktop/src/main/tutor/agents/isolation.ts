@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { AgentId, RealAgentId } from '@learn/domain';
 import { RpcError } from '../acp/jsonrpc';
 import type { ToolCallInfo } from '../acp/client';
+import { AGENT_CATALOG } from './catalog';
 import type { Detected } from './detect';
 
 /** What an agent process may inherit from Learn's own environment; everything else, API keys included, stays behind. */
@@ -50,8 +51,10 @@ export function agentEnv(
     if (o.fake.log !== null) env.LEARN_FAKE_AGENT_LOG = o.fake.log;
     return env;
   }
+  // without it the adapter would silently use the binary bundled with it
+  if (o.cliPath === null) throw new Error('Claude Code needs its detected CLI');
   env.CLAUDE_CONFIG_DIR = o.agentHome;
-  if (o.cliPath !== null) env.CLAUDE_CODE_EXECUTABLE = o.cliPath;
+  env.CLAUDE_CODE_EXECUTABLE = o.cliPath;
   env.ENABLE_CLAUDEAI_MCP_SERVERS = 'false';
   env.DISABLE_AUTOUPDATER = '1';
   env.CLAUDE_CODE_TMPDIR = o.tmpDir;
@@ -103,17 +106,17 @@ export function loginCommand(agent: RealAgentId, agentHomeDir: string, home: str
       target = rel === '' ? '$HOME' : `$HOME/${quoted(rel.split(path.sep).join('/'))}`;
     }
   }
-  const variable = { claude: 'CLAUDE_CONFIG_DIR' }[agent];
-  const cli = { claude: 'claude' }[agent];
-  return `${variable}="${target}" ${cli} auth login`;
+  const cli = AGENT_CATALOG.find((e) => e.id === agent)!.cli;
+  return `CLAUDE_CONFIG_DIR="${target}" ${cli} auth login`;
 }
 
 /** Claude's own records of a work folder: in its config folder, and the cache folders its own environment gives it (no XDG_CACHE_HOME). Claude's rule for every id. */
 export function historyDirs(o: { agentHome: string; work: string; home: string }): string[] {
-  const name = o.work.replace(/[/.]/g, '-');
-  return [
+  // the slash-and-dot rule was seen on Linux; the CLI is believed to replace every other character too (a space in the macOS path)
+  const names = [...new Set([o.work.replace(/[/.]/g, '-'), o.work.replace(/[^A-Za-z0-9]/g, '-')])];
+  return names.flatMap((name) => [
     path.join(o.agentHome, 'projects', name),
     path.join(o.home, '.cache', 'claude-cli-nodejs', name),
     path.join(o.home, 'Library', 'Caches', 'claude-cli-nodejs', name),
-  ];
+  ]);
 }

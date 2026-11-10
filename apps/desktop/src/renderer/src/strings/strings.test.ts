@@ -125,6 +125,12 @@ describe('a closing quote keeps its particle (design-spec 4)', () => {
 });
 
 /**
+ * Main files whose Korean is sample data, not copy: the testing menu's (main's tests check that nothing shipped imports
+ * it) and the fake agent's answers, a sample of model output (the packaged app leaves the fake out).
+ */
+const SAMPLE_COPY = ['apps/desktop/src/main/menu/testing.ts', 'apps/desktop/src/main/tutor/fake-agent/fake-agent.ts'];
+
+/**
  * Korean string literals of the main process and the library package (no tests, comments removed first): error
  * messages become toasts and notices, dialog titles, buttons and filter names are on screen too (N-3, C-4).
  */
@@ -137,7 +143,7 @@ function mainProcessCopy(): Array<{ at: string; text: string }> {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
         const p = path.join(d, e.name);
         if (e.isDirectory()) walk(p);
-        else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && path.relative(root, p) !== 'apps/desktop/src/main/menu/testing.ts') { // its Korean is sample data; main's tests check that nothing shipped imports it
+        else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name) && !SAMPLE_COPY.includes(path.relative(root, p))) {
           const code = fs.readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
           for (const m of code.matchAll(literal)) {
             const text = m[1] ?? m[2] ?? m[3] ?? '';

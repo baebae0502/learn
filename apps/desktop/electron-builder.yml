@@ -7,6 +7,8 @@ directories:
   output: release
 files:
   - out/**/*
+  # The scripted fake agent is for development and tests only: never in an installed app (J58).
+  - '!out/main/fake-agent.js'
   - package.json
 # better-sqlite3 ships N-API prebuilds; nothing to rebuild for Electron.
 npmRebuild: false

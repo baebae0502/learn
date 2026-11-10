@@ -9,10 +9,12 @@ export default defineConfig({
   main: {
     build: {
       // The body-text worker is its own entry beside index.js: a utility process loads it by path (main/text/fork.ts).
+      // So is the fake agent, which Learn spawns by path in an unpackaged build only (electron-builder.yml leaves it out).
       rollupOptions: {
         input: {
           index: fileURLToPath(new URL('src/main/index.ts', import.meta.url)),
           'text-worker': fileURLToPath(new URL('src/main/text/worker.ts', import.meta.url)),
+          'fake-agent': fileURLToPath(new URL('src/main/tutor/fake-agent/fake-agent.ts', import.meta.url)),
         },
       },
     },

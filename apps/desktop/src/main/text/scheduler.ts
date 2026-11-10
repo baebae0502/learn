@@ -20,6 +20,8 @@ export interface TextScheduler {
   /** Resolves when no PDF outside the trash has a queued job and nothing runs. */
   idle(): Promise<void>;
   stats(): { batchMs: number[]; pagesWritten: number; activeMs: number };
+  /** What it is waiting for and what it did last (E2E's textState): flags and codes only. */
+  state(): TextSchedulerState;
   /** Kills the worker; a running job is requeued and gets its attempt back (a SIGKILL leaves it to the next startup check). */
   dispose(): void;
 }
@@ -44,6 +46,56 @@ export interface TextSchedulerDeps {
 }
 
 const BATCH_TIMES_KEPT = 5000;
+/** The newest steps state() reports: enough for a session's start and the run that follows. */
+export const EVENTS_KEPT = 64;
+
+/** One step of the scheduler, as state() reports it. The detail is a mode, a reason, a code or a job id's first characters, never a file name or a title. */
+export interface TextSchedulerEvent {
+  /** Epoch ms (Date.now), comparable with main's perf marks and a trace's wall time. */
+  at: number;
+  what:
+    | 'firstIdle' | 'startupChecked' | 'control' | 'start-waits' | 'delay' | 'begin' | 'kick-refused' | 'wake' | 'libraryChanged'
+    | 'loop-start' | 'loop-end' | 'lane-wait' | 'lane-free' | 'job-start' | 'job-skip' | 'job-end' | 'loop-error'
+    | 'idle-wait' | 'idle-settled' | 'stop' | 'dispose';
+  detail?: string;
+}
+
+export interface TextSchedulerState {
+  live: boolean;
+  paused: boolean;
+  looping: boolean;
+  disposed: boolean;
+  sawFirstIdle: boolean;
+  sawChecked: boolean;
+  skipDelay: boolean;
+  delayStarted: boolean;
+  delayDone: boolean;
+  dirty: boolean;
+  /** The running job's id, its first eight characters. */
+  current: string | null;
+  /** Files skipped for the session: no readable copy. */
+  unavailable: number;
+  laneBusy: boolean;
+  /** idle() calls not answered yet. */
+  idleWaiters: number;
+  /** The code of the last error that stopped the loop. */
+  lastError: string | null;
+  events: TextSchedulerEvent[];
+}
+
+/** A job id as the trail shows it: enough to tell two jobs apart. */
+const short = (jobId: string): string => jobId.slice(0, 8);
+/**
+ * What stopped the loop, as codes only (the logging rule): toLearnError's code, with the thrown value's own code (an errno or
+ * SQLite's result code) or, for an INTERNAL, its class (TypeError) — those tell apart what INTERNAL alone does not.
+ */
+export function errorCode(e: unknown): string {
+  const code = toLearnError(e).code;
+  const own = (e as { code?: unknown } | null)?.code;
+  if (typeof own === 'string' && /^[A-Z][A-Z0-9_]*$/.test(own) && own !== code) return `${code}/${own}`;
+  if (code === 'INTERNAL' && e instanceof Error && /^[A-Za-z]+$/.test(e.name)) return `${code}/${e.name}`;
+  return code;
+}
 
 export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   const now = d.now ?? nowIso;
@@ -68,6 +120,12 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   const holders: Array<(keepGoing: boolean) => void> = [];
   let idleWaiters: Array<() => void> = [];
   const stats = { batchMs: [] as number[], pagesWritten: 0, activeMs: 0 };
+  let lastError: string | null = null;
+  const events: TextSchedulerEvent[] = [];
+  const note = (what: TextSchedulerEvent['what'], detail?: string): void => {
+    events.push(detail === undefined ? { at: Date.now(), what } : { at: Date.now(), what, detail });
+    if (events.length > EVENTS_KEPT) events.splice(0, events.length - EVENTS_KEPT);
+  };
 
   const releaseHolders = (keepGoing: boolean): void => {
     for (const go of holders.splice(0)) go(keepGoing);
@@ -83,6 +141,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   };
   const settleIdle = (): void => {
     if (idleWaiters.length === 0 || !isIdle()) return;
+    note('idle-settled', String(idleWaiters.length));
     for (const go of idleWaiters.splice(0)) go();
   };
 
@@ -90,27 +149,41 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     if (live || disposed || paused) return;
     live = true;
     dirty = true;
+    note('begin');
     kick();
   };
   const maybeStart = (): void => {
-    if (live || disposed || paused || !sawFirstIdle || !sawChecked) return;
+    if (live || disposed) return;
+    // What the first start still waits for: the trail shows which signal never came.
+    const waits = paused ? 'paused' : !sawFirstIdle ? 'firstIdle' : !sawChecked ? 'startupChecked' : null;
+    if (waits !== null) {
+      note('start-waits', waits);
+      return;
+    }
     if (skipDelay || delayDone) {
       begin();
       return;
     }
     if (delayStarted) return;
     delayStarted = true;
+    note('delay', 'start');
     void delay(TEXT_LIMITS.startDelayMs).then(() => {
       delayDone = true;
+      note('delay', 'done');
       maybeStart();
     });
   };
   const kick = (): void => {
-    if (!live || looping || disposed || paused) return;
+    const refused = !live ? 'not-live' : looping ? 'looping' : disposed ? 'disposed' : paused ? 'paused' : null;
+    if (refused !== null) {
+      note('kick-refused', refused);
+      return;
+    }
     void runLoop();
   };
 
   const stopCurrent = (): void => {
+    note('stop', 'library');
     stoppedByLibrary = current?.jobId ?? null;
     d.extractor.stop();
     releaseHolders(false);
@@ -120,11 +193,16 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     const file = d.file(job.sha256);
     if (file === null) {
       unavailable.add(job.sha256);
+      note('job-skip', `${short(job.id)} unavailable`);
       return null;
     }
     const started = repo.start(job.id, now());
-    if (started === undefined) return null;
+    if (started === undefined) {
+      note('job-skip', `${short(job.id)} not-queued`);
+      return null;
+    }
     if ('gaveUp' in started) {
+      note('job-skip', `${short(job.id)} gave-up`);
       d.announce(repo.itemIdsOfSha(job.sha256));
       // Nothing settles a job that gave up: its own notice, sent now, counts it as answered.
       d.progress();
@@ -134,6 +212,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     const { payload } = started.job;
     current = { jobId: job.id, sha256: job.sha256 };
     stoppedByLibrary = null;
+    note('job-start', short(job.id));
     const began = performance.now();
     try {
       return await d.extractor.run(
@@ -172,6 +251,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   }
 
   function settle(repo: TextRepository, job: { id: string; sha256: string }, outcome: ExtractOutcome): void {
+    note('job-end', `${short(job.id)} ${outcome.kind}`);
     switch (outcome.kind) {
       case 'done':
         repo.finish(job.id, { pages: outcome.pages, truncated: outcome.truncated }, now());
@@ -195,21 +275,29 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
 
   async function runLoop(): Promise<void> {
     looping = true;
+    note('loop-start');
+    let ended = 'error';
     try {
       for (;;) {
         const repo = d.repo();
-        if (disposed || paused || repo === null) return;
+        if (disposed || paused || repo === null) {
+          ended = disposed ? 'disposed' : paused ? 'paused' : 'no-repo';
+          return;
+        }
         if (dirty) {
           dirty = false;
           repo.requeueInterrupted(now());
           repo.backfill(now());
         }
         if (d.laneBusy()) {
+          note('lane-wait');
           await d.laneIdle();
+          note('lane-free');
           continue;
         }
         const job = repo.next(unavailable);
         if (job === undefined) {
+          ended = 'empty';
           d.progress();
           d.progressNow();
           return;
@@ -222,12 +310,18 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
           throw e;
         }
         // Disposed: the database may be closed, and dispose() already put the job back.
-        if (disposed) return;
+        if (disposed) {
+          ended = 'disposed';
+          return;
+        }
         if (outcome !== null) settle(repo, job, outcome);
       }
     } catch (e) {
-      console.warn(`[text] the body text loop stopped: ${toLearnError(e).code}`); // the code only: no names in a log
+      lastError = errorCode(e);
+      note('loop-error', lastError);
+      console.warn(`[text] the body text loop stopped: ${lastError}`); // codes only: no names in a log
     } finally {
+      note('loop-end', ended);
       looping = false;
       releaseHolders(false);
       settleIdle();
@@ -237,18 +331,22 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
   return {
     firstIdle() {
       sawFirstIdle = true;
+      note('firstIdle');
       maybeStart();
     },
     startupChecked() {
       sawChecked = true;
+      note('startupChecked');
       maybeStart();
     },
     wake() {
       dirty = true;
+      note('wake');
       kick();
     },
     libraryChanged(reason) {
       if (disposed) return;
+      note('libraryChanged', reason);
       // The PDF counts of the index progress moved (a file in or out of the trash, imported, purged), whether or not a job runs.
       if (reason === 'trash' || reason === 'restore' || reason === 'purge' || reason === 'import') d.progress();
       if (reason === 'import') return;
@@ -269,6 +367,7 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
       }
     },
     control(mode) {
+      note('control', mode);
       if (disposed) return;
       if (mode === 'pause') {
         paused = true;
@@ -289,10 +388,21 @@ export function createTextScheduler(d: TextSchedulerDeps): TextScheduler {
     held: () => holders.length > 0,
     idle() {
       if (isIdle()) return Promise.resolve();
+      note('idle-wait');
       return new Promise<void>((resolve) => idleWaiters.push(resolve));
     },
     stats: () => ({ batchMs: [...stats.batchMs], pagesWritten: stats.pagesWritten, activeMs: stats.activeMs }),
+    state: () => ({
+      live, paused, looping, disposed, sawFirstIdle, sawChecked, skipDelay, delayStarted, delayDone, dirty,
+      current: current === null ? null : short(current.jobId),
+      unavailable: unavailable.size,
+      laneBusy: d.laneBusy(),
+      idleWaiters: idleWaiters.length,
+      lastError,
+      events: events.map((e) => ({ ...e })),
+    }),
     dispose() {
+      note('dispose');
       disposed = true;
       // A quit is not a failure: the running job goes back to the queue with its attempt given back (a kill leaves it running, counted).
       const repo = d.repo();

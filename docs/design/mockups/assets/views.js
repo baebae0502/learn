@@ -2570,7 +2570,7 @@
   };
   const agentMenuItems = (status = 'ready') =>
     `${status === 'ready' ? mi('Claude Code', { check: true }) : mi(`Claude Code — ${AGENT_FLAG[status][2]}`, { disabled: true, check: true, title: AGENT_MENU_WHY[status] })}
-      ${mi(`${icon('flask-conical', 'sm')} 가짜 에이전트`, { title: '개발·데모 빌드에서만 보입니다' })}
+      ${mi(`가짜 에이전트 ${icon('flask-conical', 'sm')}`, { title: '개발·데모 빌드에서만 보입니다' })}
       <div class="msep"></div>
       ${mi('에이전트 고르기…')}`;
   const agentMenu = () => `<div class="menu" data-anchor="agent-btn" data-place="above" style="width:272px" role="menu" ${ms('T1a', '에이전트 메뉴(가짜 에이전트는 개발·데모 빌드에서만)')}>
@@ -2633,7 +2633,7 @@
       main,
       inspector: panel,
       overlays,
-      cls: panel && tutorMode ? 'has-tutor' : '',
+      cls: `${panel && tutorMode ? 'has-tutor' : ''} ${stageOpts.scan ? 'is-scan-doc' : ''}`,
       style: `--tutor-w:${tutorMode ? slotW : tu.width}px;${desktop ? `--win-w:${winW}px;--win-h:${winH}px` : ''}`,
     });
   }
@@ -2702,7 +2702,7 @@
 
   // Consent (state 2) — one company and one agent (T1a: Claude Code → Anthropic), what goes out (ADR-0013's context plus this
   // session's earlier turns and the material's name), the tools that are off, the Learn-only settings (the spike confirmed both:
-  // a separate login (S7) and the agent's records in that folder (S8)), and the usage (the signed-in account's subscription).
+  // a separate login (S7) and the agent's records in that folder (S8)), and the usage and charges (the signed-in account).
   // No memory sentence: there is no memory before M10.
   const CONSENT_LEAD =
     '튜터는 이&nbsp;Mac에 설치한 에이전트 프로그램 Claude&nbsp;Code로 답합니다. 질문은 Anthropic이 처리합니다. 사용량과 요금은 Claude&nbsp;Code에 로그인한 계정에서 나갑니다.';
@@ -2771,7 +2771,7 @@
       <span class="a-text">${a.text}</span>${action}${cmd}
     </div>`;
   };
-  const fakeAgentRow = (on = false) => `<div class="agent-row" role="radio" aria-checked="${on}"><span class="radio ${on ? 'is-on' : ''}"></span>
+  const fakeAgentRow = (on = false) => `<div class="agent-row" role="radio" aria-checked="${on}"><span class="radio ${on ? 'is-on is-focus' : ''}"></span>
       <span class="a-name">가짜 에이전트<span class="badge-soft warn">개발용</span></span>
       <span class="a-text">정해 둔 답과 인용을 돌려줍니다.</span></div>`;
   function agentPicker() {
@@ -2791,7 +2791,7 @@
     const statuses = tu.states ? AGENT_STATES : [tu.agents === 'none' ? 'missing' : tu.agents === 'blocked' ? 'login' : 'ready'];
     const ready = statuses.includes('ready');
     return `<div class="tu-scroll" ${ms('T1a', tu.states ? '에이전트 고르기 · 행의 다섯 상태(비평용 한 화면)' : '에이전트 고르기(감지된 에이전트와 상태)')}>${head}
-        <div class="agent-group" role="radiogroup" aria-label="에이전트">${statuses.map((st) => agentRow(agentOf(st), { focus: st === 'ready', tag: true, on: tu.backend !== 'fake' })).join('')}</div>
+        <div class="agent-group" role="radiogroup" aria-label="에이전트">${statuses.map((st) => agentRow(agentOf(st), { focus: st === 'ready' && tu.backend !== 'fake', tag: true, on: tu.backend !== 'fake' })).join('')}</div>
         ${tu.states ? '' : dev}
       </div>${ready ? foot() : foot({ start: '시작', why: 'Claude Code가 준비되지 않았습니다 — 안내를 따른 뒤 다시 확인하세요' })}`;
   }
@@ -2898,7 +2898,7 @@
     const s = tu.state;
     const convo = (inner, opts = {}) => panel({ body: thread(inner, opts.thread), comp: (opts.before ?? '') + composer(opts.comp), ...opts.panel });
     // With the no-text notice the body says only what is true: no pages can be verified (a scan has no text to select either).
-    const emptyBody = tu.text === 'empty' ? '이&nbsp;자료에 대해 물어보세요. 튜터는 일반 지식으로 답하고, 답의 쪽은 확인되지 않습니다.' : tu.text ? '본문에서 구간을 선택하면 질문에 붙습니다. 답의 쪽은 확인되지 않습니다.' : '이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.';
+    const emptyBody = tu.text === 'empty' ? '이&nbsp;자료에 대해 물어보세요. 튜터는 일반&nbsp;지식으로 답하고, 답의 쪽은 확인되지 않습니다.' : tu.text ? '이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙지만, 답의 쪽은 확인되지 않습니다.' : '이&nbsp;자료에 대해 물어보세요. 본문에서 구간을 선택하면 질문에 붙고, 답에는 근거가 된 쪽이 함께 표시됩니다.';
     const emptySession = `<div class="pane-empty" ${ms('T1a', '빈 세션')}>${icon('file-text')}<div class="pe-title">${esc(T.item)}</div><div class="pe-text">${emptyBody}</div></div>`;
 
     if (tu.view === 'library') {
@@ -2928,7 +2928,7 @@
       return readerWindow({ panel: convo(sessionTitle() + exchange1({}), { thread: { end: false }, comp: { menuOpen: true }, panel: { overlay: agentMenu() } }) });
     }
     if (tu.menu === 'session') {
-      return readerWindow({ panel: convo(sessionTitle() + exchange1({})), nav: 'sessions', navList: readerSessions(), overlays: sessionMenu() });
+      return readerWindow({ panel: convo(sessionTitle() + exchange1({})), nav: 'sessions', navList: readerSessions(), overlays: `${sessionMenu()}<div class="sim-note">네이티브&nbsp;메뉴입니다. 모양은 시스템이 그립니다.</div>` });
     }
     switch (s) {
       case 1:
@@ -2949,7 +2949,7 @@
         });
       case 4:
         // A PDF without readable text: the line above the empty session; the selection cannot attach (no text), asking is not blocked.
-        if (tu.text) return readerWindow({ panel: panel({ head: { newDisabled: true }, line: textNote(tu.text), body: emptySession, comp: composer({ focus: true }) }), stageOpts: { scan: tu.text === 'empty' } });
+        if (tu.text) return readerWindow({ panel: panel({ head: { newDisabled: true }, line: textNote(tu.text), body: emptySession, comp: composer({ focus: true }) }), stageOpts: { scan: tu.text === 'empty' }, overlays: tu.text === 'empty' ? '<div class="sim-note">스캔한&nbsp;쪽 — 글자 층 없음, 그림은 예시</div>' : '' });
         // A selection across pages attaches the first page's text only; the chip's tooltip says so.
         if (tu.attach === 'multipage') {
           return readerWindow({
@@ -3124,7 +3124,7 @@
             ${sess('선택 · 포커스', { selected: true, focused: true })}
             ${sess('키보드 커서(선택 안 됨)', { cursor: true })}
             ${renameRow({ title: '이름 바꾸기(제자리)' })}
-            ${row('가짜', sessionRow({ title: '정해 둔 답으로 시험한 세션', at: '오늘 오전 9:12 · 가짜 에이전트' }, { ic: 'flask-conical' }))}
+            ${sessionRow({ title: '정해 둔 답으로 시험한 세션', at: '오늘 오전 9:12 · 가짜 에이전트' }, { ic: 'flask-conical' })}
             <span class="note">시간은 행에 쓰지 않는다 — 날 묶음(오늘 · 어제 · 지난 7일)이 날을, 툴팁이 시간을 말한다</span>
           </section>
           <section class="panel">

@@ -75,7 +75,7 @@
 - ③ `menu-agent`: Claude Code ✓ · (개발) 가짜 에이전트 · — · 에이전트 고르기…(준비 안 됐으면 "Claude Code — 상태" 비활성은 부품 보드 `part5`).
 - ④ 보낸 범위 줄 "선택 N · 자료 1"(`send` · `book-open`), 열린 목록 `5-conversation`: 보낸 것 · 읽게 열어 둔 것 · 읽은 쪽 · 에이전트.
 - ⑤ 실패(`8-failure`(오프라인)`|8-failure-login|agent|notready|start|exited|lockdown|interrupted`, `8-failure-busy`, `8-stopped`): 답 전(질문이 입력창에, 차례 사이 안내)과 답 도중(부분 답 + 다시 보내기, 꺼 둔 도구는 다시 보내기 없음), 중지함, 다른 세션이 답하는 동안의 기다림 줄.
-- ⑥ `5-backend-fake`·`3-backend-fake`: "가짜 에이전트". ⑦ `5-scrolled`: 최신으로. ⑧ `6-reground`: 원문 근거 요청 차례(그 차례의 목록에 "원문 근거 요청", 확인된 57쪽 칩, 앞 답의 안내는 걷힘 — 컨트롤러 판정 전 제안). ⑨ `4-text-empty|locked`: 본문 없는 PDF 안내 줄. ⑩ `4-attach-multipage`: 칩 툴팁 덧붙임.
+- ⑥ `5-backend-fake`·`3-backend-fake`: "가짜 에이전트". ⑦ `5-scrolled`: 최신으로. ⑧ `6-reground`: 원문 근거 요청 차례(그 차례의 목록에 "원문 근거 요청", 확인된 57쪽 칩, 앞 답의 안내는 제목 줄만 남음). ⑨ `4-text-empty|locked`: 본문 없는 PDF 안내 줄. ⑩ `4-attach-multipage`: 칩 툴팁 덧붙임.
 - ⑪ `9-sessions`·`9-sessions-menu`: 리더 왼쪽 세그먼트 [썸네일 · 목차 · 세션](필기는 M9에 목차와 세션 사이로), 세션 컨텍스트 메뉴(이름 바꾸기 · — · 세션 삭제 ⌘⌫, 네이티브).
 - ⑫ 좁은 창은 T1a의 표(리더 내용 최소 440): 1060 아래에서 튜터가 줄고(`10-narrow-shrunk` 창 1040 · 튜터 360) 1000 아래에서 접힘(`10-narrow` 창 980), 펼치면 사이드바가 접힘(`10-narrow-open` 980 · `10-narrow-960`). 이전 그림의 "1040에서 접힘"은 M9(리더 640)의 숫자였다. 실측 뒤 고침은 구현(8.10)에서.
 - ⑬ `library`·`library-milestones`: 라이브러리의 튜터 시트는 **T1a 아님(J1)** — 그림은 대안으로 남고 `?ms=1` 표시는 J1이다(사이드바 "세션" 묶음은 T1a).

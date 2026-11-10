@@ -4562,9 +4562,9 @@ h2,
   padding: var(--space-8) var(--space-12);
 }
 /* A scanned page (no text layer): flat, softened, grey — a raster, not selectable text. */
-.pdf-page.is-scan > * {
-  filter: blur(0.8px) grayscale(1); /* local: a raster's softness */
-  opacity: 0.75;
+.pdf-page.is-scan > *,
+.is-scan-doc .thumb-page {
+  filter: grayscale(1); /* a scan has no colour of its own text layer; thumbnails agree with the page */
 }
 .agent-row .inline-flag {
   white-space: nowrap;

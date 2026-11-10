@@ -178,7 +178,7 @@ window.MockupData = (() => {
       },
       old: { text: 'Claude\u00a0Code\u00a02.1.318 이상과 연결\u00a0도구\u00a00.103.0 이상이 필요합니다. 업데이트한 뒤 다시 확인하세요.' },
       missing: {
-        text: '설치되어 있지 않습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 찾기를 누르세요.',
+        text: '설치되어 있지 않습니다. 터미널에서 아래 명령으로 설치한 뒤 다시 찾기를 누르세요. 연결 도구는 설치할 때 약\u00a0350\u00a0MB를 내려받습니다.',
         cmd: 'npm install -g @anthropic-ai/claude-code @agentclientprotocol/claude-agent-acp@0.103.0',
       },
     },

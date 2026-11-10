@@ -5,9 +5,11 @@ import type { ErrorCode } from './errors';
 
 export const TUTOR_TOOLS = ['get_context', 'get_outline', 'read_pdf_pages'] as const;
 export type TutorTool = (typeof TUTOR_TOOLS)[number];
-export type ToolOutcome = 'ok' | 'limited' | 'duplicate' | 'refused' | 'failed' | 'pending';
+export const TOOL_OUTCOMES = ['ok', 'limited', 'duplicate', 'refused', 'failed', 'pending'] as const;
+export type ToolOutcome = (typeof TOOL_OUTCOMES)[number];
 export type MessageStatus = 'streaming' | 'complete' | 'failed' | 'stopped';
-export type StopReason = 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled' | 'too_long' | 'interrupted';
+export const STOP_REASONS = ['end_turn', 'max_tokens', 'max_turn_requests', 'refusal', 'cancelled', 'too_long', 'interrupted'] as const;
+export type StopReason = (typeof STOP_REASONS)[number];
 
 export const TUTOR_LIMITS = {
   pagesPerCall: 5, charsPerCall: 24_000, charsPerPage: 12_000, pagesPerTurn: 40, outlineEntries: 300, outlineTitle: 300,

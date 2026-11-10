@@ -121,6 +121,89 @@ describe('ConversationsRepository', () => {
     expect(count(db, 'SELECT COUNT(*) FROM messages')).toBe(2);
   });
 
+  it('a new session refuses a revision of another item and a trashed item, writing nothing', () => {
+    const db = freshDb(); const s = seedItem(db); const other = seedItem(db); const repo = new ConversationsRepository(db);
+    const rows = () => ['conversations', 'messages', 'conversation_context', 'anchors'].map((t) => count(db, `SELECT COUNT(*) FROM ${t}`));
+    const before = rows();
+    expectLearnError(() => begin(repo, { itemId: s.itemId, revisionId: other.revisionId }), 'VALIDATION_FAILED');
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run(NOW, s.itemId);
+    expectLearnError(() => begin(repo, s), 'VALIDATION_FAILED');
+    expect(rows()).toEqual(before);
+  });
+
+  it('a drop takes only a streaming answer and the question right before it', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const t = begin(repo, s);
+    const g = begin(repo, s, { conversationId: t.conversationId, user: { kind: 'reground', text: '확인', sent: SENT, attached: null } });
+    done(repo, s, t.tutorMessageId);
+    expectLearnError(() => repo.dropBeforeAnswer(t.userMessageId, t.tutorMessageId), 'VALIDATION_FAILED');
+    expectLearnError(() => repo.dropBeforeAnswer(t.userMessageId, g.tutorMessageId), 'VALIDATION_FAILED');
+    expect(count(db, 'SELECT COUNT(*) FROM messages')).toBe(4);
+  });
+
+  it('a resend refuses a deleted conversation and a trashed item', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const t = begin(repo, s);
+    failed(repo, s, t.tutorMessageId);
+    repo.remove(t.conversationId, NOW);
+    expectLearnError(() => repo.retryTurn(t.tutorMessageId, 'fake', NOW), 'VALIDATION_FAILED');
+    repo.restore(t.conversationId);
+    db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run(NOW, s.itemId);
+    expectLearnError(() => repo.retryTurn(t.tutorMessageId, 'fake', NOW), 'VALIDATION_FAILED');
+    expect(repo.message(t.tutorMessageId)).toMatchObject({ status: 'failed' });
+  });
+
+  it('a drop keeps a span anchor that another message or an annotation still uses', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const withPassage = (r: ConversationsRepository, over: Partial<BeginTurnInput> = {}) =>
+      begin(r, s, { user: { kind: 'question', text: 'q', sent: { ...SENT, selection: 1 }, attached: { anchor: spanAnchor(s.revisionId), quote: 'q', label: '42쪽' } }, ...over });
+    const a = withPassage(repo);
+    const b = withPassage(repo);
+    const anchorOf = (m: string) => db.prepare('SELECT anchor_id FROM message_sources WHERE message_id = ?').pluck().get(m) as string;
+    db.prepare('UPDATE message_sources SET anchor_id = ? WHERE message_id = ?').run(anchorOf(a.userMessageId), b.userMessageId);
+    db.prepare('DELETE FROM anchors WHERE id NOT IN (SELECT anchor_id FROM message_sources WHERE anchor_id IS NOT NULL) AND precision = \'span\'').run();
+    const shared = anchorOf(a.userMessageId);
+    repo.dropBeforeAnswer(a.userMessageId, a.tutorMessageId);
+    expect(count(db, `SELECT COUNT(*) FROM anchors WHERE id = '${shared}'`)).toBe(1);
+    db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES (?, ?, 'note', '{}', ?, ?, ?)`).run(newId(), shared, newId(), NOW, NOW);
+    repo.dropBeforeAnswer(b.userMessageId, b.tutorMessageId);
+    expect(count(db, `SELECT COUNT(*) FROM anchors WHERE id = '${shared}'`)).toBe(1);
+  });
+
+  it('finishing a row that is not streaming, and a malformed begin, are refused', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const t = begin(repo, s);
+    done(repo, s, t.tutorMessageId);
+    expectLearnError(() => failed(repo, s, t.tutorMessageId), 'VALIDATION_FAILED');
+    expect(repo.message(t.tutorMessageId)).toMatchObject({ status: 'complete', text: 'A' });
+    expectLearnError(() => begin(repo, s, { user: { kind: 'question', text: '', sent: SENT, attached: null } }), 'VALIDATION_FAILED');
+    expect(count(db, 'SELECT COUNT(*) FROM conversations')).toBe(1);
+  });
+
+  it('finishing with a stop reason or error code outside the closed sets is refused, the row unchanged', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const t = begin(repo, s);
+    expectLearnError(() => repo.finishTurn(t.tutorMessageId, { ...FINISH, revisionId: s.revisionId, stopReason: 'paused' as never }, NOW), 'VALIDATION_FAILED');
+    expectLearnError(() => repo.finishTurn(t.tutorMessageId, { ...FINISH, revisionId: s.revisionId, errorCode: 'NOPE' as never }, NOW), 'VALIDATION_FAILED');
+    expect(repo.message(t.tutorMessageId)).toMatchObject({ status: 'streaming', text: '' });
+    expectLearnError(() => repo.addToolRead(t.tutorMessageId, tool({ outcome: 'weird' as never }), NOW), 'VALIDATION_FAILED');
+  });
+
+  it('a purge of deleted sessions sweeps the passage anchors only they used', () => {
+    const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
+    const carry = (quad: number) => begin(repo, s, { user: { kind: 'question', text: 'q', sent: { ...SENT, selection: 1 },
+      attached: { anchor: { ...spanAnchor(s.revisionId), quads: [[quad, 0, 1, 0, 0, 1, 1, 1]] }, quote: 'q', label: '42쪽' } } });
+    const gone = carry(0); const kept = carry(2); const annotated = carry(3);
+    const anchorOf = (m: string) => db.prepare('SELECT anchor_id FROM message_sources WHERE message_id = ?').pluck().get(m) as string;
+    const [goneA, keptA, annA] = [gone, kept, annotated].map((x) => anchorOf(x.userMessageId)) as [string, string, string];
+    db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES (?, ?, 'note', '{}', ?, ?, ?)`).run(newId(), annA, newId(), NOW, NOW);
+    repo.remove(gone.conversationId, '2026-11-10T08:00:00.000Z');
+    repo.remove(annotated.conversationId, '2026-11-10T08:00:00.000Z');
+    repo.repairAtStartup(at(45), '2026-11-10T10:00:00.000Z');
+    const has = (id: string) => count(db, `SELECT COUNT(*) FROM anchors WHERE id = '${id}'`);
+    expect([has(goneA), has(keptA), has(annA)]).toEqual([0, 1, 1]);
+  });
+
   it('records tool reads in order; the chip knows whether a selection came with the question; a half range is refused', () => {
     const db = freshDb(); const s = seedItem(db); const repo = new ConversationsRepository(db);
     const plain = begin(repo, s);
@@ -225,11 +308,11 @@ describe('ConversationsRepository', () => {
   it('counts the sessions a purge takes, whatever state their item is in, and leaves out deleted sessions', () => {
     const db = freshDb(); const repo = new ConversationsRepository(db);
     const x = seedItem(db); const y = seedItem(db); const live = seedItem(db); const empty = seedItem(db);
-    for (const it of [x, y]) db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run(NOW, it.itemId);
     begin(repo, x); begin(repo, x);
     begin(repo, y); begin(repo, y); begin(repo, y); repo.remove(begin(repo, y).conversationId, NOW);
     begin(repo, live);
     void empty;
+    for (const it of [x, y]) db.prepare('UPDATE items SET deleted_at = ? WHERE id = ?').run(NOW, it.itemId);
     expect(repo.purgeCount({ variant: 'items', itemIds: [x.itemId, y.itemId] })).toEqual({ sessions: 5, items: 2 });
     expect(repo.purgeCount({ variant: 'mixed', itemIds: [y.itemId] })).toEqual({ sessions: 3, items: 1 });
     expect(repo.purgeCount({ variant: 'empty', itemIds: [] })).toEqual({ sessions: 5, items: 2 });

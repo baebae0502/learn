@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  LearnError, TUTOR_LIMITS, TUTOR_TOOLS, agentIdSchema, newId, pdfSpanAnchor, sentScopeSchema,
+  ERROR_CODES, LearnError, STOP_REASONS, TOOL_OUTCOMES, TUTOR_LIMITS, TUTOR_TOOLS, agentIdSchema, newId, pdfSpanAnchor, sentScopeSchema,
   type AgentId, type ErrorCode, type MessageStatus, type MessageView, type PdfSpanAnchor, type PurgeVariant, type RecentSessions, type SentScope,
   type SessionSummary, type SessionThread, type SourceChip, type StopReason, type ToolChip, type ToolOutcome, type TutorTool,
 } from '@learn/domain';
@@ -29,8 +29,8 @@ export type BeginTurnInput = z.input<typeof beginTurnSchema>;
 const finishTurnSchema = z.object({
   status: z.enum(['complete', 'stopped', 'failed']),
   text: z.string().max(ANSWER_COLUMN_MAX),
-  stopReason: z.string().min(1).max(32).nullable(),
-  errorCode: z.string().min(1).max(64).nullable(),
+  stopReason: z.enum(STOP_REASONS).nullable(),
+  errorCode: z.enum(ERROR_CODES).nullable(),
   revisionId: z.uuid(),
   verified: z.array(z.object({ pageIndex: z.number().int().min(0), label: LABEL }).strict()).max(TUTOR_LIMITS.pagesPerTurn)
     .refine((v) => new Set(v.map((p) => p.pageIndex)).size === v.length, { message: 'a page is cited once' }),
@@ -47,7 +47,7 @@ export interface FinishTurnInput {
 
 const toolReadSchema = z.object({
   tool: z.enum(TUTOR_TOOLS),
-  outcome: z.enum(['ok', 'limited', 'duplicate', 'refused', 'failed', 'pending']),
+  outcome: z.enum(TOOL_OUTCOMES),
   revisionId: z.uuid().nullable(),
   pageFrom: z.number().int().min(0).nullable(),
   pageTo: z.number().int().min(0).nullable(),
@@ -109,6 +109,10 @@ function toToolChip(r: { tool: TutorTool; outcome: ToolOutcome; page_from: numbe
   return { tool: r.tool, outcome: r.outcome, pageFrom: r.page_from, pageTo: r.page_to, withSelection };
 }
 
+/** A span anchor a passage made is kept while a message, a session's context or an annotation still points at it. */
+const ANCHOR_IN_USE = `SELECT EXISTS (SELECT 1 FROM message_sources WHERE anchor_id = @id) OR EXISTS (SELECT 1 FROM conversation_context WHERE anchor_id = @id)
+                       OR EXISTS (SELECT 1 FROM annotations WHERE anchor_id = @id)`;
+
 /** Sessions (conversations), their messages, the pages answers cited and the passage a question carried, and every tool read (spec 6). */
 export class ConversationsRepository {
   private readonly anchors: AnchorsRepository;
@@ -124,6 +128,10 @@ export class ConversationsRepository {
       let conversationId = i.conversationId;
       const created = conversationId === null;
       if (conversationId === null) {
+        const ok = this.db.prepare(`SELECT EXISTS (SELECT 1 FROM items i JOIN item_assets ia ON ia.item_id = i.id AND ia.role = 'original'
+                                                 JOIN source_revisions r ON r.asset_id = ia.asset_id
+                                                 WHERE i.id = ? AND i.deleted_at IS NULL AND r.id = ?)`).pluck().get(i.itemId, i.revisionId) === 1;
+        if (!ok) throw new LearnError('VALIDATION_FAILED', '이 자료의 세션이 아닙니다.');
         conversationId = newId();
         this.db.prepare(`INSERT INTO conversations (id, item_id, title, agent, agent_session_id, created_at, updated_at) VALUES (?, ?, NULL, ?, NULL, ?, ?)`)
           .run(conversationId, i.itemId, i.agent, i.now, i.now);
@@ -160,6 +168,9 @@ export class ConversationsRepository {
         { conversation_id: string; seq: number; role: string; status: MessageStatus; error_code: string | null } | undefined;
       if (!row) throw new LearnError('NOT_FOUND', '답을 찾을 수 없습니다.');
       if (row.role !== 'tutor' || row.status !== 'failed' || row.error_code === 'AGENT_LOCKDOWN') throw new LearnError('VALIDATION_FAILED', '다시 보낼 수 없는 답입니다.');
+      const owner = this.db.prepare(`SELECT c.deleted_at, i.deleted_at AS item_deleted FROM conversations c JOIN items i ON i.id = c.item_id WHERE c.id = ?`)
+        .get(row.conversation_id) as { deleted_at: string | null; item_deleted: string | null } | undefined;
+      if (!owner || owner.deleted_at !== null || owner.item_deleted !== null) throw new LearnError('VALIDATION_FAILED', '이 자료의 세션이 아닙니다.');
       const user = this.db.prepare(`SELECT id FROM messages WHERE conversation_id = ? AND seq = ? AND role = 'user'`).pluck().get(row.conversation_id, row.seq - 1) as string | undefined;
       if (user === undefined) throw new LearnError('NOT_FOUND', '질문을 찾을 수 없습니다.');
       this.db.prepare('DELETE FROM messages WHERE id = ?').run(id);
@@ -228,21 +239,25 @@ export class ConversationsRepository {
     const userId = parse(idSchema, userMessageId);
     const tutorId = parse(idSchema, tutorMessageId);
     return this.db.transaction(() => {
-      const user = this.db.prepare(`SELECT conversation_id FROM messages WHERE id = ? AND role = 'user'`).get(userId) as { conversation_id: string } | undefined;
-      const tutor = this.db.prepare(`SELECT conversation_id FROM messages WHERE id = ? AND role = 'tutor'`).get(tutorId) as { conversation_id: string } | undefined;
+      const user = this.db.prepare(`SELECT conversation_id, seq FROM messages WHERE id = ? AND role = 'user'`).get(userId) as { conversation_id: string; seq: number } | undefined;
+      const tutor = this.db.prepare(`SELECT conversation_id, seq, status FROM messages WHERE id = ? AND role = 'tutor'`).get(tutorId) as { conversation_id: string; seq: number; status: MessageStatus } | undefined;
       if (!user || !tutor || user.conversation_id !== tutor.conversation_id) throw new LearnError('NOT_FOUND', '지울 메시지를 찾을 수 없습니다.');
+      if (tutor.status !== 'streaming' || user.seq !== tutor.seq - 1) throw new LearnError('VALIDATION_FAILED', '지울 수 없는 메시지입니다.');
       const spans = this.db.prepare(`SELECT s.anchor_id FROM message_sources s JOIN anchors a ON a.id = s.anchor_id
                                      WHERE s.message_id = ? AND s.role = 'attached' AND a.precision = 'span'`).pluck().all(userId) as string[];
       this.db.prepare('DELETE FROM messages WHERE id IN (?, ?)').run(userId, tutorId);
-      const used = this.db.prepare(`SELECT EXISTS (SELECT 1 FROM message_sources WHERE anchor_id = @id) OR EXISTS (SELECT 1 FROM conversation_context WHERE anchor_id = @id)
-                                    OR EXISTS (SELECT 1 FROM annotations WHERE anchor_id = @id)`).pluck();
-      const del = this.db.prepare('DELETE FROM anchors WHERE id = ?');
-      for (const id of spans) if (!used.get({ id })) del.run(id);
+      this.sweepAnchors(spans);
       const left = this.db.prepare(`SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND role = 'user'`).pluck().get(user.conversation_id) as number;
       if (left > 0) return { conversationDeleted: false };
       this.db.prepare('DELETE FROM conversations WHERE id = ?').run(user.conversation_id);
       return { conversationDeleted: true };
     })();
+  }
+
+  private sweepAnchors(ids: readonly string[]): void {
+    const used = this.db.prepare(ANCHOR_IN_USE).pluck();
+    const del = this.db.prepare('DELETE FROM anchors WHERE id = ?');
+    for (const id of ids) if (!used.get({ id })) del.run(id);
   }
 
   addToolRead(tutorMessageId: string, read: ToolReadInput, now: string): ToolChip {
@@ -365,8 +380,13 @@ export class ConversationsRepository {
     return this.db.transaction(() => {
       const interrupted = this.db.prepare(`UPDATE messages SET status = 'failed', stop_reason = 'interrupted', error_code = NULL, completed_at = ? WHERE status = 'streaming'`).run(at).changes;
       const purged = this.db.prepare('SELECT id FROM conversations WHERE deleted_at IS NOT NULL AND deleted_at < ? ORDER BY rowid').pluck().all(started) as string[];
+      const spans = this.db.prepare(`SELECT s.anchor_id FROM message_sources s JOIN anchors a ON a.id = s.anchor_id JOIN messages m ON m.id = s.message_id
+                                     WHERE m.conversation_id = ? AND a.precision = 'span'
+                                     UNION SELECT c.anchor_id FROM conversation_context c JOIN anchors a ON a.id = c.anchor_id WHERE c.conversation_id = ? AND a.precision = 'span'`).pluck();
       const del = this.db.prepare('DELETE FROM conversations WHERE id = ?');
-      for (const id of purged) del.run(id);
+      const swept: string[] = [];
+      for (const id of purged) { swept.push(...(spans.all(id, id) as string[])); del.run(id); }
+      this.sweepAnchors(swept);
       return { interrupted, purged };
     })();
   }

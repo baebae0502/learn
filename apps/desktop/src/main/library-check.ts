@@ -27,11 +27,6 @@ export type CheckContext = Pick<LibraryContext, 'layout' | 'repo' | 'importer' |
 const managedState = (repo: LibraryRepository) => new Map(repo.assetsByMode('managed').map((a) => [a.id, a.availability] as const));
 const itemsOf = (repo: LibraryRepository, assetIds: readonly string[]) => [...new Set(assetIds.flatMap((id) => repo.itemIdsForAsset(id)))];
 
-/**
- * One check (spec 7): the linked originals are looked for, then the library folder is read. The items whose file was
- * found missing or back are announced (libraryChanged{availability}) — the linked ones before the folder is read, so the
- * table is right as soon as it can be. The result is the context's newest check.
- */
 export interface TutorStartup {
   /** When this run began: a session deleted before it is purged now. */
   runStartedAt: string;
@@ -39,6 +34,11 @@ export interface TutorStartup {
   purged(ids: string[]): void;
 }
 
+/**
+ * One check (spec 7): the linked originals are looked for, then the library folder is read. The items whose file was
+ * found missing or back are announced (libraryChanged{availability}) — the linked ones before the folder is read, so the
+ * table is right as soon as it can be. The result is the context's newest check.
+ */
 export async function runCheck(ctx: CheckContext, announce: (itemIds: string[]) => void, opts: { startup?: boolean; tutor?: TutorStartup } = {}): Promise<LibraryCheck> {
   // Before any await: the first sessions:get must see answers a quit cut off as failed, even when the disk is slow to stat.
   if (opts.startup && opts.tutor) {

@@ -142,7 +142,7 @@ describe('backup and restore (AC15 — files part)', () => {
     expect(result.countsMatch).toBe(true);
   });
 
-  it('compares the conversation counts a manifest has, and a manifest without them still matches', async () => {
+  it('reports a mismatch when the conversation count of the manifest differs from the restored one', async () => {
     const { layout, db, repo } = await populated();
     const dest = path.join(tempDir('bk'), 'backup-conv-counts');
     const { manifest } = await createBackup({ layout, db, repo, destDir: dest, includeAssets: true });

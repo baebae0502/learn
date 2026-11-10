@@ -9,9 +9,12 @@ export function nextLogFile(dir: string): string {
   return file;
 }
 
+/** The longest part of a line kept waiting for its end: a stream that never ends its line is written in pieces this long. */
+export const LINE_MAX = 64 * 1024;
+
 /**
  * One stream's chunks as whole lines, each stamped with the time it came and the stream's tag; a line split across chunks
- * waits for its end, and a character split across chunks is put back together.
+ * waits for its end (up to LINE_MAX characters), and a character split across chunks is put back together.
  */
 export function lineStamper(tag: string, write: (text: string) => void, now: () => Date = () => new Date()): { data(chunk: Buffer | string): void; end(): void } {
   const decoder = new StringDecoder('utf8');
@@ -25,6 +28,10 @@ export function lineStamper(tag: string, write: (text: string) => void, now: () 
     data(chunk) {
       const lines = (rest + (typeof chunk === 'string' ? chunk : decoder.write(chunk))).split('\n');
       rest = lines.pop() ?? '';
+      if (rest.length > LINE_MAX) {
+        lines.push(rest);
+        rest = '';
+      }
       stamp(lines.map((line) => line.replace(/\r$/, '')));
     },
     end() {
@@ -56,13 +63,22 @@ export function keepMainLog(child: LoggedProcess, file: string): void {
   } catch {
     return;
   }
+  // Nothing may throw out of a stream's 'data' or 'close' listener: it would be an uncaught error in the test's worker.
+  const close = (): void => {
+    if (fd === null) return;
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // Closed or gone already.
+    }
+    fd = null;
+  };
   const write = (text: string): void => {
     if (fd === null) return;
     try {
       fs.writeSync(fd, text);
     } catch {
-      fs.closeSync(fd);
-      fd = null;
+      close();
     }
   };
   write(`${new Date().toISOString()} --- main pid ${child.pid ?? '?'}: its stdout (out) and stderr (err) from here on\n`);
@@ -73,7 +89,6 @@ export function keepMainLog(child: LoggedProcess, file: string): void {
   child.once('close', () => {
     out.end();
     err.end();
-    if (fd !== null) fs.closeSync(fd);
-    fd = null;
+    close();
   });
 }

@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { keepMainLog, lineStamper, nextLogFile } from './main-log';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LINE_MAX, keepMainLog, lineStamper, nextLogFile } from './main-log';
 
 let dir: string;
 beforeEach(() => {
@@ -37,6 +37,17 @@ describe('lineStamper', () => {
     );
   });
 
+  it('a line that never ends is written in pieces of LINE_MAX characters, not kept waiting for ever', () => {
+    const out: string[] = [];
+    const s = lineStamper('out', (t) => void out.push(t), () => AT);
+    s.data('x'.repeat(LINE_MAX));
+    expect(out).toEqual([]); // at the limit it still waits
+    s.data('yz');
+    expect(out).toEqual([`${AT.toISOString()} out ${'x'.repeat(LINE_MAX)}yz\n`]);
+    s.data('tail\n');
+    expect(out[1]).toBe(`${AT.toISOString()} out tail\n`);
+  });
+
   it('puts a character split across chunks back together', () => {
     const out: string[] = [];
     const s = lineStamper('out', (t) => void out.push(t), () => AT);
@@ -62,6 +73,31 @@ describe('keepMainLog', () => {
     child.stdout.write('last words');
     child.emit('close');
     expect(fs.readFileSync(file, 'utf8')).toMatch(/\n\S+ out last words\n$/);
+  });
+
+  it('a write that fails, and a close that fails after it, are given up without throwing out of the stream\'s listeners', () => {
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough() });
+    const file = path.join(dir, 'main.log');
+    keepMainLog(child, file);
+    const realClose = fs.closeSync;
+    const write = vi.spyOn(fs, 'writeSync').mockImplementation(() => {
+      throw Object.assign(new Error('no space'), { code: 'ENOSPC' });
+    });
+    const close = vi.spyOn(fs, 'closeSync').mockImplementation((fd) => {
+      realClose(fd);
+      throw Object.assign(new Error('bad fd'), { code: 'EBADF' });
+    });
+    try {
+      expect(() => child.stdout.write('lost\n')).not.toThrow();
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(() => child.stderr.write('also lost\n')).not.toThrow();
+      expect(() => child.emit('close')).not.toThrow();
+      expect(write).toHaveBeenCalledTimes(1); // given up after the first failure
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      write.mockRestore();
+      close.mockRestore();
+    }
   });
 
   it('a file that cannot be made is given up without throwing', () => {

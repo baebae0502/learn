@@ -107,8 +107,8 @@ export const settingSetInput = z.object({ key: z.string().min(1).max(100), value
 /** Main-internal prefs patch (the store's own input): built from default-free fields so omitted keys stay omitted. */
 export const prefsPatchInput = z.object(prefsFields).partial().strict();
 export type PrefsPatch = z.input<typeof prefsPatchInput>;
-/** What the renderer may change: everything but the library location and the backup folder, which only main sets (R4). */
-export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true }).partial().strict();
+/** What the renderer may change: everything but the library location, the backup folder and the tutor's consent and agent, which only main sets (R4). */
+export const prefsSetInput = z.object(prefsFields).omit({ libraryRoot: true, backupDir: true, tutor: true }).partial().strict();
 /** translation.translate: the selection's text (up to 20,000; the service refuses what is over 5,000 once prepared). */
 export const translateInput = z.object({ text: z.string().min(1).max(20000), from: translationFromSchema, to: translationToSchema }).strict();
 export type TranslateInput = z.input<typeof translateInput>;

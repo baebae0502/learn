@@ -70,3 +70,12 @@ describe('settings.set: what main alone writes (R4)', () => {
     expect(await set({ key: 'backup.last', value: { at: '2026-10-30T12:41:00.000Z', folder: '/tmp' } })).toMatchObject({ ok: false, code: 'PERMISSION_DENIED' });
   });
 });
+
+describe('prefs.set and prefs.tutor (J9)', () => {
+  it('refuses a tutor key and leaves what is stored', async () => {
+    const before = stored.tutor;
+    expect(await invoke({ tutor: { consent: { version: 1, at: '2026-11-10T00:00:00.000Z' }, agent: 'claude' } })).toMatchObject({ ok: false, code: 'VALIDATION_FAILED' });
+    expect(stored.tutor).toEqual(before);
+    expect(await invoke({ density: 'regular' })).toMatchObject({ ok: true });
+  });
+});

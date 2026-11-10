@@ -118,6 +118,13 @@ describe('spawnAgent', () => {
     expect(info.mock.calls).toEqual([['[tutor] agent-exit code=0']]);
   });
 
+  it('tells when its stdout has ended, once every line has been delivered, and tells a late listener too', async () => {
+    const { port, lines } = start(ARGS);
+    const atEnd = await new Promise<string[]>((resolve) => port.onOutputEnd(() => resolve([...lines])));
+    expect(atEnd).toEqual([JSON.stringify([]), 'second line']);
+    await expect(new Promise<string>((resolve) => port.onOutputEnd(() => resolve('told')))).resolves.toBe('told');
+  });
+
   it('starts the agent as the leader of a new process group, which SIGKILL ends with the processes it started', async () => {
     const { port, lines, exit } = start(GROUP);
     await vi.waitFor(() => expect(lines).toHaveLength(1));

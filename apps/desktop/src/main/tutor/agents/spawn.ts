@@ -13,6 +13,8 @@ export interface ChildPort {
   endInput(): void;
   onLine(fn: (line: string) => void, onOverflow: () => void): void;
   onExit(fn: (e: { code: number | null; signal: NodeJS.Signals | null }) => void): void;
+  /** stdout has ended: every line it held has been delivered. */
+  onOutputEnd(fn: () => void): void;
   readonly exited: boolean;
   /** To the whole group, so the CLI the adapter started gets it too. */
   signalGroup(sig: 'SIGTERM' | 'SIGKILL'): void;
@@ -59,6 +61,16 @@ export function spawnAgent(spec: LaunchSpec): ChildPort {
     for (const fn of exitFns.splice(0)) fn(exit);
   });
 
+  let outputEnded = false;
+  const outputEndFns: Array<() => void> = [];
+  const endOutput = () => {
+    if (outputEnded) return;
+    outputEnded = true;
+    for (const fn of outputEndFns.splice(0)) fn();
+  };
+  child.stdout.once('end', endOutput);
+  child.stdout.once('close', endOutput);
+
   // Once the group is seen gone its id may be given to an unrelated group, so it is never signalled again.
   let groupGone = false;
   const groupAlive = () => {
@@ -89,6 +101,10 @@ export function spawnAgent(spec: LaunchSpec): ChildPort {
       const e = exit;
       if (e !== null) queueMicrotask(() => fn(e));
       else exitFns.push(fn);
+    },
+    onOutputEnd(fn) {
+      if (outputEnded) queueMicrotask(fn);
+      else outputEndFns.push(fn);
     },
     get exited() {
       return exit !== null;

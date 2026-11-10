@@ -58,6 +58,8 @@ export interface Supervisor<C = unknown> {
 
 /** How often a group whose leader has exited is looked at again, until its last process has gone. */
 const GROUP_POLL_MS = 50;
+/** How long a reply may still be on its way after the agent exited, when its stdout does not end (a process still holds it). */
+const OUTPUT_GRACE_MS = 250;
 
 interface Group {
   readonly child: ChildPort;
@@ -85,8 +87,7 @@ interface SessionProc<C> extends Group, LiveAgent<C> {
 }
 interface ProbeProc extends Group { readonly kind: 'probe' }
 type Proc<C> = SessionProc<C> | ProbeProc;
-/** streaming: a send created or joined it, so its process is marked answering before the lane moves on. */
-interface Start<C> { key: SessionKey; readonly agent: AgentId; streaming: boolean; promise: Promise<SessionProc<C>> }
+interface Start<C> { key: SessionKey; readonly agent: AgentId; promise: Promise<SessionProc<C>> }
 /** agent null: the key is reserved for whichever agent its process runs. */
 interface Reservation { key: SessionKey; readonly agent: AgentId | null }
 
@@ -133,6 +134,21 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     if (answer !== null && sameKey(answer.key, key) && answer.agent !== null && answer.agent !== agent) return true;
     const p = session;
     return p !== null && sameKey(p.key, key) && p.agent !== agent && p.streaming;
+  };
+
+  /** The agent whose process will answer for `key`: the newest start in flight for it, else its live process. */
+  const answeringAgent = (key: SessionKey): AgentId | null => {
+    let agent: AgentId | null = null;
+    for (const s of starts) if (sameKey(s.key, key)) agent = s.agent;
+    if (agent !== null) return agent;
+    const p = session;
+    return p !== null && sameKey(p.key, key) && !p.closing ? p.agent : null;
+  };
+  /** A glance back restarts a start only for the agent still wanted: not when the user has since asked for another one. */
+  const stillWanted = (s: Start<C>): boolean => {
+    if (reservedFor(s.key, s.agent)) return true;
+    for (const o of starts) if (o !== s && sameKey(o.key, s.key) && o.agent !== s.agent) return false;
+    return wanted(s.key, s.agent);
   };
 
   const stopIdle = () => {
@@ -240,10 +256,33 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
     return g;
   }
 
-  /** A start or a login check whose agent has exited will not answer: it must not hold the lane until its own time limits. */
+  /**
+   * A start or a login check whose agent has exited will not answer: it must not hold the lane until its own time limits. A
+   * reply it wrote just before exiting can still be on its way, so it is given up only once its stdout has ended (or
+   * OUTPUT_GRACE_MS after the exit), and a macrotask later, after the reply's promise chain has settled.
+   */
   const untilLeaderExit = <T>(work: Promise<T>, g: Proc<C>): Promise<T> => new Promise<T>((resolve, reject) => {
-    work.then(resolve, reject);
-    void g.leaderExit.then(() => reject(new LearnError('AGENT_EXITED', 'The agent exited before it answered.')));
+    let settled = false;
+    work.then((v) => {
+      settled = true;
+      resolve(v);
+    }, (e: unknown) => {
+      settled = true;
+      reject(e);
+    });
+    void g.leaderExit.then(() => {
+      if (settled) return;
+      let grace: unknown = null;
+      let fired = false;
+      const giveUp = () => {
+        if (fired) return;
+        fired = true;
+        if (grace !== null) d.clearTimer(grace);
+        d.setTimer(() => reject(new LearnError('AGENT_EXITED', 'The agent exited before it answered.')), 0);
+      };
+      grace = d.setTimer(giveUp, OUTPUT_GRACE_MS);
+      g.child.onOutputEnd(giveUp);
+    });
   });
 
   const inLane = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -263,7 +302,7 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
       for (;;) {
         const live = reusable(s.key, s.agent);
         if (live) {
-          if (s.streaming && reservedFor(live.key, live.agent)) markAnswering(live);
+          if (reservedFor(live.key, live.agent)) markAnswering(live);
           return live;
         }
         if (busyWith(s.key) || otherAgentAnswers(s.key, s.agent)) throw busy();
@@ -287,12 +326,12 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
         if (ok && !p.closing) {
           p.ready = true;
           // Before the lane moves on: a login check queued behind this start must see an answering process, not an idle one.
-          if (s.streaming && reservedFor(p.key, p.agent)) markAnswering(p);
+          if (reservedFor(p.key, p.agent)) markAnswering(p);
           startIdle();
           return p;
         }
         // The user looked away and back while it started: a send must not inherit a closed process.
-        if (p.left && !quitting && wanted(s.key, s.agent)) continue;
+        if (p.left && !quitting && stillWanted(s)) continue;
         void close(p);
         if (quitting) throw quit();
         if (p.left) throw unwanted();
@@ -343,13 +382,10 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
         return Promise.resolve(live);
       }
       for (const s of starts) {
-        if (sameKey(s.key, key) && s.agent === agent) {
-          if (streaming) s.streaming = true;
-          return s.promise.catch(release);
-        }
+        if (sameKey(s.key, key) && s.agent === agent) return s.promise.catch(release);
       }
       // Registered before its body runs: a spec that throws at once still removes it.
-      const s = { key: copy(key), agent, streaming } as Start<C>;
+      const s = { key: copy(key), agent } as Start<C>;
       starts.add(s);
       s.promise = (async () => {
         try {
@@ -373,8 +409,8 @@ export function createSupervisor<C>(d: { spawn(spec: LaunchSpec): ChildPort; set
       const p = session && sameKey(session.key, key) ? session : null;
       if (on) {
         if (busyWith(key)) throw busy();
-        if (answer === null || !sameKey(answer.key, key)) answer = { key: copy(key), agent: p ? p.agent : null };
-        if (p && p.ready && !p.closing) markAnswering(p);
+        if (answer === null || !sameKey(answer.key, key)) answer = { key: copy(key), agent: answeringAgent(key) };
+        if (p && p.ready && !p.closing && reservedFor(p.key, p.agent)) markAnswering(p);
         return;
       }
       if (answer !== null && sameKey(answer.key, key)) answer = null;

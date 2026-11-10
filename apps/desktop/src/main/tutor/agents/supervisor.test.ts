@@ -24,7 +24,10 @@ class FakeChild implements ChildPort {
   /** endInput and the signals, in order. */
   readonly events: string[] = [];
   private readonly exitFns: Array<(e: ExitInfo) => void> = [];
+  private readonly lineFns: Array<(line: string) => void> = [];
+  private readonly outputEndFns: Array<() => void> = [];
   private ended = false;
+  private outputEnded = false;
   private group = true;
   constructor(readonly spec: LaunchSpec) {}
   get exited(): boolean {
@@ -34,9 +37,25 @@ class FakeChild implements ChildPort {
   endInput(): void {
     this.events.push('endInput');
   }
-  onLine(): void {}
+  onLine(fn: (line: string) => void): void {
+    this.lineFns.push(fn);
+  }
   onExit(fn: (e: ExitInfo) => void): void {
     this.exitFns.push(fn);
+  }
+  onOutputEnd(fn: () => void): void {
+    if (this.outputEnded) queueMicrotask(fn);
+    else this.outputEndFns.push(fn);
+  }
+  /** A line on its stdout. */
+  emitLine(line: string): void {
+    for (const fn of this.lineFns) fn(line);
+  }
+  /** Its stdout ends: every line has been delivered. */
+  endOutput(): void {
+    if (this.outputEnded) return;
+    this.outputEnded = true;
+    for (const fn of this.outputEndFns.splice(0)) fn();
   }
   groupAlive(): boolean {
     return this.group;
@@ -52,12 +71,16 @@ class FakeChild implements ChildPort {
       });
     }
   }
-  /** The agent exits; with { groupAlive: true } a process it started (the CLI) still runs in its group. */
-  exit(code: number | null, signal: NodeJS.Signals | null, o: { groupAlive?: boolean } = {}): void {
+  /**
+   * The agent exits; with { groupAlive: true } a process it started (the CLI) still runs in its group; with { outputOpen: true }
+   * its stdout has not ended yet (a process still holds it).
+   */
+  exit(code: number | null, signal: NodeJS.Signals | null, o: { groupAlive?: boolean; outputOpen?: boolean } = {}): void {
     if (this.ended) throw new Error('exited twice');
     this.ended = true;
     this.group = o.groupAlive ?? false;
     for (const fn of this.exitFns) fn({ code, signal });
+    if (!o.outputOpen) this.endOutput();
   }
   /** The last process left in its group ends. */
   endGroup(): void {
@@ -831,5 +854,146 @@ describe('review: interleavings around a start', () => {
     expect(error).toMatchObject({ code: 'AGENT_BUSY' });
     expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
     expect(() => sup.streaming(KEY_A, true)).not.toThrow();
+  });
+});
+
+describe('re-review: reservations during a start, glances back, replies at exit', () => {
+  it('a reservation made with streaming(key, true) while a warm starts is honoured: the queued login check waits for that answer', async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let release!: () => void;
+    const warm = sup.acquire(KEY_A, 'fake', () => SPEC, () => new Promise<object>((resolve) => { release = () => resolve({}); }));
+    await timers.flush();
+    sup.streaming(KEY_A, true);
+    const check = sup.probe(SPEC_PROBE, async () => 'ok');
+    let checked: unknown = 'pending';
+    check.then((v) => { checked = v; }, (e: unknown) => { checked = e; });
+    await timers.flush();
+    release();
+    await timers.flush();
+    await expect(warm).resolves.toMatchObject({ key: KEY_A, streaming: true });
+    expect(spawned[0]!.events).toEqual([]);
+    expect(checked).toBe('pending');
+    expect(sup.busyWith(KEY_B)).toEqual(KEY_A);
+    sup.streaming(KEY_A, false);
+    await timers.flush();
+    spawned[0]!.exit(null, 'SIGTERM');
+    await expect(check).resolves.toBe('ok');
+  });
+
+  it('streaming(key, true) during an agent switch reserves the agent being started, not the old one that is closing', async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    await sup.acquire(KEY_A, 'claude', () => SPEC_CLAUDE, async () => ({}));
+    const next = sup.acquire(KEY_A, 'fake', () => SPEC_FAKE, async () => ({}));
+    await timers.flush();
+    expect(spawned[0]!.signals).toEqual(['SIGTERM']);    // the claude process is closing; fake's start waits for its group
+    sup.streaming(KEY_A, true);
+    spawned[0]!.exit(null, 'SIGTERM');
+    await expect(next).resolves.toMatchObject({ key: KEY_A, agent: 'fake', streaming: true });
+    expect(spawned.map((c) => c.spec.args[0])).toEqual([SPEC_CLAUDE.args[0], SPEC_FAKE.args[0]]);
+  });
+
+  it('streaming(key, true) on the idle process of that session marks it answering: leaving keeps it until the answer ends', async () => {
+    const { sup, spawned } = harness();
+    sup.view(KEY_A);
+    const live = await sup.acquire(KEY_A, 'fake', () => SPEC, async () => ({}));
+    sup.streaming(KEY_A, true);
+    expect(live.streaming).toBe(true);
+    sup.view(KEY_B);
+    expect(spawned[0]!.signals).toEqual([]);
+    sup.streaming(KEY_A, false);
+    expect(spawned[0]!.signals).toEqual(['SIGTERM']);
+  });
+
+  it('streaming(key, true) right after an agent switch began, before the old process closes, reserves the new agent', async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    await sup.acquire(KEY_A, 'claude', () => SPEC_CLAUDE, async () => ({}));
+    const next = sup.acquire(KEY_A, 'fake', () => SPEC_FAKE, async () => ({}));
+    sup.streaming(KEY_A, true);                          // the claude process is still live and idle here
+    await timers.flush();
+    expect(spawned[0]!.signals).toEqual(['SIGTERM']);
+    spawned[0]!.exit(null, 'SIGTERM');
+    await expect(next).resolves.toMatchObject({ key: KEY_A, agent: 'fake', streaming: true });
+  });
+
+  it("a warm for another agent while a send in this session is reserved, its spec still waiting, is AGENT_BUSY and starts nothing", async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let releaseSpec!: (s: LaunchSpec) => void;
+    const ask = sup.acquire(KEY_A, 'claude', () => new Promise<LaunchSpec>((resolve) => { releaseSpec = resolve; }), async () => ({}), { streaming: true });
+    let specs = 0;
+    let outcome: unknown = 'pending';
+    sup.acquire(KEY_A, 'fake', () => {
+      specs += 1;
+      return SPEC_FAKE;
+    }, async () => ({})).then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    await timers.flush();
+    expect(outcome).toMatchObject({ code: 'AGENT_BUSY' });
+    expect(specs).toBe(0);
+    expect(spawned).toHaveLength(0);
+    releaseSpec(SPEC_CLAUDE);
+    await expect(ask).resolves.toMatchObject({ agent: 'claude', streaming: true });
+    expect(spawned.map((c) => c.spec.args[0])).toEqual([SPEC_CLAUDE.args[0]]);
+  });
+
+  it('a glance away and back while one agent starts, with another agent now wanted, does not restart the first', async () => {
+    const { sup, spawned, timers } = harness();
+    sup.view(KEY_A);
+    let starts = 0;
+    let releaseFirst!: () => void;
+    const startClaude = () => (++starts === 1 ? new Promise<object>((resolve) => { releaseFirst = () => resolve({}); }) : Promise.resolve({}));
+    let claude: unknown = 'pending';
+    sup.acquire(KEY_A, 'claude', () => SPEC_CLAUDE, startClaude).then((v) => { claude = v; }, (e: unknown) => { claude = e; });
+    await timers.flush();
+    sup.view(KEY_B);
+    sup.view(KEY_A);
+    let fake: unknown = 'pending';
+    // the user picked another agent: its warm
+    sup.acquire(KEY_A, 'fake', () => SPEC_FAKE, async () => ({})).then((v) => { fake = v; }, (e: unknown) => { fake = e; });
+    releaseFirst();
+    await timers.advance(2_000);
+    expect(fake).toMatchObject({ key: KEY_A, agent: 'fake' });
+    expect(claude).toMatchObject({ code: 'CANCELLED' });
+    expect(spawned.map((c) => c.spec.args[0])).toEqual([SPEC_CLAUDE.args[0], SPEC_FAKE.args[0]]);
+    expect(sup.processes().max).toBe(1);
+  });
+
+  it("a reply written just before the agent exits is kept: the login check resolves with it", async () => {
+    const { sup, spawned, timers } = harness();
+    const check = sup.probe(SPEC_PROBE, async (child) => {
+      const line = await new Promise<string>((resolve) => child.onLine(resolve, () => {}));
+      await Promise.resolve();                       // the client reads the reply a few steps later
+      return `read ${line}`;
+    });
+    await timers.flush();
+    spawned[0]!.emitLine('{"jsonrpc":"2.0","id":1,"result":{}}');
+    spawned[0]!.exit(0, null);                       // in the same tick as its last line
+    await timers.flush();
+    await expect(check).resolves.toBe('read {"jsonrpc":"2.0","id":1,"result":{}}');
+  });
+
+  it('a run left pending by an agent that exited is given up once its output has ended, or 250 ms after the exit', async () => {
+    const { sup, spawned, timers } = harness();
+    const check = sup.probe(SPEC_PROBE, () => new Promise<string>(() => {}));
+    let outcome: unknown = 'pending';
+    check.then((v) => { outcome = v; }, (e: unknown) => { outcome = e; });
+    await timers.flush();
+    spawned[0]!.exit(1, null, { outputOpen: true });
+    await timers.advance(249);
+    expect(outcome).toBe('pending');
+    await timers.advance(1);
+    expect(outcome).toMatchObject({ code: 'AGENT_EXITED' });
+    const second = sup.probe(SPEC_PROBE_2, () => new Promise<string>(() => {}));
+    let outcome2: unknown = 'pending';
+    second.then((v) => { outcome2 = v; }, (e: unknown) => { outcome2 = e; });
+    await timers.flush();
+    spawned[1]!.exit(1, null, { outputOpen: true });
+    await timers.advance(100);
+    expect(outcome2).toBe('pending');
+    spawned[1]!.endOutput();
+    await timers.flush();
+    expect(outcome2).toMatchObject({ code: 'AGENT_EXITED' });
   });
 });

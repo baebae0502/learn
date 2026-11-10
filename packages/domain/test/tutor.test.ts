@@ -79,4 +79,12 @@ describe('tutorEnvelope', () => {
     expect(tutorEnvelope.safeParse({ ...env, extra: 1 }).success).toBe(false);
     expect(tutorEnvelope.safeParse({ ...env, provenance: { ...env.provenance, extra: 1 } }).success).toBe(false);
   });
+  it('holds exactly the part its tool returns', () => {
+    const page = { anchor: { kind: 'pdf', revisionId: ID2, precision: 'page', pageIndex: 0 }, label: 'p1', cite: '[[p1]]', text: 'x', duplicate: false, truncated: false };
+    const { outline: _o, ...base } = env;
+    expect(tutorEnvelope.safeParse({ ...base, tool: 'read_pdf_pages', pages: [page] }).success).toBe(true);
+    expect(tutorEnvelope.safeParse({ ...env, pages: [page] }).success).toBe(false);
+    expect(tutorEnvelope.safeParse({ ...base, tool: 'read_pdf_pages' }).success).toBe(false);
+    expect(tutorEnvelope.safeParse({ ...env, tool: 'get_context' }).success).toBe(false);
+  });
 });

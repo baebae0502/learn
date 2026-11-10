@@ -17,6 +17,7 @@ function codeRanges(text: string): Array<[number, number]> {
       open = null;
     }
   }
+  // An unclosed fence hides everything after it on purpose, so a streaming partial never mis-cites.
   if (open !== null) ranges.push([open, text.length]);
   const inFence = (i: number): boolean => ranges.some(([a, b]) => i >= a && i < b);
   const inline = /`[^`\n]+`/g;

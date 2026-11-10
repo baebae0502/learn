@@ -83,7 +83,14 @@ export const tutorEnvelope: z.ZodType<TutorEnvelope> = z.object({
   limited: z.boolean(),
   next: z.object({ from: z.number().int() }).strict().nullable(),
   provenance: z.object({ revisionId: z.string(), sha256: z.string(), parser: z.literal('pdf-text-1') }).strict(),
-}).strict();
+}).strict().refine(
+  (e) => {
+    const given = (['pages', 'context', 'outline'] as const).filter((k) => e[k] !== undefined);
+    const want = e.tool === 'read_pdf_pages' ? 'pages' : e.tool === 'get_context' ? 'context' : 'outline';
+    return given.length === 1 && given[0] === want;
+  },
+  { message: 'an envelope holds exactly the part its tool returns' },
+);
 
 const nfc = (min: number, max: number) => z.string().normalize('NFC').min(min).max(max);
 

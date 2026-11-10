@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import {
   CONSENT_VERSION, LearnError, TUTOR_TIMEOUTS, checkCitations, pdfSpanAnchor, regroundPages,
-  type AgentId, type AgentsReport, type AgentStatus, type ErrorCode, type ReaderSnapshot, type SessionsChanged, type TutorAgentsInput, type TutorAskAnswer,
+  type AgentId, type AgentsReport, type AgentStatus, type ErrorCode, type ReaderSnapshot, type SessionsChanged, type SourceChip, type TutorAgentsInput, type TutorAskAnswer,
   type TutorAskInput, type TutorPrefs, type TutorRetryInput, type TutorTurnEvent, type TutorWarmInput,
 } from '@learn/domain';
 import type { LibraryContext } from '../library-context';
@@ -71,6 +71,8 @@ const NOT_SENT: PromptOutcome = { stopReason: 'cancelled', lockdown: false, mode
 const sameKey = (a: SessionKey, b: SessionKey) => a.itemId === b.itemId && a.conversationId === b.conversationId;
 const codeOf = (e: unknown): string => (e instanceof LearnError ? e.code : e instanceof Error ? e.name : 'UNKNOWN');
 const invalid = () => new LearnError('VALIDATION_FAILED', 'This tutor request does not fit the session.');
+/** Learn is quitting: never told as a failure, and nothing is written or started. */
+const quitting = () => new LearnError('CANCELLED', 'Learn is quitting.');
 const consented = (t: TutorPrefs): boolean => t.consent?.version === CONSENT_VERSION;
 
 /** A start's failure as the answer tells it: the agent's own code, else the start failed. */
@@ -101,6 +103,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
 
   /** Before anything is written, in order: consent, offline, the chosen agent ready in the cached report (with none cached, the start detects). */
   const precheck = (): AgentId => {
+    if (shuttingDown) throw quitting();
     const agent = requireConsent().agent;
     // The fake needs no network; only the test hook takes it offline.
     const net = agent === 'fake' ? d.network() : (d.network() ?? (d.isOnline() ? 'online' : 'offline'));
@@ -152,8 +155,17 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     };
   };
 
+  /** A window that cannot be told must not strand a turn: the rows and the reservation still end. */
+  const tell = (send: () => void) => {
+    try {
+      send();
+    } catch (e) {
+      tutorLog('emit-failed', { code: codeOf(e) });
+    }
+  };
+
   const sessionsChanged = (reason: SessionsChanged['reason'], t: { itemId: string; conversationId: string }) => {
-    d.emitSessions({ reason, itemIds: [t.itemId], conversationIds: [t.conversationId] });
+    tell(() => d.emitSessions({ reason, itemIds: [t.itemId], conversationIds: [t.conversationId] }));
   };
 
   /** What the detector learns from a failure goes in before the failure is told: the renderer reads the report again when it hears it. */
@@ -162,7 +174,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       if (e.code === 'AGENT_LOGIN') d.detector.markLogin(agent);
       if (e.code === 'AGENT_LOCKDOWN') d.detector.markLockedOut(agent);
     }
-    d.emitTurn(e);
+    tell(() => d.emitTurn(e));
   };
 
   /** A turn that failed before its prompt: the same rule as a failure before the answer. */
@@ -179,6 +191,18 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     sessionsChanged(deleted ? 'deleted' : 'updated', { itemId: t.target.itemId, conversationId: t.conversationId });
   };
 
+  /** Stopped before the session was ready: nothing reached the agent, so the answer is kept, empty and stopped. */
+  const endStopped = (t: Turn) => {
+    let sources: SourceChip[] = [];
+    try {
+      sources = repo().finishTurn(t.tutorMessageId, { status: 'stopped', text: '', stopReason: 'cancelled', errorCode: null, revisionId: t.target.revisionId, verified: [] }, d.now());
+    } catch (e) {
+      tutorLog('turn-end-failed', { code: codeOf(e) });
+    }
+    emitTurn(t.agent, { conversationId: t.conversationId, messageId: t.tutorMessageId, kind: 'done', status: 'stopped', stopReason: 'cancelled', sources });
+    sessionsChanged('updated', { itemId: t.target.itemId, conversationId: t.conversationId });
+  };
+
   /** The session the turn runs on is the conversation's from now: a new one (or one of another agent) is stored with its agent. */
   const keepSession = (t: Turn, s: AgentSession) => {
     const c = repo().conversation(t.conversationId);
@@ -193,6 +217,13 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
         s = await started;
       } catch (e) {
         failBefore(t, startCode(e));
+        return;
+      }
+      // Quitting began while the agent started: from here nothing is written (the key is still released below).
+      if (shuttingDown) return;
+      // Nothing was sent: the session's first prompt, its head and its replay are all still to come.
+      if (t.stopped) {
+        endStopped(t);
         return;
       }
       t.session = s;
@@ -216,8 +247,13 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
         failBefore(t, startCode(e));
         return;
       }
+      let prompted = false;
       const end: TurnEnd = await runTurn({
-        prompt: (b, on) => (t.stopped ? Promise.resolve(NOT_SENT) : d.backend.prompt(s, b, on)),
+        prompt: (b, on) => {
+          if (t.stopped) return Promise.resolve(NOT_SENT);
+          prompted = true;
+          return d.backend.prompt(s, b, on);
+        },
         interrupt: (kill) => d.backend.interrupt(s, kill),
         repo: repo(),
         emit: (e) => emitTurn(t.agent, e),
@@ -230,9 +266,10 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
         conversationId: t.conversationId, tutorMessageId: t.tutorMessageId, userMessageId: t.userMessageId, revisionId: t.target.revisionId,
         pageCount: t.reader.pageCount, blocks, beforeAnswer: t.beforeAnswer,
       });
-      if (end.phase === 'abandoned') return;
-      // A turn the agent never answered may not have reached it: the next prompt carries the head again.
-      s.firstPrompt = !end.answered;
+      if (end.phase === 'abandoned' || shuttingDown) return;
+      // A turn the agent never answered may not have reached it: the next prompt carries the head again. One never
+      // sent leaves the session as it was.
+      if (prompted) s.firstPrompt = !end.answered;
       // The adapter may live on without the session: the next send starts a process and resumes there.
       if (end.code === 'AGENT_EXITED') void d.backend.close(s).catch((e: unknown) => tutorLog('agent-close-failed', { code: codeOf(e) }));
       // The pair may have taken its conversation with it.
@@ -267,6 +304,25 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     void play(t, started);
   };
 
+  /** Every refusal of a resend, before anything is changed: the order a question has, then the failed answer itself. */
+  const resendable = (i: TutorRetryInput) => {
+    const agent = precheck();
+    const ctx = d.context();
+    const failed = ctx.conversations.message(i.messageId);
+    const c = failed && ctx.conversations.conversation(failed.conversationId);
+    if (!failed || !c) throw invalid();
+    const key: SessionKey = { itemId: c.itemId, conversationId: c.id };
+    refuseBusy(key);
+    if (failed.role !== 'tutor' || failed.status !== 'failed' || failed.errorCode === 'AGENT_LOCKDOWN' || c.deleted || c.itemTrashed) throw invalid();
+    const target = targetOf(ctx, c.itemId, c.id);
+    if (target === null) throw invalid();
+    const question = ctx.conversations.thread(c.id).messages.find((m) => m.seq === failed.seq - 1 && m.role === 'user');
+    if (!question) throw invalid();
+    // The passage goes again with the question: it must still be of the revision the tools read.
+    if (question.attached?.revisionId != null && question.attached.revisionId !== target.revisionId) throw invalid();
+    return { agent, ctx, c, key, target, question };
+  };
+
   /** The passage as a prompt carries it: the reader's span, read as one. */
   const passage = (sel: TutorAskInput['selection']): TurnSelection | null => {
     if (sel === null) return null;
@@ -282,11 +338,13 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     },
 
     async agents(i) {
+      if (shuttingDown) throw quitting();
       requireConsent();
       return d.detector.report(i.mode, i.agent);
     },
 
     async chooseAgent(agent) {
+      if (shuttingDown) throw quitting();
       requireConsent();
       const report = await d.detector.report('cached');
       const s = statusOf(report, agent);
@@ -307,7 +365,7 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
       try {
         const tutor = tutorPrefs();
         const agent = tutor.agent;
-        if (!consented(tutor) || agent === null) return;
+        if (shuttingDown || !consented(tutor) || agent === null) return;
         const report = d.detector.cachedReport();
         if (report === null || statusOf(report, agent)?.state !== 'ready') return;
         const key: SessionKey = { itemId: i.itemId, conversationId: i.conversationId };
@@ -366,28 +424,24 @@ export function createTutorService(d: TutorServiceDeps): TutorService {
     },
 
     async resend(i) {
-      const agent = precheck();
-      const ctx = d.context();
-      const failed = ctx.conversations.message(i.messageId);
-      const c = failed && ctx.conversations.conversation(failed.conversationId);
-      if (!failed || !c) throw invalid();
-      refuseBusy({ itemId: c.itemId, conversationId: c.id });
-      if (failed.role !== 'tutor' || failed.status !== 'failed' || failed.errorCode === 'AGENT_LOCKDOWN' || c.deleted || c.itemTrashed) throw invalid();
-      const target = targetOf(ctx, c.itemId, c.id);
-      if (target === null) throw invalid();
-      const question = ctx.conversations.thread(c.id).messages.find((m) => m.seq === failed.seq - 1 && m.role === 'user');
-      if (!question) throw invalid();
-      // The passage goes again with the question: it must still be of the revision the tools read.
-      if (question.attached?.revisionId != null && question.attached.revisionId !== target.revisionId) throw invalid();
-      const r = ctx.conversations.retryTurn(i.messageId, agent, d.now());
-      const attached = ctx.conversations.attachedOf(r.userMessageId);
+      let r = resendable(i);
+      // A resend asks again from the start in a new agent process: one that outlived the failed turn goes first.
+      const live = d.supervisor.current();
+      if (live && sameKey(live.key, r.key) && !live.streaming) {
+        await d.supervisor.close().catch((e: unknown) => tutorLog('agent-close-failed', { code: codeOf(e) }));
+        // Anything may have happened while it closed — a quit, another send, this same resend twice: every refusal again.
+        r = resendable(i);
+      }
+      const { agent, ctx, c, key, target, question } = r;
+      const rt = ctx.conversations.retryTurn(i.messageId, agent, d.now());
+      const attached = ctx.conversations.attachedOf(rt.userMessageId);
       const conversation = conversationInput(c.id, agent, target, i.reader);
       launch({
-        key: { itemId: c.itemId, conversationId: c.id }, agent, target, conversationId: c.id, userMessageId: r.userMessageId, tutorMessageId: r.tutorMessageId,
+        key, agent, target, conversationId: c.id, userMessageId: rt.userMessageId, tutorMessageId: rt.tutorMessageId,
         userSeq: question.seq, question: question.text, selection: attached && { anchor: attached.anchor, text: attached.quote }, reader: i.reader,
         beforeAnswer: 'keep-failed', session: null, stopped: false,
       }, conversation);
-      return { tutorMessageId: r.tutorMessageId };
+      return { tutorMessageId: rt.tutorMessageId };
     },
 
     async reground(i) {

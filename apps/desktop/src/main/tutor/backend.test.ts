@@ -13,6 +13,7 @@ import type { LiveAgent, SessionKey, Supervisor } from './agents/supervisor';
 import { createAcpBackend, type AgentSession, type StartInput } from './backend';
 import type { AcpMcpServer, McpTransport } from './mcp/http';
 import { INSTRUCTIONS } from './prompts';
+import { tutorLog } from './log';
 import { createScopeRegistry } from './scope';
 
 vi.mock('./log', () => ({ tutorLog: vi.fn() }));
@@ -113,9 +114,13 @@ class FakeChild implements ChildPort {
   overflow(): void {
     this.overflowFn?.();
   }
-  exit(): void {
+  /** With { outputOpen: true } its stdout has not ended yet: a line written after the exit can still arrive. */
+  exit(o: { outputOpen?: boolean } = {}): void {
     this.ended = true;
     for (const fn of this.exitFns) fn({ code: 0, signal: null });
+    if (!o.outputOpen) this.endOutput();
+  }
+  endOutput(): void {
     this.outputEnded = true;
     for (const fn of this.outputEndFns.splice(0)) fn();
   }
@@ -460,6 +465,34 @@ describe('the ACP backend', () => {
       }
     });
 
+    it('a reply the agent wrote as it exited still arrives: the connection closes when stdout ends, or 250 ms after the exit', async () => {
+      vi.useFakeTimers();
+      const h = harness({ resume: false, load: false, script: {
+        'session/prompt': (_p, c) => {
+          c.exit({ outputOpen: true });
+          return { stopReason: 'end_turn' };
+        },
+      } });
+      const s = await h.backend.start({ key: KEY, agent: 'claude', conversation: CONV });
+      const token = s.scope!.token;
+      await expect(h.backend.prompt(s, ASK, () => {})).resolves.toMatchObject({ stopReason: 'end_turn' });
+      await vi.advanceTimersByTimeAsync(249);
+      expect(h.scopes.find(token)).toBe(s.scope);
+      const late = expect(h.backend.prompt(s, ASK, () => {})).rejects.toMatchObject({ code: 'AGENT_EXITED' });
+      await vi.advanceTimersByTimeAsync(1);
+      await late;
+      expect(h.scopes.find(token)).toBeNull();
+
+      const ended = harness({ resume: false, load: false });
+      const t = await ended.backend.start({ key: KEY, agent: 'claude', conversation: CONV });
+      ended.children[0]!.exit({ outputOpen: true });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(ended.scopes.find(t.scope!.token)).toBe(t.scope);
+      ended.children[0]!.endOutput();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ended.scopes.find(t.scope!.token)).toBeNull();
+    });
+
     it('when the agent exits, its scope closes and its prompt fails AGENT_EXITED (5.4)', async () => {
       const h = harness({ resume: false, load: false, script: { 'session/prompt': () => new Promise(() => {}) } });
       const s = await h.backend.start({ key: KEY, agent: 'claude', conversation: CONV });
@@ -508,6 +541,25 @@ describe('the ACP backend', () => {
       await vi.waitFor(() => expect(result).toBe('ok'));
       expect(h.agentSaw('session/new')).toHaveLength(1);
       expect(h.agentSaw('session/prompt')).toEqual([]);
+    });
+
+    it('the notice\'s label (an email and a plan) reaches no log line', async () => {
+      const lines = [vi.spyOn(console, 'info'), vi.spyOn(console, 'log'), vi.spyOn(console, 'warn'), vi.spyOn(console, 'error')].map((spy) => spy.mockImplementation(() => {}));
+      vi.mocked(tutorLog).mockClear();
+      for (const kind of ['none', 'account']) {
+        const h = harness({ script: { initialize: noticeAtInit(kind) } });
+        await h.backend.probe('claude');
+      }
+      const broken = harness({ script: { initialize: (p, c) => {
+        c.agent.notify('_auth/status_update', { authStatus: { kind: 'account', label: 'x@y (Max)' } });
+        throw new RpcError(-32603, 'Internal error x@y (Max)');
+      } } });
+      await expect(broken.backend.probe('claude')).resolves.toBe('failed');
+      expect(vi.mocked(tutorLog)).toHaveBeenCalled();
+      const said = JSON.stringify([vi.mocked(tutorLog).mock.calls, ...lines.map((l) => l.mock.calls)]);
+      expect(said).not.toContain('x@y');
+      expect(said).not.toContain('Max');
+      for (const l of lines) l.mockRestore();
     });
 
     it('another ACP version is old; an agent that cannot be started, or fails, is failed', async () => {

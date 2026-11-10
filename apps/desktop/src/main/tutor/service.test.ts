@@ -19,6 +19,7 @@ import type { AgentSession, StartInput, TutorBackend } from './backend';
 import { INSTRUCTIONS, regroundInstruction } from './prompts';
 import { createScopeRegistry, type ScopeRegistry } from './scope';
 import { createTutorService, type TutorService } from './service';
+import { tutorLog } from './log';
 
 vi.mock('./log', () => ({ tutorLog: vi.fn() }));
 
@@ -52,6 +53,8 @@ const quietTimers = { setTimer: () => ({}), clearTimer: () => {} };
 function fakeSupervisor() {
   let answer: SessionKey | null = null;
   let live: { key: SessionKey; agent: AgentId; streaming: boolean } | null = null;
+  /** A closed process is gone: the next start is a new process and a new ACP session. */
+  let generation = 0;
   const log = { views: [] as Array<SessionKey | null>, ended: [] as SessionKey[], rekeys: [] as Array<[SessionKey, SessionKey]>, closes: 0, shutdowns: [] as number[], touches: 0, timeouts: [] as unknown[] };
   const sup = {
     view: (k: SessionKey | null) => log.views.push(k),
@@ -66,6 +69,7 @@ function fakeSupervisor() {
       else {
         log.ended.push({ ...key });
         if (answer && sameKey(answer, key)) answer = null;
+        if (live && sameKey(live.key, key)) live = { ...live, streaming: false };
       }
     },
     touch: () => {
@@ -74,6 +78,7 @@ function fakeSupervisor() {
     close: async () => {
       log.closes += 1;
       live = null;
+      generation += 1;
     },
     shutdown: async (ms: number) => {
       log.shutdowns.push(ms);
@@ -92,6 +97,7 @@ function fakeSupervisor() {
     setLive: (l: typeof live) => {
       live = l;
     },
+    generation: () => generation,
   };
 }
 
@@ -104,7 +110,7 @@ function fakeBackend(sup: ReturnType<typeof fakeSupervisor>, scopes: ScopeRegist
   let closes = 0;
   let n = 0;
   const open = (i: StartInput): AgentSession => {
-    const id = `${i.key.itemId}|${i.key.conversationId}|${i.agent}`;
+    const id = `${sup.generation()}|${i.key.itemId}|${i.key.conversationId}|${i.agent}`;
     let s = sessions.get(id);
     if (!s) {
       const c = i.conversation;
@@ -128,6 +134,7 @@ function fakeBackend(sup: ReturnType<typeof fakeSupervisor>, scopes: ScopeRegist
     start(i) {
       starts.push(i);
       if (i.streaming) sup.reserve(i.key);
+      sup.setLive({ key: { ...i.key }, agent: i.agent, streaming: i.streaming === true });
       return ctl.start(i);
     },
     prompt(s, b, on) {
@@ -158,7 +165,7 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-interface RigOptions { consent?: boolean; agent?: AgentId | null; cached?: AgentsReport | null; online?: boolean; network?: 'online' | 'offline' | null; fakeAvailable?: boolean }
+interface RigOptions { consent?: boolean; agent?: AgentId | null; cached?: AgentsReport | null; online?: boolean; network?: 'online' | 'offline' | null; fakeAvailable?: boolean; emitThrows?: boolean }
 function rig(o: RigOptions = {}) {
   const seed = seedItem(db);
   const ctx = { db, repo: new LibraryRepository(db), conversations: new ConversationsRepository(db), text: new TextRepository(db) } as unknown as LibraryContext;
@@ -189,8 +196,12 @@ function rig(o: RigOptions = {}) {
     emitTurn: (e) => {
       order.push(e.kind === 'failed' ? `emit:failed:${e.code}` : `emit:${e.kind}`);
       events.push(e);
+      if (o.emitThrows) throw new Error('the window is gone');
     },
-    emitSessions: (e) => sessions.push(e),
+    emitSessions: (e) => {
+      sessions.push(e);
+      if (o.emitThrows) throw new Error('the window is gone');
+    },
     userData, tutorHome: path.join(userData, 'Tutor'), home: path.join(dir, 'home'), fakeAvailable: o.fakeAvailable ?? true, now: () => NOW, timers: quietTimers,
   });
   const ask = (over: Partial<TutorAskInput> = {}): ReturnType<TutorService['ask']> =>
@@ -445,16 +456,76 @@ describe('the tutor service', () => {
       expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'stopped' });
     });
 
-    it('a stop before the agent started sends no prompt and ends the answer stopped', async () => {
+    it('a stop before the ACP session is ready ends the answer stopped and costs the session nothing: its next prompt still carries the head and the replay', async () => {
       const r = rig();
+      const prior = r.answered();
+      const setSent = vi.spyOn(r.repo, 'setSent');
       const started = gate<AgentSession>();
       r.be.ctl.start = () => started.p;
-      const a = askIds(await r.ask());
+      const a = askIds(await r.ask({ conversationId: prior.conversationId }));
       r.service.stop(a.tutorMessageId);
-      started.resolve(r.be.open(r.be.starts[0]!));
+      const s = r.be.open(r.be.starts[0]!);
+      started.resolve(s);
       await r.ended();
       expect(r.be.prompts).toEqual([]);
-      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'stopped' });
+      expect(r.events).toEqual([{ conversationId: prior.conversationId, messageId: a.tutorMessageId, kind: 'done', status: 'stopped', stopReason: 'cancelled', sources: [] }]);
+      const thread = r.repo.thread(prior.conversationId).messages;
+      expect(thread.map((m) => [m.id, m.status, m.text, m.stopReason])).toEqual([
+        [prior.userMessageId, 'complete', '어텐션이 뭐야?', null], [prior.tutorMessageId, 'complete', ANSWER, 'end_turn'],
+        [a.userMessageId, 'complete', '어텐션이 뭐야?', null], [a.tutorMessageId, 'stopped', '', 'cancelled'],
+      ]);
+      expect(setSent).not.toHaveBeenCalled();
+      expect(thread[2]!.sent).toEqual({ selection: 0, replayedTurns: 0, preamble: false });
+      expect(r.repo.conversation(prior.conversationId)!.agentSessionId).toBeNull();
+      expect(s.firstPrompt).toBe(true);
+      expect(s.scope!.activeTurn).toBeNull();
+
+      r.be.ctl.start = async (i) => r.be.open(i);
+      askIds(await r.ask({ conversationId: prior.conversationId, text: '다시 묻기' }));
+      await r.ended(2);
+      const blocks = r.be.prompts[0]!.map((b) => b.text);
+      expect(blocks[0]).toBe(INSTRUCTIONS(s.scope!.nonce));
+      expect(blocks[1]).toContain(`LEARN-HISTORY ${s.scope!.nonce}`);
+      expect(blocks.at(-1)).toBe('다시 묻기');
+      expect(s.firstPrompt).toBe(false);
+    });
+
+    it('a turn whose storage fails ends anyway: failed INTERNAL, the key released, the scope\'s turn cleared', async () => {
+      const r = rig();
+      vi.spyOn(r.repo, 'finishTurn').mockImplementationOnce(() => {
+        throw new LearnError('INTERNAL', 'disk');
+      });
+      const a = askIds(await r.ask());
+      await r.ended();
+      const s = r.be.sessions.values().next().value!;
+      expect(r.events.at(-1)).toEqual({ conversationId: a.conversationId, messageId: a.tutorMessageId, kind: 'failed', phase: 'during', code: 'INTERNAL' });
+      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'failed', errorCode: 'INTERNAL' });
+      expect(s.scope!.activeTurn).toBeNull();
+      expect(r.supCtl.sup.busyWith({ itemId: 'another', conversationId: null })).toBeNull();
+      askIds(await r.ask());
+      await r.ended(2);
+      expect(r.events.at(-1)).toMatchObject({ kind: 'done', status: 'complete' });
+    });
+
+    it('a window that cannot be told strands nothing: an emit that throws is logged by its code and the turn still ends', async () => {
+      const r = rig({ emitThrows: true });
+      vi.mocked(tutorLog).mockClear();
+      const a = askIds(await r.ask());
+      await r.ended();
+      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'complete', text: ANSWER });
+      expect(r.events.map((e) => e.kind)).toEqual(['text', 'done']);
+      expect(r.sessions.map((e) => e.reason)).toEqual(['created', 'updated']);
+      expect(vi.mocked(tutorLog).mock.calls.filter(([event]) => event === 'emit-failed')).toEqual([
+        ['emit-failed', { code: 'Error' }], ['emit-failed', { code: 'Error' }], ['emit-failed', { code: 'Error' }], ['emit-failed', { code: 'Error' }],
+      ]);
+      expect(r.supCtl.sup.busyWith({ itemId: 'another', conversationId: null })).toBeNull();
+      r.be.ctl.start = async () => {
+        throw new LearnError('AGENT_START_FAILED', 'no');
+      };
+      askIds(await r.ask());
+      await r.ended(2);
+      expect(r.count('conversations')).toBe(1);
+      expect(r.events.at(-1)).toMatchObject({ kind: 'failed', phase: 'before', code: 'AGENT_START_FAILED' });
     });
 
     it('a lockdown marks the agent locked out before the failure is told (P-26)', async () => {
@@ -526,6 +597,45 @@ describe('the tutor service', () => {
       expect(s.order).toEqual(['markLogin:claude', 'emit:failed:AGENT_LOGIN']);
     });
 
+    it('a quit while the agent starts: when the start then resolves nothing is written, started or told, the answer stays streaming (I2)', async () => {
+      const r = rig();
+      const setSent = vi.spyOn(r.repo, 'setSent');
+      const setAgentSession = vi.spyOn(r.repo, 'setAgentSession');
+      const started = gate<AgentSession>();
+      r.be.ctl.start = () => started.p;
+      const a = askIds(await r.ask());
+      await r.service.shutdown(2000);
+      expect(r.be.interrupts).toEqual([]);
+      started.resolve(r.be.open(r.be.starts[0]!));
+      await r.ended();
+      expect(setSent).not.toHaveBeenCalled();
+      expect(setAgentSession).not.toHaveBeenCalled();
+      expect(r.prioritize).not.toHaveBeenCalled();
+      expect(r.be.prompts).toEqual([]);
+      expect(r.events).toEqual([]);
+      expect(r.sessions.map((e) => e.reason)).toEqual(['created']);
+      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'streaming' });
+    });
+
+    it('once quitting began nothing new is asked, detected or started: CANCELLED, no row', async () => {
+      const r = rig();
+      const failed = r.answered('부분', { status: 'failed' });
+      const doubted = r.answered('x [[p2]]');
+      const rows = r.count();
+      await r.service.shutdown(2000);
+      expect(await code(r.ask())).toBe('CANCELLED');
+      expect(await code(r.service.resend({ messageId: failed.tutorMessageId, reader: READER }))).toBe('CANCELLED');
+      expect(await code(r.service.reground({ messageId: doubted.tutorMessageId, reader: READER }))).toBe('CANCELLED');
+      expect(await code(r.service.agents({ mode: 'recheck', agent: 'claude' }))).toBe('CANCELLED');
+      expect(await code(r.service.chooseAgent('fake'))).toBe('CANCELLED');
+      await expect(r.service.warm({ itemId: r.seed.itemId, conversationId: null })).resolves.toBeUndefined();
+      expect(r.count()).toBe(rows);
+      expect(r.be.starts).toEqual([]);
+      expect(r.detector.report).not.toHaveBeenCalled();
+      expect(r.prefs.get().tutor.agent).toBe('claude');
+      expect(r.repo.message(failed.tutorMessageId)).toMatchObject({ status: 'failed' });
+    });
+
     it('a quit in the middle of a turn writes and tells nothing: the answer stays streaming (I2)', async () => {
       const r = rig();
       const answer = gate<PromptOutcome>();
@@ -583,6 +693,31 @@ describe('the tutor service', () => {
         [tutorMessageId, 'complete', ANSWER],
       ]);
       expect(r.be.starts[0]).toMatchObject({ streaming: true });
+    });
+
+    it('restarts the agent: a process that outlived the failed turn is closed first, and the resend runs in a new ACP session with the head (J47)', async () => {
+      const r = rig();
+      r.be.ctl.prompt = async (_s, _b, on) => {
+        on({ kind: 'text', text: '부분' });
+        throw new LearnError('AGENT_TIMEOUT', 'late');
+      };
+      const a = askIds(await r.ask());
+      await r.ended();
+      expect(r.repo.message(a.tutorMessageId)).toMatchObject({ status: 'failed', errorCode: 'AGENT_TIMEOUT' });
+      const first = r.be.sessions.values().next().value!;
+      expect(r.supCtl.sup.current()).toMatchObject({ agent: 'claude', streaming: false });
+      r.be.ctl.prompt = async (_s, _b, on) => {
+        on({ kind: 'text', text: ANSWER });
+        return OK;
+      };
+      const { tutorMessageId } = await r.service.resend({ messageId: a.tutorMessageId, reader: READER });
+      expect(r.supCtl.log.closes).toBe(1);
+      await r.ended(2);
+      const second = [...r.be.sessions.values()].find((x) => x !== first);
+      expect(second).toMatchObject({ sessionId: 'acp-1', resumedBy: 'resume' });
+      expect(second!.scope!.nonce).not.toBe(first.scope!.nonce);
+      expect(r.be.prompts[1]![0]!.text).toBe(INSTRUCTIONS(second!.scope!.nonce));
+      expect(r.repo.message(tutorMessageId)).toMatchObject({ status: 'complete', text: ANSWER });
     });
 
     it('a resent turn that fails before its answer keeps the question and leaves a failed answer that can be resent again', async () => {

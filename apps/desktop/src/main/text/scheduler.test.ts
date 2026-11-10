@@ -409,6 +409,115 @@ describe('order and results', () => {
   });
 });
 
+describe('prioritize (a question about a PDF whose text is pending)', () => {
+  /** Each file by its whole sha, so the order of the runs can be read. */
+  const fileOf = (sha: string) => `/f/${sha}`;
+  const stateOfJob = (sha: string) => repo.jobs().find((j) => j.sha256 === sha)?.state;
+
+  it('before the first idle: that sha runs next, at once after the startup check, and only it skips the gate', async () => {
+    const asked = addPdf(1);
+    const fresh = addPdf(5);
+    const r = rig([reads(2), reads(2)], { files: fileOf });
+    r.s.prioritize(asked.sha);
+    await tick();
+    await tick();
+    expect(r.x.calls).toHaveLength(0); // the startup check still comes first: it may be about to interrupt what runs
+    r.s.startupChecked();
+    await until(() => stateOfJob(asked.sha) === 'done');
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(asked.sha)]);
+    expect(r.delays).toEqual([]); // no five seconds were waited for it
+    expect(stateOfJob(fresh.sha)).toBe('queued'); // the rest waits for the gate as before
+    await tick();
+    expect(r.x.calls).toHaveLength(1);
+    r.s.firstIdle();
+    expect(r.delays.map((d) => d.ms)).toEqual([TEXT_LIMITS.startDelayMs]);
+    r.delays.splice(0)[0]!.go();
+    await r.s.idle();
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(asked.sha), fileOf(fresh.sha)]); // the positive control: the gate opens as usual
+    expect(r.s.state().events.map((e) => e.what)).toContain('prioritize');
+  });
+
+  it('inside the five seconds: that sha starts without waiting for them; the others still do', async () => {
+    const asked = addPdf(1);
+    const fresh = addPdf(5);
+    const r = rig([reads(2), reads(2)], { files: fileOf });
+    r.s.firstIdle();
+    r.s.startupChecked();
+    expect(r.delays.map((d) => d.ms)).toEqual([TEXT_LIMITS.startDelayMs]); // the gate is counting
+    r.s.prioritize(asked.sha);
+    await until(() => stateOfJob(asked.sha) === 'done');
+    expect(r.delays).toHaveLength(1); // the only delay is the gate's, still not over
+    expect(stateOfJob(fresh.sha)).toBe('queued');
+    r.delays[0]!.go();
+    await r.s.idle();
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(asked.sha), fileOf(fresh.sha)]);
+  });
+
+  it('a busy work line: it starts nothing until the line is free', async () => {
+    const asked = addPdf(1);
+    const r = rig([reads(1)], { files: fileOf });
+    r.busy.value = true;
+    r.s.startupChecked();
+    r.s.prioritize(asked.sha);
+    await tick();
+    await tick();
+    expect(r.x.calls).toHaveLength(0);
+    r.busy.release();
+    await until(() => stateOfJob(asked.sha) === 'done'); // the positive control: free, it starts
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(asked.sha)]);
+  });
+
+  it('a job of another file that runs is not cut short: the asked one is next, then the newest as usual', async () => {
+    const running = addPdf(5);
+    const asked = addPdf(1);
+    const newer = addPdf(3);
+    let continueFirst = (): void => {};
+    const first: Step = async (_req, events) => {
+      events.opened(2);
+      await new Promise<void>((go) => (continueFirst = go));
+      await events.pages(0, pageTexts(0, 2));
+      return { kind: 'done', pages: 2, truncated: false };
+    };
+    const r = rig([first, reads(1), reads(1)], { files: fileOf });
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.control('now');
+    await until(() => r.x.calls.length === 1);
+    r.s.prioritize(asked.sha);
+    await tick();
+    expect(r.x.stops).toBe(0);
+    expect(r.x.calls).toHaveLength(1);
+    continueFirst();
+    await r.s.idle();
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(running.sha), fileOf(asked.sha), fileOf(newer.sha)]);
+    expect(stateOfJob(running.sha)).toBe('done');
+  });
+
+  it('a running scheduler with nothing to do starts the asked file at once, and finds a file that has no job yet', async () => {
+    const r = rig([reads(1)], { files: fileOf });
+    await startUp(r);
+    const asked = addPdf(1); // imported, no job yet and no wake
+    r.s.prioritize(asked.sha);
+    await until(() => stateOfJob(asked.sha) === 'done');
+  });
+
+  it('paused (E2E): nothing at all, and nothing is left behind for the resume', async () => {
+    const asked = addPdf(1);
+    const fresh = addPdf(5);
+    const r = rig([reads(1), reads(1)], { paused: true, files: fileOf });
+    r.s.firstIdle();
+    r.s.startupChecked();
+    r.s.prioritize(asked.sha);
+    await tick();
+    await tick();
+    expect(r.x.calls).toHaveLength(0);
+    expect(r.s.state().events.map((e) => (e.detail === undefined ? e.what : `${e.what} ${e.detail}`))).toContain('prioritize paused');
+    r.s.control('now');
+    await r.s.idle();
+    expect(r.x.calls.map((c) => c.file)).toEqual([fileOf(fresh.sha), fileOf(asked.sha)]); // the positive control: it runs, newest first
+  });
+});
+
 describe('hold (E2E)', () => {
   it('holds the next batch once 40 pages are written; null lets the job finish', async () => {
     const a = addPdf(1);

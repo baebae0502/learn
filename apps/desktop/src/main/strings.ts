@@ -186,4 +186,8 @@ export const mainStrings = {
     ],
     unknownPrefix: '번역: ',
   },
+  /** The tutor: a page as its tool envelope and its saved sources label it (n is the 1-based page number). */
+  tutor: {
+    pageLabel: (n: number) => `${n}쪽`,
+  },
 } as const;

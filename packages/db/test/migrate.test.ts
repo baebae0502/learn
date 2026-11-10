@@ -254,11 +254,11 @@ describe('migration v3 (anchors-translation)', () => {
     db.prepare(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version) VALUES ('a1', ?, 'pdf', '{}', 'q', 1)`).run(revisionId);
     db.prepare(`INSERT INTO annotations (id, anchor_id, type, body_json, operation_id, created_at, updated_at) VALUES ('n1', 'a1', 'highlight', '{}', 'op', 'now', 'now')`).run();
 
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 2, to: 5, backupFile: `${file}.pre-v3.bak` });
+    expect(migrate(db, { dbFile: file, migrations: MIGRATIONS.filter((m) => m.version <= 3) })).toEqual({ from: 2, to: 3, backupFile: `${file}.pre-v3.bak` });
     expect(db.prepare(`SELECT id, precision, text_json, quote FROM anchors`).all()).toEqual([{ id: 'a1', precision: 'span', text_json: null, quote: 'q' }]);
     expect(db.pragma('foreign_key_check')).toEqual([]);
     expect(tables(db)).toContain('translation_cache');
-    expect(() => db.prepare(`UPDATE anchors SET precision = 'bogus'`).run()).toThrow(/CHECK/);
+    expect(() => db.prepare(`UPDATE anchors SET precision = 'page'`).run()).toThrow(/CHECK/);
     const snap = openDatabase(`${file}.pre-v3.bak`);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(2);
@@ -267,6 +267,7 @@ describe('migration v3 (anchors-translation)', () => {
 
 describe('migration v4 (images-text)', () => {
   const v3 = MIGRATIONS.filter((m) => m.version <= 3);
+  const upTo4 = MIGRATIONS.filter((m) => m.version <= 4);
   const rows = (db: Db, table: string) => db.prepare(`SELECT rowid AS _rowid, * FROM ${table} ORDER BY rowid`).all() as Record<string, unknown>[];
   const SAME = ['items', 'item_assets', 'source_revisions', 'collections', 'collection_items', 'tags', 'item_tags', 'reading_positions', 'annotations'];
 
@@ -296,7 +297,7 @@ describe('migration v4 (images-text)', () => {
     migrate(db, { dbFile: file, migrations: v3 });
     const { pdf } = seedV3(db);
     const before = Object.fromEntries([...SAME, 'assets', 'anchors'].map((t) => [t, rows(db, t)]));
-    expect(migrate(db, { dbFile: file })).toEqual({ from: 3, to: 5, backupFile: `${file}.pre-v4.bak` });
+    expect(migrate(db, { dbFile: file, migrations: upTo4 })).toEqual({ from: 3, to: 4, backupFile: `${file}.pre-v4.bak` });
     for (const t of SAME) expect(rows(db, t), t).toEqual(before[t]);
     expect(rows(db, 'assets')).toEqual(before.assets!.map((r) => ({ ...r, width: null, height: null })));
     expect(rows(db, 'anchors')).toEqual(before.anchors!.map((r) =>
@@ -411,8 +412,8 @@ describe('migration v5 (tutor)', () => {
     const indexes = db.prepare(`SELECT name FROM sqlite_master WHERE type = 'index'`).pluck().all() as string[];
     expect(indexes).toEqual(expect.arrayContaining(['anchors_revision', 'conversations_item', 'conversations_recent', 'conversations_parent', 'conversations_deleted',
       'message_sources_message', 'message_sources_anchor', 'message_sources_cited_page', 'conversation_context_opened', 'conversation_context_anchor', 'tool_reads_revision']));
-    expect(() => db.prepare(`UPDATE anchors SET precision = 'page' WHERE id = 'a-image'`).run()).toThrow(/CHECK/);
     db.prepare(`UPDATE anchors SET precision = 'page' WHERE id = 'a-span'`).run(); // a PDF anchor may be a page
+    expect(() => db.prepare(`UPDATE anchors SET precision = 'page' WHERE id = 'a-image'`).run()).toThrow(/CHECK/); // an image may not
     const snap = openDatabase(`${file}.pre-v5.bak`);
     dbs.push(snap);
     expect(currentVersion(snap)).toBe(4);
@@ -434,6 +435,7 @@ describe('migration v5 (tutor)', () => {
       run(`INSERT INTO anchors (id, revision_id, kind, locator_json, quote, schema_version, precision, text_json) VALUES (?, ?, 'pdf', ?, NULL, 2, 'page', NULL)`,
         id, revisionId, JSON.stringify({ kind: 'pdf', revisionId, precision: 'page', pageIndex: n }));
     conv('c1');
+    conv('c0', { title: '질문' });
     expect(() => conv('c2', { title: '' })).toThrow(/CHECK/);
     expect(() => conv('c3', { agent: 'Claude' })).toThrow(/CHECK/);
     msg('m1', 'c1', 0, 'user', 'question');
@@ -442,17 +444,21 @@ describe('migration v5 (tutor)', () => {
     msg('m4', 'c1', 1, 'tutor', 'answer', { agent: 'claude' });
     page('p1', 41);
     page('p2', 42);
-    const source = db.prepare(`INSERT INTO message_sources (message_id, role, ordinal, anchor_id, page_index, label, quote_snapshot) VALUES ('m4', ?, ?, ?, ?, ?, NULL)`);
-    source.run('cited', 0, 'p1', 41, '42쪽');
-    expect(() => source.run('cited', 1, 'p2', 41, '42쪽')).toThrow(/CHECK|UNIQUE/);
-    source.run('cited', 1, 'p2', 42, '43쪽');
+    const source = db.prepare(`INSERT INTO message_sources (message_id, role, ordinal, anchor_id, page_index, label, quote_snapshot) VALUES ('m4', ?, ?, ?, ?, ?, ?)`);
+    source.run('cited', 0, 'p1', 41, '42쪽', null);
+    expect(() => source.run('cited', 1, 'p2', 41, '42쪽', null)).toThrow(/UNIQUE/); // one cited row per page
+    source.run('cited', 1, 'p2', 42, '43쪽', null);
+    source.run('attached', 0, 'p2', 42, '43쪽', '붙인 글'); // positive control: an attached row may carry its snapshot
+    expect(() => source.run('cited', 2, 'p2', 43, '44쪽', '붙인 글')).toThrow(/CHECK/); // a cited row may not
     run(`INSERT INTO conversation_context (conversation_id, anchor_id, role, created_at) VALUES ('c1', 'p1', 'opened_from', 'now')`);
-    const read = (outcome: string, from: number | null, to: number | null) =>
+    expect(() => run(`INSERT INTO conversation_context (conversation_id, anchor_id, role, created_at) VALUES ('c1', 'p2', 'opened_from', 'now')`)).toThrow(/UNIQUE/);
+    const read = (seq: number, outcome: string, from: number | null, to: number | null) =>
       run(`INSERT INTO tool_reads (message_id, seq, tool, outcome, revision_id, page_from, page_to, ms, created_at) VALUES ('m4', ?, 'read_pages', ?, ?, ?, ?, 1, 'now')`,
-        Math.floor(Math.random() * 1e6), outcome, revisionId, from, to);
-    expect(() => read('ok', 3, null)).toThrow(/CHECK|UNIQUE/);
-    expect(() => read('ok?', 3, 3)).toThrow(/CHECK|UNIQUE/);
-    read('ok', 3, 4);
+        seq, outcome, revisionId, from, to);
+    read(0, 'ok', 3, 4); // positive control before the rejections
+    expect(() => read(1, 'ok', 3, null)).toThrow(/CHECK/);
+    expect(() => read(2, 'ok?', 3, 3)).toThrow(/CHECK/);
+    expect(() => read(0, 'ok', 5, 5)).toThrow(/UNIQUE/);
 
     run('DELETE FROM anchors WHERE id = ?', 'p1');
     expect(db.prepare(`SELECT anchor_id, label FROM message_sources WHERE ordinal = 0`).get()).toEqual({ anchor_id: null, label: '42쪽' });
@@ -469,6 +475,18 @@ describe('migration v5 (tutor)', () => {
     run(`INSERT INTO tool_reads (message_id, seq, tool, outcome, ms, created_at) VALUES ('m6', 0, 'read_pages', 'ok', 1, 'now')`);
     run('DELETE FROM items WHERE id = ?', itemId);
     for (const t of ['conversations', 'messages', 'message_sources', 'tool_reads']) expect(db.prepare(`SELECT COUNT(*) FROM ${t}`).pluck().get(), t).toBe(0);
+  });
+
+  it('deleting a source revision removes its tool reads', () => {
+    const { db } = tempDb();
+    migrate(db, { dbFile: null });
+    const { itemId, revisionId } = seedItem(new LibraryRepository(db), 1);
+    db.prepare(`INSERT INTO conversations (id, item_id, agent, created_at, updated_at) VALUES ('c1', ?, 'claude', 'now', 'now')`).run(itemId);
+    db.prepare(`INSERT INTO messages (id, conversation_id, seq, role, kind, text, status, agent, created_at) VALUES ('m1', 'c1', 0, 'tutor', 'answer', 't', 'complete', 'claude', 'now')`).run();
+    db.prepare(`INSERT INTO tool_reads (message_id, seq, tool, outcome, revision_id, page_from, page_to, ms, created_at) VALUES ('m1', 0, 'read_pages', 'ok', ?, 0, 0, 1, 'now')`).run(revisionId);
+    expect(db.prepare('SELECT COUNT(*) FROM tool_reads').pluck().get()).toBe(1);
+    db.prepare('DELETE FROM source_revisions WHERE id = ?').run(revisionId);
+    expect(db.prepare('SELECT COUNT(*) FROM tool_reads').pluck().get()).toBe(0);
   });
 
   it('a foreign-keys-off failure leaves v4', () => {

@@ -374,4 +374,153 @@ describe('createMcpTransport', () => {
       await own.close();
     }
   });
+
+  it('before initialize, a live token lists and calls nothing and binds nothing; the later initialize binds as usual', async () => {
+    const entry = await transport.serverEntry(scope);
+    const post = poster(entry);
+    const early = await post({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_outline', arguments: {} } });
+    expect(early.status).toBe(200);
+    expect(await early.json()).toEqual({ jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'Server not initialized' } });
+    expect(await (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).json()).toEqual({ jsonrpc: '2.0', id: 2, error: { code: -32600, message: 'Server not initialized' } });
+    expect(call).not.toHaveBeenCalled();
+    expect(scope.mcpSessionId).toBeNull();
+    // Positive control: the CLI's initialize still binds the token, and its tools/call runs.
+    const { v, sid } = await bind(entry);
+    expect(scope.mcpSessionId).toBe(sid);
+    const r = await post({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_outline' } }, v);
+    expect(await r.json()).toMatchObject({ result: { isError: false, structuredContent: ENVELOPE } });
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('two initializes at once on one token: exactly one binds (200 with a session id), the other is 403', async () => {
+    const real = createMcpServer({ call: () => call() });
+    let held = 0;
+    let letGo!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      letGo = resolve;
+    });
+    // The answer to an initialize waits until the other request is refused (or, were both let through, until both are
+    // held), so the second is checked while the first is unanswered.
+    const own = createMcpTransport({
+      scopes: reg,
+      server: {
+        handle: async (s, c, m) => {
+          held += 1;
+          if (held === 2) letGo();
+          await gate;
+          return real.handle(s, c, m);
+        },
+      },
+      onRequest: (r) => { if (r.status === 403) letGo(); },
+    });
+    try {
+      const post = poster(await own.serverEntry(scope));
+      const init = (id: number) => post({ jsonrpc: '2.0', id, method: 'initialize', params: { protocolVersion: '2025-11-25' } });
+      const answers = await Promise.all([init(1), init(2)]);
+      expect(answers.map((a) => a.status).sort()).toEqual([200, 403]);
+      const won = answers.find((a) => a.status === 200)!;
+      expect(won.headers.get('mcp-session-id')).toBe(scope.mcpSessionId);
+      expect(scope.mcpSessionId).toMatch(/^[0-9a-f]{32}$/);
+      expect(answers.find((a) => a.status === 403)!.headers.get('mcp-session-id')).toBeNull();
+      expect(held).toBe(1);
+      expect(info.mock.calls).toContainEqual(['[tutor] mcp-reinit code=MCP_SESSION_BOUND']);
+    } finally {
+      letGo();
+      await own.close();
+    }
+  });
+
+  it('bounds slow requests and connections: 10 s to receive a request, 32 connections', async () => {
+    await transport.serverEntry(scope);
+    const server = created.mock.results[0]!.value as http.Server;
+    expect([server.headersTimeout, server.requestTimeout, server.maxConnections]).toEqual([10_000, 10_000, 32]);
+  });
+
+  it('a request that never finishes its body is ended by the server and recorded with status 0; a slow answer is not cut', async () => {
+    const slow = vi.fn(async () => {
+      // The answer outlasts the request limit several times over: the limit is on receiving, not on answering.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return { isError: false, text: 'get_outline · ok', envelope: ENVELOPE, read: null } satisfies ToolCallResult;
+    });
+    const seen: RequestRecord[] = [];
+    const own = createMcpTransport({ server: createMcpServer({ call: () => slow() }), scopes: reg, onRequest: (r) => void seen.push(r), requestTimeoutMs: 150 });
+    try {
+      const entry = await own.serverEntry(scope);
+      const url = new URL(entry.url);
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port: Number(url.port), method: 'POST', path: '/mcp', agent: false, headers: { Authorization: entry.headers[0]!.value, 'Transfer-Encoding': 'chunked' } }, (res) => {
+          res.resume();
+          resolve(res.statusCode!);
+        });
+        req.on('error', reject);
+        req.write('{"jsonrpc":"2.0",');
+      });
+      expect(status).toBe(408);
+      await vi.waitFor(() => expect(seen).toContainEqual(expect.objectContaining({ method: 'POST', path: '/mcp', status: 0 })));
+      const { post, v } = await bind(entry);
+      const r = await post({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_outline' } }, v);
+      expect(r.status).toBe(200);
+      expect(await r.json()).toMatchObject({ result: { isError: false } });
+      expect(slow).toHaveBeenCalledTimes(1);
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('a client gone in the middle of its body is recorded with status 0, and nothing is handled', async () => {
+    const handle = vi.fn(async () => null);
+    const seen: RequestRecord[] = [];
+    const own = createMcpTransport({ server: { handle }, scopes: reg, onRequest: (r) => void seen.push(r) });
+    try {
+      const entry = await own.serverEntry(scope);
+      const url = new URL(entry.url);
+      const req = http.request({ host: '127.0.0.1', port: Number(url.port), method: 'POST', path: '/mcp', agent: false, headers: { Authorization: entry.headers[0]!.value, 'Content-Length': '100' } });
+      req.on('error', () => {});
+      req.write('{"jsonrpc":"2.0",', () => req.destroy());
+      await vi.waitFor(() => expect(seen).toEqual([expect.objectContaining({ method: 'POST', path: '/mcp', status: 0 })]));
+      expect(handle).not.toHaveBeenCalled();
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('once close() has begun, a request whose body is already read is refused with 503 and never handled', async () => {
+    const handle = vi.fn(async () => null);
+    // close() begins from inside the request, after its body was read and before it would be handled.
+    const own: McpTransport = createMcpTransport({
+      server: { handle }, scopes: reg, newSessionId: () => { void own.close(); return 'ab'.repeat(16); },
+    });
+    try {
+      const r = await poster(await own.serverEntry(scope))({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25' } });
+      expect(r.status).toBe(503);
+      expect(r.headers.get('mcp-session-id')).toBeNull();
+      expect(handle).not.toHaveBeenCalled();
+      expect(scope.mcpSessionId).toBeNull();
+    } finally {
+      await own.close();
+    }
+  });
+
+  it('a Content-Length over 64 KiB is 413 before a byte of the body is read', async () => {
+    const handle = vi.fn(async () => null);
+    const own = createMcpTransport({ server: { handle }, scopes: reg });
+    try {
+      const entry = await own.serverEntry(scope);
+      const url = new URL(entry.url);
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port: Number(url.port), method: 'POST', path: '/mcp', agent: false, headers: { Authorization: entry.headers[0]!.value, 'Content-Length': String(10 * 1024 * 1024) } }, (res) => {
+          res.resume();
+          resolve(res.statusCode!);
+          req.destroy();
+        });
+        req.on('error', (e: NodeJS.ErrnoException) => (e.code === 'ECONNRESET' ? undefined : reject(e)));
+        // Only the headers go: the answer comes without the server waiting for, or reading, any of the body.
+        req.flushHeaders();
+      });
+      expect(status).toBe(413);
+      expect(handle).not.toHaveBeenCalled();
+    } finally {
+      await own.close();
+    }
+  });
 });

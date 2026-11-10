@@ -104,6 +104,9 @@ export function createMcpServer(d: {
   const reply = (id: RpcId, result: Record<string, unknown>) => out.reply.parse({ jsonrpc: '2.0', id, result });
 
   async function answer(scope: AcpScope, conn: McpConnection, id: RpcId, method: string, params: unknown): Promise<Record<string, unknown>> {
+    // The tools open only to a client that initialized: whoever read the token off the agent's command line gets no
+    // further than initialize, which the transport binds to one MCP session.
+    if ((method === 'tools/list' || method === 'tools/call') && conn.version === null) return rpcError(id, -32600, 'Server not initialized');
     switch (method) {
       case 'initialize': {
         const p = initializeParams.safeParse(params);

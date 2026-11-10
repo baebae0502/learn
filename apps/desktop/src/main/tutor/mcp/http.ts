@@ -19,6 +19,12 @@ export interface McpTransport {
 const HOST = '127.0.0.1';
 const PATH = '/mcp';
 const MAX_BODY = 64 * 1024;
+/**
+ * The time to receive a whole request — not to answer it: a tools/call may still wait 10 s for page text. The check
+ * runs every second (Node's default is 30 s), so a request still arriving is ended within about 11 s.
+ */
+const REQUEST_TIMEOUT_MS = 10_000;
+const MAX_CONNECTIONS = 32;
 
 const entrySchema = z.object({
   type: z.literal('http'),
@@ -34,8 +40,8 @@ const utf8 = new TextDecoder('utf-8', { fatal: true });
 type Body = Buffer | 'too-large' | 'gone';
 
 /**
- * The request's body, counted while it streams: past 64 KiB nothing more is kept or read — the 413 that follows closes
- * the connection — so a body of any size costs at most 64 KiB.
+ * The request's body, counted while it streams (a chunked body has no length to check first): past 64 KiB nothing
+ * more is kept or read — the 413 that follows closes the connection — so a body of any size costs at most 64 KiB.
  */
 function readBody(req: http.IncomingMessage): Promise<Body> {
   return new Promise((resolve) => {
@@ -80,8 +86,14 @@ export function createMcpTransport(d: {
   server: ReturnType<typeof createMcpServer>;
   scopes: ScopeRegistry;
   newSessionId?: () => string;
-  /** Tests only (the live test's R1 record): each request's method, path, header names as received (rawHeaders, never values) and status. */
+  /**
+   * Tests only (the live test's R1 record): each request's method, path, header names as received (rawHeaders, never
+   * values) and status — 0 when Learn sent nothing because the request never arrived whole (the client left, or Node
+   * ended it at the request timeout with its own 408).
+   */
   onRequest?(r: { method: string; path: string; headerNames: string[]; status: number }): void;
+  /** Tests only: a shorter limit for receiving a request. */
+  requestTimeoutMs?: number;
 }): McpTransport {
   const newSessionId = d.newSessionId ?? (() => randomBytes(16).toString('hex'));
   // By scope, so a closed scope's connection goes with it; a token binds one MCP session, so this is that session's.
@@ -106,19 +118,22 @@ export function createMcpTransport(d: {
 
   /*
    * The order of the checks: Host, then Origin, then the token — a request Host or Origin refuses learns nothing of
-   * whether its token is live — then path and method, the body (size, JSON, one JSON-RPC message), the MCP session
-   * the token is bound to, and the version header.
+   * whether its token is live — then path and method, the body (declared size, size read, JSON, one JSON-RPC
+   * message), the MCP session the token is bound to, the version header, and last whether close() has begun.
    */
   async function serve(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const path = (req.url ?? '').split('?', 1)[0]!;
-    const send = (status: number, o: { body?: Record<string, unknown>; headers?: Record<string, string>; refused?: string } = {}) => {
-      if (o.refused !== undefined) tutorLog('mcp-refused', { code: o.refused });
-      // Told before the answer is written, so it is in the record by the time the client has the answer.
+    const record = (status: number) => {
       try {
         d.onRequest?.({ method: req.method ?? '', path, headerNames: req.rawHeaders.filter((_, i) => i % 2 === 0), status });
       } catch {
         // A test's hook never breaks a request.
       }
+    };
+    const send = (status: number, o: { body?: Record<string, unknown>; headers?: Record<string, string>; refused?: string } = {}) => {
+      if (o.refused !== undefined) tutorLog('mcp-refused', { code: o.refused });
+      // Told before the answer is written, so it is in the record by the time the client has the answer.
+      record(status);
       const body = o.body === undefined ? undefined : JSON.stringify(o.body);
       res.writeHead(status, body === undefined ? { ...o.headers } : { ...o.headers, 'Content-Type': 'application/json' });
       res.end(body);
@@ -134,8 +149,10 @@ export function createMcpTransport(d: {
     if (req.method === 'GET' || req.method === 'DELETE') return send(405, { headers: { Allow: 'POST' } });
     if (req.method !== 'POST') return send(404, { refused: 'MCP_NOT_FOUND' });
 
+    // A declared length is refused before a byte is read; Node has already refused one that is not a number.
+    if (Number(req.headers['content-length'] ?? 0) > MAX_BODY) return send(413, { headers: { Connection: 'close' }, refused: 'MCP_TOO_LARGE' });
     const body = await readBody(req);
-    if (body === 'gone') return;
+    if (body === 'gone') return record(0);
     if (body === 'too-large') return send(413, { headers: { Connection: 'close' }, refused: 'MCP_TOO_LARGE' });
     let raw: unknown;
     try {
@@ -149,6 +166,10 @@ export function createMcpTransport(d: {
     const conn = connOf(scope);
     const initialize = m.kind === 'request' && m.method === 'initialize';
     let binding: string | null = null;
+    const release = () => {
+      if (binding !== null && scope.mcpSessionId === binding) scope.mcpSessionId = null;
+      binding = null;
+    };
     if (scope.bindMcpSession) {
       if (initialize) {
         if (scope.mcpSessionId !== null) {
@@ -171,15 +192,17 @@ export function createMcpTransport(d: {
       if (v !== undefined && v !== conn.version) return send(400, { body: rpcError(null, -32000, 'Bad Request: Unsupported protocol version'), refused: 'MCP_VERSION' });
     }
 
+    // close() may have begun while the body was read: nothing is handled once it has.
+    if (closing !== null) {
+      release();
+      return send(503, { headers: { Connection: 'close' }, refused: 'MCP_CLOSING' });
+    }
     let answer: Record<string, unknown> | null = null;
     try {
       answer = await d.server.handle(scope, conn, raw);
     } finally {
       // An initialize not answered with a result (its params unreadable) binds nothing.
-      if (binding !== null && (answer === null || !('result' in answer))) {
-        if (scope.mcpSessionId === binding) scope.mcpSessionId = null;
-        binding = null;
-      }
+      if (answer === null || !('result' in answer)) release();
     }
     if (answer === null) return send(202);
     return send(200, { body: answer, headers: binding === null ? {} : { 'Mcp-Session-Id': binding } });
@@ -187,13 +210,16 @@ export function createMcpTransport(d: {
 
   function start(): Promise<number> {
     if (starting !== null) return starting;
-    const s = http.createServer((req, res) => {
+    const limit = d.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+    const options = { headersTimeout: limit, requestTimeout: limit, connectionsCheckingInterval: Math.min(1_000, limit / 2) };
+    const s = http.createServer(options, (req, res) => {
       serve(req, res).catch(() => {
         tutorLog('mcp-failed', { code: 'INTERNAL' });
         if (!res.headersSent) res.writeHead(500).end();
         else res.destroy();
       });
     });
+    s.maxConnections = MAX_CONNECTIONS;
     server = s;
     starting = new Promise<number>((resolve, reject) => {
       const failed = (e: Error) => {

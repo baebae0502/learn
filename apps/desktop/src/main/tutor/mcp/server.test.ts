@@ -86,7 +86,7 @@ describe('createMcpServer', () => {
   });
 
   it('lists exactly the three read-only tools with strict input schemas (a renamed tool or field breaks this)', async () => {
-    const r = (await server.handle(scope, conn(), { jsonrpc: '2.0', id: 6, method: 'tools/list' })) as { result: { tools: Array<{ name: string; inputSchema: { additionalProperties?: boolean }; annotations: Record<string, boolean> }> } };
+    const r = (await server.handle(scope, await opened('2025-11-25'), { jsonrpc: '2.0', id: 6, method: 'tools/list' })) as { result: { tools: Array<{ name: string; inputSchema: { additionalProperties?: boolean }; annotations: Record<string, boolean> }> } };
     expect(r.result.tools.map((t) => t.name)).toEqual(['get_context', 'get_outline', 'read_pdf_pages']);
     expect(r.result.tools.every((t) => t.inputSchema.additionalProperties === false && t.annotations.readOnlyHint === true)).toBe(true);
     expect(r.result.tools).toMatchSnapshot();
@@ -108,7 +108,7 @@ describe('createMcpServer', () => {
     expect(await server.handle(scope, conn(), { jsonrpc: '2.0', id: 'p', method: 'ping' })).toEqual({ jsonrpc: '2.0', id: 'p', result: {} });
   });
 
-  it('carries structuredContent only on 2025-06-18 and 2025-11-25, never before initialize', async () => {
+  it('carries structuredContent only on 2025-06-18 and 2025-11-25', async () => {
     const msg = { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'get_outline', arguments: {} } };
     for (const v of ['2025-11-25', '2025-06-18'] as const) {
       const r = (await server.handle(scope, await opened(v), msg)) as CallReply;
@@ -116,14 +116,36 @@ describe('createMcpServer', () => {
       expect(r.result.content).toEqual([{ type: 'text', text: expect.stringMatching(/^get_outline · /) }]);
       expect(tutorEnvelope.parse(r.result.structuredContent)).toMatchObject({ tool: 'get_outline', item: { id: ITEM }, returned: 1 });
     }
-    for (const c of [await opened('2025-03-26'), await opened('2024-11-05'), conn()]) {
+    for (const c of [await opened('2025-03-26'), await opened('2024-11-05')]) {
       const r = (await server.handle(scope, c, msg)) as CallReply;
       expect(r.result.content[0]!.text).toMatch(/^get_outline · /);
       expect(r.result).not.toHaveProperty('structuredContent');
       expect(Object.keys(r.result).sort()).toEqual(['content', 'isError']);
     }
-    expect(call).toHaveBeenCalledTimes(5);
+    expect(call).toHaveBeenCalledTimes(4);
     expect(call.mock.calls[0]).toEqual([scope, 'get_outline', {}]);
+  });
+
+  it('before initialize, tools are neither listed nor called: -32600 "Server not initialized"; ping, -32601 and notifications as ever', async () => {
+    const c = conn();
+    const notYet = (id: number) => ({ jsonrpc: '2.0', id, error: { code: -32600, message: 'Server not initialized' } });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).toEqual(notYet(1));
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_outline', arguments: {} } })).toEqual(notYet(2));
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'read_file' } })).toEqual(notYet(3));
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 4, method: 'tools/call' })).toEqual(notYet(4));
+    expect(call).not.toHaveBeenCalled();
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 5, method: 'ping' })).toEqual({ jsonrpc: '2.0', id: 5, result: {} });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 6, method: 'server/discover' })).toMatchObject({ error: { code: -32601 } });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', method: 'notifications/initialized' })).toBeNull();
+    expect(c.version).toBeNull();
+    // A failed initialize negotiates nothing, so the tools stay closed.
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 7, method: 'initialize', params: {} })).toMatchObject({ error: { code: -32602 } });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 8, method: 'tools/list' })).toEqual(notYet(8));
+    // Positive control: the same connection, initialized, lists and calls.
+    await server.handle(scope, c, { jsonrpc: '2.0', id: 9, method: 'initialize', params: { protocolVersion: '2025-11-25' } });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 10, method: 'tools/list' })).toMatchObject({ result: { tools: expect.any(Array) } });
+    expect(await server.handle(scope, c, { jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'get_outline' } })).toMatchObject({ result: { isError: false } });
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('a tool outside the three is -32602 "Unknown tool", and the tools are never called', async () => {
